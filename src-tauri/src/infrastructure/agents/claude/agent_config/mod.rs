@@ -443,6 +443,32 @@ fn resolve_model(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
     Some(model)
 }
 
+fn resolve_effort(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let runtime_effort = raw.effort.clone().filter(|v| validate_effort(v, &raw.name));
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return runtime_effort;
+    };
+
+    let Some(effort) = metadata.effort else {
+        return runtime_effort;
+    };
+
+    if !validate_effort(&effort, &raw.name) {
+        return runtime_effort;
+    }
+
+    if runtime_effort.as_deref().is_some() && runtime_effort.as_deref() != Some(effort.as_str()) {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_effort = ?runtime_effort,
+            canonical_effort = %effort,
+            "Canonical Claude metadata overrides divergent runtime effort"
+        );
+    }
+
+    Some(effort)
+}
+
 fn resolve_permission_mode(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
     let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
         return raw.permission_mode.clone();
@@ -615,6 +641,7 @@ fn parse_config_with_lookup(
         let preapproved_cli_tools =
             resolve_preapproved_cli_tools(&canonical_project_root, raw);
         let model = resolve_model(&canonical_project_root, raw);
+        let effort = resolve_effort(&canonical_project_root, raw);
         let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
@@ -626,7 +653,7 @@ fn parse_config_with_lookup(
             model,
             settings_profile: agent_profile_selection.clone(),
             settings: agent_settings,
-            effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
+            effort,
             permission_mode,
         });
     }

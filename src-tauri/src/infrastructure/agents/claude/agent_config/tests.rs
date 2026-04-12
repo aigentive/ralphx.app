@@ -1301,6 +1301,30 @@ agents:
     assert_eq!(qa_prep.model.as_deref(), Some("sonnet"));
 }
 
+#[test]
+fn test_canonical_claude_metadata_overrides_runtime_yaml_effort_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-ideation
+    system_prompt_file: agents/ralphx-ideation/claude/prompt.md
+    tools: { extends: base_tools, include: [Task] }
+    effort: high
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let ideation = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-ideation")
+        .expect("ralphx-ideation should exist");
+
+    assert_eq!(ideation.effort.as_deref(), Some("max"));
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

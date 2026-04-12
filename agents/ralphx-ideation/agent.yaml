@@ -5,6 +5,7 @@ description: "Facilitates ideation sessions and generates task proposals for Ral
 harnesses:
   claude:
     model: opus
+    effort: max
     disallowed_tools:
       - Write
       - Edit

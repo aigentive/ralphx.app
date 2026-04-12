@@ -277,6 +277,8 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-memory-capture", "sonnet"),
 ];
 
+const CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS: &[(&str, &str)] = &[("ralphx-ideation", "max")];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -475,6 +477,37 @@ fn canonical_claude_model_matches_loader_for_owned_agents() {
                 .as_deref(),
             Some(*expected_model),
             "runtime config should prefer canonical model for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_effort_matches_loader_for_owned_agents() {
+    let root = project_root();
+
+    for (agent_name, expected_effort) in CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+
+        assert_eq!(
+            definition.harnesses.claude.effort.as_deref(),
+            Some(*expected_effort),
+            "root harnesses.claude.effort should stay aligned for {agent_name}"
+        );
+        assert_eq!(
+            metadata.effort.as_deref(),
+            Some(*expected_effort),
+            "Claude metadata loader should preserve canonical effort for {agent_name}"
+        );
+        assert_eq!(
+            get_agent_config(agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .effort
+                .as_deref(),
+            Some(*expected_effort),
+            "runtime config should prefer canonical effort for {agent_name}"
         );
     }
 }

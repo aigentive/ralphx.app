@@ -59,6 +59,8 @@ pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
+    pub effort: Option<String>,
+    #[serde(default)]
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub preapproved_cli_tools: Vec<String>,
@@ -73,6 +75,7 @@ pub struct CanonicalClaudeAgentMetadata {
 impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
         self.model.is_none()
+            && self.effort.is_none()
             && self.disallowed_tools.is_empty()
             && self.preapproved_cli_tools.is_empty()
             && self.permission_mode.is_none()
@@ -83,6 +86,9 @@ impl CanonicalClaudeAgentMetadata {
     fn overlay_onto(self, mut base: Self) -> Self {
         if self.model.is_some() {
             base.model = self.model;
+        }
+        if self.effort.is_some() {
+            base.effort = self.effort;
         }
         if !self.disallowed_tools.is_empty() {
             base.disallowed_tools = self.disallowed_tools;
