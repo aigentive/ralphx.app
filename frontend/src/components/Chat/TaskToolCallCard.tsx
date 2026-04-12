@@ -12,7 +12,6 @@ import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import type { ToolCall } from "./tool-widgets/shared.constants";
-import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
 import {
   extractDelegationMetadata,
   isDelegationStartToolCall,
@@ -25,11 +24,16 @@ import {
   extractTaskStats,
 } from "./TaskToolCallCard.utils";
 import {
-  formatMessageAttributionTooltip,
-  formatProviderHarnessLabel,
   formatProviderModelEffortLabel,
-  getProviderHarnessBadgeStyle,
 } from "./provider-harness";
+import {
+  TaskCardKindBadge,
+  TaskCardModelBadge,
+  TaskCardProviderHarnessBadge,
+  TaskCardStatusBadge,
+  TaskCardSubagentTypeBadge,
+  TaskCardSummary,
+} from "./TaskCardShared";
 
 // ============================================================================
 // Types
@@ -83,29 +87,8 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const model = isDelegateCall
     ? delegation.effectiveModelId ?? delegation.logicalModel ?? ""
     : taskArgs.model || "";
-  const providerHarnessLabel = isDelegateCall
-    ? formatProviderHarnessLabel(delegation.providerHarness)
-    : null;
-  const providerHarnessStyle = getProviderHarnessBadgeStyle(delegation.providerHarness);
   const providerModelEffortLabel = isDelegateCall
       ? formatProviderModelEffortLabel({
-        providerHarness: delegation.providerHarness,
-        providerSessionId: delegation.providerSessionId,
-        upstreamProvider: delegation.upstreamProvider,
-        providerProfile: delegation.providerProfile,
-        logicalModel: delegation.logicalModel,
-        effectiveModelId: delegation.effectiveModelId,
-        logicalEffort: delegation.logicalEffort,
-        effectiveEffort: delegation.effectiveEffort,
-        inputTokens: delegation.inputTokens,
-        outputTokens: delegation.outputTokens,
-        cacheCreationTokens: delegation.cacheCreationTokens,
-        cacheReadTokens: delegation.cacheReadTokens,
-        estimatedUsd: delegation.estimatedUsd,
-      })
-    : null;
-  const providerTooltip = isDelegateCall
-      ? formatMessageAttributionTooltip({
         providerHarness: delegation.providerHarness,
         providerSessionId: delegation.providerSessionId,
         upstreamProvider: delegation.upstreamProvider,
@@ -143,30 +126,28 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         ? taskArgs.prompt.slice(0, 100) + "..."
         : null;
 
-  const subagentColor = getSubagentTypeColor(subagentType);
-  const modelColor = model ? getModelColor(model) : null;
   const bodyText = delegation.textOutput ?? taskStats.textOutput;
   const delegatedConversationId = isDelegateCall ? delegation.delegatedConversationId ?? null : null;
   const statusBadge = isDelegateCall && delegation.status && delegation.status !== "completed"
     ? delegation.status
     : null;
 
-  // Build stats summary
-  const statParts: string[] = [];
-  if (taskStats.totalDurationMs != null) {
-    statParts.push(formatDuration(taskStats.totalDurationMs));
-  }
-  if (taskStats.totalTokens != null) {
-    statParts.push(`${taskStats.totalTokens.toLocaleString()} tokens`);
-  }
-  if (taskStats.totalToolUseCount != null) {
-    statParts.push(`${taskStats.totalToolUseCount} tool${taskStats.totalToolUseCount !== 1 ? "s" : ""}`);
-  }
-  if (taskStats.estimatedUsd != null) {
-    statParts.push(`$${taskStats.estimatedUsd.toFixed(2)}`);
-  }
-
   const hasBody = Boolean(bodyText) || hasError || childToolCalls.length > 0;
+  const providerMetadata = {
+    providerHarness: delegation.providerHarness,
+    providerSessionId: delegation.providerSessionId,
+    upstreamProvider: delegation.upstreamProvider,
+    providerProfile: delegation.providerProfile,
+    logicalModel: delegation.logicalModel,
+    effectiveModelId: delegation.effectiveModelId,
+    logicalEffort: delegation.logicalEffort,
+    effectiveEffort: delegation.effectiveEffort,
+    inputTokens: delegation.inputTokens,
+    outputTokens: delegation.outputTokens,
+    cacheCreationTokens: delegation.cacheCreationTokens,
+    cacheReadTokens: delegation.cacheReadTokens,
+    estimatedUsd: delegation.estimatedUsd,
+  };
 
   return (
     <div
@@ -201,36 +182,10 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         )}
 
         {/* Agent vs Task label */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-              backgroundColor: isDelegateCall
-                ? "hsla(150, 55%, 45%, 0.12)"
-                : isAgentCall
-                  ? "hsla(14, 100%, 60%, 0.12)"
-                  : "hsla(220, 10%, 50%, 0.12)",
-              color: isDelegateCall
-                ? "hsl(150, 55%, 63%)"
-                : isAgentCall
-                  ? "hsl(14, 100%, 65%)"
-                  : "hsl(220, 10%, 60%)",
-            }}
-          >
-          {isDelegateCall ? "Delegate" : isAgentCall ? "Agent" : "Task"}
-          </span>
+        <TaskCardKindBadge toolName={toolCall.name} />
 
         {/* Subagent type badge — hidden for redundant "agent" default */}
-        {showSubagentTypeBadge && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-            style={{
-              backgroundColor: subagentColor.bg,
-              color: subagentColor.text,
-            }}
-          >
-            {subagentType}
-          </span>
-        )}
+        {showSubagentTypeBadge && <TaskCardSubagentTypeBadge subagentType={subagentType} />}
 
         {/* Title text */}
         <span
@@ -240,40 +195,24 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           {cardTitle}
         </span>
 
-        {providerHarnessLabel && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-            style={providerHarnessStyle}
-            title={providerTooltip ?? undefined}
-          >
-            {providerHarnessLabel}
-          </span>
+        {isDelegateCall && (
+          <TaskCardProviderHarnessBadge
+            providerHarness={delegation.providerHarness}
+            providerMetadata={providerMetadata}
+          />
         )}
 
         {/* Model badge */}
-        {model && modelColor && !providerModelEffortLabel && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-            style={{
-              backgroundColor: modelColor.bg,
-              color: modelColor.text,
-            }}
-          >
-            {model}
-          </span>
+        {!providerModelEffortLabel && (
+          <TaskCardModelBadge label={model || null} colorKey={model || null} />
         )}
 
         {providerModelEffortLabel && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-            style={{
-              backgroundColor: modelColor?.bg ?? "hsla(220, 10%, 50%, 0.15)",
-              color: modelColor?.text ?? "hsl(220, 10%, 65%)",
-            }}
-            title={providerTooltip ?? undefined}
-          >
-            {providerModelEffortLabel}
-          </span>
+          <TaskCardModelBadge
+            label={providerModelEffortLabel}
+            colorKey={delegation.effectiveModelId ?? delegation.logicalModel ?? providerModelEffortLabel}
+            providerMetadata={providerMetadata}
+          />
         )}
 
         {/* Agent-specific: isolation badge */}
@@ -303,29 +242,9 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         )}
 
         {/* Error indicator */}
-        {statusBadge && (
-          <span
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-            style={{
-              backgroundColor: "hsla(38 90% 50% / 0.15)",
-              color: "hsl(38 90% 60%)",
-            }}
-          >
-            {statusBadge}
-          </span>
-        )}
+        <TaskCardStatusBadge label={statusBadge} />
 
-        {hasError && (
-          <span
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-            style={{
-              backgroundColor: "hsla(0 70% 50% / 0.2)",
-              color: "hsl(0 70% 70%)",
-            }}
-          >
-            Failed
-          </span>
-        )}
+        <TaskCardStatusBadge label={hasError ? "Failed" : null} tone="error" />
       </button>
 
       {/* Subtitle: description or prompt preview for named agents */}
@@ -344,16 +263,26 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
       )}
 
       {/* Stats summary (shown below header when collapsed) */}
-      {statParts.length > 0 && (
+      {(
+        taskStats.totalDurationMs != null ||
+        taskStats.totalTokens != null ||
+        taskStats.totalToolUseCount != null ||
+        taskStats.estimatedUsd != null
+      ) && (
         <div
           className="px-3 py-1.5"
           style={{
             borderTop: `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`,
           }}
         >
-          <span className="text-xs" style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}>
-            {statParts.join(" \u00B7 ")}
-          </span>
+          <TaskCardSummary
+            metrics={{
+              totalDurationMs: taskStats.totalDurationMs,
+              totalTokens: taskStats.totalTokens,
+              totalToolUseCount: taskStats.totalToolUseCount,
+              estimatedUsd: taskStats.estimatedUsd,
+            }}
+          />
         </div>
       )}
 
@@ -362,7 +291,12 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         <div
           className="px-3 pb-3 pt-2"
           style={{
-            borderTop: statParts.length > 0
+            borderTop: (
+              taskStats.totalDurationMs != null ||
+              taskStats.totalTokens != null ||
+              taskStats.totalToolUseCount != null ||
+              taskStats.estimatedUsd != null
+            )
               ? `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`
               : undefined,
           }}
