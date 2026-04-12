@@ -4,6 +4,7 @@ use super::{
     try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use crate::infrastructure::agents::claude::get_agent_config;
+use std::fs;
 use std::path::PathBuf;
 
 const PILOT_AGENTS: &[(&str, &str, &str)] = &[
@@ -144,6 +145,23 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-ideation-critic",
 ];
 
+const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
+    "ralphx-plan-verifier",
+    "ralphx-plan-critic-completeness",
+    "ralphx-plan-critic-implementation-feasibility",
+    "ralphx-qa-prep",
+    "ralphx-ideation-specialist-backend",
+    "ralphx-ideation-specialist-frontend",
+    "ralphx-ideation-specialist-intent",
+    "ralphx-ideation-specialist-pipeline-safety",
+    "ralphx-ideation-specialist-prompt-quality",
+    "ralphx-ideation-specialist-state-machine",
+    "ralphx-ideation-specialist-ux",
+    "ralphx-ideation-specialist-code-quality",
+    "ralphx-ideation-advocate",
+    "ralphx-ideation-critic",
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -165,6 +183,55 @@ fn codex_runtime_features_load_from_harness_metadata() {
         Some(&false),
         "Claude no-Bash specialist should map to Codex shell_tool=false"
     );
+}
+
+#[test]
+fn codex_runtime_features_prefer_root_agent_metadata_over_legacy_harness_file() {
+    let temp = tempfile::tempdir().expect("tempdir should exist");
+    let agent_dir = temp.path().join("agents/test-agent");
+    fs::create_dir_all(agent_dir.join("codex")).expect("agent dirs should exist");
+    fs::write(
+        agent_dir.join("agent.yaml"),
+        r#"name: test-agent
+role: test_role
+harnesses:
+  codex:
+    runtime_features:
+      shell_tool: false
+"#,
+    )
+    .expect("root agent metadata should write");
+    fs::write(
+        agent_dir.join("codex/agent.yaml"),
+        r#"runtime_features:
+  shell_tool: true
+"#,
+    )
+    .expect("legacy codex metadata should write");
+
+    let metadata = load_canonical_codex_metadata(temp.path(), "test-agent");
+    assert_eq!(
+        metadata.runtime_features.get("shell_tool"),
+        Some(&false),
+        "root canonical codex runtime features should override legacy codex/agent.yaml metadata"
+    );
+}
+
+#[test]
+fn canonical_codex_runtime_features_match_loader_for_current_owned_agents() {
+    let root = project_root();
+
+    for agent_name in CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let runtime_features = load_canonical_codex_metadata(&root, agent_name);
+
+        assert_eq!(
+            definition.harnesses.codex.runtime_features,
+            runtime_features.runtime_features,
+            "root harnesses.codex.runtime_features should stay aligned for {agent_name}"
+        );
+    }
 }
 
 #[test]

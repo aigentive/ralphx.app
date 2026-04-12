@@ -7,3 +7,7 @@ capabilities:
     - fs_list_dir
     - fs_grep
     - fs_glob
+harnesses:
+  codex:
+    runtime_features:
+      shell_tool: false

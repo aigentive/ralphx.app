@@ -19,6 +19,8 @@ pub struct CanonicalAgentDefinition {
     #[serde(default)]
     pub capabilities: CanonicalAgentCapabilities,
     #[serde(default)]
+    pub harnesses: CanonicalAgentHarnesses,
+    #[serde(default)]
     pub delegation: CanonicalDelegationMetadata,
 }
 
@@ -40,6 +42,13 @@ impl CanonicalDelegationMetadata {
     pub fn is_enabled(&self) -> bool {
         !self.allowed_targets.is_empty()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalAgentHarnesses {
+    #[serde(default)]
+    pub codex: CanonicalCodexAgentMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -179,6 +188,29 @@ pub fn try_load_canonical_codex_metadata(
     project_root: &Path,
     agent_name: &str,
 ) -> Result<CanonicalCodexAgentMetadata, String> {
+    if let Some(definition) = load_canonical_agent_definition(project_root, agent_name) {
+        if !definition.harnesses.codex.runtime_features.is_empty() {
+            if let Some(raw) = load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex)
+            {
+                let fallback = serde_yaml::from_str::<CanonicalCodexAgentMetadata>(&raw).map_err(|error| {
+                    format!(
+                        "Failed to parse Codex harness metadata for agent {}: {error}",
+                        canonical_agent_name(agent_name)
+                    )
+                })?;
+                if fallback.runtime_features != definition.harnesses.codex.runtime_features {
+                    tracing::warn!(
+                        agent = %canonical_agent_name(agent_name),
+                        canonical_runtime_features = ?definition.harnesses.codex.runtime_features,
+                        harness_runtime_features = ?fallback.runtime_features,
+                        "Canonical agent metadata overrides divergent Codex harness runtime features"
+                    );
+                }
+            }
+            return Ok(definition.harnesses.codex);
+        }
+    }
+
     match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex) {
         Some(raw) => serde_yaml::from_str::<CanonicalCodexAgentMetadata>(&raw).map_err(|error| {
             format!(

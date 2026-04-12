@@ -16,3 +16,7 @@ capabilities:
     - get_memory
     - get_memories_for_paths
     - get_session_messages
+harnesses:
+  codex:
+    runtime_features:
+      shell_tool: false

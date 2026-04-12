@@ -12,3 +12,7 @@ capabilities:
     - get_team_artifacts
     - get_session_plan
     - get_artifact
+harnesses:
+  codex:
+    runtime_features:
+      shell_tool: false

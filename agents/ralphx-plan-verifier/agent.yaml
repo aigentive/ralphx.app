@@ -27,6 +27,10 @@ capabilities:
     - search_memories
     - get_memory
     - get_memories_for_paths
+harnesses:
+  codex:
+    runtime_features:
+      shell_tool: false
 delegation:
   allowed_targets:
     - ralphx-plan-critic-completeness
