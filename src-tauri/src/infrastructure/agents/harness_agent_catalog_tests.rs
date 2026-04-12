@@ -237,6 +237,16 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-ideation-critic",
 ];
 
+const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
+    ("ralphx-execution-worker", "acceptEdits"),
+    ("ralphx-execution-coder", "acceptEdits"),
+    ("ralphx-execution-merger", "acceptEdits"),
+    ("ralphx-execution-team-lead", "acceptEdits"),
+    ("ralphx-qa-executor", "acceptEdits"),
+    ("ralphx-memory-maintainer", "acceptEdits"),
+    ("ralphx-memory-capture", "acceptEdits"),
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -373,6 +383,37 @@ fn canonical_claude_harness_metadata_matches_loader_for_owned_agents() {
             definition.harnesses.claude,
             metadata,
             "root canonical Claude harness metadata should stay aligned for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_permission_mode_matches_loader_for_owned_agents() {
+    let root = project_root();
+
+    for (agent_name, expected_permission_mode) in CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+
+        assert_eq!(
+            definition.harnesses.claude.permission_mode.as_deref(),
+            Some(*expected_permission_mode),
+            "root harnesses.claude.permission_mode should stay aligned for {agent_name}"
+        );
+        assert_eq!(
+            metadata.permission_mode.as_deref(),
+            Some(*expected_permission_mode),
+            "Claude metadata loader should preserve canonical permission_mode for {agent_name}"
+        );
+        assert_eq!(
+            get_agent_config(agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .permission_mode
+                .as_deref(),
+            Some(*expected_permission_mode),
+            "runtime config should prefer canonical permission_mode for {agent_name}"
         );
     }
 }

@@ -4,6 +4,7 @@ role: worker_team_lead
 description: "Coordinates coder teams for wave-based task execution with validation gates"
 harnesses:
   claude:
+    permission_mode: acceptEdits
     disallowed_tools:
       - Write
       - Edit

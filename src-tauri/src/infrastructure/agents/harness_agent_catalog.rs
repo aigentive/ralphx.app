@@ -61,6 +61,8 @@ pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
     pub preapproved_cli_tools: Vec<String>,
     #[serde(default)]
+    pub permission_mode: Option<String>,
+    #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
     pub max_turns: Option<u32>,
@@ -70,6 +72,7 @@ impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
         self.disallowed_tools.is_empty()
             && self.preapproved_cli_tools.is_empty()
+            && self.permission_mode.is_none()
             && self.skills.is_empty()
             && self.max_turns.is_none()
     }
@@ -80,6 +83,9 @@ impl CanonicalClaudeAgentMetadata {
         }
         if !self.preapproved_cli_tools.is_empty() {
             base.preapproved_cli_tools = self.preapproved_cli_tools;
+        }
+        if self.permission_mode.is_some() {
+            base.permission_mode = self.permission_mode;
         }
         if !self.skills.is_empty() {
             base.skills = self.skills;

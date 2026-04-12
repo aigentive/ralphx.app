@@ -1253,6 +1253,30 @@ agents:
     );
 }
 
+#[test]
+fn test_canonical_claude_metadata_overrides_runtime_yaml_permission_mode_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-qa-executor
+    system_prompt_file: agents/ralphx-qa-executor/shared/prompt.md
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    permission_mode: default
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_executor = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-executor")
+        .expect("qa-executor should exist");
+
+    assert_eq!(qa_executor.permission_mode.as_deref(), Some("acceptEdits"));
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

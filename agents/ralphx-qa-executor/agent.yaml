@@ -3,6 +3,7 @@ role: qa_executor
 description: "Executes QA tests via agent-browser and evaluates results"
 harnesses:
   claude:
+    permission_mode: acceptEdits
     disallowed_tools:
       - NotebookEdit
     preapproved_cli_tools:

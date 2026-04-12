@@ -1,3 +1,6 @@
 name: ralphx-memory-capture
 role: memory_capture
 description: "Background agent for extracting high-value knowledge from conversations"
+harnesses:
+  claude:
+    permission_mode: acceptEdits

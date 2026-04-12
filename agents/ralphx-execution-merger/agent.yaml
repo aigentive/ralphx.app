@@ -1,6 +1,9 @@
 name: ralphx-execution-merger
 role: merger
 description: "Resolves merge conflicts that programmatic rebase+merge couldn't handle"
+harnesses:
+  claude:
+    permission_mode: acceptEdits
 delegation:
   allowed_targets:
     - ralphx-research-deep-researcher

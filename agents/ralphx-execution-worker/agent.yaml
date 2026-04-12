@@ -1,6 +1,9 @@
 name: ralphx-execution-worker
 role: worker
 description: "Executes implementation tasks autonomously"
+harnesses:
+  claude:
+    permission_mode: acceptEdits
 delegation:
   allowed_targets:
     - ralphx-execution-coder

@@ -422,6 +422,27 @@ fn resolve_preapproved_cli_tools(project_root: &Path, raw: &AgentConfigRaw) -> V
     metadata.preapproved_cli_tools
 }
 
+fn resolve_permission_mode(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.permission_mode.clone();
+    };
+
+    let Some(permission_mode) = metadata.permission_mode else {
+        return raw.permission_mode.clone();
+    };
+
+    if raw.permission_mode.as_deref().is_some() && raw.permission_mode.as_deref() != Some(permission_mode.as_str()) {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_permission_mode = ?raw.permission_mode,
+            canonical_permission_mode = %permission_mode,
+            "Canonical Claude metadata overrides divergent runtime permission_mode"
+        );
+    }
+
+    Some(permission_mode)
+}
+
 // ── Agent config inheritance (extends) ──────────────────────────────────
 
 /// Check if a tools spec has any explicit user-provided values.
@@ -572,6 +593,7 @@ fn parse_config_with_lookup(
         let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
         let preapproved_cli_tools =
             resolve_preapproved_cli_tools(&canonical_project_root, raw);
+        let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
             mcp_only: raw.tools.mcp_only,
@@ -583,7 +605,7 @@ fn parse_config_with_lookup(
             settings_profile: agent_profile_selection.clone(),
             settings: agent_settings,
             effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
-            permission_mode: raw.permission_mode.clone(),
+            permission_mode,
         });
     }
 
