@@ -10,7 +10,6 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
-import { ToolCallIndicator } from "./ToolCallIndicator";
 import type { ToolCall } from "./tool-widgets/shared.constants";
 import {
   extractDelegationMetadata,
@@ -23,6 +22,10 @@ import {
   extractTaskArgs,
   extractTaskStats,
 } from "./TaskToolCallCard.utils";
+import {
+  buildTaskCardTranscriptEntryFromToolCall,
+  TaskCardTranscriptView,
+} from "./TaskCardTranscript";
 import {
   formatProviderModelEffortLabel,
 } from "./provider-harness";
@@ -132,7 +135,16 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
     ? delegation.status
     : null;
 
-  const hasBody = Boolean(bodyText) || hasError || childToolCalls.length > 0;
+  const transcriptEntry = useMemo(
+    () => buildTaskCardTranscriptEntryFromToolCall({
+      entryId: toolCall.id,
+      bodyText,
+      childToolCalls,
+    }),
+    [bodyText, childToolCalls, toolCall.id],
+  );
+  const hasTranscriptBody = transcriptEntry.blocks.length > 0;
+  const hasBody = hasTranscriptBody || hasError || delegatedConversationId != null;
   const providerMetadata = {
     providerHarness: delegation.providerHarness,
     providerSessionId: delegation.providerSessionId,
@@ -317,34 +329,15 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             </pre>
           )}
 
-          {/* Child tool calls — rendered as compact ToolCallIndicators */}
-          {childToolCalls.length > 0 && (
-            <div className="space-y-1 max-h-64 overflow-y-auto mb-2">
-              {childToolCalls.map((tc) => (
-                <ToolCallIndicator key={tc.id} toolCall={tc} compact />
-              ))}
-            </div>
-          )}
-
-          {/* Subagent text output */}
           {delegatedConversationId ? (
             <TaskToolCallDelegatedTranscript
               conversationId={delegatedConversationId}
               fallbackText={bodyText}
             />
-          ) : bodyText ? (
-            <pre
-              className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64"
-              style={{
-                backgroundColor: "var(--bg-surface, hsl(220 10% 10%))",
-                color: "var(--text-secondary, hsl(220 10% 80%))",
-                fontFamily: "var(--font-mono)",
-                wordBreak: "break-word",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {bodyText}
-            </pre>
+          ) : hasTranscriptBody ? (
+            <div className="max-h-64 overflow-y-auto">
+              <TaskCardTranscriptView entries={[transcriptEntry]} />
+            </div>
           ) : null}
         </div>
       )}
