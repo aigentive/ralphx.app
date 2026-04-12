@@ -1200,6 +1200,32 @@ fn test_plan_critic_mcp_tools_match_prompt_contract() {
     }
 }
 
+#[test]
+fn test_canonical_agent_capabilities_override_runtime_yaml_mcp_tools_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-qa-prep
+    system_prompt_file: plugins/app/agents/qa-prep.md
+    mcp_tools: [wrong_tool]
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+
+    assert_eq!(
+        qa_prep.allowed_mcp_tools,
+        vec!["fs_read_file", "fs_list_dir", "fs_grep", "fs_glob"]
+    );
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

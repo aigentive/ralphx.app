@@ -17,10 +17,10 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 | Layer | File | Controls | Required? |
 |-------|------|----------|-----------|
 | 1 | Canonical prompt files under `agents/<agent>/...` plus optional `claude/agent.yaml` | What the agent contract says it can call | Yes |
-| 2 | `ralphx.yaml` → `mcp_tools: [...]` per agent | What Rust injects via `--allowed-tools` at runtime | Yes |
+| 2 | Canonical `agents/<agent>/agent.yaml` `capabilities.mcp_tools` for migrated agents; `ralphx.yaml` `mcp_tools` for the rest | What Rust injects via `--allowed-tools` at runtime | Yes |
 | 3 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
 
-**How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
+**How it works:** Rust `create_mcp_config()` injects `--allowed-tools=tool1,tool2,...` from the runtime agent config. For migrated agents that list `capabilities.mcp_tools`, canonical agent metadata overrides divergent `ralphx.yaml` `mcp_tools`; for agents not yet migrated, `ralphx.yaml` still feeds runtime grants. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
 
 **Delegation policy note:** Non-team RalphX-native delegation topology now belongs in canonical `agents/<agent>/agent.yaml` under `delegation.allowed_targets`; backend `delegate_start`, auto-generated delegation system instructions, and MCP delegation-tool visibility must derive from that same allowlist instead of prompt-only conventions. See `delegation-topology.md`.
 
@@ -28,7 +28,7 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 
 When adding OR removing an MCP tool from an agent:
 - update the canonical prompt contract under `agents/<agent>/...`
-- update that agent's `mcp_tools` in `ralphx.yaml`
+- update that agent's canonical `capabilities.mcp_tools` if the agent is on the migrated path; otherwise update `ralphx.yaml` `mcp_tools`
 - update any per-agent allowlist/grouping in `plugins/app/ralphx-mcp-server/src/tools.ts`
 - rebuild the MCP server if `src/tools.ts` changed
 
@@ -52,13 +52,13 @@ When adding OR removing an MCP tool from an agent:
 | Step | What | File | Required? |
 |------|------|------|-----------|
 | 1 | Update canonical prompt / Claude metadata contract | `agents/<agent>/...` | Yes |
-| 2 | Update agent `mcp_tools` | `ralphx.yaml` | Yes |
+| 2 | Update runtime MCP grants source | Canonical `agent.yaml` for migrated agents; `ralphx.yaml` otherwise | Yes |
 | 3 | Update MCP allowlist/grouping if the agent's effective set changed | `plugins/app/ralphx-mcp-server/src/tools.ts` | Yes |
 | 4 | Rebuild MCP server | `cd plugins/app/ralphx-mcp-server && npm run build` | Yes (after step 3) |
 
 **What you NO LONGER need to do:**
 - ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
-- ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — `ralphx.yaml` is now the single source of truth)
+- ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — grants now come from canonical `agent.yaml` for migrated agents and `ralphx.yaml` for the rest)
 - ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid Claude frontmatter field — add tool names to `tools` instead)
 - ~~Add MCP tools to `disallowedTools` to restrict access~~ (unnecessary — frontmatter `tools` is a **strict allowlist**: only explicitly listed tools are accessible; unlisted tools are already blocked)
 
@@ -100,7 +100,7 @@ After adding a tool, verify MCP server stderr shows:
 | `mcp_tools: []` explicit empty | `--allowed-tools=__NONE__` injected → zero tools, no fallback |
 | `mcp_tools` key absent from ralphx.yaml | `--allowed-tools` not injected → TOOL_ALLOWLIST fallback |
 
-**Do NOT edit `TOOL_ALLOWLIST` to grant tools to agents.** Changes there have no effect in production (they're only reached when `--allowed-tools` injection fails). Update `ralphx.yaml` `mcp_tools` instead.
+**Do NOT edit `TOOL_ALLOWLIST` to grant tools to agents.** Changes there have no effect in production (they're only reached when `--allowed-tools` injection fails). Update canonical `capabilities.mcp_tools` for migrated agents or `ralphx.yaml` `mcp_tools` for unmigrated agents.
 
 **Fallback chain in `getAllowedToolNames()`:**
 1. `RALPHX_ALLOWED_MCP_TOOLS` env var (standalone testing only — do not assume every harness propagates env vars to MCP subprocesses)

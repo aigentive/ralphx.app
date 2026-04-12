@@ -8,8 +8,12 @@ use crate::domain::agents::{
     AgentLaneSettings, LogicalEffort,
 };
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
+use crate::infrastructure::agents::harness_agent_catalog::{
+    load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
+};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -367,6 +371,35 @@ fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>)
     out
 }
 
+fn canonical_agent_project_root() -> PathBuf {
+    let config_dir = config_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."));
+    resolve_project_root_from_plugin_dir(&config_dir)
+}
+
+fn resolve_allowed_mcp_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<String> {
+    let Some(definition) = load_canonical_agent_definition(project_root, &raw.name) else {
+        return raw.mcp_tools.clone();
+    };
+
+    if definition.capabilities.mcp_tools.is_empty() {
+        return raw.mcp_tools.clone();
+    }
+
+    if !raw.mcp_tools.is_empty() && raw.mcp_tools != definition.capabilities.mcp_tools {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_tools = ?raw.mcp_tools,
+            canonical_tools = ?definition.capabilities.mcp_tools,
+            "Canonical agent metadata overrides divergent runtime mcp_tools"
+        );
+    }
+
+    definition.capabilities.mcp_tools
+}
+
 // ── Agent config inheritance (extends) ──────────────────────────────────
 
 /// Check if a tools spec has any explicit user-provided values.
@@ -477,6 +510,7 @@ fn parse_config_with_lookup(
         runtime_settings_profile_override_with(lookup).or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
+    let canonical_project_root = canonical_agent_project_root();
 
     for raw in &resolved_raw_agents {
         if !seen_names.insert(raw.name.clone()) {
@@ -513,11 +547,12 @@ fn parse_config_with_lookup(
         } else {
             resolved_settings.clone()
         };
+        let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
             mcp_only: raw.tools.mcp_only,
             resolved_cli_tools: cli_tools,
-            allowed_mcp_tools: raw.mcp_tools.clone(),
+            allowed_mcp_tools,
             preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
             system_prompt_file: system_prompt,
             model: raw.model.clone(),
