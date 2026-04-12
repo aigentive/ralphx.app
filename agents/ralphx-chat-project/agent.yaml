@@ -1,3 +1,21 @@
 name: ralphx-chat-project
 role: project_chat
 description: "General project assistant. Use for project-level questions and task suggestions."
+capabilities:
+  mcp_tools:
+    - suggest_task
+    - list_tasks
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - get_conversation_transcript
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
+    preapproved_cli_tools:
+      - Task(Explore)
+      - Task(Plan)

@@ -72,7 +72,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Stream | Status | Next Step |
 |---|---|---|---|
-| P0 | Canonical agent capability model | In progress | Keep moving ownership out of `ralphx.yaml`; live Claude `tools` specs plus named tool sets are now canonicalized, so next migrate the remaining unmigrated native harness/tool semantics and team-specific config surfaces and keep extracting `tools.ts` |
+| P0 | Canonical agent capability model | In progress | Keep moving ownership out of `ralphx.yaml`; live Claude `tools` specs plus named tool sets and the lightweight utility/chat/review/analyzer/orchestrator/supervisor agent capabilities are now canonicalized, so next migrate the remaining unmigrated native harness/tool semantics and team-specific config surfaces and keep extracting `tools.ts` |
 | P0 | Verifier critic resumption protocol | In progress | Add deeper regressions and, if needed, runtime-side recovery so critics do not false-escalate while artifacts are still pending |
 | P0 | Model-agnostic MCP/tool UX | In progress | Extend repair-oriented MCP treatment to more brittle workflows |
 | P0 | Startup external-session archival safety | In progress | Observe real runs before widening recovery-specific heuristics |

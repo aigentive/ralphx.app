@@ -1,3 +1,27 @@
 name: ralphx-review-chat
 role: review_chat
 description: "Discusses review findings with user and helps them approve or request changes"
+capabilities:
+  mcp_tools:
+    - approve_task
+    - request_task_changes
+    - get_review_notes
+    - get_task_context
+    - get_artifact
+    - get_artifact_version
+    - get_related_artifacts
+    - search_project_artifacts
+    - get_task_steps
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
+    preapproved_cli_tools:
+      - Task(Explore)
+      - Task(Plan)

@@ -1,3 +1,22 @@
 name: ralphx-execution-orchestrator
 role: orchestrator
 description: "Plans and coordinates complex multi-step tasks"
+capabilities:
+  mcp_tools:
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: opus
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit
+        - Task
+    preapproved_cli_tools:
+      - Write
+      - Edit
+      - Bash
+      - Task

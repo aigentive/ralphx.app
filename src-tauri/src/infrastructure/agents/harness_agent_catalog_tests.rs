@@ -132,6 +132,14 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 )];
 
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
+    "ralphx-utility-session-namer",
+    "ralphx-chat-task",
+    "ralphx-chat-project",
+    "ralphx-review-chat",
+    "ralphx-review-history",
+    "ralphx-execution-orchestrator",
+    "ralphx-execution-supervisor",
+    "ralphx-project-analyzer",
     "ralphx-plan-verifier",
     "ralphx-plan-critic-completeness",
     "ralphx-plan-critic-implementation-feasibility",
@@ -213,6 +221,14 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 ];
 
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
+    "ralphx-utility-session-namer",
+    "ralphx-chat-task",
+    "ralphx-chat-project",
+    "ralphx-review-chat",
+    "ralphx-review-history",
+    "ralphx-execution-orchestrator",
+    "ralphx-execution-supervisor",
+    "ralphx-project-analyzer",
     "ralphx-execution-reviewer",
     "ralphx-execution-team-lead",
     "ralphx-ideation",
@@ -248,6 +264,14 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
 ];
 
 const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
+    ("ralphx-utility-session-namer", "sonnet"),
+    ("ralphx-chat-task", "sonnet"),
+    ("ralphx-chat-project", "sonnet"),
+    ("ralphx-review-chat", "sonnet"),
+    ("ralphx-review-history", "sonnet"),
+    ("ralphx-execution-orchestrator", "opus"),
+    ("ralphx-execution-supervisor", "sonnet"),
+    ("ralphx-project-analyzer", "sonnet"),
     ("ralphx-execution-worker", "sonnet"),
     ("ralphx-execution-coder", "sonnet"),
     ("ralphx-execution-reviewer", "sonnet"),
@@ -280,6 +304,13 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS: &[(&str, &str)] = &[("ralphx-ideation", "max")];
 
 const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = &[
+    ("ralphx-chat-task", "base_tools", &["Task"], false),
+    ("ralphx-chat-project", "base_tools", &["Task"], false),
+    ("ralphx-review-chat", "base_tools", &["Task"], false),
+    ("ralphx-review-history", "base_tools", &["Task"], false),
+    ("ralphx-execution-orchestrator", "base_tools", &["Write", "Edit", "Task"], false),
+    ("ralphx-execution-supervisor", "base_tools", &["Task"], false),
+    ("ralphx-project-analyzer", "base_tools", &[], false),
     ("ralphx-ideation", "base_tools", &["Task"], false),
     ("ralphx-ideation-readonly", "base_tools", &["Task"], false),
     ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "Task", "LSP"], false),

@@ -1,3 +1,28 @@
 name: ralphx-review-history
 role: review_history
 description: "Discusses historical review findings \u2014 read-only, no mutation tools"
+capabilities:
+  mcp_tools:
+    - get_review_notes
+    - get_task_context
+    - get_task_issues
+    - get_task_steps
+    - get_step_progress
+    - get_issue_progress
+    - get_artifact
+    - get_artifact_version
+    - get_related_artifacts
+    - search_project_artifacts
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
+    preapproved_cli_tools:
+      - Task(Explore)
+      - Task(Plan)

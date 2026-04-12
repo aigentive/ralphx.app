@@ -1,3 +1,17 @@
 name: ralphx-project-analyzer
 role: project_analyzer
 description: "Scans project directory structure to detect build systems and generate path-scoped validation commands"
+capabilities:
+  mcp_tools:
+    - save_project_analysis
+    - get_project_analysis
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+    preapproved_cli_tools:
+      - Read
+      - Glob
+      - Bash
+      - Grep
