@@ -15,7 +15,19 @@ const PILOT_AGENTS: &[(&str, &str, &str)] = &[
 ];
 
 const CODEX_PILOT_AGENTS: &[&str] = &["ralphx-ideation", "ralphx-utility-session-namer"];
+const CODEX_DELEGATION_GUIDE_AGENTS: &[&str] = &[
+    "ralphx-ideation",
+    "ralphx-ideation-readonly",
+    "ralphx-plan-verifier",
+    "ralphx-execution-worker",
+    "ralphx-execution-reviewer",
+    "ralphx-execution-merger",
+];
 const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
+    ("ralphx-execution-team-lead", "worker_team_lead", "worker-team"),
+];
+
+const CROSS_HARNESS_VERIFICATION_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-plan-verifier", "plan_verifier", "ralphx-plan-verifier"),
     (
         "ralphx-plan-critic-completeness",
@@ -27,6 +39,9 @@ const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
         "plan_critic_implementation_feasibility",
         "ralphx-plan-critic-implementation-feasibility",
     ),
+];
+
+const CROSS_HARNESS_IDEATION_DELEGATE_AGENTS: &[(&str, &str, &str)] = &[
     (
         "ralphx-ideation-specialist-backend",
         "ideation_specialist_backend",
@@ -70,7 +85,6 @@ const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
     ),
     ("ralphx-ideation-advocate", "ideation_advocate", "ralphx-ideation-advocate"),
     ("ralphx-ideation-critic", "ideation_critic", "ralphx-ideation-critic"),
-    ("ralphx-execution-team-lead", "worker_team_lead", "worker-team"),
 ];
 
 const CROSS_HARNESS_EXECUTION_AGENTS: &[(&str, &str, &str)] = &[
@@ -135,6 +149,8 @@ fn live_runtime_agents() -> Vec<(&'static str, &'static str, &'static str)> {
     let mut agents = Vec::new();
     agents.extend_from_slice(PILOT_AGENTS);
     agents.extend_from_slice(CLAUDE_ONLY_CANONICAL_AGENTS);
+    agents.extend_from_slice(CROSS_HARNESS_VERIFICATION_AGENTS);
+    agents.extend_from_slice(CROSS_HARNESS_IDEATION_DELEGATE_AGENTS);
     agents.extend_from_slice(CROSS_HARNESS_EXECUTION_AGENTS);
     agents.extend_from_slice(CROSS_HARNESS_WORKFLOW_AGENTS);
     agents.extend_from_slice(CROSS_HARNESS_CHAT_AGENTS);
@@ -156,6 +172,20 @@ fn pilot_agent_definitions_load_from_canonical_tree() {
     }
 
     for (agent_name, role, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        assert_eq!(definition.name, *agent_name);
+        assert_eq!(definition.role, *role);
+    }
+
+    for (agent_name, role, _) in CROSS_HARNESS_VERIFICATION_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        assert_eq!(definition.name, *agent_name);
+        assert_eq!(definition.role, *role);
+    }
+
+    for (agent_name, role, _) in CROSS_HARNESS_IDEATION_DELEGATE_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
@@ -260,6 +290,32 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex)
                 .is_none(),
             "{agent_name} should remain claude-only until a codex prompt exists"
+        );
+    }
+
+    for (agent_name, _, _) in CROSS_HARNESS_VERIFICATION_AGENTS {
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude)
+                .is_some(),
+            "expected claude prompt path for {agent_name}"
+        );
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex)
+                .is_some(),
+            "expected codex prompt path for {agent_name}"
+        );
+    }
+
+    for (agent_name, _, _) in CROSS_HARNESS_IDEATION_DELEGATE_AGENTS {
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude)
+                .is_some(),
+            "expected claude prompt path for {agent_name}"
+        );
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex)
+                .is_some(),
+            "expected codex prompt path for {agent_name}"
         );
     }
 
@@ -487,6 +543,28 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
 }
 
 #[test]
+fn codex_spawn_capable_prompts_reference_explicit_delegation_tools() {
+    let root = project_root();
+
+    for agent_name in CODEX_DELEGATION_GUIDE_AGENTS {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        assert!(
+            prompt.contains("delegate_start"),
+            "codex prompt for {agent_name} should mention delegate_start"
+        );
+        assert!(
+            prompt.contains("delegate_wait"),
+            "codex prompt for {agent_name} should mention delegate_wait"
+        );
+        assert!(
+            prompt.contains("delegate_cancel"),
+            "codex prompt for {agent_name} should mention delegate_cancel"
+        );
+    }
+}
+
+#[test]
 fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
     let root = project_root();
     let banned_terms = [
@@ -561,6 +639,28 @@ fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
     }
 
     for (agent_name, _, _) in CROSS_HARNESS_READONLY_IDEATION_AGENTS {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        for banned in banned_terms {
+            assert!(
+                !prompt.contains(banned),
+                "codex prompt for {agent_name} must not contain Claude-only syntax `{banned}`"
+            );
+        }
+    }
+
+    for (agent_name, _, _) in CROSS_HARNESS_VERIFICATION_AGENTS {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        for banned in banned_terms {
+            assert!(
+                !prompt.contains(banned),
+                "codex prompt for {agent_name} must not contain Claude-only syntax `{banned}`"
+            );
+        }
+    }
+
+    for (agent_name, _, _) in CROSS_HARNESS_IDEATION_DELEGATE_AGENTS {
         let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
             .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
         for banned in banned_terms {

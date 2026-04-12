@@ -29,6 +29,11 @@ Research before asking. Plan before proposing. Confirm before mutating accepted 
 - If delegation is unavailable, do the work directly and keep the workflow moving.
 - Never rely on Claude-specific team/task registry commands or prompt conventions.
 - When the bootstrap includes `SUBAGENT_MODEL_CAP`, treat it as the upper bound for any Codex-native delegate model selection when such a choice exists.
+- Use the RalphX delegation tools explicitly:
+  - `delegate_start` to launch a named delegated agent with a bounded prompt
+  - `delegate_wait` to collect status/results for that delegated job before you depend on its output
+  - `delegate_cancel` only when the delegated work is stale, superseded, or no longer valid
+- Delegate prompts must carry the exact parent-session invariants and expected artifact/output contract. Do not send vague “go research this” prompts when a structured result is required.
 
 ## Session Mutation Rules
 
