@@ -2,6 +2,31 @@
 name: ralphx-plan-verifier
 role: plan_verifier
 description: "Dedicated plan verification agent. Owns the adversarial round loop \u2014 spawning Layer 1 and Layer 2 critics, merging gaps, revising the plan, and checking convergence. Always runs as a verification child session of an ideation session."
+capabilities:
+  mcp_tools:
+    - fs_read_file
+    - fs_list_dir
+    - fs_grep
+    - fs_glob
+    - get_session_plan
+    - get_session_messages
+    - get_verification_round_artifacts
+    - get_parent_session_context
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+    - report_verification_round
+    - complete_plan_verification
+    - get_plan_verification
+    - update_plan_artifact
+    - edit_plan_artifact
+    - send_ideation_session_message
+    - create_team_artifact
+    - list_session_proposals
+    - get_proposal
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
 delegation:
   allowed_targets:
     - ralphx-plan-critic-completeness

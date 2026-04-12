@@ -17,7 +17,16 @@ pub struct CanonicalAgentDefinition {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
+    pub capabilities: CanonicalAgentCapabilities,
+    #[serde(default)]
     pub delegation: CanonicalDelegationMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalAgentCapabilities {
+    #[serde(default)]
+    pub mcp_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]

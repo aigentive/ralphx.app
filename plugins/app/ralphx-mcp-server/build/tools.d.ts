@@ -30,7 +30,7 @@ export declare function getAgentType(): string;
 export declare function parseAllowedToolsFromArgs(): string[] | undefined;
 /**
  * Get allowed tool names for the current agent type
- * Priority: env var > --allowed-tools CLI arg > TOOL_ALLOWLIST fallback
+ * Priority: env var > --allowed-tools CLI arg > canonical agent metadata fallback > TOOL_ALLOWLIST fallback
  * @returns Array of tool names this agent is allowed to use
  */
 export declare function getAllowedToolNames(): string[];

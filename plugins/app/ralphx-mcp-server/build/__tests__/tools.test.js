@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, formatToolErrorMessage, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
+import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
 import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
@@ -63,6 +64,20 @@ describe('getAllowedToolNames', () => {
         process.env.RALPHX_ALLOWED_MCP_TOOLS = 'delegate_start,get_session_plan,delegate_wait';
         const tools = getAllowedToolNames();
         expect(tools).toEqual(['get_session_plan']);
+    });
+    it('prefers canonical mcp_tools over TOOL_ALLOWLIST fallback when available', () => {
+        setAgentType('qa-prep');
+        const originalTools = [...(TOOL_ALLOWLIST['qa-prep'] ?? [])];
+        TOOL_ALLOWLIST['qa-prep'] = [];
+        try {
+            const tools = getAllowedToolNames();
+            expect(tools).toEqual(loadCanonicalMcpTools('qa-prep'));
+            expect(tools).toContain('fs_read_file');
+            expect(tools).toContain('fs_grep');
+        }
+        finally {
+            TOOL_ALLOWLIST['qa-prep'] = originalTools;
+        }
     });
 });
 describe('getToolRecoveryHint', () => {

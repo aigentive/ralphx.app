@@ -1,3 +1,9 @@
 name: ralphx-qa-prep
 role: qa_prep
 description: "Generates acceptance criteria and test steps for task QA"
+capabilities:
+  mcp_tools:
+    - fs_read_file
+    - fs_list_dir
+    - fs_grep
+    - fs_glob

@@ -15,6 +15,7 @@ import {
   TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
+import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
 import {
   IDEATION_TEAM_LEAD,
@@ -107,6 +108,21 @@ describe('getAllowedToolNames', () => {
     process.env.RALPHX_ALLOWED_MCP_TOOLS = 'delegate_start,get_session_plan,delegate_wait';
     const tools = getAllowedToolNames();
     expect(tools).toEqual(['get_session_plan']);
+  });
+
+  it('prefers canonical mcp_tools over TOOL_ALLOWLIST fallback when available', () => {
+    setAgentType('qa-prep');
+    const originalTools = [...(TOOL_ALLOWLIST['qa-prep'] ?? [])];
+    TOOL_ALLOWLIST['qa-prep'] = [];
+
+    try {
+      const tools = getAllowedToolNames();
+      expect(tools).toEqual(loadCanonicalMcpTools('qa-prep'));
+      expect(tools).toContain('fs_read_file');
+      expect(tools).toContain('fs_grep');
+    } finally {
+      TOOL_ALLOWLIST['qa-prep'] = originalTools;
+    }
   });
 });
 

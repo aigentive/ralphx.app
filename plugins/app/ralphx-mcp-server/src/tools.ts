@@ -5,6 +5,7 @@
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { applyDelegationToolPolicy } from "./delegation-policy.js";
+import { loadCanonicalMcpTools } from "./canonical-agent-metadata.js";
 import { safeError } from "./redact.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
@@ -2435,7 +2436,7 @@ export function parseAllowedToolsFromArgs(): string[] | undefined {
 
 /**
  * Get allowed tool names for the current agent type
- * Priority: env var > --allowed-tools CLI arg > TOOL_ALLOWLIST fallback
+ * Priority: env var > --allowed-tools CLI arg > canonical agent metadata fallback > TOOL_ALLOWLIST fallback
  * @returns Array of tool names this agent is allowed to use
  */
 export function getAllowedToolNames(): string[] {
@@ -2455,7 +2456,16 @@ export function getAllowedToolNames(): string[] {
     return applyDelegationToolPolicy(cliTools, agentType);
   }
 
-  // 3. Fallback to TOOL_ALLOWLIST — emit deprecation warning so developers know they're in fallback mode
+  // 3. Canonical fallback from agents/<agent>/agent.yaml when present
+  const canonicalTools = loadCanonicalMcpTools(agentType);
+  if (canonicalTools !== undefined) {
+    console.error(
+      `[RalphX MCP] WARN: --allowed-tools not provided, using canonical agent capability fallback`
+    );
+    return applyDelegationToolPolicy(canonicalTools, agentType);
+  }
+
+  // 4. Fallback to TOOL_ALLOWLIST — emit deprecation warning so developers know they're in fallback mode
   console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
   return applyDelegationToolPolicy(TOOL_ALLOWLIST[agentType] || [], agentType);
 }

@@ -3,6 +3,7 @@ use super::{
     resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
     try_load_canonical_claude_metadata, AgentPromptHarness,
 };
+use crate::infrastructure::agents::claude::get_agent_config;
 use std::path::PathBuf;
 
 const PILOT_AGENTS: &[(&str, &str, &str)] = &[
@@ -125,6 +126,24 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
     "ralphx-ideation-readonly",
 )];
 
+const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
+    "ralphx-plan-verifier",
+    "ralphx-plan-critic-completeness",
+    "ralphx-plan-critic-implementation-feasibility",
+    "ralphx-qa-prep",
+    "ralphx-ideation-specialist-backend",
+    "ralphx-ideation-specialist-frontend",
+    "ralphx-ideation-specialist-infra",
+    "ralphx-ideation-specialist-ux",
+    "ralphx-ideation-specialist-code-quality",
+    "ralphx-ideation-specialist-prompt-quality",
+    "ralphx-ideation-specialist-intent",
+    "ralphx-ideation-specialist-state-machine",
+    "ralphx-ideation-specialist-pipeline-safety",
+    "ralphx-ideation-advocate",
+    "ralphx-ideation-critic",
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -146,6 +165,24 @@ fn codex_runtime_features_load_from_harness_metadata() {
         Some(&false),
         "Claude no-Bash specialist should map to Codex shell_tool=false"
     );
+}
+
+#[test]
+fn canonical_mcp_tools_match_runtime_yaml_for_current_owned_agents() {
+    let root = project_root();
+
+    for agent_name in CANONICAL_MCP_TOOL_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let runtime_config = get_agent_config(agent_name)
+            .unwrap_or_else(|| panic!("expected runtime config for {agent_name}"));
+
+        assert_eq!(
+            definition.capabilities.mcp_tools,
+            runtime_config.allowed_mcp_tools,
+            "canonical capabilities.mcp_tools should stay aligned with ralphx.yaml runtime grants for {agent_name}"
+        );
+    }
 }
 
 fn canonical_agent_names(root: &std::path::Path) -> Vec<String> {
