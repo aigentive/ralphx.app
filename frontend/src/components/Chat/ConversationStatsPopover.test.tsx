@@ -126,4 +126,40 @@ describe("ConversationStatsPopover", () => {
     expect(screen.getAllByText("Messages: 1/1")).toHaveLength(2);
     expect(screen.queryByText(/Runs:/)).not.toBeInTheDocument();
   });
+
+  it("shows pending usage copy during an active turn when provider totals have not arrived yet", async () => {
+    mockUseConversationStats.mockReturnValue({
+      data: makeStats({
+        effectiveUsageTotals: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          estimatedUsd: null,
+        },
+        usageCoverage: {
+          providerMessageCount: 1,
+          providerMessagesWithUsage: 0,
+          runCount: 0,
+          runsWithUsage: 0,
+          effectiveTotalsSource: "none",
+        },
+      }),
+      isLoading: false,
+    });
+
+    render(
+      <ConversationStatsPopover
+        conversationId="conv-1"
+        fallbackConversation={null}
+        fallbackMessages={null}
+        isLiveTurnActive={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-session-stats-button"));
+
+    expect(await screen.findByText("Usage totals are pending until the provider reports the current turn.")).toBeInTheDocument();
+    expect(screen.getAllByText("Pending")).toHaveLength(4);
+  });
 });

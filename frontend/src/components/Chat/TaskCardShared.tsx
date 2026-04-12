@@ -7,6 +7,7 @@ import {
   type ProviderMetadata,
 } from "./provider-harness";
 import { formatDuration, getModelColor, getSubagentTypeColor } from "./tool-call-utils";
+import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 export interface TaskCardSummaryMetrics {
   totalDurationMs?: number | null | undefined;
@@ -16,9 +17,9 @@ export interface TaskCardSummaryMetrics {
 }
 
 export function getTaskCardKindLabel(toolName: string): "Delegate" | "Agent" | "Task" {
-  const lowered = toolName.toLowerCase();
-  if (lowered === "delegate_start") return "Delegate";
-  if (lowered === "agent") return "Agent";
+  const canonical = canonicalizeToolName(toolName);
+  if (canonical === "delegate_start") return "Delegate";
+  if (canonical === "agent") return "Agent";
   return "Task";
 }
 

@@ -15,7 +15,7 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 
 When this prompt says to dispatch critics or specialists, use the RalphX delegation tools explicitly:
 - `delegate_start` to launch each named delegated agent with the exact prompt payload described below
-- `delegate_wait` to collect each delegated job result before deciding whether rescue/polling is needed
+- `delegate_wait` to collect bounded delegated-job snapshots before deciding whether one final rescue step is needed
 - `delegate_cancel` only when a delegated job is stale, invalidated, or superseded by a newer verification pass
 
 Do not collapse these delegated prompts into vague summaries. Preserve `SESSION_ID`, `ROUND`, artifact title prefixes, JSON schema requirements, and the requirement to publish artifacts on the PARENT ideation session.
@@ -278,9 +278,9 @@ Wait for the initial delegated-agent results to return (critics + any specialist
 **Resumable critic/specialist rule (NON-NEGOTIABLE):**
 - A delegated-agent result containing `agentId:` or `continue this agent` means the spawned agent is still resumable/in-progress.
 - Do NOT mark that critic or specialist unavailable yet.
-- Missing artifact + resumable delegated-agent result = "No current-round artifacts yet — critic still running", NOT "critic infrastructure failed".
-- Before concluding a required critic is unavailable, follow the **two-stage wait-then-rescue flow** in Section B (rescue budget: 1 dispatch per critic per round):
-  1. first empty poll → log "No current-round artifacts yet; critic still running" and poll a second time immediately
+- Missing artifact + resumable delegated-agent result means "still in progress", NOT "critic infrastructure failed".
+- Before concluding a required critic is unavailable, follow the **bounded wait-then-rescue flow** in Section B (rescue budget: 1 dispatch per critic per round):
+  1. first empty poll → do one final immediate follow-up artifact poll
   2. second empty poll → dispatch ONE rescue delegated-agent prompt with FULL invariant context repeated
   3. post-rescue poll → if still empty, mark unavailable
 - Follow-up delegated prompts MUST repeat:
@@ -290,6 +290,7 @@ Wait for the initial delegated-agent results to return (critics + any specialist
   - for critics, the required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`
   - explicit instruction: `Create the artifact on the PARENT ideation session now. If analysis is partial, publish the partial artifact now instead of exploring further.`
 - Do NOT send minimalist nudges like "finish your analysis" without `SESSION_ID` and schema — that loses context and produces malformed artifacts.
+- Do NOT narrate each wait/poll/rescue step to the user unless it changes the round outcome.
 
 ### B. Collect round artifacts
 
@@ -301,13 +302,13 @@ Collect artifacts produced during this round via two-stage wait-then-rescue flow
 
 1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
-3. If a required critic artifact is missing after the first poll, apply the two-stage flow:
-   - **Stage 1 — wait (first empty poll):** If that critic's delegated result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_artifacts` call.
+3. If a required critic artifact is missing after the first poll, apply the bounded two-stage flow:
+   - **Stage 1 — wait (first empty poll):** If that critic's delegated result included `agentId` or resumable text, do NOT dispatch a rescue yet. Immediately make a **second sequential** `get_verification_round_artifacts` call.
      - If the second poll returns the artifact: proceed normally.
      - If the second poll is also empty: proceed to Stage 2.
-   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue delegated-agent prompt for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
+   - **Stage 2 — rescue (second empty poll):** Dispatch **ONE** rescue delegated-agent prompt for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
      - If post-rescue poll returns the artifact: proceed normally.
-     - If post-rescue poll is still empty: log `Critic output unavailable for this round after rescue attempts` — mark that critic unavailable.
+     - If post-rescue poll is still empty: mark that critic unavailable for this round.
    - **If the critic's delegated result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
 4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
 5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
@@ -538,6 +539,7 @@ Where:
 > **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `complete_plan_verification` again after sending the escalation message.
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
+Do not include a play-by-play of every wait/poll/rescue step in the final transcript.
 
 ---
 
@@ -596,7 +598,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 
 ## Error Handling
 
-- If any MCP call returns a non-retriable error: call final cleanup with `status: "reviewing"`, `in_progress: false`, `convergence_reason: "agent_error"`, `generation: <current_generation>`, then EXIT.
+- If any MCP call returns a non-retriable error: call final cleanup with `status: "needs_revision"`, `in_progress: false`, `convergence_reason: "agent_error"`, `generation: <current_generation>`, then EXIT.
 - If generation mismatch occurs at any point: EXIT immediately without calling final cleanup (another process owns the session).
 - If `report_verification_round` or `complete_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
 
@@ -611,6 +613,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 | **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
 | **Parallel dispatch (critics + specialists)** | ALL delegated critic/specialist launches MUST happen in one parallel wave when available — never one at a time. Do not rely on Claude-only Task options such as `run_in_background`. |
 | **Delegate `agentId` is resumable, not complete** | If a delegated-agent result includes `agentId`, treat it as still resumable/in-progress. Poll artifacts and use bounded rescue prompts before concluding the critic/specialist failed. |
+| **Wait discipline** | Use `delegate_wait` as a bounded snapshot step, not an endless blocking loop. One initial wait, one immediate follow-up artifact poll, then at most one rescue dispatch before deciding. |
 | **Specialist failure is non-blocking** | If a specialist delegate errors or returns empty → log and continue with critic results. Convergence is driven by critic gaps only. |
 | **Artifact session_id** | Specialists create artifacts on `parent_session_id` (NOT their own session) — artifacts must appear in parent ideation session's Team Artifacts tab |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |

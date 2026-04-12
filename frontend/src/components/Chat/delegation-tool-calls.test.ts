@@ -62,6 +62,41 @@ describe("delegation-tool-calls", () => {
     expect(mergedMetadata.totalTokens).toBe(165);
   });
 
+  it("folds namespaced delegate_wait into the original namespaced delegate_start tool call", () => {
+    const startToolCall = makeToolCall("ralphx::delegate_start", {
+      id: "toolu-delegate-start",
+      arguments: {
+        agent_name: "ralphx-plan-critic-completeness",
+        prompt: "Review the plan",
+      },
+      result: makeDelegationResult({
+        job_id: "job-456",
+        status: "running",
+      }),
+    });
+    const waitToolCall = makeToolCall("ralphx::delegate_wait", {
+      id: "toolu-delegate-wait",
+      arguments: {
+        job_id: "job-456",
+      },
+      result: makeDelegationResult({
+        job_id: "job-456",
+        status: "completed",
+        content: "Critic artifact published",
+      }),
+    });
+
+    const mergedToolCalls = mergeDelegationToolCalls([startToolCall, waitToolCall]);
+    expect(mergedToolCalls).toHaveLength(1);
+    expect(mergedToolCalls[0]?.name).toBe("ralphx::delegate_start");
+    expect(
+      extractDelegationMetadata(
+        mergedToolCalls[0]?.arguments,
+        mergedToolCalls[0]?.result,
+      ).textOutput,
+    ).toBe("Critic artifact published");
+  });
+
   it("normalizes persisted delegation transcript payloads with one shared contract", () => {
     const startBlock = makeContentToolUse("delegate_start", {
       id: "toolu-delegate-start",

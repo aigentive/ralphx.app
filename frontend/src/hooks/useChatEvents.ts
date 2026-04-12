@@ -28,6 +28,7 @@ import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { useChatStore } from "@/stores/chatStore";
+import { canonicalizeToolName } from "@/components/Chat/tool-widgets/tool-name";
 import {
   extractDelegationMetadata,
   isDelegationControlToolCall,
@@ -114,7 +115,7 @@ export function useChatEvents({
       delegated_conversation_id?: string;
       delegated_agent_run_id?: string;
     }) =>
-      payload.tool_name?.toLowerCase() === "delegate_start"
+      (payload.tool_name != null && canonicalizeToolName(payload.tool_name) === "delegate_start")
       || payload.subagent_type === "delegated"
       || payload.delegated_job_id != null
       || payload.delegated_session_id != null
@@ -199,7 +200,7 @@ export function useChatEvents({
             let changed = false;
 
             const parentTask = prev.get(toolUseId);
-            if (parentTask && parentTask.toolName.toLowerCase() === "delegate_start") {
+            if (parentTask && canonicalizeToolName(parentTask.toolName) === "delegate_start") {
               const delegation = extractDelegationMetadata(undefined, result);
               const inferredFailure =
                 delegation.status == null
@@ -285,9 +286,9 @@ export function useChatEvents({
           entry.diffContext = diffContext;
         }
 
-        const lowerToolName = tool_name.toLowerCase();
+        const canonicalToolName = canonicalizeToolName(tool_name);
 
-        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationStartToolCall(lowerToolName)) {
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationStartToolCall(canonicalToolName)) {
           setStreamingContentBlocks((prev) => {
             const alreadyHasMarker = prev.some(
               (block) => block.type === "task" && block.toolUseId === id,
@@ -334,7 +335,7 @@ export function useChatEvents({
           return;
         }
 
-        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationControlToolCall(lowerToolName)) {
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationControlToolCall(canonicalToolName)) {
           return;
         }
 
@@ -410,7 +411,7 @@ export function useChatEvents({
           // Task/Agent tool calls get a position-marker block { type: "task", toolUseId }
           // so they render inline at the correct position (not grouped after all text).
           // Actual task metadata is read from streamingTasks Map via toolUseId lookup.
-          if (lowerToolName === "task" || lowerToolName === "agent" || lowerToolName === "delegate_start") {
+          if (canonicalToolName === "task" || canonicalToolName === "agent" || canonicalToolName === "delegate_start") {
             setStreamingContentBlocks((prev) => {
               // Only add the marker once — deduplicate by toolUseId
               const alreadyHasMarker = prev.some((block) => block.type === "task" && block.toolUseId === id);

@@ -26,6 +26,7 @@ import {
   buildTaskCardTranscriptEntryFromStreamingTask,
   TaskCardTranscriptView,
 } from "./TaskCardTranscript";
+import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 // ============================================================================
 // Constants
@@ -125,8 +126,7 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [task.childToolCalls.length, isRunning]);
 
-  const loweredToolName = task.toolName.toLowerCase();
-  const isDelegateCall = loweredToolName === "delegate_start";
+  const isDelegateCall = canonicalizeToolName(task.toolName) === "delegate_start";
   const providerMetadata = {
     providerHarness: task.providerHarness,
     providerSessionId: task.providerSessionId,

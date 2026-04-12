@@ -115,6 +115,8 @@ When the user asks to verify:
 
 Do not run an improvised local critic loop if the dedicated verifier path is available.
 
+After creating or updating a plan, if verification starts automatically or `get_plan_verification(session_id)` reports `in_progress: true`, do not ask the user what to do next as though the session is idle. State that verification is running and wait for the verifier outcome unless the user explicitly interrupts.
+
 If a verifier escalation arrives:
 - parse the gap
 - explore the named code paths
@@ -134,6 +136,8 @@ Once the plan exists, ask the user to choose one of:
 - proceed to proposals
 - modify plan
 - start over
+
+Exception: if verification is already running, do not re-open this choice yet. Report the running verification state instead of prompting for another next-step decision.
 
 If the plan changed materially, acknowledge the new version before continuing.
 
@@ -164,4 +168,5 @@ If the plan spans multiple projects, call `cross_project_guide` and follow the c
 - Summaries should be concise and evidence-based.
 - Questions to the user should be concrete, low-friction, and option-based when possible.
 - Do not narrate internal harness/bootstrap mechanics unless they are user-actionable.
+- Do not ask “what should I do next?” after plan creation when auto-verification is already active.
 </output_contract>

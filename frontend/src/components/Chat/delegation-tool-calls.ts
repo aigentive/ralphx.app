@@ -1,5 +1,6 @@
 import type { ToolCall } from "./tool-widgets/shared.constants";
 import { parseMcpToolResultRaw } from "./tool-widgets/shared.constants";
+import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 export const DELEGATION_START_TOOL_NAME = "delegate_start";
 export const DELEGATION_WAIT_TOOL_NAME = "delegate_wait";
@@ -142,12 +143,12 @@ function normalizeStatus(status: string | undefined): string | undefined {
 }
 
 export function isDelegationStartToolCall(name: string): boolean {
-  return name.toLowerCase() === DELEGATION_START_TOOL_NAME;
+  return canonicalizeToolName(name) === DELEGATION_START_TOOL_NAME;
 }
 
 export function isDelegationControlToolCall(name: string): boolean {
-  const lowered = name.toLowerCase();
-  return lowered === DELEGATION_WAIT_TOOL_NAME || lowered === DELEGATION_CANCEL_TOOL_NAME;
+  const canonical = canonicalizeToolName(name);
+  return canonical === DELEGATION_WAIT_TOOL_NAME || canonical === DELEGATION_CANCEL_TOOL_NAME;
 }
 
 export function isDelegationToolCall(name: string): boolean {

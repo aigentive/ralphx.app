@@ -1275,6 +1275,41 @@ describe("useChatEvents", () => {
       });
     });
 
+    it("should create a delegated placeholder task for namespaced delegate_start tool calls", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "ralphx::delegate_start",
+          tool_id: "toolu_delegate_002",
+          arguments: {
+            agent_name: "ralphx-plan-critic-completeness",
+            prompt: "Review the plan",
+          },
+          result: [{ type: "text", text: JSON.stringify({ job_id: "job-456", status: "running" }) }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_002" }]);
+
+      const tasks = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map(),
+      );
+      expect(tasks.get("toolu_delegate_002")).toMatchObject({
+        toolUseId: "toolu_delegate_002",
+        toolName: "ralphx::delegate_start",
+        subagentType: "delegated",
+      });
+    });
+
     it("should mark delegated placeholder tasks as failed when delegate_start returns an error result", () => {
       const props = makeProps();
       renderAndClear(props);

@@ -174,6 +174,7 @@ export function ChatSessionToolbar({
                   fallbackMessages={fallbackMessages}
                   stats={stats}
                   isLoading={statsQuery.isLoading}
+                  isLiveTurnActive={isAgentActive}
                 />
               )}
             </div>

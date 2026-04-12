@@ -6,6 +6,7 @@
  */
 
 import type { ToolCall } from "./ToolCallIndicator";
+import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 // ============================================================================
 // Types
@@ -201,16 +202,16 @@ export function getPrefixColor(type: DiffLine["type"]): string {
  * Check if a tool name is an Edit or Write tool call that should render as diff
  */
 export function isDiffToolCall(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower === "edit" || lower === "write";
+  const canonical = canonicalizeToolName(name);
+  return canonical === "edit" || canonical === "write";
 }
 
 /**
  * Check if a tool name is a Task or Agent subagent tool call
  */
 export function isTaskToolCall(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower === "task" || lower === "agent" || lower === "delegate_start";
+  const canonical = canonicalizeToolName(name);
+  return canonical === "task" || canonical === "agent" || canonical === "delegate_start";
 }
 
 /**

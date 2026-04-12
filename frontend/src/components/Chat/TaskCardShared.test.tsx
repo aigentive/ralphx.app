@@ -4,6 +4,7 @@ import { buildTaskCardSummaryParts, getTaskCardKindLabel } from "./TaskCardShare
 describe("TaskCardShared", () => {
   it("classifies task card kind labels across delegate, agent, and task names", () => {
     expect(getTaskCardKindLabel("delegate_start")).toBe("Delegate");
+    expect(getTaskCardKindLabel("ralphx::delegate_start")).toBe("Delegate");
     expect(getTaskCardKindLabel("Agent")).toBe("Agent");
     expect(getTaskCardKindLabel("Task")).toBe("Task");
   });

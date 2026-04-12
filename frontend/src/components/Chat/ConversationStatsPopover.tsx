@@ -10,6 +10,7 @@ interface ConversationStatsPopoverProps {
   fallbackMessages?: ChatMessageResponse[] | null | undefined;
   stats?: ReturnType<typeof useConversationStats>["data"];
   isLoading?: boolean;
+  isLiveTurnActive?: boolean;
 }
 
 function formatInteger(value: number): string {
@@ -50,6 +51,7 @@ export function ConversationStatsPopover({
   fallbackMessages,
   stats: providedStats,
   isLoading: providedIsLoading,
+  isLiveTurnActive = false,
 }: ConversationStatsPopoverProps) {
   const statsQuery = useConversationStats(conversationId, {
     fallbackConversation,
@@ -57,6 +59,8 @@ export function ConversationStatsPopover({
   });
   const stats = providedStats ?? statsQuery.data;
   const isLoading = providedIsLoading ?? statsQuery.isLoading;
+  const usagePending =
+    isLiveTurnActive && stats?.usageCoverage.effectiveTotalsSource === "none";
 
   if (!conversationId) {
     return null;
@@ -81,7 +85,9 @@ export function ConversationStatsPopover({
         <div className="p-3 border-b border-white/6">
           <div className="text-sm font-medium text-white/90">Conversation stats</div>
           <div className="text-[11px] text-white/45 mt-1">
-            Aggregated from {stats?.usageCoverage.effectiveTotalsSource ?? "available data"}.
+            {usagePending
+              ? "Usage totals are pending until the provider reports the current turn."
+              : `Aggregated from ${stats?.usageCoverage.effectiveTotalsSource ?? "available data"}.`}
           </div>
         </div>
 
@@ -95,28 +101,30 @@ export function ConversationStatsPopover({
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Input</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatCompactInteger(stats.effectiveUsageTotals.inputTokens)}
+                  {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.inputTokens)}
                 </div>
               </div>
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Output</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatCompactInteger(stats.effectiveUsageTotals.outputTokens)}
+                  {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.outputTokens)}
                 </div>
               </div>
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Cache</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatCompactInteger(
-                    stats.effectiveUsageTotals.cacheCreationTokens +
-                      stats.effectiveUsageTotals.cacheReadTokens,
-                  )}
+                  {usagePending
+                    ? "Pending"
+                    : formatCompactInteger(
+                      stats.effectiveUsageTotals.cacheCreationTokens +
+                        stats.effectiveUsageTotals.cacheReadTokens,
+                    )}
                 </div>
               </div>
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Est. cost</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatUsd(stats.effectiveUsageTotals.estimatedUsd)}
+                  {usagePending ? "Pending" : formatUsd(stats.effectiveUsageTotals.estimatedUsd)}
                 </div>
               </div>
             </div>
