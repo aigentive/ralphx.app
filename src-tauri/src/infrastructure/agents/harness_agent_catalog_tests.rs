@@ -162,6 +162,52 @@ const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
     "ralphx-ideation-critic",
 ];
 
+const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
+    ("ralphx-plan-verifier", &["Write", "Edit", "NotebookEdit"]),
+    (
+        "ralphx-plan-critic-completeness",
+        &[
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Bash",
+        ],
+    ),
+    (
+        "ralphx-plan-critic-implementation-feasibility",
+        &[
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Bash",
+        ],
+    ),
+    ("ralphx-qa-prep", &["Write", "Edit", "Bash", "NotebookEdit"]),
+    ("ralphx-ideation-specialist-backend", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    ("ralphx-ideation-specialist-frontend", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    ("ralphx-ideation-specialist-intent", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    (
+        "ralphx-ideation-specialist-pipeline-safety",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    (
+        "ralphx-ideation-specialist-prompt-quality",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    (
+        "ralphx-ideation-specialist-state-machine",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    ("ralphx-ideation-specialist-ux", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    (
+        "ralphx-ideation-specialist-code-quality",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    ("ralphx-ideation-specialist-infra", &["Write", "Edit", "NotebookEdit"]),
+    ("ralphx-ideation-advocate", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    ("ralphx-ideation-critic", &["Write", "Edit", "NotebookEdit", "Bash"]),
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -230,6 +276,56 @@ fn canonical_codex_runtime_features_match_loader_for_current_owned_agents() {
             definition.harnesses.codex.runtime_features,
             runtime_features.runtime_features,
             "root harnesses.codex.runtime_features should stay aligned for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_metadata_merges_root_and_legacy_harness_fields() {
+    let temp = tempfile::tempdir().expect("tempdir should exist");
+    let agent_dir = temp.path().join("agents/test-agent");
+    fs::create_dir_all(agent_dir.join("claude")).expect("agent dirs should exist");
+    fs::write(
+        agent_dir.join("agent.yaml"),
+        r#"name: test-agent
+role: test_role
+harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+"#,
+    )
+    .expect("root agent metadata should write");
+    fs::write(
+        agent_dir.join("claude/agent.yaml"),
+        r#"disallowed_tools:
+  - Bash
+max_turns: 12
+"#,
+    )
+    .expect("legacy claude metadata should write");
+
+    let metadata = try_load_canonical_claude_metadata(temp.path(), "test-agent")
+        .expect("claude metadata should load");
+    assert_eq!(metadata.disallowed_tools, vec!["Write"]);
+    assert_eq!(metadata.max_turns, Some(12));
+}
+
+#[test]
+fn canonical_claude_disallowed_tools_match_loader_for_current_owned_agents() {
+    let root = project_root();
+
+    for (agent_name, expected_disallowed_tools) in CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS {
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("expected Claude metadata for {agent_name}"));
+
+        assert_eq!(
+            metadata.disallowed_tools,
+            expected_disallowed_tools
+                .iter()
+                .map(|tool| (*tool).to_string())
+                .collect::<Vec<_>>(),
+            "root canonical Claude disallowed_tools should stay aligned for {agent_name}"
         );
     }
 }

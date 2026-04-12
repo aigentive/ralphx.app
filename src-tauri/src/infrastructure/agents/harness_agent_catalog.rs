@@ -48,6 +48,8 @@ impl CanonicalDelegationMetadata {
 #[serde(deny_unknown_fields)]
 pub struct CanonicalAgentHarnesses {
     #[serde(default)]
+    pub claude: CanonicalClaudeAgentMetadata,
+    #[serde(default)]
     pub codex: CanonicalCodexAgentMetadata,
 }
 
@@ -62,6 +64,31 @@ pub struct CanonicalClaudeAgentMetadata {
     pub skills: Vec<String>,
     #[serde(default)]
     pub max_turns: Option<u32>,
+}
+
+impl CanonicalClaudeAgentMetadata {
+    fn is_empty(&self) -> bool {
+        self.frontmatter_name.is_none()
+            && self.disallowed_tools.is_empty()
+            && self.skills.is_empty()
+            && self.max_turns.is_none()
+    }
+
+    fn overlay_onto(self, mut base: Self) -> Self {
+        if self.frontmatter_name.is_some() {
+            base.frontmatter_name = self.frontmatter_name;
+        }
+        if !self.disallowed_tools.is_empty() {
+            base.disallowed_tools = self.disallowed_tools;
+        }
+        if !self.skills.is_empty() {
+            base.skills = self.skills;
+        }
+        if self.max_turns.is_some() {
+            base.max_turns = self.max_turns;
+        }
+        base
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -166,15 +193,33 @@ pub fn try_load_canonical_claude_metadata(
     project_root: &Path,
     agent_name: &str,
 ) -> Result<CanonicalClaudeAgentMetadata, String> {
-    match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Claude) {
+    let legacy = match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Claude) {
         Some(raw) => serde_yaml::from_str::<CanonicalClaudeAgentMetadata>(&raw).map_err(|error| {
             format!(
                 "Failed to parse Claude harness metadata for agent {}: {error}",
                 canonical_agent_name(agent_name)
             )
-        }),
-        None => Ok(CanonicalClaudeAgentMetadata::default()),
+        })?,
+        None => CanonicalClaudeAgentMetadata::default(),
+    };
+
+    let Some(definition) = load_canonical_agent_definition(project_root, agent_name) else {
+        return Ok(legacy);
+    };
+    if definition.harnesses.claude.is_empty() {
+        return Ok(legacy);
     }
+
+    let merged = definition.harnesses.claude.clone().overlay_onto(legacy.clone());
+    if merged != legacy {
+        tracing::warn!(
+            agent = %canonical_agent_name(agent_name),
+            canonical_claude_metadata = ?definition.harnesses.claude,
+            legacy_claude_metadata = ?legacy,
+            "Canonical agent metadata overrides or augments Claude harness metadata"
+        );
+    }
+    Ok(merged)
 }
 
 pub fn load_canonical_codex_metadata(

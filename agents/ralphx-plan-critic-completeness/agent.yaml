@@ -12,6 +12,12 @@ capabilities:
     - get_artifact
     - create_team_artifact
 harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
   codex:
     runtime_features:
       shell_tool: false

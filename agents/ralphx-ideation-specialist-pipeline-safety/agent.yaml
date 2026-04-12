@@ -13,6 +13,12 @@ capabilities:
     - get_session_plan
     - get_artifact
 harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
   codex:
     runtime_features:
       shell_tool: false

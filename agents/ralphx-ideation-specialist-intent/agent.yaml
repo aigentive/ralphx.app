@@ -17,6 +17,12 @@ capabilities:
     - get_memories_for_paths
     - get_session_messages
 harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
   codex:
     runtime_features:
       shell_tool: false

@@ -8,6 +8,12 @@ capabilities:
     - fs_grep
     - fs_glob
 harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - Bash
+      - NotebookEdit
   codex:
     runtime_features:
       shell_tool: false

@@ -28,6 +28,11 @@ capabilities:
     - get_memory
     - get_memories_for_paths
 harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
   codex:
     runtime_features:
       shell_tool: false

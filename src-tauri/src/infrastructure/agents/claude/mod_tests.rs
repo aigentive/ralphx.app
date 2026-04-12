@@ -593,6 +593,35 @@ max_turns: 80
 }
 
 #[test]
+fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowed_tools() {
+    let root = repo_project_root();
+    let plugin_dir = root.join("plugins/app");
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let generated_prompt = std::fs::read_to_string(
+        generated_dir.join("agents/ralphx-plan-verifier.md"),
+    )
+    .expect("read generated agent prompt");
+    let (frontmatter, _) = split_frontmatter(&generated_prompt);
+    let disallowed_tools = frontmatter["disallowedTools"]
+        .as_sequence()
+        .expect("generated frontmatter should include disallowedTools")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        disallowed_tools,
+        vec!["Write", "Edit", "NotebookEdit"],
+        "expected root canonical Claude disallowedTools in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("maxTurns: 80"),
+        "legacy max_turns should still flow through when root metadata does not override it, got: {generated_prompt}"
+    );
+}
+
+#[test]
 fn test_materialize_generated_plugin_dir_omits_mcp_servers_for_agents_without_mcp_tools() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
     let agent_root = root.join("agents/ralphx-execution-supervisor");

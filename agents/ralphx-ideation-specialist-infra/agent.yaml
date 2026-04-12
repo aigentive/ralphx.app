@@ -18,3 +18,9 @@ capabilities:
     - search_memories
     - get_memory
     - get_memories_for_paths
+harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
