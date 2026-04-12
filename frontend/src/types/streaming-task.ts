@@ -13,6 +13,7 @@
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 
 export type StreamingTaskStatus = "running" | "completed" | "failed";
+export type StreamingTaskProviderStatus = StreamingTaskStatus | "cancelled";
 
 /**
  * StreamingContentBlock - Discriminated union representing chunks of streaming content.
@@ -40,7 +41,7 @@ export interface StreamingTask {
   /** Model used: "sonnet", "opus", "haiku" */
   model: string;
   /** Current status */
-  status: StreamingTaskStatus;
+  status: StreamingTaskProviderStatus;
   /** Timestamp when the task started (Date.now()) */
   startedAt: number;
   /** Timestamp when the task completed */
@@ -53,6 +54,40 @@ export interface StreamingTask {
   totalToolUseCount?: number;
   /** Agent ID (from task result) */
   agentId?: string;
+  /** RalphX native delegation job id */
+  delegatedJobId?: string;
+  /** Delegated harness/provider */
+  providerHarness?: string;
+  /** Delegated provider session continuity id */
+  providerSessionId?: string;
+  /** Upstream provider captured by the delegated run */
+  upstreamProvider?: string;
+  /** Provider profile captured by the delegated run */
+  providerProfile?: string;
+  /** Logical model requested */
+  logicalModel?: string;
+  /** Effective model used by the harness */
+  effectiveModelId?: string;
+  /** Logical effort requested */
+  logicalEffort?: string;
+  /** Effective effort used by the harness */
+  effectiveEffort?: string;
+  /** Approval policy used by the delegated run */
+  approvalPolicy?: string;
+  /** Sandbox mode used by the delegated run */
+  sandboxMode?: string;
+  /** Estimated USD cost for the latest run */
+  estimatedUsd?: number;
+  /** Input tokens used by the latest run */
+  inputTokens?: number;
+  /** Output tokens used by the latest run */
+  outputTokens?: number;
+  /** Cache creation tokens used by the latest run */
+  cacheCreationTokens?: number;
+  /** Cache read tokens used by the latest run */
+  cacheReadTokens?: number;
+  /** Final delegated output when available */
+  textOutput?: string;
   /** Tool calls made by this subagent (matched by parentToolUseId) */
   childToolCalls: ToolCall[];
   /** Monotonically increasing sequence number for cross-event-type ordering */

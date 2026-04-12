@@ -94,6 +94,54 @@ pub struct ChildSessionStatusResponse {
     pub pending_initial_prompt: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedSessionSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub parent_context_type: String,
+    pub parent_context_id: String,
+    pub agent_name: String,
+    pub harness: String,
+    pub provider_session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedRunSummary {
+    pub agent_run_id: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub error_message: Option<String>,
+    pub harness: Option<String>,
+    pub provider_session_id: Option<String>,
+    pub upstream_provider: Option<String>,
+    pub provider_profile: Option<String>,
+    pub logical_model: Option<String>,
+    pub effective_model_id: Option<String>,
+    pub logical_effort: Option<String>,
+    pub effective_effort: Option<String>,
+    pub approval_policy: Option<String>,
+    pub sandbox_mode: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedSessionStatusResponse {
+    pub session: DelegatedSessionSummary,
+    pub agent_state: AgentStateInfo,
+    pub conversation_id: Option<String>,
+    pub latest_run: Option<DelegatedRunSummary>,
+    pub recent_messages: Option<Vec<ChatMessageSummary>>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SendSessionMessageRequest {
     pub message: String,
@@ -1039,6 +1087,9 @@ pub struct DelegateStartRequest {
     pub parent_session_id: String,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
+    pub parent_conversation_id: Option<String>,
+    pub parent_tool_use_id: Option<String>,
+    pub delegated_session_id: Option<String>,
     pub child_session_id: Option<String>,
     pub agent_name: String,
     pub prompt: String,
@@ -1055,6 +1106,7 @@ pub struct DelegateStartRequest {
 #[derive(Debug, Deserialize)]
 pub struct DelegateWaitRequest {
     pub job_id: String,
+    pub include_delegated_status: Option<bool>,
     pub include_child_status: Option<bool>,
     pub include_messages: Option<bool>,
     pub message_limit: Option<u32>,

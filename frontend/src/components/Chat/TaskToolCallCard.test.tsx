@@ -44,6 +44,45 @@ function makeTaskToolCall(overrides?: Partial<ToolCall>): ToolCall {
   };
 }
 
+function makeDelegateToolCall(overrides?: Partial<ToolCall>): ToolCall {
+  return {
+    id: "delegate-call-1",
+    name: "delegate_start",
+    arguments: {
+      agent_name: "ralphx-execution-reviewer",
+      prompt: "Review the patch and report blockers",
+      harness: "codex",
+      model: "gpt-5.4",
+    },
+    result: [{
+      type: "text",
+      text: JSON.stringify({
+        job_id: "job-123",
+        status: "completed",
+        content: "Delegated review finished",
+        delegated_status: {
+          latest_run: {
+            harness: "codex",
+            provider_session_id: "thread-123",
+            upstream_provider: "openai",
+            provider_profile: "openai",
+            logical_model: "gpt-5.4",
+            effective_model_id: "gpt-5.4",
+            logical_effort: "high",
+            input_tokens: 120,
+            output_tokens: 45,
+            cache_read_tokens: 10,
+            estimated_usd: 0.34,
+            started_at: "2026-04-12T10:00:00Z",
+            completed_at: "2026-04-12T10:00:06Z",
+          },
+        },
+      }),
+    }],
+    ...overrides,
+  };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -146,6 +185,14 @@ describe("TaskToolCallCard — Agent tool call arguments", () => {
 });
 
 describe("TaskToolCallCard — Agent identity display (name, badge, subtitle)", () => {
+  it("delegation mode: includes upstream provider evidence in the harness tooltip", () => {
+    render(<TaskToolCallCard toolCall={makeDelegateToolCall()} />);
+    expect(screen.getByText("Codex")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Upstream: openai"),
+    );
+  });
+
   it("team mode: shows agent name as card title when name is present", () => {
     const tc = makeAgentToolCall({
       arguments: {
@@ -247,6 +294,26 @@ describe("TaskToolCallCard — Agent identity display (name, badge, subtitle)", 
     // But "agent" subagent_type badge should NOT show (would be duplicate/redundant)
     // The only "Agent" text is from the type badge
     expect(screen.getAllByText("Agent")).toHaveLength(1);
+  });
+});
+
+describe("TaskToolCallCard — RalphX native delegation", () => {
+  it("renders delegate label, target agent, and harness/model metadata", () => {
+    render(<TaskToolCallCard toolCall={makeDelegateToolCall()} />);
+    expect(screen.getByText("Delegate")).toBeInTheDocument();
+    expect(screen.getByText("ralphx-execution-reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.4 · high")).toBeInTheDocument();
+  });
+
+  it("shows delegated usage and final output when expanded", async () => {
+    const user = userEvent.setup();
+    render(<TaskToolCallCard toolCall={makeDelegateToolCall()} />);
+    expect(screen.getByText(/175 tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.34/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /delegated task: ralphx-execution-reviewer/i }));
+    expect(screen.getByText("Delegated review finished")).toBeInTheDocument();
   });
 });
 

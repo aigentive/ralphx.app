@@ -13,6 +13,16 @@ import { ChevronDown, ChevronRight, Bot } from "lucide-react";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import type { ToolCall } from "./tool-widgets/shared.constants";
 import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
+import {
+  extractDelegationMetadata,
+  isDelegationStartToolCall,
+} from "./delegation-tool-calls";
+import {
+  formatMessageAttributionTooltip,
+  formatProviderHarnessLabel,
+  formatProviderModelEffortLabel,
+  getProviderHarnessBadgeStyle,
+} from "./provider-harness";
 
 // ============================================================================
 // Types
@@ -45,6 +55,7 @@ interface TaskStats {
   totalToolUseCount: number | undefined;
   model: string | undefined;
   textOutput: string | undefined;
+  estimatedUsd?: number;
 }
 
 // ============================================================================
@@ -245,30 +256,98 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const hasError = Boolean(toolCall.error);
 
   const taskArgs = useMemo(() => extractTaskArgs(toolCall.arguments), [toolCall.arguments]);
-  const taskStats = useMemo(() => extractTaskStats(toolCall), [toolCall]);
+  const delegation = useMemo(
+    () => extractDelegationMetadata(toolCall.arguments, toolCall.result),
+    [toolCall.arguments, toolCall.result],
+  );
+  const isDelegateCall = isDelegationStartToolCall(toolCall.name);
+  const taskStats = useMemo(
+    () => isDelegateCall
+      ? {
+          ...EMPTY_STATS,
+          statsAvailable: true,
+          totalDurationMs: delegation.durationMs,
+          totalTokens: delegation.totalTokens,
+          model: delegation.effectiveModelId ?? delegation.logicalModel,
+          textOutput: delegation.textOutput,
+          estimatedUsd: delegation.estimatedUsd,
+        }
+      : extractTaskStats(toolCall),
+    [delegation, isDelegateCall, toolCall],
+  );
   const childToolCalls = useMemo(() => extractChildToolCalls(toolCall.result), [toolCall.result]);
 
-  const isAgentCall = toolCall.name.toLowerCase() === "agent";
-  const subagentType = taskArgs.subagent_type || "agent";
-  const model = taskArgs.model || "";
+  const isAgentCall = !isDelegateCall && toolCall.name.toLowerCase() === "agent";
+  const subagentType = isDelegateCall ? "delegated" : taskArgs.subagent_type || "agent";
+  const model = isDelegateCall
+    ? delegation.effectiveModelId ?? delegation.logicalModel ?? ""
+    : taskArgs.model || "";
+  const providerHarnessLabel = isDelegateCall
+    ? formatProviderHarnessLabel(delegation.providerHarness)
+    : null;
+  const providerHarnessStyle = getProviderHarnessBadgeStyle(delegation.providerHarness);
+  const providerModelEffortLabel = isDelegateCall
+      ? formatProviderModelEffortLabel({
+        providerHarness: delegation.providerHarness,
+        providerSessionId: delegation.providerSessionId,
+        upstreamProvider: delegation.upstreamProvider,
+        providerProfile: delegation.providerProfile,
+        logicalModel: delegation.logicalModel,
+        effectiveModelId: delegation.effectiveModelId,
+        logicalEffort: delegation.logicalEffort,
+        effectiveEffort: delegation.effectiveEffort,
+        inputTokens: delegation.inputTokens,
+        outputTokens: delegation.outputTokens,
+        cacheCreationTokens: delegation.cacheCreationTokens,
+        cacheReadTokens: delegation.cacheReadTokens,
+        estimatedUsd: delegation.estimatedUsd,
+      })
+    : null;
+  const providerTooltip = isDelegateCall
+      ? formatMessageAttributionTooltip({
+        providerHarness: delegation.providerHarness,
+        providerSessionId: delegation.providerSessionId,
+        upstreamProvider: delegation.upstreamProvider,
+        providerProfile: delegation.providerProfile,
+        logicalModel: delegation.logicalModel,
+        effectiveModelId: delegation.effectiveModelId,
+        logicalEffort: delegation.logicalEffort,
+        effectiveEffort: delegation.effectiveEffort,
+        inputTokens: delegation.inputTokens,
+        outputTokens: delegation.outputTokens,
+        cacheCreationTokens: delegation.cacheCreationTokens,
+        cacheReadTokens: delegation.cacheReadTokens,
+        estimatedUsd: delegation.estimatedUsd,
+      })
+    : null;
 
   // Card title: Agent with name → show name (team mode); otherwise description or fallback
-  const cardTitle = isAgentCall && taskArgs.name
-    ? taskArgs.name
-    : taskArgs.description || (isAgentCall ? "Agent task" : "Subagent task");
+  const cardTitle = isDelegateCall
+    ? delegation.agentName || delegation.title || "Delegated specialist"
+    : isAgentCall && taskArgs.name
+      ? taskArgs.name
+      : taskArgs.description || (isAgentCall ? "Agent task" : "Subagent task");
 
   // Hide subagent_type badge when it's the redundant default "agent" value
-  const showSubagentTypeBadge = Boolean(subagentType && subagentType !== "agent");
+  const showSubagentTypeBadge = !isDelegateCall && Boolean(subagentType && subagentType !== "agent");
 
   // Subtitle: shown below title for named agents (description or prompt preview)
-  const subtitle = isAgentCall && taskArgs.name && taskArgs.description
-    ? taskArgs.description
-    : isAgentCall && taskArgs.name && !taskArgs.description && taskArgs.prompt
-      ? taskArgs.prompt.slice(0, 100) + "..."
-      : null;
+  const subtitle = isDelegateCall
+    ? delegation.prompt
+      ? `${delegation.prompt.slice(0, 100)}${delegation.prompt.length > 100 ? "..." : ""}`
+      : null
+    : isAgentCall && taskArgs.name && taskArgs.description
+      ? taskArgs.description
+      : isAgentCall && taskArgs.name && !taskArgs.description && taskArgs.prompt
+        ? taskArgs.prompt.slice(0, 100) + "..."
+        : null;
 
   const subagentColor = getSubagentTypeColor(subagentType);
   const modelColor = model ? getModelColor(model) : null;
+  const bodyText = delegation.textOutput ?? taskStats.textOutput;
+  const statusBadge = isDelegateCall && delegation.status && delegation.status !== "completed"
+    ? delegation.status
+    : null;
 
   // Build stats summary
   const statParts: string[] = [];
@@ -281,8 +360,11 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   if (taskStats.totalToolUseCount != null) {
     statParts.push(`${taskStats.totalToolUseCount} tool${taskStats.totalToolUseCount !== 1 ? "s" : ""}`);
   }
+  if (taskStats.estimatedUsd != null) {
+    statParts.push(`$${taskStats.estimatedUsd.toFixed(2)}`);
+  }
 
-  const hasBody = Boolean(taskStats.textOutput) || hasError || childToolCalls.length > 0;
+  const hasBody = Boolean(bodyText) || hasError || childToolCalls.length > 0;
 
   return (
     <div
@@ -298,7 +380,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
         className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-opacity ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
         aria-expanded={hasBody ? isExpanded : undefined}
-        aria-label={`${subagentType} subagent: ${cardTitle}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
+        aria-label={`${isDelegateCall ? "delegated" : subagentType} task: ${cardTitle}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
       >
         {/* Expand/Collapse chevron (only if has body) */}
         {hasBody ? (
@@ -320,12 +402,20 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         <span
           className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
           style={{
-            backgroundColor: isAgentCall ? "hsla(14, 100%, 60%, 0.12)" : "hsla(220, 10%, 50%, 0.12)",
-            color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
-          }}
-        >
-          {isAgentCall ? "Agent" : "Task"}
-        </span>
+              backgroundColor: isDelegateCall
+                ? "hsla(150, 55%, 45%, 0.12)"
+                : isAgentCall
+                  ? "hsla(14, 100%, 60%, 0.12)"
+                  : "hsla(220, 10%, 50%, 0.12)",
+              color: isDelegateCall
+                ? "hsl(150, 55%, 63%)"
+                : isAgentCall
+                  ? "hsl(14, 100%, 65%)"
+                  : "hsl(220, 10%, 60%)",
+            }}
+          >
+          {isDelegateCall ? "Delegate" : isAgentCall ? "Agent" : "Task"}
+          </span>
 
         {/* Subagent type badge — hidden for redundant "agent" default */}
         {showSubagentTypeBadge && (
@@ -348,8 +438,18 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           {cardTitle}
         </span>
 
+        {providerHarnessLabel && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+            style={providerHarnessStyle}
+            title={providerTooltip ?? undefined}
+          >
+            {providerHarnessLabel}
+          </span>
+        )}
+
         {/* Model badge */}
-        {model && modelColor && (
+        {model && modelColor && !providerModelEffortLabel && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
             style={{
@@ -358,6 +458,19 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             }}
           >
             {model}
+          </span>
+        )}
+
+        {providerModelEffortLabel && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{
+              backgroundColor: modelColor?.bg ?? "hsla(220, 10%, 50%, 0.15)",
+              color: modelColor?.text ?? "hsl(220, 10%, 65%)",
+            }}
+            title={providerTooltip ?? undefined}
+          >
+            {providerModelEffortLabel}
           </span>
         )}
 
@@ -388,6 +501,18 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         )}
 
         {/* Error indicator */}
+        {statusBadge && (
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+            style={{
+              backgroundColor: "hsla(38 90% 50% / 0.15)",
+              color: "hsl(38 90% 60%)",
+            }}
+          >
+            {statusBadge}
+          </span>
+        )}
+
         {hasError && (
           <span
             className="text-[10px] font-medium px-1.5 py-0.5 rounded"
@@ -466,7 +591,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           )}
 
           {/* Subagent text output */}
-          {taskStats.textOutput && (
+          {bodyText && (
             <pre
               className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64"
               style={{
@@ -477,7 +602,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
                 whiteSpace: "pre-wrap",
               }}
             >
-              {taskStats.textOutput}
+              {bodyText}
             </pre>
           )}
         </div>

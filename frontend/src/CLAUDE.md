@@ -141,8 +141,12 @@ npm test           # watch mode
 npm run test:run   # single run
 npm run typecheck  # TS check
 npm run lint       # ESLint
+npx playwright test tests/visual/views/chat/chat-widget-matrix.spec.ts                     # verify chat widget visuals
+npx playwright test tests/visual/views/chat/chat-widget-matrix.spec.ts --update-snapshots  # refresh chat widget baselines
 ```
 Note: Dev server via `cd frontend && npm run tauri dev` (user manages manually).
+Playwright visual rule: run from `frontend/` only; do not launch from repo root with `--config frontend/playwright.config.ts`, or `page.goto('/')` can fail before the configured `baseURL`/`webServer` is applied.
+Playwright report rule: `frontend/playwright.config.ts` keeps `use.screenshot = "on"` so every run has an end-of-test screenshot in the HTML report; use explicit `testInfo.attach(...)` in multi-state specs when one final screenshot is not enough.
 
 ## Task Management (MANDATORY)
 Use TaskCreate/TaskUpdate/TaskList for complex work. See `../../.claude/rules/task-management.md`

@@ -28,6 +28,11 @@ import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { useChatStore } from "@/stores/chatStore";
+import {
+  extractDelegationMetadata,
+  isDelegationControlToolCall,
+  isDelegationStartToolCall,
+} from "@/components/Chat/delegation-tool-calls";
 
 // ============================================================================
 // Types
@@ -100,6 +105,158 @@ export function useChatEvents({
     const isRelevant = (payload: { conversation_id?: string; context_id?: string }) =>
       payload.conversation_id === activeConversationId &&
       (!contextId || payload.context_id === contextId);
+
+    const upsertDelegatedTask = (
+      toolUseId: string,
+      args: unknown,
+      result: unknown,
+      seq: number | undefined,
+    ) => {
+      const delegation = extractDelegationMetadata(args, result);
+      setStreamingTasks((prev) => {
+        const existing = prev.get(toolUseId);
+        const next = new Map(prev);
+        const completedAt =
+          delegation.status && delegation.status !== "running"
+            ? existing?.completedAt ?? Date.now()
+            : existing?.completedAt;
+        next.set(toolUseId, {
+          toolUseId,
+          toolName: "delegate_start",
+          description:
+            delegation.agentName
+            ?? existing?.description
+            ?? "Delegated specialist",
+          subagentType: existing?.subagentType ?? "delegated",
+          model:
+            delegation.effectiveModelId
+            ?? delegation.logicalModel
+            ?? existing?.model
+            ?? "unknown",
+          status:
+            delegation.status === "completed"
+            || delegation.status === "failed"
+            || delegation.status === "cancelled"
+              ? delegation.status
+              : existing?.status ?? "running",
+          startedAt: existing?.startedAt ?? Date.now(),
+          childToolCalls: existing?.childToolCalls ?? [],
+          ...(completedAt != null ? { completedAt } : {}),
+          ...(delegation.durationMs != null || existing?.totalDurationMs != null
+            ? { totalDurationMs: delegation.durationMs ?? existing?.totalDurationMs! }
+            : {}),
+          ...(delegation.totalTokens != null || existing?.totalTokens != null
+            ? { totalTokens: delegation.totalTokens ?? existing?.totalTokens! }
+            : {}),
+          ...(existing?.totalToolUseCount != null
+            ? { totalToolUseCount: existing.totalToolUseCount }
+            : {}),
+          ...(existing?.agentId ? { agentId: existing.agentId } : {}),
+          ...(delegation.jobId || existing?.delegatedJobId
+            ? { delegatedJobId: delegation.jobId ?? existing?.delegatedJobId! }
+            : {}),
+          ...(delegation.providerHarness || existing?.providerHarness
+            ? { providerHarness: delegation.providerHarness ?? existing?.providerHarness! }
+            : {}),
+          ...(delegation.providerSessionId || existing?.providerSessionId
+            ? { providerSessionId: delegation.providerSessionId ?? existing?.providerSessionId! }
+            : {}),
+          ...(delegation.upstreamProvider || existing?.upstreamProvider
+            ? { upstreamProvider: delegation.upstreamProvider ?? existing?.upstreamProvider! }
+            : {}),
+          ...(delegation.providerProfile || existing?.providerProfile
+            ? { providerProfile: delegation.providerProfile ?? existing?.providerProfile! }
+            : {}),
+          ...(delegation.logicalModel || existing?.logicalModel
+            ? { logicalModel: delegation.logicalModel ?? existing?.logicalModel! }
+            : {}),
+          ...(delegation.effectiveModelId || existing?.effectiveModelId
+            ? { effectiveModelId: delegation.effectiveModelId ?? existing?.effectiveModelId! }
+            : {}),
+          ...(delegation.logicalEffort || existing?.logicalEffort
+            ? { logicalEffort: delegation.logicalEffort ?? existing?.logicalEffort! }
+            : {}),
+          ...(delegation.effectiveEffort || existing?.effectiveEffort
+            ? { effectiveEffort: delegation.effectiveEffort ?? existing?.effectiveEffort! }
+            : {}),
+          ...(delegation.approvalPolicy || existing?.approvalPolicy
+            ? { approvalPolicy: delegation.approvalPolicy ?? existing?.approvalPolicy! }
+            : {}),
+          ...(delegation.sandboxMode || existing?.sandboxMode
+            ? { sandboxMode: delegation.sandboxMode ?? existing?.sandboxMode! }
+            : {}),
+          ...(delegation.estimatedUsd != null || existing?.estimatedUsd != null
+            ? { estimatedUsd: delegation.estimatedUsd ?? existing?.estimatedUsd! }
+            : {}),
+          ...(delegation.inputTokens != null || existing?.inputTokens != null
+            ? { inputTokens: delegation.inputTokens ?? existing?.inputTokens! }
+            : {}),
+          ...(delegation.outputTokens != null || existing?.outputTokens != null
+            ? { outputTokens: delegation.outputTokens ?? existing?.outputTokens! }
+            : {}),
+          ...(delegation.cacheCreationTokens != null || existing?.cacheCreationTokens != null
+            ? { cacheCreationTokens: delegation.cacheCreationTokens ?? existing?.cacheCreationTokens! }
+            : {}),
+          ...(delegation.cacheReadTokens != null || existing?.cacheReadTokens != null
+            ? { cacheReadTokens: delegation.cacheReadTokens ?? existing?.cacheReadTokens! }
+            : {}),
+          ...(delegation.textOutput || existing?.textOutput
+            ? { textOutput: delegation.textOutput ?? existing?.textOutput! }
+            : {}),
+          ...(seq != null ? { seq } : {}),
+        });
+        return next;
+      });
+    };
+
+    const updateDelegatedTaskByJobId = (
+      jobId: string,
+      args: unknown,
+      result: unknown,
+      seq: number | undefined,
+    ) => {
+      const delegation = extractDelegationMetadata(args, result);
+      setStreamingTasks((prev) => {
+        const next = new Map(prev);
+        for (const [taskId, task] of prev.entries()) {
+          if (task.delegatedJobId !== jobId) continue;
+          const completedAt =
+            delegation.status && delegation.status !== "running"
+              ? task.completedAt ?? Date.now()
+              : task.completedAt;
+          next.set(taskId, {
+            ...task,
+            status:
+              delegation.status === "completed"
+              || delegation.status === "failed"
+              || delegation.status === "cancelled"
+                ? delegation.status
+                : task.status,
+            ...(completedAt != null ? { completedAt } : {}),
+            ...(delegation.durationMs != null ? { totalDurationMs: delegation.durationMs } : {}),
+            ...(delegation.totalTokens != null ? { totalTokens: delegation.totalTokens } : {}),
+            ...(delegation.providerHarness ? { providerHarness: delegation.providerHarness } : {}),
+            ...(delegation.providerSessionId ? { providerSessionId: delegation.providerSessionId } : {}),
+            ...(delegation.upstreamProvider ? { upstreamProvider: delegation.upstreamProvider } : {}),
+            ...(delegation.providerProfile ? { providerProfile: delegation.providerProfile } : {}),
+            ...(delegation.logicalModel ? { logicalModel: delegation.logicalModel } : {}),
+            ...(delegation.effectiveModelId ? { effectiveModelId: delegation.effectiveModelId } : {}),
+            ...(delegation.logicalEffort ? { logicalEffort: delegation.logicalEffort } : {}),
+            ...(delegation.effectiveEffort ? { effectiveEffort: delegation.effectiveEffort } : {}),
+            ...(delegation.approvalPolicy ? { approvalPolicy: delegation.approvalPolicy } : {}),
+            ...(delegation.sandboxMode ? { sandboxMode: delegation.sandboxMode } : {}),
+            ...(delegation.estimatedUsd != null ? { estimatedUsd: delegation.estimatedUsd } : {}),
+            ...(delegation.inputTokens != null ? { inputTokens: delegation.inputTokens } : {}),
+            ...(delegation.outputTokens != null ? { outputTokens: delegation.outputTokens } : {}),
+            ...(delegation.cacheCreationTokens != null ? { cacheCreationTokens: delegation.cacheCreationTokens } : {}),
+            ...(delegation.cacheReadTokens != null ? { cacheReadTokens: delegation.cacheReadTokens } : {}),
+            ...(delegation.textOutput ? { textOutput: delegation.textOutput } : {}),
+            ...(seq != null ? { seq } : {}),
+          });
+        }
+        return next;
+      });
+    };
 
     // ── agent:tool_call ──────────────────────────────────────────────
     // Handles tool call accumulation for streaming display.
@@ -203,6 +360,28 @@ export function useChatEvents({
           entry.diffContext = diffContext;
         }
 
+        const lowerToolName = tool_name.toLowerCase();
+
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationStartToolCall(lowerToolName)) {
+          upsertDelegatedTask(id, args, result, payload.seq);
+          setStreamingContentBlocks((prev) => {
+            const alreadyHasMarker = prev.some(
+              (block) => block.type === "task" && block.toolUseId === id,
+            );
+            if (alreadyHasMarker) return prev;
+            return [...prev, { type: "task", toolUseId: id }];
+          });
+          return;
+        }
+
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationControlToolCall(lowerToolName)) {
+          const delegation = extractDelegationMetadata(args, result);
+          if (delegation.jobId) {
+            updateDelegatedTaskByJobId(delegation.jobId, args, result, payload.seq);
+            return;
+          }
+        }
+
         // Record start time for new non-result tool calls (for elapsed timer display)
         // Also update heartbeat timestamp so watchdog doesn't false-trigger during long tool calls
         if (storeKey && result == null) {
@@ -275,8 +454,7 @@ export function useChatEvents({
           // Task/Agent tool calls get a position-marker block { type: "task", toolUseId }
           // so they render inline at the correct position (not grouped after all text).
           // Actual task metadata is read from streamingTasks Map via toolUseId lookup.
-          const lowerToolName = tool_name.toLowerCase();
-          if (lowerToolName === "task" || lowerToolName === "agent") {
+          if (lowerToolName === "task" || lowerToolName === "agent" || lowerToolName === "delegate_start") {
             setStreamingContentBlocks((prev) => {
               // Only add the marker once — deduplicate by toolUseId
               const alreadyHasMarker = prev.some((block) => block.type === "task" && block.toolUseId === id);

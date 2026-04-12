@@ -15,6 +15,12 @@ import { ChevronDown, ChevronRight, Loader2, Bot } from "lucide-react";
 import type { StreamingTask } from "@/types/streaming-task";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
+import {
+  formatMessageAttributionTooltip,
+  formatProviderHarnessLabel,
+  formatProviderModelEffortLabel,
+  getProviderHarnessBadgeStyle,
+} from "./provider-harness";
 
 // ============================================================================
 // Constants
@@ -69,6 +75,9 @@ function CompletedSummary({ task }: { task: StreamingTask }) {
   if (task.totalToolUseCount != null) {
     parts.push(`${task.totalToolUseCount} tool${task.totalToolUseCount !== 1 ? "s" : ""}`);
   }
+  if (task.estimatedUsd != null) {
+    parts.push(`$${task.estimatedUsd.toFixed(2)}`);
+  }
 
   if (parts.length === 0) return null;
 
@@ -88,6 +97,8 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
 }: TaskSubagentCardProps) {
   const isRunning = task.status === "running";
   const isCompleted = task.status === "completed";
+  const isFailed = task.status === "failed";
+  const isCancelled = task.status === "cancelled";
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -121,9 +132,43 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [task.childToolCalls.length, isRunning]);
 
-  const isAgentCall = task.toolName.toLowerCase() === "agent";
+  const loweredToolName = task.toolName.toLowerCase();
+  const isDelegateCall = loweredToolName === "delegate_start";
+  const isAgentCall = loweredToolName === "agent";
+  const providerHarnessLabel = formatProviderHarnessLabel(task.providerHarness);
+  const providerHarnessStyle = getProviderHarnessBadgeStyle(task.providerHarness);
+  const providerModelEffortLabel = formatProviderModelEffortLabel({
+    providerHarness: task.providerHarness,
+    providerSessionId: task.providerSessionId,
+    upstreamProvider: task.upstreamProvider,
+    providerProfile: task.providerProfile,
+    logicalModel: task.logicalModel,
+    effectiveModelId: task.effectiveModelId,
+    logicalEffort: task.logicalEffort,
+    effectiveEffort: task.effectiveEffort,
+    inputTokens: task.inputTokens,
+    outputTokens: task.outputTokens,
+    cacheCreationTokens: task.cacheCreationTokens,
+    cacheReadTokens: task.cacheReadTokens,
+    estimatedUsd: task.estimatedUsd,
+  });
+  const providerTooltip = formatMessageAttributionTooltip({
+    providerHarness: task.providerHarness,
+    providerSessionId: task.providerSessionId,
+    upstreamProvider: task.upstreamProvider,
+    providerProfile: task.providerProfile,
+    logicalModel: task.logicalModel,
+    effectiveModelId: task.effectiveModelId,
+    logicalEffort: task.logicalEffort,
+    effectiveEffort: task.effectiveEffort,
+    inputTokens: task.inputTokens,
+    outputTokens: task.outputTokens,
+    cacheCreationTokens: task.cacheCreationTokens,
+    cacheReadTokens: task.cacheReadTokens,
+    estimatedUsd: task.estimatedUsd,
+  });
   const subagentColor = getSubagentTypeColor(task.subagentType);
-  const modelColor = getModelColor(task.model);
+  const modelColor = getModelColor(task.effectiveModelId ?? task.logicalModel ?? task.model);
 
   return (
     <div
@@ -172,19 +217,21 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
             color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
           }}
         >
-          {isAgentCall ? "Agent" : "Task"}
+          {isDelegateCall ? "Delegate" : isAgentCall ? "Agent" : "Task"}
         </span>
 
         {/* Subagent type badge */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-            backgroundColor: subagentColor.bg,
-            color: subagentColor.text,
-          }}
-        >
-          {task.subagentType}
-        </span>
+        {!isDelegateCall && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+            style={{
+              backgroundColor: subagentColor.bg,
+              color: subagentColor.text,
+            }}
+          >
+            {task.subagentType}
+          </span>
+        )}
 
         {/* Description text */}
         <span
@@ -194,16 +241,41 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
           {task.description}
         </span>
 
+        {providerHarnessLabel && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+            style={providerHarnessStyle}
+            title={providerTooltip ?? undefined}
+          >
+            {providerHarnessLabel}
+          </span>
+        )}
+
         {/* Model badge */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-          style={{
-            backgroundColor: modelColor.bg,
-            color: modelColor.text,
-          }}
-        >
-          {task.model}
-        </span>
+        {(providerModelEffortLabel || task.model) && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{
+              backgroundColor: modelColor.bg,
+              color: modelColor.text,
+            }}
+            title={providerTooltip ?? undefined}
+          >
+            {providerModelEffortLabel ?? task.model}
+          </span>
+        )}
+
+        {(isFailed || isCancelled) && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+            style={{
+              backgroundColor: "hsla(0 70% 50% / 0.18)",
+              color: "hsl(0 70% 70%)",
+            }}
+          >
+            {task.status}
+          </span>
+        )}
 
         {/* Timer / Duration */}
         <span
@@ -264,6 +336,21 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
           {/* Completed state: summary */}
           {isCompleted && !hasChildCalls && (
             <CompletedSummary task={task} />
+          )}
+
+          {task.textOutput && (
+            <pre
+              className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64 mt-2"
+              style={{
+                backgroundColor: "var(--bg-surface, hsl(220 10% 10%))",
+                color: "var(--text-secondary, hsl(220 10% 80%))",
+                fontFamily: "var(--font-mono)",
+                wordBreak: "break-word",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {task.textOutput}
+            </pre>
           )}
         </div>
       )}

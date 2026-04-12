@@ -23,6 +23,10 @@ import {
   formatProviderHarnessLabel,
   getProviderHarnessBadgeStyle,
 } from "./provider-harness";
+import {
+  mergeDelegationContentBlocks,
+  mergeDelegationToolCalls,
+} from "./delegation-tool-calls";
 
 // ============================================================================
 // Types
@@ -131,14 +135,20 @@ export const MessageItem = React.memo(function MessageItem({
     (providerHarnessLabel !== null || modelEffortLabel !== null);
 
   // Use pre-parsed data directly (parsing now happens at API layer)
-  const parsedContentBlocks = contentBlocks ?? [];
-  const parsedToolCalls = toolCalls ?? [];
+  const parsedContentBlocks = useMemo(
+    () => mergeDelegationContentBlocks(contentBlocks ?? []),
+    [contentBlocks],
+  );
+  const parsedToolCalls = useMemo(
+    () => mergeDelegationToolCalls(toolCalls ?? []),
+    [toolCalls],
+  );
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
   // Collect IDs of child tool calls that belong to Task subagents.
   // These are embedded in Task result content blocks and should NOT render as top-level cards.
   const childToolCallIds = useMemo(() => {
-    const blocks = contentBlocks ?? [];
+    const blocks = parsedContentBlocks;
     if (blocks.length === 0) return new Set<string>();
     const ids = new Set<string>();
     for (const block of blocks) {
@@ -160,7 +170,7 @@ export const MessageItem = React.memo(function MessageItem({
       }
     }
     return ids;
-  }, [contentBlocks]);
+  }, [parsedContentBlocks]);
 
   return (
     <div

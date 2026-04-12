@@ -1055,6 +1055,120 @@ describe("useChatEvents", () => {
       expect(startedHandlers).toHaveLength(0);
       expect(completedHandlers).toHaveLength(0);
     });
+
+    it("should create a delegated streaming task from delegate_start tool calls", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_start",
+          tool_id: "toolu_delegate_001",
+          arguments: {
+            agent_name: "ralphx-execution-reviewer",
+            prompt: "Review the patch",
+            harness: "codex",
+            model: "gpt-5.4",
+          },
+          result: [{ type: "text", text: JSON.stringify({ job_id: "job-123", status: "running" }) }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+
+      const nextTasks = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map(),
+      );
+      const delegated = nextTasks.get("toolu_delegate_001");
+      expect(delegated).toBeDefined();
+      expect(delegated!.toolName).toBe("delegate_start");
+      expect(delegated!.description).toBe("ralphx-execution-reviewer");
+      expect(delegated!.delegatedJobId).toBe("job-123");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.logicalModel).toBe("gpt-5.4");
+      expect(delegated!.status).toBe("running");
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_001" }]);
+    });
+
+    it("should fold delegate_wait updates into the existing delegated streaming task", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_wait",
+          tool_id: "toolu_wait_001",
+          arguments: { job_id: "job-123" },
+          result: [{
+            type: "text",
+            text: JSON.stringify({
+              job_id: "job-123",
+              status: "completed",
+              content: "Delegated review finished",
+              delegated_status: {
+                latest_run: {
+                  harness: "codex",
+                  upstream_provider: "openai",
+                  provider_profile: "openai",
+                  logical_model: "gpt-5.4",
+                  effective_model_id: "gpt-5.4",
+                  logical_effort: "high",
+                  input_tokens: 100,
+                  output_tokens: 40,
+                  estimated_usd: 0.12,
+                  started_at: "2026-04-12T10:00:00Z",
+                  completed_at: "2026-04-12T10:00:05Z",
+                },
+              },
+            }),
+          }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      const prevMap = new Map<string, StreamingTask>([
+        ["toolu_delegate_001", {
+          toolUseId: "toolu_delegate_001",
+          toolName: "delegate_start",
+          description: "ralphx-execution-reviewer",
+          subagentType: "delegated",
+          model: "gpt-5.4",
+          status: "running",
+          startedAt: Date.now() - 5000,
+          delegatedJobId: "job-123",
+          childToolCalls: [],
+        }],
+      ]);
+      const nextMap = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        prevMap,
+      );
+      const delegated = nextMap.get("toolu_delegate_001");
+      expect(delegated).toBeDefined();
+      expect(delegated!.status).toBe("completed");
+      expect(delegated!.textOutput).toBe("Delegated review finished");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.upstreamProvider).toBe("openai");
+      expect(delegated!.providerProfile).toBe("openai");
+      expect(delegated!.effectiveModelId).toBe("gpt-5.4");
+      expect(delegated!.logicalEffort).toBe("high");
+      expect(delegated!.totalTokens).toBe(140);
+      expect(delegated!.estimatedUsd).toBe(0.12);
+    });
   });
 
   // --------------------------------------------------------------------------

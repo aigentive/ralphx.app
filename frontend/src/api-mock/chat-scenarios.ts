@@ -651,6 +651,41 @@ const chatScenarioFixtures: Record<MockChatScenarioName, MockChatScenario> = {
                 },
               ],
             },
+            {
+              type: "tool_use",
+              id: "delegate-start-1",
+              name: "delegate_start",
+              arguments: {
+                parent_session_id: IDEATION_REPLAY_CONTEXTS.ideation_widget_matrix.contextId,
+                agent_name: "ralphx-execution-reviewer",
+                prompt: "Review the delegated patch and report blockers with exact file references.",
+                harness: "codex",
+                model: "gpt-5.4",
+                logical_effort: "high",
+                sandbox_mode: "danger-full-access",
+              },
+              result: [
+                {
+                  type: "text",
+                  text: "{\"job_id\":\"delegate-job-1\",\"status\":\"running\",\"agent_name\":\"ralphx-execution-reviewer\",\"harness\":\"codex\",\"delegated_session_id\":\"delegated-session-1\"}",
+                },
+              ],
+            },
+            {
+              type: "tool_use",
+              id: "delegate-wait-1",
+              name: "delegate_wait",
+              arguments: {
+                job_id: "delegate-job-1",
+                include_delegated_status: true,
+              },
+              result: [
+                {
+                  type: "text",
+                  text: "{\"job_id\":\"delegate-job-1\",\"status\":\"completed\",\"content\":\"Delegated reviewer found one merge-blocking issue in src-tauri/src/http_server/handlers/coordination/mod.rs: the parent tool result still lacks durable parent-linked transcript metadata.\",\"delegated_status\":{\"conversation_id\":\"conv-delegated-1\",\"session\":{\"id\":\"delegated-session-1\",\"title\":\"Delegated reviewer\",\"status\":\"completed\",\"parent_context_type\":\"ideation\",\"parent_context_id\":\"session-widget-matrix\",\"agent_name\":\"ralphx-execution-reviewer\",\"harness\":\"codex\",\"provider_session_id\":\"thread-delegated-1\",\"created_at\":\"2026-04-10T08:12:00.000000Z\",\"updated_at\":\"2026-04-10T08:15:00.000000Z\",\"completed_at\":\"2026-04-10T08:15:00.000000Z\"},\"latest_run\":{\"agent_run_id\":\"delegated-run-1\",\"status\":\"completed\",\"started_at\":\"2026-04-10T08:12:10.000000Z\",\"completed_at\":\"2026-04-10T08:12:18.000000Z\",\"harness\":\"codex\",\"provider_session_id\":\"thread-delegated-1\",\"logical_model\":\"gpt-5.4\",\"effective_model_id\":\"gpt-5.4\",\"logical_effort\":\"high\",\"effective_effort\":\"high\",\"approval_policy\":\"never\",\"sandbox_mode\":\"danger-full-access\",\"input_tokens\":1240,\"output_tokens\":318,\"cache_read_tokens\":412,\"estimated_usd\":0.43},\"recent_messages\":[{\"role\":\"assistant\",\"content\":\"Delegated reviewer found one merge-blocking issue in src-tauri/src/http_server/handlers/coordination/mod.rs: the parent tool result still lacks durable parent-linked transcript metadata.\",\"created_at\":\"2026-04-10T08:12:18.000000Z\"}]}}",
+                },
+              ],
+            },
           ],
           sender: "lead",
           createdAt: "2026-04-10T08:15:00.000000Z",

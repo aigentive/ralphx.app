@@ -210,7 +210,7 @@ export function isDiffToolCall(name: string): boolean {
  */
 export function isTaskToolCall(name: string): boolean {
   const lower = name.toLowerCase();
-  return lower === "task" || lower === "agent";
+  return lower === "task" || lower === "agent" || lower === "delegate_start";
 }
 
 /**
