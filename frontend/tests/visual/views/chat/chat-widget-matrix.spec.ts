@@ -178,24 +178,85 @@ test.describe("Chat Widget Matrix", () => {
   test("native delegation task card states", async ({ page }, testInfo) => {
     await setupIdeationChatScenario(page, "ideation_widget_matrix");
 
-    const delegationCard = page
+    const completedDelegationCard = page
       .locator('[data-testid="task-tool-call-card"]')
       .filter({ hasText: "ralphx-execution-reviewer" })
       .first();
+    const failedDelegationCard = page
+      .locator('[data-testid="task-tool-call-card"]')
+      .filter({ hasText: "ralphx-execution-fixer" })
+      .first();
+    const cancelledDelegationCard = page
+      .locator('[data-testid="task-tool-call-card"]')
+      .filter({ hasText: "ralphx-merge-auditor" })
+      .first();
+    const agentCard = page
+      .locator('[data-testid="task-tool-call-card"]')
+      .filter({ hasText: "frontend-researcher" })
+      .first();
+    const taskCard = page
+      .locator('[data-testid="task-tool-call-card"]')
+      .filter({ hasText: "Run repository smoke checks" })
+      .first();
 
-    await expect(delegationCard).toBeVisible();
+    await expect(completedDelegationCard).toBeVisible();
+    await expect(failedDelegationCard).toBeVisible();
+    await expect(cancelledDelegationCard).toBeVisible();
+    await expect(agentCard).toBeVisible();
+    await expect(taskCard).toBeVisible();
+
     await expectAndAttachScreenshot(
-      delegationCard,
+      completedDelegationCard,
       "delegation-widget-collapsed.png",
       "delegation-widget-collapsed",
       testInfo.attach.bind(testInfo),
     );
-
-    await delegationCard.getByRole("button").click();
     await expectAndAttachScreenshot(
-      delegationCard,
+      failedDelegationCard,
+      "delegation-widget-failed.png",
+      "delegation-widget-failed",
+      testInfo.attach.bind(testInfo),
+    );
+    await expectAndAttachScreenshot(
+      cancelledDelegationCard,
+      "delegation-widget-cancelled.png",
+      "delegation-widget-cancelled",
+      testInfo.attach.bind(testInfo),
+    );
+    await expectAndAttachScreenshot(
+      agentCard,
+      "agent-widget-collapsed.png",
+      "agent-widget-collapsed",
+      testInfo.attach.bind(testInfo),
+    );
+    await expectAndAttachScreenshot(
+      taskCard,
+      "task-widget-collapsed.png",
+      "task-widget-collapsed",
+      testInfo.attach.bind(testInfo),
+    );
+
+    await completedDelegationCard.getByRole("button").click();
+    await expectAndAttachScreenshot(
+      completedDelegationCard,
       "delegation-widget-expanded.png",
       "delegation-widget-expanded",
+      testInfo.attach.bind(testInfo),
+    );
+
+    await agentCard.getByRole("button").click();
+    await expectAndAttachScreenshot(
+      agentCard,
+      "agent-widget-expanded.png",
+      "agent-widget-expanded",
+      testInfo.attach.bind(testInfo),
+    );
+
+    await taskCard.getByRole("button").click();
+    await expectAndAttachScreenshot(
+      taskCard,
+      "task-widget-expanded.png",
+      "task-widget-expanded",
       testInfo.attach.bind(testInfo),
     );
   });

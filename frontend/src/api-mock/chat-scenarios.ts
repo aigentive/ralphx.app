@@ -124,6 +124,7 @@ export const TASK_REPLAY_CONTEXTS: Record<
 const ideationReplayConversationId = IDEATION_REPLAY_CONTEXT.conversationId;
 const ideationWidgetMatrixConversationId =
   IDEATION_REPLAY_CONTEXTS.ideation_widget_matrix.conversationId;
+const ideationWidgetDelegatedConversationId = "conv-delegated-1";
 const executionReplayConversationId =
   TASK_REPLAY_CONTEXTS.execution_db_compact.conversationId;
 const reviewReplayConversationId =
@@ -432,6 +433,18 @@ const chatScenarioFixtures: Record<MockChatScenarioName, MockChatScenario> = {
         createdAt: "2026-04-10T08:10:00.000000Z",
         updatedAt: "2026-04-10T08:15:00.000000Z",
       }),
+      createConversation({
+        id: ideationWidgetDelegatedConversationId,
+        contextType: "project",
+        contextId: "project-mock-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-delegated-1",
+        title: "Delegated reviewer",
+        messageCount: 2,
+        lastMessageAt: "2026-04-10T08:12:18.000000Z",
+        createdAt: "2026-04-10T08:12:00.000000Z",
+        updatedAt: "2026-04-10T08:12:18.000000Z",
+      }),
     ],
     messages: {
       [ideationWidgetMatrixConversationId]: [
@@ -673,6 +686,46 @@ const chatScenarioFixtures: Record<MockChatScenarioName, MockChatScenario> = {
             },
             {
               type: "tool_use",
+              id: "delegate-start-failed-1",
+              name: "delegate_start",
+              arguments: {
+                parent_session_id: IDEATION_REPLAY_CONTEXTS.ideation_widget_matrix.contextId,
+                agent_name: "ralphx-execution-fixer",
+                prompt: "Patch the failing validation path and explain the root cause.",
+                harness: "claude",
+                model: "claude-sonnet-4",
+                logical_effort: "medium",
+                sandbox_mode: "danger-full-access",
+              },
+              result: [
+                {
+                  type: "text",
+                  text: "{\"job_id\":\"delegate-job-failed\",\"status\":\"failed\",\"content\":\"Delegated fixer failed after the validation command returned a non-zero exit code.\",\"delegated_status\":{\"session\":{\"id\":\"delegated-session-failed-1\",\"title\":\"Delegated fixer\",\"status\":\"failed\",\"agent_name\":\"ralphx-execution-fixer\",\"harness\":\"claude\",\"provider_session_id\":\"claude-thread-failed-1\"},\"latest_run\":{\"agent_run_id\":\"delegated-run-failed-1\",\"status\":\"failed\",\"started_at\":\"2026-04-10T08:13:10.000000Z\",\"completed_at\":\"2026-04-10T08:13:22.000000Z\",\"harness\":\"claude\",\"provider_session_id\":\"claude-thread-failed-1\",\"logical_model\":\"claude-sonnet-4\",\"effective_model_id\":\"claude-sonnet-4\",\"logical_effort\":\"medium\",\"effective_effort\":\"medium\",\"approval_policy\":\"never\",\"sandbox_mode\":\"danger-full-access\",\"input_tokens\":940,\"output_tokens\":201,\"estimated_usd\":0.29}}}",
+                },
+              ],
+            },
+            {
+              type: "tool_use",
+              id: "delegate-start-cancelled-1",
+              name: "delegate_start",
+              arguments: {
+                parent_session_id: IDEATION_REPLAY_CONTEXTS.ideation_widget_matrix.contextId,
+                agent_name: "ralphx-merge-auditor",
+                prompt: "Check whether the merge preconditions are still valid.",
+                harness: "codex",
+                model: "gpt-5.4-mini",
+                logical_effort: "low",
+                sandbox_mode: "danger-full-access",
+              },
+              result: [
+                {
+                  type: "text",
+                  text: "{\"job_id\":\"delegate-job-cancelled\",\"status\":\"cancelled\",\"content\":\"Delegated merge audit was cancelled before it produced a final recommendation.\",\"delegated_status\":{\"session\":{\"id\":\"delegated-session-cancelled-1\",\"title\":\"Delegated merge audit\",\"status\":\"cancelled\",\"agent_name\":\"ralphx-merge-auditor\",\"harness\":\"codex\",\"provider_session_id\":\"thread-cancelled-1\"},\"latest_run\":{\"agent_run_id\":\"delegated-run-cancelled-1\",\"status\":\"cancelled\",\"started_at\":\"2026-04-10T08:13:40.000000Z\",\"completed_at\":\"2026-04-10T08:13:46.000000Z\",\"harness\":\"codex\",\"provider_session_id\":\"thread-cancelled-1\",\"logical_model\":\"gpt-5.4-mini\",\"effective_model_id\":\"gpt-5.4-mini\",\"logical_effort\":\"low\",\"effective_effort\":\"low\",\"approval_policy\":\"never\",\"sandbox_mode\":\"danger-full-access\",\"input_tokens\":210,\"output_tokens\":0,\"estimated_usd\":0.02}}}",
+                },
+              ],
+            },
+            {
+              type: "tool_use",
               id: "delegate-wait-1",
               name: "delegate_wait",
               arguments: {
@@ -686,9 +739,94 @@ const chatScenarioFixtures: Record<MockChatScenarioName, MockChatScenario> = {
                 },
               ],
             },
+            {
+              type: "tool_use",
+              id: "agent-card-1",
+              name: "Agent",
+              arguments: {
+                name: "frontend-researcher",
+                description: "Inspect the current chat chrome and identify repeated badge logic.",
+                subagent_type: "Explore",
+                model: "sonnet",
+                prompt: "Audit the shared chat card styling and call out duplication.",
+              },
+              result: "Shared badge styles repeat across persisted and streaming task cards.\nagentId: agent123abc\n<usage>total_tokens: 1532\ntool_uses: 3\nduration_ms: 6200</usage>",
+            },
+            {
+              type: "tool_use",
+              id: "task-card-1",
+              name: "Task",
+              arguments: {
+                description: "Run repository smoke checks",
+                subagent_type: "general-purpose",
+                model: "opus",
+                prompt: "Run the smoke checks and summarize the result.",
+              },
+              result: [
+                {
+                  type: "text",
+                  text: "Smoke checks completed with one follow-up note.\nagentId: task123abc\n<usage>total_tokens: 2048\ntool_uses: 2\nduration_ms: 8200</usage>",
+                },
+                {
+                  type: "tool_use",
+                  id: "task-card-1-bash",
+                  name: "bash",
+                  arguments: { command: "npm --prefix frontend run typecheck" },
+                  result: "Typecheck completed cleanly.",
+                },
+              ],
+            },
           ],
           sender: "lead",
           createdAt: "2026-04-10T08:15:00.000000Z",
+        },
+      ],
+      [ideationWidgetDelegatedConversationId]: [
+        {
+          id: "msg-delegated-user-1",
+          sessionId: "delegated-session-1",
+          projectId: "project-mock-1",
+          taskId: null,
+          role: "user",
+          content: "Review the delegated patch and report blockers with exact file references.",
+          metadata: null,
+          parentMessageId: null,
+          conversationId: ideationWidgetDelegatedConversationId,
+          toolCalls: null,
+          contentBlocks: null,
+          sender: null,
+          createdAt: "2026-04-10T08:12:00.000000Z",
+        },
+        {
+          id: "msg-delegated-assistant-1",
+          sessionId: "delegated-session-1",
+          projectId: "project-mock-1",
+          taskId: null,
+          role: "assistant",
+          content: "Delegated reviewer found one merge-blocking issue in src-tauri/src/http_server/handlers/coordination/mod.rs: the parent tool result still lacks durable parent-linked transcript metadata.",
+          metadata: null,
+          parentMessageId: "msg-delegated-user-1",
+          conversationId: ideationWidgetDelegatedConversationId,
+          toolCalls: null,
+          contentBlocks: [
+            {
+              type: "text",
+              text: "I inspected the coordination handler first and then verified the parent linkage path.",
+            },
+            {
+              type: "tool_use",
+              id: "delegated-bash-1",
+              name: "bash",
+              arguments: { command: "rg -n \"parent_tool_use_id\" src-tauri/src/http_server/handlers/coordination/mod.rs" },
+              result: "src-tauri/src/http_server/handlers/coordination/mod.rs:208:        tool_use_id: payload.tool_use_id.clone()",
+            },
+            {
+              type: "text",
+              text: "Blocking issue: the parent tool result still lacked durable parent-linked transcript metadata in the stored path.",
+            },
+          ],
+          sender: null,
+          createdAt: "2026-04-10T08:12:18.000000Z",
         },
       ],
     },
