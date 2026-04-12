@@ -3,19 +3,20 @@ use crate::domain::agents::{AgentHarnessKind, AgentLane, LogicalEffort};
 use crate::infrastructure::agents::claude::agent_names::{
     SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
     SHORT_IDEATION_ADVOCATE, SHORT_IDEATION_CRITIC, SHORT_IDEATION_SPECIALIST_BACKEND,
-    SHORT_IDEATION_SPECIALIST_FRONTEND, SHORT_IDEATION_SPECIALIST_INFRA,
-    SHORT_IDEATION_SPECIALIST_CODE_QUALITY, SHORT_IDEATION_SPECIALIST_UX, SHORT_IDEATION_TEAM_LEAD,
+    SHORT_IDEATION_SPECIALIST_CODE_QUALITY, SHORT_IDEATION_SPECIALIST_FRONTEND,
+    SHORT_IDEATION_SPECIALIST_INFRA, SHORT_IDEATION_SPECIALIST_UX, SHORT_IDEATION_TEAM_LEAD,
     SHORT_IDEATION_TEAM_MEMBER, SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER,
     SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
     SHORT_PLAN_CRITIC_COMPLETENESS, SHORT_PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
-    SHORT_PLAN_VERIFIER,
-    SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT,
-    SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
+    SHORT_PLAN_VERIFIER, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER,
+    SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER,
+    SHORT_WORKER_TEAM,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
     has_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
 };
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 #[test]
 fn test_yaml_loaded_has_unique_names() {
@@ -37,7 +38,10 @@ fn test_get_allowed_tools_worker_agent() {
 
 #[test]
 fn test_get_allowed_tools_mcp_only_agent() {
-    assert_eq!(get_allowed_tools("ralphx-utility-session-namer"), Some(String::new()));
+    assert_eq!(
+        get_allowed_tools("ralphx-utility-session-namer"),
+        Some(String::new())
+    );
 }
 
 #[test]
@@ -54,7 +58,7 @@ fn test_get_preapproved_tools_worker_contains_expected() {
 #[test]
 fn test_default_base_tool_set_present_in_worker() {
     let tools = get_allowed_tools("ralphx-execution-worker").unwrap();
-    for t in DEFAULT_BASE_CLI_TOOLS {
+    for t in super::tool_sets::CANONICAL_BASE_TOOLS {
         assert!(tools.contains(t), "worker missing base tool {}", t);
     }
 }
@@ -164,9 +168,12 @@ fn test_live_runtime_agents_no_longer_reference_deprecated_plugin_prompt_paths()
 #[test]
 fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let prompt =
-        load_harness_agent_prompt(&project_root, "ralphx-plan-verifier", AgentPromptHarness::Claude)
-            .expect("failed to load canonical ralphx-plan-verifier prompt");
+    let prompt = load_harness_agent_prompt(
+        &project_root,
+        "ralphx-plan-verifier",
+        AgentPromptHarness::Claude,
+    )
+    .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
         prompt.contains("Task `agentId` is resumable, not complete"),
@@ -177,7 +184,9 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
         "ralphx-plan-verifier prompt must forbid context-dropping retry nudges"
     );
     assert!(
-        prompt.contains("required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`"),
+        prompt.contains(
+            "required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`"
+        ),
         "ralphx-plan-verifier prompt must restate the critic artifact schema in rescue guidance"
     );
 }
@@ -185,9 +194,12 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
 #[test]
 fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let prompt =
-        load_harness_agent_prompt(&project_root, "ralphx-plan-verifier", AgentPromptHarness::Claude)
-            .expect("failed to load canonical ralphx-plan-verifier prompt");
+    let prompt = load_harness_agent_prompt(
+        &project_root,
+        "ralphx-plan-verifier",
+        AgentPromptHarness::Claude,
+    )
+    .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
         prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
@@ -337,10 +349,12 @@ execution_defaults:
     assert!(!parsed.execution_defaults.project.pause_on_failure);
     assert_eq!(parsed.execution_defaults.global.global_max_concurrent, 28);
     assert_eq!(parsed.execution_defaults.global.global_ideation_max, 5);
-    assert!(parsed
-        .execution_defaults
-        .global
-        .allow_ideation_borrow_idle_execution);
+    assert!(
+        parsed
+            .execution_defaults
+            .global
+            .allow_ideation_borrow_idle_execution
+    );
 }
 
 #[test]
@@ -377,8 +391,14 @@ agent_harness_defaults:
     assert_eq!(ideation_primary.harness, AgentHarnessKind::Codex);
     assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(ideation_primary.effort, Some(LogicalEffort::XHigh));
-    assert_eq!(ideation_primary.approval_policy.as_deref(), Some("on-request"));
-    assert_eq!(ideation_primary.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(
+        ideation_primary.approval_policy.as_deref(),
+        Some("on-request")
+    );
+    assert_eq!(
+        ideation_primary.sandbox_mode.as_deref(),
+        Some("workspace-write")
+    );
     assert_eq!(
         ideation_primary.fallback_harness,
         Some(AgentHarnessKind::Claude)
@@ -449,8 +469,14 @@ fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
     assert_eq!(execution_worker.harness, AgentHarnessKind::Codex);
     assert_eq!(execution_worker.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(execution_worker.effort, Some(LogicalEffort::XHigh));
-    assert_eq!(execution_worker.approval_policy.as_deref(), Some("on-request"));
-    assert_eq!(execution_worker.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(
+        execution_worker.approval_policy.as_deref(),
+        Some("on-request")
+    );
+    assert_eq!(
+        execution_worker.sandbox_mode.as_deref(),
+        Some("workspace-write")
+    );
     assert_eq!(
         execution_worker.fallback_harness,
         Some(AgentHarnessKind::Claude)
@@ -668,13 +694,11 @@ fn test_runtime_settings_profile_override_ignores_blank_value() {
 
 #[test]
 fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
-    let selection = runtime_settings_profile_override_for_agent_with(
-        "ralphx-ideation",
-        &|name| match name {
+    let selection =
+        runtime_settings_profile_override_for_agent_with("ralphx-ideation", &|name| match name {
             "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => Some("default".to_string()),
             _ => None,
-        },
-    );
+        });
     assert_eq!(selection.as_deref(), Some("default"));
 }
 
@@ -925,7 +949,11 @@ fn test_memory_agents_have_write_mcp_tools() {
 fn test_read_only_agents_have_read_memory_tools() {
     let read_memory_tools = vec!["search_memories", "get_memory", "get_memories_for_paths"];
 
-    let agents_to_test = vec!["ralphx-execution-worker", "ralphx-execution-reviewer", "ralphx-execution-orchestrator"];
+    let agents_to_test = vec![
+        "ralphx-execution-worker",
+        "ralphx-execution-reviewer",
+        "ralphx-execution-orchestrator",
+    ];
 
     for agent_name in agents_to_test {
         if let Some(config) = get_agent_config(agent_name) {
@@ -962,7 +990,10 @@ fn test_memory_maintainer_has_cli_write_tools() {
 
     // Verify it's not MCP-only
     if let Some(config) = get_agent_config("ralphx-memory-maintainer") {
-        assert!(!config.mcp_only, "ralphx-memory-maintainer should have CLI tools");
+        assert!(
+            !config.mcp_only,
+            "ralphx-memory-maintainer should have CLI tools"
+        );
     }
 }
 
@@ -982,7 +1013,10 @@ fn test_memory_capture_has_read_cli_tools() {
 
     // Verify it's not MCP-only
     if let Some(config) = get_agent_config("ralphx-memory-capture") {
-        assert!(!config.mcp_only, "ralphx-memory-capture should have CLI tools");
+        assert!(
+            !config.mcp_only,
+            "ralphx-memory-capture should have CLI tools"
+        );
     }
 }
 
@@ -1008,7 +1042,8 @@ fn test_readonly_agent_has_get_plan_verification_not_update() {
 
 #[test]
 fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
-    let config = get_agent_config("ralphx-plan-verifier").expect("ralphx-plan-verifier should exist");
+    let config =
+        get_agent_config("ralphx-plan-verifier").expect("ralphx-plan-verifier should exist");
 
     for tool in [
         "get_session_plan",
@@ -1348,13 +1383,68 @@ agents:
         .expect("qa-prep should exist");
 
     assert!(!qa_prep.mcp_only);
-    assert_eq!(
-        qa_prep.resolved_cli_tools,
-        vec!["Read", "Grep", "Glob", "Bash", "Task"]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>()
-    );
+    let mut expected = super::tool_sets::CANONICAL_BASE_TOOLS
+        .iter()
+        .map(|tool| (*tool).to_string())
+        .collect::<Vec<_>>();
+    expected.push("Task".to_string());
+    assert_eq!(qa_prep.resolved_cli_tools, expected);
+}
+
+#[test]
+fn test_canonical_named_tool_set_overrides_divergent_runtime_yaml_tool_set() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+tool_sets:
+  base_tools: [Read]
+agents:
+  - name: ralphx-qa-prep
+    system_prompt_file: agents/ralphx-qa-prep/shared/prompt.md
+    tools: { extends: base_tools, include: [Task] }
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+
+    let mut expected = super::tool_sets::CANONICAL_BASE_TOOLS
+        .iter()
+        .map(|tool| (*tool).to_string())
+        .collect::<Vec<_>>();
+    expected.push("Task".to_string());
+
+    assert_eq!(qa_prep.resolved_cli_tools, expected);
+}
+
+#[test]
+fn test_runtime_yaml_tool_sets_stay_aligned_with_canonical_registry() {
+    #[derive(Deserialize)]
+    struct ToolSetConfig {
+        #[serde(default)]
+        tool_sets: std::collections::HashMap<String, Vec<String>>,
+    }
+
+    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
+    let parsed: ToolSetConfig = serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+
+    for (name, tools) in super::tool_sets::canonical_claude_tool_sets() {
+        let expected = tools
+            .iter()
+            .map(|tool| (*tool).to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            parsed.tool_sets.get(name),
+            Some(&expected),
+            "ralphx.yaml tool_sets.{name} should stay aligned with the canonical Claude tool-set registry"
+        );
+    }
 }
 
 // ── Agent extends inheritance tests ─────────────────────────────
@@ -1389,10 +1479,7 @@ agents:
     // model overridden by child
     assert_eq!(team.model.as_deref(), Some("opus"));
     // system_prompt_file overridden by child
-    assert_eq!(
-        team.system_prompt_file,
-        "plugins/app/agents/worker-team.md"
-    );
+    assert_eq!(team.system_prompt_file, "plugins/app/agents/worker-team.md");
     // tools inherited from parent (child didn't specify)
     assert!(team.resolved_cli_tools.contains(&"Write".to_string()));
     assert!(team.resolved_cli_tools.contains(&"Edit".to_string()));
@@ -1747,14 +1834,20 @@ fn test_resolve_effort_returns_per_agent_effort_for_known_agent() {
 fn test_resolve_effort_returns_global_default_for_unknown_agent() {
     use crate::infrastructure::agents::claude::resolve_effort;
     let effort = resolve_effort(Some("unknown-agent-xyz-that-does-not-exist"));
-    assert_eq!(effort, "medium", "unknown agent should fall back to global default_effort");
+    assert_eq!(
+        effort, "medium",
+        "unknown agent should fall back to global default_effort"
+    );
 }
 
 #[test]
 fn test_resolve_effort_returns_global_default_when_none() {
     use crate::infrastructure::agents::claude::resolve_effort;
     let effort = resolve_effort(None);
-    assert_eq!(effort, "medium", "None agent type should return global default_effort");
+    assert_eq!(
+        effort, "medium",
+        "None agent type should return global default_effort"
+    );
 }
 
 #[test]
@@ -1873,7 +1966,8 @@ agents:
 
 #[test]
 fn test_permission_mode_worker_is_accept_edits() {
-    let config = get_agent_config("ralphx-execution-worker").expect("ralphx-execution-worker should exist");
+    let config =
+        get_agent_config("ralphx-execution-worker").expect("ralphx-execution-worker should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1883,7 +1977,8 @@ fn test_permission_mode_worker_is_accept_edits() {
 
 #[test]
 fn test_permission_mode_coder_is_accept_edits() {
-    let config = get_agent_config("ralphx-execution-coder").expect("ralphx-execution-coder should exist");
+    let config =
+        get_agent_config("ralphx-execution-coder").expect("ralphx-execution-coder should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1893,7 +1988,8 @@ fn test_permission_mode_coder_is_accept_edits() {
 
 #[test]
 fn test_permission_mode_merger_is_accept_edits() {
-    let config = get_agent_config("ralphx-execution-merger").expect("ralphx-execution-merger should exist");
+    let config =
+        get_agent_config("ralphx-execution-merger").expect("ralphx-execution-merger should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1903,7 +1999,8 @@ fn test_permission_mode_merger_is_accept_edits() {
 
 #[test]
 fn test_permission_mode_worker_team_inherits_accept_edits() {
-    let config = get_agent_config("ralphx-execution-team-lead").expect("ralphx-execution-team-lead should exist");
+    let config = get_agent_config("ralphx-execution-team-lead")
+        .expect("ralphx-execution-team-lead should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1923,8 +2020,8 @@ fn test_permission_mode_qa_executor_is_accept_edits() {
 
 #[test]
 fn test_permission_mode_memory_maintainer_is_accept_edits() {
-    let config =
-        get_agent_config("ralphx-memory-maintainer").expect("ralphx-memory-maintainer should exist");
+    let config = get_agent_config("ralphx-memory-maintainer")
+        .expect("ralphx-memory-maintainer should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1934,7 +2031,8 @@ fn test_permission_mode_memory_maintainer_is_accept_edits() {
 
 #[test]
 fn test_permission_mode_memory_capture_is_accept_edits() {
-    let config = get_agent_config("ralphx-memory-capture").expect("ralphx-memory-capture should exist");
+    let config =
+        get_agent_config("ralphx-memory-capture").expect("ralphx-memory-capture should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
@@ -1947,8 +2045,7 @@ fn test_permission_mode_chat_agent_is_none() {
     // Non-worker agents should NOT have a permission_mode override (inherits global "default")
     let config = get_agent_config("ralphx-chat-task").expect("ralphx-chat-task should exist");
     assert_eq!(
-        config.permission_mode,
-        None,
+        config.permission_mode, None,
         "ralphx-chat-task should not have a per-agent permission_mode override"
     );
 }
@@ -1972,9 +2069,14 @@ fn test_get_agent_config_accepts_legacy_agent_aliases() {
 #[test]
 fn test_preapproved_tools_always_contains_permission_request() {
     // Every known agent should have permission_request in their preapproved tools
-    for agent_name in &["ralphx-execution-worker", "ralphx-execution-coder", "ralphx-execution-merger", "ralphx-utility-session-namer", "ralphx-chat-task"] {
-        let tools = get_preapproved_tools(agent_name)
-            .unwrap_or_default();
+    for agent_name in &[
+        "ralphx-execution-worker",
+        "ralphx-execution-coder",
+        "ralphx-execution-merger",
+        "ralphx-utility-session-namer",
+        "ralphx-chat-task",
+    ] {
+        let tools = get_preapproved_tools(agent_name).unwrap_or_default();
         assert!(
             tools.contains("mcp__ralphx__permission_request"),
             "Agent {} missing mcp__ralphx__permission_request in preapproved tools: {}",
@@ -1990,14 +2092,20 @@ fn test_preapproved_tools_always_contains_permission_request() {
 fn test_ui_feature_flags_default_all_enabled() {
     let flags = UiFeatureFlagsConfig::default();
     assert!(flags.activity_page, "activity_page should default to true");
-    assert!(flags.extensibility_page, "extensibility_page should default to true");
+    assert!(
+        flags.extensibility_page,
+        "extensibility_page should default to true"
+    );
     assert!(flags.battle_mode, "battle_mode should default to true");
 }
 
 #[test]
 fn test_ui_config_default_no_feature_flags() {
     let ui = UiConfig::default();
-    assert!(ui.feature_flags.is_none(), "UiConfig::default() should have no feature_flags");
+    assert!(
+        ui.feature_flags.is_none(),
+        "UiConfig::default() should have no feature_flags"
+    );
 }
 
 #[test]
@@ -2009,8 +2117,14 @@ ui:
     extensibility_page: true
 "#;
     let cfg = parse_config_no_env_overrides(yaml).expect("should parse yaml with ui section");
-    assert!(!cfg.runtime.ui_feature_flags.activity_page, "activity_page should be false from yaml");
-    assert!(cfg.runtime.ui_feature_flags.extensibility_page, "extensibility_page should be true");
+    assert!(
+        !cfg.runtime.ui_feature_flags.activity_page,
+        "activity_page should be false from yaml"
+    );
+    assert!(
+        cfg.runtime.ui_feature_flags.extensibility_page,
+        "extensibility_page should be true"
+    );
 }
 
 #[test]
@@ -2024,9 +2138,18 @@ claude:
 agents: []
 "#;
     let cfg = parse_config_no_env_overrides(yaml).expect("should parse yaml without ui section");
-    assert!(cfg.runtime.ui_feature_flags.activity_page, "should default to true when ui section absent");
-    assert!(cfg.runtime.ui_feature_flags.extensibility_page, "should default to true when ui section absent");
-    assert!(cfg.runtime.ui_feature_flags.battle_mode, "should default to true when ui section absent");
+    assert!(
+        cfg.runtime.ui_feature_flags.activity_page,
+        "should default to true when ui section absent"
+    );
+    assert!(
+        cfg.runtime.ui_feature_flags.extensibility_page,
+        "should default to true when ui section absent"
+    );
+    assert!(
+        cfg.runtime.ui_feature_flags.battle_mode,
+        "should default to true when ui section absent"
+    );
 }
 
 #[test]
@@ -2048,8 +2171,14 @@ fn test_env_override_activity_page_false() {
         "RALPHX_UI_ACTIVITY_PAGE" => Some("false".to_string()),
         _ => None,
     });
-    assert!(!cfg.ui_feature_flags.activity_page, "env override false should disable activity_page");
-    assert!(cfg.ui_feature_flags.extensibility_page, "extensibility_page untouched");
+    assert!(
+        !cfg.ui_feature_flags.activity_page,
+        "env override false should disable activity_page"
+    );
+    assert!(
+        cfg.ui_feature_flags.extensibility_page,
+        "extensibility_page untouched"
+    );
 }
 
 #[test]
@@ -2075,8 +2204,14 @@ fn test_env_override_true_value_enables_flag() {
         "RALPHX_UI_EXTENSIBILITY_PAGE" => Some("1".to_string()),
         _ => None,
     });
-    assert!(cfg.ui_feature_flags.activity_page, "env 'true' should enable activity_page");
-    assert!(cfg.ui_feature_flags.extensibility_page, "env '1' should enable extensibility_page");
+    assert!(
+        cfg.ui_feature_flags.activity_page,
+        "env 'true' should enable activity_page"
+    );
+    assert!(
+        cfg.ui_feature_flags.extensibility_page,
+        "env '1' should enable extensibility_page"
+    );
 }
 
 #[test]
@@ -2098,9 +2233,18 @@ fn test_env_override_battle_mode() {
         "RALPHX_UI_BATTLE_MODE" => Some("false".to_string()),
         _ => None,
     });
-    assert!(!cfg.ui_feature_flags.battle_mode, "env 'false' should disable battle_mode");
-    assert!(cfg.ui_feature_flags.activity_page, "activity_page untouched");
-    assert!(cfg.ui_feature_flags.extensibility_page, "extensibility_page untouched");
+    assert!(
+        !cfg.ui_feature_flags.battle_mode,
+        "env 'false' should disable battle_mode"
+    );
+    assert!(
+        cfg.ui_feature_flags.activity_page,
+        "activity_page untouched"
+    );
+    assert!(
+        cfg.ui_feature_flags.extensibility_page,
+        "extensibility_page untouched"
+    );
 
     // Override battle_mode to true via "1"
     cfg.ui_feature_flags.battle_mode = false;
@@ -2108,7 +2252,10 @@ fn test_env_override_battle_mode() {
         "RALPHX_UI_BATTLE_MODE" => Some("1".to_string()),
         _ => None,
     });
-    assert!(cfg.ui_feature_flags.battle_mode, "env '1' should enable battle_mode");
+    assert!(
+        cfg.ui_feature_flags.battle_mode,
+        "env '1' should enable battle_mode"
+    );
 }
 
 #[test]

@@ -20,7 +20,19 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 | 2 | Canonical `agents/<agent>/agent.yaml` `capabilities.mcp_tools` for migrated agents; `ralphx.yaml` `mcp_tools` for the rest | What Rust injects via `--allowed-tools` at runtime | Yes |
 | 3 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
 
-**How it works:** Rust `create_mcp_config()` injects `--allowed-tools=tool1,tool2,...` from the runtime agent config. For migrated agents that list `capabilities.mcp_tools`, canonical agent metadata overrides divergent `ralphx.yaml` `mcp_tools`; for agents not yet migrated, `ralphx.yaml` still feeds runtime grants. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
+**How it works:** Rust `create_mcp_config()` injects `--allowed-tools=tool1,tool2,...` from the runtime agent config. For migrated agents that list `capabilities.mcp_tools`, canonical agent metadata overrides divergent `ralphx.yaml` `mcp_tools`; for agents not yet migrated, `ralphx.yaml` still feeds runtime grants. Claude native CLI tool specs now also prefer canonical `agents/<agent>/agent.yaml` `harnesses.claude.tools`, and the named Claude tool sets (`base_tools`, `critic_tools`) now come from the Rust runtime registry rather than `ralphx.yaml`. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
+
+## Named Claude Tool Sets
+
+| Tool Set | Resolved Tools | Source of Truth |
+|-------|------|----------|
+| `base_tools` | `Read`, `Grep`, `Glob`, `Bash`, `WebFetch`, `WebSearch`, `Skill`, `TaskCreate`, `TaskUpdate`, `TaskGet`, `TaskList`, `TaskOutput`, `KillShell`, `MCPSearch` | `src-tauri/src/infrastructure/agents/claude/agent_config/tool_sets.rs` |
+| `critic_tools` | `Read`, `Grep`, `Glob` | `src-tauri/src/infrastructure/agents/claude/agent_config/tool_sets.rs` |
+
+Rule:
+- canonical per-agent ownership stays `harnesses.claude.tools: { extends, include, mcp_only }`
+- named set definitions live in the Rust registry, not `ralphx.yaml`
+- `ralphx.yaml` copies are compatibility/debug mirrors and should stay aligned, not become the authoritative source
 
 **Delegation policy note:** Non-team RalphX-native delegation topology now belongs in canonical `agents/<agent>/agent.yaml` under `delegation.allowed_targets`; backend `delegate_start`, auto-generated delegation system instructions, and MCP delegation-tool visibility must derive from that same allowlist instead of prompt-only conventions. See `delegation-topology.md`.
 

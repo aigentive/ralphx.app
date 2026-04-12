@@ -1,5 +1,6 @@
 pub mod runtime_config;
 pub mod team_config;
+mod tool_sets;
 mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
@@ -10,14 +11,14 @@ use crate::domain::agents::{
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
-    CanonicalClaudeToolSpec,
-    try_load_canonical_claude_metadata,
+    try_load_canonical_claude_metadata, CanonicalClaudeToolSpec,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use tool_sets::canonical_claude_tool_sets;
 
 #[allow(unused_imports)]
 pub use team_config::{
@@ -45,16 +46,6 @@ fn validate_effort(value: &str, agent_name: &str) -> bool {
 const MEMORY_SKILLS: &[&str] = &[
     "Skill(ralphx:rule-manager)",
     "Skill(ralphx:knowledge-capture)",
-];
-
-const DEFAULT_BASE_CLI_TOOLS: &[&str] = &[
-    "Read",
-    "Grep",
-    "Glob",
-    "Bash",
-    "WebFetch",
-    "WebSearch",
-    "Skill",
 ];
 
 #[derive(Debug, Clone)]
@@ -361,10 +352,25 @@ fn resolve_tools_from_spec(
 
     let extends = tools.extends.as_deref().unwrap_or("base_tools");
 
-    if let Some(base) = tool_sets.get(extends) {
+    if let Some(base) = canonical_claude_tool_sets().get(extends) {
+        if let Some(yaml_base) = tool_sets.get(extends) {
+            let canonical = base
+                .iter()
+                .map(|tool| (*tool).to_string())
+                .collect::<Vec<_>>();
+            if yaml_base != &canonical {
+                tracing::warn!(
+                    agent = %agent_name,
+                    tool_set = %extends,
+                    yaml_tools = ?yaml_base,
+                    canonical_tools = ?canonical,
+                    "Canonical Claude tool set overrides divergent runtime YAML tool set"
+                );
+            }
+        }
+        out.extend(base.iter().map(|tool| (*tool).to_string()));
+    } else if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
-    } else if extends == "base_tools" {
-        out.extend(DEFAULT_BASE_CLI_TOOLS.iter().map(|t| (*t).to_string()));
     } else {
         tracing::warn!(agent = %agent_name, tool_set = %extends, "Unknown tools.extends set; using include only");
     }
@@ -445,7 +451,9 @@ fn resolve_preapproved_cli_tools(project_root: &Path, raw: &AgentConfigRaw) -> V
         return raw.preapproved_cli_tools.clone();
     }
 
-    if !raw.preapproved_cli_tools.is_empty() && raw.preapproved_cli_tools != metadata.preapproved_cli_tools {
+    if !raw.preapproved_cli_tools.is_empty()
+        && raw.preapproved_cli_tools != metadata.preapproved_cli_tools
+    {
         tracing::warn!(
             agent = %raw.name,
             runtime_preapproved_cli_tools = ?raw.preapproved_cli_tools,
@@ -513,7 +521,9 @@ fn resolve_permission_mode(project_root: &Path, raw: &AgentConfigRaw) -> Option<
         return raw.permission_mode.clone();
     };
 
-    if raw.permission_mode.as_deref().is_some() && raw.permission_mode.as_deref() != Some(permission_mode.as_str()) {
+    if raw.permission_mode.as_deref().is_some()
+        && raw.permission_mode.as_deref() != Some(permission_mode.as_str())
+    {
         tracing::warn!(
             agent = %raw.name,
             runtime_permission_mode = ?raw.permission_mode,
@@ -603,7 +613,10 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
             .clone()
             .or_else(|| parent.settings_profile.clone()),
         effort: child.effort.clone().or_else(|| parent.effort.clone()),
-        permission_mode: child.permission_mode.clone().or_else(|| parent.permission_mode.clone()),
+        permission_mode: child
+            .permission_mode
+            .clone()
+            .or_else(|| parent.permission_mode.clone()),
     }
 }
 
@@ -631,8 +644,8 @@ fn parse_config_with_lookup(
 
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(resolved_raw_agents.len());
-    let global_profile_selection =
-        runtime_settings_profile_override_with(lookup).or_else(|| parsed.claude.settings_profile.clone());
+    let global_profile_selection = runtime_settings_profile_override_with(lookup)
+        .or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
     let canonical_project_root = canonical_agent_project_root();
@@ -674,8 +687,7 @@ fn parse_config_with_lookup(
             resolved_settings.clone()
         };
         let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
-        let preapproved_cli_tools =
-            resolve_preapproved_cli_tools(&canonical_project_root, raw);
+        let preapproved_cli_tools = resolve_preapproved_cli_tools(&canonical_project_root, raw);
         let model = resolve_model(&canonical_project_root, raw);
         let effort = resolve_effort(&canonical_project_root, raw);
         let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
@@ -729,7 +741,9 @@ fn parse_config_with_lookup(
         limits: parsed.limits,
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
-        child_session_activity_threshold_secs: parsed.ideation.child_session_activity_threshold_secs,
+        child_session_activity_threshold_secs: parsed
+            .ideation
+            .child_session_activity_threshold_secs,
         ui_feature_flags,
     };
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
@@ -1073,10 +1087,7 @@ fn merge_settings(base: serde_json::Value, overlay: serde_json::Value) -> serde_
     }
 }
 
-fn apply_prefixed_env_overrides(
-    settings: &mut serde_json::Value,
-    profile_name: Option<&str>,
-) {
+fn apply_prefixed_env_overrides(settings: &mut serde_json::Value, profile_name: Option<&str>) {
     apply_prefixed_env_overrides_with(settings, profile_name, &|name| std::env::var(name).ok());
 }
 
@@ -1091,8 +1102,9 @@ fn apply_prefixed_env_overrides_with(
 
     let normalized_profile = profile_name.map(normalize_profile_name_for_env);
     for (target_key, target_value) in env_settings.iter_mut() {
-        let profile_source_key =
-            normalized_profile.as_ref().map(|profile| format!("RALPHX_{profile}_{target_key}"));
+        let profile_source_key = normalized_profile
+            .as_ref()
+            .map(|profile| format!("RALPHX_{profile}_{target_key}"));
         let generic_source_key = format!("RALPHX_{target_key}");
 
         let value = profile_source_key
@@ -1225,17 +1237,19 @@ pub fn defer_merge_enabled() -> bool {
 }
 
 pub fn file_logging_enabled() -> bool {
-    LOADED_CONFIG_CELL
-        .get_or_init(load_config)
-        .file_logging
+    LOADED_CONFIG_CELL.get_or_init(load_config).file_logging
 }
 
 pub fn execution_defaults_config() -> &'static ExecutionDefaultsConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).execution_defaults
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .execution_defaults
 }
 
 pub fn agent_harness_defaults_config() -> &'static AgentHarnessDefaultsConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).agent_harness_defaults
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .agent_harness_defaults
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
