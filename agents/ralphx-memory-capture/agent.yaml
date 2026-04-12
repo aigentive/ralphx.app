@@ -1,6 +1,14 @@
 name: ralphx-memory-capture
 role: memory_capture
 description: "Background agent for extracting high-value knowledge from conversations"
+capabilities:
+  mcp_tools:
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - get_conversation_transcript
+    - upsert_memories
+    - mark_memory_obsolete
 harnesses:
   claude:
     model: sonnet
@@ -10,3 +18,12 @@ harnesses:
       include:
         - Write
         - Edit
+    preapproved_cli_tools:
+      - Read
+      - Grep
+      - Glob
+      - WebFetch
+      - WebSearch
+      - Bash
+      - Write
+      - Edit

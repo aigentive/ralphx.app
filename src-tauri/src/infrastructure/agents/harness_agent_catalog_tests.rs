@@ -132,6 +132,17 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 )];
 
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
+    "ralphx-ideation",
+    "ralphx-ideation-readonly",
+    "ralphx-execution-worker",
+    "ralphx-execution-coder",
+    "ralphx-execution-reviewer",
+    "ralphx-qa-executor",
+    "ralphx-research-deep-researcher",
+    "ralphx-execution-merger",
+    "ralphx-memory-maintainer",
+    "ralphx-memory-capture",
+    "ralphx-ideation-team-lead",
     "ralphx-utility-session-namer",
     "ralphx-chat-task",
     "ralphx-chat-project",
@@ -221,6 +232,11 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 ];
 
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
+    "ralphx-execution-worker",
+    "ralphx-execution-coder",
+    "ralphx-execution-merger",
+    "ralphx-memory-maintainer",
+    "ralphx-memory-capture",
     "ralphx-utility-session-namer",
     "ralphx-chat-task",
     "ralphx-chat-project",
@@ -313,6 +329,12 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ("ralphx-project-analyzer", "base_tools", &[], false),
     ("ralphx-ideation", "base_tools", &["Task"], false),
     ("ralphx-ideation-readonly", "base_tools", &["Task"], false),
+    (
+        "ralphx-ideation-team-lead",
+        "base_tools",
+        &["Task", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
+        false,
+    ),
     ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
     ("ralphx-execution-coder", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
     ("ralphx-execution-reviewer", "base_tools", &["Task"], false),

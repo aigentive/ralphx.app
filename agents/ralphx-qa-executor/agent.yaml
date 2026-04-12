@@ -1,6 +1,8 @@
 name: ralphx-qa-executor
 role: qa_executor
 description: "Executes QA tests via agent-browser and evaluates results"
+capabilities:
+  mcp_tools: []
 harnesses:
   claude:
     model: sonnet

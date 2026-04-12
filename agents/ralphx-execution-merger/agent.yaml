@@ -1,6 +1,20 @@
 name: ralphx-execution-merger
 role: merger
 description: "Resolves merge conflicts that programmatic rebase+merge couldn't handle"
+capabilities:
+  mcp_tools:
+    - report_conflict
+    - report_incomplete
+    - complete_merge
+    - get_merge_target
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+    - get_task_context
+    - get_project_analysis
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
 harnesses:
   claude:
     model: opus
@@ -10,6 +24,12 @@ harnesses:
       include:
         - Edit
         - Task
+    preapproved_cli_tools:
+      - Read
+      - Edit
+      - Bash
+      - Task(Explore)
+      - Task(Plan)
 delegation:
   allowed_targets:
     - ralphx-research-deep-researcher

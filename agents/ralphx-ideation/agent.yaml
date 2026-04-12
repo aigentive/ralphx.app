@@ -1,7 +1,45 @@
----
 name: ralphx-ideation
 role: ideation_orchestrator
 description: "Facilitates ideation sessions and generates task proposals for RalphX"
+capabilities:
+  mcp_tools:
+    - create_task_proposal
+    - update_task_proposal
+    - archive_task_proposal
+    - delete_task_proposal
+    - list_session_proposals
+    - get_proposal
+    - analyze_session_dependencies
+    - create_plan_artifact
+    - update_plan_artifact
+    - edit_plan_artifact
+    - get_artifact
+    - link_proposals_to_plan
+    - get_session_plan
+    - ask_user_question
+    - create_child_session
+    - get_parent_session_context
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+    - get_session_messages
+    - update_plan_verification
+    - get_plan_verification
+    - revert_and_skip
+    - stop_verification
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - get_acceptance_status
+    - get_pending_confirmations
+    - get_verification_confirmation_status
+    - list_projects
+    - create_cross_project_session
+    - cross_project_guide
+    - get_child_session_status
+    - send_ideation_session_message
+    - finalize_proposals
+    - migrate_proposals
 harnesses:
   claude:
     model: opus

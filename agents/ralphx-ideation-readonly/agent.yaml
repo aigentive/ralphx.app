@@ -1,6 +1,21 @@
 name: ralphx-ideation-readonly
 role: ideation_orchestrator_readonly
 description: "Read-only ideation assistant for accepted sessions"
+capabilities:
+  mcp_tools:
+    - list_session_proposals
+    - get_proposal
+    - get_artifact
+    - get_session_plan
+    - get_parent_session_context
+    - create_child_session
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+    - get_plan_verification
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
 harnesses:
   claude:
     model: opus
