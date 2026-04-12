@@ -826,7 +826,7 @@ agents:
     system_prompt_file: agents/ralphx-qa-prep/shared/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
-    mcp_tools: []
+    mcp_tools: [fs_read_file, fs_list_dir, fs_grep, fs_glob]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-qa-executor
@@ -944,14 +944,14 @@ agents:
     system_prompt_file: agents/ralphx-plan-critic-completeness/claude/prompt.md
     model: opus
     tools: { extends: critic_tools }
-    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
+    mcp_tools: [fs_read_file, fs_list_dir, fs_grep, fs_glob, get_session_plan, get_artifact, create_team_artifact]
     preapproved_cli_tools: []
 
   - name: ralphx-plan-critic-implementation-feasibility
     system_prompt_file: agents/ralphx-plan-critic-implementation-feasibility/claude/prompt.md
     model: opus
     tools: { extends: critic_tools }
-    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
+    mcp_tools: [fs_read_file, fs_list_dir, fs_grep, fs_glob, get_session_plan, get_artifact, create_team_artifact]
     preapproved_cli_tools: []
 
   # --- Plan verifier agent (owns the verification round loop) ---
@@ -962,6 +962,10 @@ agents:
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         get_session_plan,
         get_session_messages,
         get_verification_round_artifacts,
@@ -1080,6 +1084,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1101,6 +1109,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1122,6 +1134,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1143,6 +1159,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1164,6 +1184,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         create_team_artifact,
         get_team_artifacts,
         get_session_plan,
@@ -1176,6 +1200,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         create_team_artifact,
         get_team_artifacts,
         get_session_plan,
@@ -1188,6 +1216,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         create_team_artifact,
         get_team_artifacts,
         get_session_plan,
@@ -1204,6 +1236,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         create_team_artifact,
         get_team_artifacts,
         get_session_plan,
@@ -1216,6 +1252,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1237,6 +1277,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         # Team artifact tools
         create_team_artifact,
         get_team_artifacts,
@@ -1258,6 +1302,10 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
+        fs_read_file,
+        fs_list_dir,
+        fs_grep,
+        fs_glob,
         create_team_artifact,
         get_team_artifacts,
         get_session_plan,

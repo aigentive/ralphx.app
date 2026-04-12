@@ -1,4 +1,4 @@
-use super::compose_codex_prompt;
+use super::{build_codex_mcp_overrides, compose_codex_prompt};
 use std::path::PathBuf;
 
 fn create_plugin_dir(root: &std::path::Path) -> PathBuf {
@@ -128,5 +128,39 @@ fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent
     assert_eq!(
         composed, "User prompt",
         "canonical agents without a codex prompt should not silently inherit the legacy claude prompt"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_includes_runtime_feature_flags_from_agent_metadata() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(root.join("agents/ralphx-plan-verifier/codex"))
+        .expect("create canonical codex dir");
+    std::fs::write(
+        root.join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        root.join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    )
+    .expect("write codex metadata");
+    std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build"))
+        .expect("create fake mcp build dir");
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    )
+    .expect("write fake mcp server");
+
+    let overrides =
+        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false).expect("overrides");
+
+    assert!(
+        overrides.iter().any(|entry| entry == "features.shell_tool=false"),
+        "Codex runtime feature flags should flow into config overrides: {overrides:?}"
     );
 }

@@ -10,6 +10,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
+import { FILESYSTEM_TOOLS } from "./filesystem-tools.js";
 import {
   ORCHESTRATOR_IDEATION,
   ORCHESTRATOR_IDEATION_READONLY,
@@ -55,6 +56,7 @@ import {
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
  */
 export const ALL_TOOLS: Tool[] = [
+  ...FILESYSTEM_TOOLS,
   // ========================================================================
   // IDEATION TOOLS (ralphx-ideation agent)
   // ========================================================================
@@ -2110,7 +2112,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   ],
   // These agents have NO MCP tools - they use filesystem tools only
   [SUPERVISOR]: [],
-  [QA_PREP]: [],
+  [QA_PREP]: ["fs_read_file", "fs_list_dir", "fs_grep", "fs_glob"],
   [QA_TESTER]: [],
   // Memory agents - write-only memory tools (RESTRICTED - do not grant to other agents)
   [MEMORY_MAINTAINER]: [
@@ -2206,6 +2208,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   // Ideation specialist agents - domain research (read-only)
   ...((): Record<string, string[]> => {
     const IDEATION_SPECIALIST_RESEARCH_TOOLS = [
+      "fs_read_file",
+      "fs_list_dir",
+      "fs_grep",
+      "fs_glob",
       "create_team_artifact",
       "get_team_artifacts",
       "get_session_plan",
@@ -2218,6 +2224,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
       "get_memories_for_paths",
     ];
     const IDEATION_SPECIALIST_ENRICHMENT_TOOLS = [
+      "fs_read_file",
+      "fs_list_dir",
+      "fs_grep",
+      "fs_glob",
       "create_team_artifact",
       "get_team_artifacts",
       "get_session_plan",
@@ -2318,17 +2328,29 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   ],
   // Plan critic agents - read-only, only need plan access tools
   [PLAN_CRITIC_COMPLETENESS]: [
+    "fs_read_file",
+    "fs_list_dir",
+    "fs_grep",
+    "fs_glob",
     "get_session_plan",
     "get_artifact",
     "create_team_artifact",
   ],
   [PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY]: [
+    "fs_read_file",
+    "fs_list_dir",
+    "fs_grep",
+    "fs_glob",
     "get_session_plan",
     "get_artifact",
     "create_team_artifact",
   ],
   // Plan verifier agent - owns the verification round loop
   [PLAN_VERIFIER]: [
+    "fs_read_file",
+    "fs_list_dir",
+    "fs_grep",
+    "fs_glob",
     "get_session_plan",
     "get_session_messages",
     "get_verification_round_artifacts",

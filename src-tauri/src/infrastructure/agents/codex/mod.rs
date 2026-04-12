@@ -15,7 +15,8 @@ use crate::infrastructure::agents::claude::{
     get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    has_canonical_agent_definition, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
+    has_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
+    resolve_project_root_from_plugin_dir,
     AgentPromptHarness,
 };
 pub use codex_cli_client::CodexCliClient;
@@ -117,6 +118,7 @@ pub fn build_codex_mcp_overrides(
 ) -> Result<Vec<String>, String> {
     let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
     let short_name = mcp_agent_type(agent_name);
+    let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     if !mcp_server_path.exists() {
         return Err(format!(
@@ -170,6 +172,11 @@ pub fn build_codex_mcp_overrides(
             "mcp_servers.{mcp_server_name}.enabled_tools={}",
             encode_codex_string_array(&tools)?
         ));
+    }
+
+    let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
+    for (feature_name, enabled) in codex_metadata.runtime_features {
+        overrides.push(format!("features.{feature_name}={enabled}"));
     }
 
     Ok(overrides)

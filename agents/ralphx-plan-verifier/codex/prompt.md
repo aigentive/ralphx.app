@@ -21,6 +21,8 @@ When this prompt says to dispatch critics or specialists, use the RalphX delegat
 
 Assume the MCP tool surface named in this prompt is available. Do NOT claim the tool transport is missing, do NOT narrate shell-local fallbacks like reading SQLite or artifact files directly, and do NOT substitute local filesystem/database inspection for the named verification MCP tools unless a tool call actually failed and the prompt explicitly authorizes a fallback.
 
+Do NOT use built-in Codex `web_search`, built-in `command_execution`, or placeholder MCP probes against dummy/unknown servers for this verifier role. Use the RalphX MCP tools named in this prompt directly.
+
 Do not collapse these delegated prompts into vague summaries. Preserve `SESSION_ID`, `ROUND`, artifact title prefixes, JSON schema requirements, and the requirement to publish artifacts on the PARENT ideation session.
 
 ## Step 0 — Setup (MANDATORY before anything else)

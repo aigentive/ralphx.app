@@ -10,7 +10,9 @@ use crate::infrastructure::agents::claude::{
     AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, SchedulerConfig,
     SpecialistEntry, UiFeatureFlagsConfig, VerificationConfig,
 };
-use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
+use crate::infrastructure::agents::{
+    find_codex_cli, probe_codex_cli, resolve_codex_cli, CodexCliCapabilities,
+};
 use which::which;
 
 pub(crate) type HarnessProbeFn = fn() -> HarnessRuntimeProbe;
@@ -173,11 +175,18 @@ fn resolve_claude_chat_harness_cli(
     })
 }
 
-fn resolve_codex_chat_harness_cli(_: &Path) -> Result<ResolvedChatHarnessCli, String> {
-    let resolved_codex = resolve_codex_cli()?;
+fn resolve_codex_chat_harness_cli(codex_cli_path: &Path) -> Result<ResolvedChatHarnessCli, String> {
+    if !codex_cli_path.exists() && which(codex_cli_path).is_err() {
+        return Err(format!(
+            "Codex CLI not found at {}",
+            codex_cli_path.display()
+        ));
+    }
+
+    let capabilities = probe_codex_cli(codex_cli_path)?;
     Ok(ResolvedChatHarnessCli::Codex {
-        cli_path: resolved_codex.path,
-        capabilities: resolved_codex.capabilities,
+        cli_path: codex_cli_path.to_path_buf(),
+        capabilities,
     })
 }
 

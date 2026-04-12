@@ -8,12 +8,14 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
+import { FILESYSTEM_TOOLS } from "./filesystem-tools.js";
 import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, PLAN_VERIFIER, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
  */
 export const ALL_TOOLS = [
+    ...FILESYSTEM_TOOLS,
     // ========================================================================
     // IDEATION TOOLS (ralphx-ideation agent)
     // ========================================================================
@@ -1973,7 +1975,7 @@ export const TOOL_ALLOWLIST = {
     ],
     // These agents have NO MCP tools - they use filesystem tools only
     [SUPERVISOR]: [],
-    [QA_PREP]: [],
+    [QA_PREP]: ["fs_read_file", "fs_list_dir", "fs_grep", "fs_glob"],
     [QA_TESTER]: [],
     // Memory agents - write-only memory tools (RESTRICTED - do not grant to other agents)
     [MEMORY_MAINTAINER]: [
@@ -2069,6 +2071,10 @@ export const TOOL_ALLOWLIST = {
     // Ideation specialist agents - domain research (read-only)
     ...(() => {
         const IDEATION_SPECIALIST_RESEARCH_TOOLS = [
+            "fs_read_file",
+            "fs_list_dir",
+            "fs_grep",
+            "fs_glob",
             "create_team_artifact",
             "get_team_artifacts",
             "get_session_plan",
@@ -2081,6 +2087,10 @@ export const TOOL_ALLOWLIST = {
             "get_memories_for_paths",
         ];
         const IDEATION_SPECIALIST_ENRICHMENT_TOOLS = [
+            "fs_read_file",
+            "fs_list_dir",
+            "fs_grep",
+            "fs_glob",
             "create_team_artifact",
             "get_team_artifacts",
             "get_session_plan",
@@ -2181,17 +2191,29 @@ export const TOOL_ALLOWLIST = {
     ],
     // Plan critic agents - read-only, only need plan access tools
     [PLAN_CRITIC_COMPLETENESS]: [
+        "fs_read_file",
+        "fs_list_dir",
+        "fs_grep",
+        "fs_glob",
         "get_session_plan",
         "get_artifact",
         "create_team_artifact",
     ],
     [PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY]: [
+        "fs_read_file",
+        "fs_list_dir",
+        "fs_grep",
+        "fs_glob",
         "get_session_plan",
         "get_artifact",
         "create_team_artifact",
     ],
     // Plan verifier agent - owns the verification round loop
     [PLAN_VERIFIER]: [
+        "fs_read_file",
+        "fs_list_dir",
+        "fs_grep",
+        "fs_glob",
         "get_session_plan",
         "get_session_messages",
         "get_verification_round_artifacts",

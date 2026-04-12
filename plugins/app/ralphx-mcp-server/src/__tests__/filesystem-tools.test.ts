@@ -1,0 +1,173 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  formatFilesystemToolError,
+  handleFilesystemToolCall,
+} from "../filesystem-tools.js";
+
+describe("filesystem tools", () => {
+  const tempDirs: string[] = [];
+  const originalWorkingDirectory = process.env.RALPHX_WORKING_DIRECTORY;
+
+  afterEach(() => {
+    if (originalWorkingDirectory === undefined) {
+      delete process.env.RALPHX_WORKING_DIRECTORY;
+    } else {
+      process.env.RALPHX_WORKING_DIRECTORY = originalWorkingDirectory;
+    }
+
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeWorkspace(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-tools-"));
+    tempDirs.push(dir);
+    process.env.RALPHX_WORKING_DIRECTORY = dir;
+    return dir;
+  }
+
+  it("reads a relative file within the allowed root", async () => {
+    const root = makeWorkspace();
+    const target = path.join(root, "src", "sample.ts");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, "line one\nline two\nline three\n");
+
+    const result = await handleFilesystemToolCall("fs_read_file", {
+      path: "src/sample.ts",
+      start_line: 2,
+      end_line: 3,
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain(`FILE: ${target}`);
+    expect(text).toContain("LINES: 2-3/4");
+    expect(text).toContain("2| line two");
+    expect(text).toContain("3| line three");
+  });
+
+  it("lists a directory while respecting hidden files and gitignore by default", async () => {
+    const root = makeWorkspace();
+    fs.writeFileSync(path.join(root, ".gitignore"), "dist/\nsecret.log\n");
+    fs.mkdirSync(path.join(root, "src"), { recursive: true });
+    fs.mkdirSync(path.join(root, "dist"), { recursive: true });
+    fs.writeFileSync(path.join(root, "visible.ts"), "export const ok = true;\n");
+    fs.writeFileSync(path.join(root, "secret.log"), "hidden by ignore\n");
+    fs.writeFileSync(path.join(root, ".env"), "TOKEN=1\n");
+
+    const result = await handleFilesystemToolCall("fs_list_dir", {
+      path: ".",
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("DIR  src/");
+    expect(text).toContain("FILE visible.ts");
+    expect(text).not.toContain("dist/");
+    expect(text).not.toContain("secret.log");
+    expect(text).not.toContain(".env");
+  });
+
+  it("rejects traversal outside the allowed root", async () => {
+    const root = makeWorkspace();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-outside-"));
+    tempDirs.push(outsideDir);
+    const outsideFile = path.join(outsideDir, "secret.txt");
+    fs.writeFileSync(outsideFile, "secret\n");
+
+    await expect(
+      handleFilesystemToolCall("fs_read_file", {
+        path: path.relative(root, outsideFile),
+      })
+    ).rejects.toThrow("outside the allowed filesystem roots");
+  });
+
+  it("greps within the allowed root using a file pattern", async () => {
+    const root = makeWorkspace();
+    const rustFile = path.join(root, "src-tauri", "src", "main.rs");
+    fs.mkdirSync(path.dirname(rustFile), { recursive: true });
+    fs.writeFileSync(
+      rustFile,
+      "fn main() {\n    println!(\"delegate_start\");\n}\n"
+    );
+    fs.writeFileSync(path.join(root, "README.md"), "delegate_start\n");
+    fs.writeFileSync(path.join(root, ".gitignore"), "ignored.rs\n");
+    fs.writeFileSync(path.join(root, "ignored.rs"), "delegate_start\n");
+
+    const result = await handleFilesystemToolCall("fs_grep", {
+      pattern: "delegate_start",
+      base_path: ".",
+      file_pattern: "**/*.rs",
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("FILE_PATTERN: **/*.rs");
+    expect(text).toContain("src-tauri/src/main.rs:2:     println!(\"delegate_start\");");
+    expect(text).not.toContain("README.md");
+    expect(text).not.toContain("ignored.rs");
+  });
+
+  it("globs within the allowed root", async () => {
+    const root = makeWorkspace();
+    const first = path.join(root, "agents", "one", "codex", "prompt.md");
+    const second = path.join(root, "agents", "two", "codex", "prompt.md");
+    fs.mkdirSync(path.dirname(first), { recursive: true });
+    fs.mkdirSync(path.dirname(second), { recursive: true });
+    fs.writeFileSync(first, "# one\n");
+    fs.writeFileSync(second, "# two\n");
+    fs.writeFileSync(path.join(root, ".gitignore"), "agents/two/\n");
+
+    const result = await handleFilesystemToolCall("fs_glob", {
+      pattern: "agents/**/codex/*.md",
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("agents/one/codex/prompt.md");
+    expect(text).not.toContain("agents/two/codex/prompt.md");
+  });
+
+  it("respects max_depth during recursive glob traversal", async () => {
+    const root = makeWorkspace();
+    const shallow = path.join(root, "src", "one.ts");
+    const deep = path.join(root, "src", "nested", "two.ts");
+    fs.mkdirSync(path.dirname(deep), { recursive: true });
+    fs.writeFileSync(shallow, "export const one = 1;\n");
+    fs.writeFileSync(deep, "export const two = 2;\n");
+
+    const result = await handleFilesystemToolCall("fs_glob", {
+      base_path: "src",
+      pattern: "**/*.ts",
+      max_depth: 0,
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("one.ts");
+    expect(text).not.toContain("nested/two.ts");
+  });
+
+  it("caps file reads without loading the entire file into the response", async () => {
+    const root = makeWorkspace();
+    const target = path.join(root, "src", "large.ts");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, `${"x".repeat(4096)}\n${"y".repeat(4096)}\n`);
+
+    const result = await handleFilesystemToolCall("fs_read_file", {
+      path: "src/large.ts",
+      max_bytes: 128,
+    });
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("TRUNCATED: true");
+  });
+
+  it("formats tool errors with the allowed root", () => {
+    const root = makeWorkspace();
+    const result = formatFilesystemToolError(new Error("boom"));
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain("ERROR: boom");
+    expect(text).toContain(`Allowed filesystem root: ${root}`);
+    expect(result.isError).toBe(true);
+  });
+});

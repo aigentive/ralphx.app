@@ -1,6 +1,7 @@
 use super::{
-    load_canonical_agent_definition, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
+    load_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
+    try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use std::path::PathBuf;
 
@@ -126,6 +127,25 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+#[test]
+fn codex_runtime_features_load_from_harness_metadata() {
+    let root = project_root();
+
+    let verifier = load_canonical_codex_metadata(&root, "ralphx-plan-verifier");
+    assert_eq!(
+        verifier.runtime_features.get("shell_tool"),
+        Some(&false),
+        "verifier should disable Codex shell_tool declaratively"
+    );
+
+    let backend_specialist = load_canonical_codex_metadata(&root, "ralphx-ideation-specialist-backend");
+    assert_eq!(
+        backend_specialist.runtime_features.get("shell_tool"),
+        Some(&false),
+        "Claude no-Bash specialist should map to Codex shell_tool=false"
+    );
 }
 
 fn canonical_agent_names(root: &std::path::Path) -> Vec<String> {

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::infrastructure::agents::claude::canonical_short_agent_name;
@@ -43,6 +44,13 @@ pub struct CanonicalClaudeAgentMetadata {
     pub skills: Vec<String>,
     #[serde(default)]
     pub max_turns: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalCodexAgentMetadata {
+    #[serde(default)]
+    pub runtime_features: BTreeMap<String, bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +156,28 @@ pub fn try_load_canonical_claude_metadata(
             )
         }),
         None => Ok(CanonicalClaudeAgentMetadata::default()),
+    }
+}
+
+pub fn load_canonical_codex_metadata(
+    project_root: &Path,
+    agent_name: &str,
+) -> CanonicalCodexAgentMetadata {
+    try_load_canonical_codex_metadata(project_root, agent_name).unwrap_or_default()
+}
+
+pub fn try_load_canonical_codex_metadata(
+    project_root: &Path,
+    agent_name: &str,
+) -> Result<CanonicalCodexAgentMetadata, String> {
+    match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex) {
+        Some(raw) => serde_yaml::from_str::<CanonicalCodexAgentMetadata>(&raw).map_err(|error| {
+            format!(
+                "Failed to parse Codex harness metadata for agent {}: {error}",
+                canonical_agent_name(agent_name)
+            )
+        }),
+        None => Ok(CanonicalCodexAgentMetadata::default()),
     }
 }
 

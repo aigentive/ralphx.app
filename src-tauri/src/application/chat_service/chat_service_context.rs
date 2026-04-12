@@ -1495,6 +1495,7 @@ fn apply_ralphx_env_vars(
     agent_name: &str,
     context_type: ChatContextType,
     context_id: &str,
+    working_directory: &Path,
     project_id: Option<&str>,
     team_mode: bool,
     lead_session_id: Option<&str>,
@@ -1515,6 +1516,10 @@ fn apply_ralphx_env_vars(
     if let Some(pid) = project_id {
         cmd.env("RALPHX_PROJECT_ID", pid);
     }
+    cmd.env(
+        "RALPHX_WORKING_DIRECTORY",
+        working_directory.to_string_lossy().as_ref(),
+    );
     // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
     // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
@@ -1722,6 +1727,7 @@ async fn build_command_from_resolved_settings(
         agent_name,
         conversation.context_type,
         &conversation.context_id,
+        working_directory,
         project_id,
         team_mode,
         resume_session.as_deref(),
@@ -1778,6 +1784,7 @@ async fn build_recovery_command_from_resolved_settings(
         agent_name,
         context_type,
         context_id,
+        working_directory,
         project_id,
         team_mode,
         None,
@@ -1860,6 +1867,7 @@ pub async fn build_codex_command(
         agent_name,
         conversation.context_type,
         &conversation.context_id,
+        working_directory,
         project_id,
         codex_team_mode,
         None,
@@ -2105,6 +2113,7 @@ pub async fn build_interactive_command(
         agent_name,
         conversation.context_type,
         &conversation.context_id,
+        working_directory,
         project_id,
         team_mode,
         claude_resume_session_id(conversation).as_deref(),
@@ -2288,6 +2297,7 @@ async fn build_resume_command_from_resolved_settings(
                 agent_name,
                 context_type,
                 context_id,
+                working_directory,
                 project_id,
                 team_mode,
                 Some(session_id),
@@ -2380,6 +2390,7 @@ pub async fn build_codex_resume_command(
                 agent_name,
                 context_type,
                 context_id,
+                working_directory,
                 project_id,
                 codex_team_mode,
                 Some(session_id),
@@ -2411,6 +2422,7 @@ pub async fn build_codex_resume_command(
                 agent_name,
                 context_type,
                 context_id,
+                working_directory,
                 project_id,
                 codex_team_mode,
                 None,
@@ -3213,6 +3225,15 @@ exit 0
         let error = resolve_chat_harness_cli(AgentHarnessKind::Claude, &missing).unwrap_err();
 
         assert!(error.contains("Claude CLI not found"));
+        assert!(error.contains(missing.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn resolve_chat_harness_cli_rejects_missing_codex_binary() {
+        let missing = PathBuf::from("/definitely/missing/ralphx-codex-cli");
+        let error = resolve_chat_harness_cli(AgentHarnessKind::Codex, &missing).unwrap_err();
+
+        assert!(error.contains("Codex CLI not found"));
         assert!(error.contains(missing.to_string_lossy().as_ref()));
     }
 

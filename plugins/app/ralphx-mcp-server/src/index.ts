@@ -33,6 +33,11 @@ import {
   setAgentType,
 } from "./tools.js";
 import {
+  FILESYSTEM_TOOL_NAMES,
+  formatFilesystemToolError,
+  handleFilesystemToolCall,
+} from "./filesystem-tools.js";
+import {
   permissionRequestTool,
   handlePermissionRequest,
 } from "./permission-handler.js";
@@ -219,6 +224,7 @@ const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
 
 // Project ID from environment (for project-level scoping enforcement)
 const RALPHX_PROJECT_ID = process.env.RALPHX_PROJECT_ID;
+const RALPHX_WORKING_DIRECTORY = process.env.RALPHX_WORKING_DIRECTORY;
 
 // Context type and ID from environment (set by chat_service_context for all agent spawns)
 const RALPHX_CONTEXT_TYPE = process.env.RALPHX_CONTEXT_TYPE;
@@ -391,6 +397,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [{ type: "text", text: JSON.stringify({ behavior: "deny", message }) }],
       };
+    }
+  }
+
+  if (FILESYSTEM_TOOL_NAMES.includes(name as (typeof FILESYSTEM_TOOL_NAMES)[number])) {
+    if (!isToolAllowed(name)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `ERROR: Tool "${name}" is not available for agent type "${AGENT_TYPE}".`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    try {
+      const result = await handleFilesystemToolCall(name, args);
+      safeTrace("tool.success", {
+        name,
+        result: summarizeResult(result),
+      });
+      return result;
+    } catch (error) {
+      safeTrace("tool.error", {
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return formatFilesystemToolError(error);
     }
   }
 
@@ -1136,6 +1170,9 @@ async function main() {
   }
   if (RALPHX_PROJECT_ID) {
     safeError(`[RalphX MCP] Project scope: ${RALPHX_PROJECT_ID}`);
+  }
+  if (RALPHX_WORKING_DIRECTORY) {
+    safeError(`[RalphX MCP] Working directory root: ${RALPHX_WORKING_DIRECTORY}`);
   }
   safeError(
     `[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`

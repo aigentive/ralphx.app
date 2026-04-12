@@ -188,6 +188,10 @@ describe('getFilteredTools', () => {
         setAgentType('ralphx-plan-verifier');
         const tools = getFilteredTools();
         const toolNames = tools.map((t) => t.name);
+        expect(toolNames).toContain('fs_read_file');
+        expect(toolNames).toContain('fs_list_dir');
+        expect(toolNames).toContain('fs_grep');
+        expect(toolNames).toContain('fs_glob');
         expect(toolNames).toContain('report_verification_round');
         expect(toolNames).toContain('complete_plan_verification');
         expect(toolNames).toContain('get_verification_round_artifacts');
@@ -195,6 +199,12 @@ describe('getFilteredTools', () => {
         expect(toolNames).not.toContain('update_plan_verification');
         expect(toolNames).not.toContain('get_team_artifacts');
         expect(toolNames).not.toContain('get_artifact');
+    });
+    it('should expose read-only filesystem tools for qa prep', () => {
+        setAgentType('qa-prep');
+        const tools = getFilteredTools();
+        const toolNames = tools.map((t) => t.name);
+        expect(toolNames).toEqual(['fs_read_file', 'fs_list_dir', 'fs_grep', 'fs_glob']);
     });
     it('should return no tools for unknown agent type', () => {
         setAgentType('unknown-agent-type');

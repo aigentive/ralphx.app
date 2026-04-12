@@ -1095,6 +1095,7 @@ pub struct DelegateStartRequest {
     pub delegated_session_id: Option<String>,
     pub child_session_id: Option<String>,
     pub agent_name: String,
+    #[serde(alias = "message")]
     pub prompt: String,
     pub title: Option<String>,
     #[serde(default = "default_inherit_context")]

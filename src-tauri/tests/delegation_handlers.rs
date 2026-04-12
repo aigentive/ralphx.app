@@ -127,6 +127,22 @@ fn build_state(app_state: Arc<AppState>) -> HttpServerState {
     }
 }
 
+#[test]
+fn delegate_start_request_accepts_legacy_message_alias_for_prompt() {
+    let parsed: DelegateStartRequest = serde_json::from_str(
+        r#"{
+            "agent_name": "ralphx:ralphx-ideation-specialist-intent",
+            "message": "SESSION_ID: parent\nAnalyze intent alignment."
+        }"#,
+    )
+    .expect("legacy verifier payload should deserialize");
+
+    assert_eq!(
+        parsed.prompt,
+        "SESSION_ID: parent\nAnalyze intent alignment."
+    );
+}
+
 async fn create_parent_session(state: &HttpServerState) -> IdeationSession {
     let project = Project::new(
         "Delegation Test Project".to_string(),

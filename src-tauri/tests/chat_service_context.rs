@@ -48,6 +48,10 @@ fn write_file(path: &Path, contents: &str) {
     fs::write(path, contents).expect("write test file");
 }
 
+fn empty_delegated_session_repo() -> Arc<dyn DelegatedSessionRepository> {
+    Arc::new(MemoryDelegatedSessionRepository::new())
+}
+
 fn make_fake_codex_cli(temp: &TempDir) -> PathBuf {
     let script_path = temp.path().join("codex");
     let script = r#"#!/bin/sh
@@ -905,6 +909,7 @@ async fn test_get_entity_status_for_resume_ideation_accepted() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -927,6 +932,7 @@ async fn test_get_entity_status_for_resume_ideation_active() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -945,6 +951,7 @@ async fn test_get_entity_status_for_resume_ideation_not_found() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -961,6 +968,7 @@ async fn test_get_entity_status_for_resume_project_context() {
         ChatContextType::Project,
         "project-id",
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -1169,6 +1177,7 @@ async fn test_build_resume_command_with_team_mode() {
         None,
         None,
         ideation_repo.clone(),
+        empty_delegated_session_repo(),
         task_repo.clone(),
         &[],
         0,
@@ -1194,6 +1203,7 @@ async fn test_build_resume_command_with_team_mode() {
         None,
         None,
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
         &[],
         0,
@@ -1216,6 +1226,18 @@ async fn codex_resume_command_falls_back_to_exec_when_session_is_missing() {
         &plugin_dir.join("ralphx-mcp-server/build/index.js"),
         "// fake mcp server",
     );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
     let working_dir = cli_temp.path().to_path_buf();
 
     let result = with_provider_state_home_override(home.path(), || async {
@@ -1236,6 +1258,7 @@ async fn codex_resume_command_falls_back_to_exec_when_session_is_missing() {
             None,
             None,
             Arc::new(MockIdeationRepo::empty()),
+            empty_delegated_session_repo(),
             Arc::new(MockTaskRepo),
             &[],
             0,
@@ -1267,6 +1290,18 @@ async fn codex_resume_command_uses_resume_subcommand_when_session_exists() {
         &plugin_dir.join("ralphx-mcp-server/build/index.js"),
         "// fake mcp server",
     );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
     let working_dir = cli_temp.path().to_path_buf();
 
     let result = with_provider_state_home_override(home.path(), || async {
@@ -1287,6 +1322,7 @@ async fn codex_resume_command_uses_resume_subcommand_when_session_exists() {
             None,
             None,
             Arc::new(MockIdeationRepo::empty()),
+            empty_delegated_session_repo(),
             Arc::new(MockTaskRepo),
             &[],
             0,
@@ -1304,6 +1340,88 @@ async fn codex_resume_command_uses_resume_subcommand_when_session_exists() {
         args.windows(3)
             .any(|window| window == ["exec", "resume", "session-123"]),
         "existing Codex session should use exec resume: {args:?}"
+    );
+}
+
+#[tokio::test]
+async fn codex_verifier_command_disables_shell_tool() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+    let parent_id = IdeationSessionId::new();
+    let child_id = IdeationSessionId::new();
+    let verification_child = IdeationSession::builder()
+        .id(child_id.clone())
+        .project_id(ProjectId::new())
+        .parent_session_id(parent_id)
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Ideation,
+            child_id.as_str(),
+            "continue",
+            &working_dir,
+            "missing-session",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::with_session(verification_child)),
+            empty_delegated_session_repo(),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex verifier command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert!(
+        args.iter().any(|arg| arg == "features.shell_tool=false"),
+        "verifier Codex command must disable shell_tool: {args:?}"
+    );
+
+    let envs = result.spawnable.get_envs_for_test();
+    let working_dir_env = envs
+        .iter()
+        .find(|(key, _)| key == "RALPHX_WORKING_DIRECTORY")
+        .map(|(_, value)| value.to_string_lossy().into_owned());
+    assert_eq!(
+        working_dir_env.as_deref(),
+        Some(working_dir.to_string_lossy().as_ref()),
+        "spawn env must carry canonical working directory for MCP filesystem tools"
     );
 }
 
@@ -1851,6 +1969,7 @@ async fn resolve_working_directory_merge_context_accepts_rebase_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1902,6 +2021,7 @@ async fn resolve_working_directory_merge_context_accepts_merge_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1954,6 +2074,7 @@ async fn resolve_working_directory_merge_context_rejects_task_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1992,6 +2113,7 @@ async fn resolve_working_directory_review_rejects_missing_worktree_path() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -2036,6 +2158,7 @@ async fn resolve_working_directory_task_execution_rejects_missing_worktree_dir()
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -2078,6 +2201,7 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -2386,6 +2510,7 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
             None,
             Some(settings_repo_seeded),
             Arc::new(MemoryIdeationSessionRepository::new()),
+            empty_delegated_session_repo(),
             Arc::new(MemoryTaskRepository::new()),
             &[],
             0,
