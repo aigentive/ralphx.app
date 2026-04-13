@@ -1017,6 +1017,7 @@ fn resolve_loaded_config_with_lookup(
     })
 }
 
+#[cfg(test)]
 fn parse_config_with_lookup(
     yaml: &str,
     lookup: &dyn Fn(&str) -> Option<String>,
@@ -1025,6 +1026,7 @@ fn parse_config_with_lookup(
     resolve_loaded_config_with_lookup(parsed, lookup)
 }
 
+#[cfg(test)]
 fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     parse_config_with_lookup(yaml, &|name| std::env::var(name).ok())
 }
