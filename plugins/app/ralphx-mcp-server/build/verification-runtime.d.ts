@@ -64,6 +64,32 @@ type VerificationRuntimeDeps = {
 };
 export declare function createVerificationRuntime(deps: VerificationRuntimeDeps): {
     assessVerificationRoundState: (args: VerificationAssessmentArgs) => Promise<Record<string, unknown>>;
+    getPlanVerificationForTool: (args: {
+        session_id?: string;
+    }) => Promise<unknown>;
+    reportVerificationRoundForTool: (args: {
+        session_id?: string;
+        round: number;
+        gaps?: unknown[];
+        generation: number;
+        [key: string]: unknown;
+    }) => Promise<unknown>;
+    completePlanVerificationForTool: (args: {
+        session_id?: string;
+        status: string;
+        round?: number;
+        gaps?: unknown[];
+        convergence_reason?: string;
+        generation: number;
+        required_delegates?: VerificationRoundDelegateInput[];
+        created_after?: string;
+        rescue_budget_exhausted?: boolean;
+        include_full_content?: boolean;
+        include_messages?: boolean;
+        message_limit?: number;
+        max_wait_ms?: number;
+        poll_interval_ms?: number;
+    }) => Promise<unknown>;
     runVerificationEnrichment: (args: {
         session_id?: string;
         disabled_specialists?: string[];

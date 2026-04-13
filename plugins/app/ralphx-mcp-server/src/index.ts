@@ -47,10 +47,7 @@ import {
   hydrateRalphxRuntimeEnvFromCli,
   parseCliOptionFromArgs,
 } from "./runtime-context.js";
-import {
-  type VerificationRoundDelegateInput,
-} from "./verification-round-assessment.js";
-import { completePlanVerificationWithSettlement } from "./verification-completion.js";
+import { type VerificationRoundDelegateInput } from "./verification-round-assessment.js";
 import {
   createVerificationRuntime,
   type VerificationAssessmentArgs,
@@ -173,12 +170,13 @@ const RALPHX_CONTEXT_ID = runtimeContext.contextId;
 
 const {
   assessVerificationRoundState,
+  getPlanVerificationForTool,
+  reportVerificationRoundForTool,
+  completePlanVerificationForTool,
   runVerificationEnrichment,
   runVerificationRound,
   runRequiredVerificationCriticRoundTool,
   awaitVerificationRoundSettlementForTool,
-  awaitVerificationRoundSettlement,
-  resolveVerifierParentSessionId,
   resolveContextSessionId,
 } = createVerificationRuntime({
   callTauri,
@@ -557,28 +555,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`get_session_plan/${session_id}`);
     } else if (name === "get_plan_verification") {
-      // GET /api/ideation/sessions/:id/verification
-      const session_id = await resolveVerifierParentSessionId(
-        (args as { session_id?: string }).session_id,
-        "get_plan_verification"
-      );
-      result = await callTauriGet(`ideation/sessions/${session_id}/verification`);
+      result = await getPlanVerificationForTool(args as { session_id?: string });
     } else if (name === "report_verification_round") {
-      // POST /api/ideation/sessions/:id/verification (verifier-friendly alias)
-      const { session_id: raw_session_id, ...body } = args as {
+      result = await reportVerificationRoundForTool(args as {
         session_id?: string;
         round: number;
         gaps?: unknown[];
         generation: number;
-      };
-      const session_id = await resolveVerifierParentSessionId(
-        raw_session_id,
-        "report_verification_round"
-      );
-      result = await callTauri(`ideation/sessions/${session_id}/verification`, {
-        ...body,
-        status: "reviewing",
-        in_progress: true,
       });
     } else if (name === "assess_verification_round") {
       result = await assessVerificationRoundState(args as VerificationAssessmentArgs);
@@ -619,19 +602,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         args as VerificationSettlementArgs
       );
     } else if (name === "complete_plan_verification") {
-      // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
-      const {
-        session_id: raw_session_id,
-        required_delegates,
-        created_after,
-        rescue_budget_exhausted = false,
-        include_full_content = true,
-        include_messages = true,
-        message_limit = 5,
-        max_wait_ms = 8000,
-        poll_interval_ms = 750,
-        ...body
-      } = args as {
+      result = await completePlanVerificationForTool(args as {
         session_id?: string;
         status: string;
         round?: number;
@@ -646,65 +617,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         message_limit?: number;
         max_wait_ms?: number;
         poll_interval_ms?: number;
-      };
-      const session_id = await resolveVerifierParentSessionId(
-        raw_session_id,
-        "complete_plan_verification"
-      );
-      const isVerifierRoundTerminalUpdate =
-        AGENT_TYPE === "ralphx-plan-verifier" &&
-        typeof body.round === "number" &&
-        body.status !== "skipped" &&
-        body.convergence_reason !== "user_stopped" &&
-        body.convergence_reason !== "user_skipped" &&
-        body.convergence_reason !== "user_reverted";
-      if (body.status === "reviewing") {
-        throw new Error(
-          "complete_plan_verification is terminal-only. Use verified or needs_revision here, not reviewing."
-        );
-      }
-      if (isVerifierRoundTerminalUpdate) {
-        if (!Array.isArray(required_delegates) || required_delegates.length === 0) {
-          throw new Error(
-            "Verifier round terminal completion requires required_delegates so the settlement barrier cannot be bypassed."
-          );
-        }
-        if (!created_after) {
-          throw new Error(
-            "Verifier round terminal completion requires created_after so settlement is scoped to the active round window."
-          );
-        }
-      }
-      let settlement: Record<string, unknown> | undefined;
-      if (Array.isArray(required_delegates) && required_delegates.length > 0) {
-        result = await completePlanVerificationWithSettlement({
-          sessionId: session_id,
-          body,
-          requiredDelegates: required_delegates,
-          createdAfter: created_after,
-          rescueBudgetExhausted: rescue_budget_exhausted,
-          includeFullContent: include_full_content,
-          includeMessages: include_messages,
-          messageLimit: message_limit,
-          maxWaitMs: max_wait_ms,
-          pollIntervalMs: poll_interval_ms,
-          isVerifierRoundTerminalUpdate,
-          awaitVerificationRoundSettlement,
-          callInfraFailure: async ({ generation, convergence_reason, round }) =>
-            (await callTauri(`ideation/sessions/${session_id}/verification/infra-failure`, {
-              generation,
-              convergence_reason: convergence_reason ?? "agent_error",
-              round,
-            })) as Record<string, unknown>,
-          callCompletion: async (completionBody) =>
-            await callTauri(`ideation/sessions/${session_id}/verification`, completionBody),
-        });
-      } else {
-        result = await callTauri(`ideation/sessions/${session_id}/verification`, {
-          ...body,
-          in_progress: false,
-        });
-      }
+      });
     } else if (name === "update_plan_verification") {
       // POST /api/ideation/sessions/:id/verification
       const { session_id, ...body } = args as {

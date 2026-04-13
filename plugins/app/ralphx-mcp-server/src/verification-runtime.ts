@@ -10,6 +10,7 @@ import {
   type RequiredCriticRoundResult,
   type VerificationPlanSnapshot,
 } from "./verification-orchestration.js";
+import { completePlanVerificationWithSettlement } from "./verification-completion.js";
 
 export type TeamArtifactSummary = {
   id: string;
@@ -885,6 +886,123 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
     };
   }
 
+  async function getPlanVerificationForTool(args: {
+    session_id?: string;
+  }): Promise<unknown> {
+    const sessionId = await resolveVerifierParentSessionId(
+      args.session_id,
+      "get_plan_verification"
+    );
+    return await callTauriGet(`ideation/sessions/${sessionId}/verification`);
+  }
+
+  async function reportVerificationRoundForTool(args: {
+    session_id?: string;
+    round: number;
+    gaps?: unknown[];
+    generation: number;
+    [key: string]: unknown;
+  }): Promise<unknown> {
+    const { session_id: rawSessionId, ...body } = args;
+    const sessionId = await resolveVerifierParentSessionId(
+      rawSessionId,
+      "report_verification_round"
+    );
+    return await callTauri(`ideation/sessions/${sessionId}/verification`, {
+      ...body,
+      status: "reviewing",
+      in_progress: true,
+    });
+  }
+
+  async function completePlanVerificationForTool(args: {
+    session_id?: string;
+    status: string;
+    round?: number;
+    gaps?: unknown[];
+    convergence_reason?: string;
+    generation: number;
+    required_delegates?: VerificationRoundDelegateInput[];
+    created_after?: string;
+    rescue_budget_exhausted?: boolean;
+    include_full_content?: boolean;
+    include_messages?: boolean;
+    message_limit?: number;
+    max_wait_ms?: number;
+    poll_interval_ms?: number;
+  }): Promise<unknown> {
+    const {
+      session_id: rawSessionId,
+      required_delegates,
+      created_after,
+      rescue_budget_exhausted = false,
+      include_full_content = true,
+      include_messages = true,
+      message_limit = 5,
+      max_wait_ms = 8000,
+      poll_interval_ms = 750,
+      ...body
+    } = args;
+    const sessionId = await resolveVerifierParentSessionId(
+      rawSessionId,
+      "complete_plan_verification"
+    );
+    const isVerifierRoundTerminalUpdate =
+      agentType === "ralphx-plan-verifier" &&
+      typeof body.round === "number" &&
+      body.status !== "skipped" &&
+      body.convergence_reason !== "user_stopped" &&
+      body.convergence_reason !== "user_skipped" &&
+      body.convergence_reason !== "user_reverted";
+    if (body.status === "reviewing") {
+      throw new Error(
+        "complete_plan_verification is terminal-only. Use verified or needs_revision here, not reviewing."
+      );
+    }
+    if (isVerifierRoundTerminalUpdate) {
+      if (!Array.isArray(required_delegates) || required_delegates.length === 0) {
+        throw new Error(
+          "Verifier round terminal completion requires required_delegates so the settlement barrier cannot be bypassed."
+        );
+      }
+      if (!created_after) {
+        throw new Error(
+          "Verifier round terminal completion requires created_after so settlement is scoped to the active round window."
+        );
+      }
+    }
+
+    if (Array.isArray(required_delegates) && required_delegates.length > 0) {
+      return await completePlanVerificationWithSettlement({
+        sessionId,
+        body,
+        requiredDelegates: required_delegates,
+        createdAfter: created_after,
+        rescueBudgetExhausted: rescue_budget_exhausted,
+        includeFullContent: include_full_content,
+        includeMessages: include_messages,
+        messageLimit: message_limit,
+        maxWaitMs: max_wait_ms,
+        pollIntervalMs: poll_interval_ms,
+        isVerifierRoundTerminalUpdate,
+        awaitVerificationRoundSettlement,
+        callInfraFailure: async ({ generation, convergence_reason, round }) =>
+          (await callTauri(`ideation/sessions/${sessionId}/verification/infra-failure`, {
+            generation,
+            convergence_reason: convergence_reason ?? "agent_error",
+            round,
+          })) as Record<string, unknown>,
+        callCompletion: async (completionBody) =>
+          await callTauri(`ideation/sessions/${sessionId}/verification`, completionBody),
+      });
+    }
+
+    return await callTauri(`ideation/sessions/${sessionId}/verification`, {
+      ...body,
+      in_progress: false,
+    });
+  }
+
   async function runVerificationEnrichment(args: {
     session_id?: string;
     disabled_specialists?: string[];
@@ -1023,6 +1141,9 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
 
   return {
     assessVerificationRoundState,
+    getPlanVerificationForTool,
+    reportVerificationRoundForTool,
+    completePlanVerificationForTool,
     runVerificationEnrichment,
     runVerificationRound,
     runRequiredVerificationCriticRoundTool,
