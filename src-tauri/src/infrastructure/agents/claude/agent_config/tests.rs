@@ -147,6 +147,23 @@ fn test_all_live_runtime_agents_have_canonical_claude_prompts() {
 }
 
 #[test]
+fn test_default_config_paths_use_config_directory_layout() {
+    let expected_config =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/ralphx.yaml");
+    let expected_processes =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/processes.yaml");
+    let expected_claude =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/claude.yaml");
+    let expected_codex =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/codex.yaml");
+
+    assert_eq!(config_path(), expected_config);
+    assert_eq!(process_config_path(), expected_processes);
+    assert_eq!(claude_config_path(), expected_claude);
+    assert_eq!(codex_config_path(), expected_codex);
+}
+
+#[test]
 fn test_live_runtime_agents_no_longer_reference_deprecated_plugin_prompt_paths() {
     for agent in agent_configs() {
         if agent.name == SHORT_IDEATION_TEAM_MEMBER {

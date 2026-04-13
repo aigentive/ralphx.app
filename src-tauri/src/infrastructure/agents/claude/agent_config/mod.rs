@@ -342,13 +342,21 @@ pub fn config_path() -> PathBuf {
         }
     }
 
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let preferred = root.join("config").join("ralphx.yaml");
-    if preferred.exists() {
-        preferred
-    } else {
-        root.join("ralphx.yaml")
-    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("ralphx.yaml")
+}
+
+fn config_dir_path() -> PathBuf {
+    config_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("config")
+        })
 }
 
 pub fn process_config_path() -> PathBuf {
@@ -358,13 +366,7 @@ pub fn process_config_path() -> PathBuf {
         }
     }
 
-    let config = config_path();
-    let parent = config.parent().unwrap_or_else(|| Path::new("."));
-    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
-        parent.join("processes.yaml")
-    } else {
-        parent.join("config").join("processes.yaml")
-    }
+    config_dir_path().join("processes.yaml")
 }
 
 pub fn claude_config_path() -> PathBuf {
@@ -374,13 +376,7 @@ pub fn claude_config_path() -> PathBuf {
         }
     }
 
-    let config = config_path();
-    let parent = config.parent().unwrap_or_else(|| Path::new("."));
-    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
-        parent.join("harnesses").join("claude.yaml")
-    } else {
-        parent.join("config").join("harnesses").join("claude.yaml")
-    }
+    config_dir_path().join("harnesses").join("claude.yaml")
 }
 
 pub fn codex_config_path() -> PathBuf {
@@ -390,13 +386,7 @@ pub fn codex_config_path() -> PathBuf {
         }
     }
 
-    let config = config_path();
-    let parent = config.parent().unwrap_or_else(|| Path::new("."));
-    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
-        parent.join("harnesses").join("codex.yaml")
-    } else {
-        parent.join("config").join("harnesses").join("codex.yaml")
-    }
+    config_dir_path().join("harnesses").join("codex.yaml")
 }
 
 fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
