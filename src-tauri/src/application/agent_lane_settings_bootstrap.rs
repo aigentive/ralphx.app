@@ -69,10 +69,7 @@ fn should_upgrade_legacy_codex_lane(
         return false;
     }
 
-    if existing.model != desired.model
-        || existing.effort != desired.effort
-        || existing.fallback_harness != desired.fallback_harness
-    {
+    if existing.model != desired.model || existing.effort != desired.effort {
         return false;
     }
 

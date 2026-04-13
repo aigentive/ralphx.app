@@ -60,11 +60,6 @@ fn parse_row(row: &rusqlite::Row<'_>) -> AppResult<StoredAgentLaneSettings> {
         .map_err(|e| AppError::Database(e.to_string()))?
         .map(|value| value.parse::<LogicalEffort>().map_err(AppError::Database))
         .transpose()?;
-    let fallback_harness = row
-        .get::<_, Option<String>>("fallback_harness")
-        .map_err(|e| AppError::Database(e.to_string()))?
-        .map(|value| value.parse::<AgentHarnessKind>().map_err(AppError::Database))
-        .transpose()?;
     let updated_at = parse_datetime(
         &row.get::<_, String>("updated_at")
             .map_err(|e| AppError::Database(e.to_string()))?,
@@ -84,7 +79,6 @@ fn parse_row(row: &rusqlite::Row<'_>) -> AppResult<StoredAgentLaneSettings> {
             sandbox_mode: row
                 .get("sandbox_mode")
                 .map_err(|e| AppError::Database(e.to_string()))?,
-            fallback_harness,
         },
         updated_at,
     })
@@ -146,7 +140,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_optional(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'global' AND lane = ?1",
                     rusqlite::params![lane],
@@ -168,7 +162,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_optional(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'project' AND scope_id = ?1 AND lane = ?2",
                     rusqlite::params![project_id, lane],
@@ -184,7 +178,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_many(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'global'
                      ORDER BY lane",
@@ -205,7 +199,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_many(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'project' AND scope_id = ?1
                      ORDER BY lane",
@@ -227,7 +221,6 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
         let effort = settings.effort.map(|value| value.to_string());
         let approval_policy = settings.approval_policy.clone();
         let sandbox_mode = settings.sandbox_mode.clone();
-        let fallback_harness = settings.fallback_harness.map(|value| value.to_string());
 
         self.db
             .run(move |conn| {
@@ -249,16 +242,14 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                              effort = ?3,
                              approval_policy = ?4,
                              sandbox_mode = ?5,
-                             fallback_harness = ?6,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
-                         WHERE scope_type = 'global' AND lane = ?7",
+                         WHERE scope_type = 'global' AND lane = ?6",
                         rusqlite::params![
                             harness,
                             model,
                             effort,
                             approval_policy,
                             sandbox_mode,
-                            fallback_harness,
                             lane_key.clone(),
                         ],
                     )
@@ -267,9 +258,9 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                     conn.execute(
                         "INSERT INTO agent_lane_settings (
                             scope_type, scope_id, lane, harness, model, effort,
-                            approval_policy, sandbox_mode, fallback_harness, updated_at
+                            approval_policy, sandbox_mode, updated_at
                          ) VALUES (
-                            'global', NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                            'global', NULL, ?1, ?2, ?3, ?4, ?5, ?6,
                             strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
                          )",
                         rusqlite::params![
@@ -279,7 +270,6 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                             effort,
                             approval_policy,
                             sandbox_mode,
-                            fallback_harness,
                         ],
                     )
                     .map_err(|e| AppError::Database(e.to_string()))?;
@@ -288,7 +278,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_optional(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'global' AND lane = ?1",
                     rusqlite::params![lane_key],
@@ -312,7 +302,6 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
         let effort = settings.effort.map(|value| value.to_string());
         let approval_policy = settings.approval_policy.clone();
         let sandbox_mode = settings.sandbox_mode.clone();
-        let fallback_harness = settings.fallback_harness.map(|value| value.to_string());
 
         self.db
             .run(move |conn| {
@@ -334,16 +323,14 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                              effort = ?3,
                              approval_policy = ?4,
                              sandbox_mode = ?5,
-                             fallback_harness = ?6,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
-                         WHERE scope_type = 'project' AND scope_id = ?7 AND lane = ?8",
+                         WHERE scope_type = 'project' AND scope_id = ?6 AND lane = ?7",
                         rusqlite::params![
                             harness,
                             model,
                             effort,
                             approval_policy,
                             sandbox_mode,
-                            fallback_harness,
                             project_id.clone(),
                             lane_key.clone(),
                         ],
@@ -353,9 +340,9 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                     conn.execute(
                         "INSERT INTO agent_lane_settings (
                             scope_type, scope_id, lane, harness, model, effort,
-                            approval_policy, sandbox_mode, fallback_harness, updated_at
+                            approval_policy, sandbox_mode, updated_at
                          ) VALUES (
-                            'project', ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                            'project', ?1, ?2, ?3, ?4, ?5, ?6, ?7,
                             strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
                          )",
                         rusqlite::params![
@@ -366,7 +353,6 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                             effort,
                             approval_policy,
                             sandbox_mode,
-                            fallback_harness,
                         ],
                     )
                     .map_err(|e| AppError::Database(e.to_string()))?;
@@ -375,7 +361,7 @@ impl AgentLaneSettingsRepository for SqliteAgentLaneSettingsRepository {
                 fetch_optional(
                     conn,
                     "SELECT id, scope_id, lane, harness, model, effort, approval_policy,
-                            sandbox_mode, fallback_harness, updated_at
+                            sandbox_mode, updated_at
                      FROM agent_lane_settings
                      WHERE scope_type = 'project' AND scope_id = ?1 AND lane = ?2",
                     rusqlite::params![project_id, lane_key],

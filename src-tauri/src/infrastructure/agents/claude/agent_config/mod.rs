@@ -114,8 +114,6 @@ struct AgentLaneSettingsConfigRaw {
     approval_policy: Option<String>,
     #[serde(default)]
     sandbox_mode: Option<String>,
-    #[serde(default)]
-    fallback_harness: Option<AgentHarnessKind>,
 }
 
 impl From<AgentLaneSettingsConfigRaw> for AgentLaneSettings {
@@ -126,7 +124,6 @@ impl From<AgentLaneSettingsConfigRaw> for AgentLaneSettings {
             effort: value.effort,
             approval_policy: value.approval_policy,
             sandbox_mode: value.sandbox_mode,
-            fallback_harness: value.fallback_harness,
         }
     }
 }
@@ -139,7 +136,6 @@ impl From<AgentLaneSettings> for AgentLaneSettingsConfigRaw {
             effort: value.effort,
             approval_policy: value.approval_policy,
             sandbox_mode: value.sandbox_mode,
-            fallback_harness: value.fallback_harness,
         }
     }
 }
@@ -1095,10 +1091,6 @@ fn apply_agent_harness_env_overrides_with(
 
         if !changed {
             continue;
-        }
-
-        if settings.fallback_harness == Some(settings.harness) {
-            settings.fallback_harness = None;
         }
 
         defaults.insert(lane, settings);

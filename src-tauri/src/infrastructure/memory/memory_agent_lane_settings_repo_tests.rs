@@ -8,7 +8,6 @@ fn codex_settings(model: &str) -> AgentLaneSettings {
         effort: Some(LogicalEffort::XHigh),
         approval_policy: Some("on-request".to_string()),
         sandbox_mode: Some("workspace-write".to_string()),
-        fallback_harness: Some(AgentHarnessKind::Claude),
     }
 }
 

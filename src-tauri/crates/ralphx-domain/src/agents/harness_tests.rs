@@ -95,7 +95,6 @@ fn test_agent_lane_settings_new() {
     assert!(settings.effort.is_none());
     assert!(settings.approval_policy.is_none());
     assert!(settings.sandbox_mode.is_none());
-    assert!(settings.fallback_harness.is_none());
 }
 
 #[test]
@@ -108,13 +107,6 @@ fn test_agent_lane_settings_serialization_omits_empty_optionals() {
     assert!(json.get("effort").is_none());
     assert!(json.get("approvalPolicy").is_none());
     assert!(json.get("sandboxMode").is_none());
-    assert!(json.get("fallbackHarness").is_none());
-}
-
-#[test]
-fn test_default_fallback_harness_is_none_for_both_first_class_harnesses() {
-    assert_eq!(default_fallback_harness_for(AgentHarnessKind::Codex), None);
-    assert_eq!(default_fallback_harness_for(AgentHarnessKind::Claude), None);
 }
 
 #[test]
@@ -127,7 +119,6 @@ fn test_generic_harness_lane_defaults_for_codex_primary() {
     assert_eq!(settings.effort, Some(LogicalEffort::XHigh));
     assert_eq!(settings.approval_policy.as_deref(), Some("never"));
     assert_eq!(settings.sandbox_mode.as_deref(), Some("danger-full-access"));
-    assert_eq!(settings.fallback_harness, None);
 }
 
 #[test]

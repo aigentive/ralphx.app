@@ -249,9 +249,9 @@ mod v20260329080000_acceptance_status_tests;
 mod v20260330000000_verification_confirmation_status;
 #[cfg(test)]
 mod v20260330000000_verification_confirmation_status_tests;
-mod v20260330000000_ideation_effort_settings;
+mod v20260330000001_ideation_effort_settings;
 #[cfg(test)]
-mod v20260330000000_ideation_effort_settings_tests;
+mod v20260330000001_ideation_effort_settings_tests;
 mod v20260330000002_ideation_model_settings;
 mod v20260405045108_ideation_external_overrides;
 #[cfg(test)]
@@ -292,12 +292,15 @@ mod v20260410153000_chat_conversation_provider_origin_tests;
 mod v20260411190000_delegated_sessions;
 #[cfg(test)]
 mod v20260411190000_delegated_sessions_tests;
+mod v20260413043153_drop_agent_lane_settings_fallback_harness;
+#[cfg(test)]
+mod v20260413043153_drop_agent_lane_settings_fallback_harness_tests;
 mod v20260410124500_chat_message_usage;
 #[cfg(test)]
 mod v20260410124500_chat_message_usage_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260411190000;
+pub const SCHEMA_VERSION: i64 = 20260413043153;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -743,6 +746,11 @@ const MIGRATIONS: &[Migration] = &[
         migrate: v20260328210000_proposal_affected_paths::migrate,
     },
     Migration {
+        version: 20260329080000,
+        name: "acceptance_status",
+        migrate: v20260329080000_acceptance_status::migrate,
+    },
+    Migration {
         version: 20260329103000,
         name: "review_note_followup_session",
         migrate: v20260329103000_review_note_followup_session::migrate,
@@ -753,11 +761,6 @@ const MIGRATIONS: &[Migration] = &[
         migrate: v20260329113000_ideation_blocker_fingerprint::migrate,
     },
     Migration {
-        version: 20260329130000,
-        name: "acceptance_status",
-        migrate: v20260329080000_acceptance_status::migrate,
-    },
-    Migration {
         version: 20260330000000,
         name: "verification_confirmation_status",
         migrate: v20260330000000_verification_confirmation_status::migrate,
@@ -765,7 +768,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 20260330000001,
         name: "ideation_effort_settings",
-        migrate: v20260330000000_ideation_effort_settings::migrate,
+        migrate: v20260330000001_ideation_effort_settings::migrate,
     },
     Migration {
         version: 20260330000002,
@@ -841,6 +844,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260411190000,
         name: "delegated_sessions",
         migrate: v20260411190000_delegated_sessions::migrate,
+    },
+    Migration {
+        version: 20260413043153,
+        name: "drop_agent_lane_settings_fallback_harness",
+        migrate: v20260413043153_drop_agent_lane_settings_fallback_harness::migrate,
     },
 ];
 

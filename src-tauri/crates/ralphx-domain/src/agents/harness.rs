@@ -252,8 +252,6 @@ pub struct AgentLaneSettings {
     pub approval_policy: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_mode: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fallback_harness: Option<AgentHarnessKind>,
 }
 
 impl AgentLaneSettings {
@@ -264,15 +262,7 @@ impl AgentLaneSettings {
             effort: None,
             approval_policy: None,
             sandbox_mode: None,
-            fallback_harness: None,
         }
-    }
-}
-
-pub fn default_fallback_harness_for(harness: AgentHarnessKind) -> Option<AgentHarnessKind> {
-    match harness {
-        AgentHarnessKind::Claude => None,
-        AgentHarnessKind::Codex => None,
     }
 }
 

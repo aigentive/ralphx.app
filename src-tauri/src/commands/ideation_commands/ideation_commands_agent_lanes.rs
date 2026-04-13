@@ -103,7 +103,6 @@ pub async fn update_agent_lane_settings(
         effort,
         approval_policy: input.approval_policy,
         sandbox_mode: input.sandbox_mode,
-        fallback_harness: None,
     };
 
     let row = if let Some(project_id) = input.project_id {

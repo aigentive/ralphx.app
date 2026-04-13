@@ -15,7 +15,6 @@ fn codex_settings(model: &str) -> AgentLaneSettings {
         effort: Some(LogicalEffort::XHigh),
         approval_policy: Some("on-request".to_string()),
         sandbox_mode: Some("workspace-write".to_string()),
-        fallback_harness: Some(AgentHarnessKind::Claude),
     }
 }
 
@@ -35,7 +34,6 @@ async fn test_upsert_and_get_global_lane_settings() {
     assert_eq!(row.project_id, None);
     assert_eq!(row.settings.harness, AgentHarnessKind::Codex);
     assert_eq!(row.settings.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(row.settings.fallback_harness, Some(AgentHarnessKind::Claude));
 }
 
 #[tokio::test]

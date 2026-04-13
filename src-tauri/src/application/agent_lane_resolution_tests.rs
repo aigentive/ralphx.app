@@ -23,7 +23,6 @@ fn claude_lane_settings(
         effort,
         approval_policy: approval_policy.map(str::to_string),
         sandbox_mode: sandbox_mode.map(str::to_string),
-        fallback_harness: None,
     }
 }
 
@@ -39,7 +38,6 @@ fn codex_lane_settings(
         effort,
         approval_policy: approval_policy.map(str::to_string),
         sandbox_mode: sandbox_mode.map(str::to_string),
-        fallback_harness: Some(AgentHarnessKind::Claude),
     }
 }
 
@@ -236,7 +234,6 @@ async fn claude_lane_without_model_or_effort_still_falls_back_to_legacy_settings
                 effort: None,
                 approval_policy: None,
                 sandbox_mode: None,
-                fallback_harness: None,
             },
         )
         .await
@@ -372,7 +369,6 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
                 effort: None,
                 approval_policy: None,
                 sandbox_mode: None,
-                fallback_harness: Some(AgentHarnessKind::Claude),
             },
         )
         .await
@@ -426,7 +422,6 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
                 effort: None,
                 approval_policy: None,
                 sandbox_mode: None,
-                fallback_harness: Some(AgentHarnessKind::Claude),
             },
         )
         .await
@@ -601,7 +596,6 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
                 effort: None,
                 approval_policy: None,
                 sandbox_mode: None,
-                fallback_harness: Some(AgentHarnessKind::Claude),
             },
         )
         .await

@@ -634,7 +634,6 @@ async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_cl
     let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
     codex_lane.model = Some("gpt-5.4".to_string());
     codex_lane.effort = Some(LogicalEffort::XHigh);
-    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
     state
         .app_state
         .agent_lane_settings_repo

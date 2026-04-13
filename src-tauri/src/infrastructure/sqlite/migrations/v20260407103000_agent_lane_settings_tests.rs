@@ -38,10 +38,10 @@ fn test_agent_lane_settings_accepts_global_and_project_rows() {
     conn.execute(
         "INSERT INTO agent_lane_settings (
             scope_type, scope_id, lane, harness, model, effort,
-            approval_policy, sandbox_mode, fallback_harness
+            approval_policy, sandbox_mode
          ) VALUES (
             'global', NULL, 'ideation_primary', 'codex', 'gpt-5.4', 'xhigh',
-            'on-request', 'workspace-write', 'claude'
+            'on-request', 'workspace-write'
          )",
         [],
     )

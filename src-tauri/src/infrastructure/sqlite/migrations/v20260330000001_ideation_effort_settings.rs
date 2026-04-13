@@ -1,4 +1,4 @@
-// Migration v20260330000000: Add ideation_effort_settings table
+// Migration v20260330000001: Add ideation_effort_settings table
 //
 // Creates a new table for storing per-project and global ideation effort settings.
 // project_id IS NULL = global row; project_id = 'proj-xyz' = per-project override.
@@ -21,7 +21,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             CREATE UNIQUE INDEX IF NOT EXISTS idx_ideation_effort_project
                 ON ideation_effort_settings(project_id);",
         )?;
-        tracing::info!("v20260330000000: created ideation_effort_settings table");
+        tracing::info!("v20260330000001: created ideation_effort_settings table");
     }
     Ok(())
 }

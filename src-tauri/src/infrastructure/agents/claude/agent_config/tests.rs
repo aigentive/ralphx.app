@@ -377,7 +377,6 @@ agent_harness_defaults:
     effort: xhigh
     approval_policy: on-request
     sandbox_mode: workspace-write
-    fallback_harness: claude
   execution_worker:
     harness: claude
     model: sonnet
@@ -398,10 +397,6 @@ agent_harness_defaults:
     assert_eq!(
         ideation_primary.sandbox_mode.as_deref(),
         Some("workspace-write")
-    );
-    assert_eq!(
-        ideation_primary.fallback_harness,
-        Some(AgentHarnessKind::Claude)
     );
 
     let execution_worker = parsed
@@ -492,7 +487,6 @@ agent_harness_defaults:
         ideation_primary.sandbox_mode.as_deref(),
         Some("workspace-write")
     );
-    assert_eq!(ideation_primary.fallback_harness, None);
 }
 
 #[test]
@@ -536,7 +530,6 @@ agent_harness_defaults:
         .expect("execution worker defaults should exist");
 
     assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4-mini"));
-    assert_eq!(ideation_primary.fallback_harness, None);
     assert_eq!(execution_worker.harness, AgentHarnessKind::Claude);
     assert_eq!(execution_worker.model.as_deref(), Some("sonnet"));
 }
@@ -603,7 +596,6 @@ fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
         execution_worker.sandbox_mode.as_deref(),
         Some("workspace-write")
     );
-    assert_eq!(execution_worker.fallback_harness, None);
 
     let ideation_verifier = parsed
         .agent_harness_defaults
@@ -611,7 +603,6 @@ fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
         .expect("ideation verifier defaults should remain present");
     assert_eq!(ideation_verifier.harness, AgentHarnessKind::Codex);
     assert_eq!(ideation_verifier.model.as_deref(), Some("gpt-5.4-nano"));
-    assert_eq!(ideation_verifier.fallback_harness, None);
 }
 
 #[test]

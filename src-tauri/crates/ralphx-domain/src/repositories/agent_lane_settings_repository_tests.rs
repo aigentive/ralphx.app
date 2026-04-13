@@ -111,7 +111,6 @@ fn test_mock_with_rows() {
             effort: None,
             approval_policy: None,
             sandbox_mode: None,
-            fallback_harness: Some(AgentHarnessKind::Claude),
         },
         updated_at: Utc::now(),
     };

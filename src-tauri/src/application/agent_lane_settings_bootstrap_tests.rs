@@ -10,7 +10,6 @@ fn codex_defaults(model: &str, effort: LogicalEffort) -> AgentLaneSettings {
     settings.effort = Some(effort);
     settings.approval_policy = Some("never".to_string());
     settings.sandbox_mode = Some("danger-full-access".to_string());
-    settings.fallback_harness = Some(AgentHarnessKind::Claude);
     settings
 }
 

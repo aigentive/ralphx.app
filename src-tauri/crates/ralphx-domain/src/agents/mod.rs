@@ -18,11 +18,11 @@ pub use agentic_client::AgenticClient;
 pub use capabilities::{ClientCapabilities, ModelInfo};
 pub use error::{AgentError, AgentResult};
 pub use harness::{
-    default_fallback_harness_for, generic_harness_lane_defaults, standard_agent_lane_defaults,
-    standard_harness_behavior, standard_harness_map, standard_harness_registry,
-    AgentHarnessKind, AgentLane, AgentLaneSettings, HarnessBehavior, HarnessEffortStrategy,
-    HarnessModelLabelStrategy, HarnessStreamMode, LogicalEffort, ProviderSessionRef,
-    StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS, STANDARD_AGENT_HARNESSES,
+    generic_harness_lane_defaults, standard_agent_lane_defaults, standard_harness_behavior,
+    standard_harness_map, standard_harness_registry, AgentHarnessKind, AgentLane,
+    AgentLaneSettings, HarnessBehavior, HarnessEffortStrategy, HarnessModelLabelStrategy,
+    HarnessStreamMode, LogicalEffort, ProviderSessionRef, StoredAgentLaneSettings,
+    DEFAULT_AGENT_HARNESS, STANDARD_AGENT_HARNESSES,
 };
 pub use types::{
     AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentRole, ClientType, ResponseChunk,

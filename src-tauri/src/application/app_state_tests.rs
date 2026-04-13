@@ -263,7 +263,6 @@ async fn test_build_transition_service_with_execution_state_uses_app_codex_clien
     let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
     codex_lane.model = Some("gpt-5.4".to_string());
     codex_lane.effort = Some(LogicalEffort::XHigh);
-    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
     state
         .agent_lane_settings_repo
         .upsert_for_project(project.id.as_str(), AgentLane::ExecutionWorker, &codex_lane)
@@ -311,7 +310,6 @@ async fn test_resolve_ideation_background_agent_runtime_uses_registered_harness_
     let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
     codex_lane.model = Some("gpt-5.4".to_string());
     codex_lane.effort = Some(LogicalEffort::XHigh);
-    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
     state
         .agent_lane_settings_repo
         .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
@@ -341,7 +339,6 @@ async fn test_resolve_ideation_background_agent_runtime_falls_back_without_regis
     let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
     codex_lane.model = Some("gpt-5.4".to_string());
     codex_lane.effort = Some(LogicalEffort::XHigh);
-    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
     state
         .agent_lane_settings_repo
         .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
@@ -373,7 +370,6 @@ async fn test_resolve_session_namer_runtime_uses_default_client_even_when_ideati
     let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
     codex_lane.model = Some("gpt-5.4".to_string());
     codex_lane.effort = Some(LogicalEffort::XHigh);
-    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
     state
         .agent_lane_settings_repo
         .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
