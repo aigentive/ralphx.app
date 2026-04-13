@@ -10,9 +10,9 @@ use crate::domain::agents::{
 };
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, resolve_harness_agent_prompt_path,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
-    AgentPromptHarness, CanonicalClaudeToolSpec,
+    list_canonical_prompt_backed_agents, load_canonical_agent_definition,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
+    try_load_canonical_claude_metadata, AgentPromptHarness, CanonicalClaudeToolSpec,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -837,17 +837,57 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
     }
 }
 
+fn canonical_runtime_agent_stub(name: String) -> AgentConfigRaw {
+    AgentConfigRaw {
+        name,
+        extends: None,
+        tools: AgentToolsSpec::default(),
+        mcp_tools: Vec::new(),
+        preapproved_cli_tools: Vec::new(),
+        system_prompt_file: None,
+        model: None,
+        settings_profile: None,
+        effort: None,
+        permission_mode: None,
+    }
+}
+
 fn resolve_loaded_config_with_lookup(
     parsed: RalphxConfig,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Option<LoadedConfig> {
+    let canonical_project_root = canonical_agent_project_root();
+    let canonical_runtime_agents =
+        list_canonical_prompt_backed_agents(&canonical_project_root, AgentPromptHarness::Claude);
+    let canonical_runtime_agent_names = canonical_runtime_agents
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let raw_agents = canonical_runtime_agents
+        .into_iter()
+        .map(|name| {
+            parsed
+                .agents
+                .iter()
+                .find(|raw| raw.name == name)
+                .cloned()
+                .unwrap_or_else(|| canonical_runtime_agent_stub(name))
+        })
+        .chain(
+            parsed
+                .agents
+                .iter()
+                .filter(|raw| !canonical_runtime_agent_names.contains(&raw.name))
+                .cloned(),
+        )
+        .collect::<Vec<_>>();
+
     // Phase 1: resolve extends inheritance for all agents
-    let resolved_raw_agents: Vec<AgentConfigRaw> = parsed
-        .agents
+    let resolved_raw_agents: Vec<AgentConfigRaw> = raw_agents
         .iter()
         .map(|raw| {
             let mut stack = Vec::new();
-            resolve_agent_extends(raw, &parsed.agents, &mut stack)
+            resolve_agent_extends(raw, &raw_agents, &mut stack)
         })
         .collect();
 
@@ -857,7 +897,6 @@ fn resolve_loaded_config_with_lookup(
         .or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
-    let canonical_project_root = canonical_agent_project_root();
 
     for raw in &resolved_raw_agents {
         if !seen_names.insert(raw.name.clone()) {

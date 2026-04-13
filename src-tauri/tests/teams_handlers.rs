@@ -530,7 +530,8 @@ fn resolve_mcp_agent_type_specialist_preset_variants() {
 #[test]
 fn resolve_effort_for_ideation_team_member_returns_default() {
     use ralphx_lib::infrastructure::agents::claude::resolve_effort;
-    // ideation-team-member has no YAML entry, so should return default effort
+    // ideation-team-member is a compatibility alias without Claude harness metadata, so it
+    // should resolve to the default effort.
     let effort = resolve_effort(Some("ideation-team-member"));
     // Just ensure it returns a non-empty string (the default)
     assert!(!effort.is_empty(), "Expected non-empty effort for ideation-team-member");

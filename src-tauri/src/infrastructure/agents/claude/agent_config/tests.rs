@@ -118,7 +118,7 @@ fn test_all_agent_names_are_known() {
     for agent in agent_configs() {
         assert!(
             known.contains(agent.name.as_str()),
-            "Unknown agent name in config/ralphx.yaml: {}",
+            "Unknown agent name in resolved Claude runtime roster: {}",
             agent.name
         );
     }
@@ -1853,9 +1853,14 @@ agents:
     extends: agent-a
     system_prompt_file: plugins/app/agents/worker.md
 "#;
-    // Should parse without panic (circular breaks with warning)
-    let parsed = parse_config(yaml).expect("config should parse despite circular extends");
-    assert_eq!(parsed.agents.len(), 2);
+    // Raw parsing should preserve the two YAML rows; loaded config now expands the canonical
+    // prompt-backed runtime roster on top of that compatibility surface.
+    let raw = parse_raw_config(yaml).expect("raw config should parse despite circular extends");
+    assert_eq!(raw.agents.len(), 2);
+
+    let parsed = parse_config(yaml).expect("config should load despite circular extends");
+    assert!(parsed.agents.iter().any(|agent| agent.name == "agent-a"));
+    assert!(parsed.agents.iter().any(|agent| agent.name == "agent-b"));
 }
 
 #[test]

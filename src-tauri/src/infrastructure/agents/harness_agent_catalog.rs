@@ -211,6 +211,45 @@ pub fn load_canonical_agent_definition(
     }
 }
 
+pub fn list_canonical_prompt_backed_agents(
+    project_root: &Path,
+    harness: AgentPromptHarness,
+) -> Vec<String> {
+    let agents_dir = project_root.join(CANONICAL_AGENTS_DIR);
+    let Ok(entries) = std::fs::read_dir(&agents_dir) else {
+        return Vec::new();
+    };
+
+    let mut names = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
+            }
+
+            let agent_name = entry.file_name().to_string_lossy().to_string();
+            if !entry.path().join(AGENT_FILE_NAME).is_file() {
+                return None;
+            }
+
+            let prompt_path = entry.path().join(harness.as_dir()).join(PROMPT_FILE_NAME);
+            if prompt_path.is_file() {
+                return Some(agent_name);
+            }
+
+            let shared_prompt_path = entry.path().join(SHARED_PROMPT_DIR_NAME).join(PROMPT_FILE_NAME);
+            if shared_prompt_path.is_file() {
+                Some(agent_name)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 pub fn has_canonical_agent_definition(project_root: &Path, agent_name: &str) -> bool {
     canonical_agent_root(project_root, agent_name)
         .join(AGENT_FILE_NAME)

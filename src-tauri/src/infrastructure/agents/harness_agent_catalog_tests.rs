@@ -1,7 +1,7 @@
 use super::{
-    load_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
-    resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, AgentPromptHarness,
+    list_canonical_prompt_backed_agents, load_canonical_agent_definition,
+    load_canonical_codex_metadata, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use crate::infrastructure::agents::claude::get_agent_config;
 use std::fs;
@@ -995,6 +995,24 @@ fn live_runtime_agents_resolve_through_canonical_claude_prompts() {
 }
 
 #[test]
+fn canonical_claude_runtime_agent_list_matches_live_runtime_roster() {
+    let root = project_root();
+    let expected = live_runtime_agents()
+        .into_iter()
+        .map(|(agent_name, _, _)| agent_name.to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let actual = list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude)
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(actual, expected);
+    assert!(
+        !actual.contains("ralphx-ideation-team-member"),
+        "compatibility teammate target should not be treated as a prompt-backed Claude runtime agent"
+    );
+}
+
+#[test]
 fn codex_pilot_prompts_are_frontmatter_free() {
     let root = project_root();
 
@@ -1234,6 +1252,13 @@ fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
 #[test]
 fn canonical_agent_tree_is_schema_valid_and_loadable() {
     let root = project_root();
+    let prompt_backed_agents = list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude)
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let promptless_metadata_only_agents = std::collections::BTreeSet::from([
+        "ralphx-execution-team-member".to_string(),
+        "ralphx-ideation-team-member".to_string(),
+    ]);
 
     for agent_name in canonical_agent_names(&root) {
         let definition = load_canonical_agent_definition(&root, &agent_name)
@@ -1256,9 +1281,19 @@ fn canonical_agent_tree_is_schema_valid_and_loadable() {
             .join(&agent_name)
             .join("codex/prompt.md");
 
+        let has_any_prompt =
+            shared_prompt_path.exists() || claude_prompt_path.exists() || codex_prompt_path.exists();
+        if has_any_prompt {
+            continue;
+        }
+
         assert!(
-            shared_prompt_path.exists() || claude_prompt_path.exists() || codex_prompt_path.exists(),
-            "canonical agent {agent_name} must define at least one prompt"
+            promptless_metadata_only_agents.contains(&agent_name),
+            "canonical agent {agent_name} must define at least one prompt unless it is an explicit metadata-only compatibility entry"
+        );
+        assert!(
+            !prompt_backed_agents.contains(&agent_name),
+            "metadata-only compatibility agent {agent_name} must not be treated as a prompt-backed Claude runtime agent"
         );
     }
 }

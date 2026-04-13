@@ -7,9 +7,9 @@
 # - Process mapping/team constraints -> `config/processes.yaml`
 #
 # agents:
-#   Live agent roster still lives here for now, but prompt paths resolve from the
-#   canonical `agents/<agent>/.../prompt.md` tree. New capability ownership belongs
-#   in the canonical files above first, then mirrored here only if still needed.
+#   Canonical prompt-backed Claude runtime agents are discovered from `agents/*/agent.yaml`
+#   plus the matching `agents/<agent>/.../prompt.md` tree. Keep entries here only for
+#   compatibility aliases or runtime-only overlays that do not belong in canonical agent metadata.
 #
 # Notes:
 # - Unknown attributes are ignored by the current parser.
@@ -250,84 +250,5 @@ external_mcp:
   human_wait_timeout_secs: 285 # Env: RALPHX_EXTERNAL_MCP_HUMAN_WAIT_TIMEOUT_SECS
 
 agents:
-  - name: ralphx-ideation
-
-  - name: ralphx-ideation-readonly
-
-  - name: ralphx-utility-session-namer
-
-  - name: ralphx-chat-task
-
-  - name: ralphx-chat-project
-
-  - name: ralphx-review-chat
-
-  - name: ralphx-review-history
-
-  - name: ralphx-execution-worker
-
-  - name: ralphx-execution-coder
-
-  - name: ralphx-execution-reviewer
-
-  - name: ralphx-qa-prep
-
-  - name: ralphx-qa-executor
-
-  - name: ralphx-execution-orchestrator
-
-  - name: ralphx-execution-supervisor
-
-  - name: ralphx-research-deep-researcher
-
-  - name: ralphx-project-analyzer
-
-  - name: ralphx-execution-merger
-
-  - name: ralphx-memory-maintainer
-
-  - name: ralphx-memory-capture
-
-  # --- Plan critic agents (read-only, MCP tools for plan verification) ---
-
-  - name: ralphx-plan-critic-completeness
-
-  - name: ralphx-plan-critic-implementation-feasibility
-
-  # --- Plan verifier agent (owns the verification round loop) ---
-
-  - name: ralphx-plan-verifier
-
-  # --- Team lead variants (extends base agents) ---
-
-  - name: ralphx-ideation-team-lead
-    extends: ralphx-ideation
-
+  # Legacy teammate alias kept for MCP/runtime compatibility.
   - name: ideation-team-member
-
-  - name: ralphx-execution-team-lead
-    extends: ralphx-execution-worker
-
-  # --- Group B ideation agents (research specialists, advocate, critic) ---
-
-  - name: ralphx-ideation-specialist-backend
-
-  - name: ralphx-ideation-specialist-frontend
-
-  - name: ralphx-ideation-specialist-infra
-
-  - name: ralphx-ideation-specialist-ux
-
-  - name: ralphx-ideation-specialist-code-quality
-
-  - name: ralphx-ideation-specialist-prompt-quality
-
-  - name: ralphx-ideation-specialist-intent
-
-  - name: ralphx-ideation-specialist-state-machine
-
-  - name: ralphx-ideation-advocate
-
-  - name: ralphx-ideation-critic
-
-  - name: ralphx-ideation-specialist-pipeline-safety
