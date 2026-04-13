@@ -13,7 +13,7 @@ import { SUPPORT_TOOLS } from "./support-tools.js";
 import { formatToolErrorMessageFromRegistry, getToolRecoveryHintFromRegistry, } from "./tool-recovery.js";
 import { logToolsByAgent } from "./tool-debug.js";
 import { getAllowedToolNames as resolveAllowedToolNames, getToolsByAgent as resolveToolsByAgent, parseAllowedToolsFromArgs as parseAllowedToolsFromKnownRegistry, } from "./tool-authorization.js";
-export { TOOL_ALLOWLIST, LEGACY_TOOL_ALLOWLIST, setAgentType, getAgentType, } from "./tool-authorization.js";
+export { setAgentType, getAgentType, } from "./tool-authorization.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable

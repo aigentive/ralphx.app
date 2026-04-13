@@ -7,16 +7,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getAllowedToolNames,
   getFilteredTools,
+  getToolsByAgent,
   isToolAllowed,
   setAgentType,
   getAllTools,
   getToolRecoveryHint,
   formatToolErrorMessage,
-  TOOL_ALLOWLIST,
-  LEGACY_TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
+import { setLegacyToolAllowlistEntryForTest } from '../tool-authorization.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
 import {
   IDEATION_TEAM_LEAD,
@@ -42,6 +42,10 @@ import {
   WORKER,
   MERGER,
 } from '../agentNames.js';
+
+function toolsByAgent(): Record<string, string[]> {
+  return getToolsByAgent();
+}
 
 describe('getAllowedToolNames', () => {
   beforeEach(() => {
@@ -79,19 +83,15 @@ describe('getAllowedToolNames', () => {
   });
 
   it('should return legacy fallback entry when env var is unset and agent type lacks canonical metadata', () => {
-    const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
-    LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+    const originalTools = toolsByAgent()['legacy-fallback-agent'];
+    setLegacyToolAllowlistEntryForTest('legacy-fallback-agent', ['get_session_plan']);
 
     try {
       setAgentType('legacy-fallback-agent');
       const tools = getAllowedToolNames();
       expect(tools).toEqual(['get_session_plan']);
     } finally {
-      if (originalTools === undefined) {
-        delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
-      } else {
-        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
-      }
+      setLegacyToolAllowlistEntryForTest('legacy-fallback-agent', originalTools);
     }
   });
 
@@ -113,7 +113,7 @@ describe('getAllowedToolNames', () => {
     const tools = getAllowedToolNames();
     // Should return env var list, not agent type allowlist
     expect(tools).toEqual(['get_session_plan']);
-    expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    expect(tools).not.toEqual(toolsByAgent()[IDEATION_TEAM_LEAD]);
   });
 
   it('should strip delegation tools from env override for non-delegating agents', () => {
@@ -123,19 +123,12 @@ describe('getAllowedToolNames', () => {
     expect(tools).toEqual(['get_session_plan']);
   });
 
-  it('prefers canonical mcp_tools over TOOL_ALLOWLIST fallback when available', () => {
+  it('prefers canonical mcp_tools when available', () => {
     setAgentType('qa-prep');
-    const originalTools = [...(TOOL_ALLOWLIST['qa-prep'] ?? [])];
-    TOOL_ALLOWLIST['qa-prep'] = [];
-
-    try {
-      const tools = getAllowedToolNames();
-      expect(tools).toEqual(loadCanonicalMcpTools('qa-prep'));
-      expect(tools).toContain('fs_read_file');
-      expect(tools).toContain('fs_grep');
-    } finally {
-      TOOL_ALLOWLIST['qa-prep'] = originalTools;
-    }
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(loadCanonicalMcpTools('qa-prep'));
+    expect(tools).toContain('fs_read_file');
+    expect(tools).toContain('fs_grep');
   });
 
   it('treats explicit empty canonical mcp_tools as canonical instead of missing', () => {
@@ -244,7 +237,7 @@ describe('getFilteredTools', () => {
     expect(toolNames).toContain('get_session_plan');
 
     // Should match allowlist count
-    expect(tools.length).toBe(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD].length);
+    expect(tools.length).toBe(toolsByAgent()[IDEATION_TEAM_LEAD].length);
   });
 
   it('should return only allowed tools for ideation-team-member (read-only)', () => {
@@ -268,7 +261,7 @@ describe('getFilteredTools', () => {
     expect(toolNames).not.toContain('save_team_session_state');
 
     // Should match allowlist count
-    expect(tools.length).toBe(TOOL_ALLOWLIST[IDEATION_TEAM_MEMBER].length);
+    expect(tools.length).toBe(toolsByAgent()[IDEATION_TEAM_MEMBER].length);
   });
 
   it('should return correct tool set for worker-team-member', () => {
@@ -291,7 +284,7 @@ describe('getFilteredTools', () => {
     expect(toolNames).not.toContain('save_team_session_state');
 
     // Should match allowlist count
-    expect(tools.length).toBe(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER].length);
+    expect(tools.length).toBe(toolsByAgent()[WORKER_TEAM_MEMBER].length);
   });
 
   it('should scope ralphx-plan-verifier to the narrower verification helpers', () => {
@@ -682,7 +675,7 @@ describe('New team tool definitions', () => {
 
 describe('Tool allowlist for new agent types', () => {
   it('ralphx-ideation-team-lead should have all team coordination tools', () => {
-    const allowlist = TOOL_ALLOWLIST[IDEATION_TEAM_LEAD];
+    const allowlist = toolsByAgent()[IDEATION_TEAM_LEAD];
     expect(allowlist).toContain('request_team_plan');
     expect(allowlist).toContain('request_teammate_spawn');
     expect(allowlist).toContain('create_team_artifact');
@@ -692,7 +685,7 @@ describe('Tool allowlist for new agent types', () => {
   });
 
   it('ideation-team-member should have limited team tools', () => {
-    const allowlist = TOOL_ALLOWLIST[IDEATION_TEAM_MEMBER];
+    const allowlist = toolsByAgent()[IDEATION_TEAM_MEMBER];
     // Should have artifact tools
     expect(allowlist).toContain('create_team_artifact');
     expect(allowlist).toContain('get_team_artifacts');
@@ -704,7 +697,7 @@ describe('Tool allowlist for new agent types', () => {
   });
 
   it('worker-team-member should have artifact tools', () => {
-    const allowlist = TOOL_ALLOWLIST[WORKER_TEAM_MEMBER];
+    const allowlist = toolsByAgent()[WORKER_TEAM_MEMBER];
     // Should have artifact tools (document decisions)
     expect(allowlist).toContain('create_team_artifact');
     expect(allowlist).toContain('get_team_artifacts');
@@ -818,18 +811,18 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
     expect(tools).not.toContain('create_team_artifact');
   });
 
-  it('--allowed-tools takes priority over TOOL_ALLOWLIST fallback', () => {
+  it('--allowed-tools takes priority over legacy fallback resolution', () => {
     setAgentType(IDEATION_TEAM_LEAD);
     process.argv = [...process.argv, '--allowed-tools=get_session_plan'];
     const tools = getAllowedToolNames();
     expect(tools).toEqual(['get_session_plan']);
-    expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    expect(tools).not.toEqual(toolsByAgent()[IDEATION_TEAM_LEAD]);
   });
 
   it('legacy TOOL_ALLOWLIST fallback emits deprecation warning when canonical metadata is absent', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
-    LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+    const originalTools = toolsByAgent()['legacy-fallback-agent'];
+    setLegacyToolAllowlistEntryForTest('legacy-fallback-agent', ['get_session_plan']);
 
     try {
       setAgentType('legacy-fallback-agent');
@@ -839,11 +832,7 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
         expect.stringContaining('fallback TOOL_ALLOWLIST (legacy only)')
       );
     } finally {
-      if (originalTools === undefined) {
-        delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
-      } else {
-        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
-      }
+      setLegacyToolAllowlistEntryForTest('legacy-fallback-agent', originalTools);
       consoleSpy.mockRestore();
     }
   });
@@ -869,15 +858,15 @@ describe('delete_task_proposal tool', () => {
   });
 
   it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('delete_task_proposal');
+    expect(toolsByAgent()[ORCHESTRATOR_IDEATION]).toContain('delete_task_proposal');
   });
 
   it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('delete_task_proposal');
+    expect(toolsByAgent()[IDEATION_TEAM_LEAD]).toContain('delete_task_proposal');
   });
 
   it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('delete_task_proposal');
+    expect(toolsByAgent()[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('delete_task_proposal');
   });
 
   it('should be returned by getFilteredTools for ralphx-ideation', () => {
@@ -915,15 +904,15 @@ describe('revert_and_skip tool', () => {
   });
 
   it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('revert_and_skip');
+    expect(toolsByAgent()[ORCHESTRATOR_IDEATION]).toContain('revert_and_skip');
   });
 
   it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('revert_and_skip');
+    expect(toolsByAgent()[IDEATION_TEAM_LEAD]).toContain('revert_and_skip');
   });
 
   it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('revert_and_skip');
+    expect(toolsByAgent()[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('revert_and_skip');
   });
 
   it('should be returned by getFilteredTools for ralphx-ideation', () => {
@@ -961,15 +950,15 @@ describe('acceptance gate tools', () => {
     });
 
     it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
-      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_acceptance_status');
+      expect(toolsByAgent()[ORCHESTRATOR_IDEATION]).toContain('get_acceptance_status');
     });
 
     it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
-      expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_acceptance_status');
+      expect(toolsByAgent()[IDEATION_TEAM_LEAD]).toContain('get_acceptance_status');
     });
 
     it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
-      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_acceptance_status');
+      expect(toolsByAgent()[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_acceptance_status');
     });
 
     it('should be returned by getFilteredTools for ralphx-ideation', () => {
@@ -999,15 +988,15 @@ describe('acceptance gate tools', () => {
     });
 
     it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
-      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_pending_confirmations');
+      expect(toolsByAgent()[ORCHESTRATOR_IDEATION]).toContain('get_pending_confirmations');
     });
 
     it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
-      expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_pending_confirmations');
+      expect(toolsByAgent()[IDEATION_TEAM_LEAD]).toContain('get_pending_confirmations');
     });
 
     it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
-      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_pending_confirmations');
+      expect(toolsByAgent()[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_pending_confirmations');
     });
 
     it('should be returned by getFilteredTools for ralphx-ideation', () => {
@@ -1064,18 +1053,18 @@ describe('delegation bridge tools', () => {
   it.each([ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, PLAN_VERIFIER])(
     '%s should expose delegation bridge tools',
     (agent) => {
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
+      expect(toolsByAgent()[agent]).toContain('delegate_start');
+      expect(toolsByAgent()[agent]).toContain('delegate_wait');
+      expect(toolsByAgent()[agent]).toContain('delegate_cancel');
     }
   );
 
   it.each([WORKER, REVIEWER, MERGER])(
     '%s should expose delegation bridge tools in the fallback allowlist',
     (agent) => {
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
-      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
+      expect(toolsByAgent()[agent]).toContain('delegate_start');
+      expect(toolsByAgent()[agent]).toContain('delegate_wait');
+      expect(toolsByAgent()[agent]).toContain('delegate_cancel');
     }
   );
 
@@ -1098,12 +1087,12 @@ describe('delegation bridge tools', () => {
 });
 
 // ===========================================================================
-// Specialist / Critic / Advocate TOOL_ALLOWLIST assertions + YAML parity
+// Specialist / Critic / Advocate canonical allowlist assertions + YAML parity
 // ===========================================================================
 
-describe('TOOL_ALLOWLIST specialist entries', () => {
-  it('keeps every current TOOL_ALLOWLIST entry backed by canonical metadata', () => {
-    for (const agent of Object.keys(TOOL_ALLOWLIST)) {
+describe('canonical specialist allowlist entries', () => {
+  it('keeps every current resolved allowlist entry backed by canonical metadata', () => {
+    for (const agent of Object.keys(toolsByAgent()).filter((agent) => agent !== 'debug')) {
       expect(loadCanonicalMcpTools(agent)).toBeDefined();
     }
   });
@@ -1125,19 +1114,19 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
   ] as const;
 
   it.each(artifactSpecialists)('%s should include create_team_artifact', (agent) => {
-    expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
+    expect(toolsByAgent()[agent]).toContain('create_team_artifact');
   });
 
   it.each(artifactSpecialists)('%s should include get_team_artifacts', (agent) => {
-    expect(TOOL_ALLOWLIST[agent]).toContain('get_team_artifacts');
+    expect(toolsByAgent()[agent]).toContain('get_team_artifacts');
   });
 
   it.each(parentContextSpecialists)('%s should include get_parent_session_context', (agent) => {
-    expect(TOOL_ALLOWLIST[agent]).toContain('get_parent_session_context');
+    expect(toolsByAgent()[agent]).toContain('get_parent_session_context');
   });
 
   it('IDEATION_TEAM_MEMBER should include get_parent_session_context', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_TEAM_MEMBER]).toContain('get_parent_session_context');
+    expect(toolsByAgent()[IDEATION_TEAM_MEMBER]).toContain('get_parent_session_context');
   });
 
   it.each([
@@ -1145,36 +1134,36 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
     WORKER_TEAM_LEAD,
     WORKER_TEAM_MEMBER,
   ])('%s should stay aligned with canonical mcp_tools', (agent) => {
-    expect(loadCanonicalMcpTools(agent)).toEqual(TOOL_ALLOWLIST[agent]);
+    expect(loadCanonicalMcpTools(agent)).toEqual(toolsByAgent()[agent]);
   });
 
   it('IDEATION_CRITIC should include create_team_artifact', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_CRITIC]).toContain('create_team_artifact');
+    expect(toolsByAgent()[IDEATION_CRITIC]).toContain('create_team_artifact');
   });
 
   it('IDEATION_CRITIC should include get_team_artifacts', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_CRITIC]).toContain('get_team_artifacts');
+    expect(toolsByAgent()[IDEATION_CRITIC]).toContain('get_team_artifacts');
   });
 
   it('IDEATION_ADVOCATE should include create_team_artifact', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('create_team_artifact');
+    expect(toolsByAgent()[IDEATION_ADVOCATE]).toContain('create_team_artifact');
   });
 
   it('IDEATION_ADVOCATE should include get_team_artifacts', () => {
-    expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('get_team_artifacts');
+    expect(toolsByAgent()[IDEATION_ADVOCATE]).toContain('get_team_artifacts');
   });
 
   it.each([
     PLAN_CRITIC_COMPLETENESS,
     PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
   ])('%s should include create_team_artifact', (agent) => {
-    expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
+    expect(toolsByAgent()[agent]).toContain('create_team_artifact');
   });
 
   it.each([
     PLAN_CRITIC_COMPLETENESS,
     PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
   ])('%s should stay bounded to direct read tools', (agent) => {
-    expect(TOOL_ALLOWLIST[agent]).not.toContain('get_team_artifacts');
+    expect(toolsByAgent()[agent]).not.toContain('get_team_artifacts');
   });
 });

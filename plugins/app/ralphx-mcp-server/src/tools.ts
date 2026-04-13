@@ -23,8 +23,6 @@ import {
   parseAllowedToolsFromArgs as parseAllowedToolsFromKnownRegistry,
 } from "./tool-authorization.js";
 export {
-  TOOL_ALLOWLIST,
-  LEGACY_TOOL_ALLOWLIST,
   setAgentType,
   getAgentType,
 } from "./tool-authorization.js";

@@ -1451,7 +1451,7 @@ pub fn validate_mcp_tool_name(name: &str) -> bool {
 
 /// Format the `--allowed-tools` arg value from an optional tool list.
 /// - `None` → `None` (agent has no mcp_tools config → no arg injected)
-/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to TOOL_ALLOWLIST)
+/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to legacy fallback)
 /// - `Some([t1, t2, ...])` → `Some("t1,t2,...")`
 pub fn format_allowed_tools_arg_value(tools: Option<&[String]>) -> Option<String> {
     match tools {

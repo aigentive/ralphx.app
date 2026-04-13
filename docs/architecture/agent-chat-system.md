@@ -82,7 +82,7 @@ Steps 1-3 same, but step 5 uses the harness-native continuation path when provid
 
 ### Agent MCP Tool Summary
 
-| Agent | MCP Tools (from canonical `mcp_tools`, mirrored in `TOOL_ALLOWLIST`) |
+| Agent | MCP Tools (from canonical `mcp_tools`) |
 |-------|-------------------------------|
 | ralphx-ideation | create/update/delete_task_proposal, list_session_proposals, get_proposal, analyze_session_dependencies, create/update_plan_artifact, link_proposals_to_plan, get_session_plan, ask_user_question, create_child_session, get_parent_session_context, search/get/get_for_paths memories |
 | ralphx-ideation-readonly | list_session_proposals, get_proposal, get_session_plan, get_parent_session_context, create_child_session, search/get/get_for_paths memories |

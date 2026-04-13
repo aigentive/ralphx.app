@@ -3,7 +3,7 @@
  * All tools are proxies that forward to Tauri backend via HTTP
  */
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-export { TOOL_ALLOWLIST, LEGACY_TOOL_ALLOWLIST, setAgentType, getAgentType, } from "./tool-authorization.js";
+export { setAgentType, getAgentType, } from "./tool-authorization.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable

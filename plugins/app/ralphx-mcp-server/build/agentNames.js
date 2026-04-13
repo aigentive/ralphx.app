@@ -1,5 +1,5 @@
 /**
- * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
+ * Agent short names used by MCP authorization resolution.
  * Most match canonical ids under `agents/<agent>/agent.yaml` directly; a few
  * legacy teammate aliases are resolved to canonical ids by the metadata loader.
  */

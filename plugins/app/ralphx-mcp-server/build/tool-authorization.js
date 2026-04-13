@@ -48,15 +48,11 @@ function loadCanonicalAllowlistOrThrow(agentType) {
     }
     return tools;
 }
-/**
- * Compatibility mirror derived from canonical `agents/<agent>/agent.yaml` metadata.
- * Runtime resolution should prefer CLI/env overrides, then canonical agent metadata.
- */
-export const TOOL_ALLOWLIST = Object.fromEntries(CANONICAL_TOOL_ALLOWLIST_AGENTS.map((agentType) => [
+const TOOL_ALLOWLIST = Object.fromEntries(CANONICAL_TOOL_ALLOWLIST_AGENTS.map((agentType) => [
     agentType,
     loadCanonicalAllowlistOrThrow(agentType),
 ]));
-export const LEGACY_TOOL_ALLOWLIST = {};
+const LEGACY_TOOL_ALLOWLIST = {};
 let currentAgentType = "";
 export function setAgentType(agentType) {
     currentAgentType = agentType;
@@ -121,5 +117,12 @@ export function getToolsByAgent(knownToolNames) {
         ...LEGACY_TOOL_ALLOWLIST,
         debug: knownToolNames,
     };
+}
+export function setLegacyToolAllowlistEntryForTest(agentType, tools) {
+    if (tools === undefined) {
+        delete LEGACY_TOOL_ALLOWLIST[agentType];
+        return;
+    }
+    LEGACY_TOOL_ALLOWLIST[agentType] = [...tools];
 }
 //# sourceMappingURL=tool-authorization.js.map
