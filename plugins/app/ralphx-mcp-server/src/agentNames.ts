@@ -1,7 +1,7 @@
 /**
  * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the canonical agent ids under `agents/<agent>/agent.yaml` and the
- * generated Claude frontmatter names where those must stay aligned.
+ * Most match canonical ids under `agents/<agent>/agent.yaml` directly; a few
+ * legacy teammate aliases are resolved to canonical ids by the metadata loader.
  */
 
 export const ORCHESTRATOR_IDEATION = "ralphx-ideation";

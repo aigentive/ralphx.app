@@ -36,6 +36,8 @@ export function canonicalAgentName(agentType: string): string {
       return "ralphx-ideation-readonly";
     case "ideation-team-lead":
       return "ralphx-ideation-team-lead";
+    case "ideation-team-member":
+      return "ralphx-ideation-team-member";
     case "ideation-advocate":
       return "ralphx-ideation-advocate";
     case "ideation-critic":
@@ -70,6 +72,8 @@ export function canonicalAgentName(agentType: string): string {
       return "ralphx-chat-project";
     case "ralphx-worker-team":
       return "ralphx-execution-team-lead";
+    case "worker-team-member":
+      return "ralphx-execution-team-member";
     case "ralphx-worker":
       return "ralphx-execution-worker";
     case "ralphx-coder":
@@ -129,5 +133,5 @@ export function loadCanonicalAgentDefinition(agentType: string): CanonicalAgentD
 export function loadCanonicalMcpTools(agentType: string): string[] | undefined {
   const definition = loadCanonicalAgentDefinition(agentType);
   const tools = definition?.capabilities?.mcp_tools;
-  return tools && tools.length > 0 ? [...tools] : undefined;
+  return tools ? [...tools] : undefined;
 }
