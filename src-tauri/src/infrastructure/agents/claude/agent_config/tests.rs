@@ -58,7 +58,10 @@ fn test_get_preapproved_tools_worker_contains_expected() {
 #[test]
 fn test_default_base_tool_set_present_in_worker() {
     let tools = get_allowed_tools("ralphx-execution-worker").unwrap();
-    for t in super::tool_sets::CANONICAL_BASE_TOOLS {
+    for t in super::tool_sets::canonical_claude_tool_sets()
+        .get("base_tools")
+        .expect("embedded canonical tool sets should include base_tools")
+    {
         assert!(tools.contains(t), "worker missing base tool {}", t);
     }
 }
@@ -1589,7 +1592,7 @@ claude:
 }
 
 #[test]
-fn test_config_harnesses_claude_file_tool_sets_stay_aligned_with_fallback_registry() {
+fn test_config_harnesses_claude_file_tool_sets_match_embedded_canonical_registry() {
     #[derive(Deserialize)]
     struct ClaudeHarnessConfigMirror {
         #[serde(default)]
@@ -1602,14 +1605,10 @@ fn test_config_harnesses_claude_file_tool_sets_stay_aligned_with_fallback_regist
         serde_yaml::from_str(&contents).expect("should parse config/harnesses/claude.yaml");
 
     for (name, tools) in super::tool_sets::canonical_claude_tool_sets() {
-        let expected = tools
-            .iter()
-            .map(|tool| (*tool).to_string())
-            .collect::<Vec<_>>();
         assert_eq!(
             parsed.tool_sets.get(name),
-            Some(&expected),
-            "config/harnesses/claude.yaml tool_sets.{name} should stay aligned with the fallback Claude tool-set registry"
+            Some(tools),
+            "config/harnesses/claude.yaml tool_sets.{name} should stay aligned with the embedded canonical Claude tool-set registry"
         );
     }
 }

@@ -552,7 +552,7 @@ fn resolve_tools_from_spec(
     if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
     } else if let Some(base) = canonical_claude_tool_sets().get(extends) {
-        out.extend(base.iter().map(|tool| (*tool).to_string()));
+        out.extend(base.iter().cloned());
     } else {
         tracing::warn!(agent = %agent_name, tool_set = %extends, "Unknown tools.extends set; using include only");
     }

@@ -12,6 +12,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+const EMBEDDED_PROCESS_CONFIG: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../config/processes.yaml"));
 
 // ── Default value helpers ───────────────────────────────────────────────
 
@@ -61,84 +65,23 @@ pub struct ProcessMapping {
     pub slots: HashMap<String, ProcessSlot>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct EmbeddedProcessConfig {
+    process_mapping: ProcessMapping,
+    team_constraints: TeamConstraintsConfig,
+}
+
+static CANONICAL_PROCESS_CONFIG: OnceLock<EmbeddedProcessConfig> = OnceLock::new();
+
+fn embedded_process_config() -> &'static EmbeddedProcessConfig {
+    CANONICAL_PROCESS_CONFIG.get_or_init(|| {
+        serde_yaml::from_str(EMBEDDED_PROCESS_CONFIG)
+            .expect("embedded config/processes.yaml should parse")
+    })
+}
+
 pub fn canonical_process_mapping() -> ProcessMapping {
-    let mut slots = HashMap::new();
-    slots.insert(
-        "ideation".to_string(),
-        ProcessSlot {
-            default: "ralphx-ideation".to_string(),
-            variants: HashMap::from([
-                (
-                    "readonly".to_string(),
-                    "ralphx-ideation-readonly".to_string(),
-                ),
-                ("team".to_string(), "ralphx-ideation-team-lead".to_string()),
-            ]),
-        },
-    );
-    slots.insert(
-        "execution".to_string(),
-        ProcessSlot {
-            default: "ralphx-execution-worker".to_string(),
-            variants: HashMap::from([(
-                "team".to_string(),
-                "ralphx-execution-team-lead".to_string(),
-            )]),
-        },
-    );
-    slots.insert(
-        "review".to_string(),
-        ProcessSlot {
-            default: "ralphx-execution-reviewer".to_string(),
-            variants: HashMap::from([
-                ("chat".to_string(), "ralphx-review-chat".to_string()),
-                ("history".to_string(), "ralphx-review-history".to_string()),
-            ]),
-        },
-    );
-    slots.insert(
-        "merge".to_string(),
-        ProcessSlot {
-            default: "ralphx-execution-merger".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    slots.insert(
-        "qa_prep".to_string(),
-        ProcessSlot {
-            default: "ralphx-qa-prep".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    slots.insert(
-        "qa_refine".to_string(),
-        ProcessSlot {
-            default: "ralphx-qa-executor".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    slots.insert(
-        "qa_test".to_string(),
-        ProcessSlot {
-            default: "ralphx-qa-executor".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    slots.insert(
-        "chat_task".to_string(),
-        ProcessSlot {
-            default: "ralphx-chat-task".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    slots.insert(
-        "chat_project".to_string(),
-        ProcessSlot {
-            default: "ralphx-chat-project".to_string(),
-            variants: HashMap::new(),
-        },
-    );
-    ProcessMapping { slots }
+    embedded_process_config().process_mapping.clone()
 }
 
 pub fn resolve_canonical_process_mapping(raw: &ProcessMapping) -> ProcessMapping {
@@ -238,98 +181,7 @@ pub struct TeamConstraintsConfig {
 }
 
 pub fn canonical_team_constraints_config() -> TeamConstraintsConfig {
-    TeamConstraintsConfig {
-        defaults: Some(TeamConstraints {
-            max_teammates: 5,
-            allowed_tools: Vec::new(),
-            allowed_mcp_tools: Vec::new(),
-            model_cap: "sonnet".to_string(),
-            mode: TeamMode::Dynamic,
-            presets: Vec::new(),
-            timeout_minutes: 20,
-            budget_limit: None,
-            auto_approve: Some(true),
-        }),
-        processes: HashMap::from([
-            (
-                "ideation".to_string(),
-                TeamConstraints {
-                    max_teammates: 5,
-                    allowed_tools: vec![
-                        "Read".to_string(),
-                        "Grep".to_string(),
-                        "Glob".to_string(),
-                        "Bash".to_string(),
-                        "WebFetch".to_string(),
-                        "WebSearch".to_string(),
-                    ],
-                    allowed_mcp_tools: Vec::new(),
-                    model_cap: "opus".to_string(),
-                    mode: TeamMode::Dynamic,
-                    presets: vec!["researcher".to_string(), "critic".to_string()],
-                    timeout_minutes: 20,
-                    budget_limit: None,
-                    auto_approve: None,
-                },
-            ),
-            (
-                "execution".to_string(),
-                TeamConstraints {
-                    max_teammates: 5,
-                    allowed_tools: vec![
-                        "Read".to_string(),
-                        "Write".to_string(),
-                        "Edit".to_string(),
-                        "Bash".to_string(),
-                        "Grep".to_string(),
-                        "Glob".to_string(),
-                        "WebFetch".to_string(),
-                        "WebSearch".to_string(),
-                    ],
-                    allowed_mcp_tools: vec![
-                        "get_task_context".to_string(),
-                        "get_artifact".to_string(),
-                        "get_project_analysis".to_string(),
-                        "create_team_artifact".to_string(),
-                        "get_team_artifacts".to_string(),
-                        "start_step".to_string(),
-                        "complete_step".to_string(),
-                        "skip_step".to_string(),
-                        "fail_step".to_string(),
-                        "add_step".to_string(),
-                        "get_step_context".to_string(),
-                        "get_step_progress".to_string(),
-                        "get_sub_steps".to_string(),
-                    ],
-                    model_cap: "sonnet".to_string(),
-                    mode: TeamMode::Dynamic,
-                    presets: vec!["ralphx-execution-coder".to_string()],
-                    timeout_minutes: 30,
-                    budget_limit: None,
-                    auto_approve: None,
-                },
-            ),
-            (
-                "review".to_string(),
-                TeamConstraints {
-                    max_teammates: 2,
-                    allowed_tools: vec![
-                        "Read".to_string(),
-                        "Grep".to_string(),
-                        "Glob".to_string(),
-                        "Bash".to_string(),
-                    ],
-                    allowed_mcp_tools: Vec::new(),
-                    model_cap: "sonnet".to_string(),
-                    mode: TeamMode::Constrained,
-                    presets: vec!["ralphx-execution-reviewer".to_string()],
-                    timeout_minutes: 20,
-                    budget_limit: None,
-                    auto_approve: None,
-                },
-            ),
-        ]),
-    }
+    embedded_process_config().team_constraints.clone()
 }
 
 pub fn resolve_canonical_team_constraints_config(raw: &TeamConstraintsConfig) -> TeamConstraintsConfig {
