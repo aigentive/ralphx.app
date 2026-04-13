@@ -12,15 +12,17 @@
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::State;
 
 use crate::application::{AppChatService, AppState, ChatService, SendResult};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, IdeationSessionId, TaskId,
+    AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
+    DelegatedSessionId, IdeationSessionId, TaskId,
 };
 use crate::domain::services::QueuedMessage;
 
@@ -183,6 +185,358 @@ pub struct AgentRunStatusResponse {
     pub error_message: Option<String>,
     pub model_id: Option<String>,
     pub model_label: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DelegatedToolRuntimeSnapshot {
+    session_id: String,
+    conversation_id: Option<String>,
+    agent_run_id: Option<String>,
+    agent_name: String,
+    title: Option<String>,
+    harness: String,
+    provider_session_id: Option<String>,
+    session_status: String,
+    session_error: Option<String>,
+    created_at: String,
+    updated_at: String,
+    completed_at: Option<String>,
+    latest_run: Option<JsonValue>,
+    recent_messages: Vec<JsonValue>,
+}
+
+fn is_delegate_start_tool_name(name: &str) -> bool {
+    name == "delegate_start" || name.ends_with("::delegate_start")
+}
+
+fn parse_wrapped_mcp_result_object(result: &JsonValue) -> Option<JsonMap<String, JsonValue>> {
+    if let Some(object) = result.as_object() {
+        if let Some(content) = object.get("content").and_then(JsonValue::as_array) {
+            if let Some(inner_text) = content
+                .iter()
+                .find_map(|entry| entry.get("text").and_then(JsonValue::as_str))
+            {
+                if let Ok(JsonValue::Object(inner)) = serde_json::from_str::<JsonValue>(inner_text) {
+                    return Some(inner);
+                }
+            }
+        }
+        return Some(object.clone());
+    }
+
+    result
+        .as_str()
+        .and_then(|raw| serde_json::from_str::<JsonValue>(raw).ok())
+        .and_then(|parsed| parsed.as_object().cloned())
+}
+
+fn get_string_field<'a>(object: &'a JsonMap<String, JsonValue>, key: &str) -> Option<&'a str> {
+    object.get(key).and_then(JsonValue::as_str)
+}
+
+fn provider_chat_message_recent_payload(content: &str, created_at: &str) -> JsonValue {
+    serde_json::json!({
+        "role": "assistant",
+        "content": content,
+        "created_at": created_at,
+    })
+}
+
+fn delegated_agent_state_label(status: &str) -> &'static str {
+    if status == AgentRunStatus::Running.to_string() {
+        "likely_generating"
+    } else {
+        "idle"
+    }
+}
+
+fn delegated_total_tokens_from_run(run: &crate::domain::entities::AgentRun) -> Option<u64> {
+    let total = run.input_tokens.unwrap_or(0)
+        + run.output_tokens.unwrap_or(0)
+        + run.cache_creation_tokens.unwrap_or(0)
+        + run.cache_read_tokens.unwrap_or(0);
+    if total == 0
+        && run.input_tokens.is_none()
+        && run.output_tokens.is_none()
+        && run.cache_creation_tokens.is_none()
+        && run.cache_read_tokens.is_none()
+    {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+async fn load_delegated_tool_runtime_snapshot(
+    state: &AppState,
+    delegated_session_id: &str,
+    delegated_conversation_id: Option<&str>,
+    delegated_agent_run_id: Option<&str>,
+) -> Option<DelegatedToolRuntimeSnapshot> {
+    let session = state
+        .delegated_session_repo
+        .get_by_id(&DelegatedSessionId::from_string(delegated_session_id))
+        .await
+        .ok()
+        .flatten()?;
+
+    let conversation_id = delegated_conversation_id.map(str::to_string);
+    let latest_run = if let Some(run_id) = delegated_agent_run_id {
+        state
+            .agent_run_repo
+            .get_by_id(&AgentRunId::from_string(run_id))
+            .await
+            .ok()
+            .flatten()
+    } else if let Some(conversation_id) = delegated_conversation_id {
+        state
+            .agent_run_repo
+            .get_latest_for_conversation(&ChatConversationId::from_string(conversation_id))
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let recent_messages = if let Some(conversation_id) = delegated_conversation_id {
+        state
+            .chat_message_repo
+            .get_by_conversation(&ChatConversationId::from_string(conversation_id))
+            .await
+            .ok()
+            .map(|messages| {
+                messages
+                    .into_iter()
+                    .filter(|message| matches!(message.role.to_string().as_str(), "assistant" | "orchestrator"))
+                    .rev()
+                    .find_map(|message| {
+                        let content = message.content.trim();
+                        if content.is_empty() {
+                            None
+                        } else {
+                            Some(provider_chat_message_recent_payload(
+                                content,
+                                &message.created_at.to_rfc3339(),
+                            ))
+                        }
+                    })
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    let latest_run_json = latest_run.as_ref().map(|run| {
+        serde_json::json!({
+            "agent_run_id": run.id.as_str(),
+            "status": run.status.to_string(),
+            "started_at": run.started_at.to_rfc3339(),
+            "completed_at": run.completed_at.map(|timestamp| timestamp.to_rfc3339()),
+            "error_message": run.error_message,
+            "harness": run.harness.map(|value| value.to_string()),
+            "provider_session_id": run.provider_session_id,
+            "upstream_provider": run.upstream_provider,
+            "provider_profile": run.provider_profile,
+            "logical_model": run.logical_model,
+            "effective_model_id": run.effective_model_id,
+            "logical_effort": run.logical_effort.map(|value| value.to_string()),
+            "effective_effort": run.effective_effort,
+            "approval_policy": run.approval_policy,
+            "sandbox_mode": run.sandbox_mode,
+            "input_tokens": run.input_tokens,
+            "output_tokens": run.output_tokens,
+            "cache_creation_tokens": run.cache_creation_tokens,
+            "cache_read_tokens": run.cache_read_tokens,
+            "estimated_usd": run.estimated_usd,
+            "total_tokens": delegated_total_tokens_from_run(run),
+        })
+    });
+
+    Some(DelegatedToolRuntimeSnapshot {
+        session_id: session.id.as_str().to_string(),
+        conversation_id,
+        agent_run_id: latest_run.as_ref().map(|run| run.id.as_str()),
+        agent_name: session.agent_name,
+        title: session.title,
+        harness: session.harness.to_string(),
+        provider_session_id: session.provider_session_id,
+        session_status: latest_run
+            .as_ref()
+            .map(|run| run.status.to_string())
+            .unwrap_or_else(|| session.status.clone()),
+        session_error: latest_run
+            .as_ref()
+            .and_then(|run| run.error_message.clone())
+            .or(session.error),
+        created_at: session.created_at.to_rfc3339(),
+        updated_at: session.updated_at.to_rfc3339(),
+        completed_at: latest_run
+            .as_ref()
+            .and_then(|run| run.completed_at.map(|timestamp| timestamp.to_rfc3339()))
+            .or_else(|| session.completed_at.map(|timestamp| timestamp.to_rfc3339())),
+        latest_run: latest_run_json,
+        recent_messages,
+    })
+}
+
+fn merge_delegated_snapshot_into_result(
+    result: &mut JsonValue,
+    snapshot: &DelegatedToolRuntimeSnapshot,
+) {
+    let JsonValue::Object(result_object) = result else {
+        return;
+    };
+
+    result_object.insert(
+        "job_status".to_string(),
+        JsonValue::String(snapshot.session_status.clone()),
+    );
+    result_object.insert(
+        "status".to_string(),
+        JsonValue::String(snapshot.session_status.clone()),
+    );
+    result_object.insert(
+        "agent_name".to_string(),
+        JsonValue::String(snapshot.agent_name.clone()),
+    );
+    result_object.insert(
+        "delegated_session_id".to_string(),
+        JsonValue::String(snapshot.session_id.clone()),
+    );
+    result_object.insert(
+        "harness".to_string(),
+        JsonValue::String(snapshot.harness.clone()),
+    );
+    if let Some(conversation_id) = snapshot.conversation_id.as_ref() {
+        result_object.insert(
+            "delegated_conversation_id".to_string(),
+            JsonValue::String(conversation_id.clone()),
+        );
+    }
+    if let Some(agent_run_id) = snapshot.agent_run_id.as_ref() {
+        result_object.insert(
+            "delegated_agent_run_id".to_string(),
+            JsonValue::String(agent_run_id.clone()),
+        );
+    }
+    if let Some(provider_session_id) = snapshot.provider_session_id.as_ref() {
+        result_object.insert(
+            "provider_session_id".to_string(),
+            JsonValue::String(provider_session_id.clone()),
+        );
+    }
+    if let Some(error) = snapshot.session_error.as_ref() {
+        result_object.insert("error".to_string(), JsonValue::String(error.clone()));
+    }
+    if let Some(completed_at) = snapshot.completed_at.as_ref() {
+        result_object.insert(
+            "completed_at".to_string(),
+            JsonValue::String(completed_at.clone()),
+        );
+    }
+
+    result_object.insert(
+        "delegated_status".to_string(),
+        serde_json::json!({
+            "session": {
+                "id": snapshot.session_id,
+                "title": snapshot.title,
+                "status": snapshot.session_status,
+                "parent_context_type": "ideation",
+                "parent_context_id": JsonValue::Null,
+                "agent_name": snapshot.agent_name,
+                "harness": snapshot.harness,
+                "provider_session_id": snapshot.provider_session_id,
+                "created_at": snapshot.created_at,
+                "updated_at": snapshot.updated_at,
+                "completed_at": snapshot.completed_at,
+            },
+            "agent_state": {
+                "estimated_status": delegated_agent_state_label(&snapshot.session_status),
+            },
+            "conversation_id": snapshot.conversation_id,
+            "latest_run": snapshot.latest_run,
+            "recent_messages": if snapshot.recent_messages.is_empty() {
+                JsonValue::Null
+            } else {
+                JsonValue::Array(snapshot.recent_messages.clone())
+            },
+        }),
+    );
+}
+
+async fn reconcile_delegated_result_payloads(
+    state: &AppState,
+    tool_calls: Option<String>,
+    content_blocks: Option<String>,
+) -> (Option<JsonValue>, Option<JsonValue>) {
+    let mut snapshot_cache = HashMap::<String, DelegatedToolRuntimeSnapshot>::new();
+
+    async fn reconcile_value_array(
+        state: &AppState,
+        raw: Option<String>,
+        snapshot_cache: &mut HashMap<String, DelegatedToolRuntimeSnapshot>,
+    ) -> Option<JsonValue> {
+        let mut parsed = serde_json::from_str::<JsonValue>(&raw?).ok()?;
+        let items = parsed.as_array_mut()?;
+
+        for item in items.iter_mut() {
+            let Some(item_object) = item.as_object_mut() else {
+                continue;
+            };
+            let Some(name) = item_object.get("name").and_then(JsonValue::as_str) else {
+                continue;
+            };
+            if !is_delegate_start_tool_name(name) {
+                continue;
+            }
+
+            let Some(result) = item_object.get_mut("result") else {
+                continue;
+            };
+            let Some(parsed_result) = parse_wrapped_mcp_result_object(result) else {
+                continue;
+            };
+
+            let delegated_session_id = get_string_field(&parsed_result, "delegated_session_id")
+                .or_else(|| get_string_field(&parsed_result, "delegatedSessionId"));
+            let Some(delegated_session_id) = delegated_session_id else {
+                continue;
+            };
+            let delegated_conversation_id = get_string_field(&parsed_result, "delegated_conversation_id")
+                .or_else(|| get_string_field(&parsed_result, "delegatedConversationId"));
+            let delegated_agent_run_id = get_string_field(&parsed_result, "delegated_agent_run_id")
+                .or_else(|| get_string_field(&parsed_result, "delegatedAgentRunId"));
+
+            let snapshot = if let Some(snapshot) = snapshot_cache.get(delegated_session_id) {
+                snapshot.clone()
+            } else {
+                let Some(snapshot) = load_delegated_tool_runtime_snapshot(
+                    state,
+                    delegated_session_id,
+                    delegated_conversation_id,
+                    delegated_agent_run_id,
+                )
+                .await
+                else {
+                    continue;
+                };
+                snapshot_cache.insert(delegated_session_id.to_string(), snapshot.clone());
+                snapshot
+            };
+
+            merge_delegated_snapshot_into_result(result, &snapshot);
+        }
+
+        Some(parsed)
+    }
+
+    let tool_calls = reconcile_value_array(state, tool_calls, &mut snapshot_cache).await;
+    let content_blocks = reconcile_value_array(state, content_blocks, &mut snapshot_cache).await;
+    (tool_calls, content_blocks)
 }
 
 // ============================================================================
@@ -447,44 +801,53 @@ pub async fn get_agent_conversation(
 
     let service = create_chat_service(&state, app, &execution_state, None);
 
-    service
+    let conversation = service
         .get_conversation_with_messages(&conversation_id)
         .await
-        .map(|opt| {
-            opt.map(|cwm| AgentConversationWithMessagesResponse {
-                conversation: AgentConversationResponse::from(cwm.conversation),
-                messages: cwm
-                    .messages
-                    .into_iter()
-                    .map(|m| AgentMessageResponse {
-                        id: m.id.as_str().to_string(),
-                        role: m.role.to_string(),
-                        content: m.content,
-                        metadata: m.metadata,
-                        tool_calls: m.tool_calls.and_then(|tc| serde_json::from_str(&tc).ok()),
-                        content_blocks: m
-                            .content_blocks
-                            .and_then(|cb| serde_json::from_str(&cb).ok()),
-                        attribution_source: m.attribution_source,
-                        provider_harness: m.provider_harness.map(|value| value.to_string()),
-                        provider_session_id: m.provider_session_id,
-                        upstream_provider: m.upstream_provider,
-                        provider_profile: m.provider_profile,
-                        logical_model: m.logical_model,
-                        effective_model_id: m.effective_model_id,
-                        logical_effort: m.logical_effort.map(|value| value.to_string()),
-                        effective_effort: m.effective_effort,
-                        input_tokens: m.input_tokens,
-                        output_tokens: m.output_tokens,
-                        cache_creation_tokens: m.cache_creation_tokens,
-                        cache_read_tokens: m.cache_read_tokens,
-                        estimated_usd: m.estimated_usd,
-                        created_at: m.created_at.to_rfc3339(),
-                    })
-                    .collect(),
-            })
-        })
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let Some(cwm) = conversation else {
+        return Ok(None);
+    };
+
+    let mut messages = Vec::with_capacity(cwm.messages.len());
+    for message in cwm.messages {
+        let (tool_calls, content_blocks) = reconcile_delegated_result_payloads(
+            &state,
+            message.tool_calls.clone(),
+            message.content_blocks.clone(),
+        )
+        .await;
+
+        messages.push(AgentMessageResponse {
+            id: message.id.as_str().to_string(),
+            role: message.role.to_string(),
+            content: message.content,
+            metadata: message.metadata,
+            tool_calls,
+            content_blocks,
+            attribution_source: message.attribution_source,
+            provider_harness: message.provider_harness.map(|value| value.to_string()),
+            provider_session_id: message.provider_session_id,
+            upstream_provider: message.upstream_provider,
+            provider_profile: message.provider_profile,
+            logical_model: message.logical_model,
+            effective_model_id: message.effective_model_id,
+            logical_effort: message.logical_effort.map(|value| value.to_string()),
+            effective_effort: message.effective_effort,
+            input_tokens: message.input_tokens,
+            output_tokens: message.output_tokens,
+            cache_creation_tokens: message.cache_creation_tokens,
+            cache_read_tokens: message.cache_read_tokens,
+            estimated_usd: message.estimated_usd,
+            created_at: message.created_at.to_rfc3339(),
+        });
+    }
+
+    Ok(Some(AgentConversationWithMessagesResponse {
+        conversation: AgentConversationResponse::from(cwm.conversation),
+        messages,
+    }))
 }
 
 /// Get the active agent run for a conversation
@@ -643,9 +1006,13 @@ pub async fn create_agent_conversation(
 
 #[cfg(test)]
 mod tests {
-    use super::AgentConversationResponse;
+    use super::{
+        merge_delegated_snapshot_into_result, parse_wrapped_mcp_result_object,
+        AgentConversationResponse, DelegatedToolRuntimeSnapshot,
+    };
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::domain::entities::{ChatConversation, ProjectId};
+    use serde_json::json;
 
     #[test]
     fn agent_conversation_response_derives_provider_metadata_from_legacy_claude_session() {
@@ -704,5 +1071,84 @@ mod tests {
             Some("claude-session-456".to_string())
         );
         assert_eq!(response.provider_harness, Some("claude".to_string()));
+    }
+
+    #[test]
+    fn parse_wrapped_mcp_result_object_extracts_embedded_json_payload() {
+        let result = json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": "{\"delegated_session_id\":\"delegated-1\",\"status\":\"running\"}"
+                }
+            ]
+        });
+
+        let parsed = parse_wrapped_mcp_result_object(&result).expect("parsed result");
+
+        assert_eq!(
+            parsed.get("delegated_session_id").and_then(|value| value.as_str()),
+            Some("delegated-1")
+        );
+        assert_eq!(
+            parsed.get("status").and_then(|value| value.as_str()),
+            Some("running")
+        );
+    }
+
+    #[test]
+    fn merge_delegated_snapshot_overrides_running_result_with_terminal_runtime_state() {
+        let mut result = json!({
+            "delegated_session_id": "delegated-1",
+            "status": "running",
+            "job_status": "running"
+        });
+        let snapshot = DelegatedToolRuntimeSnapshot {
+            session_id: "delegated-1".to_string(),
+            conversation_id: Some("conversation-1".to_string()),
+            agent_run_id: Some("run-1".to_string()),
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            title: Some("Completeness critic".to_string()),
+            harness: "codex".to_string(),
+            provider_session_id: Some("provider-1".to_string()),
+            session_status: "completed".to_string(),
+            session_error: None,
+            created_at: "2026-04-13T10:00:00Z".to_string(),
+            updated_at: "2026-04-13T10:01:00Z".to_string(),
+            completed_at: Some("2026-04-13T10:01:30Z".to_string()),
+            latest_run: Some(json!({
+                "agent_run_id": "run-1",
+                "status": "completed"
+            })),
+            recent_messages: vec![json!({
+                "role": "assistant",
+                "content": "Completeness: no critical blockers found.",
+                "created_at": "2026-04-13T10:01:20Z"
+            })],
+        };
+
+        merge_delegated_snapshot_into_result(&mut result, &snapshot);
+
+        assert_eq!(result.get("status").and_then(|value| value.as_str()), Some("completed"));
+        assert_eq!(
+            result.get("job_status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            result
+                .get("delegated_status")
+                .and_then(|value| value.get("latest_run"))
+                .and_then(|value| value.get("status"))
+                .and_then(|value| value.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            result
+                .get("delegated_status")
+                .and_then(|value| value.get("recent_messages"))
+                .and_then(|value| value.as_array())
+                .map(Vec::len),
+            Some(1)
+        );
     }
 }
