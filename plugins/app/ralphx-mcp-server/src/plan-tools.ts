@@ -105,7 +105,7 @@ export const PLAN_TOOLS: Tool[] = [
       "Verifier-friendly helper for reporting an in-progress verification round on the PARENT ideation session. " +
       "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
       "This is the simpler alias for update_plan_verification with status fixed to reviewing and in_progress fixed to true. " +
-      "Use this after each round once the merged gap list is ready. If generation is stale, call get_plan_verification again instead of guessing.",
+      "Use this after each round once the merged gap list is ready. The response is authoritative for next-step control flow: it returns the backend verification state after convergence checks, so the verifier should use returned status/in_progress/convergence_reason instead of re-implementing zero-blocking, jaccard, or max-round rules in the prompt. If generation is stale, call get_plan_verification again instead of guessing.",
     inputSchema: {
       type: "object",
       examples: [

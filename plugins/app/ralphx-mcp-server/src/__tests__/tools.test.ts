@@ -609,6 +609,7 @@ describe('New team tool definitions', () => {
       expect(tool?.description).toContain('backend remaps it automatically');
       expect(tool?.description).toContain('status fixed to reviewing');
       expect(tool?.description).toContain('in_progress fixed to true');
+      expect(tool?.description).toContain('response is authoritative for next-step control flow');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         session_id: 'parent-session-id',
         round: 1,

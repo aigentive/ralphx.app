@@ -235,6 +235,10 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must route full rounds through the backend-owned round helper"
     );
     assert!(
+        prompt.contains("round_report"),
+        "ralphx-plan-verifier prompt must treat the backend round report as the authoritative next-step signal"
+    );
+    assert!(
         prompt.contains("created_after"),
         "ralphx-plan-verifier prompt must pass created_after through the terminal cleanup contract"
     );
@@ -265,6 +269,14 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
     assert!(
         !prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
         "ralphx-plan-verifier prompt should not drift back to manual artifact polling"
+    );
+    assert!(
+        !prompt.contains("round_result.gap_counts.critical === 0"),
+        "ralphx-plan-verifier prompt should not re-implement zero-blocking convergence in prompt logic"
+    );
+    assert!(
+        !prompt.contains("current_round >= max_rounds"),
+        "ralphx-plan-verifier prompt should not re-implement max-round terminal logic in prompt prose"
     );
     assert!(
         !prompt.contains("Task(subagent_type:"),

@@ -74,13 +74,16 @@ Optional specialist artifacts may help the next revision, but they do not create
 
 Report each complete round with:
 - `report_verification_round(round: <current_round>, gaps: <round_result.merged_gaps>, generation: <generation>)`
+- store the response as `round_report`
+
+Backend state is authoritative:
+- if `round_report.status === "verified"` and `round_report.in_progress === false`, finish as `verified` with `convergence_reason = round_report.convergence_reason`
+- if `round_report.status === "needs_revision"` and `round_report.in_progress === false`, finish as `needs_revision` with `convergence_reason = round_report.convergence_reason`
+- otherwise continue with bounded revision
 
 ## Decide
 
-- If `round_result.gap_counts.critical === 0` and `round_result.gap_counts.high === 0`, finish as `verified` with `convergence_reason="zero_blocking"`.
-- If the same blocking shape keeps repeating and another revision is unlikely to help, finish as `needs_revision` with `convergence_reason="jaccard_converged"`.
-- If `current_round >= max_rounds`, finish as `needs_revision` with `convergence_reason="max_rounds"`.
-- Otherwise revise the plan against `round_result.merged_gaps` and continue.
+If the backend did not return a terminal state, revise the plan against `round_result.merged_gaps` and continue.
 
 When revising:
 - preserve the user goal
