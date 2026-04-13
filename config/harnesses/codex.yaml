@@ -1,0 +1,25 @@
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4
+    effort: xhigh
+    approval_policy: never
+    sandbox_mode: danger-full-access
+  ideation_verifier:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: never
+    sandbox_mode: danger-full-access
+  ideation_subagent:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: never
+    sandbox_mode: danger-full-access
+  ideation_verifier_subagent:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: never
+    sandbox_mode: danger-full-access

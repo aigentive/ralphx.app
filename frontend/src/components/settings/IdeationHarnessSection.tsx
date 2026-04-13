@@ -61,11 +61,6 @@ const SANDBOX_MODE_OPTIONS = [
   { value: "danger-full-access", label: "Danger Full Access" },
 ] as const;
 
-const FALLBACK_HARNESS_OPTIONS = [
-  { value: "inherit", label: "Inherit" },
-  { value: "claude", label: "Claude" },
-] as const;
-
 const CODEX_LOCKED_APPROVAL_POLICY = "never";
 const CODEX_LOCKED_SANDBOX_MODE = "danger-full-access";
 const CODEX_MCP_REQUIREMENT_COPY =
@@ -160,7 +155,7 @@ function defaultsForHarness(
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: "claude",
+      fallbackHarness: null,
     };
   }
 
@@ -171,7 +166,7 @@ function defaultsForHarness(
       effort: "medium",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: "claude",
+      fallbackHarness: null,
     };
   }
 
@@ -182,7 +177,7 @@ function defaultsForHarness(
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: "claude",
+      fallbackHarness: null,
     };
   }
 
@@ -192,7 +187,7 @@ function defaultsForHarness(
     effort: "medium",
     approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
     sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-    fallbackHarness: "claude",
+    fallbackHarness: null,
   };
 }
 
@@ -235,7 +230,7 @@ function baseLaneUpdate(lane: AgentHarnessLaneView) {
     effort: lane.row?.effort ?? null,
     approvalPolicy: lane.row?.approvalPolicy ?? null,
     sandboxMode: lane.row?.sandboxMode ?? null,
-    fallbackHarness: lane.row?.fallbackHarness ?? null,
+    fallbackHarness: null,
   };
 }
 
@@ -410,29 +405,6 @@ function HarnessRow({
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
                     {SANDBOX_MODE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                  Fallback Harness
-                </p>
-                <Select
-                  value={selectValue(lane.row?.fallbackHarness)}
-                    onValueChange={(value) =>
-                      onLaneChange({ fallbackHarness: fromSelectValue(value) as Harness | null })
-                    }
-                  disabled={disabled}
-                >
-                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
-                    <SelectValue placeholder="Select fallback harness" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
-                    {FALLBACK_HARNESS_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -638,7 +610,7 @@ export function ExecutionHarnessSection() {
     <AgentHarnessSection
       scope="execution"
       title="Execution Pipeline Agents"
-      description="Choose Claude or Codex for the worker, reviewer, re-executor, and merger lanes. These settings control the live execution pipeline, including Codex approval, sandbox, and fallback behavior per lane."
+      description="Choose Claude or Codex for the worker, reviewer, re-executor, and merger lanes. These settings control the live execution pipeline, including Codex approval and sandbox behavior per lane."
     />
   );
 }

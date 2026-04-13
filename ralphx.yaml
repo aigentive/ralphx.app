@@ -134,28 +134,24 @@ agent_harness_defaults:
     effort: xhigh
     approval_policy: never
     sandbox_mode: danger-full-access
-    fallback_harness: claude
   ideation_verifier:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
     sandbox_mode: danger-full-access
-    fallback_harness: claude
   ideation_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
     sandbox_mode: danger-full-access
-    fallback_harness: claude
   ideation_verifier_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
     sandbox_mode: danger-full-access
-    fallback_harness: claude
   execution_worker:
     harness: claude
   execution_reviewer:

@@ -100,6 +100,10 @@ impl ChatConversationRepository for MockChatConversationRepository {
         Ok(self.conversations.clone())
     }
 
+    async fn reset_running_attribution_backfill_to_pending(&self) -> AppResult<u64> {
+        Ok(0)
+    }
+
     async fn update_attribution_backfill_state(
         &self,
         _id: &ChatConversationId,

@@ -72,7 +72,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Stream | Status | Next Step |
 |---|---|---|---|
-| P0 | Canonical agent capability model | In progress | Keep moving ownership out of `ralphx.yaml`; the tracked per-agent solo Claude capability surfaces plus canonical process mapping/team constraints now prefer `config/processes.yaml`, the Claude global tool/runtime overlay is moving to `config/harnesses/claude.yaml`, and next widen that `config/` split for the remaining harness/global registries while keeping `agents/<agent>/agent.yaml` canonical for per-agent ownership and continuing the `tools.ts` extraction |
+| P0 | Canonical agent capability model | In progress | Keep moving ownership out of `ralphx.yaml`; the tracked per-agent solo Claude capability surfaces plus canonical process mapping/team constraints now prefer `config/processes.yaml`, Claude global tool/runtime defaults now prefer `config/harnesses/claude.yaml`, Codex ideation lane defaults are moving to `config/harnesses/codex.yaml`, and implicit Codex->Claude fallback should be removed from defaults/settings so harness failures surface explicitly while the remaining harness/global registries keep moving into `config/` and `tools.ts` keeps shrinking |
 | P0 | Verifier critic resumption protocol | In progress | Add deeper regressions and, if needed, runtime-side recovery so critics do not false-escalate while artifacts are still pending |
 | P0 | Model-agnostic MCP/tool UX | In progress | Extend repair-oriented MCP treatment to more brittle workflows |
 | P0 | Startup external-session archival safety | In progress | Observe real runs before widening recovery-specific heuristics |

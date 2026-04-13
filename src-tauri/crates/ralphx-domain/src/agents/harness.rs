@@ -272,7 +272,7 @@ impl AgentLaneSettings {
 pub fn default_fallback_harness_for(harness: AgentHarnessKind) -> Option<AgentHarnessKind> {
     match harness {
         AgentHarnessKind::Claude => None,
-        AgentHarnessKind::Codex => Some(DEFAULT_AGENT_HARNESS),
+        AgentHarnessKind::Codex => None,
     }
 }
 
@@ -284,7 +284,6 @@ pub fn generic_harness_lane_defaults(
         AgentHarnessKind::Claude => AgentLaneSettings::new(AgentHarnessKind::Claude),
         AgentHarnessKind::Codex => {
             let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
-            settings.fallback_harness = default_fallback_harness_for(AgentHarnessKind::Codex);
 
             match lane {
                 AgentLane::IdeationPrimary => {

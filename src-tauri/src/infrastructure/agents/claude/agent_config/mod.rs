@@ -293,6 +293,12 @@ struct ClaudeConfigOverlay {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct CodexConfigOverlay {
+    #[serde(default)]
+    agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct ProcessConfigOverlay {
     #[serde(default)]
     process_mapping: Option<ProcessMapping>,
@@ -375,6 +381,22 @@ pub fn claude_config_path() -> PathBuf {
     }
 }
 
+pub fn codex_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_CODEX_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    let config = config_path();
+    let parent = config.parent().unwrap_or_else(|| Path::new("."));
+    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
+        parent.join("harnesses").join("codex.yaml")
+    } else {
+        parent.join("config").join("harnesses").join("codex.yaml")
+    }
+}
+
 fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
     match serde_yaml::from_str(yaml) {
         Ok(v) => Some(v),
@@ -444,6 +466,26 @@ fn load_claude_config_overlay() -> Option<(PathBuf, ClaudeConfigOverlay)> {
     let path = claude_config_path();
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_claude_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
+fn apply_codex_config_overlay(cfg: &mut RalphxConfig, overlay: CodexConfigOverlay) {
+    cfg.agent_harness_defaults.extend(overlay.agent_harness_defaults);
+}
+
+fn parse_codex_config_overlay(yaml: &str) -> Option<CodexConfigOverlay> {
+    serde_yaml::from_str::<CodexConfigOverlay>(yaml)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Failed to parse Codex harness config overlay");
+            e
+        })
+        .ok()
+}
+
+fn load_codex_config_overlay() -> Option<(PathBuf, CodexConfigOverlay)> {
+    let path = codex_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_codex_config_overlay(&raw)?;
     Some((path, overlay))
 }
 
@@ -1276,6 +1318,13 @@ fn load_config() -> LoadedConfig {
                     "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
                 );
             }
+            if let Some((codex_path, overlay)) = load_codex_config_overlay() {
+                apply_codex_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %codex_path.display(),
+                    "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
+                );
+            }
             if let Some(mut cfg) =
                 resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
             {
@@ -1309,6 +1358,13 @@ fn load_config() -> LoadedConfig {
                 tracing::info!(
                     path = %claude_path.display(),
                     "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
+                );
+            }
+            if let Some((codex_path, overlay)) = load_codex_config_overlay() {
+                apply_codex_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %codex_path.display(),
+                    "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
                 );
             }
             resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())

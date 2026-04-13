@@ -112,11 +112,8 @@ fn test_agent_lane_settings_serialization_omits_empty_optionals() {
 }
 
 #[test]
-fn test_default_fallback_harness_for_codex_uses_default_harness() {
-    assert_eq!(
-        default_fallback_harness_for(AgentHarnessKind::Codex),
-        Some(DEFAULT_AGENT_HARNESS)
-    );
+fn test_default_fallback_harness_is_none_for_both_first_class_harnesses() {
+    assert_eq!(default_fallback_harness_for(AgentHarnessKind::Codex), None);
     assert_eq!(default_fallback_harness_for(AgentHarnessKind::Claude), None);
 }
 
@@ -130,7 +127,7 @@ fn test_generic_harness_lane_defaults_for_codex_primary() {
     assert_eq!(settings.effort, Some(LogicalEffort::XHigh));
     assert_eq!(settings.approval_policy.as_deref(), Some("never"));
     assert_eq!(settings.sandbox_mode.as_deref(), Some("danger-full-access"));
-    assert_eq!(settings.fallback_harness, Some(DEFAULT_AGENT_HARNESS));
+    assert_eq!(settings.fallback_harness, None);
 }
 
 #[test]

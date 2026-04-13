@@ -450,6 +450,132 @@ fn test_embedded_config_keeps_explicit_agent_harness_defaults_aligned_with_fallb
 }
 
 #[test]
+fn test_codex_config_overlay_overrides_agent_harness_defaults_from_main_config() {
+    let yaml = r#"
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4
+    effort: xhigh
+    approval_policy: never
+    sandbox_mode: danger-full-access
+"#;
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_codex_config_overlay(
+        r#"
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: on-request
+    sandbox_mode: workspace-write
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_codex_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+
+    let ideation_primary = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::IdeationPrimary)
+        .expect("ideation primary defaults should exist");
+    assert_eq!(ideation_primary.harness, AgentHarnessKind::Codex);
+    assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(ideation_primary.effort, Some(LogicalEffort::Medium));
+    assert_eq!(
+        ideation_primary.approval_policy.as_deref(),
+        Some("on-request")
+    );
+    assert_eq!(
+        ideation_primary.sandbox_mode.as_deref(),
+        Some("workspace-write")
+    );
+    assert_eq!(ideation_primary.fallback_harness, None);
+}
+
+#[test]
+fn test_codex_config_overlay_partial_lanes_do_not_clobber_other_agent_harness_defaults() {
+    let yaml = r#"
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4
+    effort: xhigh
+    approval_policy: never
+    sandbox_mode: danger-full-access
+  execution_worker:
+    harness: claude
+    model: sonnet
+"#;
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_codex_config_overlay(
+        r#"
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: never
+    sandbox_mode: danger-full-access
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_codex_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+
+    let ideation_primary = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::IdeationPrimary)
+        .expect("ideation primary defaults should exist");
+    let execution_worker = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::ExecutionWorker)
+        .expect("execution worker defaults should exist");
+
+    assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(ideation_primary.fallback_harness, None);
+    assert_eq!(execution_worker.harness, AgentHarnessKind::Claude);
+    assert_eq!(execution_worker.model.as_deref(), Some("sonnet"));
+}
+
+#[test]
+fn test_config_harnesses_codex_file_agent_harness_defaults_align_for_codex_lanes() {
+    #[derive(Deserialize)]
+    struct CodexHarnessConfigMirror {
+        #[serde(default)]
+        agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
+    }
+
+    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/codex.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read config/harnesses/codex.yaml");
+    let parsed: CodexHarnessConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/harnesses/codex.yaml");
+
+    let defaults = default_agent_harness_defaults();
+    for lane in [
+        AgentLane::IdeationPrimary,
+        AgentLane::IdeationVerifier,
+        AgentLane::IdeationSubagent,
+        AgentLane::IdeationVerifierSubagent,
+    ] {
+        let expected = defaults
+            .get(&lane)
+            .cloned()
+            .expect("fallback defaults should contain codex lane");
+        let actual = parsed
+            .agent_harness_defaults
+            .get(&lane)
+            .cloned()
+            .map(AgentLaneSettings::from)
+            .expect("config/harnesses/codex.yaml should contain codex lane");
+        assert_eq!(actual, expected, "codex harness config should stay aligned for {lane:?}");
+    }
+}
+
+#[test]
 fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
     let parsed = parse_config_with_lookup("", &|name| match name {
         "RALPHX_AGENT_HARNESS_EXECUTION_WORKER" => Some("codex".to_string()),
@@ -477,10 +603,7 @@ fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
         execution_worker.sandbox_mode.as_deref(),
         Some("workspace-write")
     );
-    assert_eq!(
-        execution_worker.fallback_harness,
-        Some(AgentHarnessKind::Claude)
-    );
+    assert_eq!(execution_worker.fallback_harness, None);
 
     let ideation_verifier = parsed
         .agent_harness_defaults
@@ -488,6 +611,7 @@ fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
         .expect("ideation verifier defaults should remain present");
     assert_eq!(ideation_verifier.harness, AgentHarnessKind::Codex);
     assert_eq!(ideation_verifier.model.as_deref(), Some("gpt-5.4-nano"));
+    assert_eq!(ideation_verifier.fallback_harness, None);
 }
 
 #[test]

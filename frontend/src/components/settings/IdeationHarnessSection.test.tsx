@@ -29,12 +29,12 @@ const globalLanes: AgentHarnessLaneView[] = [
       effort: "xhigh",
       approvalPolicy: "never",
       sandboxMode: "danger-full-access",
-      fallbackHarness: "claude",
+      fallbackHarness: null,
       updatedAt: new Date().toISOString(),
     },
     configuredHarness: "codex",
     effectiveHarness: "codex",
-    fallbackHarness: "claude",
+    fallbackHarness: null,
     fallbackActivated: false,
     binaryPath: "/usr/local/bin/codex",
     binaryFound: true,
@@ -96,7 +96,7 @@ describe("IdeationHarnessSection", () => {
 
     expect(screen.getByText("Approval")).toBeInTheDocument();
     expect(screen.getByText("Sandbox")).toBeInTheDocument();
-    expect(screen.getByText("Fallback Harness")).toBeInTheDocument();
+    expect(screen.queryByText("Fallback Harness")).not.toBeInTheDocument();
     expect(
       screen.getByText(
         "Temporarily locked for Codex: RalphX MCP tools currently require Never approval and Danger Full Access.",
@@ -127,7 +127,7 @@ describe("IdeationHarnessSection", () => {
         effort: "xhigh",
         approvalPolicy: "never",
         sandboxMode: "danger-full-access",
-        fallbackHarness: "claude",
+        fallbackHarness: null,
       },
       { onError: expect.any(Function) },
     );
@@ -156,12 +156,12 @@ describe("ExecutionHarnessSection", () => {
                   effort: "xhigh",
                   approvalPolicy: "never",
                   sandboxMode: "danger-full-access",
-                  fallbackHarness: "claude",
+                  fallbackHarness: null,
                   updatedAt: new Date().toISOString(),
                 },
                 configuredHarness: "codex",
                 effectiveHarness: "codex",
-                fallbackHarness: "claude",
+                fallbackHarness: null,
                 fallbackActivated: false,
                 binaryPath: "/usr/local/bin/codex",
                 binaryFound: true,
