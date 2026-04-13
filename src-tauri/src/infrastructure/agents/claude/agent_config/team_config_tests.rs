@@ -194,6 +194,48 @@ fn test_runtime_yaml_team_constraints_stay_aligned_with_canonical_registry() {
     );
 }
 
+#[test]
+fn test_processes_config_file_process_mapping_matches_canonical_registry() {
+    #[derive(serde::Deserialize)]
+    struct ProcessesConfigMirror {
+        #[serde(default)]
+        process_mapping: ProcessMapping,
+    }
+
+    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../config/processes.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read config/processes.yaml");
+    let parsed: ProcessesConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/processes.yaml");
+
+    assert_eq!(
+        parsed.process_mapping,
+        canonical_process_mapping(),
+        "config/processes.yaml process_mapping should stay aligned with the canonical process registry"
+    );
+}
+
+#[test]
+fn test_processes_config_file_team_constraints_match_canonical_registry() {
+    #[derive(serde::Deserialize)]
+    struct ProcessesConfigMirror {
+        #[serde(default)]
+        team_constraints: TeamConstraintsConfig,
+    }
+
+    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../config/processes.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read config/processes.yaml");
+    let parsed: ProcessesConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/processes.yaml");
+
+    assert_eq!(
+        parsed.team_constraints,
+        canonical_team_constraints_config(),
+        "config/processes.yaml team_constraints should stay aligned with the canonical team constraint registry"
+    );
+}
+
 // ── TeamConstraints deserialization tests ────────────────────────
 
 #[test]

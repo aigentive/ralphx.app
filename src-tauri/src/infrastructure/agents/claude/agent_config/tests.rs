@@ -1803,6 +1803,90 @@ agents:
     assert_eq!(execution.timeout_minutes, 30);
 }
 
+#[test]
+fn test_process_config_overlay_overrides_unknown_process_entries_from_main_config() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+process_mapping:
+  custom_process:
+    default: yaml-agent
+team_constraints:
+  custom_process:
+    max_teammates: 2
+    model_cap: haiku
+agents:
+  - name: ralphx-execution-worker
+    system_prompt_file: plugins/app/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+    let mut parsed = parse_config(yaml).expect("config should parse");
+    let overlay = parse_process_config_overlay(
+        r#"
+process_mapping:
+  custom_process:
+    default: overlay-agent
+team_constraints:
+  custom_process:
+    max_teammates: 4
+    model_cap: opus
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_process_config_overlay(&mut parsed, overlay);
+
+    assert_eq!(
+        parsed.process_mapping.slots["custom_process"].default,
+        "overlay-agent"
+    );
+    assert_eq!(parsed.team_constraints.processes["custom_process"].max_teammates, 4);
+    assert_eq!(parsed.team_constraints.processes["custom_process"].model_cap, "opus");
+}
+
+#[test]
+fn test_process_config_overlay_partial_sections_do_not_clobber_other_main_config_sections() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+team_constraints:
+  custom_process:
+    max_teammates: 2
+    model_cap: haiku
+agents:
+  - name: ralphx-execution-worker
+    system_prompt_file: plugins/app/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+    let mut parsed = parse_config(yaml).expect("config should parse");
+    let overlay = parse_process_config_overlay(
+        r#"
+process_mapping:
+  custom_process:
+    default: overlay-agent
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_process_config_overlay(&mut parsed, overlay);
+
+    assert_eq!(
+        parsed.process_mapping.slots["custom_process"].default,
+        "overlay-agent"
+    );
+    assert_eq!(parsed.team_constraints.processes["custom_process"].model_cap, "haiku");
+}
+
 // ==================== Effort Field Tests ====================
 
 #[test]

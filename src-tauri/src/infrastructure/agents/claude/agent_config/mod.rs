@@ -270,6 +270,14 @@ struct RalphxConfig {
     agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct ProcessConfigOverlay {
+    #[serde(default)]
+    process_mapping: Option<ProcessMapping>,
+    #[serde(default)]
+    team_constraints: Option<TeamConstraintsConfig>,
+}
+
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
 
 fn default_defer_merge_enabled() -> bool {
@@ -311,6 +319,45 @@ pub fn config_path() -> PathBuf {
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     root.join("ralphx.yaml")
+}
+
+pub fn process_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_PROCESS_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    let config = config_path();
+    let parent = config.parent().unwrap_or_else(|| Path::new("."));
+    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
+        parent.join("processes.yaml")
+    } else {
+        parent.join("config").join("processes.yaml")
+    }
+}
+
+fn parse_process_config_overlay(yaml: &str) -> Option<ProcessConfigOverlay> {
+    serde_yaml::from_str::<ProcessConfigOverlay>(yaml).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to parse process config overlay");
+        e
+    }).ok()
+}
+
+fn apply_process_config_overlay(cfg: &mut LoadedConfig, overlay: ProcessConfigOverlay) {
+    if let Some(process_mapping) = overlay.process_mapping {
+        cfg.process_mapping = resolve_canonical_process_mapping(&process_mapping);
+    }
+    if let Some(team_constraints) = overlay.team_constraints {
+        cfg.team_constraints = resolve_canonical_team_constraints_config(&team_constraints);
+    }
+}
+
+fn load_process_config_overlay() -> Option<(PathBuf, ProcessConfigOverlay)> {
+    let path = process_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_process_config_overlay(&raw)?;
+    Some((path, overlay))
 }
 
 /// Resolve file_logging setting for early use (before tracing subscriber init).
@@ -1126,7 +1173,14 @@ fn apply_prefixed_env_overrides_with(
 fn load_config() -> LoadedConfig {
     let path = config_path();
     if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Some(cfg) = parse_config(&raw) {
+        if let Some(mut cfg) = parse_config(&raw) {
+            if let Some((process_path, overlay)) = load_process_config_overlay() {
+                apply_process_config_overlay(&mut cfg, overlay);
+                tracing::info!(
+                    path = %process_path.display(),
+                    "Loaded process config overlay from config/processes.yaml"
+                );
+            }
             tracing::info!(
                 path = %path.display(),
                 agents = cfg.agents.len(),
@@ -1142,7 +1196,7 @@ fn load_config() -> LoadedConfig {
         tracing::warn!(path = %path.display(), "ralphx.yaml not found/readable, using embedded config");
     }
 
-    parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| {
+    let mut cfg = parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| {
         let mut runtime = AllRuntimeConfig {
             stream: StreamTimeoutsConfig::default(),
             reconciliation: ReconciliationConfig::default(),
@@ -1176,7 +1230,17 @@ fn load_config() -> LoadedConfig {
             execution_defaults: ExecutionDefaultsConfig::default(),
             agent_harness_defaults: default_agent_harness_defaults(),
         }
-    })
+    });
+
+    if let Some((process_path, overlay)) = load_process_config_overlay() {
+        apply_process_config_overlay(&mut cfg, overlay);
+        tracing::info!(
+            path = %process_path.display(),
+            "Loaded process config overlay from config/processes.yaml"
+        );
+    }
+
+    cfg
 }
 
 pub fn agent_configs() -> &'static [AgentConfig] {
