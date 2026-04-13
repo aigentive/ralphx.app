@@ -48,18 +48,13 @@ import {
   parseCliOptionFromArgs,
 } from "./runtime-context.js";
 import {
-  assessVerificationRound,
-  type VerificationFindingSummary,
   type VerificationRoundDelegateInput,
 } from "./verification-round-assessment.js";
 import { completePlanVerificationWithSettlement } from "./verification-completion.js";
 import {
-  runVerificationEnrichmentPass,
-  runVerificationRoundPass,
-} from "./verification-orchestration.js";
-import {
   createVerificationRuntime,
   type TeamArtifactSummary,
+  type VerificationAssessmentArgs,
   type VerificationSettlementArgs,
 } from "./verification-runtime.js";
 
@@ -178,13 +173,12 @@ const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
 
 const {
+  assessVerificationRoundState,
+  runVerificationEnrichment,
+  runVerificationRound,
+  runRequiredVerificationCriticRoundTool,
+  awaitVerificationRoundSettlementForTool,
   selectLatestArtifactsByPrefix,
-  loadVerificationFindingsByCritic,
-  loadVerificationDelegateSnapshots,
-  loadVerificationPlanSnapshot,
-  awaitOptionalVerificationDelegates,
-  startManagedVerificationDelegate,
-  runRequiredVerificationCriticRound,
   awaitVerificationRoundSettlement,
   resolveVerifierParentSessionId,
   resolveContextSessionId,
@@ -589,87 +583,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         in_progress: true,
       });
     } else if (name === "assess_verification_round") {
-      const {
-        session_id,
-        delegates,
-        created_after,
-        rescue_budget_exhausted = false,
-        include_messages = true,
-        message_limit = 5,
-      } = args as {
-        session_id: string;
-        delegates: VerificationRoundDelegateInput[];
-        created_after?: string;
-        rescue_budget_exhausted?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-      };
-      const findingMatches = await loadVerificationFindingsByCritic({
-        sessionId: session_id,
-        critics: Array.from(
-          new Set(
-            delegates
-              .map((delegate) => delegate.label?.trim().toLowerCase())
-              .filter((label): label is string => Boolean(label))
-          )
-        ),
-        createdAfter: created_after,
-      });
-      const findingByCritic = new Map(
-        findingMatches.map((match) => [match.critic, match] as const)
-      );
-      const artifacts_by_prefix = Array.from(
-        new Set(delegates.map((delegate) => delegate.artifact_prefix))
-      ).map((prefix) => {
-        const delegate = delegates.find((entry) => entry.artifact_prefix === prefix);
-        const critic = delegate?.label?.trim().toLowerCase();
-        const findingMatch = critic ? findingByCritic.get(critic) : undefined;
-        return findingMatch?.found && findingMatch.finding
-          ? {
-              prefix,
-              found: true,
-              total_matches: findingMatch.total_matches,
-              artifact: {
-                id: findingMatch.finding.artifact_id,
-                name: findingMatch.finding.title,
-                created_at: findingMatch.finding.created_at,
-              },
-            }
-          : {
-              prefix,
-              found: false,
-              total_matches: 0,
-            };
-      });
-      const delegateSnapshots = await loadVerificationDelegateSnapshots({
-        delegates,
-        includeMessages: include_messages,
-        messageLimit: message_limit,
-      });
-      result = {
-        session_id,
-        created_after: created_after ?? null,
-        rescue_budget_exhausted,
-        verification_findings: findingMatches
-          .filter((match) => match.found && match.finding)
-          .map((match) => match.finding as VerificationFindingSummary),
-        ...assessVerificationRound({
-          delegates,
-          artifactsByPrefix: artifacts_by_prefix,
-          delegateSnapshots,
-          rescueBudgetExhausted: rescue_budget_exhausted,
-        }),
-      };
+      result = await assessVerificationRoundState(args as VerificationAssessmentArgs);
     } else if (name === "run_verification_enrichment") {
-      const {
-        session_id: raw_session_id,
-        disabled_specialists = [],
-        include_full_content = true,
-        include_messages = true,
-        message_limit = 5,
-        max_wait_ms = 4000,
-        poll_interval_ms = 500,
-      } = args as {
+      result = await runVerificationEnrichment(args as {
         session_id?: string;
         disabled_specialists?: string[];
         include_full_content?: boolean;
@@ -677,53 +593,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         message_limit?: number;
         max_wait_ms?: number;
         poll_interval_ms?: number;
-      };
-      const session_id = await resolveVerifierParentSessionId(
-        raw_session_id,
-        "run_verification_enrichment"
-      );
-      result = await runVerificationEnrichmentPass({
-        loadPlanSnapshot: loadVerificationPlanSnapshot,
-        startDelegate: async ({ agentName, parentSessionId, prompt, delegatedSessionId }) => {
-          const launched = await startManagedVerificationDelegate({
-            agentName,
-            parentSessionId,
-            prompt,
-            delegatedSessionId,
-          });
-          return {
-            job_id: launched.job_id,
-            delegated_session_id: launched.delegated_session_id,
-            agent_name: agentName,
-            artifact_prefix: "",
-            required: false,
-          };
-        },
-        awaitOptionalDelegates: awaitOptionalVerificationDelegates,
-        runRequiredCriticRound: runRequiredVerificationCriticRound,
-      }, {
-        sessionId: session_id,
-        disabledSpecialists: new Set(
-          (disabled_specialists ?? []).map((entry) => entry.trim()).filter(Boolean)
-        ),
-        includeFullContent: include_full_content !== false,
-        includeMessages: include_messages !== false,
-        messageLimit: Math.min(Math.max(message_limit ?? 5, 1), 50),
-        maxWaitMs: Math.min(Math.max(max_wait_ms ?? 4000, 0), 30000),
-        pollIntervalMs: Math.max(poll_interval_ms ?? 500, 100),
       });
     } else if (name === "run_verification_round") {
-      const {
-        session_id: raw_session_id,
-        round,
-        disabled_specialists = [],
-        include_full_content = true,
-        include_messages = true,
-        message_limit = 5,
-        max_wait_ms = 8000,
-        optional_wait_ms = 4000,
-        poll_interval_ms = 750,
-      } = args as {
+      result = await runVerificationRound(args as {
         session_id?: string;
         round: number;
         disabled_specialists?: string[];
@@ -733,53 +605,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         max_wait_ms?: number;
         optional_wait_ms?: number;
         poll_interval_ms?: number;
-      };
-      const session_id = await resolveVerifierParentSessionId(
-        raw_session_id,
-        "run_verification_round"
-      );
-      result = await runVerificationRoundPass({
-        loadPlanSnapshot: loadVerificationPlanSnapshot,
-        startDelegate: async ({ agentName, parentSessionId, prompt, delegatedSessionId }) => {
-          const launched = await startManagedVerificationDelegate({
-            agentName,
-            parentSessionId,
-            prompt,
-            delegatedSessionId,
-          });
-          return {
-            job_id: launched.job_id,
-            delegated_session_id: launched.delegated_session_id,
-            agent_name: agentName,
-            artifact_prefix: "",
-            required: false,
-          };
-        },
-        awaitOptionalDelegates: awaitOptionalVerificationDelegates,
-        runRequiredCriticRound: runRequiredVerificationCriticRound,
-      }, {
-        sessionId: session_id,
-        round,
-        disabledSpecialists: new Set(
-          (disabled_specialists ?? []).map((entry) => entry.trim()).filter(Boolean)
-        ),
-        includeFullContent: include_full_content !== false,
-        includeMessages: include_messages !== false,
-        messageLimit: Math.min(Math.max(message_limit ?? 5, 1), 50),
-        maxWaitMs: Math.min(Math.max(max_wait_ms ?? 8000, 0), 30000),
-        optionalWaitMs: Math.min(Math.max(optional_wait_ms ?? 4000, 0), 30000),
-        pollIntervalMs: Math.max(poll_interval_ms ?? 750, 100),
       });
     } else if (name === "run_required_verification_critic_round") {
-      const {
-        session_id: raw_session_id,
-        round,
-        include_full_content = true,
-        include_messages = true,
-        message_limit = 5,
-        max_wait_ms = 8000,
-        poll_interval_ms = 750,
-      } = args as {
+      result = await runRequiredVerificationCriticRoundTool(args as {
         session_id?: string;
         round: number;
         include_full_content?: boolean;
@@ -787,28 +615,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         message_limit?: number;
         max_wait_ms?: number;
         poll_interval_ms?: number;
-      };
-      const session_id = await resolveVerifierParentSessionId(
-        raw_session_id,
-        "run_required_verification_critic_round"
-      );
-      result = await runRequiredVerificationCriticRound({
-        sessionId: session_id,
-        round,
-        includeFullContent: include_full_content !== false,
-        includeMessages: include_messages !== false,
-        messageLimit: Math.min(Math.max(message_limit ?? 5, 1), 50),
-        maxWaitMs: Math.min(Math.max(max_wait_ms ?? 8000, 0), 30000),
-        pollIntervalMs: Math.max(poll_interval_ms ?? 750, 100),
       });
     } else if (name === "await_verification_round_settlement") {
-      result = await awaitVerificationRoundSettlement({
-        ...(args as VerificationSettlementArgs),
-        session_id: await resolveVerifierParentSessionId(
-          (args as VerificationSettlementArgs).session_id,
-          "await_verification_round_settlement"
-        ),
-      });
+      result = await awaitVerificationRoundSettlementForTool(
+        args as VerificationSettlementArgs
+      );
     } else if (name === "complete_plan_verification") {
       // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
       const {

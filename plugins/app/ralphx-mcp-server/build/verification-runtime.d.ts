@@ -26,6 +26,14 @@ export type VerificationSettlementArgs = {
     max_wait_ms?: number;
     poll_interval_ms?: number;
 };
+export type VerificationAssessmentArgs = {
+    session_id: string;
+    delegates: VerificationRoundDelegateInput[];
+    created_after?: string;
+    rescue_budget_exhausted?: boolean;
+    include_messages?: boolean;
+    message_limit?: number;
+};
 type ManagedVerificationDelegate = VerificationRoundDelegateInput & {
     agent_name: string;
     delegated_session_id?: string;
@@ -55,6 +63,37 @@ type VerificationRuntimeDeps = {
     contextId?: string;
 };
 export declare function createVerificationRuntime(deps: VerificationRuntimeDeps): {
+    assessVerificationRoundState: (args: VerificationAssessmentArgs) => Promise<Record<string, unknown>>;
+    runVerificationEnrichment: (args: {
+        session_id?: string;
+        disabled_specialists?: string[];
+        include_full_content?: boolean;
+        include_messages?: boolean;
+        message_limit?: number;
+        max_wait_ms?: number;
+        poll_interval_ms?: number;
+    }) => Promise<unknown>;
+    runVerificationRound: (args: {
+        session_id?: string;
+        round: number;
+        disabled_specialists?: string[];
+        include_full_content?: boolean;
+        include_messages?: boolean;
+        message_limit?: number;
+        max_wait_ms?: number;
+        optional_wait_ms?: number;
+        poll_interval_ms?: number;
+    }) => Promise<unknown>;
+    runRequiredVerificationCriticRoundTool: (args: {
+        session_id?: string;
+        round: number;
+        include_full_content?: boolean;
+        include_messages?: boolean;
+        message_limit?: number;
+        max_wait_ms?: number;
+        poll_interval_ms?: number;
+    }) => Promise<RequiredCriticRoundResult>;
+    awaitVerificationRoundSettlementForTool: (args: VerificationSettlementArgs) => Promise<AwaitVerificationRoundSettlementResult>;
     selectLatestArtifactsByPrefix: (artifacts: TeamArtifactSummary[], prefixes: string[], createdAfter?: string) => Array<{
         prefix: string;
         found: boolean;

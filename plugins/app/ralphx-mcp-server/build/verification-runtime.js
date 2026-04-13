@@ -1,6 +1,16 @@
 import { assessVerificationRound, } from "./verification-round-assessment.js";
+import { runVerificationEnrichmentPass, runVerificationRoundPass, } from "./verification-orchestration.js";
 export function createVerificationRuntime(deps) {
     const { callTauri, callTauriGet, agentType, contextType, contextId } = deps;
+    function normalizeMessageLimit(messageLimit) {
+        return Math.min(Math.max(messageLimit ?? 5, 1), 50);
+    }
+    function normalizeMaxWaitMs(maxWaitMs, fallback) {
+        return Math.min(Math.max(maxWaitMs ?? fallback, 0), 30000);
+    }
+    function normalizePollIntervalMs(pollIntervalMs, fallback) {
+        return Math.max(pollIntervalMs ?? fallback, 100);
+    }
     function selectLatestArtifactsByPrefix(artifacts, prefixes, createdAfter) {
         const createdAfterMs = typeof createdAfter === "string" && createdAfter.length > 0
             ? Date.parse(createdAfter)
@@ -516,7 +526,147 @@ export function createVerificationRuntime(deps) {
         }
         throw new Error(`${toolName} requires session_id unless the current RalphX session context is available for automatic injection.`);
     }
+    async function assessVerificationRoundState(args) {
+        const includeMessages = args.include_messages !== false;
+        const messageLimit = normalizeMessageLimit(args.message_limit);
+        const rescueBudgetExhausted = args.rescue_budget_exhausted === true;
+        const findingMatches = await loadVerificationFindingsByCritic({
+            sessionId: args.session_id,
+            critics: Array.from(new Set(args.delegates
+                .map((delegate) => delegate.label?.trim().toLowerCase())
+                .filter((label) => Boolean(label)))),
+            createdAfter: args.created_after,
+        });
+        const findingByCritic = new Map(findingMatches.map((match) => [match.critic, match]));
+        const artifactsByPrefix = Array.from(new Set(args.delegates.map((delegate) => delegate.artifact_prefix))).map((prefix) => {
+            const delegate = args.delegates.find((entry) => entry.artifact_prefix === prefix);
+            const critic = delegate?.label?.trim().toLowerCase();
+            const findingMatch = critic ? findingByCritic.get(critic) : undefined;
+            return findingMatch?.found && findingMatch.finding
+                ? {
+                    prefix,
+                    found: true,
+                    total_matches: findingMatch.total_matches,
+                    artifact: {
+                        id: findingMatch.finding.artifact_id,
+                        name: findingMatch.finding.title,
+                        created_at: findingMatch.finding.created_at,
+                    },
+                }
+                : {
+                    prefix,
+                    found: false,
+                    total_matches: 0,
+                };
+        });
+        const delegateSnapshots = await loadVerificationDelegateSnapshots({
+            delegates: args.delegates,
+            includeMessages,
+            messageLimit,
+        });
+        return {
+            session_id: args.session_id,
+            created_after: args.created_after ?? null,
+            rescue_budget_exhausted: rescueBudgetExhausted,
+            verification_findings: findingMatches
+                .filter((match) => match.found && match.finding)
+                .map((match) => match.finding),
+            ...assessVerificationRound({
+                delegates: args.delegates,
+                artifactsByPrefix,
+                delegateSnapshots,
+                rescueBudgetExhausted,
+            }),
+        };
+    }
+    async function runVerificationEnrichment(args) {
+        const sessionId = await resolveVerifierParentSessionId(args.session_id, "run_verification_enrichment");
+        return await runVerificationEnrichmentPass({
+            loadPlanSnapshot: loadVerificationPlanSnapshot,
+            startDelegate: async ({ agentName, parentSessionId, prompt, delegatedSessionId }) => {
+                const launched = await startManagedVerificationDelegate({
+                    agentName,
+                    parentSessionId,
+                    prompt,
+                    delegatedSessionId,
+                });
+                return {
+                    job_id: launched.job_id,
+                    delegated_session_id: launched.delegated_session_id,
+                    agent_name: agentName,
+                    artifact_prefix: "",
+                    required: false,
+                };
+            },
+            awaitOptionalDelegates: awaitOptionalVerificationDelegates,
+            runRequiredCriticRound: runRequiredVerificationCriticRound,
+        }, {
+            sessionId,
+            disabledSpecialists: new Set((args.disabled_specialists ?? []).map((entry) => entry.trim()).filter(Boolean)),
+            includeFullContent: args.include_full_content !== false,
+            includeMessages: args.include_messages !== false,
+            messageLimit: normalizeMessageLimit(args.message_limit),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 4000),
+            pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 500),
+        });
+    }
+    async function runVerificationRound(args) {
+        const sessionId = await resolveVerifierParentSessionId(args.session_id, "run_verification_round");
+        return await runVerificationRoundPass({
+            loadPlanSnapshot: loadVerificationPlanSnapshot,
+            startDelegate: async ({ agentName, parentSessionId, prompt, delegatedSessionId }) => {
+                const launched = await startManagedVerificationDelegate({
+                    agentName,
+                    parentSessionId,
+                    prompt,
+                    delegatedSessionId,
+                });
+                return {
+                    job_id: launched.job_id,
+                    delegated_session_id: launched.delegated_session_id,
+                    agent_name: agentName,
+                    artifact_prefix: "",
+                    required: false,
+                };
+            },
+            awaitOptionalDelegates: awaitOptionalVerificationDelegates,
+            runRequiredCriticRound: runRequiredVerificationCriticRound,
+        }, {
+            sessionId,
+            round: args.round,
+            disabledSpecialists: new Set((args.disabled_specialists ?? []).map((entry) => entry.trim()).filter(Boolean)),
+            includeFullContent: args.include_full_content !== false,
+            includeMessages: args.include_messages !== false,
+            messageLimit: normalizeMessageLimit(args.message_limit),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 8000),
+            optionalWaitMs: normalizeMaxWaitMs(args.optional_wait_ms, 4000),
+            pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 750),
+        });
+    }
+    async function runRequiredVerificationCriticRoundTool(args) {
+        const sessionId = await resolveVerifierParentSessionId(args.session_id, "run_required_verification_critic_round");
+        return await runRequiredVerificationCriticRound({
+            sessionId,
+            round: args.round,
+            includeFullContent: args.include_full_content !== false,
+            includeMessages: args.include_messages !== false,
+            messageLimit: normalizeMessageLimit(args.message_limit),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 8000),
+            pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 750),
+        });
+    }
+    async function awaitVerificationRoundSettlementForTool(args) {
+        return await awaitVerificationRoundSettlement({
+            ...args,
+            session_id: await resolveVerifierParentSessionId(args.session_id, "await_verification_round_settlement"),
+        });
+    }
     return {
+        assessVerificationRoundState,
+        runVerificationEnrichment,
+        runVerificationRound,
+        runRequiredVerificationCriticRoundTool,
+        awaitVerificationRoundSettlementForTool,
         selectLatestArtifactsByPrefix,
         loadVerificationFindingsByCritic,
         loadVerificationDelegateSnapshots,
