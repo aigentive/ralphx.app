@@ -1,3 +1,7 @@
+# Canonical process registry for team-oriented Claude orchestration.
+# `process_mapping` selects the default agent(s) for each process family.
+# `team_constraints` defines per-process teammate limits, allowed tools, and presets.
+
 process_mapping:
   ideation:
     default: ralphx-ideation
@@ -24,6 +28,7 @@ process_mapping:
     default: ralphx-chat-project
 
 team_constraints:
+  # Defaults applied to processes that do not override a given field explicitly.
   _defaults:
     max_teammates: 5
     model_cap: sonnet

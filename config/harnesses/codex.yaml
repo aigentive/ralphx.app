@@ -1,3 +1,13 @@
+# Canonical persisted lane defaults for Codex-backed harness lanes.
+# Missing DB rows are seeded from these values at startup; existing rows stay authoritative.
+# Env overrides:
+#   `RALPHX_AGENT_HARNESS_<LANE>`
+#   `RALPHX_AGENT_MODEL_<LANE>`
+#   `RALPHX_AGENT_EFFORT_<LANE>`
+#   `RALPHX_AGENT_APPROVAL_POLICY_<LANE>`
+#   `RALPHX_AGENT_SANDBOX_MODE_<LANE>`
+# Example lane key: `IDEATION_PRIMARY`
+
 agent_harness_defaults:
   ideation_primary:
     harness: codex

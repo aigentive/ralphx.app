@@ -1641,6 +1641,41 @@ fn test_config_harnesses_claude_file_contains_expected_runtime_defaults() {
     assert!(parsed.claude.settings_profiles.contains_key("default"));
 }
 
+#[test]
+fn test_embedded_config_omits_claude_globals_and_overlay_restores_expected_defaults() {
+    let mut parsed = parse_raw_config(EMBEDDED_CONFIG).expect("embedded config should parse");
+    let overlay_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/claude.yaml");
+    let overlay_contents =
+        std::fs::read_to_string(&overlay_path).expect("should read config/harnesses/claude.yaml");
+    let overlay =
+        parse_claude_config_overlay(&overlay_contents).expect("claude overlay should parse");
+
+    apply_claude_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+
+    assert_eq!(parsed.claude.mcp_server_name, "ralphx");
+    assert_eq!(
+        parsed.claude.setting_sources,
+        Some(vec![
+            "user".to_string(),
+            "project".to_string(),
+            "local".to_string()
+        ])
+    );
+    assert_eq!(parsed.claude.permission_mode, "default");
+    assert_eq!(parsed.claude.permission_prompt_tool, "mcp__ralphx__permission_request");
+    assert_eq!(parsed.claude.default_effort, "medium");
+
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+    assert!(qa_prep.resolved_cli_tools.contains(&"Read".to_string()));
+    assert!(qa_prep.resolved_cli_tools.contains(&"Grep".to_string()));
+    assert!(qa_prep.resolved_cli_tools.contains(&"Glob".to_string()));
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

@@ -1,4 +1,8 @@
+# Canonical Claude harness-global settings.
+# Per-agent Claude ownership lives in `agents/<agent>/agent.yaml` under `harnesses.claude`.
+
 tool_sets:
+  # Named reusable Claude CLI tool groups referenced via `tools.extends`.
   base_tools:
     [
       Read,
@@ -26,6 +30,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
+  # Passed to claude CLI via `--settings`. See docs/ai-docs/claude-code/settings.md.
   settings_profile: default
   settings_profile_defaults:
     permissions:
@@ -37,9 +42,18 @@ claude:
         - Write(./.env)
         - Write(./.env.*)
   settings_profiles:
+    # Preserve existing default behavior: sandbox disabled.
     default:
       sandbox:
         enabled: false
+    # Z.AI integration profile. Values can be overridden via `src-tauri/.env`:
+    # `RALPHX_Z_AI_ANTHROPIC_AUTH_TOKEN=...`
+    # `RALPHX_Z_AI_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`
+    # `RALPHX_Z_AI_API_TIMEOUT_MS=3000000`
+    # `RALPHX_Z_AI_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air`
+    # `RALPHX_Z_AI_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7`
+    # `RALPHX_Z_AI_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5`
+    # Generic `RALPHX_*` overrides still work as a fallback.
     z_ai:
       extends: default
       env:
@@ -49,6 +63,15 @@ claude:
         ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
         ANTHROPIC_DEFAULT_SONNET_MODEL: glm-4.7
         ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
+    # OpenRouter integration profile. Values can be overridden via `src-tauri/.env`:
+    # `RALPHX_OPENROUTER_ANTHROPIC_AUTH_TOKEN=...`
+    # `RALPHX_OPENROUTER_ANTHROPIC_BASE_URL=https://openrouter.ai/api`
+    # `RALPHX_OPENROUTER_ANTHROPIC_API_KEY=`
+    # `RALPHX_OPENROUTER_API_TIMEOUT_MS=3000000`
+    # `RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_HAIKU_MODEL=z-ai/glm-4.7-flash`
+    # `RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-4.7`
+    # `RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5`
+    # Generic `RALPHX_*` overrides still work as a fallback.
     openrouter:
       extends: default
       env:

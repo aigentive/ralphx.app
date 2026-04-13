@@ -1,80 +1,15 @@
 # RalphX runtime configuration
 #
-# tool_sets:
-#   Named reusable CLI tool groups used by agents via `tools.extends`.
+# Canonical ownership:
+# - Per-agent metadata -> `agents/<agent>/agent.yaml`
+# - Claude harness globals/tool sets -> `config/harnesses/claude.yaml`
+# - Codex harness defaults -> `config/harnesses/codex.yaml`
+# - Process mapping/team constraints -> `config/processes.yaml`
 #
 # agents:
-#   Defines all Claude agent runtime settings used by the Rust backend.
-#
-# Agent attributes:
-# - name:
-#   Short agent identifier (no "ralphx:" prefix). Must match values used in
-#   Rust agent name constants and MCP allowlists.
-# - system_prompt_file:
-#   Full project-root-relative path to an agent markdown file (e.g.
-#   `agents/ralphx-execution-worker/claude/prompt.md`) used to build
-#   `--append-system-prompt` content.
-# - model:
-#   Optional Claude model alias passed as `--model` for this agent
-#   (e.g. `haiku`, `sonnet`, `opus`).
-# - settings_profile:
-#   Optional per-agent override for `claude.settings_profile`.
-#   When set, this agent uses `claude.settings_profiles.<name>`.
-#   When omitted, agent inherits the global `claude.settings_profile`.
-# - tools:
-#   CLI tool strategy for this agent:
-#   - mcp_only: true
-#     Gives no built-in Claude CLI tools (`--tools ""`). Agent relies only on MCP.
-#   - extends: <tool_set_name>
-#     Inherit tools from `tool_sets.<name>`.
-#   - include: [ToolA, ToolB]
-#     Additional tools appended after inherited set.
-#   Effective order is: inherited tools (if any) + include tools, deduplicated.
-# - mcp_tools:
-#   MCP tool names without `mcp__<mcp_server_name>__` prefix. These become
-#   preapproved `mcp__<mcp_server_name>__<tool>` entries in `--allowedTools`.
-# - preapproved_cli_tools:
-#   Additional preapproved CLI tools/variants in `--allowedTools`
-#   (e.g. `Task(Explore)`, `Task(Plan)`). All CLI tools from --tools are
-#   auto-preapproved; list here only extras/variants (e.g. Task(Explore)).
-#
-# claude:
-#   Runtime CLI behavior for Claude spawns.
-# - mcp_server_name:
-#   MCP server id used to build MCP tool ids:
-#   `mcp__<mcp_server_name>__<tool_name>`.
-#   This also controls the dynamic `--mcp-config` server key.
-# - permission_mode:
-#   Passed to `--permission-mode`. Valid Claude values include:
-#   `default`, `acceptEdits`, `plan`, `delegate`, `dontAsk`, `bypassPermissions`.
-# - setting_sources:
-#   Optional setting sources passed to `--setting-sources` as a comma list.
-#   Valid values: `user`, `project`, `local` (see docs/ai-docs/claude-code/cli-reference.md).
-#   Omit to use Claude CLI defaults.
-# - dangerously_skip_permissions:
-#   If true, adds `--dangerously-skip-permissions`. Keep false by default.
-# - permission_prompt_tool:
-#   MCP tool name used by `--permission-prompt-tool`.
-#   Accepts shorthand (e.g. `permission_request`) or full MCP tool id.
-# - append_system_prompt_file:
-#   If true, pass `--append-system-prompt-file <path>` using `system_prompt_file`.
-#   If false, inline prompt content via `--append-system-prompt`.
-# - settings:
-#   Optional legacy Claude Code settings passed via `--settings` (JSON).
-#   Prefer `settings_profile` + `settings_profiles` for profile-based config.
-# - settings_profile:
-#   Selected profile name from `settings_profiles` for `--settings` payload.
-#   Can be overridden at runtime by env: `RALPHX_CLAUDE_SETTINGS_PROFILE`.
-#   Per-agent override via env:
-#   `RALPHX_CLAUDE_SETTINGS_PROFILE_<AGENT_NAME>` where non-alnum chars become `_`
-#   and name is uppercased (e.g. ralphx-ideation → ORCHESTRATOR_IDEATION).
-# - settings_profile_defaults:
-#   Optional settings merged into every selected profile.
-# - settings_profiles:
-#   Named `--settings` JSON objects.
-#   Profiles can use `extends: <profile>` or `extends: [profile_a, profile_b]`.
-#   `settings.env.<KEY>` values can be overridden by local env var:
-#   `RALPHX_<KEY>` (e.g. `RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL`).
+#   Legacy root mirror still used for prompt-path/runtime compatibility while the
+#   remaining root-config shrinkage continues. New capability ownership belongs
+#   in the canonical files above first, then mirrored here only if still needed.
 #
 # Notes:
 # - Unknown attributes are ignored by the current parser.
@@ -313,87 +248,6 @@ external_mcp:
   max_restart_attempts: 3 # default: 3
   restart_delay_ms: 2000  # default: 2000
   human_wait_timeout_secs: 285 # Env: RALPHX_EXTERNAL_MCP_HUMAN_WAIT_TIMEOUT_SECS
-
-tool_sets:
-  base_tools:
-    [
-      Read,
-      Grep,
-      Glob,
-      Bash,
-      WebFetch,
-      WebSearch,
-      Skill,
-      TaskCreate,
-      TaskUpdate,
-      TaskGet,
-      TaskList,
-      TaskOutput,
-      KillShell,
-      MCPSearch,
-    ]
-  critic_tools: [Read, Grep, Glob]
-
-claude:
-  mcp_server_name: ralphx
-  setting_sources: [user, project, local]
-  permission_mode: default
-  default_effort: medium
-  dangerously_skip_permissions: false
-  permission_prompt_tool: permission_request
-  append_system_prompt_file: true
-  # Passed to claude CLI via --settings (JSON). See docs/ai-docs/claude-code/settings.md.
-  settings_profile: default
-  settings_profile_defaults:
-    permissions:
-      deny:
-        - Read(./.env)
-        - Read(./.env.*)
-        - Edit(./.env)
-        - Edit(./.env.*)
-        - Write(./.env)
-        - Write(./.env.*)
-  settings_profiles:
-    # Preserve existing default behavior: sandbox disabled.
-    default:
-      sandbox:
-        enabled: false
-    # Z.AI integration profile. Values can be overridden via src-tauri/.env:
-    # RALPHX_Z_AI_ANTHROPIC_AUTH_TOKEN=...
-    # RALPHX_Z_AI_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
-    # RALPHX_Z_AI_API_TIMEOUT_MS=3000000
-    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
-    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
-    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
-    # Generic RALPHX_* overrides still work as a fallback.
-    z_ai:
-      extends: default
-      env:
-        ANTHROPIC_AUTH_TOKEN: your_zai_api_key
-        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
-        API_TIMEOUT_MS: "3000000"
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
-        ANTHROPIC_DEFAULT_SONNET_MODEL: glm-4.7
-        ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
-    # OpenRouter integration profile. Values can be overridden via src-tauri/.env:
-    # RALPHX_OPENROUTER_ANTHROPIC_AUTH_TOKEN=...
-    # RALPHX_OPENROUTER_ANTHROPIC_BASE_URL=https://openrouter.ai/api
-    # RALPHX_OPENROUTER_ANTHROPIC_API_KEY=
-    # RALPHX_OPENROUTER_API_TIMEOUT_MS=3000000
-    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_HAIKU_MODEL=z-ai/glm-4.7-flash
-    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-4.7
-    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5
-    # Generic RALPHX_* overrides still work as a fallback.
-    openrouter:
-      extends: default
-      env:
-        ANTHROPIC_AUTH_TOKEN: your_openrouter_api_key
-        ANTHROPIC_BASE_URL: https://openrouter.ai/api
-        ANTHROPIC_API_KEY: ""
-        API_TIMEOUT_MS: "3000000"
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: z-ai/glm-4.7-flash
-        ANTHROPIC_DEFAULT_SONNET_MODEL: z-ai/glm-4.7
-        ANTHROPIC_DEFAULT_OPUS_MODEL: z-ai/glm-5
 
 agents:
   - name: ralphx-ideation
