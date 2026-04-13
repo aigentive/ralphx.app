@@ -195,7 +195,7 @@ When working in `src-tauri/`, also follow:
 | P1 | `src-tauri/src/application/task_scheduler_service/mod.rs` | Open | Scheduler still mixes selection, retries, contention, and transition construction | Extract retry/contention and transition-builder support |
 | P1 | `src-tauri/src/commands/git_commands.rs` | Open | Merge retry/control flows still own too much runtime wiring | Move background merge-retry builder/runtime setup behind shared helpers |
 | P1 | Provider-aware runtime factories (`AppState`, transition/chat fallbacks, scheduler fallbacks) | In progress | Behavior still depends too much on whether `AppState` is discoverable from an `AppHandle` | Converge on one provider-aware factory path and keep legacy Claude naming only as compatibility aliases |
-| P1 | `plugins/app/ralphx-mcp-server/src/tools.ts` | In progress | MCP registry file still mixes tool definitions, fallback policy, recovery hints, and debug helpers | Keep extracting allowlist/auth, grouped tool registries, and repair-hint helpers into focused modules until `tools.ts` is just the registry composition layer |
+| P1 | `plugins/app/ralphx-mcp-server/src/tools.ts` | In progress | `tool-authorization.ts`, `ideation-tools.ts`, and `workflow-tools.ts` are now split out, but `tools.ts` still owns additional inline registries plus recovery/debug helpers | Keep extracting the remaining grouped registries first, then split repair-hint/debug helpers until `tools.ts` is just registry composition + thin exports |
 
 ## Cross-Session Tracker Notes
 
