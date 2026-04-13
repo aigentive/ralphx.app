@@ -130,7 +130,7 @@ fn test_embedded_config_omits_process_mapping_and_still_resolves_canonical_regis
     assert_eq!(
         parsed.process_mapping,
         canonical_process_mapping(),
-        "embedded ralphx.yaml should be able to omit process_mapping while the loader still resolves the canonical registry"
+        "embedded config/ralphx.yaml should be able to omit process_mapping while the loader still resolves the canonical registry"
     );
 }
 
@@ -175,7 +175,7 @@ fn test_embedded_config_omits_team_constraints_and_still_resolves_canonical_regi
     assert_eq!(
         parsed.team_constraints,
         canonical_team_constraints_config(),
-        "embedded ralphx.yaml should be able to omit team_constraints while the loader still resolves the canonical team constraint registry"
+        "embedded config/ralphx.yaml should be able to omit team_constraints while the loader still resolves the canonical team constraint registry"
     );
 }
 

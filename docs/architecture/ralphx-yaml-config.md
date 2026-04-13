@@ -1,8 +1,8 @@
-# ralphx.yaml Configuration Management System
+# RalphX Runtime Config Management System
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-`ralphx.yaml` is the single source of truth for agent definitions, prompt/tool wiring, and the current Claude/default runtime configuration. The app-level harness selection layer is now provider-neutral; Codex-specific runtime behavior is layered on top of these shared agent/lane definitions rather than replacing them.
+`config/ralphx.yaml` is the shared runtime compatibility config for agent definitions, prompt/tool wiring, and Claude/default runtime settings that have not yet been fully extracted into `agents/` and `config/harnesses/*`. The app-level harness selection layer is provider-neutral; Codex-specific runtime behavior is layered on top of these shared agent/lane definitions rather than replacing them.
 
 ---
 
@@ -97,13 +97,13 @@ struct ClaudeRuntimeConfigRaw {
 | Priority | Source | When Used |
 |----------|--------|-----------|
 | 1 | `RALPHX_CONFIG_PATH` env var | Custom config path |
-| 2 | `<project-root>/ralphx.yaml` | Normal operation |
+| 2 | `<project-root>/config/ralphx.yaml` | Normal operation |
 | 3 | `EMBEDDED_CONFIG` (compiled in) | File missing/unreadable |
 
 ### Processing Flow
 
 ```
-ralphx.yaml (or EMBEDDED_CONFIG)
+config/ralphx.yaml (or EMBEDDED_CONFIG)
     │
     ▼
 serde_yaml::from_str() → RalphxConfig
@@ -197,7 +197,7 @@ This ensures `.env` protection applies to all profiles regardless of selection.
 ### Profile Field Override Example
 
 ```yaml
-# In ralphx.yaml:
+# In config/ralphx.yaml:
 settings_profiles:
   z_ai:
     env:
@@ -324,7 +324,7 @@ The `RALPHX_AGENT_TYPE` env var enables server-side tool filtering in `tools.ts`
 
 | File | Purpose |
 |------|---------|
-| `ralphx.yaml` | Configuration source of truth |
+| `config/ralphx.yaml` | Shared runtime compatibility config |
 | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | YAML parsing, config resolution, tool allowlist generation |
 | `src-tauri/src/infrastructure/agents/claude/mod.rs` | CLI command building, MCP config generation |
 | `src-tauri/src/infrastructure/agents/spawner.rs` | State machine → agent spawn orchestration |

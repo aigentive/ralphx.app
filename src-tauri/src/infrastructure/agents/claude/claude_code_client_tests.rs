@@ -789,7 +789,7 @@ fn test_build_teammate_cli_args_full_integration() {
 #[test]
 fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
     // Verifies that --settings is passed when get_effective_settings returns a value.
-    // The embedded ralphx.yaml configures a global `settings_profile: default`,
+    // The embedded config/ralphx.yaml configures a global `settings_profile: default`,
     // so any agent_type not registered in agents[] falls through to the global profile.
     // "unregistered-agent-type" triggers the global fallback path.
     let client = ClaudeCodeClient::new();

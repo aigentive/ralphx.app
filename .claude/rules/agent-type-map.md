@@ -1,6 +1,6 @@
 ---
 paths:
-  - "ralphx.yaml"
+  - "config/ralphx.yaml"
   - "agents/**"
   - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/infrastructure/agents/**"
@@ -34,7 +34,7 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 
 **Execution slot** = counted against `max_concurrent` in `uses_execution_slot()` (`chat_service/mod.rs`).
 
-## Named Agents (ralphx.yaml)
+## Named Agents (config/ralphx.yaml)
 
 Canonical authoring flow: `.claude/rules/agent-authoring.md`
 
@@ -76,7 +76,7 @@ Canonical authoring flow: `.claude/rules/agent-authoring.md`
 | `ralphx-ideation-advocate` | — | opus | Advocate for a specific approach in architectural debates |
 | `ralphx-ideation-critic` | — | opus | Stress-test all approaches with adversarial analysis |
 
-**Memory tools:** Most agents also have memory read tools (`search_memories`, `get_memory`, `get_memories_for_paths`) — see `ralphx.yaml` for the authoritative `mcp_tools` list per agent.
+**Memory tools:** Most agents also have memory read tools (`search_memories`, `get_memory`, `get_memories_for_paths`) — see `config/ralphx.yaml` for the authoritative `mcp_tools` list per agent.
 
 ## Verification Specialist Extensibility Pattern
 
@@ -85,11 +85,11 @@ Adding a new specialist to the plan verification pipeline requires these 7 steps
 | Step | File | Change |
 |------|------|--------|
 | 1 | `agents/<name>/...` | Create canonical agent config + prompt files with role/scope/refuse boundaries and output format |
-| 2 | `ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
+| 2 | `config/ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
 | 3 | `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Add `export const IDEATION_SPECIALIST_<NAME> = "<name>"` constant |
 | 4 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Import constant; add `[IDEATION_SPECIALIST_<NAME>]: [...]` to TOOL_ALLOWLIST |
-| 5 | `agents/ralphx-plan-verifier/claude/prompt.md` + `ralphx.yaml` | Keep the Claude prompt contract and runtime grants aligned for `Task(ralphx:<name>)` |
-| 6 | `ralphx.yaml` ralphx-plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
+| 5 | `agents/ralphx-plan-verifier/claude/prompt.md` + `config/ralphx.yaml` | Keep the Claude prompt contract and runtime grants aligned for `Task(ralphx:<name>)` |
+| 6 | `config/ralphx.yaml` ralphx-plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
 | 7 | `agents/ralphx-plan-verifier/claude/prompt.md` | Add signal → specialist mapping in dynamic role selection section |
 
 **Two specialist dispatch modes:**
@@ -118,9 +118,9 @@ Full ordered sequence when an ideation session detects cross-project targets:
 
 ## Agent Frontmatter MCP Tool Rule (NON-NEGOTIABLE)
 
-Agent frontmatter `tools:` MUST use explicit `mcp__ralphx__<tool>` entries — ❌ `mcp__ralphx__*` wildcards. The `ralphx.yaml` `mcp_tools` array is the source of truth.
+Agent frontmatter `tools:` MUST use explicit `mcp__ralphx__<tool>` entries — ❌ `mcp__ralphx__*` wildcards. The `config/ralphx.yaml` `mcp_tools` array is the source of truth.
 
-**Why:** Wildcard doesn't reliably resolve; agents get "tool doesn't exist" for valid tools. All three layers must include the tool: frontmatter → `ralphx.yaml` `mcp_tools` → MCP server TOOL_ALLOWLIST.
+**Why:** Wildcard doesn't reliably resolve; agents get "tool doesn't exist" for valid tools. All three layers must include the tool: frontmatter → `config/ralphx.yaml` `mcp_tools` → MCP server TOOL_ALLOWLIST.
 
 \`\`\`yaml
 # ✅ Explicit entries in agent frontmatter
@@ -133,7 +133,7 @@ tools:
   - mcp__ralphx__*
 \`\`\`
 
-**Spot-check (2026-03-20):** `ralphx-execution-worker` (23 tools ✅), `ralphx-execution-reviewer` (15 tools ✅), `ralphx-execution-merger` (9 tools ✅) — all frontmatter entries match `ralphx.yaml` exactly.
+**Spot-check (2026-03-20):** `ralphx-execution-worker` (23 tools ✅), `ralphx-execution-reviewer` (15 tools ✅), `ralphx-execution-merger` (9 tools ✅) — all frontmatter entries match `config/ralphx.yaml` exactly.
 
 ## Agent Lifecycle Events
 

@@ -118,7 +118,7 @@ fn test_all_agent_names_are_known() {
     for agent in agent_configs() {
         assert!(
             known.contains(agent.name.as_str()),
-            "Unknown agent name in ralphx.yaml: {}",
+            "Unknown agent name in config/ralphx.yaml: {}",
             agent.name
         );
     }
@@ -428,7 +428,7 @@ fn test_embedded_config_keeps_explicit_execution_defaults_aligned_with_fallback(
     assert_eq!(
         parsed.execution_defaults,
         ExecutionDefaultsConfig::default(),
-        "ralphx.yaml should keep explicit execution_defaults aligned with the Rust fallback \
+        "config/ralphx.yaml should keep explicit execution_defaults aligned with the Rust fallback \
          defaults so YAML remains the human-edited source of truth and the code default stays \
          only a last-resort safety net"
     );
@@ -442,7 +442,7 @@ fn test_embedded_config_omits_agent_harness_defaults_and_uses_fallback() {
     assert_eq!(
         parsed.agent_harness_defaults,
         default_agent_harness_defaults(),
-        "embedded ralphx.yaml should be able to omit agent_harness_defaults entirely while the \
+        "embedded config/ralphx.yaml should be able to omit agent_harness_defaults entirely while the \
          runtime still resolves the standard fallback defaults"
     );
 }
@@ -2213,7 +2213,7 @@ agents:
 #[test]
 fn test_resolve_effort_returns_per_agent_effort_for_known_agent() {
     use crate::infrastructure::agents::claude::resolve_effort;
-    // ralphx-ideation has effort: max in ralphx.yaml
+    // ralphx-ideation has effort: max in config/ralphx.yaml
     let effort = resolve_effort(Some("ralphx-ideation"));
     assert_eq!(effort, "max");
 }

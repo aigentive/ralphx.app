@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// UI configuration section from ralphx.yaml.
+/// UI configuration section from config/ralphx.yaml.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UiConfig {
     /// Feature flags controlling page visibility.
@@ -19,7 +19,7 @@ pub struct UiFeatureFlagsConfig {
     pub activity_page: bool,
     /// Show or hide the Extensibility page. Default: true.
     pub extensibility_page: bool,
-    /// Enable or disable Battle Mode. Default: true (backward compat; disabled via ralphx.yaml).
+    /// Enable or disable Battle Mode. Default: true (backward compat; disabled via config/ralphx.yaml).
     pub battle_mode: bool,
 }
 

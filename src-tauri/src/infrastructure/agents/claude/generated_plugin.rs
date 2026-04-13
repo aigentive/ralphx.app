@@ -221,7 +221,7 @@ fn build_claude_frontmatter(
 ) -> Result<String, String> {
     let agent_config = get_agent_config(agent_name).ok_or_else(|| {
         format!(
-            "Canonical Claude agent {} is missing runtime config in ralphx.yaml",
+            "Canonical Claude agent {} is missing runtime config in config/ralphx.yaml",
             agent_name
         )
     })?;

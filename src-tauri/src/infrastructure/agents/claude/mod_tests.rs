@@ -185,7 +185,7 @@ fn test_format_allowed_tools_arg_value_absent_mcp_tools_returns_none() {
 #[test]
 fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
-    // ralphx-ideation has a non-empty mcp_tools list in ralphx.yaml
+    // ralphx-ideation has a non-empty mcp_tools list in config/ralphx.yaml
     let config_path = create_mcp_config(&plugin_dir, "ralphx-ideation", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);

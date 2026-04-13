@@ -11,7 +11,7 @@ Primary project docs:
 - `.claude/rules/*.md`
 - `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
-- `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `ralphx.yaml`, and MCP allowlists
+- `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 
 ## Codex Rules
@@ -20,7 +20,7 @@ Primary project docs:
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.
 - Minimal diffs: avoid formatter churn and opportunistic refactors.
-- Agent tool alignment: keep prompt frontmatter, canonical agent metadata, `ralphx.yaml`, and MCP allowlists aligned. Source: `.claude/rules/agent-mcp-tools.md`.
+- Agent tool alignment: keep prompt frontmatter, canonical agent metadata, `config/ralphx.yaml`, and MCP allowlists aligned. Source: `.claude/rules/agent-mcp-tools.md`.
 - Handler module split: oversized Rust HTTP handlers belong in directory-backed modules, not giant single files.
 - Mechanical extraction only (NON-NEGOTIABLE): large moves/splits must use real mechanical extraction (`mv`, `sed`, `awk`, scripts), not hand-copying.
 - `apply_patch` is fix-up only (NON-NEGOTIABLE): after a mechanical move, use it only for imports, visibility, wiring, and tests.
@@ -72,7 +72,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Stream | Status | Next Step |
 |---|---|---|---|
-| P0 | Canonical agent capability model | In progress | Keep moving ownership out of `ralphx.yaml`; the tracked per-agent solo Claude capability surfaces plus canonical process mapping/team constraints now prefer `config/processes.yaml`, Claude global tool/runtime defaults now prefer `config/harnesses/claude.yaml`, Codex ideation lane defaults now prefer `config/harnesses/codex.yaml`, the last hardcoded Rust fallback registries for Claude tool sets and process/team defaults now source those embedded canonical config files instead, implicit Codex->Claude fallback is removed from defaults/settings/runtime selection plus the shared ideation runtime/client-bundle/factory-bundle surfaces, current MCP allowlist resolution now comes directly from canonical agent metadata with only an explicit legacy fallback map left, `tools.ts` is now reduced to a thin MCP facade, and the next cleanup is continuing the `config/` split plus deciding whether that explicit legacy fallback map should survive at all |
+| P0 | Canonical agent capability model | In progress | Keep shrinking `config/ralphx.yaml` into true compatibility ballast: per-agent solo Claude capability surfaces already prefer canonical agent metadata, process mapping/team constraints now prefer `config/processes.yaml`, Claude global tool/runtime defaults now prefer `config/harnesses/claude.yaml`, Codex ideation lane defaults now prefer `config/harnesses/codex.yaml`, the last hardcoded Rust fallback registries for Claude tool sets and process/team defaults now source those embedded canonical config files instead, implicit Codex->Claude fallback is removed from defaults/settings/runtime selection plus the shared ideation runtime/client-bundle/factory-bundle surfaces, current MCP allowlist resolution now comes directly from canonical agent metadata with only an explicit legacy fallback map left, `tools.ts` is now reduced to a thin MCP facade, and the next cleanup is continuing the `config/` split plus removing remaining root-config compatibility paths |
 | P0 | Verifier critic resumption protocol | In progress | Add deeper regressions and, if needed, runtime-side recovery so critics do not false-escalate while artifacts are still pending |
 | P0 | Model-agnostic MCP/tool UX | In progress | Extend repair-oriented MCP treatment to more brittle workflows |
 | P0 | Startup external-session archival safety | In progress | Observe real runs before widening recovery-specific heuristics |

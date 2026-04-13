@@ -4,14 +4,14 @@
 //   grep -r 'model' src-tauri/src/infrastructure/agents/claude/model_resolver.rs | grep -v '//' | head -40
 //   grep -r 'model:' agents/*/claude/agent.yaml agents/*/agent.yaml | grep -v '#' | head -20
 //
-// Unique model strings found in ralphx.yaml and agent .md files:
-//   sonnet, opus, haiku  (short aliases used by all agents in ralphx.yaml)
+// Unique model strings found in config/ralphx.yaml and agent .md files:
+//   sonnet, opus, haiku  (short aliases used by shared runtime config)
 //
 // Full model IDs (claude-*) are included in the table as forward-mapping entries
 // for when they appear in runtime --model output or are explicitly set.
 //
 // Frontend counterpart: frontend/src/lib/model-utils.ts
-// When a new model is added to ralphx.yaml or model_resolver.rs, BOTH files must be updated.
+// When a new model is added to config/ralphx.yaml or model_resolver.rs, BOTH files must be updated.
 
 /// Map a raw model ID string to a human-readable display label.
 ///
@@ -22,7 +22,7 @@
 #[allow(dead_code)]
 pub(crate) fn model_id_to_label(id: &str) -> String {
     match id {
-        // Short aliases used in ralphx.yaml and YAML agent configs
+        // Short aliases used in config/ralphx.yaml and YAML agent configs
         "sonnet" => "Sonnet 4.6",
         "opus" => "Opus 4.6",
         "haiku" => "Haiku 4.5",
@@ -67,23 +67,23 @@ mod tests {
         assert_eq!(model_id_to_label(""), "");
     }
 
-    /// Drift-prevention test: every model value in ralphx.yaml must have a distinct
+    /// Drift-prevention test: every model value in config/ralphx.yaml must have a distinct
     /// display label (not equal to the raw ID). This catches missing entries when
-    /// ralphx.yaml gains new model aliases.
+    /// config/ralphx.yaml gains new model aliases.
     ///
     /// Run: cargo nextest run --manifest-path src-tauri/Cargo.toml --lib -E 'test(test_all_yaml_models_have_labels)'
     #[test]
     fn test_all_yaml_models_have_labels() {
-        // Locate ralphx.yaml relative to this crate's manifest directory.
+        // Locate config/ralphx.yaml relative to this crate's manifest directory.
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let yaml_path = manifest_dir.join("../ralphx.yaml");
+        let yaml_path = manifest_dir.join("../config/ralphx.yaml");
 
         let content = match std::fs::read_to_string(&yaml_path) {
             Ok(c) => c,
             Err(e) => {
-                // If ralphx.yaml is missing (e.g. CI isolation), skip gracefully.
+                // If config/ralphx.yaml is missing (e.g. CI isolation), skip gracefully.
                 eprintln!(
-                    "Skipping test_all_yaml_models_have_labels: could not read ralphx.yaml: {e}"
+                    "Skipping test_all_yaml_models_have_labels: could not read config/ralphx.yaml: {e}"
                 );
                 return;
             }
@@ -111,7 +111,7 @@ mod tests {
 
         assert!(
             !models.is_empty(),
-            "No model values found in ralphx.yaml — check file path or format"
+            "No model values found in config/ralphx.yaml — check file path or format"
         );
 
         for model_id in &models {

@@ -100,7 +100,7 @@ External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → H
 ```
 Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
 **MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `plugins/app/ralphx-mcp-server/src/` or `plugins/app/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
-**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
+**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `config/ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
 **Agent frontmatter tool fields (NON-NEGOTIABLE):** Only `tools` and `disallowedTools` are valid in agent `.md` frontmatter. ❌ `allowedTools` — silently ignored by Claude Code. Add MCP tools (e.g., `"mcp__ralphx__*"`) to the `tools` list. Note: `--allowedTools` IS valid as a CLI flag at spawn time — only invalid as frontmatter.
 
 | Agent | MCP Tools |
@@ -178,7 +178,7 @@ style={{ boxShadow: "none", outline: "none" }}
 
 ## Misc
 - DB: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
-- App logs: per-launch file — dev: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log` | prod: `~/Library/Application Support/com.ralphx.app/logs/` | latest: `ls -t .artifacts/logs/*.log | head -1` | config: `file_logging` in ralphx.yaml / `RALPHX_FILE_LOGGING` env (default: true)
+- App logs: per-launch file — dev: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log` | prod: `~/Library/Application Support/com.ralphx.app/logs/` | latest: `ls -t .artifacts/logs/*.log | head -1` | config: `file_logging` in `config/ralphx.yaml` / `RALPHX_FILE_LOGGING` env (default: true)
 - Debug logs: `scripts/find-debug-logs.sh -a "<agent-name>" -d "YYYY-MM-DD" -v` — find Claude debug logs by agent name/date/keywords
 - Slash commands: `/activate-prd <path>` — switch PRD | `/create-prd` — PRD wizard
 - Claude integration docs: `docs/ai-docs/claude-code/README.md` — lightweight local index plus official-doc stubs; fetch official Claude Code docs when current vendor behavior matters

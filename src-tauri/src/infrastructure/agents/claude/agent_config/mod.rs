@@ -302,7 +302,8 @@ struct ProcessConfigOverlay {
     team_constraints: Option<TeamConstraintsConfig>,
 }
 
-const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
+const EMBEDDED_CONFIG: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../config/ralphx.yaml"));
 
 fn default_defer_merge_enabled() -> bool {
     true
@@ -342,7 +343,12 @@ pub fn config_path() -> PathBuf {
     }
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    root.join("ralphx.yaml")
+    let preferred = root.join("config").join("ralphx.yaml");
+    if preferred.exists() {
+        preferred
+    } else {
+        root.join("ralphx.yaml")
+    }
 }
 
 pub fn process_config_path() -> PathBuf {
@@ -397,7 +403,7 @@ fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
     match serde_yaml::from_str(yaml) {
         Ok(v) => Some(v),
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse ralphx.yaml");
+            tracing::warn!(error = %e, "Failed to parse RalphX config file");
             None
         }
     }
@@ -509,7 +515,7 @@ fn load_process_config_overlay() -> Option<(PathBuf, ProcessConfigOverlay)> {
 }
 
 /// Resolve file_logging setting for early use (before tracing subscriber init).
-/// Priority: RALPHX_FILE_LOGGING env > ralphx.yaml `file_logging` field > default (true).
+/// Priority: RALPHX_FILE_LOGGING env > config/ralphx.yaml `file_logging` field > default (true).
 ///
 /// This does a lightweight YAML parse — the full config is loaded lazily later.
 pub fn resolve_file_logging_early() -> bool {
@@ -923,8 +929,9 @@ fn resolve_loaded_config_with_lookup(
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
         tracing::warn!(
             value = runtime.external_mcp.max_external_ideation_sessions,
-            "ralphx.yaml: external_mcp.max_external_ideation_sessions is deprecated and has no \
-             effect. The session gate was removed; sessions are always created. Remove this field."
+            "config/ralphx.yaml: external_mcp.max_external_ideation_sessions is deprecated and \
+             has no effect. The session gate was removed; sessions are always created. Remove \
+             this field."
         );
     }
     runtime_config::apply_env_overrides(&mut runtime);
@@ -1324,14 +1331,14 @@ fn load_config() -> LoadedConfig {
                     permission_mode = %cfg.claude.permission_mode,
                     dangerously_skip_permissions = cfg.claude.dangerously_skip_permissions,
                     append_system_prompt_file = cfg.claude.use_append_system_prompt_file,
-                    "Loaded agent config from ralphx.yaml"
+                    "Loaded agent config from RalphX config file"
                 );
                 return cfg;
             }
         }
         tracing::warn!(path = %path.display(), "Falling back to embedded config due to parse error");
     } else {
-        tracing::warn!(path = %path.display(), "ralphx.yaml not found/readable, using embedded config");
+        tracing::warn!(path = %path.display(), "RalphX config file not found/readable, using embedded config");
     }
 
     let mut cfg = parse_raw_config(EMBEDDED_CONFIG)

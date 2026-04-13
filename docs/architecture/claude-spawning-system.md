@@ -113,14 +113,14 @@ Built in `build_cli_args()` (`claude_code_client.rs:348-452`) and `spawn_agent()
 | `--agent` | `ralphx:<name>` | `AgentConfig.agent` (fully-qualified) |
 | `--mcp-config` | `<temp_path>` | Dynamic per-agent MCP config (see below) |
 | `--strict-mcp-config` | (flag) | Ignores user/global MCP servers |
-| `--tools` | CSV of CLI tools | `get_allowed_tools(agent_name)` from `ralphx.yaml` |
+| `--tools` | CSV of CLI tools | `get_allowed_tools(agent_name)` from `config/ralphx.yaml` |
 | `--allowedTools` | CSV of pre-approved | `get_preapproved_tools(agent_name)` — MCP + CLI, no prompts |
-| `--model` | `haiku`/`sonnet`/`opus` | Explicit override → per-agent default from `ralphx.yaml` |
+| `--model` | `haiku`/`sonnet`/`opus` | Explicit override → per-agent default from `config/ralphx.yaml` |
 | `--max-tokens` | number | Optional from `AgentConfig.max_tokens` |
-| `--permission-prompt-tool` | `mcp__ralphx__permission_request` | From `ralphx.yaml` `claude.permission_prompt_tool` |
-| `--permission-mode` | `default` | From `ralphx.yaml` `claude.permission_mode` |
+| `--permission-prompt-tool` | `mcp__ralphx__permission_request` | From `config/ralphx.yaml` `claude.permission_prompt_tool` |
+| `--permission-mode` | `default` | From `config/ralphx.yaml` `claude.permission_mode` |
 | `--settings` | JSON string | Agent-specific or global settings profile |
-| `--setting-sources` | CSV | Optional override from `ralphx.yaml` |
+| `--setting-sources` | CSV | Optional override from `config/ralphx.yaml` |
 
 ### Conditional Arguments
 
@@ -143,9 +143,9 @@ Built in `build_cli_args()` (`claude_code_client.rs:348-452`) and `spawn_agent()
 
 ## Configuration System
 
-### ralphx.yaml — Master Agent Config
+### config/ralphx.yaml — Shared Runtime Config
 
-**File:** `ralphx.yaml` (project root) — embedded at compile time via `include_str!`
+**File:** `config/ralphx.yaml` — embedded at compile time via `include_str!`
 **Parser:** `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs`
 
 ```yaml
@@ -180,7 +180,7 @@ agents:
 
 **Config loading** (`agent_config/mod.rs:444-475`):
 1. Try `RALPHX_CONFIG_PATH` env var
-2. Try `<cargo_manifest>/../ralphx.yaml` from filesystem
+2. Try `<cargo_manifest>/../config/ralphx.yaml` from filesystem
 3. Fall back to embedded config (compile-time `include_str!`)
 
 **Resolved at startup via `OnceLock`** — loaded once, immutable after.
@@ -663,5 +663,5 @@ plugins/app/
     ├── permission-handler.ts    # Permission request two-phase protocol
     └── question-handler.ts      # User question two-phase protocol
 
-ralphx.yaml                      # Master agent config (embedded at compile time)
+config/ralphx.yaml               # Shared runtime config (embedded at compile time)
 ```

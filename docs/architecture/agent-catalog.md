@@ -2,7 +2,7 @@
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-Complete catalog of the 19 live agent definitions in `ralphx.yaml`. Canonical prompt/config source lives under `agents/`; `ralphx.yaml` remains the shared runtime/tool wiring layer even though execution may resolve to Claude or Codex depending on lane settings and harness availability.
+Complete catalog of the 19 live agent definitions in `config/ralphx.yaml`. Canonical prompt/config source lives under `agents/`; `config/ralphx.yaml` remains the shared runtime/tool wiring layer for the fields that have not been extracted yet, even though execution may resolve to Claude or Codex depending on lane settings and harness availability.
 
 ---
 
@@ -443,7 +443,7 @@ Every MCP tool must be registered in three places (see `agent-mcp-tools.md`):
 
 ### Shared Tool Sets
 
-Defined in `ralphx.yaml`:
+Defined in `config/ralphx.yaml`:
 ```yaml
 tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
@@ -643,6 +643,6 @@ Claude Agent → --model <model> --append-system-prompt-file <prompt.md>
              → --mcp-config <ralphx-mcp-server> --permission-mode default
 ```
 
-Configuration source: `ralphx.yaml` → parsed at compile time → `agent_config/mod.rs`
+Configuration source: `config/ralphx.yaml` → parsed at compile time → `agent_config/mod.rs`
 
 MCP Architecture: `Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Tauri Backend`

@@ -1,7 +1,7 @@
 ---
 paths:
   - "agents/**"
-  - "ralphx.yaml"
+  - "config/ralphx.yaml"
   - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
@@ -23,7 +23,7 @@ paths:
 | Claude-specific prompt | `agents/<agent>/claude/prompt.md` |
 | Claude-specific metadata | `agents/<agent>/claude/agent.yaml` |
 | Codex-specific prompt | `agents/<agent>/codex/prompt.md` |
-| Runtime lane/tool config | `ralphx.yaml` |
+| Runtime lane/tool config | `config/ralphx.yaml` |
 | MCP allowlist / tool dispatch | `plugins/app/ralphx-mcp-server/src/tools.ts` |
 | Agent short-name constants | `plugins/app/ralphx-mcp-server/src/agentNames.ts` and `src-tauri/src/infrastructure/agents/claude/agent_names.rs` |
 
@@ -36,8 +36,8 @@ paths:
 | 1 | Pick the canonical agent id and add `agents/<agent>/agent.yaml` |
 | 2 | Add prompt files: `shared/prompt.md` only if truly harness-neutral, otherwise add `<harness>/prompt.md` per supported harness |
 | 3 | Add `claude/agent.yaml` only for real Claude-only metadata such as `disallowed_tools`, `skills`, `max_turns`, or frontmatter compatibility aliases |
-| 4 | Register the runtime entry in `ralphx.yaml` with the canonical `system_prompt_file` path under `agents/` |
-| 5 | If the agent needs MCP tools, update all three layers: canonical prompt contract, `ralphx.yaml` `mcp_tools`, and `plugins/app/ralphx-mcp-server/src/tools.ts` |
+| 4 | Register the runtime entry in `config/ralphx.yaml` with the canonical `system_prompt_file` path under `agents/` |
+| 5 | If the agent needs MCP tools, update all three layers: canonical prompt contract, `config/ralphx.yaml` `mcp_tools`, and `plugins/app/ralphx-mcp-server/src/tools.ts` |
 | 6 | Add/update agent name constants if the agent is referenced by MCP or Rust agent-name maps |
 | 7 | Add or extend tests proving canonical loadability and harness-specific behavior |
 
@@ -50,7 +50,7 @@ paths:
 | Codex-only prompt behavior | `agents/<agent>/codex/prompt.md` |
 | Shared prompt wording | `agents/<agent>/shared/prompt.md` |
 | Claude frontmatter behavior | `agents/<agent>/claude/agent.yaml` |
-| Model / tools / MCP grants / runtime lane settings | `ralphx.yaml` |
+| Model / tools / MCP grants / runtime lane settings | `config/ralphx.yaml` |
 
 ## Prompt Split Rules
 
@@ -64,7 +64,7 @@ paths:
 
 When adding or removing MCP tools from an agent:
 1. Update canonical prompt instructions if the tool contract changed
-2. Update `ralphx.yaml` `mcp_tools`
+2. Update `config/ralphx.yaml` `mcp_tools`
 3. Update `plugins/app/ralphx-mcp-server/src/tools.ts`
 4. Rebuild the MCP server if TypeScript changed
 
@@ -77,7 +77,7 @@ See `agent-mcp-tools.md` for the strict three-layer rule.
 | Canonical catalog test | `agents/<agent>/agent.yaml` and prompt files load cleanly |
 | Claude generation test | generated Claude artifact matches canonical body/metadata and runtime tool config |
 | Codex hygiene test | Codex prompt contains no Claude-only syntax when the agent is cross-harness |
-| Runtime config test | live `ralphx.yaml` entries point at canonical `agents/` prompt paths |
+| Runtime config test | live `config/ralphx.yaml` entries point at canonical `agents/` prompt paths |
 
 ## Fast Failure Rules
 

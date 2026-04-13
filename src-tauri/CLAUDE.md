@@ -89,11 +89,11 @@ New pattern → add one-liner here. Pattern name + rule only.
 | Follow-up blocker dedupe | Autonomous blocker follow-ups dedupe by first-class `blocker_fingerprint`; never rely on `spawn_reason` wording alone. See `.claude/rules/followup-blocker-dedupe.md` |
 | Rustfmt module roots | Never run `rustfmt` on `mod.rs` or other module-root files for a surgical change; rustfmt can recurse into child modules and create unrelated diffs |
 | ExecutionState Propagation | `Arc<ExecutionState>` → `TaskTransitionService::new()` + `AgenticClientSpawner::with_execution_state()` |
-| Agent MCP Tool Allowlist | MCP/tool changes are multi-layer: keep agent frontmatter, `ralphx.yaml`, and `plugins/app/ralphx-mcp-server/src/tools.ts` aligned; see `.claude/rules/agent-mcp-tools.md` |
+| Agent MCP Tool Allowlist | MCP/tool changes are multi-layer: keep agent frontmatter, `config/ralphx.yaml`, and `plugins/app/ralphx-mcp-server/src/tools.ts` aligned; see `.claude/rules/agent-mcp-tools.md` |
 | Git Modes & Merge | Two modes (Local/Worktree), two-level branches (plan→task) — see task-git-branching.md |
 | PreMergeCleanup | Kill agents + kill_worktree_processes BEFORE git worktree ops (TOCTOU race prevention) |
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
-| No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
+| No Inline Timeout Consts | All durations → `runtime_config` + `config/ralphx.yaml`, never Rust `const` |
 | Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation and doctests; use `cargo nextest run` for broad Rust lib runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
 | Workspace domain split | Low-dependency backend modules and pure entities move into `src-tauri/crates/ralphx-domain`; review logic, shared memory/team types, and pure repository traits belong there, while Tauri/SQLite-facing or root-coupled code stays in the root crate until a clean boundary exists |
 | Forward-only migration repairs | Never reuse or renumber shipped migration versions; schema repair for already-upgraded DBs must be a new forward-only migration |
@@ -107,7 +107,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | Reference upkeep | When refactors move/split backend modules, update concrete file/path references in `.claude/rules/*`, specialist prompts, and docs in the same change; remove triggers that no longer match live code |
 | Ideation/external runtime suite split | Keep ideation and external handler runtime flows in dedicated integration binaries (`ideation_runtime_handlers`, `external_ideation_runtime_handlers`) and keep `.claude/rules/rust-test-execution.md` in sync when splitting more suites |
 | Integration helper visibility | When a moved integration suite needs private handler/helpers, expose the minimum surface as `#[doc(hidden)] pub` instead of keeping `#[cfg(test)]` sidecar-only access |
-| Test determinism | Integration tests must not rely on ambient `ralphx.yaml`, cached runtime config, entity defaults, or default worktree roots like `~/ralphx-worktrees`; set or neutralize each behavioral precondition explicitly in the fixture/helper |
+| Test determinism | Integration tests must not rely on ambient `config/ralphx.yaml`, cached runtime config, entity defaults, or default worktree roots like `~/ralphx-worktrees`; set or neutralize each behavioral precondition explicitly in the fixture/helper |
 | Sandbox-safe default tests | Default Rust suites must avoid ambient HOME/network/process assumptions; extract OS operations behind seams, keep logic coverage on fakes, and mark true socket/process checks as explicit ignored capability tests |
 | Capability test runner split | Ignored lib-side capability checks run via explicit `cargo test -- --ignored`; only add a `nextest` group after moving them into a dedicated integration binary |
 | Capability binary convention | Dedicated OS-capability integration suites should use a specific binary name, get one `capability-serial` override in `src-tauri/.config/nextest.toml`, and be listed in `.claude/rules/rust-test-execution.md` |
@@ -116,7 +116,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | Completion shutdown grace | After `execution_complete` / `complete_review` / `complete_merge`, stream timeout logic must honor `completion_grace_secs`, match the fully-qualified MCP tool names (`mcp__ralphx__*`), and treat post-completion non-zero exits as successful shutdowns |
 | Claude usage-limit banners | Treat Claude subscription exhaustion text (for example `You've hit your limit` / `You're out of extra usage`) as provider errors even when it arrives as assistant content on the success path; globally pause agent-active work instead of advancing state |
 | Ideation history overflow | Oversized ideation session-history messages should be stored as context artifacts and injected as preview + `artifact_id` references; don't inline giant message bodies into bootstrap prompts |
-| Execution defaults seeding | `execution_defaults` in `ralphx.yaml` may seed only pristine/default execution-settings rows at bootstrap; once DB rows diverge, live DB/UI values are authoritative |
+| Execution defaults seeding | `execution_defaults` in `config/ralphx.yaml` may seed only pristine/default execution-settings rows at bootstrap; once DB rows diverge, live DB/UI values are authoritative |
 | Execution halt mode contract | Execution status/events must expose persisted halt mode (`running`/`paused`/`stopped`); don't collapse `stopped` into `isPaused` and accidentally re-enable resume UI |
 | Artifacts test quiesce | `artifacts_handlers` plan-mutation tests that create a plan first must quiesce auto-verify (reset parent + archive/unregister verification children) unless the test is explicitly asserting freeze/bypass behavior |
 | SQLite write transactions | `DbConnection::run_transaction()` uses `BEGIN IMMEDIATE`; keep read-then-write sync-helper flows inside it to avoid WAL upgrade failures surfaced as `database is locked` |

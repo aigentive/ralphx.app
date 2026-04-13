@@ -317,7 +317,7 @@ fn build_base_cli_command_inner(
         cmd.env("RALPHX_IS_EXTERNAL_TRIGGER", "1");
     }
 
-    // Optional setting-sources override from ralphx.yaml.
+    // Optional setting-sources override from config/ralphx.yaml.
     if let Some(sources) = &claude_runtime_config().setting_sources {
         if !sources.is_empty() {
             cmd.args(["--setting-sources", &sources.join(",")]);
@@ -352,7 +352,7 @@ fn build_base_cli_command_inner(
         tracing::debug!(path = %debug_path.display(), "Enabled Claude debug file");
     }
 
-    // Configure permission handling from ralphx.yaml.
+    // Configure permission handling from config/ralphx.yaml.
     let runtime = claude_runtime_config();
     cmd.args(["--permission-prompt-tool", &runtime.permission_prompt_tool]);
     let permission_mode = resolve_permission_mode(agent_type);

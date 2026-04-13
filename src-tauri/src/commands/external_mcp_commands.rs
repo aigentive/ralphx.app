@@ -21,7 +21,7 @@ pub struct ExternalMcpConfigView {
 }
 
 /// Input for updating ExternalMcpConfig. All fields are optional — only Some values are applied.
-/// auth_token is accepted as plaintext on write and stored verbatim in ralphx.yaml.
+/// auth_token is accepted as plaintext on write and stored verbatim in config/ralphx.yaml.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExternalMcpConfigUpdate {
@@ -46,7 +46,7 @@ pub fn get_external_mcp_config() -> ExternalMcpConfigView {
     }
 }
 
-/// Atomically updates ExternalMcpConfig fields in ralphx.yaml.
+/// Atomically updates ExternalMcpConfig fields in config/ralphx.yaml.
 /// Writes to {path}.tmp then renames atomically — original is unchanged if process exits mid-write.
 /// Only Some fields from `input` are written; absent fields are preserved as-is.
 #[tauri::command]
@@ -67,11 +67,11 @@ pub async fn update_external_mcp_config(
     })?;
 
     let mut doc: serde_yaml::Value = serde_yaml::from_str(&contents)
-        .map_err(|e| format!("Failed to parse ralphx.yaml: {e}"))?;
+        .map_err(|e| format!("Failed to parse config/ralphx.yaml: {e}"))?;
 
     let root = doc
         .as_mapping_mut()
-        .ok_or_else(|| "ralphx.yaml root is not a YAML mapping".to_string())?;
+        .ok_or_else(|| "config/ralphx.yaml root is not a YAML mapping".to_string())?;
 
     let mcp_section = root
         .entry(serde_yaml::Value::String("external_mcp".to_string()))

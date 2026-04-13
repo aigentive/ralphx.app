@@ -41,7 +41,7 @@ Codex currently wraps those same prompts via `compose_codex_prompt(...)`, which 
 
 ### Source Of Truth Today
 
-- Runtime agent config is loaded from [ralphx.yaml](/Users/lazabogdan/Code/ralphx/ralphx.yaml)
+- Runtime agent config is loaded from [ralphx.yaml](/Users/lazabogdan/Code/ralphx/config/ralphx.yaml)
 - Canonical prompt bodies now live under [agents](/Users/lazabogdan/Code/ralphx/agents)
 - Claude runtime resolves `system_prompt_file` from [agent_config/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs)
 - Claude runtime/plugin bootstrap is built in [claude/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/mod.rs)
@@ -375,7 +375,7 @@ This is where harness-specific delegation semantics matter most.
 Landed:
 - `plugins/app/agents/*.md` is no longer treated as authored source
 - the deprecated markdown files under `plugins/app/agents/` have been deleted
-- `ralphx.yaml` now points live runtime agents at canonical prompt paths under `agents/`
+- `config/ralphx.yaml` now points live runtime agents at canonical prompt paths under `agents/`
 - canonical-tree and generated-artifact tests no longer depend on reading legacy prompt markdown
 
 Remaining:
@@ -443,7 +443,7 @@ Remaining:
 - `mcpServers` generation is correct
 - existing Claude runtime can still discover and spawn generated agents
 - generated Claude prompt body and authored Claude metadata stay semantically aligned with the legacy source where that legacy frontmatter was the authored truth
-- generated Claude `tools` and `mcpServers` stay aligned with runtime config (`ralphx.yaml`) even when legacy plugin frontmatter had drifted stale
+- generated Claude `tools` and `mcpServers` stay aligned with runtime config (`config/ralphx.yaml`) even when legacy plugin frontmatter had drifted stale
 - explicit Claude-only compatibility aliases (for example `worker-team`) stay encoded in `claude/agent.yaml`, not in ad hoc generator special cases
 
 ### Codex Prompt Tests
