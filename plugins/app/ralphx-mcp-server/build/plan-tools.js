@@ -142,6 +142,89 @@ export const PLAN_TOOLS = [
         },
     },
     {
+        name: "assess_verification_round",
+        description: "Verifier-oriented helper that classifies whether required critic artifacts are complete, still pending, or an infrastructure failure. " +
+            "Use this after bounded delegate waits / rescue attempts instead of inferring runtime failure from raw delegate_wait snapshots and artifact polls inside the prompt. " +
+            "The tool checks current-round artifact publication on the PARENT ideation session and combines that with live delegate job state.",
+        inputSchema: {
+            type: "object",
+            examples: [
+                {
+                    session_id: "parent-session-id",
+                    created_after: "2026-04-13T10:00:00Z",
+                    rescue_budget_exhausted: true,
+                    delegates: [
+                        {
+                            job_id: "job-completeness",
+                            artifact_prefix: "Completeness: ",
+                            required: true,
+                            label: "completeness",
+                        },
+                        {
+                            job_id: "job-feasibility",
+                            artifact_prefix: "Feasibility: ",
+                            required: true,
+                            label: "feasibility",
+                        },
+                    ],
+                },
+            ],
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
+                },
+                created_after: {
+                    type: "string",
+                    description: "Optional RFC3339 threshold for current-round artifact collection.",
+                },
+                rescue_budget_exhausted: {
+                    type: "boolean",
+                    description: "Set true after the verifier has used its allowed wait/rescue budget. Missing required artifacts then classify as infra_failure instead of pending.",
+                },
+                include_full_content: {
+                    type: "boolean",
+                    description: "Whether returned artifact matches should include full content. Default: true.",
+                },
+                include_messages: {
+                    type: "boolean",
+                    description: "Whether delegated job status hydration should include recent delegated-session messages. Default: true.",
+                },
+                message_limit: {
+                    type: "integer",
+                    description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
+                },
+                delegates: {
+                    type: "array",
+                    description: "Delegated critic/specialist jobs expected to publish current-round artifacts. artifact_prefix is the exact required TeamResearch title prefix.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            job_id: {
+                                type: "string",
+                                description: "Delegation job ID returned by delegate_start.",
+                            },
+                            artifact_prefix: {
+                                type: "string",
+                                description: "Exact required TeamResearch title prefix for this delegate, for example 'Completeness: '.",
+                            },
+                            required: {
+                                type: "boolean",
+                                description: "Whether this delegate is required for the round classification. Default: true.",
+                            },
+                            label: {
+                                type: "string",
+                                description: "Optional short label for summaries, for example 'completeness' or 'feasibility'.",
+                            },
+                        },
+                        required: ["job_id", "artifact_prefix"],
+                    },
+                },
+            },
+            required: ["session_id", "delegates"],
+        },
+    },
+    {
         name: "complete_plan_verification",
         description: "Verifier-friendly helper for terminal verification updates on the PARENT ideation session. " +
             "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +

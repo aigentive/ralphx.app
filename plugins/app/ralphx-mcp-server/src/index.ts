@@ -47,6 +47,11 @@ import {
   hydrateRalphxRuntimeEnvFromCli,
   parseCliOptionFromArgs,
 } from "./runtime-context.js";
+import {
+  assessVerificationRound,
+  type VerificationRoundDelegateInput,
+  type VerificationRoundDelegateSnapshot,
+} from "./verification-round-assessment.js";
 
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
@@ -119,6 +124,10 @@ type TeamArtifactSummary = {
   content_preview: string;
   created_at: string;
   author_teammate?: string | null;
+};
+
+type DelegationJobSnapshot = VerificationRoundDelegateSnapshot & {
+  delegated_status?: unknown;
 };
 
 function summarizeResult(result: unknown): Record<string, unknown> {
@@ -599,6 +608,84 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         status: "reviewing",
         in_progress: true,
       });
+    } else if (name === "assess_verification_round") {
+      const {
+        session_id,
+        delegates,
+        created_after,
+        rescue_budget_exhausted = false,
+        include_full_content = true,
+        include_messages = true,
+        message_limit = 5,
+      } = args as {
+        session_id: string;
+        delegates: VerificationRoundDelegateInput[];
+        created_after?: string;
+        rescue_budget_exhausted?: boolean;
+        include_full_content?: boolean;
+        include_messages?: boolean;
+        message_limit?: number;
+      };
+      const teamArtifacts = await callTauriGet(`team/artifacts/${session_id}`) as {
+        artifacts: TeamArtifactSummary[];
+        count: number;
+      };
+      const uniquePrefixes = Array.from(
+        new Set(delegates.map((delegate) => delegate.artifact_prefix))
+      );
+      const matches = selectLatestArtifactsByPrefix(
+        teamArtifacts.artifacts ?? [],
+        uniquePrefixes,
+        created_after
+      );
+      const artifacts_by_prefix = await Promise.all(
+        matches.map(async (match) => {
+          if (!match.artifact || !include_full_content) {
+            return match;
+          }
+          const fullArtifact = await callTauriGet(`artifact/${match.artifact.id}`) as {
+            content?: string;
+          };
+          return {
+            ...match,
+            artifact: {
+              ...match.artifact,
+              content: fullArtifact.content ?? "",
+            },
+          };
+        })
+      );
+      const delegateSnapshots = await Promise.all(
+        delegates.map(async (delegate) => {
+          try {
+            return await callTauri("coordination/delegate/wait", {
+              job_id: delegate.job_id,
+              include_delegated_status: true,
+              include_messages,
+              message_limit,
+            }) as DelegationJobSnapshot;
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            return {
+              job_id: delegate.job_id,
+              status: "failed",
+              error: errorMessage,
+            } satisfies DelegationJobSnapshot;
+          }
+        })
+      );
+      result = {
+        session_id,
+        created_after: created_after ?? null,
+        rescue_budget_exhausted,
+        ...assessVerificationRound({
+          delegates,
+          artifactsByPrefix: artifacts_by_prefix,
+          delegateSnapshots,
+          rescueBudgetExhausted: rescue_budget_exhausted,
+        }),
+      };
     } else if (name === "complete_plan_verification") {
       // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
       const { session_id, ...body } = args as {

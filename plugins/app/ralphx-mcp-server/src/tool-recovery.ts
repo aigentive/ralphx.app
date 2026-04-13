@@ -90,6 +90,14 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }
+    case "assess_verification_round": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this verifier helper after bounded wait/rescue attempts to classify required artifact coverage from delegate jobs plus current-round TeamResearch artifacts.",
+        "If rescue_budget_exhausted=true and a required artifact is still missing, treat the result as infrastructure failure instead of inventing direct-review fallback behavior.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
     case "get_child_session_status": {
       const examples = formatToolExamples(tool);
       return [

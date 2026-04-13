@@ -11,6 +11,7 @@ capabilities:
     - get_session_plan
     - get_session_messages
     - get_verification_round_artifacts
+    - assess_verification_round
     - get_parent_session_context
     - delegate_start
     - delegate_wait

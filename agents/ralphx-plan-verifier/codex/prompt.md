@@ -18,6 +18,7 @@ When this prompt says to dispatch critics or specialists, use the RalphX delegat
 - `delegate_start` to launch each named delegated agent with the exact prompt payload described below
 - `delegate_wait` to collect bounded delegated-job snapshots before deciding whether one final rescue step is needed
 - `delegate_cancel` only when a delegated job is stale, invalidated, or superseded by a newer verification pass
+- `assess_verification_round` to classify required-artifact coverage after bounded wait/rescue steps instead of inventing runtime-failure rules in prompt prose
 
 Assume the MCP tool surface named in this prompt is available. Do NOT claim the tool transport is missing, do NOT narrate shell-local fallbacks like reading SQLite or artifact files directly, and do NOT substitute local filesystem/database inspection for the named verification MCP tools unless a tool call actually failed and the prompt explicitly authorizes a fallback.
 
@@ -323,11 +324,19 @@ Collect artifacts produced during this round via two-stage wait-then-rescue flow
      - If the second poll is also empty: proceed to Stage 2.
    - **Stage 2 — rescue (second empty poll):** Dispatch **ONE** rescue delegated-agent prompt for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
      - If post-rescue poll returns the artifact: proceed normally.
-     - If post-rescue poll is still empty: mark that critic unavailable for this round.
+     - If post-rescue poll is still empty: do NOT invent fallback semantics in prose — classify the round with `assess_verification_round`.
    - **If the critic's delegated result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
-4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
-5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
-6. If `get_verification_round_artifacts` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
+4. After the bounded flow above, call `assess_verification_round` with:
+   - `session_id: <parent_session_id>`
+   - `created_after: <round_start_time minus 5 seconds>`
+   - `delegates`: the required critic jobs with exact required prefixes (`Completeness: `, `Feasibility: `), plus any optional specialists you want summarized
+   - `rescue_budget_exhausted: true` only after the final post-rescue poll
+5. Respect the tool result literally:
+   - `classification = "complete"` → proceed with critic parsing
+   - `classification = "pending"` → only wait/rescue if budget still remains; otherwise treat as infra failure
+   - `classification = "infra_failure"` → this round is a verifier runtime failure, not plan feedback. Do NOT convert missing required critic artifacts into direct-review fallback verdicts.
+6. For each returned critic artifact, parse the helper-returned full `content` as JSON.
+7. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
@@ -458,10 +467,10 @@ If no StateMachine artifact collected: log "State machine safety specialist retu
 Call `get_plan_verification(session_id: <parent_session_id>)`.
 
 Check for convergence conditions:
-1. **Verified**: All blocking gaps from this round are cleared AND both required critics returned usable artifacts (`complete`, `partial`, or `error`) → `status: "verified"`, `convergence_reason: "zero_blocking"`
+1. **Verified**: All blocking gaps from this round are cleared AND `assess_verification_round` classified the required critics as `complete` → `status: "verified"`, `convergence_reason: "zero_blocking"`
 2. **Hard cap reached**: `current_round >= max_rounds` → convergence even if gaps remain
 3. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
-4. **Critic unavailable**: If a required critic artifact is missing or unparseable this round, the round cannot converge to `verified`
+4. **Critic unavailable / infra failure**: If `assess_verification_round` classifies required critic coverage as `infra_failure`, do not converge to `verified` and do not replace that with direct single-verifier fallback judgment
 
 If converged → proceed to **FINAL CLEANUP** with the appropriate status and reason.
 If not converged → continue to next round.

@@ -16,6 +16,7 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 - Internal retries, wait polls, parent-session binding fixes, and delegation normalization steps are not user-facing progress updates.
 - Do NOT narrate rescue attempts like "retrying with parent session attached", "critic still running", or "this run is healthier so far" into the verification chat.
 - If parent-context lookup, delegated child launch, or plan retrieval fails because of caller binding, cancelled MCP calls, or similar verifier transport/runtime faults, classify that as infrastructure failure in the terminal result. Do NOT narrate each failed retry step.
+- Use `mcp__ralphx__assess_verification_round` to classify required-artifact coverage after bounded wait/rescue steps instead of inventing runtime-failure rules in prompt prose.
 - Emit assistant text only when:
   - startup validation fails and verification must abort
   - you are delivering a terminal verification result
@@ -283,11 +284,19 @@ Collect artifacts produced during this round via two-stage wait-then-rescue flow
      - If the second poll is also empty: proceed to Stage 2.
    - **Stage 2 — rescue (second empty poll):** Dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
      - If post-rescue poll returns the artifact: proceed normally.
-     - If post-rescue poll is still empty: mark that critic unavailable.
+     - If post-rescue poll is still empty: do NOT invent fallback semantics in prose — classify the round with `mcp__ralphx__assess_verification_round`.
    - **If the critic's Task result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
-4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
-5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
-6. If `get_verification_round_artifacts` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
+4. After the bounded flow above, call `mcp__ralphx__assess_verification_round` with:
+   - `session_id: <parent_session_id>`
+   - `created_after: <round_start_time minus 5 seconds>`
+   - `delegates`: the required critic jobs with exact required prefixes (`Completeness: `, `Feasibility: `), plus any optional specialists you want summarized
+   - `rescue_budget_exhausted: true` only after the final post-rescue poll
+5. Respect the tool result literally:
+   - `classification = "complete"` → proceed with critic parsing
+   - `classification = "pending"` → only wait/rescue if budget still remains; otherwise treat as infra failure
+   - `classification = "infra_failure"` → this round is a verifier runtime failure, not plan feedback. Do NOT convert missing required critic artifacts into direct-review fallback verdicts.
+6. For each returned critic artifact, parse the helper-returned full `content` as JSON.
+7. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
@@ -418,10 +427,10 @@ If no StateMachine artifact collected: log "State machine safety specialist retu
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 
 Check for convergence conditions:
-1. **Verified**: All blocking gaps from this round are cleared AND both required critics returned usable artifacts (`complete`, `partial`, or `error`) → `status: "verified"`, `convergence_reason: "zero_blocking"`
+1. **Verified**: All blocking gaps from this round are cleared AND `mcp__ralphx__assess_verification_round` classified the required critics as `complete` → `status: "verified"`, `convergence_reason: "zero_blocking"`
 2. **Hard cap reached**: `current_round >= max_rounds` → convergence even if gaps remain
 3. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
-4. **Critic unavailable**: If a required critic artifact is missing or unparseable this round, the round cannot converge to `verified`
+4. **Critic unavailable / infra failure**: If `mcp__ralphx__assess_verification_round` classifies required critic coverage as `infra_failure`, do not converge to `verified` and do not replace that with direct single-verifier fallback judgment
 
 If converged → proceed to **FINAL CLEANUP** with the appropriate status and reason.
 If not converged → continue to next round.

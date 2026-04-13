@@ -173,6 +173,13 @@ describe('getToolRecoveryHint', () => {
     expect(hint).toContain('created_after');
   });
 
+  it('returns classification guidance for assess_verification_round', () => {
+    const hint = getToolRecoveryHint('assess_verification_round');
+    expect(hint).toContain('bounded wait/rescue attempts');
+    expect(hint).toContain('rescue_budget_exhausted=true');
+    expect(hint).toContain('infrastructure failure');
+  });
+
   it('returns verifier-debugging guidance for get_child_session_status', () => {
     const hint = getToolRecoveryHint('get_child_session_status');
     expect(hint).toContain('include_recent_messages=true');
@@ -1083,6 +1090,25 @@ describe('delegation bridge tools', () => {
     expect(toolNames).not.toContain('delegate_start');
     expect(toolNames).not.toContain('delegate_wait');
     expect(toolNames).not.toContain('delegate_cancel');
+  });
+});
+
+describe('verification round helper tools', () => {
+  const allTools = getAllTools();
+
+  it('assess_verification_round should exist in ALL_TOOLS', () => {
+    const tool = allTools.find((entry) => entry.name === 'assess_verification_round');
+    expect(tool).toBeDefined();
+    expect(tool?.inputSchema.properties).toHaveProperty('session_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('delegates');
+    expect(tool?.inputSchema.properties).toHaveProperty('rescue_budget_exhausted');
+  });
+
+  it('plan verifier should expose assess_verification_round', () => {
+    expect(toolsByAgent()[PLAN_VERIFIER]).toContain('assess_verification_round');
+    setAgentType(PLAN_VERIFIER);
+    const toolNames = getFilteredTools().map((tool) => tool.name);
+    expect(toolNames).toContain('assess_verification_round');
   });
 });
 
