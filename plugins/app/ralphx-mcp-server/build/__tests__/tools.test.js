@@ -407,7 +407,9 @@ describe('New team tool definitions', () => {
             expect(tool?.inputSchema.properties).toHaveProperty('gaps');
             expect(tool?.inputSchema.required).toEqual(expect.arrayContaining(['critic', 'round', 'status', 'summary', 'gaps']));
             expect(tool?.description).toContain('typed verification finding');
+            expect(tool?.description).toContain('delegated verification specialists/critics');
             expect(tool?.inputSchema.properties?.session_id?.description).toContain('Optional parent ideation session ID');
+            expect(tool?.inputSchema.properties?.session_id?.description).toContain('including delegated verification specialists and critics');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 critic: 'completeness',
                 status: 'partial',
@@ -516,7 +518,7 @@ describe('New team tool definitions', () => {
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
                 round: 3,
-                max_wait_ms: 8000,
+                max_wait_ms: 600000,
             });
             expect(tool?.inputSchema.required).toEqual(['round']);
         });
@@ -528,7 +530,7 @@ describe('New team tool definitions', () => {
             expect(tool?.description).toContain('one-time verification enrichment helper');
             expect(tool?.description).toContain('intent and code-quality enrichment');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
-                max_wait_ms: 4000,
+                max_wait_ms: 15000,
                 poll_interval_ms: 500,
             });
             expect(tool?.inputSchema.required).toEqual([]);
@@ -542,8 +544,8 @@ describe('New team tool definitions', () => {
             expect(tool?.description).toContain('structured required critic findings');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 round: 2,
-                max_wait_ms: 8000,
-                optional_wait_ms: 4000,
+                max_wait_ms: 600000,
+                optional_wait_ms: 15000,
             });
             expect(tool?.inputSchema.required).toEqual(['round']);
         });

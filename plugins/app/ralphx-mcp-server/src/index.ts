@@ -177,6 +177,7 @@ const {
   runVerificationRound,
   runRequiredVerificationCriticRoundTool,
   awaitVerificationRoundSettlementForTool,
+  resolveVerificationFindingSessionId,
   resolveContextSessionId,
 } = createVerificationRuntime({
   callTauri,
@@ -867,7 +868,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         title_suffix?: string;
       };
       result = await callTauri("team/verification_finding", {
-        session_id: resolveContextSessionId(session_id, "publish_verification_finding"),
+        session_id: await resolveVerificationFindingSessionId(
+          session_id,
+          "publish_verification_finding"
+        ),
         critic,
         round,
         status,

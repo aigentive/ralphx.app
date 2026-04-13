@@ -155,7 +155,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
     description:
       "Publish a typed verification finding for the current verification round. " +
       "Use this for verification-path specialists and required plan critics so the backend can aggregate gaps directly from structured metadata instead of reparsing generic TeamResearch documents. " +
-      "If session_id is omitted, the backend uses the current session context and remaps verification child sessions to the parent ideation session automatically.",
+      "If session_id is omitted, the backend uses the current session context and remaps verification child sessions plus delegated verification specialists/critics to the parent ideation session automatically.",
     inputSchema: {
       type: "object",
       examples: [
@@ -178,7 +178,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
       properties: {
         session_id: {
           type: "string",
-          description: "Optional parent ideation session ID. Omit this in normal verifier-critic flows and let the backend resolve the correct parent session automatically.",
+          description: "Optional parent ideation session ID. Omit this in normal verifier-critic flows and let the backend resolve the correct parent session automatically, including delegated verification specialists and critics.",
         },
         critic: {
           type: "string",

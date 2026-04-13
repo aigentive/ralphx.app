@@ -47,7 +47,7 @@ export async function completePlanVerificationWithSettlement(deps) {
             gaps: merged_gaps,
         };
     }
-    if (deps.isVerifierRoundTerminalUpdate && settledRound.classification === "infra_failure") {
+    if (settledRound.classification === "infra_failure") {
         const infraFailure = await deps.callInfraFailure({
             generation: deps.body.generation,
             convergence_reason: deps.body.convergence_reason,

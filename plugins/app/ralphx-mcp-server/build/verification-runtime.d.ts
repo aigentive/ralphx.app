@@ -54,6 +54,7 @@ type AwaitVerificationRoundSettlementResult = {
     missing_required_prefixes: string[];
     delegate_assessments: ReturnType<typeof assessVerificationRound>["delegate_assessments"];
     artifacts_by_prefix: ReturnType<typeof assessVerificationRound>["artifacts_by_prefix"];
+    delegate_snapshots: VerificationRoundDelegateSnapshot[];
 };
 type VerificationRuntimeDeps = {
     callTauri: (endpoint: string, payload: Record<string, unknown>) => Promise<unknown>;
@@ -207,6 +208,7 @@ export declare function createVerificationRuntime(deps: VerificationRuntimeDeps)
     }) => Promise<RequiredCriticRoundResult>;
     awaitVerificationRoundSettlement: (args: VerificationSettlementArgs) => Promise<AwaitVerificationRoundSettlementResult>;
     resolveVerifierParentSessionId: (rawSessionId: unknown, toolName: string) => Promise<string>;
+    resolveVerificationFindingSessionId: (rawSessionId: unknown, toolName: string) => Promise<string>;
     resolveContextSessionId: (rawSessionId: unknown, toolName: string) => string;
 };
 export {};

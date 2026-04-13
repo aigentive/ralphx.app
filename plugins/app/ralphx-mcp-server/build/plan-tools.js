@@ -235,7 +235,7 @@ export const PLAN_TOOLS = [
                 {
                     session_id: "parent-session-id",
                     round: 3,
-                    max_wait_ms: 8000,
+                    max_wait_ms: 600000,
                     poll_interval_ms: 750,
                 },
             ],
@@ -262,7 +262,7 @@ export const PLAN_TOOLS = [
                 },
                 max_wait_ms: {
                     type: "integer",
-                    description: "Maximum wait budget for each settlement pass. Default: 8000, max: 30000.",
+                    description: "Maximum wait budget for each settlement pass. Default: 600000, max: 600000.",
                 },
                 poll_interval_ms: {
                     type: "integer",
@@ -283,7 +283,7 @@ export const PLAN_TOOLS = [
                 {
                     session_id: "parent-session-id",
                     disabled_specialists: ["code-quality"],
-                    max_wait_ms: 4000,
+                    max_wait_ms: 15000,
                     poll_interval_ms: 500,
                 },
             ],
@@ -311,7 +311,7 @@ export const PLAN_TOOLS = [
                 },
                 max_wait_ms: {
                     type: "integer",
-                    description: "Maximum wall-clock time to wait for enrichment delegates to publish artifacts or settle. Default: 4000, max: 30000.",
+                    description: "Maximum wall-clock time to wait for enrichment delegates to publish artifacts or settle. Default: 15000, max: 600000.",
                 },
                 poll_interval_ms: {
                     type: "integer",
@@ -333,8 +333,8 @@ export const PLAN_TOOLS = [
                     session_id: "parent-session-id",
                     round: 2,
                     disabled_specialists: ["ux"],
-                    max_wait_ms: 8000,
-                    optional_wait_ms: 4000,
+                    max_wait_ms: 600000,
+                    optional_wait_ms: 15000,
                     poll_interval_ms: 750,
                 },
             ],
@@ -366,11 +366,11 @@ export const PLAN_TOOLS = [
                 },
                 max_wait_ms: {
                     type: "integer",
-                    description: "Maximum wait budget for each required-critic settlement pass. Default: 8000, max: 30000.",
+                    description: "Maximum wait budget for each required-critic settlement pass. Default: 600000, max: 600000.",
                 },
                 optional_wait_ms: {
                     type: "integer",
-                    description: "Maximum wait budget for optional specialist artifact collection after required critics settle. Default: 4000, max: 30000.",
+                    description: "Maximum wait budget for optional specialist artifact collection after required critics settle. Default: 15000, max: 600000.",
                 },
                 poll_interval_ms: {
                     type: "integer",
@@ -392,7 +392,7 @@ export const PLAN_TOOLS = [
                     session_id: "parent-session-id",
                     created_after: "2026-04-13T10:00:00Z",
                     rescue_budget_exhausted: false,
-                    max_wait_ms: 8000,
+                    max_wait_ms: 600000,
                     poll_interval_ms: 750,
                     delegates: [
                         {
@@ -437,7 +437,7 @@ export const PLAN_TOOLS = [
                 },
                 max_wait_ms: {
                     type: "integer",
-                    description: "Maximum wall-clock time to wait for delegates/artifacts to settle before returning. Default: 8000, max: 30000.",
+                    description: "Maximum wall-clock time to wait for delegates/artifacts to settle before returning. Default: 600000, max: 600000.",
                 },
                 poll_interval_ms: {
                     type: "integer",
@@ -586,7 +586,7 @@ export const PLAN_TOOLS = [
                 },
                 max_wait_ms: {
                     type: "integer",
-                    description: "Maximum time to wait for required delegates to settle before terminal completion. Default: 8000, max: 30000.",
+                    description: "Maximum time to wait for required delegates to settle before terminal completion. Default: 600000, max: 600000.",
                 },
                 poll_interval_ms: {
                     type: "integer",

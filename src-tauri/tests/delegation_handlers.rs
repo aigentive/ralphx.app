@@ -13,7 +13,7 @@ use ralphx_lib::domain::entities::{
 use ralphx_lib::http_server::delegation::{DelegationHistoryEntry, DelegationJobSnapshot};
 use ralphx_lib::http_server::handlers::{
     build_delegated_task_completed_payload, build_delegated_task_started_payload,
-    cancel_delegate, start_delegate, wait_delegate,
+    cancel_delegate, get_delegated_session_status, start_delegate, wait_delegate,
 };
 use ralphx_lib::http_server::types::{
     DelegateCancelRequest, DelegateStartRequest, DelegateWaitRequest, DelegatedRunSummary,
@@ -320,6 +320,59 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(latest_run.input_tokens, Some(11));
     assert_eq!(latest_run.cache_read_tokens, Some(2));
     assert_eq!(latest_run.output_tokens, Some(7));
+}
+
+#[tokio::test]
+async fn test_get_delegated_session_status_exposes_parent_context() {
+    let _env_lock = codex_cli_env_lock().lock().await;
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
+            parent_turn_id: None,
+            parent_message_id: None,
+            parent_conversation_id: None,
+            parent_tool_use_id: None,
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Publish a verification finding.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    let status = get_delegated_session_status(
+        State(state),
+        axum::extract::Path(start.delegated_session_id.clone()),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    assert_eq!(status.session.id, start.delegated_session_id);
+    assert_eq!(status.session.parent_context_type, "ideation");
+    assert_eq!(status.session.parent_context_id, parent.id.as_str());
 }
 
 #[tokio::test]

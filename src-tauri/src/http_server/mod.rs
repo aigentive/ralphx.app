@@ -238,6 +238,10 @@ pub async fn start_http_server(
             post(send_ideation_session_message_handler),
         )
         .route("/api/coordination/delegate/start", post(start_delegate))
+        .route(
+            "/api/coordination/delegated-session/:id/status",
+            get(get_delegated_session_status),
+        )
         .route("/api/coordination/delegate/wait", post(wait_delegate))
         .route("/api/coordination/delegate/cancel", post(cancel_delegate))
         // Task tools (ralphx-chat-task agent)

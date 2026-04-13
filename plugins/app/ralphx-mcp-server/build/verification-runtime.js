@@ -3,14 +3,25 @@ import { runVerificationEnrichmentPass, runVerificationRoundPass, } from "./veri
 import { completePlanVerificationWithSettlement } from "./verification-completion.js";
 export function createVerificationRuntime(deps) {
     const { callTauri, callTauriGet, agentType, contextType, contextId } = deps;
+    const VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS = 90 * 1000;
+    const VERIFICATION_REQUIRED_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
+    const VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS = 15 * 1000;
+    const VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS = 15 * 1000;
+    const VERIFICATION_RESCUE_WAIT_SLICE_MS = 15 * 1000;
     function normalizeMessageLimit(messageLimit) {
         return Math.min(Math.max(messageLimit ?? 5, 1), 50);
     }
-    function normalizeMaxWaitMs(maxWaitMs, fallback) {
-        return Math.min(Math.max(maxWaitMs ?? fallback, 0), 30000);
+    function normalizeMaxWaitMs(maxWaitMs, fallback, cap = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS) {
+        return Math.min(Math.max(maxWaitMs ?? fallback, 0), cap);
     }
     function normalizePollIntervalMs(pollIntervalMs, fallback) {
         return Math.max(pollIntervalMs ?? fallback, 100);
+    }
+    function isRunningLikeStatus(status) {
+        return (status === "running" ||
+            status === "queued" ||
+            status === "likely_generating" ||
+            status === "likely_waiting");
     }
     function selectLatestArtifactsByPrefix(artifacts, prefixes, createdAfter) {
         const createdAfterMs = typeof createdAfter === "string" && createdAfter.length > 0
@@ -160,7 +171,8 @@ export function createVerificationRuntime(deps) {
         };
     }
     async function awaitOptionalVerificationDelegates(args) {
-        const deadline = Date.now() + Math.min(Math.max(args.maxWaitMs, 0), 30000);
+        const deadline = Date.now() +
+            Math.min(Math.max(args.maxWaitMs, 0), VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS);
         let pollsPerformed = 0;
         while (true) {
             pollsPerformed += 1;
@@ -258,6 +270,11 @@ export function createVerificationRuntime(deps) {
     async function runRequiredVerificationCriticRound(args) {
         const dispatchStartedAt = Date.now();
         const createdAfter = new Date(dispatchStartedAt - 5000).toISOString();
+        const totalWaitBudgetMs = normalizeMaxWaitMs(args.maxWaitMs, VERIFICATION_REQUIRED_WAIT_DEFAULT_MS);
+        const rescueWaitBudgetMs = totalWaitBudgetMs > VERIFICATION_RESCUE_WAIT_SLICE_MS
+            ? VERIFICATION_RESCUE_WAIT_SLICE_MS
+            : Math.max(args.pollIntervalMs, Math.floor(totalWaitBudgetMs / 2));
+        const initialWaitBudgetMs = Math.max(totalWaitBudgetMs - rescueWaitBudgetMs, args.pollIntervalMs);
         const initialLaunches = await Promise.all(REQUIRED_VERIFICATION_CRITICS.map(async (critic) => {
             try {
                 const launched = await startManagedVerificationDelegate({
@@ -316,7 +333,7 @@ export function createVerificationRuntime(deps) {
             include_full_content: args.includeFullContent,
             include_messages: args.includeMessages,
             message_limit: args.messageLimit,
-            max_wait_ms: args.maxWaitMs,
+            max_wait_ms: initialWaitBudgetMs,
             poll_interval_ms: args.pollIntervalMs,
         });
         if (firstSettlement.classification !== "pending") {
@@ -330,8 +347,29 @@ export function createVerificationRuntime(deps) {
                 settlement: firstSettlement,
             };
         }
-        const missingPrefixes = new Set(firstSettlement.missing_required_prefixes);
-        const rescueTargets = initialDelegates.filter((delegate) => missingPrefixes.has(delegate.artifact_prefix));
+        const rescueTargets = initialDelegates.filter((delegate) => {
+            if (!firstSettlement.missing_required_prefixes.includes(delegate.artifact_prefix)) {
+                return false;
+            }
+            const snapshot = firstSettlement.delegate_snapshots.find((entry) => entry.job_id === delegate.job_id);
+            const statuses = [
+                snapshot?.status,
+                snapshot?.delegated_status?.latest_run?.status ?? null,
+                snapshot?.delegated_status?.agent_state?.estimated_status ?? null,
+            ];
+            return !statuses.some((status) => isRunningLikeStatus(status));
+        });
+        if (rescueTargets.length === 0) {
+            return {
+                session_id: args.sessionId,
+                round: args.round,
+                created_after: createdAfter,
+                rescue_dispatched: false,
+                required_delegates: initialDelegateInputs,
+                rescue_delegates: [],
+                settlement: firstSettlement,
+            };
+        }
         const rescueLaunches = await Promise.all(rescueTargets.map(async (target) => {
             const critic = REQUIRED_VERIFICATION_CRITICS.find((entry) => entry.artifact_prefix === target.artifact_prefix);
             if (!critic) {
@@ -405,7 +443,7 @@ export function createVerificationRuntime(deps) {
             include_full_content: args.includeFullContent,
             include_messages: args.includeMessages,
             message_limit: args.messageLimit,
-            max_wait_ms: args.maxWaitMs,
+            max_wait_ms: rescueWaitBudgetMs,
             poll_interval_ms: args.pollIntervalMs,
         });
         return {
@@ -427,7 +465,7 @@ export function createVerificationRuntime(deps) {
         const includeMessages = args.include_messages !== false;
         const messageLimit = Math.min(Math.max(args.message_limit ?? 5, 1), 50);
         const rescueBudgetExhausted = args.rescue_budget_exhausted === true;
-        const maxWaitMs = Math.min(Math.max(args.max_wait_ms ?? 8000, 0), 30000);
+        const maxWaitMs = Math.min(Math.max(args.max_wait_ms ?? VERIFICATION_REQUIRED_WAIT_DEFAULT_MS, 0), VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS);
         const pollIntervalMs = Math.max(args.poll_interval_ms ?? 750, 100);
         const uniquePrefixes = Array.from(new Set(args.delegates.map((delegate) => delegate.artifact_prefix)));
         let pollsPerformed = 0;
@@ -481,11 +519,11 @@ export function createVerificationRuntime(deps) {
                 const finalAssessment = timedOut && rescueBudgetExhausted
                     ? {
                         ...assessment,
-                        classification: "infra_failure",
-                        recommended_next_action: "complete_verification_with_infra_failure",
+                        classification: "pending",
+                        recommended_next_action: "perform_single_rescue_or_wait",
                         summary: assessment.missing_required_prefixes.length > 0
-                            ? `Required verification artifacts are still missing after waiting for delegates to either publish artifacts or reach terminal state: ${assessment.missing_required_prefixes.join(", ")}.`
-                            : "Required verification delegates did not settle before the terminal wait budget expired.",
+                            ? `Required verification delegates are still running after the current bounded wait budget: ${assessment.missing_required_prefixes.join(", ")}.`
+                            : "Required verification delegates are still running after the current bounded wait budget.",
                     }
                     : assessment;
                 return {
@@ -500,6 +538,7 @@ export function createVerificationRuntime(deps) {
                     verification_findings: findingMatches
                         .filter((match) => match.found && match.finding)
                         .map((match) => match.finding),
+                    delegate_snapshots: delegateSnapshots,
                     ...finalAssessment,
                 };
             }
@@ -507,16 +546,55 @@ export function createVerificationRuntime(deps) {
         }
     }
     async function resolveVerifierParentSessionId(rawSessionId, toolName) {
-        if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
-            return rawSessionId;
-        }
         if (agentType === "ralphx-plan-verifier" && typeof contextId === "string" && contextId.length > 0) {
             const parentContext = await callTauriGet(`parent_session_context/${contextId}`);
-            if (typeof parentContext.parent_session?.id === "string" && parentContext.parent_session.id.length > 0) {
-                return parentContext.parent_session.id;
+            const canonicalParentId = typeof parentContext.parent_session?.id === "string" && parentContext.parent_session.id.length > 0
+                ? parentContext.parent_session.id
+                : undefined;
+            if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
+                const providedSessionId = rawSessionId.trim();
+                if (providedSessionId === contextId && canonicalParentId) {
+                    return canonicalParentId;
+                }
+                if (canonicalParentId && providedSessionId === canonicalParentId) {
+                    return canonicalParentId;
+                }
+                return providedSessionId;
+            }
+            if (canonicalParentId) {
+                return canonicalParentId;
             }
         }
+        if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
+            return rawSessionId.trim();
+        }
         throw new Error(`${toolName} requires session_id unless it is called from an active ralphx-plan-verifier child session with a resolvable parent ideation session.`);
+    }
+    async function resolveVerificationFindingSessionId(rawSessionId, toolName) {
+        if (typeof contextId === "string" &&
+            contextId.length > 0 &&
+            contextType === "delegation") {
+            const delegatedStatus = (await callTauriGet(`coordination/delegated-session/${contextId}/status`));
+            const canonicalParentId = delegatedStatus.session?.parent_context_type === "ideation" &&
+                typeof delegatedStatus.session?.parent_context_id === "string" &&
+                delegatedStatus.session.parent_context_id.length > 0
+                ? delegatedStatus.session.parent_context_id
+                : undefined;
+            if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
+                const providedSessionId = rawSessionId.trim();
+                if (providedSessionId === contextId && canonicalParentId) {
+                    return canonicalParentId;
+                }
+                if (canonicalParentId && providedSessionId === canonicalParentId) {
+                    return canonicalParentId;
+                }
+                return providedSessionId;
+            }
+            if (canonicalParentId) {
+                return canonicalParentId;
+            }
+        }
+        return resolveContextSessionId(rawSessionId, toolName);
     }
     function resolveContextSessionId(rawSessionId, toolName) {
         if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
@@ -594,24 +672,27 @@ export function createVerificationRuntime(deps) {
         });
     }
     async function completePlanVerificationForTool(args) {
-        const { session_id: rawSessionId, required_delegates, created_after, rescue_budget_exhausted = false, include_full_content = true, include_messages = true, message_limit = 5, max_wait_ms = 8000, poll_interval_ms = 750, ...body } = args;
+        const { session_id: rawSessionId, required_delegates, created_after, rescue_budget_exhausted = false, include_full_content = true, include_messages = true, message_limit = 5, max_wait_ms = VERIFICATION_REQUIRED_WAIT_DEFAULT_MS, poll_interval_ms = 750, ...body } = args;
         const sessionId = await resolveVerifierParentSessionId(rawSessionId, "complete_plan_verification");
-        const isVerifierRoundTerminalUpdate = agentType === "ralphx-plan-verifier" &&
-            typeof body.round === "number" &&
+        const isVerifierTerminalNonUserUpdate = agentType === "ralphx-plan-verifier" &&
             body.status !== "skipped" &&
             body.convergence_reason !== "user_stopped" &&
             body.convergence_reason !== "user_skipped" &&
             body.convergence_reason !== "user_reverted";
+        const hasVerifierRoundSettlementContext = Array.isArray(required_delegates) &&
+            required_delegates.length > 0 &&
+            typeof created_after === "string" &&
+            created_after.length > 0;
+        const isVerifierRoundTerminalUpdate = isVerifierTerminalNonUserUpdate && hasVerifierRoundSettlementContext;
         if (body.status === "reviewing") {
             throw new Error("complete_plan_verification is terminal-only. Use verified or needs_revision here, not reviewing.");
         }
-        if (isVerifierRoundTerminalUpdate) {
-            if (!Array.isArray(required_delegates) || required_delegates.length === 0) {
-                throw new Error("Verifier round terminal completion requires required_delegates so the settlement barrier cannot be bypassed.");
-            }
-            if (!created_after) {
-                throw new Error("Verifier round terminal completion requires created_after so settlement is scoped to the active round window.");
-            }
+        if (isVerifierTerminalNonUserUpdate && !hasVerifierRoundSettlementContext) {
+            return await callTauri(`ideation/sessions/${sessionId}/verification/infra-failure`, {
+                generation: body.generation,
+                convergence_reason: body.convergence_reason ?? "agent_error",
+                round: body.round,
+            });
         }
         if (Array.isArray(required_delegates) && required_delegates.length > 0) {
             return await completePlanVerificationWithSettlement({
@@ -625,7 +706,6 @@ export function createVerificationRuntime(deps) {
                 messageLimit: message_limit,
                 maxWaitMs: max_wait_ms,
                 pollIntervalMs: poll_interval_ms,
-                isVerifierRoundTerminalUpdate,
                 awaitVerificationRoundSettlement,
                 callInfraFailure: async ({ generation, convergence_reason, round }) => (await callTauri(`ideation/sessions/${sessionId}/verification/infra-failure`, {
                     generation,
@@ -667,7 +747,7 @@ export function createVerificationRuntime(deps) {
             includeFullContent: args.include_full_content !== false,
             includeMessages: args.include_messages !== false,
             messageLimit: normalizeMessageLimit(args.message_limit),
-            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 4000),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS, VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS),
             pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 500),
         });
     }
@@ -699,8 +779,8 @@ export function createVerificationRuntime(deps) {
             includeFullContent: args.include_full_content !== false,
             includeMessages: args.include_messages !== false,
             messageLimit: normalizeMessageLimit(args.message_limit),
-            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 8000),
-            optionalWaitMs: normalizeMaxWaitMs(args.optional_wait_ms, 4000),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, VERIFICATION_REQUIRED_WAIT_DEFAULT_MS),
+            optionalWaitMs: normalizeMaxWaitMs(args.optional_wait_ms, VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS, VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS),
             pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 750),
         });
     }
@@ -712,7 +792,7 @@ export function createVerificationRuntime(deps) {
             includeFullContent: args.include_full_content !== false,
             includeMessages: args.include_messages !== false,
             messageLimit: normalizeMessageLimit(args.message_limit),
-            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, 8000),
+            maxWaitMs: normalizeMaxWaitMs(args.max_wait_ms, VERIFICATION_REQUIRED_WAIT_DEFAULT_MS),
             pollIntervalMs: normalizePollIntervalMs(args.poll_interval_ms, 750),
         });
     }
@@ -740,6 +820,7 @@ export function createVerificationRuntime(deps) {
         runRequiredVerificationCriticRound,
         awaitVerificationRoundSettlement,
         resolveVerifierParentSessionId,
+        resolveVerificationFindingSessionId,
         resolveContextSessionId,
     };
 }

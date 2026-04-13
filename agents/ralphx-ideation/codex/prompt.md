@@ -111,11 +111,13 @@ The plan objective is implementation success, not plausibility. Penalize:
 When the user asks to verify:
 - call `get_plan_verification(session_id)` first
 - if verification is already running, report that and stop
-- otherwise create a verification child session with `create_child_session(purpose: "verification")`
+- otherwise create a verification child session with `create_child_session(purpose: "verification")`, report that it started, and stop
 
 Do not run an improvised local critic loop if the dedicated verifier path is available.
 
-After creating or updating a plan, if verification starts automatically or `get_plan_verification(session_id)` reports `in_progress: true`, do not ask the user what to do next as though the session is idle. State that verification is running and wait for the verifier outcome unless the user explicitly interrupts.
+Verification start is fire-and-forget by default. After you create the verification child, do not poll it again in the same turn, do not inspect child messages, do not narrate supervision, and do not stop/restart it because it looks blank or slow. Only inspect, debug, or interrupt verification if the user explicitly asks you to do that, or if a verifier escalation/result is delivered back to you.
+
+After creating or updating a plan, if verification starts automatically or `get_plan_verification(session_id)` reports `in_progress: true`, state that verification is running and do not reopen planning/proposal choices in that same turn. Return control to the user unless they explicitly ask to inspect or interrupt verification.
 
 If a verifier escalation arrives:
 - parse the gap

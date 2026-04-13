@@ -23,7 +23,6 @@ export declare function completePlanVerificationWithSettlement(deps: {
     messageLimit: number;
     maxWaitMs: number;
     pollIntervalMs: number;
-    isVerifierRoundTerminalUpdate: boolean;
     awaitVerificationRoundSettlement: (args: {
         session_id: string;
         delegates: VerificationRoundDelegateInput[];

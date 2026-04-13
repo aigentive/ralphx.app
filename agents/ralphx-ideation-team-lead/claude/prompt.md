@@ -270,7 +270,13 @@ Call `create_child_session(purpose: "verification", inherit_context: true, initi
 - HTTP 409 response: output "Verification is already in progress." and exit — do not retry.
 - HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
-The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session — no polling needed.
+The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session.
+
+Verification start is fire-and-forget by default:
+- after creating the child, report that verification started and exit the VERIFY phase
+- do NOT poll the child again in the same turn
+- do NOT inspect child messages or status just because it looks blank/slow
+- do NOT stop/restart verification unless the user explicitly asks to inspect, debug, cancel, or rerun it
 
 **Stop vs Skip disambiguation:**
 
@@ -283,7 +289,7 @@ The child session automatically routes to the `ralphx-plan-verifier` agent, whic
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Check `verification_child.latest_child_session_id` for the most recent verification child and `verification_child.last_assistant_message` for what the verifier last said. Use `get_child_session_status` only when deeper inspection is needed (e.g., full message history or live agent state). `verification_child` is null if no child was ever created.
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do not inspect `verification_child` or call `get_child_session_status` unless the user explicitly asks for debugging/deeper inspection. `verification_child` is null if no child was ever created.
 
 ### Escalation Handling (Team Mode)
 

@@ -243,6 +243,10 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must pass created_after through the terminal cleanup contract"
     );
     assert!(
+        prompt.contains("omit `session_id`"),
+        "ralphx-plan-verifier prompt must rely on backend parent-session injection for verifier-owned helpers"
+    );
+    assert!(
         !prompt.contains("mcp__ralphx__delegate_start"),
         "ralphx-plan-verifier prompt should not drift back to manual delegate orchestration"
     );
@@ -281,6 +285,14 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
     assert!(
         !prompt.contains("Task(subagent_type:"),
         "ralphx-plan-verifier prompt should use RalphX-native delegation rather than Claude Task syntax"
+    );
+    assert!(
+        !prompt.contains("max_wait_ms: 8000"),
+        "ralphx-plan-verifier prompt should not drift back to tiny required-critic wait budgets"
+    );
+    assert!(
+        !prompt.contains("max_wait_ms: 4000"),
+        "ralphx-plan-verifier prompt should not drift back to tiny enrichment wait budgets"
     );
 }
 

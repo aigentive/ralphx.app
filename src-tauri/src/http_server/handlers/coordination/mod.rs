@@ -783,6 +783,15 @@ async fn build_delegated_session_status_response(
     })
 }
 
+pub async fn get_delegated_session_status(
+    State(state): State<HttpServerState>,
+    axum::extract::Path(delegated_session_id): axum::extract::Path<String>,
+) -> Result<Json<DelegatedSessionStatusResponse>, JsonError> {
+    let status =
+        build_delegated_session_status_response(&state, &delegated_session_id, false, None).await?;
+    Ok(Json(status))
+}
+
 pub(crate) async fn start_delegate_impl(
     state: &HttpServerState,
     req: DelegateStartRequest,

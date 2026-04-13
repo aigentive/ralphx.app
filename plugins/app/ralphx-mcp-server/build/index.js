@@ -127,7 +127,7 @@ const RALPHX_PROJECT_ID = runtimeContext.projectId;
 const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
 const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
-const { assessVerificationRoundState, getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, runRequiredVerificationCriticRoundTool, awaitVerificationRoundSettlementForTool, resolveContextSessionId, } = createVerificationRuntime({
+const { assessVerificationRoundState, getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, runRequiredVerificationCriticRoundTool, awaitVerificationRoundSettlementForTool, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
     agentType: AGENT_TYPE,
@@ -657,7 +657,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         else if (name === "publish_verification_finding") {
             const { session_id, critic, round, status, coverage, summary, gaps, title_suffix, } = args;
             result = await callTauri("team/verification_finding", {
-                session_id: resolveContextSessionId(session_id, "publish_verification_finding"),
+                session_id: await resolveVerificationFindingSessionId(session_id, "publish_verification_finding"),
                 critic,
                 round,
                 status,

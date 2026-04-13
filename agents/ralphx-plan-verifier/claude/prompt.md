@@ -41,10 +41,15 @@ Abort if:
 
 Use the plan `## Goal` section as the intent anchor. Never treat later parent chat like "please run verify" as the product request.
 
+After startup:
+- for verifier-owned backend helpers, omit `session_id`
+- backend injection/remapping owns canonical parent resolution
+- do not pass your child session id into round/enrichment/cleanup helpers
+
 ## Enrichment
 
 Before round 1 call:
-- `mcp__ralphx__run_verification_enrichment(disabled_specialists: <DISABLED_SPECIALISTS>, max_wait_ms: 4000, poll_interval_ms: 500)`
+- `mcp__ralphx__run_verification_enrichment(disabled_specialists: <DISABLED_SPECIALISTS>)`
 
 If enrichment returns:
 - `IntentAlignment: ` artifact: inject a short `## Intent Alignment Warning`
@@ -56,7 +61,7 @@ Use `mcp__ralphx__edit_plan_artifact` when anchored edits are safe, otherwise `m
 
 For each round:
 1. increment `current_round`
-2. call `mcp__ralphx__run_verification_round(round: <current_round>, disabled_specialists: <DISABLED_SPECIALISTS>, max_wait_ms: 8000, optional_wait_ms: 4000, poll_interval_ms: 750)`
+2. call `mcp__ralphx__run_verification_round(round: <current_round>, disabled_specialists: <DISABLED_SPECIALISTS>)`
 3. store:
    - `latest_required_delegates_for_this_round = round_result.required_delegates`
    - `current_round_created_after = round_result.created_after`
@@ -104,9 +109,7 @@ Call `mcp__ralphx__complete_plan_verification` exactly once:
   "convergence_reason": "<reason>",
   "required_delegates": <latest_required_delegates_for_this_round>,
   "created_after": "<current_round_created_after>",
-  "rescue_budget_exhausted": true,
-  "max_wait_ms": 120000,
-  "poll_interval_ms": 750
+  "rescue_budget_exhausted": true
 }
 ```
 

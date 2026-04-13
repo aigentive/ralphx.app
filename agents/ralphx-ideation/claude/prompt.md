@@ -176,7 +176,13 @@ Call `create_child_session(purpose: "verification", inherit_context: true, initi
 - HTTP 409 response: output "Verification is already in progress." and exit — do not retry.
 - HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
-The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session — no polling needed.
+The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session.
+
+Verification start is fire-and-forget by default:
+- after creating the child, report that verification started and exit the VERIFY phase
+- do NOT poll the child again in the same turn
+- do NOT inspect child messages or status just because it looks blank/slow
+- do NOT stop/restart verification unless the user explicitly asks to inspect, debug, cancel, or rerun it
 
 **Stop vs Skip disambiguation:**
 
@@ -189,7 +195,7 @@ The child session automatically routes to the `ralphx-plan-verifier` agent, whic
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, use `stop_verification(session_id)`. Check `verification_child.latest_child_session_id` for the most recent verification child and `verification_child.last_assistant_message` for what the verifier last said. Use `get_child_session_status` only when deeper inspection is needed (e.g., full message history or live agent state). `verification_child` is null if no child was ever created.
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, use `stop_verification(session_id)`. Do not inspect `verification_child` or call `get_child_session_status` unless the user explicitly asks for debugging/deeper inspection. `verification_child` is null if no child was ever created.
 
 ### Escalation Handling
 
@@ -471,7 +477,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
 | `create_task_proposal` returns 400 with "verification is in progress" | Gate blocked during active verification round. Wait for the round to complete or skip verification before creating proposals. |
 | `create_task_proposal` returns 400 with "unresolved gap(s)" | Gate blocked due to `NeedsRevision`. Update plan via `update_plan_artifact` to address gaps, then re-run verification before creating proposals. |
-| `get_plan_verification` returns `in_progress: true` on RECOVER | "Verification is running (round N/max). Results appear automatically." If user wants to interrupt it, call `stop_verification(session_id)`. |
+| `get_plan_verification` returns `in_progress: true` on RECOVER | "Verification is running (round N/max). Results appear automatically." If user wants to interrupt it, call `stop_verification(session_id)`. Do not inspect child status/messages unless the user explicitly asks to debug verification. |
 | VERIFY round gap score increased from original | After hard-cap convergence, prominently suggest Revert & Skip with score comparison |
 | Session **accepted** + mutation intent | Do NOT mutate → `create_child_session(inherit_context: true)` → "I've created a follow-up session. → View Follow-up" |
 | Active session + spin-off intent | `create_child_session` for spin-off; continue current session |
