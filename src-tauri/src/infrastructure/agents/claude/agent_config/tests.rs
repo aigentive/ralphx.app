@@ -1661,10 +1661,13 @@ agents:
     preapproved_cli_tools: []
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
-    assert_eq!(parsed.process_mapping.slots.len(), 2);
     assert_eq!(
         parsed.process_mapping.slots["execution"].default,
         "ralphx-execution-worker"
+    );
+    assert_eq!(
+        parsed.process_mapping.slots["ideation"].default,
+        "ralphx-ideation"
     );
     assert_eq!(
         parsed.process_mapping.slots["execution"]
@@ -1672,6 +1675,10 @@ agents:
             .get("team")
             .unwrap(),
         "ralphx-execution-team-lead"
+    );
+    assert_eq!(
+        parsed.process_mapping.slots["review"].default,
+        "ralphx-execution-reviewer"
     );
 }
 
@@ -1707,7 +1714,7 @@ agents:
 }
 
 #[test]
-fn test_missing_process_mapping_uses_empty_default() {
+fn test_missing_process_mapping_uses_canonical_default() {
     let yaml = r#"
 claude:
   mcp_server_name: ralphx
@@ -1722,9 +1729,45 @@ mcp_tools: [get_task_context]
 preapproved_cli_tools: []
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
-    assert!(parsed.process_mapping.slots.is_empty());
+    assert_eq!(
+        parsed.process_mapping,
+        canonical_process_mapping(),
+        "missing process_mapping should resolve to the canonical process mapping"
+    );
     assert!(parsed.team_constraints.processes.is_empty());
     assert!(parsed.team_constraints.defaults.is_none());
+}
+
+#[test]
+fn test_canonical_process_mapping_overrides_divergent_runtime_yaml_slot() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+process_mapping:
+  execution:
+    default: wrong-worker
+agents:
+  - name: ralphx-execution-worker
+    system_prompt_file: plugins/app/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    assert_eq!(
+        parsed.process_mapping.slots["execution"].default,
+        "ralphx-execution-worker"
+    );
+    assert_eq!(
+        parsed.process_mapping.slots["execution"]
+            .variants
+            .get("team")
+            .map(String::as_str),
+        Some("ralphx-execution-team-lead")
+    );
 }
 
 // ==================== Effort Field Tests ====================

@@ -37,7 +37,7 @@ fn default_timeout() -> u32 {
 ///   default: ralphx-execution-worker
 ///   team: ralphx-execution-team-lead
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProcessSlot {
     pub default: String,
     #[serde(flatten)]
@@ -55,10 +55,114 @@ pub struct ProcessSlot {
 ///     default: ralphx-execution-worker
 ///     team: ralphx-execution-team-lead
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProcessMapping {
     #[serde(flatten)]
     pub slots: HashMap<String, ProcessSlot>,
+}
+
+pub fn canonical_process_mapping() -> ProcessMapping {
+    let mut slots = HashMap::new();
+    slots.insert(
+        "ideation".to_string(),
+        ProcessSlot {
+            default: "ralphx-ideation".to_string(),
+            variants: HashMap::from([
+                (
+                    "readonly".to_string(),
+                    "ralphx-ideation-readonly".to_string(),
+                ),
+                ("team".to_string(), "ralphx-ideation-team-lead".to_string()),
+            ]),
+        },
+    );
+    slots.insert(
+        "execution".to_string(),
+        ProcessSlot {
+            default: "ralphx-execution-worker".to_string(),
+            variants: HashMap::from([(
+                "team".to_string(),
+                "ralphx-execution-team-lead".to_string(),
+            )]),
+        },
+    );
+    slots.insert(
+        "review".to_string(),
+        ProcessSlot {
+            default: "ralphx-execution-reviewer".to_string(),
+            variants: HashMap::from([
+                ("chat".to_string(), "ralphx-review-chat".to_string()),
+                ("history".to_string(), "ralphx-review-history".to_string()),
+            ]),
+        },
+    );
+    slots.insert(
+        "merge".to_string(),
+        ProcessSlot {
+            default: "ralphx-execution-merger".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    slots.insert(
+        "qa_prep".to_string(),
+        ProcessSlot {
+            default: "ralphx-qa-prep".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    slots.insert(
+        "qa_refine".to_string(),
+        ProcessSlot {
+            default: "ralphx-qa-executor".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    slots.insert(
+        "qa_test".to_string(),
+        ProcessSlot {
+            default: "ralphx-qa-executor".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    slots.insert(
+        "chat_task".to_string(),
+        ProcessSlot {
+            default: "ralphx-chat-task".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    slots.insert(
+        "chat_project".to_string(),
+        ProcessSlot {
+            default: "ralphx-chat-project".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+    ProcessMapping { slots }
+}
+
+pub fn resolve_canonical_process_mapping(raw: &ProcessMapping) -> ProcessMapping {
+    let mut resolved = canonical_process_mapping();
+
+    for (process, yaml_slot) in &raw.slots {
+        match resolved.slots.get(process) {
+            Some(canonical_slot) => {
+                if canonical_slot != yaml_slot {
+                    tracing::warn!(
+                        process = %process,
+                        yaml_slot = ?yaml_slot,
+                        canonical_slot = ?canonical_slot,
+                        "Canonical process mapping overrides divergent runtime YAML slot"
+                    );
+                }
+            }
+            None => {
+                resolved.slots.insert(process.clone(), yaml_slot.clone());
+            }
+        }
+    }
+
+    resolved
 }
 
 /// Dynamic vs Constrained team mode.

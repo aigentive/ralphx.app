@@ -85,6 +85,61 @@ fn test_process_mapping_empty_is_default() {
     assert!(mapping.slots.is_empty());
 }
 
+#[test]
+fn test_canonical_process_mapping_contains_live_process_slots() {
+    let mapping = canonical_process_mapping();
+    assert_eq!(mapping.slots["ideation"].default, "ralphx-ideation");
+    assert_eq!(
+        mapping.slots["ideation"].variants.get("team").map(String::as_str),
+        Some("ralphx-ideation-team-lead")
+    );
+    assert_eq!(
+        mapping.slots["review"].variants.get("history").map(String::as_str),
+        Some("ralphx-review-history")
+    );
+    assert_eq!(mapping.slots["chat_project"].default, "ralphx-chat-project");
+}
+
+#[test]
+fn test_resolve_canonical_process_mapping_preserves_unknown_yaml_slots() {
+    let mut raw = ProcessMapping::default();
+    raw.slots.insert(
+        "custom_process".to_string(),
+        ProcessSlot {
+            default: "custom-agent".to_string(),
+            variants: HashMap::new(),
+        },
+    );
+
+    let resolved = resolve_canonical_process_mapping(&raw);
+    assert_eq!(
+        resolved.slots["custom_process"].default,
+        "custom-agent",
+        "unknown YAML-only process slots should be preserved"
+    );
+    assert_eq!(resolved.slots["execution"].default, "ralphx-execution-worker");
+}
+
+#[test]
+fn test_runtime_yaml_process_mapping_stays_aligned_with_canonical_registry() {
+    #[derive(serde::Deserialize)]
+    struct ProcessMappingMirror {
+        #[serde(default)]
+        process_mapping: ProcessMapping,
+    }
+
+    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
+    let parsed: ProcessMappingMirror =
+        serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+
+    assert_eq!(
+        parsed.process_mapping,
+        canonical_process_mapping(),
+        "ralphx.yaml process_mapping should stay aligned with the canonical process registry"
+    );
+}
+
 // ── TeamConstraints deserialization tests ────────────────────────
 
 #[test]
