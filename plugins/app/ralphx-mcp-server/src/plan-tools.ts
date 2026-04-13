@@ -504,6 +504,7 @@ export const PLAN_TOOLS: Tool[] = [
       "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
       "This is the simpler alias for update_plan_verification with in_progress fixed to false. " +
       "When `required_delegates` is provided, the tool first waits on the current verification round until required delegate state/artifacts have settled before sending the terminal update. " +
+      "When that settled round has typed required-critic findings, the helper derives the canonical terminal gap list from those findings instead of trusting prompt-assembled `gaps`. " +
       "If the required delegate set settles as infrastructure/runtime failure, the backend resets the parent to unverified instead of recording a bogus content verdict. " +
       "Use verified or needs_revision for normal terminal outcomes; skipped remains available only where skip is actually allowed by the backend. Do NOT pass reviewing here. " +
       "If generation is stale, call get_plan_verification again instead of guessing.",
@@ -514,9 +515,23 @@ export const PLAN_TOOLS: Tool[] = [
           session_id: "parent-session-id",
           status: "verified",
           round: 1,
-          gaps: [],
           convergence_reason: "zero_blocking",
           generation: 3,
+          required_delegates: [
+            {
+              job_id: "job-completeness",
+              artifact_prefix: "Completeness: ",
+              required: true,
+              label: "completeness",
+            },
+            {
+              job_id: "job-feasibility",
+              artifact_prefix: "Feasibility: ",
+              required: true,
+              label: "feasibility",
+            },
+          ],
+          created_after: "2026-04-13T10:00:00Z",
         },
       ],
       properties: {
@@ -554,7 +569,7 @@ export const PLAN_TOOLS: Tool[] = [
             },
             required: ["severity", "category", "description"],
           },
-          description: "Final merged gap list for the terminal outcome.",
+          description: "Optional terminal gap list. When required_delegates + created_after are provided for a verifier round, the helper derives canonical gaps from typed required-critic findings instead.",
         },
         convergence_reason: {
           type: "string",

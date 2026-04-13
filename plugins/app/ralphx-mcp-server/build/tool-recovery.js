@@ -45,6 +45,7 @@ export function getToolRecoveryHintFromRegistry(tools, toolName) {
                 "Use this verifier-friendly helper for terminal verification updates on the PARENT ideation session.",
                 "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
                 "You provide the terminal status and generation; in_progress=false is filled in automatically.",
+                "When required_delegates and created_after are present, the helper derives canonical terminal gaps from typed required-critic findings for that round.",
                 "External sessions cannot use status=skipped.",
                 ...examples.map((example, index) => index === 0
                     ? `Example terminal payload: ${example}`

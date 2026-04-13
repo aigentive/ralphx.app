@@ -99,7 +99,6 @@ Call `mcp__ralphx__complete_plan_verification` exactly once:
   "generation": <generation>,
   "status": "<verified|needs_revision>",
   "convergence_reason": "<reason>",
-  "gaps": <final_merged_gaps>,
   "required_delegates": <latest_required_delegates_for_this_round>,
   "created_after": "<current_round_created_after>",
   "rescue_budget_exhausted": true,
@@ -111,6 +110,7 @@ Call `mcp__ralphx__complete_plan_verification` exactly once:
 Rules:
 - never omit `required_delegates`
 - never pass `reviewing`
+- do not hand-assemble final gaps for terminal cleanup; the helper derives canonical round gaps from typed required-critic findings
 - if the backend classified the round as infra failure, still call this helper once so the backend can record the canonical runtime-failure outcome
 
 ## Final User Message

@@ -629,16 +629,23 @@ describe('New team tool definitions', () => {
       expect(tool?.description).toContain('Verifier-friendly helper');
       expect(tool?.description).toContain('backend remaps it automatically');
       expect(tool?.description).toContain('in_progress fixed to false');
+      expect(tool?.description).toContain('derives the canonical terminal gap list from those findings');
       expect(tool?.description).toContain("skipped remains available only where skip is actually allowed by the backend");
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         session_id: 'parent-session-id',
         status: 'verified',
         convergence_reason: 'zero_blocking',
+        required_delegates: expect.any(Array),
+        created_after: '2026-04-13T10:00:00Z',
       });
+      expect((tool?.inputSchema as any).examples?.[0]).not.toHaveProperty('gaps');
       expect((tool?.inputSchema as any).examples).toHaveLength(1);
       expect((tool?.inputSchema as any).properties.status.enum).not.toContain('reviewing');
       expect((tool?.inputSchema.properties?.session_id as any)?.description).toContain(
         'backend resolves the canonical parent automatically'
+      );
+      expect((tool?.inputSchema.properties?.gaps as any)?.description).toContain(
+        'derives canonical gaps from typed required-critic findings'
       );
       expect(tool?.inputSchema.required).toEqual(['status', 'generation']);
     });

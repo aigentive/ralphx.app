@@ -251,6 +251,14 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must pass required_delegates during terminal cleanup so completion cannot bypass the settlement barrier"
     );
     assert!(
+        prompt.contains("do not hand-assemble final gaps"),
+        "ralphx-plan-verifier prompt must leave terminal gap derivation to the backend helper"
+    );
+    assert!(
+        !prompt.contains("\"gaps\": <final_merged_gaps>"),
+        "ralphx-plan-verifier prompt should not require hand-assembled terminal gaps once the backend helper derives canonical round gaps"
+    );
+    assert!(
         !prompt.contains("get_session_messages(session_id: <the SESSION_ID value above>)"),
         "ralphx-plan-verifier intent specialist prompt must anchor on the plan goal instead of raw parent chat history"
     );

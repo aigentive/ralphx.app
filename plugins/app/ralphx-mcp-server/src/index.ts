@@ -49,11 +49,11 @@ import {
 } from "./runtime-context.js";
 import {
   assessVerificationRound,
-  parseTypedVerificationFinding,
   type VerificationFindingSummary,
   type VerificationRoundDelegateInput,
   type VerificationRoundDelegateSnapshot,
 } from "./verification-round-assessment.js";
+import { completePlanVerificationWithSettlement } from "./verification-completion.js";
 import {
   runVerificationEnrichmentPass,
   runVerificationRoundPass,
@@ -1643,55 +1643,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       let settlement: Record<string, unknown> | undefined;
       if (Array.isArray(required_delegates) && required_delegates.length > 0) {
-        const settledRound = await awaitVerificationRoundSettlement({
-          session_id,
-          delegates: required_delegates,
-          created_after,
-          rescue_budget_exhausted,
-          include_full_content,
-          include_messages,
-          message_limit,
-          max_wait_ms,
-          poll_interval_ms,
+        result = await completePlanVerificationWithSettlement({
+          sessionId: session_id,
+          body,
+          requiredDelegates: required_delegates,
+          createdAfter: created_after,
+          rescueBudgetExhausted: rescue_budget_exhausted,
+          includeFullContent: include_full_content,
+          includeMessages: include_messages,
+          messageLimit: message_limit,
+          maxWaitMs: max_wait_ms,
+          pollIntervalMs: poll_interval_ms,
+          isVerifierRoundTerminalUpdate,
+          awaitVerificationRoundSettlement,
+          callInfraFailure: async ({ generation, convergence_reason, round }) =>
+            (await callTauri(`ideation/sessions/${session_id}/verification/infra-failure`, {
+              generation,
+              convergence_reason: convergence_reason ?? "agent_error",
+              round,
+            })) as Record<string, unknown>,
+          callCompletion: async (completionBody) =>
+            await callTauri(`ideation/sessions/${session_id}/verification`, completionBody),
         });
-        settlement = settledRound as Record<string, unknown>;
-        if (settledRound.classification === "pending") {
-          throw new Error(
-            `Required verification delegates are still pending for: ${settledRound.missing_required_prefixes.join(", ")}. Wait for settlement before terminal completion.`
-          );
-        }
-        if (body.status === "verified" && settledRound.classification !== "complete") {
-          throw new Error(
-            `Cannot complete verification as verified while required delegate coverage is ${settledRound.classification}.`
-          );
-        }
-        if (isVerifierRoundTerminalUpdate && settledRound.classification === "infra_failure") {
-          const infraFailure = await callTauri(
-            `ideation/sessions/${session_id}/verification/infra-failure`,
-            {
-              generation: body.generation,
-              convergence_reason:
-                body.convergence_reason ?? "agent_error",
-              round: body.round,
-            }
-          );
-          result = {
-            ...(infraFailure as Record<string, unknown>),
-            settlement,
-          };
-        }
-      }
-      if (result === undefined) {
-        const completion = await callTauri(`ideation/sessions/${session_id}/verification`, {
+      } else {
+        result = await callTauri(`ideation/sessions/${session_id}/verification`, {
           ...body,
           in_progress: false,
         });
-        result = settlement
-          ? {
-              ...(completion as Record<string, unknown>),
-              settlement,
-            }
-          : completion;
       }
     } else if (name === "update_plan_verification") {
       // POST /api/ideation/sessions/:id/verification
