@@ -307,14 +307,13 @@ impl AppState {
         )
         .await;
 
-        let selected_client = self
+        if let Some(client) = self
             .agent_clients
-            .resolve_preferred_available_client(resolved.effective_harness)
-            .await;
-
-        if selected_client.harness.is_some() {
+            .explicit_available_harness_client(resolved.effective_harness)
+            .await
+        {
             return Ok(ResolvedBackgroundAgentRuntime {
-                client: selected_client.client,
+                client,
                 harness: Some(resolved.effective_harness),
                 model: Some(resolved.model),
                 logical_effort: resolved.logical_effort,
@@ -332,7 +331,7 @@ impl AppState {
         }
 
         Ok(ResolvedBackgroundAgentRuntime {
-            client: selected_client.client,
+            client: Arc::clone(&self.agent_clients.default_client),
             harness: None,
             model: None,
             logical_effort: None,
@@ -342,14 +341,9 @@ impl AppState {
     }
 
     pub(crate) async fn resolve_session_namer_runtime(&self) -> ResolvedBackgroundAgentRuntime {
-        let selected_client = self
-            .agent_clients
-            .resolve_preferred_available_client(self.agent_clients.default_harness)
-            .await;
-
         ResolvedBackgroundAgentRuntime {
-            client: selected_client.client,
-            harness: selected_client.harness,
+            client: Arc::clone(&self.agent_clients.default_client),
+            harness: None,
             model: None,
             logical_effort: None,
             approval_policy: None,

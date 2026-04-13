@@ -9,12 +9,6 @@ use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
 pub type AgentClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
-#[derive(Clone)]
-pub struct ResolvedHarnessClient {
-    pub client: Arc<dyn AgenticClient>,
-    pub harness: Option<AgentHarnessKind>,
-}
-
 #[derive(Clone, Copy)]
 struct StandardHarnessRuntimeBuilder {
     production_client: fn() -> Arc<dyn AgenticClient>,
@@ -158,25 +152,21 @@ impl AgentClientBundle {
         self.harness_clients.contains_key(&harness)
     }
 
-    pub async fn resolve_preferred_available_client(
+    pub async fn explicit_available_harness_client(
         &self,
         harness: AgentHarnessKind,
-    ) -> ResolvedHarnessClient {
-        if harness != self.default_harness {
-            if let Some(client) = self.explicit_harness_client(harness) {
-                if client.is_available().await.unwrap_or(false) {
-                    return ResolvedHarnessClient {
-                        client,
-                        harness: Some(harness),
-                    };
-                }
+    ) -> Option<Arc<dyn AgenticClient>> {
+        if harness == self.default_harness {
+            return None;
+        }
+
+        if let Some(client) = self.explicit_harness_client(harness) {
+            if client.is_available().await.unwrap_or(false) {
+                return Some(client);
             }
         }
 
-        ResolvedHarnessClient {
-            client: Arc::clone(&self.default_client),
-            harness: None,
-        }
+        None
     }
 
     pub fn iter_explicit_harness_clients(
@@ -376,22 +366,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_preferred_available_client_returns_explicit_available_harness_client() {
+    async fn explicit_available_harness_client_returns_explicit_available_harness_client() {
         let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
         let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
         let bundle = AgentClientBundle::from_default_client(DEFAULT_AGENT_HARNESS, default_mock)
             .with_harness_client(AgentHarnessKind::Codex, codex_mock.clone());
 
         let resolved = bundle
-            .resolve_preferred_available_client(AgentHarnessKind::Codex)
+            .explicit_available_harness_client(AgentHarnessKind::Codex)
             .await;
 
-        assert_eq!(resolved.harness, Some(AgentHarnessKind::Codex));
-        assert!(Arc::ptr_eq(&resolved.client, &codex_mock));
+        let resolved = resolved.expect("explicit codex client should resolve");
+        assert!(Arc::ptr_eq(&resolved, &codex_mock));
     }
 
     #[tokio::test]
-    async fn resolve_preferred_available_client_falls_back_when_explicit_harness_unavailable() {
+    async fn explicit_available_harness_client_returns_none_when_explicit_harness_unavailable() {
         let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
         let unavailable_codex: Arc<dyn AgenticClient> = Arc::new(UnavailableAgentClient::new());
         let bundle =
@@ -399,10 +389,21 @@ mod tests {
                 .with_harness_client(AgentHarnessKind::Codex, unavailable_codex);
 
         let resolved = bundle
-            .resolve_preferred_available_client(AgentHarnessKind::Codex)
+            .explicit_available_harness_client(AgentHarnessKind::Codex)
             .await;
 
-        assert_eq!(resolved.harness, None);
-        assert!(Arc::ptr_eq(&resolved.client, &default_mock));
+        assert!(resolved.is_none());
+    }
+
+    #[tokio::test]
+    async fn explicit_available_harness_client_returns_none_for_default_harness() {
+        let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+        let bundle = AgentClientBundle::from_default_client(DEFAULT_AGENT_HARNESS, default_mock);
+
+        let resolved = bundle
+            .explicit_available_harness_client(DEFAULT_AGENT_HARNESS)
+            .await;
+
+        assert!(resolved.is_none());
     }
 }
