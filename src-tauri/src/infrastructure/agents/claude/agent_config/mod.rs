@@ -10,8 +10,9 @@ use crate::domain::agents::{
 };
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, CanonicalClaudeToolSpec,
+    load_canonical_agent_definition, resolve_harness_agent_prompt_path,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
+    AgentPromptHarness, CanonicalClaudeToolSpec,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -599,6 +600,44 @@ fn canonical_agent_project_root() -> PathBuf {
     resolve_project_root_from_plugin_dir(&config_dir)
 }
 
+fn resolve_system_prompt_file(project_root: &Path, raw: &AgentConfigRaw) -> String {
+    let canonical_prompt = resolve_harness_agent_prompt_path(
+        project_root,
+        &raw.name,
+        AgentPromptHarness::Claude,
+    )
+    .and_then(|path| {
+        path.strip_prefix(project_root)
+            .ok()
+            .map(|relative| relative.to_string_lossy().to_string())
+    });
+
+    if let Some(canonical_prompt) = canonical_prompt {
+        if raw.system_prompt_file.as_deref().is_some()
+            && raw.system_prompt_file.as_deref() != Some(canonical_prompt.as_str())
+        {
+            tracing::warn!(
+                agent = %raw.name,
+                runtime_system_prompt_file = ?raw.system_prompt_file,
+                canonical_system_prompt_file = %canonical_prompt,
+                "Canonical prompt path overrides divergent runtime system_prompt_file"
+            );
+        }
+        return canonical_prompt;
+    }
+
+    match &raw.system_prompt_file {
+        Some(path) => path.clone(),
+        None => {
+            tracing::warn!(
+                agent = %raw.name,
+                "Agent has no system_prompt_file and no canonical Claude prompt path"
+            );
+            String::new()
+        }
+    }
+}
+
 fn resolve_allowed_mcp_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<String> {
     let Some(definition) = load_canonical_agent_definition(project_root, &raw.name) else {
         return raw.mcp_tools.clone();
@@ -826,16 +865,7 @@ fn resolve_loaded_config_with_lookup(
             return None;
         }
 
-        let system_prompt = match &raw.system_prompt_file {
-            Some(path) => path.clone(),
-            None => {
-                tracing::warn!(
-                    agent = %raw.name,
-                    "Agent has no system_prompt_file (even after extends resolution)"
-                );
-                String::new()
-            }
-        };
+        let system_prompt = resolve_system_prompt_file(&canonical_project_root, raw);
 
         let tool_spec = resolve_tool_spec(&canonical_project_root, raw);
         let cli_tools = resolve_tools_from_spec(raw.name.as_str(), &tool_spec, &parsed.tool_sets);

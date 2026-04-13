@@ -465,6 +465,24 @@ fn test_embedded_config_omits_agent_harness_defaults_and_uses_fallback() {
 }
 
 #[test]
+fn test_embedded_config_omits_runtime_system_prompt_paths_and_uses_canonical_prompts() {
+    let parsed =
+        parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
+
+    for agent in &parsed.agents {
+        if agent.name == SHORT_IDEATION_TEAM_MEMBER {
+            continue;
+        }
+        assert!(
+            agent.system_prompt_file.starts_with("agents/"),
+            "live runtime agent {} should resolve a canonical prompt path when config/ralphx.yaml omits system_prompt_file, got {}",
+            agent.name,
+            agent.system_prompt_file
+        );
+    }
+}
+
+#[test]
 fn test_codex_config_overlay_overrides_agent_harness_defaults_from_main_config() {
     let yaml = r#"
 agent_harness_defaults:
