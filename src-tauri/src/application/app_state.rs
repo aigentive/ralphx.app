@@ -293,7 +293,7 @@ impl AppState {
     pub(crate) async fn resolve_ideation_background_agent_runtime(
         &self,
         project_id: Option<&str>,
-    ) -> ResolvedBackgroundAgentRuntime {
+    ) -> AppResult<ResolvedBackgroundAgentRuntime> {
         let resolved = crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
             crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION,
             project_id,
@@ -313,32 +313,32 @@ impl AppState {
             .await;
 
         if selected_client.harness.is_some() {
-            return ResolvedBackgroundAgentRuntime {
+            return Ok(ResolvedBackgroundAgentRuntime {
                 client: selected_client.client,
                 harness: Some(resolved.effective_harness),
                 model: Some(resolved.model),
                 logical_effort: resolved.logical_effort,
                 approval_policy: resolved.approval_policy,
                 sandbox_mode: resolved.sandbox_mode,
-            };
+            });
         }
 
         if resolved.effective_harness != self.agent_clients.default_harness {
-            tracing::warn!(
-                project_id = project_id.unwrap_or(""),
-                harness = %resolved.effective_harness,
-                "Configured ideation sidecar harness unavailable; falling back to default client"
-            );
+            return Err(crate::error::AppError::Infrastructure(format!(
+                "Configured ideation sidecar harness unavailable for project {}: {}",
+                project_id.unwrap_or(""),
+                resolved.effective_harness
+            )));
         }
 
-        ResolvedBackgroundAgentRuntime {
+        Ok(ResolvedBackgroundAgentRuntime {
             client: selected_client.client,
             harness: None,
             model: None,
             logical_effort: None,
             approval_policy: None,
             sandbox_mode: None,
-        }
+        })
     }
 
     pub(crate) async fn resolve_session_namer_runtime(&self) -> ResolvedBackgroundAgentRuntime {

@@ -535,10 +535,39 @@ pub async fn spawn_project_analyzer(
          </data>",
         project_id
     );
+    let pid = project_id.to_string();
 
-    let runtime = state
+    let emit_failure = {
+        let app_handle = app_handle.clone();
+        let pid = pid.clone();
+        move |error: &str| {
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "project:analysis_failed",
+                    serde_json::json!({
+                        "project_id": pid,
+                        "error": error,
+                    }),
+                );
+            }
+        }
+    };
+
+    let runtime = match state
         .resolve_ideation_background_agent_runtime(Some(project_id))
-        .await;
+        .await
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::warn!(
+                project_id,
+                error = %error,
+                "Project analyzer harness resolution failed"
+            );
+            emit_failure(&error.to_string());
+            return;
+        }
+    };
     let working_directory = PathBuf::from(working_directory);
     let bootstrap = resolve_harness_agent_bootstrap(
         runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
@@ -547,7 +576,6 @@ pub async fn spawn_project_analyzer(
     );
 
     let mut env = bootstrap.env;
-    let pid = project_id.to_string();
     env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
     let agent_client = Arc::clone(&runtime.client);
@@ -569,18 +597,6 @@ pub async fn spawn_project_analyzer(
     };
 
     tokio::spawn(async move {
-        let emit_failure = |error: &str| {
-            if let Some(ref handle) = app_handle {
-                let _ = handle.emit(
-                    "project:analysis_failed",
-                    serde_json::json!({
-                        "project_id": pid,
-                        "error": error,
-                    }),
-                );
-            }
-        };
-
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {

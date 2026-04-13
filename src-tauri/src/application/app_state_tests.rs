@@ -318,7 +318,8 @@ async fn test_resolve_ideation_background_agent_runtime_uses_registered_harness_
 
     let runtime = state
         .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
-        .await;
+        .await
+        .expect("codex runtime should resolve");
 
     assert!(Arc::ptr_eq(&runtime.client, &codex_mock));
     assert_eq!(runtime.harness, Some(AgentHarnessKind::Codex));
@@ -327,7 +328,7 @@ async fn test_resolve_ideation_background_agent_runtime_uses_registered_harness_
 }
 
 #[tokio::test]
-async fn test_resolve_ideation_background_agent_runtime_falls_back_without_registered_harness_client()
+async fn test_resolve_ideation_background_agent_runtime_errors_without_registered_harness_client()
 {
     let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
     let mut state = AppState::new_test().with_agent_client(default_mock.clone());
@@ -345,14 +346,19 @@ async fn test_resolve_ideation_background_agent_runtime_falls_back_without_regis
         .await
         .unwrap();
 
-    let runtime = state
+    let error = match state
         .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
-        .await;
-
-    assert_eq!(runtime.client.capabilities().client_type, ClientType::Mock);
-    assert_eq!(runtime.harness, None);
-    assert_eq!(runtime.model, None);
-    assert_eq!(runtime.logical_effort, None);
+        .await
+    {
+        Ok(_) => panic!("missing codex runtime should fail instead of falling back"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Configured ideation sidecar harness unavailable"),
+        "unexpected error: {error}"
+    );
 }
 
 #[tokio::test]
