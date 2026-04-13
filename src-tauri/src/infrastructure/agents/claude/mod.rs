@@ -729,7 +729,8 @@ pub fn create_mcp_config(
         }
 
         // Inject --allowed-tools from agent's mcp_tools config (Wave 3).
-        // - Agent not in config (None) → skip arg entirely (MCP server falls back to TOOL_ALLOWLIST)
+        // - Agent not in config (None) → skip arg entirely (MCP server resolves canonical metadata,
+        //   then only true legacy fallback entries if any remain)
         // - Agent found, empty mcp_tools → inject __NONE__ sentinel (intentional zero tools)
         // - Agent found, non-empty mcp_tools → validate names, join with commas, inject arg
         // When is_external_mcp=true, strip interactive-only tools (e.g. ask_user_question) to

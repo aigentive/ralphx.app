@@ -1,4 +1,5 @@
 export declare const TOOL_ALLOWLIST: Record<string, string[]>;
+export declare const LEGACY_TOOL_ALLOWLIST: Record<string, string[]>;
 export declare function setAgentType(agentType: string): void;
 export declare function getAgentType(): string;
 export declare function parseAllowedToolsFromArgs(knownToolNames: string[]): string[] | undefined;

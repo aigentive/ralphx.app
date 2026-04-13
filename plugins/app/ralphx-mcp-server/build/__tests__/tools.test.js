@@ -3,10 +3,10 @@
  * Tests agent team coordination features
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, formatToolErrorMessage, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
+import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, formatToolErrorMessage, TOOL_ALLOWLIST, LEGACY_TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
-import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
+import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
     beforeEach(() => {
         // Clear env var before each test
@@ -36,9 +36,9 @@ describe('getAllowedToolNames', () => {
         const tools = getAllowedToolNames();
         expect(tools).toEqual(['get_session_plan', 'create_team_artifact']);
     });
-    it('should return TOOL_ALLOWLIST entry when env var is unset and agent type lacks canonical metadata', () => {
-        const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
-        TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+    it('should return legacy fallback entry when env var is unset and agent type lacks canonical metadata', () => {
+        const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
+        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
         try {
             setAgentType('legacy-fallback-agent');
             const tools = getAllowedToolNames();
@@ -46,10 +46,10 @@ describe('getAllowedToolNames', () => {
         }
         finally {
             if (originalTools === undefined) {
-                delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+                delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
             }
             else {
-                TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+                LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
             }
         }
     });
@@ -668,22 +668,22 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
         expect(tools).toEqual(['get_session_plan']);
         expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
     });
-    it('fallback to TOOL_ALLOWLIST emits deprecation warning when canonical metadata is absent', () => {
+    it('legacy TOOL_ALLOWLIST fallback emits deprecation warning when canonical metadata is absent', () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
-        const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
-        TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+        const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
+        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
         try {
             setAgentType('legacy-fallback-agent');
             const tools = getAllowedToolNames();
             expect(tools).toEqual(['get_session_plan']);
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('fallback TOOL_ALLOWLIST'));
+            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('fallback TOOL_ALLOWLIST (legacy only)'));
         }
         finally {
             if (originalTools === undefined) {
-                delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+                delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
             }
             else {
-                TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+                LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
             }
             consoleSpy.mockRestore();
         }
@@ -882,6 +882,11 @@ describe('delegation bridge tools', () => {
 // Specialist / Critic / Advocate TOOL_ALLOWLIST assertions + YAML parity
 // ===========================================================================
 describe('TOOL_ALLOWLIST specialist entries', () => {
+    it('keeps every current TOOL_ALLOWLIST entry backed by canonical metadata', () => {
+        for (const agent of Object.keys(TOOL_ALLOWLIST)) {
+            expect(loadCanonicalMcpTools(agent)).toBeDefined();
+        }
+    });
     const artifactSpecialists = [
         IDEATION_SPECIALIST_BACKEND,
         IDEATION_SPECIALIST_FRONTEND,
@@ -911,6 +916,7 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
     });
     it.each([
         IDEATION_TEAM_MEMBER,
+        WORKER_TEAM_LEAD,
         WORKER_TEAM_MEMBER,
     ])('%s should stay aligned with canonical mcp_tools', (agent) => {
         expect(loadCanonicalMcpTools(agent)).toEqual(TOOL_ALLOWLIST[agent]);

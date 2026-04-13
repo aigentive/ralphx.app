@@ -13,6 +13,7 @@ import {
   getToolRecoveryHint,
   formatToolErrorMessage,
   TOOL_ALLOWLIST,
+  LEGACY_TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
@@ -20,6 +21,7 @@ import { PLAN_TOOLS } from '../plan-tools.js';
 import {
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
+  WORKER_TEAM_LEAD,
   WORKER_TEAM_MEMBER,
   ORCHESTRATOR_IDEATION,
   ORCHESTRATOR_IDEATION_READONLY,
@@ -76,9 +78,9 @@ describe('getAllowedToolNames', () => {
     expect(tools).toEqual(['get_session_plan', 'create_team_artifact']);
   });
 
-  it('should return TOOL_ALLOWLIST entry when env var is unset and agent type lacks canonical metadata', () => {
-    const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
-    TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+  it('should return legacy fallback entry when env var is unset and agent type lacks canonical metadata', () => {
+    const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
+    LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
 
     try {
       setAgentType('legacy-fallback-agent');
@@ -86,9 +88,9 @@ describe('getAllowedToolNames', () => {
       expect(tools).toEqual(['get_session_plan']);
     } finally {
       if (originalTools === undefined) {
-        delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+        delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
       } else {
-        TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
       }
     }
   });
@@ -824,23 +826,23 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
     expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
   });
 
-  it('fallback to TOOL_ALLOWLIST emits deprecation warning when canonical metadata is absent', () => {
+  it('legacy TOOL_ALLOWLIST fallback emits deprecation warning when canonical metadata is absent', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
-    TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+    const originalTools = LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
+    LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
 
     try {
       setAgentType('legacy-fallback-agent');
       const tools = getAllowedToolNames();
       expect(tools).toEqual(['get_session_plan']);
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('fallback TOOL_ALLOWLIST')
+        expect.stringContaining('fallback TOOL_ALLOWLIST (legacy only)')
       );
     } finally {
       if (originalTools === undefined) {
-        delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+        delete LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'];
       } else {
-        TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+        LEGACY_TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
       }
       consoleSpy.mockRestore();
     }
@@ -1100,6 +1102,12 @@ describe('delegation bridge tools', () => {
 // ===========================================================================
 
 describe('TOOL_ALLOWLIST specialist entries', () => {
+  it('keeps every current TOOL_ALLOWLIST entry backed by canonical metadata', () => {
+    for (const agent of Object.keys(TOOL_ALLOWLIST)) {
+      expect(loadCanonicalMcpTools(agent)).toBeDefined();
+    }
+  });
+
   const artifactSpecialists = [
     IDEATION_SPECIALIST_BACKEND,
     IDEATION_SPECIALIST_FRONTEND,
@@ -1134,6 +1142,7 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
 
   it.each([
     IDEATION_TEAM_MEMBER,
+    WORKER_TEAM_LEAD,
     WORKER_TEAM_MEMBER,
   ])('%s should stay aligned with canonical mcp_tools', (agent) => {
     expect(loadCanonicalMcpTools(agent)).toEqual(TOOL_ALLOWLIST[agent]);

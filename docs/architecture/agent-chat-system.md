@@ -82,7 +82,7 @@ Steps 1-3 same, but step 5 uses the harness-native continuation path when provid
 
 ### Agent MCP Tool Summary
 
-| Agent | MCP Tools (from TOOL_ALLOWLIST) |
+| Agent | MCP Tools (from canonical `mcp_tools`, mirrored in `TOOL_ALLOWLIST`) |
 |-------|-------------------------------|
 | ralphx-ideation | create/update/delete_task_proposal, list_session_proposals, get_proposal, analyze_session_dependencies, create/update_plan_artifact, link_proposals_to_plan, get_session_plan, ask_user_question, create_child_session, get_parent_session_context, search/get/get_for_paths memories |
 | ralphx-ideation-readonly | list_session_proposals, get_proposal, get_session_plan, get_parent_session_context, create_child_session, search/get/get_for_paths memories |
@@ -97,8 +97,8 @@ Steps 1-3 same, but step 5 uses the harness-native continuation path when provid
 | ralphx-execution-merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_project_analysis, get_task_context, search/get/get_for_paths memories |
 | ralphx-execution-orchestrator | search/get/get_for_paths memories |
 | ralphx-execution-supervisor | (no MCP tools) |
-| ralphx-qa-prep | (no MCP tools) |
-| ralphx-qa-executor | (no MCP tools -- uses QA_TESTER allowlist which is also empty) |
+| ralphx-qa-prep | fs_read_file, fs_list_dir, fs_grep, fs_glob |
+| ralphx-qa-executor | (no MCP tools) |
 | ralphx-research-deep-researcher | search/get/get_for_paths memories |
 | ralphx-project-analyzer | save_project_analysis, get_project_analysis |
 | ralphx-memory-capture | upsert_memories, search/get/get_for_paths memories, get_conversation_transcript |
@@ -207,7 +207,7 @@ Each agent's tool access is restricted at three independent layers. All three mu
 | Layer | Location | Mechanism | Granularity |
 |-------|----------|-----------|-------------|
 | 1. Canonical prompt/config | `agents/<agent>/...` + generated Claude frontmatter | `tools:` / `disallowedTools:` plus harness prompt body | Per-agent |
-| 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[agentType]` → filters `listTools` response | Per-agent-type at runtime |
+| 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` + `canonical-agent-metadata.ts` | canonical `agents/<agent>/agent.yaml` `capabilities.mcp_tools` (with env/CLI override precedence and legacy fallback only) → filters `listTools` response | Per-agent-type at runtime |
 | 3. Agent System Prompt | Agent `.md` body instructions | Natural language guidance on which tools to use | Behavioral (soft) |
 
 ### Enforcement Flow
@@ -215,8 +215,10 @@ Each agent's tool access is restricted at three independent layers. All three mu
 ```
 Claude CLI spawns agent → sets RALPHX_AGENT_TYPE env var
   → MCP server starts → reads RALPHX_AGENT_TYPE
-    → listTools request → getAllowedToolNames() → filter ALL_TOOLS by TOOL_ALLOWLIST[agentType]
-      → Only matching tools returned to Claude
+    → listTools request → getAllowedToolNames()
+      → env/CLI override | canonical `mcp_tools` | legacy fallback
+      → filter ALL_TOOLS by resolved tool names
+        → Only matching tools returned to Claude
 ```
 
 Layer 1 (YAML) controls which built-in Claude tools the agent can use (Read, Write, Edit, Bash, etc.).
@@ -330,7 +332,8 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 
 | File | Purpose |
 |------|---------|
-| `plugins/app/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS definitions + TOOL_ALLOWLIST per agent |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS composition + MCP authorization facade |
+| `plugins/app/ralphx-mcp-server/src/tool-authorization.ts` | Canonical-vs-legacy MCP authorization resolution |
 | `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Agent name constants (TS mirror of Rust agent_names.rs) |
 | `plugins/app/ralphx-mcp-server/src/index.ts` | MCP server entry point, CLI arg parsing |
 

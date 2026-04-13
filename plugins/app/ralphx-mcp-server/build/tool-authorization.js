@@ -3,8 +3,8 @@ import { loadCanonicalMcpTools } from "./canonical-agent-metadata.js";
 import { safeError } from "./redact.js";
 import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, PLAN_VERIFIER, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, } from "./agentNames.js";
 /**
- * Tool scoping per agent type
- * Hard enforcement: each agent only sees tools appropriate for its role
+ * Compatibility mirror of the current canonical MCP policy per agent type.
+ * Runtime resolution should prefer CLI/env overrides, then canonical agent metadata.
  */
 const TOOL_ALLOWLIST_BASE = {
     [ORCHESTRATOR_IDEATION]: [
@@ -432,6 +432,7 @@ const TOOL_ALLOWLIST_BASE = {
     ],
 };
 export const TOOL_ALLOWLIST = TOOL_ALLOWLIST_BASE;
+export const LEGACY_TOOL_ALLOWLIST = {};
 let currentAgentType = "";
 export function setAgentType(agentType) {
     currentAgentType = agentType;
@@ -483,12 +484,17 @@ export function getAllowedToolNames(knownToolNames) {
         console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using canonical agent capabilities`);
         return applyDelegationToolPolicy(canonicalTools, agentType);
     }
-    console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
-    return applyDelegationToolPolicy(getToolsByAgent(knownToolNames)[agentType] || [], agentType);
+    const legacyTools = LEGACY_TOOL_ALLOWLIST[agentType];
+    if (legacyTools) {
+        console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (legacy only)`);
+        return applyDelegationToolPolicy(legacyTools, agentType);
+    }
+    return [];
 }
 export function getToolsByAgent(knownToolNames) {
     return {
         ...TOOL_ALLOWLIST_BASE,
+        ...LEGACY_TOOL_ALLOWLIST,
         debug: knownToolNames,
     };
 }

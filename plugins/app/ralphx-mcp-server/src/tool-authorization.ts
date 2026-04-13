@@ -42,8 +42,8 @@ import {
 } from "./agentNames.js";
 
 /**
- * Tool scoping per agent type
- * Hard enforcement: each agent only sees tools appropriate for its role
+ * Compatibility mirror of the current canonical MCP policy per agent type.
+ * Runtime resolution should prefer CLI/env overrides, then canonical agent metadata.
  */
 const TOOL_ALLOWLIST_BASE: Record<string, string[]> = {
   [ORCHESTRATOR_IDEATION]: [
@@ -472,6 +472,7 @@ const TOOL_ALLOWLIST_BASE: Record<string, string[]> = {
 };
 
 export const TOOL_ALLOWLIST = TOOL_ALLOWLIST_BASE;
+export const LEGACY_TOOL_ALLOWLIST: Record<string, string[]> = {};
 
 let currentAgentType = "";
 
@@ -533,13 +534,21 @@ export function getAllowedToolNames(knownToolNames: string[]): string[] {
     return applyDelegationToolPolicy(canonicalTools, agentType);
   }
 
-  console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
-  return applyDelegationToolPolicy(getToolsByAgent(knownToolNames)[agentType] || [], agentType);
+  const legacyTools = LEGACY_TOOL_ALLOWLIST[agentType];
+  if (legacyTools) {
+    console.error(
+      `[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (legacy only)`
+    );
+    return applyDelegationToolPolicy(legacyTools, agentType);
+  }
+
+  return [];
 }
 
 export function getToolsByAgent(knownToolNames: string[]): Record<string, string[]> {
   return {
     ...TOOL_ALLOWLIST_BASE,
+    ...LEGACY_TOOL_ALLOWLIST,
     debug: knownToolNames,
   };
 }
