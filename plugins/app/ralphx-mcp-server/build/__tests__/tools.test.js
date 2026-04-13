@@ -37,9 +37,21 @@ describe('getAllowedToolNames', () => {
         expect(tools).toEqual(['get_session_plan', 'create_team_artifact']);
     });
     it('should return TOOL_ALLOWLIST entry when env var is unset and agent type lacks canonical metadata', () => {
-        setAgentType(WORKER_TEAM_MEMBER);
-        const tools = getAllowedToolNames();
-        expect(tools).toEqual(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER]);
+        const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
+        TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+        try {
+            setAgentType('legacy-fallback-agent');
+            const tools = getAllowedToolNames();
+            expect(tools).toEqual(['get_session_plan']);
+        }
+        finally {
+            if (originalTools === undefined) {
+                delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+            }
+            else {
+                TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+            }
+        }
     });
     it('should return empty array when env var is unset and agent type is unknown', () => {
         setAgentType('unknown-agent-type');
@@ -78,6 +90,12 @@ describe('getAllowedToolNames', () => {
         finally {
             TOOL_ALLOWLIST['qa-prep'] = originalTools;
         }
+    });
+    it('treats explicit empty canonical mcp_tools as canonical instead of missing', () => {
+        setAgentType('qa-tester');
+        const tools = getAllowedToolNames();
+        expect(tools).toEqual([]);
+        expect(loadCanonicalMcpTools('qa-tester')).toEqual([]);
     });
 });
 describe('getToolRecoveryHint', () => {
@@ -652,12 +670,23 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
     });
     it('fallback to TOOL_ALLOWLIST emits deprecation warning when canonical metadata is absent', () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
-        setAgentType(WORKER_TEAM_MEMBER);
-        // No env var, no --allowed-tools in argv
-        const tools = getAllowedToolNames();
-        expect(tools).toEqual(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER]);
-        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('WARN'));
-        consoleSpy.mockRestore();
+        const originalTools = TOOL_ALLOWLIST['legacy-fallback-agent'];
+        TOOL_ALLOWLIST['legacy-fallback-agent'] = ['get_session_plan'];
+        try {
+            setAgentType('legacy-fallback-agent');
+            const tools = getAllowedToolNames();
+            expect(tools).toEqual(['get_session_plan']);
+            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('fallback TOOL_ALLOWLIST'));
+        }
+        finally {
+            if (originalTools === undefined) {
+                delete TOOL_ALLOWLIST['legacy-fallback-agent'];
+            }
+            else {
+                TOOL_ALLOWLIST['legacy-fallback-agent'] = originalTools;
+            }
+            consoleSpy.mockRestore();
+        }
     });
 });
 // ===========================================================================
@@ -879,6 +908,12 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
     });
     it('IDEATION_TEAM_MEMBER should include get_parent_session_context', () => {
         expect(TOOL_ALLOWLIST[IDEATION_TEAM_MEMBER]).toContain('get_parent_session_context');
+    });
+    it.each([
+        IDEATION_TEAM_MEMBER,
+        WORKER_TEAM_MEMBER,
+    ])('%s should stay aligned with canonical mcp_tools', (agent) => {
+        expect(loadCanonicalMcpTools(agent)).toEqual(TOOL_ALLOWLIST[agent]);
     });
     it('IDEATION_CRITIC should include create_team_artifact', () => {
         expect(TOOL_ALLOWLIST[IDEATION_CRITIC]).toContain('create_team_artifact');

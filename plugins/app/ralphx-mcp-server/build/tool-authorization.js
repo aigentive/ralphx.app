@@ -276,6 +276,7 @@ const TOOL_ALLOWLIST_BASE = {
         "get_team_artifacts",
         "get_session_plan",
         "list_session_proposals",
+        "get_proposal",
         "get_artifact",
         "get_parent_session_context",
         "search_memories",
@@ -479,7 +480,7 @@ export function getAllowedToolNames(knownToolNames) {
     }
     const canonicalTools = loadCanonicalMcpTools(agentType);
     if (canonicalTools !== undefined) {
-        console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using canonical agent capability fallback`);
+        console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using canonical agent capabilities`);
         return applyDelegationToolPolicy(canonicalTools, agentType);
     }
     console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
