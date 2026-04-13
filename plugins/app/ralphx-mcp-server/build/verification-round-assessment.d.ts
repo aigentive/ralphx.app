@@ -4,6 +4,26 @@ type ArtifactSummary = {
     created_at?: string;
     content?: string;
 };
+export type VerificationFindingGap = {
+    severity: string;
+    category: string;
+    description: string;
+    why_it_matters?: string | null;
+    source?: string | null;
+    lens?: string | null;
+};
+export type VerificationFindingSummary = {
+    artifact_id: string;
+    title: string;
+    created_at: string;
+    author_teammate?: string | null;
+    critic: string;
+    round: number;
+    status: string;
+    coverage?: string | null;
+    summary: string;
+    gaps: VerificationFindingGap[];
+};
 export type VerificationRoundArtifactMatch = {
     prefix: string;
     found: boolean;
@@ -49,6 +69,47 @@ export type VerificationRoundAssessment = {
     delegate_assessments: VerificationRoundDelegateAssessment[];
     artifacts_by_prefix: VerificationRoundArtifactMatch[];
 };
+export type ParsedVerificationGap = {
+    severity: "critical" | "high" | "medium" | "low";
+    category: string;
+    description: string;
+    why_it_matters?: string;
+    source?: "layer1" | "layer2" | "both";
+};
+export type ParsedVerificationCriticArtifact = {
+    prefix: string;
+    label: string;
+    usable: boolean;
+    artifact_id?: string;
+    artifact_name?: string;
+    artifact_created_at?: string;
+    status?: string;
+    critic?: string;
+    round?: number;
+    coverage?: string;
+    summary?: string;
+    gaps: ParsedVerificationGap[];
+    parse_error?: string;
+};
+export type VerificationGapCounts = {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+};
+export declare function aggregateVerificationGaps(findings: ParsedVerificationCriticArtifact[]): {
+    merged_gaps: ParsedVerificationGap[];
+    gap_counts: VerificationGapCounts;
+};
+export declare function parseVerificationCriticArtifact(params: {
+    prefix: string;
+    label: string;
+    artifact?: ArtifactSummary;
+}): ParsedVerificationCriticArtifact;
+export declare function parseTypedVerificationFinding(params: {
+    label: string;
+    finding?: VerificationFindingSummary;
+}): ParsedVerificationCriticArtifact;
 export declare function assessVerificationRound(params: {
     delegates: VerificationRoundDelegateInput[];
     artifactsByPrefix: VerificationRoundArtifactMatch[];

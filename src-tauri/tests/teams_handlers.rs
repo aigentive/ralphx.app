@@ -1,6 +1,6 @@
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use axum::{extract::{Path, State}, Json};
+use axum::{extract::{Path, Query, State}, Json};
 use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ideation::{IdeationSession, IdeationSessionStatus, SessionPurpose},
@@ -8,8 +8,10 @@ use ralphx_lib::domain::entities::{
 };
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::{
-    CreateTeamArtifactRequest, GetTeamArtifactsResponse, HttpServerState,
-    RequestTeamPlanRequest, RequestTeammateSpawnRequest, TeamPlanTeammate,
+    CreateTeamArtifactRequest, GetTeamArtifactsResponse, GetVerificationFindingsResponse,
+    HttpServerState, PublishVerificationFindingRequest, RequestTeamPlanRequest,
+    RequestTeammateSpawnRequest, TeamPlanTeammate, VerificationFindingGapPayload,
+    VerificationFindingQuery,
 };
 use ralphx_lib::infrastructure::agents::claude::TeammateSpawnRequest;
 use std::sync::Arc;
@@ -52,9 +54,21 @@ fn team_artifact_type_mapping() {
         "TeamResearch" => Some(ArtifactType::TeamResearch),
         "TeamAnalysis" => Some(ArtifactType::TeamAnalysis),
         "TeamSummary" => Some(ArtifactType::TeamSummary),
+        "VerificationFinding" => Some(ArtifactType::VerificationFinding),
         _ => None,
     }
     .is_none());
+}
+
+#[test]
+fn verification_finding_artifact_type_mapping() {
+    assert!(matches!(
+        match "VerificationFinding" {
+            "VerificationFinding" => Some(ArtifactType::VerificationFinding),
+            _ => None,
+        },
+        Some(ArtifactType::VerificationFinding)
+    ));
 }
 
 #[test]
@@ -707,4 +721,146 @@ async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent(
     let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
     assert_eq!(count, 1, "expected remapped parent artifacts to be returned");
     assert_eq!(artifacts[0].name, "Feasibility: Round 1");
+}
+
+#[tokio::test]
+async fn test_publish_verification_finding_rejects_placeholder_session_id() {
+    let state = test_state();
+
+    let result = publish_verification_finding(
+        State(state),
+        Json(PublishVerificationFindingRequest {
+            session_id: "SESSION_ID".to_string(),
+            critic: "completeness".to_string(),
+            round: 1,
+            status: "partial".to_string(),
+            coverage: Some("affected_files".to_string()),
+            summary: "Need one more integration check".to_string(),
+            gaps: vec![],
+            title_suffix: None,
+        }),
+    )
+    .await;
+
+    let (status, message) = result.expect_err("placeholder session id must be rejected");
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert!(message.contains("placeholder values"));
+}
+
+#[tokio::test]
+async fn test_publish_and_list_verification_findings() {
+    let state = test_state();
+    let session_id = "verification-parent-1".to_string();
+
+    let response = publish_verification_finding(
+        State(state.clone()),
+        Json(PublishVerificationFindingRequest {
+            session_id: session_id.clone(),
+            critic: "completeness".to_string(),
+            round: 2,
+            status: "partial".to_string(),
+            coverage: Some("affected_files_plus_adjacent".to_string()),
+            summary: "Migration plan still needs a concrete backfill step".to_string(),
+            gaps: vec![VerificationFindingGapPayload {
+                severity: "high".to_string(),
+                category: "completeness".to_string(),
+                description: "Backfill step is implied but not specified".to_string(),
+                why_it_matters: Some("Existing projects stay on the old default.".to_string()),
+                source: Some("layer1".to_string()),
+                lens: None,
+            }],
+            title_suffix: Some("merge validation defaults".to_string()),
+        }),
+    )
+    .await
+    .expect("verification finding should be created");
+
+    assert!(!response.0.artifact_id.is_empty());
+
+    let findings = get_verification_findings(
+        State(state),
+        Path(session_id),
+        Query(VerificationFindingQuery {
+            critic: Some("completeness".to_string()),
+            round: Some(2),
+            created_after: None,
+        }),
+    )
+    .await
+    .expect("verification finding query should succeed");
+
+    let Json(GetVerificationFindingsResponse { count, findings }) = findings;
+    assert_eq!(count, 1);
+    assert_eq!(findings[0].critic, "completeness");
+    assert_eq!(findings[0].round, 2);
+    assert_eq!(findings[0].status, "partial");
+    assert_eq!(findings[0].gaps.len(), 1);
+    assert!(findings[0].title.starts_with("Completeness: Round 2"));
+}
+
+#[tokio::test]
+async fn test_publish_verification_finding_remaps_verification_child_to_parent() {
+    let state = test_state();
+
+    let parent = state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string("parent-session-3".to_string()))
+                .project_id(ProjectId::from_string("project-3".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .build(),
+        )
+        .await
+        .expect("parent session");
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string(
+                    "verification-child-3".to_string(),
+                ))
+                .project_id(ProjectId::from_string("project-3".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .parent_session_id(parent.id.clone())
+                .session_purpose(SessionPurpose::Verification)
+                .build(),
+        )
+        .await
+        .expect("verification child");
+
+    let _ = publish_verification_finding(
+        State(state.clone()),
+        Json(PublishVerificationFindingRequest {
+            session_id: "verification-child-3".to_string(),
+            critic: "feasibility".to_string(),
+            round: 1,
+            status: "complete".to_string(),
+            coverage: Some("affected_files".to_string()),
+            summary: "No additional feasibility gaps.".to_string(),
+            gaps: vec![],
+            title_suffix: None,
+        }),
+    )
+    .await
+    .expect("verification child session should remap to parent");
+
+    let findings = get_verification_findings(
+        State(state),
+        Path("parent-session-3".to_string()),
+        Query(VerificationFindingQuery {
+            critic: Some("feasibility".to_string()),
+            round: Some(1),
+            created_after: None,
+        }),
+    )
+    .await
+    .expect("parent query should see remapped finding");
+
+    let Json(GetVerificationFindingsResponse { count, findings }) = findings;
+    assert_eq!(count, 1);
+    assert_eq!(findings[0].critic, "feasibility");
 }

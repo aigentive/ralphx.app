@@ -389,8 +389,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
 
     async fn increment_verification_generation(
         &self,
-        _session_id: &IdeationSessionId,
+        session_id: &IdeationSessionId,
     ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(session_id.as_str()) {
+            session.verification_generation += 1;
+        }
         Ok(())
     }
 

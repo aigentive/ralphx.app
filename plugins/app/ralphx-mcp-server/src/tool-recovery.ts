@@ -70,7 +70,16 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
-        "For verifier critics, keep the exact artifact prefix and publish partial results instead of exploring further.",
+        "Use this for specialist findings and team summaries. Required verification critics should use publish_verification_finding instead.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "publish_verification_finding": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this for required verification critics.",
+        "If session_id is omitted, the backend injects the current session context and remaps verification child sessions to the parent ideation session automatically.",
+        "Publish one structured finding with critic, round, status, summary, and gaps instead of encoding verifier output into a generic TeamResearch document.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }
@@ -85,7 +94,8 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
     case "get_verification_round_artifacts": {
       const examples = formatToolExamples(tool);
       return [
-        "Use this verifier helper instead of manually calling get_team_artifacts + get_artifact + client-side sorting for current-round artifacts.",
+        "This is a low-level verifier helper for debugging.",
+        "Normal verifier prompts should prefer run_verification_round instead of manually calling get_team_artifacts + get_artifact + client-side sorting for current-round artifacts.",
         "Provide the parent ideation session_id plus the title prefixes you expect; the MCP proxy filters by created_after and returns the latest match per prefix.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
@@ -93,8 +103,45 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
     case "assess_verification_round": {
       const examples = formatToolExamples(tool);
       return [
-        "Use this verifier helper after bounded wait/rescue attempts to classify required artifact coverage from delegate jobs plus current-round TeamResearch artifacts.",
+        "This is a low-level runtime classification helper.",
+        "Normal verifier prompts should prefer run_verification_round; use this only after bounded wait/rescue attempts when debugging that behavior directly.",
         "If rescue_budget_exhausted=true and a required artifact is still missing, treat the result as infrastructure failure instead of inventing direct-review fallback behavior.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "run_verification_enrichment": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this as the backend-owned one-time enrichment driver.",
+        "It selects and dispatches intent/code-quality specialists, waits a bounded amount, and returns the latest enrichment artifacts plus delegate snapshots.",
+        "Prefer this over manually choosing enrichment specialists and polling artifacts in the verifier prompt.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "run_verification_round": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this as the primary verifier round driver.",
+        "It selects optional specialists, runs the required critics through the backend helper, waits for bounded optional settlement, and returns structured required critic findings plus backend-owned merged_gaps.",
+        "Prefer this over manual delegate_start/delegate_wait/get_verification_round_artifacts orchestration in the prompt.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "run_required_verification_critic_round": {
+      const examples = formatToolExamples(tool);
+      return [
+        "This is the lower-level implementation behind the first-class required-critic round driver.",
+        "It launches completeness + feasibility, performs one bounded rescue pass when required artifacts are still missing, and returns the final required_delegates set for terminal cleanup.",
+        "Normal verifier prompts should prefer run_verification_round.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "await_verification_round_settlement": {
+      const examples = formatToolExamples(tool);
+      return [
+        "This is a low-level synchronization barrier for required critics/specialists.",
+        "It waits for required delegate jobs to either publish their current-round artifacts or reach a terminal state, then returns a settled classification.",
+        "Normal verifier prompts should prefer run_verification_round instead of calling this directly or narrating manual poll loops.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }

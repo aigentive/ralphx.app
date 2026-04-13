@@ -9,8 +9,7 @@ capabilities:
     - fs_grep
     - fs_glob
     - get_session_plan
-    - get_artifact
-    - create_team_artifact
+    - publish_verification_finding
 harnesses:
   claude:
     model: opus

@@ -171,6 +171,27 @@ pub fn extract_codex_error_message(event: &CodexStreamEvent) -> Option<String> {
     }
 }
 
+pub fn is_non_fatal_mcp_resource_probe_error(
+    event: &CodexStreamEvent,
+    error_message: &str,
+) -> bool {
+    let item = match event.item.as_ref() {
+        Some(item) => item,
+        None => return false,
+    };
+
+    if item.item_type != "mcp_tool_call" {
+        return false;
+    }
+
+    let tool_name = item.tool.as_deref().unwrap_or_default();
+    if !matches!(tool_name, "list_mcp_resources" | "read_mcp_resource") {
+        return false;
+    }
+
+    error_message.contains("Method not found")
+}
+
 pub fn extract_codex_usage(event: &CodexStreamEvent) -> Option<CodexUsage> {
     if event.event_type != "turn.completed" {
         return None;
@@ -220,5 +241,71 @@ mod tests {
                 output_tokens: Some(33),
             })
         );
+    }
+
+    #[test]
+    fn resource_probe_method_not_found_is_non_fatal() {
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: Some(CodexItem {
+                id: Some("tool-1".to_string()),
+                item_type: "mcp_tool_call".to_string(),
+                text: None,
+                server: Some("ralphx".to_string()),
+                tool: Some("list_mcp_resources".to_string()),
+                arguments: None,
+                result: None,
+                error: Some(CodexItemError {
+                    message: Some("resources/list failed for 'ralphx': Mcp error: -32601: Method not found".to_string()),
+                }),
+                status: None,
+                aggregated_output: None,
+                exit_code: None,
+                sender_thread_id: None,
+                receiver_thread_ids: None,
+                prompt: None,
+                agents_states: None,
+            }),
+            usage: None,
+        };
+
+        assert!(is_non_fatal_mcp_resource_probe_error(
+            &event,
+            "resources/list failed for 'ralphx': Mcp error: -32601: Method not found",
+        ));
+    }
+
+    #[test]
+    fn normal_mcp_tool_error_is_not_marked_non_fatal() {
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: Some(CodexItem {
+                id: Some("tool-2".to_string()),
+                item_type: "mcp_tool_call".to_string(),
+                text: None,
+                server: Some("ralphx".to_string()),
+                tool: Some("delegate_start".to_string()),
+                arguments: None,
+                result: None,
+                error: Some(CodexItemError {
+                    message: Some("delegate_start failed".to_string()),
+                }),
+                status: None,
+                aggregated_output: None,
+                exit_code: None,
+                sender_thread_id: None,
+                receiver_thread_ids: None,
+                prompt: None,
+                agents_states: None,
+            }),
+            usage: None,
+        };
+
+        assert!(!is_non_fatal_mcp_resource_probe_error(
+            &event,
+            "delegate_start failed",
+        ));
     }
 }

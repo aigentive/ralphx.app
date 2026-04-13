@@ -286,6 +286,9 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
         }
 
         if let Some(error) = stream_processor::extract_codex_error_message(&event) {
+            if stream_processor::is_non_fatal_mcp_resource_probe_error(&event, &error) {
+                continue;
+            }
             let trimmed = error.trim();
             if !trimmed.is_empty() {
                 errors.push(trimmed.to_string());

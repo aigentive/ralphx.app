@@ -673,22 +673,19 @@ async fn build_delegated_session_status_response(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Delegated session not found"))?;
 
-    let agent_state = if session.status == "running" {
-        AgentStateInfo {
-            is_running: true,
-            started_at: Some(session.created_at.to_rfc3339()),
-            last_active_at: Some(session.updated_at.to_rfc3339()),
-            pid: None,
-            estimated_status: "running".to_string(),
-        }
-    } else {
-        AgentStateInfo {
-            is_running: false,
-            started_at: Some(session.created_at.to_rfc3339()),
-            last_active_at: Some(session.updated_at.to_rfc3339()),
-            pid: None,
-            estimated_status: "idle".to_string(),
-        }
+    let estimated_status = match session.status.as_str() {
+        "running" => "running",
+        "completed" => "completed",
+        "failed" => "failed",
+        "cancelled" => "cancelled",
+        _ => "idle",
+    };
+    let agent_state = AgentStateInfo {
+        is_running: session.status == "running",
+        started_at: Some(session.created_at.to_rfc3339()),
+        last_active_at: Some(session.updated_at.to_rfc3339()),
+        pid: None,
+        estimated_status: estimated_status.to_string(),
     };
 
     let recent_messages = if include_messages {

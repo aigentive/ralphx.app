@@ -44,6 +44,9 @@ When adding OR removing an MCP tool from an agent:
 - update any per-agent allowlist/grouping in `plugins/app/ralphx-mcp-server/src/tools.ts`
 - rebuild the MCP server if `src/tools.ts` changed
 
+Prompt rule:
+- prompts are contracts, not migration diaries; if a tool/path is removed from the live surface, remove it from prompt prose too and enforce the restriction in metadata/runtime/tests instead of leaving "do not use X" ballast behind
+
 ❌ Removing a tool only from frontmatter
 ❌ Adding a tool only in YAML
 ❌ Leaving an agent in a shared broad allowlist after narrowing its prompt contract

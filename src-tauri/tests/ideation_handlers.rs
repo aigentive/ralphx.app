@@ -16,7 +16,7 @@ use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::{
-    UpdateVerificationRequest, VerificationGapRequest,
+    UpdateVerificationRequest, VerificationGapRequest, VerificationInfraFailureRequest,
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
@@ -3006,6 +3006,153 @@ async fn test_get_plan_verification_remaps_verification_child_session_id_to_pare
             .map(|info| info.latest_child_session_id.as_str()),
         Some(child_id.as_str()),
         "parent continuity block must still point at the verification child"
+    );
+}
+
+#[tokio::test]
+async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_unverified() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .verification_status(VerificationStatus::Reviewing)
+        .verification_generation(4)
+        .build();
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let metadata = serde_json::json!({
+        "v": 1,
+        "current_round": 2,
+        "max_rounds": 5,
+        "rounds": [{ "fingerprints": ["gap-a"], "gap_score": 10 }],
+        "current_gaps": [{
+            "severity": "critical",
+            "category": "runtime",
+            "description": "stale gap that must not survive infra failure"
+        }],
+        "convergence_reason": null,
+        "best_round_index": null,
+        "parse_failures": []
+    })
+    .to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            Some(metadata),
+        )
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    let result = mark_verification_infra_failure(
+        State(state.clone()),
+        Path(child_id.as_str().to_string()),
+        Json(VerificationInfraFailureRequest {
+            generation: Some(4),
+            convergence_reason: Some("agent_error".to_string()),
+            round: Some(2),
+            max_rounds: Some(5),
+        }),
+    )
+    .await
+    .expect("handler must succeed via parent remap");
+
+    assert_eq!(result.0.session_id, parent_id.as_str());
+    assert_eq!(result.0.status, "unverified");
+    assert!(!result.0.in_progress);
+    assert_eq!(result.0.convergence_reason.as_deref(), Some("agent_error"));
+    assert!(
+        result.0.current_gaps.is_empty(),
+        "infra failure must not leave authoritative blocking gaps behind"
+    );
+    assert_eq!(
+        result.0.verification_generation, 5,
+        "infra failure must increment generation to fence zombie verifiers"
+    );
+
+    let refreshed_parent = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .expect("parent must still exist");
+    assert_eq!(refreshed_parent.verification_status, VerificationStatus::Unverified);
+    assert!(
+        !refreshed_parent.verification_in_progress,
+        "infra failure must clear in-progress on the parent"
+    );
+    assert_eq!(refreshed_parent.verification_generation, 5);
+    let stored_meta = refreshed_parent
+        .verification_metadata
+        .expect("infra failure must preserve debug metadata");
+    assert!(
+        stored_meta.contains("\"convergence_reason\":\"agent_error\""),
+        "stored metadata must retain the runtime failure reason"
+    );
+    assert!(
+        stored_meta.contains("\"current_gaps\":[]"),
+        "stored metadata must clear authoritative current_gaps"
+    );
+}
+
+#[tokio::test]
+async fn test_mark_verification_infra_failure_rejects_stale_generation() {
+    let state = setup_test_state().await;
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .verification_generation(7)
+        .build();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = mark_verification_infra_failure(
+        State(state.clone()),
+        Path(session_id.as_str().to_string()),
+        Json(VerificationInfraFailureRequest {
+            generation: Some(6),
+            convergence_reason: Some("agent_error".to_string()),
+            round: Some(1),
+            max_rounds: Some(5),
+        }),
+    )
+    .await;
+
+    let error = result.expect_err("stale generation must be rejected");
+    assert_eq!(error.0, StatusCode::CONFLICT);
+    let body = error.1.0.to_string();
+    assert!(
+        body.contains("Generation mismatch"),
+        "error body must explain the zombie-generation rejection"
     );
 }
 

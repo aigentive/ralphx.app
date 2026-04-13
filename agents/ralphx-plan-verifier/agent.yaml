@@ -1,7 +1,7 @@
 ---
 name: ralphx-plan-verifier
 role: plan_verifier
-description: "Dedicated plan verification agent. Owns the adversarial round loop \u2014 spawning Layer 1 and Layer 2 critics, merging gaps, revising the plan, and checking convergence. Always runs as a verification child session of an ideation session."
+description: "Dedicated plan verification synthesizer. Uses backend-owned verification helpers, revises the inherited plan against structured findings, and finalizes the verification outcome. Always runs as a verification child session of an ideation session."
 capabilities:
   mcp_tools:
     - fs_read_file
@@ -9,32 +9,18 @@ capabilities:
     - fs_grep
     - fs_glob
     - get_session_plan
-    - get_session_messages
-    - get_verification_round_artifacts
-    - assess_verification_round
     - get_parent_session_context
-    - delegate_start
-    - delegate_wait
-    - delegate_cancel
+    - get_plan_verification
+    - run_verification_enrichment
+    - run_verification_round
     - report_verification_round
     - complete_plan_verification
-    - get_plan_verification
     - update_plan_artifact
     - edit_plan_artifact
     - send_ideation_session_message
-    - create_team_artifact
-    - list_session_proposals
-    - get_proposal
-    - search_memories
-    - get_memory
-    - get_memories_for_paths
 harnesses:
   claude:
     model: opus
-    tools:
-      extends: base_tools
-      include:
-        - Task
     disallowed_tools:
       - Write
       - Edit
@@ -44,14 +30,6 @@ harnesses:
       - Grep
       - Glob
       - Bash
-      - Task(ralphx:ralphx-plan-critic-completeness)
-      - Task(ralphx:ralphx-plan-critic-implementation-feasibility)
-      - Task(ralphx:ralphx-ideation-specialist-ux)
-      - Task(ralphx:ralphx-ideation-specialist-code-quality)
-      - Task(ralphx:ralphx-ideation-specialist-prompt-quality)
-      - Task(ralphx:ralphx-ideation-specialist-intent)
-      - Task(ralphx:ralphx-ideation-specialist-pipeline-safety)
-      - Task(ralphx:ralphx-ideation-specialist-state-machine)
     max_turns: 80
   codex:
     runtime_features:

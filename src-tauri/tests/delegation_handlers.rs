@@ -291,7 +291,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(delegated_status.session.parent_context_type, "ideation");
     assert_eq!(delegated_status.session.parent_context_id, parent.id.as_str());
     assert_eq!(delegated_status.session.status, "completed");
-    assert_eq!(delegated_status.agent_state.estimated_status, "idle");
+    assert_eq!(delegated_status.agent_state.estimated_status, "completed");
     assert_eq!(
         delegated_status.conversation_id.as_deref(),
         waited.delegated_conversation_id.as_deref()

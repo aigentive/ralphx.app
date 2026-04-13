@@ -189,7 +189,7 @@ fn test_live_runtime_agents_no_longer_reference_deprecated_plugin_prompt_paths()
 }
 
 #[test]
-fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
+fn test_plan_verifier_prompt_keeps_runtime_failure_and_optional_specialist_rules() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let prompt = load_harness_agent_prompt(
         &project_root,
@@ -199,23 +199,25 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
     .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
-        prompt.contains("Task `agentId` is resumable, not complete"),
-        "ralphx-plan-verifier prompt must explicitly treat Task agentId results as resumable"
+        prompt.contains("run_verification_round"),
+        "ralphx-plan-verifier prompt must route round execution through the backend-owned round helper"
     );
     assert!(
-        prompt.contains("Do NOT send minimalist nudges like \"finish your analysis\" without `SESSION_ID` and schema"),
-        "ralphx-plan-verifier prompt must forbid context-dropping retry nudges"
+        prompt.contains("Optional specialists are advisory"),
+        "ralphx-plan-verifier prompt must keep optional specialists non-authoritative"
     );
     assert!(
-        prompt.contains(
-            "required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`"
-        ),
-        "ralphx-plan-verifier prompt must restate the critic artifact schema in rescue guidance"
+        prompt.contains("Infra/runtime failure is not a plan verdict"),
+        "ralphx-plan-verifier prompt must make runtime failure non-authoritative"
+    );
+    assert!(
+        !prompt.contains("Task("),
+        "ralphx-plan-verifier prompt should not mention removed provider-specific subagent syntax"
     );
 }
 
 #[test]
-fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
+fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let prompt = load_harness_agent_prompt(
         &project_root,
@@ -225,20 +227,40 @@ fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
     .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
-        prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
-        "ralphx-plan-verifier prompt must use the verifier-oriented artifact collection helper"
+        prompt.contains("mcp__ralphx__run_verification_enrichment"),
+        "ralphx-plan-verifier prompt must use the backend-owned enrichment helper"
+    );
+    assert!(
+        prompt.contains("mcp__ralphx__run_verification_round"),
+        "ralphx-plan-verifier prompt must route full rounds through the backend-owned round helper"
     );
     assert!(
         prompt.contains("created_after"),
-        "ralphx-plan-verifier prompt must pass created_after to the artifact collection helper"
+        "ralphx-plan-verifier prompt must pass created_after through the terminal cleanup contract"
     );
     assert!(
-        !prompt.contains("mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)"),
-        "ralphx-plan-verifier prompt should not drift back to manual get_team_artifacts collection"
+        !prompt.contains("mcp__ralphx__delegate_start"),
+        "ralphx-plan-verifier prompt should not drift back to manual delegate orchestration"
     );
     assert!(
-        !prompt.contains("mcp__ralphx__get_artifact(artifact_id: <id>)"),
-        "ralphx-plan-verifier prompt should not drift back to separate get_artifact fetches for round artifacts"
+        !prompt.contains("mcp__ralphx__await_verification_round_settlement"),
+        "ralphx-plan-verifier prompt should not drift back to low-level settlement choreography"
+    );
+    assert!(
+        prompt.contains("required_delegates"),
+        "ralphx-plan-verifier prompt must pass required_delegates during terminal cleanup so completion cannot bypass the settlement barrier"
+    );
+    assert!(
+        !prompt.contains("get_session_messages(session_id: <the SESSION_ID value above>)"),
+        "ralphx-plan-verifier intent specialist prompt must anchor on the plan goal instead of raw parent chat history"
+    );
+    assert!(
+        !prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
+        "ralphx-plan-verifier prompt should not drift back to manual artifact polling"
+    );
+    assert!(
+        !prompt.contains("Task(subagent_type:"),
+        "ralphx-plan-verifier prompt should use RalphX-native delegation rather than Claude Task syntax"
     );
 }
 
@@ -1313,32 +1335,49 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
 
     for tool in [
         "get_session_plan",
-        "get_session_messages",
-        "get_verification_round_artifacts",
         "get_parent_session_context",
+        "run_verification_enrichment",
+        "run_verification_round",
         "report_verification_round",
         "complete_plan_verification",
         "get_plan_verification",
         "update_plan_artifact",
         "edit_plan_artifact",
         "send_ideation_session_message",
-        // Workaround for Claude Code bug #25200: Task-spawned subagents inherit the parent's
-        // MCP connection, so specialists spawned by ralphx-plan-verifier cannot access their own
-        // mcp_tools. These 6 tools are temporarily added to ralphx-plan-verifier's allowlist so
-        // specialists can access them via the inherited connection.
-        // Remove when #25200 is fixed: https://github.com/anthropics/claude-code/issues/25200
-        "create_team_artifact",
-        "list_session_proposals",
-        "get_proposal",
-        "search_memories",
-        "get_memory",
-        "get_memories_for_paths",
     ] {
         assert!(
             config.allowed_mcp_tools.contains(&tool.to_string()),
             "ralphx-plan-verifier missing expected MCP tool {tool}"
         );
     }
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"get_session_messages".to_string()),
+        "ralphx-plan-verifier should not read raw parent chat history for intent anchoring"
+    );
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"get_verification_round_artifacts".to_string()),
+        "ralphx-plan-verifier should not include low-level artifact polling helpers"
+    );
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"run_required_verification_critic_round".to_string()),
+        "ralphx-plan-verifier should not include low-level required-critic orchestration helpers"
+    );
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"await_verification_round_settlement".to_string()),
+        "ralphx-plan-verifier should not include low-level settlement choreography helpers"
+    );
 
     assert!(
         !config
@@ -1485,7 +1524,7 @@ fn test_plan_critic_mcp_tools_match_prompt_contract() {
     ] {
         let config = get_agent_config(agent_name).expect("plan critic should exist");
 
-        for tool in ["get_session_plan", "get_artifact", "create_team_artifact"] {
+        for tool in ["get_session_plan", "publish_verification_finding"] {
             assert!(
                 config.allowed_mcp_tools.contains(&tool.to_string()),
                 "{agent_name} missing expected MCP tool {tool}"
@@ -1497,6 +1536,12 @@ fn test_plan_critic_mcp_tools_match_prompt_contract() {
                 .allowed_mcp_tools
                 .contains(&"get_team_artifacts".to_string()),
             "{agent_name} should stay bounded and not depend on get_team_artifacts"
+        );
+        assert!(
+            !config
+                .allowed_mcp_tools
+                .contains(&"create_team_artifact".to_string()),
+            "{agent_name} should use publish_verification_finding instead of generic create_team_artifact"
         );
     }
 }

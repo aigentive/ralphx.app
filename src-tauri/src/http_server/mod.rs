@@ -175,6 +175,10 @@ pub async fn start_http_server(
             get(get_plan_verification),
         )
         .route(
+            "/api/ideation/sessions/:id/verification/infra-failure",
+            post(mark_verification_infra_failure),
+        )
+        .route(
             "/api/ideation/sessions/:id/revert-and-skip",
             post(revert_and_skip),
         )
@@ -426,7 +430,15 @@ pub async fn start_http_server(
         .route("/api/team/plan/reject", post(reject_team_plan))
         .route("/api/team/spawn", post(request_teammate_spawn))
         .route("/api/team/artifact", post(create_team_artifact))
+        .route(
+            "/api/team/verification_finding",
+            post(publish_verification_finding),
+        )
         .route("/api/team/artifacts/:session_id", get(get_team_artifacts))
+        .route(
+            "/api/team/verification-findings/:session_id",
+            get(get_verification_findings),
+        )
         .route(
             "/api/team/session_state/:session_id",
             get(get_team_session_state),

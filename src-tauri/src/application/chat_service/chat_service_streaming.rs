@@ -2682,6 +2682,12 @@ async fn process_codex_stream_background<R: Runtime>(
             }
 
             if let Some(error) = extract_codex_error_message(&event) {
+                if crate::infrastructure::agents::codex::stream_processor::is_non_fatal_mcp_resource_probe_error(
+                    &event,
+                    &error,
+                ) {
+                    continue;
+                }
                 errors.push(error);
             }
 

@@ -59,6 +59,7 @@ paths:
 | Prefer shared prompts only when semantics are actually neutral | If Codex or Claude needs harness-specific delegation/tooling language, split the prompt |
 | Unsupported harnesses stay explicit | No prompt file for that harness means unsupported; do not silently inherit another harness prompt |
 | Canonical Claude metadata lives in root `agent.yaml` | Prefer `harnesses.claude.*` in root `agents/<agent>/agent.yaml`; `claude/agent.yaml` is legacy fallback only |
+| Prompts are contracts, not migration diaries | Keep prompts limited to the live role, live tool surface, and output contract; put migration notes, removed-tool warnings, and compatibility ballast in tests/docs/runtime enforcement instead |
 
 ## MCP / Tool Checklist
 

@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use crate::http_server::types::{
     HttpServerState, RevertAndSkipRequest, SuccessResponse, UpdateVerificationRequest,
-    VerificationResponse,
+    VerificationInfraFailureRequest, VerificationResponse,
 };
 
 use super::super::session_linking::session_is_team_mode;
@@ -32,7 +32,7 @@ mod update;
 
 #[doc(hidden)]
 pub use self::auto_propose::auto_propose_with_retry;
-pub use self::lifecycle::{revert_and_skip, stop_verification};
+pub use self::lifecycle::{mark_verification_infra_failure, revert_and_skip, stop_verification};
 pub use self::query::get_plan_verification;
 pub use self::update::update_plan_verification;
 

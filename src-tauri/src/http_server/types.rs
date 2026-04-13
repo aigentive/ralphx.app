@@ -1372,6 +1372,35 @@ pub struct CreateTeamArtifactResponse {
     pub artifact_id: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VerificationFindingGapPayload {
+    pub severity: String,
+    pub category: String,
+    pub description: String,
+    pub why_it_matters: Option<String>,
+    pub source: Option<String>,
+    pub lens: Option<String>,
+}
+
+/// POST /api/team/verification_finding — publish a typed verification finding
+#[derive(Debug, Deserialize)]
+pub struct PublishVerificationFindingRequest {
+    pub session_id: String,
+    pub critic: String,
+    pub round: u32,
+    pub status: String,
+    pub coverage: Option<String>,
+    pub summary: String,
+    #[serde(default)]
+    pub gaps: Vec<VerificationFindingGapPayload>,
+    pub title_suffix: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublishVerificationFindingResponse {
+    pub artifact_id: String,
+}
+
 /// GET /api/team/artifacts/:session_id response
 #[derive(Debug, Serialize)]
 pub struct TeamArtifactSummary {
@@ -1387,6 +1416,33 @@ pub struct TeamArtifactSummary {
 #[derive(Debug, Serialize)]
 pub struct GetTeamArtifactsResponse {
     pub artifacts: Vec<TeamArtifactSummary>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerificationFindingQuery {
+    pub critic: Option<String>,
+    pub round: Option<u32>,
+    pub created_after: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationFindingSummary {
+    pub artifact_id: String,
+    pub title: String,
+    pub created_at: String,
+    pub author_teammate: Option<String>,
+    pub critic: String,
+    pub round: u32,
+    pub status: String,
+    pub coverage: Option<String>,
+    pub summary: String,
+    pub gaps: Vec<VerificationFindingGapPayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetVerificationFindingsResponse {
+    pub findings: Vec<VerificationFindingSummary>,
     pub count: usize,
 }
 
@@ -1806,6 +1862,27 @@ pub struct UpdateVerificationRequest {
     /// when setting in_progress=true
     #[serde(default)]
     pub generation: Option<i32>,
+}
+
+/// Request to terminate verification as an infrastructure/runtime failure.
+///
+/// Unlike `UpdateVerificationRequest`, this path does not record a content verdict.
+/// It resets the parent session to `unverified`, clears authoritative current gaps,
+/// preserves round/debug metadata where available, and ends the active verification run.
+#[derive(Debug, Deserialize)]
+pub struct VerificationInfraFailureRequest {
+    /// Generation counter for zombie protection — must match the session's current generation.
+    #[serde(default)]
+    pub generation: Option<i32>,
+    /// Why verification failed to complete cleanly. Defaults to `agent_error`.
+    #[serde(default)]
+    pub convergence_reason: Option<String>,
+    /// Optional current round for debugging continuity.
+    #[serde(default)]
+    pub round: Option<u32>,
+    /// Optional max-rounds value for debugging continuity.
+    #[serde(default)]
+    pub max_rounds: Option<u32>,
 }
 
 /// A single verification gap in the API response (mirrors domain VerificationGap)

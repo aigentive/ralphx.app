@@ -103,10 +103,10 @@ export const WORKFLOW_TOOLS = [
         name: "create_team_artifact",
         description: "Create a team artifact documenting research findings, analysis, or summary. " +
             "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
-            "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
-            "Verification critics and specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
+            "Use for documenting specialist findings, debate analyses, or lead-synthesized summaries. " +
+            "Verification specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
             "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
-            "Example critic artifact: {\"session_id\":\"<parent-session>\",\"title\":\"Completeness: Round 1 cold boot coverage\",\"content\":\"{\\\"status\\\":\\\"partial\\\",\\\"critic\\\":\\\"completeness\\\",\\\"round\\\":1,\\\"coverage\\\":\\\"affected_files\\\",\\\"summary\\\":\\\"...\\\",\\\"gaps\\\":[]}\",\"artifact_type\":\"TeamResearch\"}.",
+            "Use publish_verification_finding for required verification critics instead of encoding verifier findings into generic TeamResearch content.",
         inputSchema: {
             type: "object",
             examples: [
@@ -141,6 +141,83 @@ export const WORKFLOW_TOOLS = [
                 },
             },
             required: ["session_id", "title", "content", "artifact_type"],
+        },
+    },
+    {
+        name: "publish_verification_finding",
+        description: "Publish a typed verification finding for the current verification round. " +
+            "Use this for required plan critics so the backend can aggregate gaps directly from structured metadata instead of reparsing generic TeamResearch documents. " +
+            "If session_id is omitted, the backend uses the current session context and remaps verification child sessions to the parent ideation session automatically.",
+        inputSchema: {
+            type: "object",
+            examples: [
+                {
+                    critic: "completeness",
+                    round: 1,
+                    status: "partial",
+                    coverage: "affected_files",
+                    summary: "Migration needs an explicit backfill step.",
+                    gaps: [
+                        {
+                            severity: "high",
+                            category: "completeness",
+                            description: "Existing projects are not covered by a concrete backfill step.",
+                            why_it_matters: "Persisted rows can retain the old mode.",
+                        },
+                    ],
+                },
+            ],
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "Optional parent ideation session ID. Omit this in normal verifier-critic flows and let the backend resolve the correct parent session automatically.",
+                },
+                critic: {
+                    type: "string",
+                    description: "Critic identifier, for example 'completeness' or 'feasibility'.",
+                },
+                round: {
+                    type: "integer",
+                    description: "Verification round number (1-based).",
+                },
+                status: {
+                    type: "string",
+                    enum: ["complete", "partial", "error"],
+                    description: "Whether the critic finished fully, partially, or hit an infrastructure error.",
+                },
+                coverage: {
+                    type: "string",
+                    description: "Optional coverage scope such as 'plan_only', 'affected_files', or 'affected_files_plus_adjacent'.",
+                },
+                summary: {
+                    type: "string",
+                    description: "One-sentence synthesis of the critic result.",
+                },
+                gaps: {
+                    type: "array",
+                    description: "Structured verification gaps identified by the critic.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            severity: {
+                                type: "string",
+                                enum: ["critical", "high", "medium", "low"],
+                            },
+                            category: { type: "string" },
+                            description: { type: "string" },
+                            why_it_matters: { type: "string" },
+                            source: { type: "string" },
+                            lens: { type: "string" },
+                        },
+                        required: ["severity", "category", "description"],
+                    },
+                },
+                title_suffix: {
+                    type: "string",
+                    description: "Optional short human-readable suffix appended to the generated artifact title.",
+                },
+            },
+            required: ["critic", "round", "status", "summary", "gaps"],
         },
     },
     {
