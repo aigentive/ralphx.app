@@ -696,7 +696,7 @@ fn test_runtime_settings_profile_override_ignores_blank_value() {
 fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
     let selection =
         runtime_settings_profile_override_for_agent_with("ralphx-ideation", &|name| match name {
-            "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => Some("default".to_string()),
+            "RALPHX_CLAUDE_SETTINGS_PROFILE_RALPHX_IDEATION" => Some("default".to_string()),
             _ => None,
         });
     assert_eq!(selection.as_deref(), Some("default"));
@@ -706,7 +706,7 @@ fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
 fn test_normalize_agent_name_for_env_replaces_symbols() {
     assert_eq!(
         normalize_agent_name_for_env("ralphx:ralphx-utility-session-namer"),
-        "RALPHX_SESSION_NAMER"
+        "RALPHX_RALPHX_UTILITY_SESSION_NAMER"
     );
 }
 
@@ -1383,16 +1383,18 @@ agents:
         .expect("qa-prep should exist");
 
     assert!(!qa_prep.mcp_only);
-    let mut expected = super::tool_sets::CANONICAL_BASE_TOOLS
-        .iter()
-        .map(|tool| (*tool).to_string())
-        .collect::<Vec<_>>();
-    expected.push("Task".to_string());
+    let expected = vec![
+        "Read".to_string(),
+        "Grep".to_string(),
+        "Glob".to_string(),
+        "Bash".to_string(),
+        "Task".to_string(),
+    ];
     assert_eq!(qa_prep.resolved_cli_tools, expected);
 }
 
 #[test]
-fn test_canonical_named_tool_set_overrides_divergent_runtime_yaml_tool_set() {
+fn test_claude_config_overlay_overrides_unknown_tool_sets_from_main_config() {
     let yaml = r#"
 claude:
   mcp_server_name: ralphx
@@ -1400,39 +1402,89 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
 tool_sets:
-  base_tools: [Read]
+  custom_tools: [Read]
 agents:
-  - name: ralphx-qa-prep
-    system_prompt_file: agents/ralphx-qa-prep/shared/prompt.md
-    tools: { extends: base_tools, include: [Task] }
+  - name: custom-agent
+    system_prompt_file: custom-agent.md
+    tools: { extends: custom_tools, include: [Task] }
 "#;
-    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
-    let qa_prep = parsed
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_claude_config_overlay(
+        r#"
+tool_sets:
+  custom_tools: [Write]
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_claude_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+    let custom = parsed
         .agents
         .iter()
-        .find(|a| a.name == "ralphx-qa-prep")
-        .expect("qa-prep should exist");
+        .find(|a| a.name == "custom-agent")
+        .expect("custom agent should exist");
 
-    let mut expected = super::tool_sets::CANONICAL_BASE_TOOLS
-        .iter()
-        .map(|tool| (*tool).to_string())
-        .collect::<Vec<_>>();
-    expected.push("Task".to_string());
-
-    assert_eq!(qa_prep.resolved_cli_tools, expected);
+    assert_eq!(
+        custom.resolved_cli_tools,
+        vec!["Write".to_string(), "Task".to_string()]
+    );
 }
 
 #[test]
-fn test_runtime_yaml_tool_sets_stay_aligned_with_canonical_registry() {
+fn test_claude_config_overlay_partial_sections_do_not_clobber_other_main_config_sections() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  default_effort: high
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+tool_sets:
+  custom_tools: [Read]
+agents:
+  - name: custom-agent
+    system_prompt_file: custom-agent.md
+    tools: { extends: custom_tools, include: [Task] }
+"#;
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_claude_config_overlay(
+        r#"
+claude:
+  permission_mode: acceptEdits
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_claude_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+
+    let custom = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "custom-agent")
+        .expect("custom agent should exist");
+
+    assert_eq!(
+        custom.resolved_cli_tools,
+        vec!["Read".to_string(), "Task".to_string()]
+    );
+    assert_eq!(parsed.claude.permission_mode, "acceptEdits");
+    assert_eq!(parsed.claude.default_effort, "high");
+}
+
+#[test]
+fn test_config_harnesses_claude_file_tool_sets_stay_aligned_with_fallback_registry() {
     #[derive(Deserialize)]
-    struct ToolSetConfig {
+    struct ClaudeHarnessConfigMirror {
         #[serde(default)]
         tool_sets: std::collections::HashMap<String, Vec<String>>,
     }
 
-    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
-    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
-    let parsed: ToolSetConfig = serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/claude.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read config/harnesses/claude.yaml");
+    let parsed: ClaudeHarnessConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/harnesses/claude.yaml");
 
     for (name, tools) in super::tool_sets::canonical_claude_tool_sets() {
         let expected = tools
@@ -1442,9 +1494,36 @@ fn test_runtime_yaml_tool_sets_stay_aligned_with_canonical_registry() {
         assert_eq!(
             parsed.tool_sets.get(name),
             Some(&expected),
-            "ralphx.yaml tool_sets.{name} should stay aligned with the canonical Claude tool-set registry"
+            "config/harnesses/claude.yaml tool_sets.{name} should stay aligned with the fallback Claude tool-set registry"
         );
     }
+}
+
+#[test]
+fn test_config_harnesses_claude_file_contains_expected_runtime_defaults() {
+    #[derive(Deserialize)]
+    struct ClaudeHarnessConfigMirror {
+        claude: ClaudeRuntimeConfigRaw,
+    }
+
+    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/claude.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read config/harnesses/claude.yaml");
+    let parsed: ClaudeHarnessConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/harnesses/claude.yaml");
+
+    assert_eq!(parsed.claude.mcp_server_name, "ralphx");
+    assert_eq!(parsed.claude.setting_sources, Some(vec![
+        "user".to_string(),
+        "project".to_string(),
+        "local".to_string()
+    ]));
+    assert_eq!(parsed.claude.permission_mode, "default");
+    assert!(!parsed.claude.dangerously_skip_permissions);
+    assert_eq!(parsed.claude.permission_prompt_tool, "permission_request");
+    assert!(parsed.claude.append_system_prompt_file);
+    assert_eq!(parsed.claude.settings_profile.as_deref(), Some("default"));
+    assert_eq!(parsed.claude.default_effort.as_deref(), Some("medium"));
+    assert!(parsed.claude.settings_profiles.contains_key("default"));
 }
 
 // ── Agent extends inheritance tests ─────────────────────────────

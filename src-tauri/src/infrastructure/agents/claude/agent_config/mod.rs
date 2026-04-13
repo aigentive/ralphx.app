@@ -271,6 +271,28 @@ struct RalphxConfig {
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct ClaudeRuntimeConfigOverlay {
+    mcp_server_name: Option<String>,
+    setting_sources: Option<Vec<String>>,
+    permission_mode: Option<String>,
+    dangerously_skip_permissions: Option<bool>,
+    permission_prompt_tool: Option<String>,
+    append_system_prompt_file: Option<bool>,
+    settings_profile: Option<String>,
+    settings_profile_defaults: Option<serde_json::Value>,
+    settings_profiles: Option<HashMap<String, serde_json::Value>>,
+    settings: Option<serde_json::Value>,
+    default_effort: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ClaudeConfigOverlay {
+    #[serde(default)]
+    tool_sets: HashMap<String, Vec<String>>,
+    claude: Option<ClaudeRuntimeConfigOverlay>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct ProcessConfigOverlay {
     #[serde(default)]
     process_mapping: Option<ProcessMapping>,
@@ -337,6 +359,94 @@ pub fn process_config_path() -> PathBuf {
     }
 }
 
+pub fn claude_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_CLAUDE_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    let config = config_path();
+    let parent = config.parent().unwrap_or_else(|| Path::new("."));
+    if parent.file_name().and_then(|name| name.to_str()) == Some("config") {
+        parent.join("harnesses").join("claude.yaml")
+    } else {
+        parent.join("config").join("harnesses").join("claude.yaml")
+    }
+}
+
+fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
+    match serde_yaml::from_str(yaml) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse ralphx.yaml");
+            None
+        }
+    }
+}
+
+fn apply_claude_runtime_config_overlay(
+    cfg: &mut ClaudeRuntimeConfigRaw,
+    overlay: ClaudeRuntimeConfigOverlay,
+) {
+    if let Some(mcp_server_name) = overlay.mcp_server_name {
+        cfg.mcp_server_name = mcp_server_name;
+    }
+    if let Some(setting_sources) = overlay.setting_sources {
+        cfg.setting_sources = Some(setting_sources);
+    }
+    if let Some(permission_mode) = overlay.permission_mode {
+        cfg.permission_mode = permission_mode;
+    }
+    if let Some(dangerously_skip_permissions) = overlay.dangerously_skip_permissions {
+        cfg.dangerously_skip_permissions = dangerously_skip_permissions;
+    }
+    if let Some(permission_prompt_tool) = overlay.permission_prompt_tool {
+        cfg.permission_prompt_tool = permission_prompt_tool;
+    }
+    if let Some(append_system_prompt_file) = overlay.append_system_prompt_file {
+        cfg.append_system_prompt_file = append_system_prompt_file;
+    }
+    if let Some(settings_profile) = overlay.settings_profile {
+        cfg.settings_profile = Some(settings_profile);
+    }
+    if let Some(settings_profile_defaults) = overlay.settings_profile_defaults {
+        cfg.settings_profile_defaults = Some(settings_profile_defaults);
+    }
+    if let Some(settings_profiles) = overlay.settings_profiles {
+        cfg.settings_profiles = settings_profiles;
+    }
+    if let Some(settings) = overlay.settings {
+        cfg.settings = Some(settings);
+    }
+    if let Some(default_effort) = overlay.default_effort {
+        cfg.default_effort = Some(default_effort);
+    }
+}
+
+fn apply_claude_config_overlay(cfg: &mut RalphxConfig, overlay: ClaudeConfigOverlay) {
+    cfg.tool_sets.extend(overlay.tool_sets);
+    if let Some(claude) = overlay.claude {
+        apply_claude_runtime_config_overlay(&mut cfg.claude, claude);
+    }
+}
+
+fn parse_claude_config_overlay(yaml: &str) -> Option<ClaudeConfigOverlay> {
+    serde_yaml::from_str::<ClaudeConfigOverlay>(yaml)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Failed to parse Claude harness config overlay");
+            e
+        })
+        .ok()
+}
+
+fn load_claude_config_overlay() -> Option<(PathBuf, ClaudeConfigOverlay)> {
+    let path = claude_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_claude_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
 fn parse_process_config_overlay(yaml: &str) -> Option<ProcessConfigOverlay> {
     serde_yaml::from_str::<ProcessConfigOverlay>(yaml).map_err(|e| {
         tracing::warn!(error = %e, "Failed to parse process config overlay");
@@ -401,25 +511,10 @@ fn resolve_tools_from_spec(
 
     let extends = tools.extends.as_deref().unwrap_or("base_tools");
 
-    if let Some(base) = canonical_claude_tool_sets().get(extends) {
-        if let Some(yaml_base) = tool_sets.get(extends) {
-            let canonical = base
-                .iter()
-                .map(|tool| (*tool).to_string())
-                .collect::<Vec<_>>();
-            if yaml_base != &canonical {
-                tracing::warn!(
-                    agent = %agent_name,
-                    tool_set = %extends,
-                    yaml_tools = ?yaml_base,
-                    canonical_tools = ?canonical,
-                    "Canonical Claude tool set overrides divergent runtime YAML tool set"
-                );
-            }
-        }
-        out.extend(base.iter().map(|tool| (*tool).to_string()));
-    } else if let Some(base) = tool_sets.get(extends) {
+    if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
+    } else if let Some(base) = canonical_claude_tool_sets().get(extends) {
+        out.extend(base.iter().map(|tool| (*tool).to_string()));
     } else {
         tracing::warn!(agent = %agent_name, tool_set = %extends, "Unknown tools.extends set; using include only");
     }
@@ -669,18 +764,10 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
     }
 }
 
-fn parse_config_with_lookup(
-    yaml: &str,
+fn resolve_loaded_config_with_lookup(
+    parsed: RalphxConfig,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Option<LoadedConfig> {
-    let parsed: RalphxConfig = match serde_yaml::from_str(yaml) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse ralphx.yaml");
-            return None;
-        }
-    };
-
     // Phase 1: resolve extends inheritance for all agents
     let resolved_raw_agents: Vec<AgentConfigRaw> = parsed
         .agents
@@ -824,6 +911,14 @@ fn parse_config_with_lookup(
         execution_defaults: parsed.execution_defaults,
         agent_harness_defaults,
     })
+}
+
+fn parse_config_with_lookup(
+    yaml: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<LoadedConfig> {
+    let parsed = parse_raw_config(yaml)?;
+    resolve_loaded_config_with_lookup(parsed, lookup)
 }
 
 fn parse_config(yaml: &str) -> Option<LoadedConfig> {
@@ -1173,64 +1268,87 @@ fn apply_prefixed_env_overrides_with(
 fn load_config() -> LoadedConfig {
     let path = config_path();
     if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Some(mut cfg) = parse_config(&raw) {
-            if let Some((process_path, overlay)) = load_process_config_overlay() {
-                apply_process_config_overlay(&mut cfg, overlay);
+        if let Some(mut parsed) = parse_raw_config(&raw) {
+            if let Some((claude_path, overlay)) = load_claude_config_overlay() {
+                apply_claude_config_overlay(&mut parsed, overlay);
                 tracing::info!(
-                    path = %process_path.display(),
-                    "Loaded process config overlay from config/processes.yaml"
+                    path = %claude_path.display(),
+                    "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
                 );
             }
-            tracing::info!(
-                path = %path.display(),
-                agents = cfg.agents.len(),
-                permission_mode = %cfg.claude.permission_mode,
-                dangerously_skip_permissions = cfg.claude.dangerously_skip_permissions,
-                append_system_prompt_file = cfg.claude.use_append_system_prompt_file,
-                "Loaded agent config from ralphx.yaml"
-            );
-            return cfg;
+            if let Some(mut cfg) =
+                resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
+            {
+                if let Some((process_path, overlay)) = load_process_config_overlay() {
+                    apply_process_config_overlay(&mut cfg, overlay);
+                    tracing::info!(
+                        path = %process_path.display(),
+                        "Loaded process config overlay from config/processes.yaml"
+                    );
+                }
+                tracing::info!(
+                    path = %path.display(),
+                    agents = cfg.agents.len(),
+                    permission_mode = %cfg.claude.permission_mode,
+                    dangerously_skip_permissions = cfg.claude.dangerously_skip_permissions,
+                    append_system_prompt_file = cfg.claude.use_append_system_prompt_file,
+                    "Loaded agent config from ralphx.yaml"
+                );
+                return cfg;
+            }
         }
         tracing::warn!(path = %path.display(), "Falling back to embedded config due to parse error");
     } else {
         tracing::warn!(path = %path.display(), "ralphx.yaml not found/readable, using embedded config");
     }
 
-    let mut cfg = parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| {
-        let mut runtime = AllRuntimeConfig {
-            stream: StreamTimeoutsConfig::default(),
-            reconciliation: ReconciliationConfig::default(),
-            git: GitRuntimeConfig::default(),
-            scheduler: SchedulerConfig::default(),
-            supervisor: SupervisorRuntimeConfig::default(),
-            limits: LimitsConfig::default(),
-            verification: VerificationConfig::default(),
-            external_mcp: ExternalMcpConfig::default(),
-            child_session_activity_threshold_secs: None,
-            ui_feature_flags: UiFeatureFlagsConfig::default(),
-        };
-        runtime_config::apply_env_overrides(&mut runtime);
-        LoadedConfig {
-            agents: Vec::new(),
-            claude: ClaudeRuntimeConfig {
-                mcp_server_name: "ralphx".to_string(),
-                setting_sources: None,
-                permission_mode: "default".to_string(),
-                dangerously_skip_permissions: false,
-                permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
-                use_append_system_prompt_file: true,
-                settings: None,
-                default_effort: "medium".to_string(),
-            },
-            process_mapping: ProcessMapping::default(),
-            team_constraints: TeamConstraintsConfig::default(),
-            defer_merge_enabled: true,
-            file_logging: true,
-            runtime,
-            execution_defaults: ExecutionDefaultsConfig::default(),
-            agent_harness_defaults: default_agent_harness_defaults(),
-        }
-    });
+    let mut cfg = parse_raw_config(EMBEDDED_CONFIG)
+        .map(|mut parsed| {
+            if let Some((claude_path, overlay)) = load_claude_config_overlay() {
+                apply_claude_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %claude_path.display(),
+                    "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
+                );
+            }
+            resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
+        })
+        .flatten()
+        .unwrap_or_else(|| {
+            let mut runtime = AllRuntimeConfig {
+                stream: StreamTimeoutsConfig::default(),
+                reconciliation: ReconciliationConfig::default(),
+                git: GitRuntimeConfig::default(),
+                scheduler: SchedulerConfig::default(),
+                supervisor: SupervisorRuntimeConfig::default(),
+                limits: LimitsConfig::default(),
+                verification: VerificationConfig::default(),
+                external_mcp: ExternalMcpConfig::default(),
+                child_session_activity_threshold_secs: None,
+                ui_feature_flags: UiFeatureFlagsConfig::default(),
+            };
+            runtime_config::apply_env_overrides(&mut runtime);
+            LoadedConfig {
+                agents: Vec::new(),
+                claude: ClaudeRuntimeConfig {
+                    mcp_server_name: "ralphx".to_string(),
+                    setting_sources: None,
+                    permission_mode: "default".to_string(),
+                    dangerously_skip_permissions: false,
+                    permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
+                    use_append_system_prompt_file: true,
+                    settings: None,
+                    default_effort: "medium".to_string(),
+                },
+                process_mapping: ProcessMapping::default(),
+                team_constraints: TeamConstraintsConfig::default(),
+                defer_merge_enabled: true,
+                file_logging: true,
+                runtime,
+                execution_defaults: ExecutionDefaultsConfig::default(),
+                agent_harness_defaults: default_agent_harness_defaults(),
+            }
+        });
 
     if let Some((process_path, overlay)) = load_process_config_overlay() {
         apply_process_config_overlay(&mut cfg, overlay);
