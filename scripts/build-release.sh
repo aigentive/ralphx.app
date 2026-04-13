@@ -11,7 +11,7 @@ Usage:
 Options:
   --bundle      Create app bundle artifacts too (slower build)
   --sync-db     Force copy dev DB to app-data DB (overwrites target DB)
-  --sync-plugin Force refresh plugin runtime in app-data (overwrites target plugin dir)
+  --sync-plugin Force refresh plugin runtime in app-data (redundant: plugin runtime is refreshed every run)
   --skip-build  Skip build and only run DB seed/sync logic
   -h, --help    Show this help
 EOF
@@ -55,11 +55,42 @@ PROD_PLUGIN_DIR="${APP_DATA_DIR}/plugins/app"
 PROD_MCP_DIR="${PROD_PLUGIN_DIR}/ralphx-mcp-server"
 PROD_MCP_MAIN="${PROD_MCP_DIR}/build/index.js"
 PROD_MCP_NODE_MODULES="${PROD_MCP_DIR}/node_modules"
+PROD_EXTERNAL_MCP_DIR="${PROD_PLUGIN_DIR}/ralphx-external-mcp"
+PROD_EXTERNAL_MCP_MAIN="${PROD_EXTERNAL_MCP_DIR}/build/index.js"
+PROD_EXTERNAL_MCP_NODE_MODULES="${PROD_EXTERNAL_MCP_DIR}/node_modules"
 
-if [[ ! -f "${DEV_DB}" ]]; then
-  echo "Dev DB not found: ${DEV_DB}" >&2
-  exit 1
-fi
+create_fresh_prod_db() {
+  local db_path="$1"
+
+  python3 - "$db_path" <<'PY'
+import sqlite3
+import sys
+
+sqlite3.connect(sys.argv[1]).close()
+PY
+}
+
+ensure_runtime_package() {
+  local package_dir="$1"
+  local build_output="$2"
+  local node_modules_dir="$3"
+  local label="$4"
+
+  if [[ ! -d "${package_dir}" ]]; then
+    echo "${label} runtime dir not found: ${package_dir}" >&2
+    exit 1
+  fi
+
+  cd "${package_dir}"
+
+  if [[ ! -d "${node_modules_dir}" ]]; then
+    echo "Installing ${label} dependencies in runtime copy..."
+    npm install
+  fi
+
+  echo "Rebuilding ${label} in runtime copy..."
+  npm run build
+}
 
 if [[ ! -d "${SOURCE_PLUGIN_DIR}" ]]; then
   echo "Plugin source dir not found: ${SOURCE_PLUGIN_DIR}" >&2
@@ -81,35 +112,43 @@ echo "Preparing production DB in app data..."
 mkdir -p "${APP_DATA_DIR}"
 
 if [[ "${FORCE_DB_SYNC}" == "true" ]]; then
+  if [[ ! -f "${DEV_DB}" ]]; then
+    echo "Dev DB not found for --sync-db: ${DEV_DB}" >&2
+    exit 1
+  fi
   cp -f "${DEV_DB}" "${PROD_DB}"
   echo "Forced DB sync complete: ${PROD_DB}"
 elif [[ ! -f "${PROD_DB}" ]]; then
-  cp "${DEV_DB}" "${PROD_DB}"
-  echo "Seeded production DB from dev DB: ${PROD_DB}"
+  if [[ -f "${DEV_DB}" ]]; then
+    cp "${DEV_DB}" "${PROD_DB}"
+    echo "Seeded production DB from dev DB: ${PROD_DB}"
+  else
+    create_fresh_prod_db "${PROD_DB}"
+    echo "Created fresh production DB: ${PROD_DB}"
+  fi
 else
   echo "Production DB already exists, leaving untouched: ${PROD_DB}"
 fi
 
 echo "Preparing production plugin runtime..."
-if [[ "${FORCE_PLUGIN_SYNC}" == "true" ]]; then
+if [[ -d "${PROD_PLUGIN_DIR}" ]]; then
   rm -rf "${PROD_PLUGIN_DIR}"
 fi
 
-if [[ ! -d "${PROD_PLUGIN_DIR}" ]]; then
-  cp -R "${SOURCE_PLUGIN_DIR}" "${PROD_PLUGIN_DIR}"
-  echo "Seeded plugin runtime: ${PROD_PLUGIN_DIR}"
-fi
+cp -R "${SOURCE_PLUGIN_DIR}" "${PROD_PLUGIN_DIR}"
+echo "Refreshed plugin runtime: ${PROD_PLUGIN_DIR}"
 
-if [[ ! -f "${PROD_MCP_MAIN}" ]]; then
-  echo "MCP build output missing in runtime copy, building..."
-  cd "${PROD_MCP_DIR}"
-  npm install
-  npm run build
-elif [[ ! -d "${PROD_MCP_NODE_MODULES}" || "${FORCE_PLUGIN_SYNC}" == "true" ]]; then
-  echo "Installing MCP dependencies in runtime copy..."
-  cd "${PROD_MCP_DIR}"
-  npm install
-fi
+ensure_runtime_package \
+  "${PROD_MCP_DIR}" \
+  "${PROD_MCP_MAIN}" \
+  "${PROD_MCP_NODE_MODULES}" \
+  "Internal MCP"
+
+ensure_runtime_package \
+  "${PROD_EXTERNAL_MCP_DIR}" \
+  "${PROD_EXTERNAL_MCP_MAIN}" \
+  "${PROD_EXTERNAL_MCP_NODE_MODULES}" \
+  "External MCP"
 
 echo ""
 echo "Done."
