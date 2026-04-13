@@ -1,4 +1,4 @@
-use super::{build_codex_mcp_overrides, compose_codex_prompt};
+use super::{build_codex_mcp_overrides, compose_codex_prompt, CodexMcpRuntimeContext};
 use std::path::PathBuf;
 
 fn create_plugin_dir(root: &std::path::Path) -> PathBuf {
@@ -157,10 +157,80 @@ fn build_codex_mcp_overrides_includes_runtime_feature_flags_from_agent_metadata(
     .expect("write fake mcp server");
 
     let overrides =
-        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false).expect("overrides");
+        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
+            .expect("overrides");
 
     assert!(
         overrides.iter().any(|entry| entry == "features.shell_tool=false"),
         "Codex runtime feature flags should flow into config overrides: {overrides:?}"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build"))
+        .expect("create fake mcp build dir");
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    )
+    .expect("write fake mcp server");
+
+    let runtime_context = CodexMcpRuntimeContext {
+        context_type: Some("ideation".to_string()),
+        context_id: Some("session-123".to_string()),
+        task_id: None,
+        project_id: Some("project-456".to_string()),
+        working_directory: Some(root.join("workspace")),
+        lead_session_id: Some("lead-789".to_string()),
+    };
+
+    let overrides = build_codex_mcp_overrides(
+        &plugin_dir,
+        "ralphx-plan-verifier",
+        false,
+        Some(&runtime_context),
+    )
+    .expect("overrides");
+
+    let args_override = overrides
+        .iter()
+        .find(|entry| entry.starts_with("mcp_servers.") && entry.contains(".args="))
+        .expect("args override");
+
+    assert!(
+        args_override.contains("--context-type"),
+        "expected context-type CLI arg in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("ideation"),
+        "expected context-type value in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("--context-id"),
+        "expected context-id CLI arg in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("session-123"),
+        "expected context-id value in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("--project-id"),
+        "expected project-id CLI arg in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("project-456"),
+        "expected project-id value in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("--working-directory"),
+        "expected working-directory CLI arg in overrides: {args_override}"
+    );
+    assert!(
+        args_override.contains("--lead-session-id"),
+        "expected lead-session-id CLI arg in overrides: {args_override}"
     );
 }

@@ -29,7 +29,7 @@ use crate::infrastructure::agents::claude::{
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
     build_spawnable_codex_resume_command, compose_codex_prompt, CodexCliCapabilities,
-    CodexExecCliConfig,
+    CodexExecCliConfig, CodexMcpRuntimeContext,
 };
 use crate::utils::truncate_str;
 
@@ -1554,6 +1554,31 @@ fn build_codex_cli_config(
     }
 }
 
+fn build_codex_mcp_runtime_context(
+    context_type: ChatContextType,
+    context_id: &str,
+    working_directory: &Path,
+    project_id: Option<&str>,
+    lead_session_id: Option<&str>,
+) -> CodexMcpRuntimeContext {
+    let task_id = match context_type {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => Some(context_id.to_string()),
+        _ => None,
+    };
+
+    CodexMcpRuntimeContext {
+        context_type: Some(context_type.to_string()),
+        context_id: Some(context_id.to_string()),
+        task_id,
+        project_id: project_id.map(str::to_string),
+        working_directory: Some(working_directory.to_path_buf()),
+        lead_session_id: lead_session_id.map(str::to_string),
+    }
+}
+
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
@@ -1855,7 +1880,19 @@ pub async fn build_codex_command(
         Some(agent_name),
     );
 
-    let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
+    let runtime_context = build_codex_mcp_runtime_context(
+        conversation.context_type,
+        &conversation.context_id,
+        working_directory,
+        project_id,
+        None,
+    );
+    let config_overrides = build_codex_mcp_overrides(
+        plugin_dir,
+        agent_name,
+        is_external_mcp,
+        Some(&runtime_context),
+    )?;
     let codex_config =
         build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
 
@@ -2363,7 +2400,19 @@ pub async fn build_codex_resume_command(
     });
     let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
 
-    let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
+    let runtime_context = build_codex_mcp_runtime_context(
+        context_type,
+        context_id,
+        working_directory,
+        project_id,
+        None,
+    );
+    let config_overrides = build_codex_mcp_overrides(
+        plugin_dir,
+        agent_name,
+        is_external_mcp,
+        Some(&runtime_context),
+    )?;
     let codex_config =
         build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
     match provider_resume_mode_for_session(AgentHarnessKind::Codex, session_id) {

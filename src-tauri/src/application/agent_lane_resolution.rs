@@ -188,6 +188,39 @@ pub(crate) async fn resolve_agent_spawn_settings(
     }
 }
 
+pub(crate) async fn resolve_agent_subagent_harness(
+    agent_name: &str,
+    project_id: Option<&str>,
+    context_type: ChatContextType,
+    entity_status: Option<&str>,
+    agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
+    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
+) -> AgentHarnessKind {
+    let primary = resolve_agent_spawn_settings(
+        agent_name,
+        project_id,
+        context_type,
+        entity_status,
+        None,
+        None,
+        agent_lane_settings_repo,
+        ideation_model_settings_repo,
+        ideation_effort_settings_repo,
+    )
+    .await;
+
+    let Some(subagent_lane) = subagent_lane_for_context(agent_name, context_type) else {
+        return primary.effective_harness;
+    };
+
+    let (subagent_project_row, subagent_global_row) =
+        load_lane_rows(agent_lane_settings_repo, project_id, Some(subagent_lane)).await;
+
+    lane_harness(subagent_project_row.as_ref(), subagent_global_row.as_ref())
+        .unwrap_or(primary.effective_harness)
+}
+
 fn ideation_lane_for_agent(agent_name: &str) -> Option<AgentLane> {
     let normalized = canonical_short_agent_name(agent_name);
     match normalized {

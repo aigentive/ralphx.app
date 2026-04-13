@@ -25,6 +25,17 @@ Do NOT use built-in Codex `web_search`, built-in `command_execution`, or placeho
 
 Do not collapse these delegated prompts into vague summaries. Preserve `SESSION_ID`, `ROUND`, artifact title prefixes, JSON schema requirements, and the requirement to publish artifacts on the PARENT ideation session.
 
+## Output Discipline (MANDATORY)
+
+- Internal retries, wait polls, parent-session binding fixes, and delegation normalization steps are not user-facing progress updates.
+- Do NOT narrate rescue attempts like "retrying with parent session attached", "critic still running", or "this run is healthier so far" into the verification chat.
+- If `delegate_start`, `delegate_wait`, `get_session_plan`, or parent-context retrieval fails because of caller binding, cancelled MCP calls, or similar verifier transport/runtime faults, classify that as infrastructure failure in your terminal result. Do NOT narrate each failed retry step.
+- Emit assistant text only when:
+  - startup validation fails and verification must abort
+  - you are delivering a terminal verification result
+  - the user explicitly asked for a live status explanation
+- Keep non-terminal runtime bookkeeping silent unless it changes the round outcome.
+
 ## Step 0 — Setup (MANDATORY before anything else)
 
 ### A. Extract and validate parent_session_id
@@ -200,8 +211,6 @@ Repeat for each round (up to `max_rounds`):
 
 Increment round counter: `current_round = current_round + 1`.
 
-Output: "Starting verification round {current_round}/{max_rounds}..."
-
 ### A. Dynamic Specialist Selection + Parallel Dispatch (one message, all Task calls)
 
 #### A1. Select specialists for this round
@@ -296,6 +305,7 @@ Wait for the initial delegated-agent results to return (critics + any specialist
   - explicit instruction: `Create the artifact on the PARENT ideation session now. If analysis is partial, publish the partial artifact now instead of exploring further.`
 - Do NOT send minimalist nudges like "finish your analysis" without `SESSION_ID` and schema — that loses context and produces malformed artifacts.
 - Do NOT narrate each wait/poll/rescue step to the user unless it changes the round outcome.
+- If the rescue transport itself rejects the follow-up dispatch, stop the rescue loop and classify the critic as unavailable due to verifier infrastructure/runtime failure rather than continuing to narrate recovery attempts.
 
 ### B. Collect round artifacts
 

@@ -6,7 +6,7 @@ use std::{fs, os::unix::fs::PermissionsExt};
 use axum::{extract::State, Json};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::agents::AgentHarnessKind;
+use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ChatConversation, DelegatedSessionId, IdeationSession, Project, SessionPurpose,
 };
@@ -393,6 +393,8 @@ async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omi
         .expect("latest delegated run");
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.logical_model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
+    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
 }
 
 #[tokio::test]
@@ -573,6 +575,300 @@ async fn test_delegate_start_infers_parent_session_from_verification_child_conte
     .0;
 
     assert_eq!(start.parent_context_id, parent.id.as_str());
+}
+
+#[tokio::test]
+async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omitted() {
+    let _env_lock = codex_cli_env_lock().lock().await;
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_global(
+            AgentLane::IdeationVerifierSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Codex,
+                model: Some("gpt-5.4-mini".to_string()),
+                effort: None,
+                approval_policy: Some("never".to_string()),
+                sandbox_mode: Some("danger-full-access".to_string()),
+            },
+        )
+        .await
+        .expect("verifier subagent lane upsert should succeed");
+
+    let mut verification_child = IdeationSession::builder()
+        .project_id(parent.project_id.clone())
+        .title("Verification Child")
+        .cross_project_checked(true)
+        .build();
+    verification_child.parent_session_id = Some(parent.id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    let verification_child = state
+        .app_state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(verification_child.id.as_str().to_string()),
+            parent_session_id: None,
+            parent_turn_id: Some("turn-verifier".to_string()),
+            parent_message_id: Some("msg-verifier".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-verifier-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Review the plan for completeness and summarize any gaps.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: None,
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    let waited = {
+        let mut snapshot = None;
+        for _ in 0..20 {
+            let candidate = wait_delegate(
+                State(state.clone()),
+                Json(DelegateWaitRequest {
+                    job_id: start.job_id.clone(),
+                    include_delegated_status: Some(true),
+                    include_child_status: None,
+                    include_messages: Some(false),
+                    message_limit: None,
+                }),
+            )
+            .await
+            .unwrap()
+            .0;
+            if candidate.status != "running" {
+                snapshot = Some(candidate);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        snapshot.expect("delegation job should settle")
+    };
+
+    let latest_run = waited
+        .delegated_status
+        .as_ref()
+        .and_then(|status| status.latest_run.as_ref())
+        .expect("latest delegated run");
+    assert_eq!(latest_run.harness.as_deref(), Some("codex"));
+    assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
+    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
+
+    let delegated = state
+        .app_state
+        .delegated_session_repo
+        .get_by_id(&DelegatedSessionId::from_string(start.delegated_session_id.clone()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(delegated.harness, AgentHarnessKind::Codex);
+}
+
+#[tokio::test]
+async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omitted() {
+    let _env_lock = codex_cli_env_lock().lock().await;
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Codex,
+                model: Some("gpt-5.4-mini".to_string()),
+                effort: None,
+                approval_policy: Some("never".to_string()),
+                sandbox_mode: Some("danger-full-access".to_string()),
+            },
+        )
+        .await
+        .expect("ideation subagent lane upsert should succeed");
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-ideation".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: None,
+            parent_turn_id: Some("turn-ideation".to_string()),
+            parent_message_id: Some("msg-ideation".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-ideation-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-ideation-specialist-intent".to_string(),
+            prompt: "Analyze the plan intent and summarize any scope drift risks.".to_string(),
+            title: Some("Delegated Intent Specialist".to_string()),
+            inherit_context: true,
+            harness: None,
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    let waited = {
+        let mut snapshot = None;
+        for _ in 0..20 {
+            let candidate = wait_delegate(
+                State(state.clone()),
+                Json(DelegateWaitRequest {
+                    job_id: start.job_id.clone(),
+                    include_delegated_status: Some(true),
+                    include_child_status: None,
+                    include_messages: Some(false),
+                    message_limit: None,
+                }),
+            )
+            .await
+            .unwrap()
+            .0;
+            if candidate.status != "running" {
+                snapshot = Some(candidate);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        snapshot.expect("delegation job should settle")
+    };
+
+    let latest_run = waited
+        .delegated_status
+        .as_ref()
+        .and_then(|status| status.latest_run.as_ref())
+        .expect("latest delegated run");
+    assert_eq!(latest_run.harness.as_deref(), Some("codex"));
+    assert_eq!(latest_run.approval_policy.as_deref(), Some("never"));
+    assert_eq!(latest_run.sandbox_mode.as_deref(), Some("danger-full-access"));
+
+    let delegated = state
+        .app_state
+        .delegated_session_repo
+        .get_by_id(&DelegatedSessionId::from_string(start.delegated_session_id.clone()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(delegated.harness, AgentHarnessKind::Codex);
+}
+
+#[tokio::test]
+async fn test_delegate_start_links_parent_conversation_to_verification_child_chat() {
+    let _env_lock = codex_cli_env_lock().lock().await;
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    let parent_conversation = state
+        .app_state
+        .chat_conversation_repo
+        .create(ChatConversation::new_ideation(parent.id.clone()))
+        .await
+        .unwrap();
+
+    let mut verification_child = IdeationSession::builder()
+        .project_id(parent.project_id.clone())
+        .title("Verification Child")
+        .cross_project_checked(true)
+        .build();
+    verification_child.parent_session_id = Some(parent.id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    let verification_child = state
+        .app_state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let verification_conversation = state
+        .app_state
+        .chat_conversation_repo
+        .create(ChatConversation::new_ideation(verification_child.id.clone()))
+        .await
+        .unwrap();
+    let parent_conversation_id = parent_conversation.id.as_str();
+    let verification_conversation_id = verification_conversation.id.as_str();
+
+    let start = start_delegate(
+        State(state),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(verification_child.id.as_str().to_string()),
+            parent_session_id: None,
+            parent_turn_id: Some("turn-verifier".to_string()),
+            parent_message_id: Some("msg-verifier".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-verifier-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Review the plan for completeness and summarize any gaps.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    assert_eq!(
+        start.parent_conversation_id.as_deref(),
+        Some(verification_conversation_id.as_str())
+    );
+    assert_ne!(
+        start.parent_conversation_id.as_deref(),
+        Some(parent_conversation_id.as_str())
+    );
 }
 
 #[tokio::test]

@@ -152,6 +152,7 @@ pub struct AgentMessageResponse {
     pub id: String,
     pub role: String,
     pub content: String,
+    pub metadata: Option<String>,
     pub tool_calls: Option<serde_json::Value>,
     pub content_blocks: Option<serde_json::Value>,
     pub attribution_source: Option<String>,
@@ -459,6 +460,7 @@ pub async fn get_agent_conversation(
                         id: m.id.as_str().to_string(),
                         role: m.role.to_string(),
                         content: m.content,
+                        metadata: m.metadata,
                         tool_calls: m.tool_calls.and_then(|tc| serde_json::from_str(&tc).ok()),
                         content_blocks: m
                             .content_blocks

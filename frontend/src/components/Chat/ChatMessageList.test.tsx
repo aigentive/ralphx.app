@@ -1882,3 +1882,65 @@ describe("ChatMessageList - Scroll Behavior", () => {
     });
   });
 });
+
+describe("ChatMessageList - System cards", () => {
+  it("renders auto-verification metadata as a system card", async () => {
+    const user = userEvent.setup();
+    const messages: ChatMessageData[] = [
+      {
+        id: "auto-verification-1",
+        role: "system",
+        content: "<auto-verification>\nCheck this code.\n</auto-verification>",
+        createdAt: new Date(2026, 0, 1, 12, 30).toISOString(),
+        toolCalls: null,
+        contentBlocks: null,
+        metadata: JSON.stringify({ auto_verification: true }),
+      },
+    ];
+
+    render(<ChatMessageList {...defaultProps} messages={messages} />);
+
+    expect(screen.getByText("Auto-verification")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /auto-verification/i }));
+    expect(screen.getByText("Check this code.")).toBeInTheDocument();
+  });
+
+  it("renders verification-result metadata as a system card", async () => {
+    const user = userEvent.setup();
+    const messages: ChatMessageData[] = [
+      {
+        id: "verification-result-1",
+        role: "system",
+        content: "Verification hit an infrastructure/runtime blocker.",
+        createdAt: new Date(2026, 0, 1, 13, 0).toISOString(),
+        toolCalls: null,
+        contentBlocks: null,
+        metadata: JSON.stringify({
+          verification_result: true,
+          summary: "1 gap remains: 1 critical.",
+          convergence_reason: "agent_error",
+          current_round: 1,
+          max_rounds: 5,
+          recommended_next_action: "rerun_verification",
+          actionable_for_parent: false,
+          top_blockers: [
+            {
+              severity: "critical",
+              description: "Delegated critic startup failed before any plan analysis.",
+            },
+          ],
+        }),
+      },
+    ];
+
+    render(<ChatMessageList {...defaultProps} messages={messages} />);
+
+    expect(screen.getByText("Verification result")).toBeInTheDocument();
+    expect(screen.queryByText(/1 gap remains/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /verification result/i }));
+
+    expect(screen.getByText(/1 gap remains: 1 critical\./)).toBeInTheDocument();
+    expect(screen.getByText(/Infra\/runtime issue/)).toBeInTheDocument();
+  });
+});

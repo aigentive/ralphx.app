@@ -13,7 +13,8 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
 import { AutoVerificationCard } from "./AutoVerificationCard";
-import { AUTO_VERIFICATION_KEY } from "@/types/ideation";
+import { VerificationResultCard } from "./VerificationResultCard";
+import { AUTO_VERIFICATION_KEY, VERIFICATION_RESULT_KEY } from "@/types/ideation";
 import {
   TypingIndicator,
   FailedRunBanner,
@@ -98,6 +99,59 @@ type TimelineItem =
   | { kind: "message"; data: ChatMessageData; sortTime: number }
   | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number }
   | { kind: "team_event"; data: TeamMessage; sortTime: number };
+
+function parseMessageMetadata(metadata: string | null | undefined): Record<string, unknown> | null {
+  if (!metadata) return null;
+  try {
+    return JSON.parse(metadata) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function renderSystemCard(
+  metadata: Record<string, unknown> | null,
+  content: string,
+  createdAt: string,
+) {
+  if (!metadata) return null;
+
+  if (metadata[AUTO_VERIFICATION_KEY]) {
+    return <AutoVerificationCard content={content} createdAt={createdAt} />;
+  }
+
+  if (metadata[VERIFICATION_RESULT_KEY]) {
+    const blockers = Array.isArray(metadata.top_blockers)
+      ? metadata.top_blockers
+          .filter((item): item is { severity?: unknown; description?: unknown } => (
+            item != null && typeof item === "object"
+          ))
+          .map((item) => ({
+            severity: typeof item.severity === "string" ? item.severity : "unknown",
+            description: typeof item.description === "string" ? item.description : "",
+          }))
+          .filter((item) => item.description.length > 0)
+      : [];
+
+    return (
+      <VerificationResultCard
+        summary={typeof metadata.summary === "string" ? metadata.summary : content}
+        convergenceReason={typeof metadata.convergence_reason === "string" ? metadata.convergence_reason : null}
+        currentRound={typeof metadata.current_round === "number" ? metadata.current_round : null}
+        maxRounds={typeof metadata.max_rounds === "number" ? metadata.max_rounds : null}
+        recommendedNextAction={
+          typeof metadata.recommended_next_action === "string"
+            ? metadata.recommended_next_action
+            : null
+        }
+        blockers={blockers}
+        actionableForParent={metadata.actionable_for_parent === true}
+      />
+    );
+  }
+
+  return null;
+}
 
 interface ChatMessageListProps {
   messages: ChatMessageData[];
@@ -714,18 +768,17 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
       const msg = item.data;
 
-      // Render auto-verification messages as system cards, not user bubbles
-      if (msg.metadata) {
-        try {
-          const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
-          if (meta[AUTO_VERIFICATION_KEY]) {
-            return (
-              <div className="px-3 w-full" style={contentContainerStyle}>
-                <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
-              </div>
-            );
-          }
-        } catch { /* not JSON, render normally */ }
+      const systemCard = renderSystemCard(
+        parseMessageMetadata(msg.metadata),
+        msg.content,
+        msg.createdAt,
+      );
+      if (systemCard) {
+        return (
+          <div className="px-3 w-full" style={contentContainerStyle}>
+            {systemCard}
+          </div>
+        );
       }
 
       // Look up teammate info if sender is present and message is from assistant
@@ -804,18 +857,17 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             }
             const msg = item.data;
 
-            // Render auto-verification messages as system cards, not user bubbles
-            if (msg.metadata) {
-              try {
-                const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
-                if (meta[AUTO_VERIFICATION_KEY]) {
-                  return (
-                    <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-                      <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
-                    </div>
-                  );
-                }
-              } catch { /* not JSON, render normally */ }
+            const systemCard = renderSystemCard(
+              parseMessageMetadata(msg.metadata),
+              msg.content,
+              msg.createdAt,
+            );
+            if (systemCard) {
+              return (
+                <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
+                  {systemCard}
+                </div>
+              );
             }
 
             const { teammateName, teammateColor } = isProviderRole(msg.role)

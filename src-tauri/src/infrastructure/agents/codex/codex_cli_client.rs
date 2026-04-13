@@ -107,7 +107,7 @@ impl AgenticClient for CodexCliClient {
         let config_overrides = if let (Some(plugin_dir), Some(agent_name)) =
             (config.plugin_dir.as_ref(), config.agent.as_deref())
         {
-            build_codex_mcp_overrides(plugin_dir, agent_name, false)
+            build_codex_mcp_overrides(plugin_dir, agent_name, false, None)
                 .map_err(AgentError::SpawnFailed)?
         } else {
             Vec::new()

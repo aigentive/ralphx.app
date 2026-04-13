@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::Emitter;
 
-use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
+use crate::application::agent_lane_resolution::{
+    resolve_agent_spawn_settings, resolve_agent_subagent_harness,
+};
 use crate::application::chat_service::{
     events, AgentTaskCompletedPayload, AgentTaskStartedPayload, CachedStreamingTask, ChatService,
     SendMessageOptions,
@@ -92,6 +94,7 @@ async fn resolve_delegated_session_id(
     state: &HttpServerState,
     req: &DelegateStartRequest,
     parent_session_id: &str,
+    harness: AgentHarnessKind,
 ) -> Result<String, JsonError> {
     let requested_id = req
         .delegated_session_id
@@ -130,7 +133,7 @@ async fn resolve_delegated_session_id(
         "ideation",
         parent_session_id.to_string(),
         req.agent_name.clone(),
-        req.harness.unwrap_or(AgentHarnessKind::Codex),
+        harness,
     );
     session.parent_turn_id = req.parent_turn_id.clone();
     session.parent_message_id = req.parent_message_id.clone();
@@ -532,6 +535,23 @@ async fn resolve_parent_conversation_id(
         return Ok(Some(parent_conversation_id.clone()));
     }
 
+    if req.caller_context_type.as_deref() == Some("ideation") {
+        if let Some(caller_context_id) = req.caller_context_id.as_deref() {
+            return Ok(state
+                .app_state
+                .chat_conversation_repo
+                .get_active_for_context(ChatContextType::Ideation, caller_context_id)
+                .await
+                .map_err(|error| {
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to load caller conversation: {error}"),
+                    )
+                })?
+                .map(|conversation| conversation.id.as_str()));
+        }
+    }
+
     Ok(state
         .app_state
         .chat_conversation_repo
@@ -570,6 +590,28 @@ async fn resolve_delegate_model_override(
     )
     .await
     .subagent_model_cap
+}
+
+async fn resolve_delegate_harness(
+    state: &HttpServerState,
+    caller_agent_name: &str,
+    project_id: &str,
+    requested_harness: Option<AgentHarnessKind>,
+) -> AgentHarnessKind {
+    if let Some(harness) = requested_harness {
+        return harness;
+    }
+
+    resolve_agent_subagent_harness(
+        caller_agent_name,
+        Some(project_id),
+        ChatContextType::Ideation,
+        None,
+        Some(&state.app_state.agent_lane_settings_repo),
+        Some(&state.app_state.ideation_model_settings_repo),
+        Some(&state.app_state.ideation_effort_settings_repo),
+    )
+    .await
 }
 
 async fn ensure_delegated_conversation(
@@ -758,20 +800,21 @@ pub(crate) async fn start_delegate_impl(
     let parent_conversation_id = resolve_parent_conversation_id(state, &req, &parent_session_id).await?;
     let (project_id, working_directory) =
         load_parent_project_working_directory(state, &parent_session_id).await?;
+    let harness = resolve_delegate_harness(state, caller_agent_name, project_id.as_str(), req.harness)
+        .await;
 
     let resolved_spawn = resolve_agent_spawn_settings(
-        &req.agent_name,
+        caller_agent_name,
         Some(project_id.as_str()),
         ChatContextType::Ideation,
         None,
-        req.harness,
+        Some(harness),
         None,
         Some(&state.app_state.agent_lane_settings_repo),
         Some(&state.app_state.ideation_model_settings_repo),
         Some(&state.app_state.ideation_effort_settings_repo),
     )
     .await;
-    let harness = resolved_spawn.effective_harness;
     let delegated_model = resolve_delegate_model_override(
         state,
         caller_agent_name,
@@ -784,7 +827,8 @@ pub(crate) async fn start_delegate_impl(
     let project_root = resolve_project_root_from_plugin_dir(&plugin_dir);
     let (_caller_definition, definition) =
         resolve_delegation_policy(&project_root, caller_agent_name, &req.agent_name)?;
-    let delegated_session_id = resolve_delegated_session_id(state, &req, &parent_session_id).await?;
+    let delegated_session_id =
+        resolve_delegated_session_id(state, &req, &parent_session_id, harness).await?;
     let logical_effort = req
         .logical_effort
         .clone()

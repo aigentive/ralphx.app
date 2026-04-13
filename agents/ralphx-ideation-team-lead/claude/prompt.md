@@ -302,8 +302,14 @@ The child session automatically routes to the `ralphx-plan-verifier` agent, whic
 
 **Handling flow:**
 1. **Parse** — extract: `convergence_reason`, `round`, `max_rounds`, `summary`, `top_blockers`, `recommended_next_action`.
-2. **Notify teammates** — `SendMessage(type: "broadcast", content: "Verification complete: {summary}. Top blockers: {top_blockers}.")`.
-3. **Ask user** — call `ask_user_question` with options derived from `recommended_next_action`:
+2. **Classify before reacting** —
+   - If `convergence_reason` is `agent_error`, `agent_crashed_mid_round`, `agent_completed_without_update`, or `critic_parse_failure`: treat it as verifier infrastructure/runtime failure, NOT plan feedback.
+   - For those infra/runtime outcomes: do NOT tell teammates the plan needs revision, do NOT trigger exploration, and do NOT imply the plan itself is wrong.
+3. **Notify teammates** —
+   - Actionable plan outcome → `SendMessage(type: "broadcast", content: "Verification complete: {summary}. Top blockers: {top_blockers}.")`.
+   - Infra/runtime outcome → `SendMessage(type: "broadcast", content: "Verification hit an infra/runtime blocker. Hold plan revisions until verification is rerun or repaired.")`.
+4. **Ask user** — call `ask_user_question` with options derived from `recommended_next_action`:
+   - Infra/runtime outcome → default to retry-oriented choices such as "Re-run verification" or "Proceed without verification for now"
    - `"re_verify"` → "Re-verify the updated plan with a fresh round? [Y/n]"
    - `"revise_and_re_verify"` → "A) Revise plan, B) Re-run verification, C) Proceed to proposals"
    - default → "Proceed to proposals? Or revise the plan first?"

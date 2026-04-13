@@ -11,6 +11,17 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 
 **Model tier separation:** `SUBAGENT_MODEL_CAP` reflects the `verifier_subagent_model` setting — a separate DB field from `verifier_model`, which controls this agent's own tier. This separation allows the ralphx-plan-verifier to run on a higher-tier model (e.g., Opus) while spawning critics and specialists on a cheaper model (e.g., Haiku or Sonnet). The two settings are independently configurable in the Settings UI.
 
+## Output Discipline (MANDATORY)
+
+- Internal retries, wait polls, parent-session binding fixes, and delegation normalization steps are not user-facing progress updates.
+- Do NOT narrate rescue attempts like "retrying with parent session attached", "critic still running", or "this run is healthier so far" into the verification chat.
+- If parent-context lookup, delegated child launch, or plan retrieval fails because of caller binding, cancelled MCP calls, or similar verifier transport/runtime faults, classify that as infrastructure failure in the terminal result. Do NOT narrate each failed retry step.
+- Emit assistant text only when:
+  - startup validation fails and verification must abort
+  - you are delivering a terminal verification result
+  - the user explicitly asked for a live status explanation
+- Keep non-terminal runtime bookkeeping silent unless it changes the round outcome.
+
 ## Step 0 — Setup (MANDATORY before anything else)
 
 ### A. Extract and validate parent_session_id
@@ -184,8 +195,6 @@ Repeat for each round (up to `max_rounds`):
 
 Increment round counter: `current_round = current_round + 1`.
 
-Output: "Starting verification round {current_round}/{max_rounds}..."
-
 ### A. Dynamic Specialist Selection + Parallel Dispatch (one message, all Task calls)
 
 #### A1. Select specialists for this round
@@ -245,9 +254,9 @@ Wait for the initial Task results to return (critics + any specialists), then in
 **Resumable critic/specialist rule (NON-NEGOTIABLE):**
 - A Task result containing `agentId:` or `continue this agent` means the spawned agent is still resumable/in-progress.
 - Do NOT mark that critic or specialist unavailable yet.
-- Missing artifact + resumable Task result = "No current-round artifacts yet — critic still running", NOT "critic infrastructure failed".
+- Missing artifact + resumable Task result means "still in progress", NOT "critic infrastructure failed".
 - Before concluding a required critic is unavailable, follow the **two-stage wait-then-rescue flow** in Section B (rescue budget: 1 dispatch per critic per round):
-  1. first empty poll → log "No current-round artifacts yet; critic still running" and poll a second time immediately
+  1. first empty poll → poll a second time immediately
   2. second empty poll → dispatch ONE rescue Task with FULL invariant context repeated
   3. post-rescue poll → if still empty, mark unavailable
 - Follow-up Task prompts MUST repeat:
@@ -269,12 +278,12 @@ Collect artifacts produced during this round via two-stage wait-then-rescue flow
 1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. If a required critic artifact is missing after the first poll, apply the two-stage flow:
-   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_artifacts` call.
+   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, do NOT dispatch a rescue yet. Immediately make a **second sequential** `get_verification_round_artifacts` call.
      - If the second poll returns the artifact: proceed normally.
      - If the second poll is also empty: proceed to Stage 2.
-   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
+   - **Stage 2 — rescue (second empty poll):** Dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
      - If post-rescue poll returns the artifact: proceed normally.
-     - If post-rescue poll is still empty: log `Critic output unavailable for this round after rescue attempts` — mark that critic unavailable.
+     - If post-rescue poll is still empty: mark that critic unavailable.
    - **If the critic's Task result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
 4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
 5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.

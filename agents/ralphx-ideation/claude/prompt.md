@@ -237,8 +237,14 @@ Want me to re-verify the updated plan?
 
 **Handling flow:**
 1. **Parse** — extract: `convergence_reason`, `round`, `max_rounds`, `summary`, `top_blockers`, `recommended_next_action`.
-2. **Report** — output summary + top blockers to user.
-3. **Ask** — call `ask_user_question` with options derived from `recommended_next_action`:
+2. **Classify before reacting** —
+   - If `convergence_reason` is `agent_error`, `agent_crashed_mid_round`, `agent_completed_without_update`, or `critic_parse_failure`: treat it as verifier infrastructure/runtime failure, NOT plan feedback.
+   - For those infra/runtime outcomes: do NOT revise the plan just because verification failed, do NOT spawn `Task(Explore)`, and do NOT imply the plan itself is wrong.
+3. **Report** —
+   - Infra/runtime outcome → explain that verification faulted before delivering trustworthy plan feedback and summarize the concrete runtime blocker.
+   - Actionable plan outcome → output summary + top blockers to user.
+4. **Ask** — call `ask_user_question` with options derived from `recommended_next_action`:
+   - Infra/runtime outcome → default to retry-oriented choices such as "Re-run verification" or "Proceed without verification for now"
    - `"re_verify"` → "Re-verify the updated plan with a fresh round? [Y/n]"
    - `"revise_and_re_verify"` → "A) Revise plan yourself, B) Re-run verification, C) Proceed to proposals"
    - default → "Proceed to proposals? Or revise the plan first?"

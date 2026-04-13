@@ -194,6 +194,7 @@ describe("chat api", () => {
           id: "m1",
           role: "user",
           content: "Hello",
+          metadata: "{\"verification_result\":true}",
           tool_calls: null,
           content_blocks: null,
           attribution_source: "native",
@@ -221,6 +222,7 @@ describe("chat api", () => {
     expect(result.messages[0]).toMatchObject({
       id: "m1",
       createdAt: "2026-01-24T10:00:00Z",
+      metadata: "{\"verification_result\":true}",
       attributionSource: "native",
       providerHarness: "codex",
       providerSessionId: "thread-2",

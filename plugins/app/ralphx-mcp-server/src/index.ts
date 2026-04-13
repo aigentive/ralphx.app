@@ -43,6 +43,10 @@ import {
 } from "./permission-handler.js";
 import { handleAskUserQuestion, AskUserQuestionArgs } from "./question-handler.js";
 import { handleRequestTeamPlan, RequestTeamPlanArgs } from "./team-plan-handler.js";
+import {
+  hydrateRalphxRuntimeEnvFromCli,
+  parseCliOptionFromArgs,
+} from "./runtime-context.js";
 
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
@@ -184,28 +188,12 @@ export function selectLatestArtifactsByPrefix(
   });
 }
 
-/**
- * Parse command line arguments for --agent-type
- * Returns the agent type if found, undefined otherwise
- */
-function parseAgentTypeFromArgs(): string | undefined {
-  for (const arg of process.argv) {
-    if (arg.startsWith("--agent-type=")) {
-      return arg.substring("--agent-type=".length);
-    }
-    if (arg === "--agent-type") {
-      const idx = process.argv.indexOf(arg);
-      if (idx >= 0 && idx + 1 < process.argv.length) {
-        return process.argv[idx + 1];
-      }
-    }
-  }
-  return undefined;
-}
+const runtimeContext = hydrateRalphxRuntimeEnvFromCli(process.argv, process.env);
+const cliAgentType = parseCliOptionFromArgs(process.argv, "agent-type");
 
-// Agent type: prefer CLI args over environment (Claude CLI doesn't pass env to MCP servers)
-const cliAgentType = parseAgentTypeFromArgs();
-const AGENT_TYPE = cliAgentType || process.env.RALPHX_AGENT_TYPE || "unknown";
+// Agent type: prefer CLI args over environment and hydrate process.env from CLI first
+// because Codex does not reliably propagate parent env vars into MCP child processes.
+const AGENT_TYPE = runtimeContext.agentType || "unknown";
 
 // Set the agent type in tools module for filtering
 setAgentType(AGENT_TYPE);
@@ -219,16 +207,12 @@ if (cliAgentType) {
   safeError(`[RalphX MCP] Agent type unknown (no CLI arg or env var)`);
 }
 
-// Task ID from environment (for task-level scoping enforcement)
-const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
-
-// Project ID from environment (for project-level scoping enforcement)
-const RALPHX_PROJECT_ID = process.env.RALPHX_PROJECT_ID;
-const RALPHX_WORKING_DIRECTORY = process.env.RALPHX_WORKING_DIRECTORY;
-
-// Context type and ID from environment (set by chat_service_context for all agent spawns)
-const RALPHX_CONTEXT_TYPE = process.env.RALPHX_CONTEXT_TYPE;
-const RALPHX_CONTEXT_ID = process.env.RALPHX_CONTEXT_ID;
+// Runtime scope for task/project/context enforcement.
+const RALPHX_TASK_ID = runtimeContext.taskId;
+const RALPHX_PROJECT_ID = runtimeContext.projectId;
+const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
+const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
+const RALPHX_CONTEXT_ID = runtimeContext.contextId;
 
 /**
  * Validate that a tool call's task_id parameter matches the assigned task

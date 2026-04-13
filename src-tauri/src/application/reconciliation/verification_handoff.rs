@@ -1,12 +1,13 @@
-//! Verification result handoff — synthesizes and injects `<verification-result>` XML
-//! into the parent ideation session's conversation when reconcile returns `NeedsRevision`.
+//! Verification result handoff for parent ideation sessions.
 //!
-//! The message is stored directly via repos (fire-and-forget) rather than going through
-//! the full app chat-service stack, because the handler call site only has access to
-//! individual repos (not `artifact_repo` / `project_repo` needed for the runtime service).
+//! We persist a structured system message for the UI and only enqueue the legacy
+//! `<verification-result>` XML handoff when the outcome is actionable for the parent
+//! ideation agent. Infra/runtime failures should inform the user without nudging the
+//! parent agent into a bogus plan-revision loop.
 
 use std::sync::Arc;
 
+use serde_json::json;
 use tracing::warn;
 
 use crate::domain::entities::{
@@ -21,8 +22,9 @@ use crate::domain::services::MessageQueue;
 pub(crate) const ESCALATED_TO_PARENT: &str = "escalated_to_parent";
 
 /// XML tag marker used to detect an already-injected verification-result message.
-/// Used to build the LIKE pattern for the dedup guard in `exists_verification_result_in_conversation`.
+/// Used for legacy content-based dedup and agent-facing queued handoff payloads.
 pub(crate) const VERIFICATION_RESULT_MARKER: &str = "<verification-result>";
+pub(crate) const VERIFICATION_RESULT_METADATA_KEY: &str = "verification_result";
 
 /// Result returned by `reconcile_verification_on_child_complete`.
 ///
@@ -59,25 +61,48 @@ pub async fn maybe_inject_verification_result_message(
         return;
     }
 
-    // Build XML payload
+    let current_round = result
+        .parsed_meta
+        .as_ref()
+        .map(|m| m.current_round)
+        .unwrap_or(0);
+    let max_rounds = result
+        .parsed_meta
+        .as_ref()
+        .map(|m| m.max_rounds)
+        .unwrap_or(0);
+    let gaps = result
+        .parsed_meta
+        .as_ref()
+        .map(|m| m.current_gaps.as_slice())
+        .unwrap_or(&[]);
+    let summary = summarize_gaps(gaps);
+    let blockers = top_3_blockers(gaps);
+    let recommended_action = derive_recommended_action(convergence_reason);
+    let actionable_for_parent = is_actionable_for_parent_agent(convergence_reason);
+
+    // Build legacy XML payload for the agent-facing queue only.
     let payload = format_verification_result_xml(
         parent_id.as_str(),
         convergence_reason,
-        result
-            .parsed_meta
-            .as_ref()
-            .map(|m| m.current_round)
-            .unwrap_or(0),
-        result
-            .parsed_meta
-            .as_ref()
-            .map(|m| m.max_rounds)
-            .unwrap_or(0),
-        result
-            .parsed_meta
-            .as_ref()
-            .map(|m| m.current_gaps.as_slice())
-            .unwrap_or(&[]),
+        current_round,
+        max_rounds,
+        gaps,
+    );
+    let metadata = build_verification_result_metadata(
+        convergence_reason,
+        current_round,
+        max_rounds,
+        &summary,
+        &blockers,
+        recommended_action,
+        actionable_for_parent,
+    );
+    let content = format_verification_result_summary(
+        &summary,
+        &blockers,
+        recommended_action,
+        actionable_for_parent,
     );
 
     // Find or create the active conversation for the parent session
@@ -110,8 +135,9 @@ pub async fn maybe_inject_verification_result_message(
         }
     };
 
-    // Build and persist the system message
-    let mut message = ChatMessage::system_in_session(parent_id.clone(), payload.clone());
+    // Build and persist the user-facing system message
+    let mut message = ChatMessage::system_in_session(parent_id.clone(), content)
+        .with_metadata(metadata);
     message.conversation_id = conversation_id;
 
     if let Err(e) = chat_message_repo.create(message).await {
@@ -122,9 +148,12 @@ pub async fn maybe_inject_verification_result_message(
         );
     }
 
-    // Best-effort: forward to any running agent on the parent session so it sees
-    // the message immediately without waiting for the next spawn cycle.
-    message_queue.queue(ChatContextType::Ideation, parent_id.as_str(), payload);
+    // Only actionable verification outcomes should wake the parent ideation agent.
+    // Infra/runtime failures still persist a user-facing card but do not trigger
+    // a bogus self-revision loop in the parent session.
+    if actionable_for_parent {
+        message_queue.queue(ChatContextType::Ideation, parent_id.as_str(), payload);
+    }
 }
 
 /// Inject a `<verification-result>` handoff into the parent conversation if it hasn't
@@ -243,6 +272,61 @@ pub fn format_verification_result_xml(
     )
 }
 
+fn build_verification_result_metadata(
+    convergence_reason: Option<&str>,
+    current_round: u32,
+    max_rounds: u32,
+    summary: &str,
+    blockers: &[(String, String)],
+    recommended_action: &str,
+    actionable_for_parent: bool,
+) -> String {
+    let blockers_json: Vec<_> = blockers
+        .iter()
+        .map(|(severity, description)| {
+            json!({
+                "severity": severity,
+                "description": description,
+            })
+        })
+        .collect();
+
+    json!({
+        VERIFICATION_RESULT_METADATA_KEY: true,
+        "status": "needs_revision",
+        "convergence_reason": convergence_reason,
+        "current_round": current_round,
+        "max_rounds": max_rounds,
+        "summary": summary,
+        "top_blockers": blockers_json,
+        "recommended_next_action": recommended_action,
+        "actionable_for_parent": actionable_for_parent,
+    })
+    .to_string()
+}
+
+fn format_verification_result_summary(
+    summary: &str,
+    blockers: &[(String, String)],
+    recommended_action: &str,
+    actionable_for_parent: bool,
+) -> String {
+    let lead = if actionable_for_parent {
+        "Verification found plan blockers."
+    } else {
+        "Verification hit an infrastructure/runtime blocker."
+    };
+
+    let blocker_line = blockers.first().map_or_else(
+        || "No blocker details were published.".to_string(),
+        |(severity, description)| format!("Top blocker ({severity}): {description}"),
+    );
+
+    format!(
+        "{lead}\n\nSummary: {summary}\n{blocker_line}\nRecommended next action: {recommended_action}"
+    )
+}
+
 /// Summarize gap severity distribution as a human-readable sentence.
 pub(crate) fn summarize_gaps(gaps: &[VerificationGap]) -> String {
     if gaps.is_empty() {
@@ -340,11 +424,24 @@ pub(crate) fn derive_recommended_action(convergence_reason: Option<&str>) -> &'s
         Some("max_rounds") => "revise_plan",
         Some("jaccard_converged") => "revise_plan",
         Some("gap_score_plateau") => "explore_code_paths",
-        Some("agent_crashed_mid_round") | Some("agent_completed_without_update") => {
+        Some("agent_crashed_mid_round")
+        | Some("agent_completed_without_update")
+        | Some("agent_error")
+        | Some("critic_parse_failure")
+        | Some("user_stopped")
+        | Some("user_skipped")
+        | Some("user_reverted") => {
             "rerun_verification"
         }
         _ => "rerun_verification",
     }
+}
+
+pub(crate) fn is_actionable_for_parent_agent(convergence_reason: Option<&str>) -> bool {
+    matches!(
+        convergence_reason,
+        Some("max_rounds") | Some("jaccard_converged") | Some("gap_score_plateau")
+    )
 }
 
 #[cfg(test)]

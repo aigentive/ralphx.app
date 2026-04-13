@@ -453,13 +453,23 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         conversation_id: &ChatConversationId,
     ) -> AppResult<bool> {
         let conv_id_str = conversation_id.as_str().to_string();
-        // Build LIKE pattern from the canonical marker constant to avoid hardcoded strings
-        let like_pattern = format!("%{}%", crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER);
+        let content_like_pattern = format!(
+            "%{}%",
+            crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER
+        );
+        let metadata_like_pattern = format!(
+            "%\"{}\"%",
+            crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_METADATA_KEY
+        );
         self.db
             .run(move |conn| {
                 let exists: bool = conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM chat_messages WHERE conversation_id = ?1 AND content LIKE ?2)",
-                    rusqlite::params![conv_id_str, like_pattern],
+                    "SELECT EXISTS(
+                        SELECT 1 FROM chat_messages
+                        WHERE conversation_id = ?1
+                          AND (content LIKE ?2 OR metadata LIKE ?3)
+                    )",
+                    rusqlite::params![conv_id_str, content_like_pattern, metadata_like_pattern],
                     |row| row.get(0),
                 )
                 // Fail-safe: assume injected on any DB error to prevent double injection

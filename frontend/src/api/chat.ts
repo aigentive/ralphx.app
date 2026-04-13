@@ -507,6 +507,7 @@ const AgentMessageSchema = z.object({
   id: z.string(),
   role: z.string(),
   content: z.string(),
+  metadata: z.string().nullable().optional(),
   tool_calls: z.any().nullable(),
   content_blocks: z.any().nullable(),
   sender: z.string().nullable().optional(),
@@ -552,7 +553,7 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     cacheReadTokens: raw.cache_read_tokens ?? null,
     estimatedUsd: raw.estimated_usd ?? null,
     content: raw.content,
-    metadata: null,
+    metadata: raw.metadata ?? null,
     parentMessageId: null,
     conversationId: null,
     // Parse at API layer to avoid redundant parsing in components

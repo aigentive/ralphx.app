@@ -101,6 +101,16 @@ impl Default for CodexExecCliConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexMcpRuntimeContext {
+    pub context_type: Option<String>,
+    pub context_id: Option<String>,
+    pub task_id: Option<String>,
+    pub project_id: Option<String>,
+    pub working_directory: Option<PathBuf>,
+    pub lead_session_id: Option<String>,
+}
+
 fn encode_codex_string_literal(value: &str) -> Result<String, String> {
     serde_json::to_string(value)
         .map_err(|error| format!("Failed to encode Codex string literal: {error}"))
@@ -115,6 +125,7 @@ pub fn build_codex_mcp_overrides(
     plugin_dir: &Path,
     agent_name: &str,
     is_external_mcp: bool,
+    runtime_context: Option<&CodexMcpRuntimeContext>,
 ) -> Result<Vec<String>, String> {
     let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
     let short_name = mcp_agent_type(agent_name);
@@ -136,6 +147,33 @@ pub fn build_codex_mcp_overrides(
         "--agent-type".to_string(),
         short_name.to_string(),
     ];
+
+    if let Some(runtime_context) = runtime_context {
+        if let Some(context_type) = runtime_context.context_type.as_deref() {
+            mcp_args.push("--context-type".to_string());
+            mcp_args.push(context_type.to_string());
+        }
+        if let Some(context_id) = runtime_context.context_id.as_deref() {
+            mcp_args.push("--context-id".to_string());
+            mcp_args.push(context_id.to_string());
+        }
+        if let Some(task_id) = runtime_context.task_id.as_deref() {
+            mcp_args.push("--task-id".to_string());
+            mcp_args.push(task_id.to_string());
+        }
+        if let Some(project_id) = runtime_context.project_id.as_deref() {
+            mcp_args.push("--project-id".to_string());
+            mcp_args.push(project_id.to_string());
+        }
+        if let Some(working_directory) = runtime_context.working_directory.as_ref() {
+            mcp_args.push("--working-directory".to_string());
+            mcp_args.push(working_directory.to_string_lossy().into_owned());
+        }
+        if let Some(lead_session_id) = runtime_context.lead_session_id.as_deref() {
+            mcp_args.push("--lead-session-id".to_string());
+            mcp_args.push(lead_session_id.to_string());
+        }
+    }
 
     let enabled_tools = get_agent_config(short_name).map(|config| {
         let tools: Vec<String> = config

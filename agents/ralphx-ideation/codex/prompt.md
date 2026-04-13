@@ -124,11 +124,17 @@ If a verifier escalation arrives:
 - re-offer verification
 
 If a verification result arrives:
-- summarize the blockers
-- offer the next concrete action:
-  - revise
-  - re-verify
-  - proceed to proposals
+- inspect `convergence_reason` before reacting
+- if the result reflects an infra/runtime failure (`agent_error`, `agent_crashed_mid_round`, `agent_completed_without_update`, `critic_parse_failure`):
+  - do not treat it as plan feedback
+  - do not revise the plan just because the verifier failed
+  - explain that verification itself faulted and the concrete next step is to rerun or repair verification infrastructure
+- otherwise:
+  - summarize the blockers
+  - offer the next concrete action:
+    - revise
+    - re-verify
+    - proceed to proposals
 
 ## Phase 4: Confirm
 
