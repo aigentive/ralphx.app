@@ -958,7 +958,6 @@ async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
     lane_settings.effort = Some(crate::domain::agents::LogicalEffort::XHigh);
     lane_settings.approval_policy = Some("on-request".to_string());
     lane_settings.sandbox_mode = Some("workspace-write".to_string());
-    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
     agent_lane_settings_repo
         .upsert_for_project(project_id.as_str(), AgentLane::ExecutionWorker, &lane_settings)
         .await
@@ -1017,7 +1016,6 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
     lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
     lane_settings.approval_policy = Some("never".to_string());
     lane_settings.sandbox_mode = Some("read-only".to_string());
-    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
     agent_lane_settings_repo
         .upsert_for_project(
             project_id.as_str(),
@@ -1084,7 +1082,6 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
     let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
     lane_settings.model = Some("gpt-5.4".to_string());
     lane_settings.effort = Some(crate::domain::agents::LogicalEffort::High);
-    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
     agent_lane_settings_repo
         .upsert_for_project(project_id.as_str(), AgentLane::ExecutionReviewer, &lane_settings)
         .await
@@ -1150,7 +1147,6 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
     let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
     lane_settings.model = Some("gpt-5.4".to_string());
     lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
-    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
     agent_lane_settings_repo
         .upsert_for_project(project_id.as_str(), AgentLane::ExecutionMerger, &lane_settings)
         .await
@@ -1188,7 +1184,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
 }
 
 #[tokio::test]
-async fn test_spawn_falls_back_to_default_harness_when_requested_harness_is_unavailable() {
+async fn test_spawn_does_not_fall_back_when_requested_harness_is_unavailable() {
     let default_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
     let unavailable_claude_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, false));
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
@@ -1217,11 +1213,6 @@ async fn test_spawn_falls_back_to_default_harness_when_requested_harness_is_unav
 
     spawner.spawn("worker", "task-default-harness").await;
 
-    assert_eq!(default_client.spawn_count().await, 1);
+    assert_eq!(default_client.spawn_count().await, 0);
     assert_eq!(unavailable_claude_client.spawn_count().await, 0);
-    let config = default_client
-        .last_spawn()
-        .await
-        .expect("default harness spawn config");
-    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
 }

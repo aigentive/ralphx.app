@@ -30,7 +30,6 @@ export const AgentLaneSettingsResponseSchema = z.object({
   effort: z.string().nullable().optional(),
   approvalPolicy: z.string().nullable().optional(),
   sandboxMode: z.string().nullable().optional(),
-  fallbackHarness: HarnessSchema.nullable().optional(),
   updatedAt: z.string(),
 });
 
@@ -42,9 +41,7 @@ export const AgentHarnessAvailabilityResponseSchema = z.object({
   projectId: z.string().nullable().optional(),
   lane: AgentLaneSchema,
   configuredHarness: HarnessSchema.nullable().optional(),
-  fallbackHarness: HarnessSchema.nullable().optional(),
   effectiveHarness: HarnessSchema,
-  fallbackActivated: z.boolean(),
   binaryPath: z.string().nullable().optional(),
   binaryFound: z.boolean(),
   probeSucceeded: z.boolean(),
@@ -62,8 +59,6 @@ export interface AgentHarnessLaneView {
   row: AgentLaneSettingsResponse | null;
   configuredHarness: Harness | null;
   effectiveHarness: Harness;
-  fallbackHarness: Harness | null;
-  fallbackActivated: boolean;
   binaryPath: string | null;
   binaryFound: boolean;
   probeSucceeded: boolean;
@@ -80,7 +75,6 @@ export interface UpdateAgentHarnessLaneInput {
   effort?: string | null;
   approvalPolicy?: string | null;
   sandboxMode?: string | null;
-  fallbackHarness?: Harness | null;
 }
 
 export const IDEATION_LANES: AgentLane[] = [
@@ -105,8 +99,6 @@ export const defaultAgentHarnessLanes: AgentHarnessLaneView[] =
     row: null,
     configuredHarness: null,
     effectiveHarness: "claude",
-    fallbackHarness: null,
-    fallbackActivated: false,
     binaryPath: null,
     binaryFound: false,
     probeSucceeded: false,
@@ -130,9 +122,6 @@ export function mergeAgentHarnessState(
         row?.harness ?? status?.configuredHarness ?? null,
       effectiveHarness:
         status?.effectiveHarness ?? row?.harness ?? "claude",
-      fallbackHarness:
-        row?.fallbackHarness ?? status?.fallbackHarness ?? null,
-      fallbackActivated: status?.fallbackActivated ?? false,
       binaryPath: status?.binaryPath ?? null,
       binaryFound: status?.binaryFound ?? false,
       probeSucceeded: status?.probeSucceeded ?? false,

@@ -16,7 +16,6 @@ pub struct AgentLaneSettingsResponse {
     pub effort: Option<String>,
     pub approval_policy: Option<String>,
     pub sandbox_mode: Option<String>,
-    pub fallback_harness: Option<String>,
     pub updated_at: String,
 }
 
@@ -30,7 +29,6 @@ pub struct UpdateAgentLaneSettingsInput {
     pub effort: Option<String>,
     pub approval_policy: Option<String>,
     pub sandbox_mode: Option<String>,
-    pub fallback_harness: Option<String>,
 }
 
 fn parse_lane(value: &str) -> Result<AgentLane, String> {
@@ -55,16 +53,6 @@ fn parse_effort(value: Option<&str>) -> Result<Option<LogicalEffort>, String> {
         .transpose()
 }
 
-fn parse_optional_harness(value: Option<&str>) -> Result<Option<AgentHarnessKind>, String> {
-    value
-        .map(|harness| {
-            harness
-                .parse::<AgentHarnessKind>()
-                .map_err(|err| format!("Invalid fallbackHarness: {err}"))
-        })
-        .transpose()
-}
-
 fn to_response(row: StoredAgentLaneSettings) -> AgentLaneSettingsResponse {
     AgentLaneSettingsResponse {
         project_id: row.project_id,
@@ -74,7 +62,6 @@ fn to_response(row: StoredAgentLaneSettings) -> AgentLaneSettingsResponse {
         effort: row.settings.effort.map(|value| value.to_string()),
         approval_policy: row.settings.approval_policy,
         sandbox_mode: row.settings.sandbox_mode,
-        fallback_harness: row.settings.fallback_harness.map(|value| value.to_string()),
         updated_at: row.updated_at.to_rfc3339(),
     }
 }
@@ -109,7 +96,6 @@ pub async fn update_agent_lane_settings(
     let lane = parse_lane(&input.lane)?;
     let harness = parse_harness(&input.harness)?;
     let effort = parse_effort(input.effort.as_deref())?;
-    let fallback_harness = parse_optional_harness(input.fallback_harness.as_deref())?;
 
     let settings = AgentLaneSettings {
         harness,
@@ -117,7 +103,7 @@ pub async fn update_agent_lane_settings(
         effort,
         approval_policy: input.approval_policy,
         sandbox_mode: input.sandbox_mode,
-        fallback_harness,
+        fallback_harness: None,
     };
 
     let row = if let Some(project_id) = input.project_id {
@@ -146,10 +132,6 @@ mod tests {
         assert_eq!(parse_lane("ideation_primary").unwrap(), AgentLane::IdeationPrimary);
         assert_eq!(parse_harness("codex").unwrap(), AgentHarnessKind::Codex);
         assert_eq!(parse_effort(Some("xhigh")).unwrap(), Some(LogicalEffort::XHigh));
-        assert_eq!(
-            parse_optional_harness(Some("claude")).unwrap(),
-            Some(AgentHarnessKind::Claude)
-        );
     }
 
     #[test]
@@ -157,6 +139,5 @@ mod tests {
         assert!(parse_lane("unknown").is_err());
         assert!(parse_harness("unknown").is_err());
         assert!(parse_effort(Some("max")).is_err());
-        assert!(parse_optional_harness(Some("unknown")).is_err());
     }
 }

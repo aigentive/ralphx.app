@@ -379,18 +379,21 @@ impl AgenticClientSpawner {
         agent_type: &str,
         task_id: &str,
         project_id: Option<&str>,
-    ) -> (
+    ) -> Result<
+        (
         AgentHarnessKind,
         Option<String>,
         Option<LogicalEffort>,
         Option<String>,
         Option<String>,
-    ) {
+        ),
+        String,
+    > {
         let Some(context_type) = Self::context_type_for_agent(agent_type) else {
-            return (self.default_harness, None, None, None, None);
+            return Ok((self.default_harness, None, None, None, None));
         };
         let Some(agent_name) = Self::resolve_process_agent_name(agent_type) else {
-            return (self.default_harness, None, None, None, None);
+            return Ok((self.default_harness, None, None, None, None));
         };
         let entity_status = self.resolve_task_status(task_id).await;
 
@@ -407,32 +410,25 @@ impl AgenticClientSpawner {
         )
         .await;
 
-        let mut harness = resolved.effective_harness;
-        if harness != self.default_harness {
-            let harness_available = self
-                .resolve_client_for_harness(harness)
-                .is_available()
-                .await
-                .unwrap_or(false);
-            if !harness_available {
-                tracing::warn!(
-                    agent_type,
-                    project_id = project_id.unwrap_or(""),
-                    harness = %harness,
-                    fallback_harness = %self.default_harness,
-                    "Requested execution harness unavailable; falling back to default harness client"
-                );
-                harness = self.default_harness;
-            }
+        let harness = resolved.effective_harness;
+        let client = self.resolve_client_for_harness(harness).ok_or_else(|| {
+            format!("Configured execution harness {} is not registered in the runtime", harness)
+        })?;
+        let harness_available = client.is_available().await.unwrap_or(false);
+        if !harness_available {
+            return Err(format!(
+                "Configured execution harness {} is unavailable for {}",
+                harness, agent_type
+            ));
         }
 
-        (
+        Ok((
             harness,
             Some(resolved.model),
             resolved.logical_effort,
             resolved.approval_policy,
             resolved.sandbox_mode,
-        )
+        ))
     }
 
     fn build_agent_config(
@@ -487,18 +483,27 @@ impl AgenticClientSpawner {
         config
     }
 
-    fn resolve_client_for_harness(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
-        self.harness_clients
-            .get(&harness)
-            .cloned()
-            .unwrap_or_else(|| Arc::clone(&self.default_client))
+    fn resolve_client_for_harness(&self, harness: AgentHarnessKind) -> Option<Arc<dyn AgenticClient>> {
+        if harness == self.default_harness {
+            Some(Arc::clone(&self.default_client))
+        } else {
+            self.harness_clients.get(&harness).cloned()
+        }
     }
 
-    fn resolve_client_for_handle(&self, handle: &AgentHandle) -> Arc<dyn AgenticClient> {
+    fn resolve_client_for_handle(&self, handle: &AgentHandle) -> Option<Arc<dyn AgenticClient>> {
         AgentHarnessKind::try_from(handle.client_type.clone())
             .ok()
-            .and_then(|harness| self.harness_clients.get(&harness).cloned())
-            .unwrap_or_else(|| Arc::clone(&self.default_client))
+            .and_then(|harness| self.resolve_client_for_harness(harness))
+    }
+
+    fn rollback_spawn_failure(&self) {
+        if let Some(ref exec) = self.execution_state {
+            exec.decrement_running();
+            if let Some(ref handle) = self.app_handle {
+                exec.emit_status_changed(handle, "task_spawn_failed");
+            }
+        }
     }
 }
 
@@ -578,10 +583,28 @@ impl AgentSpawner for AgenticClientSpawner {
 
         // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
-        let (harness, model, logical_effort, approval_policy, sandbox_mode) = self
+        let (harness, model, logical_effort, approval_policy, sandbox_mode) = match self
             .resolve_spawn_harness(agent_type, task_id, project_id.as_deref())
-            .await;
-        let client = self.resolve_client_for_harness(harness);
+            .await
+        {
+            Ok(values) => values,
+            Err(error) => {
+                self.rollback_spawn_failure();
+                self.emit_error(task_id, ErrorInfo::new(error, "resolve_spawn_harness"));
+                return;
+            }
+        };
+        let Some(client) = self.resolve_client_for_harness(harness) else {
+            self.rollback_spawn_failure();
+            self.emit_error(
+                task_id,
+                ErrorInfo::new(
+                    format!("Configured execution harness {} is not registered in the runtime", harness),
+                    "resolve_client_for_harness",
+                ),
+            );
+            return;
+        };
         let client_type = client.capabilities().client_type.clone();
         let config = self.build_agent_config(
             harness,
@@ -605,6 +628,7 @@ impl AgentSpawner for AgenticClientSpawner {
                 handles.insert(handle_key, handle);
             }
             Err(e) => {
+                self.rollback_spawn_failure();
                 // Emit error event
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "spawn_agent"));
             }
@@ -626,7 +650,16 @@ impl AgentSpawner for AgenticClientSpawner {
 
         if let Some(handle) = handle {
             // Wait for agent to complete
-            let client = self.resolve_client_for_handle(&handle);
+            let Some(client) = self.resolve_client_for_handle(&handle) else {
+                self.emit_error(
+                    task_id,
+                    ErrorInfo::new(
+                        format!("No client registered for handle {:?}", handle.client_type),
+                        "resolve_client_for_handle",
+                    ),
+                );
+                return;
+            };
             if let Err(e) = client.wait_for_completion(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "wait_for"));
             }
@@ -641,7 +674,16 @@ impl AgentSpawner for AgenticClientSpawner {
         };
 
         if let Some(handle) = handle {
-            let client = self.resolve_client_for_handle(&handle);
+            let Some(client) = self.resolve_client_for_handle(&handle) else {
+                self.emit_error(
+                    task_id,
+                    ErrorInfo::new(
+                        format!("No client registered for handle {:?}", handle.client_type),
+                        "resolve_client_for_handle",
+                    ),
+                );
+                return;
+            };
             if let Err(e) = client.stop_agent(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "stop_agent"));
             }

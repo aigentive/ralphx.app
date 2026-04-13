@@ -5,8 +5,8 @@ mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
 use crate::domain::agents::{
-    default_fallback_harness_for, standard_agent_lane_defaults, AgentHarnessKind, AgentLane,
-    AgentLaneSettings, LogicalEffort,
+    standard_agent_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings,
+    LogicalEffort,
 };
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
@@ -1053,14 +1053,12 @@ fn apply_agent_harness_env_overrides_with(
             .clone()
             .unwrap_or_else(|| AgentLaneSettings::new(AgentHarnessKind::Claude));
         let mut changed = false;
-        let mut harness_overridden = false;
 
         if let Some(raw) = normalize_override_value(lookup(&harness_key)) {
             match raw.parse::<AgentHarnessKind>() {
                 Ok(value) => {
                     settings.harness = value;
                     changed = true;
-                    harness_overridden = true;
                 }
                 Err(error) => {
                     tracing::warn!(lane = %lane, env = %harness_key, value = %raw, %error, "Ignoring invalid agent harness env override");
@@ -1097,13 +1095,6 @@ fn apply_agent_harness_env_overrides_with(
 
         if !changed {
             continue;
-        }
-
-        if (existing.is_none() || harness_overridden)
-            && default_fallback_harness_for(settings.harness).is_some()
-            && settings.fallback_harness.is_none()
-        {
-            settings.fallback_harness = default_fallback_harness_for(settings.harness);
         }
 
         if settings.fallback_harness == Some(settings.harness) {

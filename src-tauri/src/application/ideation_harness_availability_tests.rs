@@ -31,7 +31,6 @@ fn codex_lane_uses_codex_when_core_exec_support_is_available() {
     let config = ResolvedLaneHarnessConfig {
         lane: AgentLane::IdeationPrimary,
         configured_harness: Some(AgentHarnessKind::Codex),
-        fallback_harness: Some(AgentHarnessKind::Claude),
     };
     let claude_probe = HarnessRuntimeProbe {
         binary_path: Some("/opt/homebrew/bin/claude".to_string()),
@@ -54,7 +53,6 @@ fn codex_lane_uses_codex_when_core_exec_support_is_available() {
         build_lane_harness_availability(config, &probe_map(claude_probe, codex_probe));
 
     assert_eq!(availability.effective_harness, AgentHarnessKind::Codex);
-    assert!(!availability.fallback_activated);
     assert!(availability.available);
     assert_eq!(
         availability.binary_path.as_deref(),
@@ -63,11 +61,10 @@ fn codex_lane_uses_codex_when_core_exec_support_is_available() {
 }
 
 #[test]
-fn codex_lane_falls_back_to_claude_when_requested_and_codex_is_unavailable() {
+fn codex_lane_stays_unavailable_when_codex_is_unavailable() {
     let config = ResolvedLaneHarnessConfig {
         lane: AgentLane::IdeationVerifier,
         configured_harness: Some(AgentHarnessKind::Codex),
-        fallback_harness: Some(AgentHarnessKind::Claude),
     };
     let claude_probe = HarnessRuntimeProbe {
         binary_path: Some("/opt/homebrew/bin/claude".to_string()),
@@ -89,9 +86,8 @@ fn codex_lane_falls_back_to_claude_when_requested_and_codex_is_unavailable() {
     let availability =
         build_lane_harness_availability(config, &probe_map(claude_probe, codex_probe));
 
-    assert_eq!(availability.effective_harness, AgentHarnessKind::Claude);
-    assert!(availability.fallback_activated);
-    assert!(availability.available);
+    assert_eq!(availability.effective_harness, AgentHarnessKind::Codex);
+    assert!(!availability.available);
     assert_eq!(
         availability.error.as_deref(),
         Some("Codex CLI is missing required capability: json_output")
@@ -107,7 +103,6 @@ fn default_lane_without_configuration_defaults_to_claude() {
     let config = ResolvedLaneHarnessConfig {
         lane: AgentLane::IdeationSubagent,
         configured_harness: None,
-        fallback_harness: None,
     };
 
     let availability = build_lane_harness_availability(
@@ -119,7 +114,6 @@ fn default_lane_without_configuration_defaults_to_claude() {
     );
 
     assert_eq!(availability.effective_harness, AgentHarnessKind::Claude);
-    assert!(!availability.fallback_activated);
     assert!(!availability.available);
     assert_eq!(availability.error.as_deref(), Some("Claude CLI not found"));
 }
@@ -129,9 +123,7 @@ fn validate_claude_runtime_path_accepts_available_claude() {
     let availability = LaneHarnessAvailability {
         lane: AgentLane::IdeationPrimary,
         configured_harness: Some(AgentHarnessKind::Claude),
-        fallback_harness: None,
         effective_harness: AgentHarnessKind::Claude,
-        fallback_activated: false,
         binary_path: None,
         binary_found: true,
         probe_succeeded: true,
@@ -148,9 +140,7 @@ fn validate_claude_runtime_path_rejects_available_codex() {
     let availability = LaneHarnessAvailability {
         lane: AgentLane::IdeationPrimary,
         configured_harness: Some(AgentHarnessKind::Codex),
-        fallback_harness: None,
         effective_harness: AgentHarnessKind::Codex,
-        fallback_activated: false,
         binary_path: None,
         binary_found: true,
         probe_succeeded: true,
@@ -177,7 +167,6 @@ fn missing_requested_probe_does_not_silently_fall_back_to_default_probe() {
     let config = ResolvedLaneHarnessConfig {
         lane: AgentLane::IdeationPrimary,
         configured_harness: Some(AgentHarnessKind::Codex),
-        fallback_harness: None,
     };
     let probes = HashMap::from([(
         AgentHarnessKind::Claude,

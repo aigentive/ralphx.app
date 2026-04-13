@@ -13,9 +13,7 @@ pub struct AgentLaneHarnessAvailabilityResponse {
     pub project_id: Option<String>,
     pub lane: String,
     pub configured_harness: Option<String>,
-    pub fallback_harness: Option<String>,
     pub effective_harness: String,
-    pub fallback_activated: bool,
     pub binary_path: Option<String>,
     pub binary_found: bool,
     pub probe_succeeded: bool,
@@ -37,9 +35,7 @@ fn to_response(
         configured_harness: availability
             .configured_harness
             .map(|value| value.to_string()),
-        fallback_harness: availability.fallback_harness.map(|value| value.to_string()),
         effective_harness: availability.effective_harness.to_string(),
-        fallback_activated: availability.fallback_activated,
         binary_path: availability.binary_path,
         binary_found: availability.binary_found,
         probe_succeeded: availability.probe_succeeded,

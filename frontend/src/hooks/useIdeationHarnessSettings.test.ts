@@ -18,8 +18,6 @@ vi.mock("@/api/ideation-harness", () => ({
       row: null,
       configuredHarness: null,
       effectiveHarness: "claude",
-      fallbackHarness: null,
-      fallbackActivated: false,
       binaryPath: null,
       binaryFound: false,
       probeSucceeded: false,
@@ -36,8 +34,6 @@ const globalLanes: AgentHarnessLaneView[] = [
     row: null,
     configuredHarness: null,
     effectiveHarness: "claude",
-    fallbackHarness: null,
-    fallbackActivated: false,
     binaryPath: "/usr/local/bin/claude",
     binaryFound: true,
     probeSucceeded: true,
@@ -50,8 +46,6 @@ const globalLanes: AgentHarnessLaneView[] = [
     row: null,
     configuredHarness: null,
     effectiveHarness: "claude",
-    fallbackHarness: null,
-    fallbackActivated: false,
     binaryPath: "/usr/local/bin/claude",
     binaryFound: true,
     probeSucceeded: true,
@@ -89,7 +83,6 @@ describe("useIdeationHarnessSettings", () => {
       effort: "xhigh",
       approvalPolicy: "on-request",
       sandboxMode: "workspace-write",
-      fallbackHarness: "claude",
       updatedAt: new Date().toISOString(),
       projectId: null,
     });
@@ -121,7 +114,6 @@ describe("useIdeationHarnessSettings", () => {
         effort: "xhigh",
         approvalPolicy: "on-request",
         sandboxMode: "workspace-write",
-        fallbackHarness: "claude",
       });
     });
 

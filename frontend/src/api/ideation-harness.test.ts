@@ -16,12 +16,10 @@ describe("ideation harness api contracts", () => {
       effort: null,
       approvalPolicy: null,
       sandboxMode: null,
-      fallbackHarness: "claude",
       updatedAt: new Date().toISOString(),
     });
 
     expect(parsed.harness).toBe("openai-cli");
-    expect(parsed.fallbackHarness).toBe("claude");
   });
 
   it("merges unknown harness availability without collapsing it to claude or codex", () => {
@@ -34,7 +32,6 @@ describe("ideation harness api contracts", () => {
         effort: "high",
         approvalPolicy: "on-request",
         sandboxMode: "workspace-write",
-        fallbackHarness: "claude",
         updatedAt: new Date().toISOString(),
       }),
     ];
@@ -43,9 +40,7 @@ describe("ideation harness api contracts", () => {
         projectId: null,
         lane: "execution_worker",
         configuredHarness: "openai-cli",
-        fallbackHarness: "claude",
         effectiveHarness: "openai-cli",
-        fallbackActivated: false,
         binaryPath: "/usr/local/bin/openai-cli",
         binaryFound: true,
         probeSucceeded: true,
@@ -60,6 +55,5 @@ describe("ideation harness api contracts", () => {
 
     expect(worker?.configuredHarness).toBe("openai-cli");
     expect(worker?.effectiveHarness).toBe("openai-cli");
-    expect(worker?.fallbackHarness).toBe("claude");
   });
 });

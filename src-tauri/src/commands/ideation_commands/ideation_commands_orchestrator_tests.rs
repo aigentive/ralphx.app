@@ -10,9 +10,7 @@ fn availability(
     LaneHarnessAvailability {
         lane: AgentLane::IdeationPrimary,
         configured_harness: Some(effective_harness),
-        fallback_harness: None,
         effective_harness,
-        fallback_activated: false,
         binary_path: None,
         binary_found: available,
         probe_succeeded: available,

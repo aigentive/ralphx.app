@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::agents::{
-    default_fallback_harness_for, generic_harness_lane_defaults, AgentHarnessKind, AgentLane,
-    AgentLaneSettings, LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
+    generic_harness_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings,
+    LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::{
@@ -321,11 +321,7 @@ fn nondefault_harness_lane_settings(
         return None;
     }
 
-    let mut settings = generic_harness_lane_defaults(harness, lane);
-    if settings.fallback_harness.is_none() {
-        settings.fallback_harness = default_fallback_harness_for(settings.harness);
-    }
-    Some(settings)
+    Some(generic_harness_lane_defaults(harness, lane))
 }
 
 async fn resolve_legacy_ideation_model(

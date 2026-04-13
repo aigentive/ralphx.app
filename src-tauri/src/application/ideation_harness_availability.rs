@@ -16,16 +16,13 @@ use crate::domain::repositories::AgentLaneSettingsRepository;
 pub(crate) struct ResolvedLaneHarnessConfig {
     pub lane: AgentLane,
     pub configured_harness: Option<AgentHarnessKind>,
-    pub fallback_harness: Option<AgentHarnessKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LaneHarnessAvailability {
     pub lane: AgentLane,
     pub configured_harness: Option<AgentHarnessKind>,
-    pub fallback_harness: Option<AgentHarnessKind>,
     pub effective_harness: AgentHarnessKind,
-    pub fallback_activated: bool,
     pub binary_path: Option<String>,
     pub binary_found: bool,
     pub probe_succeeded: bool,
@@ -154,9 +151,7 @@ fn build_default_harness_availability() -> LaneHarnessAvailability {
     LaneHarnessAvailability {
         lane: AgentLane::IdeationPrimary,
         configured_harness: None,
-        fallback_harness: None,
         effective_harness: DEFAULT_AGENT_HARNESS,
-        fallback_activated: false,
         binary_path: probe.binary_path.clone(),
         binary_found: probe.binary_found,
         probe_succeeded: probe.probe_succeeded,
@@ -245,7 +240,6 @@ pub(crate) async fn resolve_lane_harness_config(
     ResolvedLaneHarnessConfig {
         lane,
         configured_harness: lane_harness(project_row.as_ref(), global_row.as_ref()),
-        fallback_harness: lane_fallback_harness(project_row.as_ref(), global_row.as_ref()),
     }
 }
 
@@ -281,9 +275,7 @@ pub(crate) fn build_lane_harness_availability(
         return LaneHarnessAvailability {
             lane: config.lane,
             configured_harness: config.configured_harness,
-            fallback_harness: config.fallback_harness,
             effective_harness: configured_harness,
-            fallback_activated: false,
             binary_path: configured_probe.binary_path.clone(),
             binary_found: configured_probe.binary_found,
             probe_succeeded: configured_probe.probe_succeeded,
@@ -293,31 +285,10 @@ pub(crate) fn build_lane_harness_availability(
         };
     }
 
-    if let Some(fallback_harness) = config.fallback_harness {
-        let fallback_probe = probe_for_harness(probes, fallback_harness);
-        if fallback_probe.available {
-            return LaneHarnessAvailability {
-                lane: config.lane,
-                configured_harness: config.configured_harness,
-                fallback_harness: config.fallback_harness,
-                effective_harness: fallback_harness,
-                fallback_activated: true,
-                binary_path: fallback_probe.binary_path.clone(),
-                binary_found: configured_probe.binary_found,
-                probe_succeeded: configured_probe.probe_succeeded,
-                available: true,
-                missing_core_exec_features: configured_probe.missing_core_exec_features.clone(),
-                error: configured_probe.error.clone(),
-            };
-        }
-    }
-
     LaneHarnessAvailability {
         lane: config.lane,
         configured_harness: config.configured_harness,
-        fallback_harness: config.fallback_harness,
         effective_harness: configured_harness,
-        fallback_activated: false,
         binary_path: configured_probe.binary_path.clone(),
         binary_found: configured_probe.binary_found,
         probe_succeeded: configured_probe.probe_succeeded,
@@ -334,13 +305,4 @@ fn lane_harness(
     project_row
         .map(|row| row.settings.harness)
         .or_else(|| global_row.map(|row| row.settings.harness))
-}
-
-fn lane_fallback_harness(
-    project_row: Option<&StoredAgentLaneSettings>,
-    global_row: Option<&StoredAgentLaneSettings>,
-) -> Option<AgentHarnessKind> {
-    project_row
-        .and_then(|row| row.settings.fallback_harness)
-        .or_else(|| global_row.and_then(|row| row.settings.fallback_harness))
 }

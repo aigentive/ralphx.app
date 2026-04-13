@@ -135,7 +135,6 @@ function defaultsForHarness(
   effort: string | null;
   approvalPolicy: string | null;
   sandboxMode: string | null;
-  fallbackHarness: Harness | null;
 } {
   if (harness === "claude") {
     return {
@@ -144,7 +143,6 @@ function defaultsForHarness(
       effort: null,
       approvalPolicy: null,
       sandboxMode: null,
-      fallbackHarness: null,
     };
   }
 
@@ -155,7 +153,6 @@ function defaultsForHarness(
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: null,
     };
   }
 
@@ -166,7 +163,6 @@ function defaultsForHarness(
       effort: "medium",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: null,
     };
   }
 
@@ -177,7 +173,6 @@ function defaultsForHarness(
       effort: "xhigh",
       approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
       sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-      fallbackHarness: null,
     };
   }
 
@@ -187,15 +182,10 @@ function defaultsForHarness(
     effort: "medium",
     approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
     sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
-    fallbackHarness: null,
   };
 }
 
 function availabilityCopy(lane: AgentHarnessLaneView): string {
-  if (lane.fallbackActivated && lane.configuredHarness) {
-    return `Configured ${lane.configuredHarness}, using ${lane.effectiveHarness} until the requested harness is available.`;
-  }
-
   if (lane.error) {
     return lane.error;
   }
@@ -230,7 +220,6 @@ function baseLaneUpdate(lane: AgentHarnessLaneView) {
     effort: lane.row?.effort ?? null,
     approvalPolicy: lane.row?.approvalPolicy ?? null,
     sandboxMode: lane.row?.sandboxMode ?? null,
-    fallbackHarness: null,
   };
 }
 
@@ -250,17 +239,13 @@ function HarnessRow({
       effort: string | null;
       approvalPolicy: string | null;
       sandboxMode: string | null;
-      fallbackHarness: Harness | null;
     }>,
   ) => void;
   isLast?: boolean;
 }) {
   const meta = LANE_META[lane.lane];
   const configuredHarness = lane.configuredHarness ?? lane.effectiveHarness;
-  const showWarning =
-    lane.fallbackActivated ||
-    !!lane.error ||
-    lane.missingCoreExecFeatures.length > 0;
+  const showWarning = !!lane.error || lane.missingCoreExecFeatures.length > 0;
   const modelKey = `${lane.lane}-${lane.row?.model ?? ""}-${configuredHarness}`;
   const showCodexControls = configuredHarness === "codex";
   const codexPolicyLocked = showCodexControls;
@@ -476,7 +461,6 @@ function HarnessSubsection({
       effort: string | null;
       approvalPolicy: string | null;
       sandboxMode: string | null;
-      fallbackHarness: Harness | null;
     }>,
   ) => {
     if (isDisabled) {
