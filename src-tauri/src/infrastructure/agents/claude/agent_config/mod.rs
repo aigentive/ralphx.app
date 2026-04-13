@@ -303,6 +303,30 @@ struct ProcessConfigOverlay {
     team_constraints: Option<TeamConstraintsConfig>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct ExternalMcpConfigRawOverlay {
+    enabled: Option<bool>,
+    port: Option<u16>,
+    host: Option<String>,
+    max_restart_attempts: Option<u32>,
+    restart_delay_ms: Option<u64>,
+    human_wait_timeout_secs: Option<u64>,
+    auth_token: Option<String>,
+    node_path: Option<String>,
+    max_external_ideation_sessions: Option<u32>,
+    external_session_stale_secs: Option<u64>,
+    external_message_queue_cap: Option<u32>,
+    external_session_similarity_threshold: Option<f64>,
+    external_session_startup_grace_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ExternalMcpConfigOverlay {
+    #[serde(default)]
+    external_mcp: Option<ExternalMcpConfigRawOverlay>,
+}
+
 const EMBEDDED_CONFIG: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../config/ralphx.yaml"));
 
@@ -388,6 +412,16 @@ pub fn codex_config_path() -> PathBuf {
     }
 
     config_dir_path().join("harnesses").join("codex.yaml")
+}
+
+pub fn external_mcp_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_EXTERNAL_MCP_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    config_dir_path().join("external-mcp.yaml")
 }
 
 fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
@@ -502,6 +536,71 @@ fn load_process_config_overlay() -> Option<(PathBuf, ProcessConfigOverlay)> {
     let path = process_config_path();
     let raw = std::fs::read_to_string(&path).ok()?;
     let overlay = parse_process_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
+fn apply_external_mcp_config_overlay(
+    cfg: &mut RalphxConfig,
+    overlay: ExternalMcpConfigOverlay,
+) {
+    let Some(overlay) = overlay.external_mcp else {
+        return;
+    };
+
+    if let Some(enabled) = overlay.enabled {
+        cfg.external_mcp.enabled = enabled;
+    }
+    if let Some(port) = overlay.port {
+        cfg.external_mcp.port = port;
+    }
+    if let Some(host) = overlay.host {
+        cfg.external_mcp.host = host;
+    }
+    if let Some(max_restart_attempts) = overlay.max_restart_attempts {
+        cfg.external_mcp.max_restart_attempts = max_restart_attempts;
+    }
+    if let Some(restart_delay_ms) = overlay.restart_delay_ms {
+        cfg.external_mcp.restart_delay_ms = restart_delay_ms;
+    }
+    if let Some(human_wait_timeout_secs) = overlay.human_wait_timeout_secs {
+        cfg.external_mcp.human_wait_timeout_secs = human_wait_timeout_secs;
+    }
+    if let Some(auth_token) = overlay.auth_token {
+        cfg.external_mcp.auth_token = Some(auth_token);
+    }
+    if let Some(node_path) = overlay.node_path {
+        cfg.external_mcp.node_path = Some(node_path);
+    }
+    if let Some(max_external_ideation_sessions) = overlay.max_external_ideation_sessions {
+        cfg.external_mcp.max_external_ideation_sessions = max_external_ideation_sessions;
+    }
+    if let Some(external_session_stale_secs) = overlay.external_session_stale_secs {
+        cfg.external_mcp.external_session_stale_secs = external_session_stale_secs;
+    }
+    if let Some(external_message_queue_cap) = overlay.external_message_queue_cap {
+        cfg.external_mcp.external_message_queue_cap = external_message_queue_cap;
+    }
+    if let Some(external_session_similarity_threshold) = overlay.external_session_similarity_threshold {
+        cfg.external_mcp.external_session_similarity_threshold =
+            external_session_similarity_threshold;
+    }
+    if let Some(external_session_startup_grace_secs) = overlay.external_session_startup_grace_secs {
+        cfg.external_mcp.external_session_startup_grace_secs =
+            Some(external_session_startup_grace_secs);
+    }
+}
+
+fn parse_external_mcp_config_overlay(yaml: &str) -> Option<ExternalMcpConfigOverlay> {
+    serde_yaml::from_str::<ExternalMcpConfigOverlay>(yaml).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to parse external MCP config overlay");
+        e
+    }).ok()
+}
+
+fn load_external_mcp_config_overlay() -> Option<(PathBuf, ExternalMcpConfigOverlay)> {
+    let path = external_mcp_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_external_mcp_config_overlay(&raw)?;
     Some((path, overlay))
 }
 
@@ -988,7 +1087,7 @@ fn resolve_loaded_config_with_lookup(
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
         tracing::warn!(
             value = runtime.external_mcp.max_external_ideation_sessions,
-            "config/ralphx.yaml: external_mcp.max_external_ideation_sessions is deprecated and \
+            "config/external-mcp.yaml: external_mcp.max_external_ideation_sessions is deprecated and \
              has no effect. The session gate was removed; sessions are always created. Remove \
              this field."
         );
@@ -1376,6 +1475,13 @@ fn load_config() -> LoadedConfig {
                     "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
                 );
             }
+            if let Some((external_mcp_path, overlay)) = load_external_mcp_config_overlay() {
+                apply_external_mcp_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %external_mcp_path.display(),
+                    "Loaded external MCP config overlay from config/external-mcp.yaml"
+                );
+            }
             if let Some(mut cfg) =
                 resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
             {
@@ -1416,6 +1522,13 @@ fn load_config() -> LoadedConfig {
                 tracing::info!(
                     path = %codex_path.display(),
                     "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
+                );
+            }
+            if let Some((external_mcp_path, overlay)) = load_external_mcp_config_overlay() {
+                apply_external_mcp_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %external_mcp_path.display(),
+                    "Loaded external MCP config overlay from config/external-mcp.yaml"
                 );
             }
             resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())

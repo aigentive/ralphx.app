@@ -379,7 +379,7 @@ pub(crate) fn default_external_mcp_config() -> ExternalMcpConfig {
 }
 
 pub(crate) fn default_external_mcp_config_path() -> PathBuf {
-    crate::infrastructure::agents::claude::config_path()
+    crate::infrastructure::agents::claude::external_mcp_config_path()
 }
 
 pub(crate) fn default_external_mcp_port() -> u16 {

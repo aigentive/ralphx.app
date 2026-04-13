@@ -156,11 +156,14 @@ fn test_default_config_paths_use_config_directory_layout() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/claude.yaml");
     let expected_codex =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/harnesses/codex.yaml");
+    let expected_external_mcp =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/external-mcp.yaml");
 
     assert_eq!(config_path(), expected_config);
     assert_eq!(process_config_path(), expected_processes);
     assert_eq!(claude_config_path(), expected_claude);
     assert_eq!(codex_config_path(), expected_codex);
+    assert_eq!(external_mcp_config_path(), expected_external_mcp);
 }
 
 #[test]
@@ -617,6 +620,69 @@ agent_harness_defaults:
     assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4-mini"));
     assert_eq!(execution_worker.harness, AgentHarnessKind::Claude);
     assert_eq!(execution_worker.model.as_deref(), Some("sonnet"));
+}
+
+#[test]
+fn test_external_mcp_config_overlay_overrides_main_config_section() {
+    let yaml = r#"
+external_mcp:
+  enabled: false
+  port: 3848
+  host: "127.0.0.1"
+  max_restart_attempts: 3
+  restart_delay_ms: 2000
+  human_wait_timeout_secs: 285
+"#;
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_external_mcp_config_overlay(
+        r#"
+external_mcp:
+  enabled: true
+  port: 4949
+  host: "0.0.0.0"
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_external_mcp_config_overlay(&mut parsed, overlay);
+
+    assert!(parsed.external_mcp.enabled);
+    assert_eq!(parsed.external_mcp.port, 4949);
+    assert_eq!(parsed.external_mcp.host, "0.0.0.0");
+    assert_eq!(parsed.external_mcp.max_restart_attempts, 3);
+}
+
+#[test]
+fn test_external_mcp_config_overlay_partial_section_does_not_clobber_other_fields() {
+    let yaml = r#"
+external_mcp:
+  enabled: false
+  port: 3848
+  host: "127.0.0.1"
+  max_restart_attempts: 7
+  restart_delay_ms: 9000
+  human_wait_timeout_secs: 120
+  external_message_queue_cap: 25
+"#;
+    let mut parsed = parse_raw_config(yaml).expect("config should parse");
+    let overlay = parse_external_mcp_config_overlay(
+        r#"
+external_mcp:
+  enabled: true
+  port: 4949
+"#,
+    )
+    .expect("overlay should parse");
+
+    apply_external_mcp_config_overlay(&mut parsed, overlay);
+
+    assert!(parsed.external_mcp.enabled);
+    assert_eq!(parsed.external_mcp.port, 4949);
+    assert_eq!(parsed.external_mcp.host, "127.0.0.1");
+    assert_eq!(parsed.external_mcp.max_restart_attempts, 7);
+    assert_eq!(parsed.external_mcp.restart_delay_ms, 9000);
+    assert_eq!(parsed.external_mcp.human_wait_timeout_secs, 120);
+    assert_eq!(parsed.external_mcp.external_message_queue_cap, 25);
 }
 
 #[test]
@@ -1755,6 +1821,47 @@ fn test_embedded_config_omits_claude_globals_and_overlay_restores_expected_defau
     assert!(qa_prep.resolved_cli_tools.contains(&"Read".to_string()));
     assert!(qa_prep.resolved_cli_tools.contains(&"Grep".to_string()));
     assert!(qa_prep.resolved_cli_tools.contains(&"Glob".to_string()));
+}
+
+#[test]
+fn test_config_external_mcp_file_contains_expected_runtime_defaults() {
+    #[derive(Deserialize)]
+    struct ExternalMcpConfigMirror {
+        external_mcp: ExternalMcpConfig,
+    }
+
+    let yaml_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/external-mcp.yaml");
+    let contents =
+        std::fs::read_to_string(&yaml_path).expect("should read config/external-mcp.yaml");
+    let parsed: ExternalMcpConfigMirror =
+        serde_yaml::from_str(&contents).expect("should parse config/external-mcp.yaml");
+
+    assert!(parsed.external_mcp.enabled);
+    assert_eq!(parsed.external_mcp.port, 3848);
+    assert_eq!(parsed.external_mcp.host, "127.0.0.1");
+    assert_eq!(parsed.external_mcp.max_restart_attempts, 3);
+    assert_eq!(parsed.external_mcp.restart_delay_ms, 2000);
+    assert_eq!(parsed.external_mcp.human_wait_timeout_secs, 285);
+}
+
+#[test]
+fn test_embedded_config_omits_external_mcp_and_overlay_restores_expected_defaults() {
+    let mut parsed = parse_raw_config(EMBEDDED_CONFIG).expect("embedded config should parse");
+    let overlay_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/external-mcp.yaml");
+    let overlay_contents =
+        std::fs::read_to_string(&overlay_path).expect("should read config/external-mcp.yaml");
+    let overlay = parse_external_mcp_config_overlay(&overlay_contents)
+        .expect("external MCP overlay should parse");
+
+    apply_external_mcp_config_overlay(&mut parsed, overlay);
+    let parsed = resolve_loaded_config_with_lookup(parsed, &|_| None).expect("config should load");
+
+    assert!(parsed.runtime.external_mcp.enabled);
+    assert_eq!(parsed.runtime.external_mcp.port, 3848);
+    assert_eq!(parsed.runtime.external_mcp.host, "127.0.0.1");
+    assert_eq!(parsed.runtime.external_mcp.max_restart_attempts, 3);
+    assert_eq!(parsed.runtime.external_mcp.restart_delay_ms, 2000);
+    assert_eq!(parsed.runtime.external_mcp.human_wait_timeout_secs, 285);
 }
 
 // ── Agent extends inheritance tests ─────────────────────────────
