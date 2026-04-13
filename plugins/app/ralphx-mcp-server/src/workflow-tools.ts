@@ -112,7 +112,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
       "Use for documenting specialist findings, debate analyses, or lead-synthesized summaries. " +
       "Verification specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
       "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
-      "Use publish_verification_finding for required verification critics instead of encoding verifier findings into generic TeamResearch content.",
+      "Use publish_verification_finding for verification-path specialists and required critics instead of encoding verifier findings into generic TeamResearch content.",
     inputSchema: {
       type: "object",
       examples: [
@@ -154,7 +154,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
     name: "publish_verification_finding",
     description:
       "Publish a typed verification finding for the current verification round. " +
-      "Use this for required plan critics so the backend can aggregate gaps directly from structured metadata instead of reparsing generic TeamResearch documents. " +
+      "Use this for verification-path specialists and required plan critics so the backend can aggregate gaps directly from structured metadata instead of reparsing generic TeamResearch documents. " +
       "If session_id is omitted, the backend uses the current session context and remaps verification child sessions to the parent ideation session automatically.",
     inputSchema: {
       type: "object",
@@ -182,7 +182,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
         },
         critic: {
           type: "string",
-          description: "Critic identifier, for example 'completeness' or 'feasibility'.",
+          description: "Critic identifier, for example 'completeness', 'feasibility', 'intent', 'code-quality', 'ux', 'prompt-quality', 'pipeline-safety', or 'state-machine'.",
         },
         round: {
           type: "integer",

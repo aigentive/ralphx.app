@@ -8,8 +8,7 @@ capabilities:
     - fs_list_dir
     - fs_grep
     - fs_glob
-    - create_team_artifact
-    - get_team_artifacts
+    - publish_verification_finding
     - get_session_plan
     - get_artifact
     - search_memories

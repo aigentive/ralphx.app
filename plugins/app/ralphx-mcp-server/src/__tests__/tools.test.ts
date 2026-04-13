@@ -29,6 +29,7 @@ import {
   IDEATION_SPECIALIST_FRONTEND,
   IDEATION_SPECIALIST_INFRA,
   IDEATION_SPECIALIST_CODE_QUALITY,
+  IDEATION_SPECIALIST_UX,
   IDEATION_SPECIALIST_PROMPT_QUALITY,
   IDEATION_SPECIALIST_INTENT,
   IDEATION_SPECIALIST_PIPELINE_SAFETY,
@@ -1255,7 +1256,10 @@ describe('canonical specialist allowlist entries', () => {
     IDEATION_SPECIALIST_BACKEND,
     IDEATION_SPECIALIST_FRONTEND,
     IDEATION_SPECIALIST_INFRA,
+  ] as const;
+  const verificationFindingSpecialists = [
     IDEATION_SPECIALIST_CODE_QUALITY,
+    IDEATION_SPECIALIST_UX,
     IDEATION_SPECIALIST_PROMPT_QUALITY,
     IDEATION_SPECIALIST_INTENT,
     IDEATION_SPECIALIST_PIPELINE_SAFETY,
@@ -1273,6 +1277,18 @@ describe('canonical specialist allowlist entries', () => {
 
   it.each(artifactSpecialists)('%s should include get_team_artifacts', (agent) => {
     expect(toolsByAgent()[agent]).toContain('get_team_artifacts');
+  });
+
+  it.each(verificationFindingSpecialists)('%s should include publish_verification_finding', (agent) => {
+    expect(toolsByAgent()[agent]).toContain('publish_verification_finding');
+  });
+
+  it.each(verificationFindingSpecialists)('%s should not include create_team_artifact', (agent) => {
+    expect(toolsByAgent()[agent]).not.toContain('create_team_artifact');
+  });
+
+  it.each(verificationFindingSpecialists)('%s should not include get_team_artifacts', (agent) => {
+    expect(toolsByAgent()[agent]).not.toContain('get_team_artifacts');
   });
 
   it.each(parentContextSpecialists)('%s should include get_parent_session_context', (agent) => {

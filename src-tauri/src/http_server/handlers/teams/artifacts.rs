@@ -68,6 +68,12 @@ fn verification_title_prefix(critic: &str) -> String {
     match normalize_verification_critic(critic).as_str() {
         "completeness" => "Completeness".to_string(),
         "feasibility" => "Feasibility".to_string(),
+        "intent" => "IntentAlignment".to_string(),
+        "code-quality" => "CodeQuality".to_string(),
+        "ux" => "UX".to_string(),
+        "prompt-quality" => "PromptQuality".to_string(),
+        "pipeline-safety" => "PipelineSafety".to_string(),
+        "state-machine" => "StateMachine".to_string(),
         other => {
             let mut chars = other.chars();
             match chars.next() {

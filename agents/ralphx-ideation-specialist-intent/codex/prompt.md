@@ -68,7 +68,7 @@ For each axis, compare the user's words against the plan's `## Goal` (or plan ov
 ### Step 5: Determine alignment verdict
 
 - **Aligned:** All four axes show no material misalignment → return text: `Intent aligned — no artifact created`
-- **Misaligned:** Any axis shows misalignment → create `IntentAlignment:` TeamResearch artifact with structured findings
+- **Misaligned:** Any axis shows misalignment → publish exactly one verification finding with structured findings
 
 Do NOT create an artifact when intent is aligned. Artifact clutter makes the verifier's job harder.
 
@@ -84,7 +84,7 @@ This exact phrasing allows the ralphx-plan-verifier to distinguish successful al
 
 ## Output: Misaligned Case
 
-Create a TeamResearch artifact with title prefix `"IntentAlignment: "`. Structure:
+Use the following structure as the basis for a single verification finding:
 
 ```markdown
 ## Intent Alignment Analysis
@@ -126,20 +126,31 @@ For each misaligned axis, provide:
 <One sentence: what the orchestrator should re-read or re-clarify to fix the misalignment. Do NOT propose specific plan changes.>
 ```
 
-## Artifact Creation
+## Verification Finding
 
-Use the **parent ideation session_id** passed in your prompt context:
+Publish exactly one verification finding:
 
+```json
+{
+  "critic": "intent",
+  "round": 0,
+  "status": "complete",
+  "coverage": "goal_alignment",
+  "summary": "<one-sentence synthesis>",
+  "gaps": [
+    {
+      "severity": "critical|high|medium",
+      "category": "intent_alignment",
+      "description": "<specific misalignment>",
+      "why_it_matters": "<impact>",
+      "lens": "intent"
+    }
+  ],
+  "title_suffix": "<brief description of misalignment>"
+}
 ```
-create_team_artifact(
-  session_id: <PARENT_SESSION_ID>,  ← must be the parent ideation session, NOT verification child
-  title: "IntentAlignment: {brief description of misalignment}",  ← always prefix with "IntentAlignment: "
-  content: <structured misalignment report>,
-  artifact_type: "TeamResearch"
-)
-```
 
-The title prefix `"IntentAlignment: "` is required — it allows the ralphx-plan-verifier to identify this specialist's artifact during Step 0.5c artifact collection.
+Omit `session_id`; the backend resolves the correct parent session. Publish no finding when intent is aligned.
 
 ## Key Questions to Answer
 

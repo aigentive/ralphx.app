@@ -155,7 +155,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
         /\buser flow\b/i,
       ]),
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for UX and flow risks. Read the plan via get_session_plan(session_id: ${sessionId}) and publish one TeamResearch artifact on the PARENT ideation session with title prefix 'UX: '.`,
+      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for UX and flow risks. Read the plan via get_session_plan(session_id: ${sessionId}). Publish exactly one verification finding with publish_verification_finding using critic='ux'. Omit session_id. If no material UX gaps exist, publish a complete finding with gaps=[].`,
   },
   {
     name: "prompt-quality",
@@ -171,7 +171,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
         /\bharness\b/i,
       ]),
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for prompt and agent-contract risks. Read the plan via get_session_plan(session_id: ${sessionId}) and publish one TeamResearch artifact on the PARENT ideation session with title prefix 'PromptQuality: '.`,
+      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for prompt and agent-contract risks. Read the plan via get_session_plan(session_id: ${sessionId}). Publish exactly one verification finding with publish_verification_finding using critic='prompt-quality'. Omit session_id. If no material prompt-quality gaps exist, publish a complete finding with gaps=[].`,
   },
   {
     name: "pipeline-safety",
@@ -190,7 +190,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
         /scheduler/i,
       ]),
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for orchestration, streaming, merge, and side-effect safety risks. Read the plan via get_session_plan(session_id: ${sessionId}) and publish one TeamResearch artifact on the PARENT ideation session with title prefix 'PipelineSafety: '.`,
+      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for orchestration, streaming, merge, and side-effect safety risks. Read the plan via get_session_plan(session_id: ${sessionId}). Publish exactly one verification finding with publish_verification_finding using critic='pipeline-safety'. Omit session_id. If no material pipeline-safety gaps exist, publish a complete finding with gaps=[].`,
   },
   {
     name: "state-machine",
@@ -206,7 +206,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
         /\bon_enter\b/i,
       ]),
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for state-machine and transition-safety risks. Read the plan via get_session_plan(session_id: ${sessionId}) and publish one TeamResearch artifact on the PARENT ideation session with title prefix 'StateMachine: '.`,
+      `SESSION_ID: ${sessionId}\nAnalyze the current implementation plan for state-machine and transition-safety risks. Read the plan via get_session_plan(session_id: ${sessionId}). Publish exactly one verification finding with publish_verification_finding using critic='state-machine'. Omit session_id. If no material state-machine gaps exist, publish a complete finding with gaps=[].`,
   },
 ];
 
@@ -218,7 +218,7 @@ const VERIFICATION_ENRICHMENT_SPECIALISTS: VerificationEnrichmentDefinition[] = 
     label: "intent",
     applies: () => true,
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze intent alignment using the plan's ## Goal section as the source of truth. Read the plan via get_session_plan(session_id: ${sessionId}). Compare the rest of the plan against that goal. Do not treat later parent chat messages like "please run verify" as a replacement product request. If misalignment exists, create one TeamResearch artifact on the PARENT ideation session with title prefix 'IntentAlignment: '. If intent is aligned, return exactly: Intent aligned — no artifact created`,
+      `SESSION_ID: ${sessionId}\nAnalyze intent alignment using the plan's ## Goal section as the source of truth. Read the plan via get_session_plan(session_id: ${sessionId}). Compare the rest of the plan against that goal. Do not treat later parent chat messages like "please run verify" as a replacement product request. If misalignment exists, publish one verification finding with publish_verification_finding using critic='intent'. Omit session_id. If intent is aligned, return exactly: Intent aligned — no artifact created`,
   },
   {
     name: "code-quality",
@@ -227,7 +227,7 @@ const VERIFICATION_ENRICHMENT_SPECIALISTS: VerificationEnrichmentDefinition[] = 
     label: "code-quality",
     applies: (plan) => hasExistingFileMutations(plan.content),
     prompt: (sessionId) =>
-      `SESSION_ID: ${sessionId}\nAnalyze the code paths referenced in the plan's Affected Files section. Read the plan via get_session_plan(session_id: ${sessionId}). For each existing file being modified, identify quality improvement opportunities and publish one TeamResearch artifact on the PARENT ideation session with title prefix 'CodeQuality: '.`,
+      `SESSION_ID: ${sessionId}\nAnalyze the code paths referenced in the plan's Affected Files section. Read the plan via get_session_plan(session_id: ${sessionId}). For each existing file being modified, identify quality improvement opportunities and publish exactly one verification finding with publish_verification_finding using critic='code-quality'. Omit session_id. If no material code-quality gaps exist, publish a complete finding with gaps=[].`,
   },
 ];
 

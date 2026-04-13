@@ -7,7 +7,7 @@ import { getAllowedToolNames, getFilteredTools, getToolsByAgent, isToolAllowed, 
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { setLegacyToolAllowlistEntryForTest } from '../tool-authorization.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
-import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
+import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
 function toolsByAgent() {
     return getToolsByAgent();
 }
@@ -1004,7 +1004,10 @@ describe('canonical specialist allowlist entries', () => {
         IDEATION_SPECIALIST_BACKEND,
         IDEATION_SPECIALIST_FRONTEND,
         IDEATION_SPECIALIST_INFRA,
+    ];
+    const verificationFindingSpecialists = [
         IDEATION_SPECIALIST_CODE_QUALITY,
+        IDEATION_SPECIALIST_UX,
         IDEATION_SPECIALIST_PROMPT_QUALITY,
         IDEATION_SPECIALIST_INTENT,
         IDEATION_SPECIALIST_PIPELINE_SAFETY,
@@ -1020,6 +1023,15 @@ describe('canonical specialist allowlist entries', () => {
     });
     it.each(artifactSpecialists)('%s should include get_team_artifacts', (agent) => {
         expect(toolsByAgent()[agent]).toContain('get_team_artifacts');
+    });
+    it.each(verificationFindingSpecialists)('%s should include publish_verification_finding', (agent) => {
+        expect(toolsByAgent()[agent]).toContain('publish_verification_finding');
+    });
+    it.each(verificationFindingSpecialists)('%s should not include create_team_artifact', (agent) => {
+        expect(toolsByAgent()[agent]).not.toContain('create_team_artifact');
+    });
+    it.each(verificationFindingSpecialists)('%s should not include get_team_artifacts', (agent) => {
+        expect(toolsByAgent()[agent]).not.toContain('get_team_artifacts');
     });
     it.each(parentContextSpecialists)('%s should include get_parent_session_context', (agent) => {
         expect(toolsByAgent()[agent]).toContain('get_parent_session_context');

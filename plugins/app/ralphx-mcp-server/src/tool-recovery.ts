@@ -71,14 +71,14 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
-        "Use this for specialist findings and team summaries. Required verification critics should use publish_verification_finding instead.",
+        "Use this for general specialist findings and team summaries. Verification-path specialists should use publish_verification_finding instead.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }
     case "publish_verification_finding": {
       const examples = formatToolExamples(tool);
       return [
-        "Use this for required verification critics.",
+        "Use this for verification-path specialists and required verification critics.",
         "If session_id is omitted, the backend injects the current session context and remaps verification child sessions to the parent ideation session automatically.",
         "Publish one structured finding with critic, round, status, summary, and gaps instead of encoding verifier output into a generic TeamResearch document.",
         ...examples.map((example) => `Example payload: ${example}`),

@@ -1434,8 +1434,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         (
             "ralphx-ideation-specialist-code-quality",
             vec![
-                "create_team_artifact",
-                "get_team_artifacts",
+                "publish_verification_finding",
                 "get_session_plan",
                 "get_artifact",
             ],
@@ -1451,8 +1450,23 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         (
             "ralphx-ideation-specialist-prompt-quality",
             vec![
-                "create_team_artifact",
-                "get_team_artifacts",
+                "publish_verification_finding",
+                "get_session_plan",
+                "get_artifact",
+            ],
+            vec![
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+        ),
+        (
+            "ralphx-ideation-specialist-ux",
+            vec![
+                "publish_verification_finding",
                 "get_session_plan",
                 "get_artifact",
             ],
@@ -1468,8 +1482,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         (
             "ralphx-ideation-specialist-pipeline-safety",
             vec![
-                "create_team_artifact",
-                "get_team_artifacts",
+                "publish_verification_finding",
                 "get_session_plan",
                 "get_artifact",
             ],
@@ -1485,8 +1498,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         (
             "ralphx-ideation-specialist-state-machine",
             vec![
-                "create_team_artifact",
-                "get_team_artifacts",
+                "publish_verification_finding",
                 "get_session_plan",
                 "get_artifact",
             ],
@@ -1502,8 +1514,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         (
             "ralphx-ideation-specialist-intent",
             vec![
-                "create_team_artifact",
-                "get_team_artifacts",
+                "publish_verification_finding",
                 "get_session_plan",
                 "get_artifact",
                 "get_session_messages",
@@ -1533,6 +1544,18 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
                 "{agent_name} should not include stale MCP tool {tool}"
             );
         }
+        assert!(
+            !config
+                .allowed_mcp_tools
+                .contains(&"create_team_artifact".to_string()),
+            "{agent_name} should use publish_verification_finding instead of create_team_artifact"
+        );
+        assert!(
+            !config
+                .allowed_mcp_tools
+                .contains(&"get_team_artifacts".to_string()),
+            "{agent_name} should stay on typed verification findings instead of get_team_artifacts"
+        );
     }
 }
 
