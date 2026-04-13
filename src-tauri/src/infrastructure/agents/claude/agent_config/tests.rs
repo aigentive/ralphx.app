@@ -483,6 +483,53 @@ fn test_embedded_config_omits_runtime_system_prompt_paths_and_uses_canonical_pro
 }
 
 #[test]
+fn test_embedded_config_omits_live_agent_runtime_mirrors_and_uses_canonical_metadata() {
+    let parsed =
+        parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
+
+    let ideation = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-ideation")
+        .expect("ideation agent should exist");
+    assert_eq!(ideation.model.as_deref(), Some("opus"));
+    assert_eq!(ideation.effort.as_deref(), Some("max"));
+    assert!(ideation.resolved_cli_tools.contains(&"Task".to_string()));
+    assert!(ideation.allowed_mcp_tools.contains(&"create_task_proposal".to_string()));
+    assert!(
+        ideation
+            .preapproved_cli_tools
+            .contains(&"Task(Explore)".to_string())
+    );
+
+    let worker = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-execution-worker")
+        .expect("execution worker should exist");
+    assert_eq!(worker.model.as_deref(), Some("sonnet"));
+    assert_eq!(worker.permission_mode.as_deref(), Some("acceptEdits"));
+    assert!(worker.resolved_cli_tools.contains(&"Write".to_string()));
+    assert!(worker.resolved_cli_tools.contains(&"LSP".to_string()));
+    assert!(worker.allowed_mcp_tools.contains(&"start_step".to_string()));
+    assert!(
+        worker
+            .preapproved_cli_tools
+            .contains(&"Task(Plan)".to_string())
+    );
+
+    let qa_executor = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-executor")
+        .expect("qa executor should exist");
+    assert_eq!(qa_executor.model.as_deref(), Some("sonnet"));
+    assert_eq!(qa_executor.permission_mode.as_deref(), Some("acceptEdits"));
+    assert!(qa_executor.resolved_cli_tools.contains(&"Write".to_string()));
+    assert!(qa_executor.allowed_mcp_tools.is_empty());
+}
+
+#[test]
 fn test_codex_config_overlay_overrides_agent_harness_defaults_from_main_config() {
     let yaml = r#"
 agent_harness_defaults:
