@@ -234,7 +234,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
       "Retrieve all team artifacts for a session. " +
       "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
       "Use the PARENT ideation session_id for verification flows; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
-      "Verification flows should generally prefer get_verification_round_artifacts instead of hand-filtering summaries client-side. " +
+      "Verification flows should generally prefer backend-owned helpers like run_verification_enrichment or run_verification_round instead of hand-filtering summaries client-side. " +
       "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) when you truly need the full unfiltered artifact list for a session.",
     inputSchema: {
       type: "object",
@@ -246,46 +246,6 @@ export const WORKFLOW_TOOLS: Tool[] = [
         },
       },
       required: ["session_id"],
-    },
-  },
-  {
-    name: "get_verification_round_artifacts",
-    description:
-      "Verifier-oriented helper that fetches the latest TeamResearch artifacts per requested title prefix for the current verification round. " +
-      "Uses the PARENT ideation session_id as the canonical target; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
-      "Applies created_after filtering server-side in the MCP proxy, sorts by created_at descending per prefix, and can attach full artifact content so the verifier does not need a separate get_artifact fetch for the winning matches. " +
-      "Example: call get_verification_round_artifacts({\"session_id\":\"<parent-session>\",\"prefixes\":[\"Completeness: \",\"Feasibility: \"],\"created_after\":\"2026-04-06T00:00:00Z\"}) after critic Task returns.",
-    inputSchema: {
-      type: "object",
-      examples: [
-        {
-          session_id: "parent-session-id",
-          prefixes: ["Completeness: ", "Feasibility: "],
-          created_after: "2026-04-06T00:00:00Z",
-          include_full_content: true,
-        },
-      ],
-      properties: {
-        session_id: {
-          type: "string",
-          description: "The ideation session ID. Parent ideation session is canonical for verification flows; verification child ids are auto-remapped to the parent.",
-        },
-        prefixes: {
-          type: "array",
-          items: { type: "string" },
-          minItems: 1,
-          description: "Title prefixes to match, such as 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
-        },
-        created_after: {
-          type: "string",
-          description: "Optional ISO timestamp. Only artifacts created at or after this timestamp are considered for each prefix.",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "When true (default), fetch the full artifact content for the latest match per prefix.",
-        },
-      },
-      required: ["session_id", "prefixes"],
     },
   },
   {

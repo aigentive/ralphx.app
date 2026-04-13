@@ -369,7 +369,7 @@ export const SUPPORT_TOOLS = [
             examples: [
                 {
                     session_id: "verification-child-session-id",
-                    message: "SESSION_ID: <parent-session-id>\nROUND: 2\nIf you are still running, publish your TeamResearch artifact now using the parent ideation session_id and the required JSON schema.",
+                    message: "SESSION_ID: <parent-session-id>\nROUND: 2\nIf you are still running, publish your verification finding now with publish_verification_finding using the required critic, summary, and gaps schema.",
                 },
             ],
             properties: {

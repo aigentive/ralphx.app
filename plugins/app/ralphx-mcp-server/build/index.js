@@ -128,7 +128,7 @@ const RALPHX_PROJECT_ID = runtimeContext.projectId;
 const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
 const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
-const { assessVerificationRoundState, runVerificationEnrichment, runVerificationRound, runRequiredVerificationCriticRoundTool, awaitVerificationRoundSettlementForTool, selectLatestArtifactsByPrefix, awaitVerificationRoundSettlement, resolveVerifierParentSessionId, resolveContextSessionId, } = createVerificationRuntime({
+const { assessVerificationRoundState, runVerificationEnrichment, runVerificationRound, runRequiredVerificationCriticRoundTool, awaitVerificationRoundSettlementForTool, awaitVerificationRoundSettlement, resolveVerifierParentSessionId, resolveContextSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
     agentType: AGENT_TYPE,
@@ -729,33 +729,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // GET /api/team/artifacts/:session_id
             const { session_id } = args;
             result = await callTauriGet(`team/artifacts/${session_id}`);
-        }
-        else if (name === "get_verification_round_artifacts") {
-            const { session_id, prefixes, created_after, include_full_content = true, } = args;
-            const teamArtifacts = await callTauriGet(`team/artifacts/${session_id}`);
-            const matches = selectLatestArtifactsByPrefix(teamArtifacts.artifacts ?? [], prefixes, created_after);
-            const artifacts_by_prefix = await Promise.all(matches.map(async (match) => {
-                if (!match.artifact) {
-                    return match;
-                }
-                if (!include_full_content) {
-                    return match;
-                }
-                const fullArtifact = await callTauriGet(`artifact/${match.artifact.id}`);
-                return {
-                    ...match,
-                    artifact: {
-                        ...match.artifact,
-                        content: fullArtifact.content ?? "",
-                    },
-                };
-            }));
-            result = {
-                session_id,
-                created_after: created_after ?? null,
-                prefixes,
-                artifacts_by_prefix,
-            };
         }
         else if (name === "get_team_session_state") {
             // GET /api/team/session_state/:session_id

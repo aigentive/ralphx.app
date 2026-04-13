@@ -167,13 +167,6 @@ describe('getToolRecoveryHint', () => {
     expect(hint).toContain('External sessions cannot use status=skipped');
   });
 
-  it('returns artifact-collection guidance for get_verification_round_artifacts', () => {
-    const hint = getToolRecoveryHint('get_verification_round_artifacts');
-    expect(hint).toContain('verifier helper');
-    expect(hint).toContain('get_team_artifacts + get_artifact');
-    expect(hint).toContain('created_after');
-  });
-
   it('returns classification guidance for assess_verification_round', () => {
     const hint = getToolRecoveryHint('assess_verification_round');
     expect(hint).toContain('bounded wait/rescue attempts');
@@ -560,7 +553,7 @@ describe('New team tool definitions', () => {
     it('should document round-oriented verification lookup guidance', () => {
       expect(tool?.description).toContain('PARENT ideation session_id');
       expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
-      expect(tool?.description).toContain('prefer get_verification_round_artifacts');
+      expect(tool?.description).toContain('prefer backend-owned helpers like run_verification_enrichment or run_verification_round');
       expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         session_id: 'parent-session-id',
@@ -653,22 +646,6 @@ describe('New team tool definitions', () => {
     });
   });
 
-  describe('get_verification_round_artifacts', () => {
-    const tool = allTools.find((t) => t.name === 'get_verification_round_artifacts');
-
-    it('should expose the verifier artifact collection helper', () => {
-      expect(tool).toBeDefined();
-      expect(tool?.description).toContain('Verifier-oriented helper');
-      expect(tool?.description).toContain('attach full artifact content');
-      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
-        session_id: 'parent-session-id',
-        prefixes: ['Completeness: ', 'Feasibility: '],
-        include_full_content: true,
-      });
-      expect(tool?.inputSchema.required).toEqual(['session_id', 'prefixes']);
-    });
-  });
-
   describe('run_required_verification_critic_round', () => {
     const tool = PLAN_TOOLS.find((t) => t.name === 'run_required_verification_critic_round');
 
@@ -743,7 +720,7 @@ describe('New team tool definitions', () => {
       });
       expect(((tool?.inputSchema as any).examples?.[0]?.message as string)).toContain('SESSION_ID');
       expect(((tool?.inputSchema as any).examples?.[0]?.message as string)).toContain('ROUND: 2');
-      expect(((tool?.inputSchema as any).examples?.[0]?.message as string)).toContain('TeamResearch artifact');
+      expect(((tool?.inputSchema as any).examples?.[0]?.message as string)).toContain('publish_verification_finding');
     });
   });
 

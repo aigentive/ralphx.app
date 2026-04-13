@@ -80,16 +80,7 @@ export function getToolRecoveryHintFromRegistry(tools, toolName) {
             const examples = formatToolExamples(tool);
             return [
                 "Read artifacts from the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
-                "Verification flows should usually prefer get_verification_round_artifacts instead of manually sorting summaries and then loading full artifact ids.",
-                ...examples.map((example) => `Example payload: ${example}`),
-            ].join("\n");
-        }
-        case "get_verification_round_artifacts": {
-            const examples = formatToolExamples(tool);
-            return [
-                "This is a low-level verifier helper for debugging.",
-                "Normal verifier prompts should prefer run_verification_round instead of manually calling get_team_artifacts + get_artifact + client-side sorting for current-round artifacts.",
-                "Provide the parent ideation session_id plus the title prefixes you expect; the MCP proxy filters by created_after and returns the latest match per prefix.",
+                "Verification flows should usually prefer run_verification_enrichment or run_verification_round instead of manually sorting summaries and loading artifact ids.",
                 ...examples.map((example) => `Example payload: ${example}`),
             ].join("\n");
         }
@@ -116,7 +107,7 @@ export function getToolRecoveryHintFromRegistry(tools, toolName) {
             return [
                 "Use this as the primary verifier round driver.",
                 "It selects optional specialists, runs the required critics through the backend helper, waits for bounded optional settlement, and returns structured required critic findings plus backend-owned merged_gaps.",
-                "Prefer this over manual delegate_start/delegate_wait/get_verification_round_artifacts orchestration in the prompt.",
+                "Prefer this over manual delegate_start/delegate_wait/get_team_artifacts orchestration in the prompt.",
                 ...examples.map((example) => `Example payload: ${example}`),
             ].join("\n");
         }
