@@ -76,10 +76,10 @@ describe('getAllowedToolNames', () => {
     expect(tools).toEqual(['get_session_plan', 'create_team_artifact']);
   });
 
-  it('should return TOOL_ALLOWLIST entry when env var is unset and agent type is valid', () => {
-    setAgentType(IDEATION_TEAM_LEAD);
+  it('should return TOOL_ALLOWLIST entry when env var is unset and agent type lacks canonical metadata', () => {
+    setAgentType(WORKER_TEAM_MEMBER);
     const tools = getAllowedToolNames();
-    expect(tools).toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    expect(tools).toEqual(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER]);
   });
 
   it('should return empty array when env var is unset and agent type is unknown', () => {
@@ -806,12 +806,12 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
     expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
   });
 
-  it('fallback to TOOL_ALLOWLIST emits deprecation warning when --allowed-tools absent', () => {
+  it('fallback to TOOL_ALLOWLIST emits deprecation warning when canonical metadata is absent', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    setAgentType(IDEATION_TEAM_LEAD);
+    setAgentType(WORKER_TEAM_MEMBER);
     // No env var, no --allowed-tools in argv
     const tools = getAllowedToolNames();
-    expect(tools).toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    expect(tools).toEqual(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER]);
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('WARN'));
     consoleSpy.mockRestore();
   });

@@ -3,36 +3,13 @@
  * All tools are proxies that forward to Tauri backend via HTTP
  */
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+export { TOOL_ALLOWLIST, setAgentType, getAgentType } from "./tool-authorization.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
  */
 export declare const ALL_TOOLS: Tool[];
-/**
- * Tool scoping per agent type
- * Hard enforcement: each agent only sees tools appropriate for its role
- */
-export declare const TOOL_ALLOWLIST: Record<string, string[]>;
-/**
- * Set the current agent type (called from index.ts after parsing CLI args)
- * @param agentType - The agent type to set
- */
-export declare function setAgentType(agentType: string): void;
-/**
- * Get the current agent type
- * @returns The current agent type
- */
-export declare function getAgentType(): string;
-/**
- * Parse --allowed-tools= CLI arg from process.argv.
- * Returns the parsed tool list, [] for __NONE__ sentinel, or undefined to fall through.
- */
 export declare function parseAllowedToolsFromArgs(): string[] | undefined;
-/**
- * Get allowed tool names for the current agent type
- * Priority: env var > --allowed-tools CLI arg > canonical agent metadata fallback > TOOL_ALLOWLIST fallback
- * @returns Array of tool names this agent is allowed to use
- */
 export declare function getAllowedToolNames(): string[];
 /**
  * Get filtered tools based on agent type
