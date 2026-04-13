@@ -1,4 +1,7 @@
 use super::*;
+use crate::infrastructure::agents::claude::agent_config::{
+    parse_config_no_env_overrides, EMBEDDED_CONFIG,
+};
 
 // ── Model tier tests ────────────────────────────────────────────
 
@@ -121,22 +124,13 @@ fn test_resolve_canonical_process_mapping_preserves_unknown_yaml_slots() {
 }
 
 #[test]
-fn test_runtime_yaml_process_mapping_stays_aligned_with_canonical_registry() {
-    #[derive(serde::Deserialize)]
-    struct ProcessMappingMirror {
-        #[serde(default)]
-        process_mapping: ProcessMapping,
-    }
-
-    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
-    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
-    let parsed: ProcessMappingMirror =
-        serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+fn test_embedded_config_omits_process_mapping_and_still_resolves_canonical_registry() {
+    let parsed = parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
 
     assert_eq!(
         parsed.process_mapping,
         canonical_process_mapping(),
-        "ralphx.yaml process_mapping should stay aligned with the canonical process registry"
+        "embedded ralphx.yaml should be able to omit process_mapping while the loader still resolves the canonical registry"
     );
 }
 
@@ -175,22 +169,13 @@ fn test_resolve_canonical_team_constraints_preserves_unknown_yaml_processes() {
 }
 
 #[test]
-fn test_runtime_yaml_team_constraints_stay_aligned_with_canonical_registry() {
-    #[derive(serde::Deserialize)]
-    struct TeamConstraintsMirror {
-        #[serde(default)]
-        team_constraints: TeamConstraintsConfig,
-    }
-
-    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
-    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
-    let parsed: TeamConstraintsMirror =
-        serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+fn test_embedded_config_omits_team_constraints_and_still_resolves_canonical_registry() {
+    let parsed = parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
 
     assert_eq!(
         parsed.team_constraints,
         canonical_team_constraints_config(),
-        "ralphx.yaml team_constraints should stay aligned with the canonical team constraint registry"
+        "embedded ralphx.yaml should be able to omit team_constraints while the loader still resolves the canonical team constraint registry"
     );
 }
 

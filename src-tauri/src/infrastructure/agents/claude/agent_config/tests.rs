@@ -432,15 +432,15 @@ fn test_embedded_config_keeps_explicit_execution_defaults_aligned_with_fallback(
 }
 
 #[test]
-fn test_embedded_config_keeps_explicit_agent_harness_defaults_aligned_with_fallback() {
+fn test_embedded_config_omits_agent_harness_defaults_and_uses_fallback() {
     let parsed =
         parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
 
     assert_eq!(
         parsed.agent_harness_defaults,
         default_agent_harness_defaults(),
-        "ralphx.yaml should keep explicit agent_harness_defaults aligned with the Rust fallback \
-         defaults so embedded config and runtime bootstrap stay in sync"
+        "embedded ralphx.yaml should be able to omit agent_harness_defaults entirely while the \
+         runtime still resolves the standard fallback defaults"
     );
 }
 
