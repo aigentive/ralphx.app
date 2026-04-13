@@ -140,6 +140,60 @@ fn test_runtime_yaml_process_mapping_stays_aligned_with_canonical_registry() {
     );
 }
 
+#[test]
+fn test_canonical_team_constraints_contains_live_process_defaults() {
+    let config = canonical_team_constraints_config();
+    let defaults = config.defaults.as_ref().expect("defaults should exist");
+    assert_eq!(defaults.max_teammates, 5);
+    assert_eq!(defaults.model_cap, "sonnet");
+    assert_eq!(defaults.auto_approve, Some(true));
+    assert_eq!(config.processes["execution"].timeout_minutes, 30);
+    assert_eq!(config.processes["review"].mode, TeamMode::Constrained);
+}
+
+#[test]
+fn test_resolve_canonical_team_constraints_preserves_unknown_yaml_processes() {
+    let mut raw = TeamConstraintsConfig::default();
+    raw.processes.insert(
+        "custom_process".to_string(),
+        TeamConstraints {
+            max_teammates: 2,
+            allowed_tools: vec!["Read".to_string()],
+            allowed_mcp_tools: vec!["get_task_context".to_string()],
+            model_cap: "haiku".to_string(),
+            mode: TeamMode::Constrained,
+            presets: vec!["custom-agent".to_string()],
+            timeout_minutes: 15,
+            budget_limit: Some(1.0),
+            auto_approve: Some(false),
+        },
+    );
+
+    let resolved = resolve_canonical_team_constraints_config(&raw);
+    assert_eq!(resolved.processes["custom_process"].model_cap, "haiku");
+    assert_eq!(resolved.processes["execution"].model_cap, "sonnet");
+}
+
+#[test]
+fn test_runtime_yaml_team_constraints_stay_aligned_with_canonical_registry() {
+    #[derive(serde::Deserialize)]
+    struct TeamConstraintsMirror {
+        #[serde(default)]
+        team_constraints: TeamConstraintsConfig,
+    }
+
+    let yaml_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ralphx.yaml");
+    let contents = std::fs::read_to_string(&yaml_path).expect("should read ralphx.yaml");
+    let parsed: TeamConstraintsMirror =
+        serde_yaml::from_str(&contents).expect("should parse ralphx.yaml");
+
+    assert_eq!(
+        parsed.team_constraints,
+        canonical_team_constraints_config(),
+        "ralphx.yaml team_constraints should stay aligned with the canonical team constraint registry"
+    );
+}
+
 // ── TeamConstraints deserialization tests ────────────────────────
 
 #[test]

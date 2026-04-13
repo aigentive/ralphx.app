@@ -180,7 +180,7 @@ impl Default for TeamMode {
 }
 
 /// Per-process guardrails for team composition.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct TeamConstraints {
     #[serde(default = "default_max_teammates")]
     pub max_teammates: u8,
@@ -229,12 +229,143 @@ impl Default for TeamConstraints {
 ///     max_teammates: 5
 ///     allowed_tools: [Read, Write, Edit, Bash]
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct TeamConstraintsConfig {
     #[serde(rename = "_defaults", default)]
     pub defaults: Option<TeamConstraints>,
     #[serde(flatten)]
     pub processes: HashMap<String, TeamConstraints>,
+}
+
+pub fn canonical_team_constraints_config() -> TeamConstraintsConfig {
+    TeamConstraintsConfig {
+        defaults: Some(TeamConstraints {
+            max_teammates: 5,
+            allowed_tools: Vec::new(),
+            allowed_mcp_tools: Vec::new(),
+            model_cap: "sonnet".to_string(),
+            mode: TeamMode::Dynamic,
+            presets: Vec::new(),
+            timeout_minutes: 20,
+            budget_limit: None,
+            auto_approve: Some(true),
+        }),
+        processes: HashMap::from([
+            (
+                "ideation".to_string(),
+                TeamConstraints {
+                    max_teammates: 5,
+                    allowed_tools: vec![
+                        "Read".to_string(),
+                        "Grep".to_string(),
+                        "Glob".to_string(),
+                        "Bash".to_string(),
+                        "WebFetch".to_string(),
+                        "WebSearch".to_string(),
+                    ],
+                    allowed_mcp_tools: Vec::new(),
+                    model_cap: "opus".to_string(),
+                    mode: TeamMode::Dynamic,
+                    presets: vec!["researcher".to_string(), "critic".to_string()],
+                    timeout_minutes: 20,
+                    budget_limit: None,
+                    auto_approve: None,
+                },
+            ),
+            (
+                "execution".to_string(),
+                TeamConstraints {
+                    max_teammates: 5,
+                    allowed_tools: vec![
+                        "Read".to_string(),
+                        "Write".to_string(),
+                        "Edit".to_string(),
+                        "Bash".to_string(),
+                        "Grep".to_string(),
+                        "Glob".to_string(),
+                        "WebFetch".to_string(),
+                        "WebSearch".to_string(),
+                    ],
+                    allowed_mcp_tools: vec![
+                        "get_task_context".to_string(),
+                        "get_artifact".to_string(),
+                        "get_project_analysis".to_string(),
+                        "create_team_artifact".to_string(),
+                        "get_team_artifacts".to_string(),
+                        "start_step".to_string(),
+                        "complete_step".to_string(),
+                        "skip_step".to_string(),
+                        "fail_step".to_string(),
+                        "add_step".to_string(),
+                        "get_step_context".to_string(),
+                        "get_step_progress".to_string(),
+                        "get_sub_steps".to_string(),
+                    ],
+                    model_cap: "sonnet".to_string(),
+                    mode: TeamMode::Dynamic,
+                    presets: vec!["ralphx-execution-coder".to_string()],
+                    timeout_minutes: 30,
+                    budget_limit: None,
+                    auto_approve: None,
+                },
+            ),
+            (
+                "review".to_string(),
+                TeamConstraints {
+                    max_teammates: 2,
+                    allowed_tools: vec![
+                        "Read".to_string(),
+                        "Grep".to_string(),
+                        "Glob".to_string(),
+                        "Bash".to_string(),
+                    ],
+                    allowed_mcp_tools: Vec::new(),
+                    model_cap: "sonnet".to_string(),
+                    mode: TeamMode::Constrained,
+                    presets: vec!["ralphx-execution-reviewer".to_string()],
+                    timeout_minutes: 20,
+                    budget_limit: None,
+                    auto_approve: None,
+                },
+            ),
+        ]),
+    }
+}
+
+pub fn resolve_canonical_team_constraints_config(raw: &TeamConstraintsConfig) -> TeamConstraintsConfig {
+    let mut resolved = canonical_team_constraints_config();
+
+    if let Some(yaml_defaults) = &raw.defaults {
+        if resolved.defaults.as_ref() != Some(yaml_defaults) {
+            tracing::warn!(
+                yaml_defaults = ?yaml_defaults,
+                canonical_defaults = ?resolved.defaults,
+                "Canonical team constraints defaults override divergent runtime YAML defaults"
+            );
+        }
+    }
+
+    for (process, yaml_constraints) in &raw.processes {
+        match resolved.processes.get(process) {
+            Some(canonical_constraints) => {
+                if canonical_constraints != yaml_constraints {
+                    tracing::warn!(
+                        process = %process,
+                        yaml_constraints = ?yaml_constraints,
+                        canonical_constraints = ?canonical_constraints,
+                        "Canonical team constraints override divergent runtime YAML process constraints"
+                    );
+                }
+            }
+            None => {
+                resolved
+                    .processes
+                    .insert(process.clone(), yaml_constraints.clone());
+            }
+        }
+    }
+
+    resolved
 }
 
 /// A single teammate in a spawn request from a team lead.

@@ -24,7 +24,8 @@ use tool_sets::canonical_claude_tool_sets;
 pub use team_config::{
     canonical_process_mapping, resolve_canonical_process_mapping, ApprovedTeamPlan,
     ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError, TeamConstraints,
-    TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    TeamConstraintsConfig, TeamMode, TeammateSpawnRequest, canonical_team_constraints_config,
+    resolve_canonical_team_constraints_config,
 };
 
 pub use runtime_config::{
@@ -763,12 +764,13 @@ fn parse_config_with_lookup(
     apply_agent_harness_env_overrides_with(&mut agent_harness_defaults, lookup);
 
     let process_mapping = resolve_canonical_process_mapping(&parsed.process_mapping);
+    let team_constraints = resolve_canonical_team_constraints_config(&parsed.team_constraints);
 
     Some(LoadedConfig {
         agents: resolved,
         claude,
         process_mapping,
-        team_constraints: parsed.team_constraints,
+        team_constraints,
         defer_merge_enabled: parsed.defer_merge_enabled,
         file_logging: parsed.file_logging,
         runtime,

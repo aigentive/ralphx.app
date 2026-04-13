@@ -1698,6 +1698,9 @@ team_constraints:
     max_teammates: 3
     mode: dynamic
     timeout_minutes: 30
+  custom_process:
+    max_teammates: 2
+    model_cap: haiku
 agents:
   - name: ralphx-execution-worker
     system_prompt_file: plugins/app/agents/worker.md
@@ -1709,8 +1712,9 @@ agents:
     let defaults = parsed.team_constraints.defaults.as_ref().unwrap();
     assert_eq!(defaults.max_teammates, 5);
     let exec = &parsed.team_constraints.processes["execution"];
-    assert_eq!(exec.max_teammates, 3);
+    assert_eq!(exec.max_teammates, 5);
     assert_eq!(exec.timeout_minutes, 30);
+    assert_eq!(parsed.team_constraints.processes["custom_process"].model_cap, "haiku");
 }
 
 #[test]
@@ -1734,8 +1738,11 @@ preapproved_cli_tools: []
         canonical_process_mapping(),
         "missing process_mapping should resolve to the canonical process mapping"
     );
-    assert!(parsed.team_constraints.processes.is_empty());
-    assert!(parsed.team_constraints.defaults.is_none());
+    assert_eq!(
+        parsed.team_constraints,
+        canonical_team_constraints_config(),
+        "missing team_constraints should resolve to the canonical team constraints"
+    );
 }
 
 #[test]
@@ -1768,6 +1775,32 @@ agents:
             .map(String::as_str),
         Some("ralphx-execution-team-lead")
     );
+}
+
+#[test]
+fn test_canonical_team_constraints_override_divergent_runtime_yaml_process() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+team_constraints:
+  execution:
+    max_teammates: 1
+    model_cap: haiku
+agents:
+  - name: ralphx-execution-worker
+    system_prompt_file: plugins/app/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    let execution = &parsed.team_constraints.processes["execution"];
+    assert_eq!(execution.max_teammates, 5);
+    assert_eq!(execution.model_cap, "sonnet");
+    assert_eq!(execution.timeout_minutes, 30);
 }
 
 // ==================== Effort Field Tests ====================
