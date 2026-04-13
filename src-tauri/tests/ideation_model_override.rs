@@ -25,7 +25,8 @@ use ralphx_lib::infrastructure::agents::claude::{
 };
 use ralphx_lib::infrastructure::memory::{
     MemoryArtifactRepository, MemoryChatAttachmentRepository,
-    MemoryIdeationModelSettingsRepository, MemoryIdeationSessionRepository, MemoryTaskRepository,
+    MemoryDelegatedSessionRepository, MemoryIdeationModelSettingsRepository,
+    MemoryIdeationSessionRepository, MemoryTaskRepository,
 };
 
 // Helper to collect OsStr args from tokio::process::Command as Strings
@@ -329,6 +330,7 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
         None,
         Some(settings_repo),
         ideation_session_repo,
+        Arc::new(MemoryDelegatedSessionRepository::new()),
         Arc::new(MemoryTaskRepository::new()),
         &[],
         0,

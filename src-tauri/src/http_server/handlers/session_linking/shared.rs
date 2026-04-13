@@ -145,7 +145,7 @@ pub(super) fn build_ideation_chat_service(
     chat_service
 }
 
-pub(super) fn rollback_verification_state(
+pub(super) async fn rollback_verification_state(
     state: &HttpServerState,
     parent_id: &IdeationSessionId,
     current_generation: i32,
@@ -156,25 +156,23 @@ pub(super) fn rollback_verification_state(
     let db = state.app_state.db.clone();
     let app_handle = state.app_state.app_handle.clone();
 
-    tauri::async_runtime::spawn(async move {
-        if let Err(re) = db
-            .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
-            .await
-        {
-            error!(
-                "Failed to rollback verification state after {}: {}",
-                failure_context, re
-            );
-        } else if let Some(handle) = app_handle {
-            emit_verification_status_changed(
-                &handle,
-                &parent_id_str,
-                VerificationStatus::Unverified,
-                false,
-                None,
-                Some("spawn_failed"),
-                Some(current_generation),
-            );
-        }
-    });
+    if let Err(re) = db
+        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+        .await
+    {
+        error!(
+            "Failed to rollback verification state after {}: {}",
+            failure_context, re
+        );
+    } else if let Some(handle) = app_handle {
+        emit_verification_status_changed(
+            &handle,
+            &parent_id_str,
+            VerificationStatus::Unverified,
+            false,
+            None,
+            Some("spawn_failed"),
+            Some(current_generation),
+        );
+    }
 }

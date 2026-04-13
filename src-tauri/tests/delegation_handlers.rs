@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use std::{fs, os::unix::fs::PermissionsExt};
 
@@ -20,12 +20,18 @@ use ralphx_lib::http_server::types::{
     HttpServerState,
 };
 use tempfile::TempDir;
+use tokio::sync::Mutex;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri has a repo-root parent")
         .to_path_buf()
+}
+
+fn codex_cli_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 struct EnvVarGuard {
@@ -166,6 +172,7 @@ async fn create_parent_session(state: &HttpServerState) -> IdeationSession {
 
 #[tokio::test]
 async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_client() {
+    let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
     let _codex_cli_guard = EnvVarGuard::set(
         "CODEX_CLI_PATH",
@@ -317,6 +324,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
 
 #[tokio::test]
 async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omitted() {
+    let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
     let _codex_cli_guard = EnvVarGuard::set(
         "CODEX_CLI_PATH",
@@ -512,6 +520,7 @@ async fn test_delegate_start_rejects_disallowed_target_for_caller() {
 
 #[tokio::test]
 async fn test_delegate_start_infers_parent_session_from_verification_child_context() {
+    let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
     let _codex_cli_guard = EnvVarGuard::set(
         "CODEX_CLI_PATH",

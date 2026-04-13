@@ -27,8 +27,11 @@ use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::agents::mock::{MockAgenticClient, MockCallType};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{fs, os::unix::fs::PermissionsExt};
+use tempfile::TempDir;
 
 // ============================================================================
 // Setup helpers
@@ -59,6 +62,92 @@ fn setup_test_state_with_app_state(app_state: Arc<AppState>) -> HttpServerState 
         team_service,
         delegation_service: Default::default(),
     }
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    original: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let original = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        Self { key, original }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.original.as_ref() {
+            std::env::set_var(self.key, value);
+        } else {
+            std::env::remove_var(self.key);
+        }
+    }
+}
+
+fn install_fake_codex_cli() -> (TempDir, PathBuf) {
+    let tempdir = TempDir::new().expect("tempdir");
+    let script_path = tempdir.path().join("codex");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+cat <<'EOF'
+Codex CLI
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  mcp         Manage external MCP servers for Codex
+  resume      Resume a previous interactive session
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --search
+      --add-dir <DIR>
+EOF
+exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+echo "codex-cli 0.116.0"
+exit 0
+fi
+
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+cat <<'EOF'
+Run Codex non-interactively
+
+Usage: codex exec [OPTIONS] [PROMPT] [COMMAND]
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --add-dir <DIR>
+      --json
+  -C, --cd <DIR>
+      --skip-git-repo-check
+EOF
+exit 0
+fi
+
+if [ "$1" = "exec" ]; then
+printf '%s\n' '{"type":"thread.started","thread_id":"external-thread-1"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"MOCK_EXTERNAL_COMPLETION"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":2,"output_tokens":7}}'
+exit 0
+fi
+
+echo "unsupported invocation" >&2
+exit 2
+"#;
+    fs::write(&script_path, script).expect("write fake codex cli");
+    let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).expect("chmod fake codex cli");
+    (tempdir, script_path)
 }
 
 fn make_project(id: &str, name: &str) -> Project {
@@ -616,6 +705,11 @@ async fn test_start_ideation_without_title_assigns_default_title() {
 
 #[tokio::test]
 async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_client() {
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
     let default_mock_impl = Arc::new(MockAgenticClient::new());
     let default_mock: Arc<dyn AgenticClient> = default_mock_impl.clone();
     let codex_mock_impl = Arc::new(MockAgenticClient::new());

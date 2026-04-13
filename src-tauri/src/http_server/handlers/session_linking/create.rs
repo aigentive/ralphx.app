@@ -239,7 +239,8 @@ async fn spawn_child_orchestration(
                         parent_id,
                         current_generation,
                         "capacity-deferred spawn",
-                    );
+                    )
+                    .await;
                 }
                 ChildOrchestrationResult::DeferredCapacity
             } else {
@@ -249,7 +250,13 @@ async fn spawn_child_orchestration(
         Err(e) => {
             error!("{error_context} {}: {}", child_session_str, e);
             if let Some(current_generation) = verification_generation.take() {
-                rollback_verification_state(state, parent_id, current_generation, "spawn failure");
+                rollback_verification_state(
+                    state,
+                    parent_id,
+                    current_generation,
+                    "spawn failure",
+                )
+                .await;
             }
             // Only archive verification children on spawn failure — general follow-up
             // children remain Active so users can retry orchestration later.
@@ -419,12 +426,14 @@ pub(crate) async fn create_child_session_impl(
     let child_session_str = child_id.as_str().to_string();
     let parent_session_str = parent_id.as_str().to_string();
 
-    let created_session = state
+    let created_session = match state
         .app_state
         .ideation_session_repo
         .create(child_session)
         .await
-        .map_err(|e| {
+    {
+        Ok(session) => session,
+        Err(e) => {
             error!("Failed to create child session: {}", e);
             if let Some(current_generation) = verification_generation {
                 rollback_verification_state(
@@ -432,39 +441,37 @@ pub(crate) async fn create_child_session_impl(
                     &parent_id,
                     current_generation,
                     "child DB insert failure",
-                );
+                )
+                .await;
             }
-            json_error(
+            return Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create session: {}", e),
-            )
-        })?;
+            ));
+        }
+    };
 
     let link = SessionLink::new(
         parent_id.clone(),
         child_id.clone(),
         SessionRelationship::FollowOn,
     );
-    state
-        .app_state
-        .session_link_repo
-        .create(link)
-        .await
-        .map_err(|e| {
-            error!("Failed to create session link: {}", e);
-            if let Some(current_generation) = verification_generation {
-                rollback_verification_state(
-                    state,
-                    &parent_id,
-                    current_generation,
-                    "link creation failure",
-                );
-            }
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create session link: {}", e),
+    if let Err(e) = state.app_state.session_link_repo.create(link).await {
+        error!("Failed to create session link: {}", e);
+        if let Some(current_generation) = verification_generation {
+            rollback_verification_state(
+                state,
+                &parent_id,
+                current_generation,
+                "link creation failure",
             )
-        })?;
+            .await;
+        }
+        return Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create session link: {}", e),
+        ));
+    }
 
     let parent_context = if req.inherit_context {
         Some(load_parent_context(state, &parent).await)

@@ -32,6 +32,7 @@ fn build_chat_service(state: &HttpServerState) -> AppChatService<tauri::Wry> {
         Arc::clone(&app.task_repo),
         Arc::clone(&app.task_dependency_repo),
         Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.delegated_session_repo),
         Arc::clone(&app.activity_event_repo),
         Arc::clone(&app.message_queue),
         Arc::clone(&app.running_agent_registry),

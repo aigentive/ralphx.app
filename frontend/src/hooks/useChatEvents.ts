@@ -490,6 +490,22 @@ export function useChatEvents({
             const existing = prev.get(payload.tool_use_id);
             const next = new Map(prev);
             const isDelegated = isDelegatedTaskEventPayload(payload);
+            const delegatedJobId = payload.delegated_job_id ?? existing?.delegatedJobId;
+            const delegatedSessionId = payload.delegated_session_id ?? existing?.delegatedSessionId;
+            const delegatedConversationId =
+              payload.delegated_conversation_id ?? existing?.delegatedConversationId;
+            const delegatedAgentRunId =
+              payload.delegated_agent_run_id ?? existing?.delegatedAgentRunId;
+            const providerHarness = payload.provider_harness ?? existing?.providerHarness;
+            const providerSessionId = payload.provider_session_id ?? existing?.providerSessionId;
+            const upstreamProvider = payload.upstream_provider ?? existing?.upstreamProvider;
+            const providerProfile = payload.provider_profile ?? existing?.providerProfile;
+            const logicalModel = payload.logical_model ?? existing?.logicalModel;
+            const effectiveModelId = payload.effective_model_id ?? existing?.effectiveModelId;
+            const logicalEffort = payload.logical_effort ?? existing?.logicalEffort;
+            const effectiveEffort = payload.effective_effort ?? existing?.effectiveEffort;
+            const approvalPolicy = payload.approval_policy ?? existing?.approvalPolicy;
+            const sandboxMode = payload.sandbox_mode ?? existing?.sandboxMode;
             const newTask: StreamingTask = {
               toolUseId: payload.tool_use_id,
               toolName: payload.tool_name ?? existing?.toolName ?? "Task",
@@ -507,51 +523,20 @@ export function useChatEvents({
               status: normalizeDelegatedTaskStatus(existing?.status) ?? "running",
               startedAt: existing?.startedAt ?? Date.now(),
               childToolCalls: existing?.childToolCalls ?? [],
-              ...(payload.delegated_job_id || existing?.delegatedJobId
-                ? { delegatedJobId: payload.delegated_job_id ?? existing?.delegatedJobId! }
-                : {}),
-              ...(payload.delegated_session_id || existing?.delegatedSessionId
-                ? { delegatedSessionId: payload.delegated_session_id ?? existing?.delegatedSessionId! }
-                : {}),
-              ...(payload.delegated_conversation_id || existing?.delegatedConversationId
-                ? {
-                    delegatedConversationId:
-                      payload.delegated_conversation_id ?? existing?.delegatedConversationId!,
-                  }
-                : {}),
-              ...(payload.delegated_agent_run_id || existing?.delegatedAgentRunId
-                ? { delegatedAgentRunId: payload.delegated_agent_run_id ?? existing?.delegatedAgentRunId! }
-                : {}),
-              ...(payload.provider_harness || existing?.providerHarness
-                ? { providerHarness: payload.provider_harness ?? existing?.providerHarness! }
-                : {}),
-              ...(payload.provider_session_id || existing?.providerSessionId
-                ? { providerSessionId: payload.provider_session_id ?? existing?.providerSessionId! }
-                : {}),
-              ...(payload.upstream_provider || existing?.upstreamProvider
-                ? { upstreamProvider: payload.upstream_provider ?? existing?.upstreamProvider! }
-                : {}),
-              ...(payload.provider_profile || existing?.providerProfile
-                ? { providerProfile: payload.provider_profile ?? existing?.providerProfile! }
-                : {}),
-              ...(payload.logical_model || existing?.logicalModel
-                ? { logicalModel: payload.logical_model ?? existing?.logicalModel! }
-                : {}),
-              ...(payload.effective_model_id || existing?.effectiveModelId
-                ? { effectiveModelId: payload.effective_model_id ?? existing?.effectiveModelId! }
-                : {}),
-              ...(payload.logical_effort || existing?.logicalEffort
-                ? { logicalEffort: payload.logical_effort ?? existing?.logicalEffort! }
-                : {}),
-              ...(payload.effective_effort || existing?.effectiveEffort
-                ? { effectiveEffort: payload.effective_effort ?? existing?.effectiveEffort! }
-                : {}),
-              ...(payload.approval_policy || existing?.approvalPolicy
-                ? { approvalPolicy: payload.approval_policy ?? existing?.approvalPolicy! }
-                : {}),
-              ...(payload.sandbox_mode || existing?.sandboxMode
-                ? { sandboxMode: payload.sandbox_mode ?? existing?.sandboxMode! }
-                : {}),
+              ...(delegatedJobId != null ? { delegatedJobId } : {}),
+              ...(delegatedSessionId != null ? { delegatedSessionId } : {}),
+              ...(delegatedConversationId != null ? { delegatedConversationId } : {}),
+              ...(delegatedAgentRunId != null ? { delegatedAgentRunId } : {}),
+              ...(providerHarness != null ? { providerHarness } : {}),
+              ...(providerSessionId != null ? { providerSessionId } : {}),
+              ...(upstreamProvider != null ? { upstreamProvider } : {}),
+              ...(providerProfile != null ? { providerProfile } : {}),
+              ...(logicalModel != null ? { logicalModel } : {}),
+              ...(effectiveModelId != null ? { effectiveModelId } : {}),
+              ...(logicalEffort != null ? { logicalEffort } : {}),
+              ...(effectiveEffort != null ? { effectiveEffort } : {}),
+              ...(approvalPolicy != null ? { approvalPolicy } : {}),
+              ...(sandboxMode != null ? { sandboxMode } : {}),
               ...(existing?.completedAt != null ? { completedAt: existing.completedAt } : {}),
               ...(existing?.totalDurationMs != null ? { totalDurationMs: existing.totalDurationMs } : {}),
               ...(existing?.totalTokens != null ? { totalTokens: existing.totalTokens } : {}),

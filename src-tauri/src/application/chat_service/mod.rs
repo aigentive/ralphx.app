@@ -33,6 +33,7 @@ use crate::application::interactive_process_registry::{
 };
 use crate::application::harness_runtime_registry::{
     default_harness_runtime_available, resolve_default_chat_service_bootstrap,
+    resolve_harness_plugin_dir, resolve_chat_service_bootstrap,
 };
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, DEFAULT_AGENT_HARNESS};
@@ -1002,10 +1003,22 @@ impl<R: Runtime> AppChatService<R> {
         stored_session_id: Option<&str>,
         resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
     ) -> Result<(PathBuf, tokio::process::Child, Option<Arc<InteractiveProcessRegistry>>), ChatServiceError> {
+        let effective_harness = resolved_spawn_settings.effective_harness;
+        let cli_path = if effective_harness == DEFAULT_AGENT_HARNESS {
+            self.cli_path.clone()
+        } else {
+            resolve_chat_service_bootstrap(effective_harness).cli_path
+        };
+        let plugin_dir = if effective_harness == DEFAULT_AGENT_HARNESS {
+            self.plugin_dir.clone()
+        } else {
+            resolve_harness_plugin_dir(effective_harness, working_directory)
+        };
+
         let launch_plan = chat_service_context::build_launch_plan_for_harness(
-            resolved_spawn_settings.effective_harness,
-            &self.cli_path,
-            &self.plugin_dir,
+            effective_harness,
+            &cli_path,
+            &plugin_dir,
             conversation,
             message,
             agent_name_override,
@@ -1029,8 +1042,8 @@ impl<R: Runtime> AppChatService<R> {
         .await
         .map_err(|error| {
             tracing::warn!(
-                harness = %resolved_spawn_settings.effective_harness,
-                cli_path = %self.cli_path.display(),
+                harness = %effective_harness,
+                cli_path = %cli_path.display(),
                 %error,
                 "chat_service.send_message missing harness runtime"
             );

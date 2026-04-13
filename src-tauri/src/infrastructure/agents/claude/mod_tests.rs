@@ -657,15 +657,12 @@ fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics
     let plugin_dir = root.join("plugins/app");
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
-    let agents_root = root.join("agents");
+    let agent_names = crate::infrastructure::agents::harness_agent_catalog::list_canonical_prompt_backed_agents(
+        &root,
+        crate::infrastructure::agents::harness_agent_catalog::AgentPromptHarness::Claude,
+    );
 
-    for entry in std::fs::read_dir(&agents_root).expect("canonical agents dir should exist") {
-        let entry = entry.expect("canonical agent entry");
-        if !entry.file_type().expect("agent entry type").is_dir() {
-            continue;
-        }
-
-        let agent_name = entry.file_name().to_string_lossy().to_string();
+    for agent_name in agent_names {
         let generated_path = generated_dir.join("agents").join(format!("{agent_name}.md"));
         let generated_markdown =
             std::fs::read_to_string(&generated_path).expect("read generated agent markdown");
