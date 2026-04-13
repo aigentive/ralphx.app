@@ -1144,7 +1144,10 @@ impl<R: Runtime> TaskTransitionService<R> {
     where
         F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
     {
-        self.agent_client_factories.default_factory = Arc::new(factory);
+        self.agent_client_factories = self
+            .agent_client_factories
+            .clone()
+            .with_default_factory(Arc::new(factory));
         self.rebuild_agent_spawner();
         self
     }

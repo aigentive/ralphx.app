@@ -180,9 +180,9 @@ impl AgentClientBundle {
 
 #[derive(Clone)]
 pub struct AgentClientFactoryBundle {
-    pub default_harness: AgentHarnessKind,
-    pub default_factory: Arc<AgentClientFactory>,
-    pub harness_factories: HashMap<AgentHarnessKind, Arc<AgentClientFactory>>,
+    default_harness: AgentHarnessKind,
+    default_factory: Arc<AgentClientFactory>,
+    harness_factories: HashMap<AgentHarnessKind, Arc<AgentClientFactory>>,
 }
 
 impl AgentClientFactoryBundle {
@@ -219,6 +219,11 @@ impl AgentClientFactoryBundle {
         I: IntoIterator<Item = (AgentHarnessKind, Arc<AgentClientFactory>)>,
     {
         self.harness_factories.extend(factories);
+        self
+    }
+
+    pub fn with_default_factory(mut self, factory: Arc<AgentClientFactory>) -> Self {
+        self.default_factory = factory;
         self
     }
 
@@ -282,6 +287,17 @@ impl AgentClientFactoryBundle {
         )
     }
 
+    pub fn default_harness(&self) -> AgentHarnessKind {
+        self.default_harness
+    }
+
+    pub fn explicit_harness_factory(
+        &self,
+        harness: AgentHarnessKind,
+    ) -> Option<Arc<AgentClientFactory>> {
+        self.harness_factories.get(&harness).cloned()
+    }
+
     pub fn has_explicit_harness_factory(&self, harness: AgentHarnessKind) -> bool {
         self.harness_factories.contains_key(&harness)
     }
@@ -310,7 +326,7 @@ mod tests {
     fn standard_runtime_factories_uses_domain_default_harness() {
         let bundle = AgentClientFactoryBundle::standard_production_runtime_factories();
 
-        assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
+        assert_eq!(bundle.default_harness(), DEFAULT_AGENT_HARNESS);
         assert!(bundle.has_explicit_harness_factory(AgentHarnessKind::Codex));
     }
 
