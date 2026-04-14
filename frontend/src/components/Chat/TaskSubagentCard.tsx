@@ -26,6 +26,7 @@ import {
   buildTaskCardTranscriptEntryFromStreamingTask,
   TaskCardTranscriptView,
 } from "./TaskCardTranscript";
+import { TaskToolCallDelegatedTranscript } from "./TaskToolCallDelegatedTranscript";
 import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 // ============================================================================
@@ -127,6 +128,8 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
   }, [task.childToolCalls.length, isRunning]);
 
   const isDelegateCall = canonicalizeToolName(task.toolName) === "delegate_start";
+  const delegatedConversationId = isDelegateCall ? task.delegatedConversationId ?? null : null;
+  const hasBody = hasTranscriptBody || delegatedConversationId != null;
   const providerMetadata = {
     providerHarness: task.providerHarness,
     providerSessionId: task.providerSessionId,
@@ -225,14 +228,21 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
       {/* Body */}
       {isExpanded && (
         <div className="px-3 py-2">
-          {hasTranscriptBody && (
+          {hasBody && (
             <div
               ref={contentRef}
               onScroll={handleScroll}
               className="overflow-y-auto"
               style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
             >
-              <TaskCardTranscriptView entries={[transcriptEntry]} />
+              {delegatedConversationId ? (
+                <TaskToolCallDelegatedTranscript
+                  conversationId={delegatedConversationId}
+                  fallbackText={task.textOutput}
+                />
+              ) : (
+                <TaskCardTranscriptView entries={[transcriptEntry]} />
+              )}
             </div>
           )}
 

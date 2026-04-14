@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TaskSubagentCard } from "./TaskSubagentCard";
 import type { StreamingTask } from "@/types/streaming-task";
+import { createTestQueryClient } from "@/test/store-utils";
+import { chatApi, type ChatMessageResponse } from "@/api/chat";
 
 function makeStreamingTask(overrides?: Partial<StreamingTask>): StreamingTask {
   return {
@@ -21,6 +25,17 @@ function makeStreamingTask(overrides?: Partial<StreamingTask>): StreamingTask {
     ...overrides,
   };
 }
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("TaskSubagentCard", () => {
   it("renders delegated streaming cards with shared provider chrome", () => {
@@ -73,5 +88,116 @@ describe("TaskSubagentCard", () => {
 
     expect(screen.getByText("Explore")).toBeInTheDocument();
     expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+
+  it("does not fetch the delegated conversation until the streaming card is expanded", () => {
+    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+      conversation: {
+        id: "child-conv-1",
+        contextType: "project",
+        contextId: "project-1",
+        claudeSessionId: null,
+        providerSessionId: "thread-123",
+        providerHarness: "codex",
+        upstreamProvider: "openai",
+        providerProfile: "openai",
+        title: "Delegated reviewer",
+        messageCount: 0,
+        lastMessageAt: null,
+        createdAt: "2026-04-12T10:00:00Z",
+        updatedAt: "2026-04-12T10:00:00Z",
+      },
+      messages: [],
+    });
+
+    renderWithQueryClient(
+      <TaskSubagentCard
+        task={makeStreamingTask({
+          toolName: "delegate_start",
+          description: "Review delegated patch",
+          subagentType: "delegated",
+          model: "gpt-5.4",
+          delegatedConversationId: "child-conv-1",
+          textOutput: "Delegated review finished",
+        })}
+      />,
+    );
+
+    expect(getConversationSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders the delegated conversation transcript inside the expanded streaming card", async () => {
+    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+      conversation: {
+        id: "child-conv-1",
+        contextType: "project",
+        contextId: "project-1",
+        claudeSessionId: null,
+        providerSessionId: "thread-123",
+        providerHarness: "codex",
+        upstreamProvider: "openai",
+        providerProfile: "openai",
+        title: "Delegated reviewer",
+        messageCount: 2,
+        lastMessageAt: "2026-04-12T10:00:06Z",
+        createdAt: "2026-04-12T10:00:00Z",
+        updatedAt: "2026-04-12T10:00:06Z",
+      },
+      messages: [
+        {
+          id: "child-msg-1",
+          sessionId: null,
+          projectId: null,
+          taskId: null,
+          role: "user",
+          content: "Please inspect the patch",
+          metadata: null,
+          parentMessageId: null,
+          conversationId: "child-conv-1",
+          toolCalls: null,
+          contentBlocks: null,
+          sender: null,
+          createdAt: "2026-04-12T10:00:00Z",
+        } satisfies ChatMessageResponse,
+        {
+          id: "child-msg-2",
+          sessionId: null,
+          projectId: null,
+          taskId: null,
+          role: "assistant",
+          content: "Review complete with no blockers",
+          metadata: null,
+          parentMessageId: null,
+          conversationId: "child-conv-1",
+          toolCalls: null,
+          contentBlocks: null,
+          sender: null,
+          createdAt: "2026-04-12T10:00:06Z",
+        } satisfies ChatMessageResponse,
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderWithQueryClient(
+      <TaskSubagentCard
+        task={makeStreamingTask({
+          toolName: "delegate_start",
+          description: "Review delegated patch",
+          subagentType: "delegated",
+          model: "gpt-5.4",
+          delegatedConversationId: "child-conv-1",
+          textOutput: "Delegated review finished",
+        })}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /delegated subagent: review delegated patch/i }),
+    );
+
+    await waitFor(() => expect(getConversationSpy).toHaveBeenCalledWith("child-conv-1"));
+    expect(await screen.findByText("Delegated conversation")).toBeInTheDocument();
+    expect(screen.getByText("Please inspect the patch")).toBeInTheDocument();
+    expect(screen.getByText("Review complete with no blockers")).toBeInTheDocument();
   });
 });
