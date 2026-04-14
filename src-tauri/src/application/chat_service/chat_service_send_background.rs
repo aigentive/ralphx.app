@@ -156,6 +156,37 @@ pub(super) async fn finalize_assistant_message<R: Runtime>(
     }
 }
 
+#[doc(hidden)]
+pub async fn finalize_assistant_message_for_test<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    conversation_id: &str,
+    context_type: &str,
+    context_id: &str,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls_json: Option<&str>,
+    content_blocks_json: Option<&str>,
+) {
+    let event_ctx = EventContextPayload {
+        conversation_id: conversation_id.to_string(),
+        context_type: context_type.to_string(),
+        context_id: context_id.to_string(),
+    };
+    finalize_assistant_message(
+        chat_message_repo,
+        app_handle,
+        &event_ctx,
+        message_id,
+        role,
+        content,
+        tool_calls_json,
+        content_blocks_json,
+    )
+    .await;
+}
+
 /// Spawn background task to process agent run, handle stream, transitions, and queue.
 ///
 /// This function encapsulates the entire tokio::spawn background logic from send_message.

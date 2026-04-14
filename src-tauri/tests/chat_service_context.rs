@@ -2,20 +2,24 @@ use async_trait::async_trait;
 use ralphx_lib::application::chat_service::{
     build_command, build_initial_prompt, build_resume_command,
     build_resume_command_for_harness, build_resume_initial_prompt,
+    create_assistant_message, finalize_assistant_message_for_test,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
     is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
     ProviderResumeMode,
 };
+use ralphx_lib::application::AppState;
 use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::AppResult;
 use ralphx_lib::infrastructure::memory::*;
+use ralphx_lib::testing::create_mock_app;
 use std::fs;
 use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use tauri::Listener;
 use tempfile::TempDir;
 
 fn provider_state_home_lock() -> &'static Mutex<()> {
@@ -187,6 +191,89 @@ fn test_is_text_file_by_extension() {
     // Files without extensions
     assert!(!is_text_file(None, "README"));
     assert!(!is_text_file(None, "no-extension"));
+}
+
+#[test]
+fn create_assistant_message_keeps_delegation_conversation_scope() {
+    let conversation_id = ChatConversationId::new();
+
+    let message = create_assistant_message(
+        ChatContextType::Delegation,
+        "delegated-session",
+        "delegated reply",
+        conversation_id.clone(),
+        &[],
+        &[],
+    );
+
+    assert_eq!(message.role, MessageRole::Orchestrator);
+    assert_eq!(message.session_id, None);
+    assert_eq!(message.project_id, None);
+    assert_eq!(message.task_id, None);
+    assert_eq!(message.conversation_id, Some(conversation_id));
+}
+
+#[tokio::test]
+async fn finalize_assistant_message_emits_delegated_conversation_id() {
+    let state = AppState::new_test();
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let conversation_id = ChatConversationId::new();
+    let delegated_conversation_id = conversation_id.as_str();
+    let orchestrator_role = MessageRole::Orchestrator.to_string();
+
+    let message = create_assistant_message(
+        ChatContextType::Delegation,
+        "delegated-session",
+        "queued delegated reply",
+        conversation_id.clone(),
+        &[],
+        &[],
+    );
+    let message_id = message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(message)
+        .await
+        .expect("insert delegated assistant message");
+
+    let captured: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
+    let captured_clone = Arc::clone(&captured);
+    handle.listen("agent:message_created", move |event| {
+        let payload: serde_json::Value =
+            serde_json::from_str(event.payload()).expect("event payload JSON");
+        *captured_clone.lock().expect("capture lock") = Some(payload);
+    });
+
+    finalize_assistant_message_for_test(
+        &state.chat_message_repo,
+        Some(&handle),
+        &delegated_conversation_id,
+        &ChatContextType::Delegation.to_string(),
+        "delegated-session",
+        &message_id,
+        &orchestrator_role,
+        "final delegated reply",
+        None,
+        None,
+    )
+    .await;
+
+    let payload = captured
+        .lock()
+        .expect("capture lock")
+        .clone()
+        .expect("agent:message_created payload");
+    assert_eq!(
+        payload["conversation_id"].as_str(),
+        Some(delegated_conversation_id.as_str()),
+        "delegated finalize must emit the child conversation id"
+    );
+    assert_eq!(
+        payload["context_type"].as_str(),
+        Some(ChatContextType::Delegation.to_string().as_str())
+    );
+    assert_eq!(payload["context_id"].as_str(), Some("delegated-session"));
 }
 
 #[tokio::test]

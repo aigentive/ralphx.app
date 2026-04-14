@@ -78,6 +78,8 @@ pub use chat_service_context::{
     is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
     ProviderResumeMode,
 };
+#[doc(hidden)]
+pub use chat_service_context::create_assistant_message;
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
 };
@@ -107,6 +109,8 @@ pub use chat_service_types::events::AGENT_MESSAGE_QUEUED;
 pub use streaming_state_cache::{
     CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
 };
+#[doc(hidden)]
+pub use chat_service_send_background::finalize_assistant_message_for_test;
 
 // Types and errors are now in chat_service_types.rs
 
