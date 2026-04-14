@@ -945,10 +945,10 @@ async fn resolve_verification_parent(
 /// to determine the correct terminal status, updates the parent, archives the child,
 /// and emits a frontend event.
 ///
-/// Three decision branches based on metadata state:
+/// Three decision branches based on native run-snapshot state:
 /// - `convergence_reason` set → map to status via `convergence_reason_to_status`
 /// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
-/// - no metadata or empty rounds → agent completed without updates → `Unverified`
+/// - no snapshot or empty rounds → agent completed without updates → `Unverified`
 pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     parent_id: &IdeationSessionId,
     child_id: &IdeationSessionId,

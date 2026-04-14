@@ -1020,7 +1020,7 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let reset = repo.reset_verification(&session.id).await.unwrap();
     assert!(!reset, "reset_verification must return false when in_progress=1");
 
-    // Status flags remain unchanged while legacy metadata stays empty
+    // Status flags remain unchanged while no native verification snapshot is present
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);

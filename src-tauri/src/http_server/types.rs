@@ -1961,13 +1961,13 @@ pub struct VerificationResponse {
     pub convergence_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_round_index: Option<u32>,
-    /// Full gap objects for the latest round (empty if no metadata)
+    /// Full gap objects for the latest round (empty if no native run snapshot exists)
     #[serde(default)]
     pub current_gaps: Vec<VerificationGapResponse>,
-    /// Round history summaries — last 10 rounds in chronological order (empty if no metadata)
+    /// Round history summaries — last 10 rounds in chronological order (empty if no native run snapshot exists)
     #[serde(default)]
     pub rounds: Vec<VerificationRoundSummary>,
-    /// Full round history details — last 10 rounds in chronological order (empty if no metadata)
+    /// Full round history details — last 10 rounds in chronological order (empty if no native run snapshot exists)
     #[serde(default)]
     pub round_details: Vec<VerificationRoundDetailResponse>,
     /// Plan artifact version when verification ran — null if session has no linked plan
