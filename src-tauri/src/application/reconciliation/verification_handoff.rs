@@ -12,7 +12,7 @@ use tracing::warn;
 
 use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, IdeationSessionId,
-    VerificationGap, VerificationMetadata, VerificationStatus,
+    VerificationGap, VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
@@ -32,7 +32,7 @@ pub(crate) const VERIFICATION_RESULT_METADATA_KEY: &str = "verification_result";
 /// `Some` is returned when reconciliation ran and determined a terminal status.
 pub struct ReconcileChildCompleteResult {
     pub terminal_status: VerificationStatus,
-    pub parsed_meta: Option<VerificationMetadata>,
+    pub parsed_snapshot: Option<VerificationRunSnapshot>,
 }
 
 /// Inject a `<verification-result>` XML message into the parent ideation session when:
@@ -54,27 +54,27 @@ pub async fn maybe_inject_verification_result_message(
 
     // Dedup guard: skip when escalation was already delivered to the parent
     let convergence_reason = result
-        .parsed_meta
+        .parsed_snapshot
         .as_ref()
-        .and_then(|m| m.convergence_reason.as_deref());
+        .and_then(|snapshot| snapshot.convergence_reason.as_deref());
     if convergence_reason == Some(ESCALATED_TO_PARENT) {
         return;
     }
 
     let current_round = result
-        .parsed_meta
+        .parsed_snapshot
         .as_ref()
-        .map(|m| m.current_round)
+        .map(|snapshot| snapshot.current_round)
         .unwrap_or(0);
     let max_rounds = result
-        .parsed_meta
+        .parsed_snapshot
         .as_ref()
-        .map(|m| m.max_rounds)
+        .map(|snapshot| snapshot.max_rounds)
         .unwrap_or(0);
     let gaps = result
-        .parsed_meta
+        .parsed_snapshot
         .as_ref()
-        .map(|m| m.current_gaps.as_slice())
+        .map(|snapshot| snapshot.current_gaps.as_slice())
         .unwrap_or(&[]);
     let summary = summarize_gaps(gaps);
     let blockers = top_3_blockers(gaps);
@@ -206,20 +206,21 @@ pub(crate) async fn inject_verification_handoff_if_missing(
     // Build a ReconcileChildCompleteResult from the pre-fetched state and delegate
     // to maybe_inject_verification_result_message. It handles the ESCALATED_TO_PARENT
     // dedup guard and the NeedsRevision filter internally.
-    let parsed_meta = Some(VerificationMetadata {
-        v: 1,
+    let parsed_snapshot = Some(VerificationRunSnapshot {
+        generation: 0,
+        status: terminal_status,
+        in_progress: false,
         current_round: 0,
         max_rounds: 0,
-        rounds: vec![],
         current_gaps: current_gaps.to_vec(),
+        rounds: vec![],
         convergence_reason: convergence_reason.map(str::to_string),
         best_round_index: None,
-        parse_failures: vec![],
     });
 
     let result = ReconcileChildCompleteResult {
         terminal_status,
-        parsed_meta,
+        parsed_snapshot,
     };
 
     maybe_inject_verification_result_message(

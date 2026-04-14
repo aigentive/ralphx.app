@@ -11,9 +11,10 @@ pub async fn get_plan_verification(
     scope: ProjectScope,
     Path(session_id): Path<String>,
 ) -> Result<Json<VerificationResponse>, JsonError> {
-    use crate::domain::entities::ideation::VerificationMetadata;
     use crate::domain::services::gap_score;
-    use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
+    use crate::http_server::types::{
+        VerificationGapResponse, VerificationRoundDetailResponse, VerificationRoundSummary,
+    };
 
     let requested_session_id = session_id;
     let requested_session_id_obj =
@@ -64,7 +65,7 @@ pub async fn get_plan_verification(
         )
     };
 
-    let (status, in_progress, metadata_json) = state
+    let (status, in_progress) = state
         .app_state
         .ideation_session_repo
         .get_verification_status(&session_id_obj)
@@ -81,32 +82,48 @@ pub async fn get_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
-    let metadata: Option<VerificationMetadata> = metadata_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let snapshot = match state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, resolved_session.verification_generation)
+        .await
+    {
+        Ok(Some(snapshot)) => Some(snapshot),
+        Ok(None) => None,
+        Err(error) => {
+            error!(
+                "Failed to load native verification snapshot for {}: {}",
+                session_id, error
+            );
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification snapshot",
+            ));
+        }
+    };
 
-    let current_round = metadata.as_ref().and_then(|m| {
-        if m.current_round > 0 {
-            Some(m.current_round)
+    let current_round = snapshot.as_ref().and_then(|run| {
+        if run.current_round > 0 {
+            Some(run.current_round)
         } else {
             None
         }
     });
-    let max_rounds = metadata.as_ref().and_then(|m| {
-        if m.max_rounds > 0 {
-            Some(m.max_rounds)
+    let max_rounds = snapshot.as_ref().and_then(|run| {
+        if run.max_rounds > 0 {
+            Some(run.max_rounds)
         } else {
             None
         }
     });
-    let gap_sc = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
-    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
-    let best_round_index = metadata.as_ref().and_then(|m| m.best_round_index);
+    let gap_sc = snapshot.as_ref().map(|run| gap_score(&run.current_gaps));
+    let convergence_reason = snapshot.as_ref().and_then(|run| run.convergence_reason.clone());
+    let best_round_index = snapshot.as_ref().and_then(|run| run.best_round_index);
 
-    let current_gaps = metadata
+    let current_gaps = snapshot
         .as_ref()
-        .map(|m| {
-            m.current_gaps
+        .map(|run| {
+            run.current_gaps
                 .iter()
                 .map(|g| VerificationGapResponse {
                     severity: g.severity.clone(),
@@ -119,21 +136,54 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let rounds = metadata
+    let rounds = snapshot
         .as_ref()
-        .map(|m| {
-            m.rounds
+        .map(|run| {
+            run.rounds
                 .iter()
-                .enumerate()
                 .rev()
                 .take(10)
-                .collect::<Vec<_>>()
-                .into_iter()
                 .rev()
-                .map(|(i, r)| VerificationRoundSummary {
-                    round: (i + 1) as u32,
+                .map(|r| VerificationRoundSummary {
+                    round: r.round,
                     gap_score: r.gap_score,
-                    gap_count: r.fingerprints.len() as u32,
+                    gap_count: if !r.gaps.is_empty() {
+                        r.gaps.len() as u32
+                    } else {
+                        r.fingerprints.len() as u32
+                    },
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let round_details = snapshot
+        .as_ref()
+        .map(|run| {
+            run.rounds
+                .iter()
+                .rev()
+                .take(10)
+                .rev()
+                .map(|r| VerificationRoundDetailResponse {
+                    round: r.round,
+                    gap_score: r.gap_score,
+                    gap_count: if !r.gaps.is_empty() {
+                        r.gaps.len() as u32
+                    } else {
+                        r.fingerprints.len() as u32
+                    },
+                    gaps: r
+                        .gaps
+                        .iter()
+                        .map(|g| VerificationGapResponse {
+                            severity: g.severity.clone(),
+                            category: g.category.clone(),
+                            description: g.description.clone(),
+                            why_it_matters: g.why_it_matters.clone(),
+                            source: g.source.clone(),
+                        })
+                        .collect::<Vec<_>>(),
                 })
                 .collect::<Vec<_>>()
         })
@@ -256,6 +306,7 @@ pub async fn get_plan_verification(
         best_round_index,
         current_gaps,
         rounds,
+        round_details,
         plan_version,
         verification_generation,
         verification_child,

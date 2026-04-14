@@ -190,7 +190,6 @@ pub async fn get_plan_verification_external_http(
     scope: ProjectScope,
     Path(session_id): Path<String>,
 ) -> Result<Json<ExternalVerificationResponse>, StatusCode> {
-    use crate::domain::entities::ideation::VerificationMetadata;
     use crate::domain::services::gap_score;
 
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
@@ -211,31 +210,41 @@ pub async fn get_plan_verification_external_http(
     let status_str = session.verification_status.to_string();
     let in_progress = session.verification_in_progress;
 
-    let metadata: Option<VerificationMetadata> = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load native verification snapshot for session {}: {}",
+                session_id, e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
-    let round = metadata.as_ref().and_then(|m| {
-        if m.current_round > 0 {
-            Some(m.current_round)
+    let round = snapshot.as_ref().and_then(|run| {
+        if run.current_round > 0 {
+            Some(run.current_round)
         } else {
             None
         }
     });
-    let max_rounds = metadata.as_ref().and_then(|m| {
-        if m.max_rounds > 0 {
-            Some(m.max_rounds)
+    let max_rounds = snapshot.as_ref().and_then(|run| {
+        if run.max_rounds > 0 {
+            Some(run.max_rounds)
         } else {
             None
         }
     });
-    let gap_count = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
-    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
-    let gaps: Vec<ExternalGapDetail> = metadata
+    let gap_count = snapshot.as_ref().map(|run| gap_score(&run.current_gaps));
+    let convergence_reason = snapshot
         .as_ref()
-        .map(|m| {
-            m.current_gaps
+        .and_then(|run| run.convergence_reason.clone());
+    let gaps: Vec<ExternalGapDetail> = snapshot
+        .as_ref()
+        .map(|run| {
+            run.current_gaps
                 .iter()
                 .map(|g| ExternalGapDetail {
                     severity: g.severity.clone(),

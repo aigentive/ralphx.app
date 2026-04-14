@@ -525,8 +525,24 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn get_verification_status(
         &self,
         id: &crate::domain::entities::IdeationSessionId,
-    ) -> crate::error::AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> crate::error::AppResult<Option<(VerificationStatus, bool)>> {
         self.inner.get_verification_status(id).await
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        id: &crate::domain::entities::IdeationSessionId,
+        snapshot: &crate::domain::entities::VerificationRunSnapshot,
+    ) -> crate::error::AppResult<()> {
+        self.inner.save_verification_run_snapshot(id, snapshot).await
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        id: &crate::domain::entities::IdeationSessionId,
+        generation: i32,
+    ) -> crate::error::AppResult<Option<crate::domain::entities::VerificationRunSnapshot>> {
+        self.inner.get_verification_run_snapshot(id, generation).await
     }
 
     async fn revert_plan_and_skip_verification(
@@ -575,7 +591,7 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn reset_and_begin_reverify(
         &self,
         session_id: &str,
-    ) -> crate::error::AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> crate::error::AppResult<(i32, crate::domain::entities::VerificationRunSnapshot)> {
         self.inner.reset_and_begin_reverify(session_id).await
     }
 

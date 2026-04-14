@@ -26,6 +26,7 @@ Primary project docs:
 - One normal flow (NON-NEGOTIABLE): if backend owns orchestration state, the model must not be asked to replay delegate ids, timestamps, rescue flags, wait knobs, or other persisted bookkeeping.
 - Model chooses lenses, backend runs them (NON-NEGOTIABLE): optional specialist selection belongs to the model; backend owns dispatch, waits, settlement, parent resolution, and terminal state.
 - Kill transitional vocabulary: when typed findings replace artifact-prefix contracts, remove the old artifact/prefix language from live verifier surfaces instead of narrating both.
+- Verification regressions are TDD-first (NON-NEGOTIABLE): reproduce backend, prompt-contract, and UI failures with focused tests before patching production code.
 - Handler module split: oversized Rust HTTP handlers belong in directory-backed modules, not giant single files.
 - Mechanical extraction only (NON-NEGOTIABLE): large moves/splits must use real mechanical extraction (`mv`, `sed`, `awk`, scripts), not hand-copying.
 - `apply_patch` is fix-up only (NON-NEGOTIABLE): after a mechanical move, use it only for imports, visibility, wiring, and tests.
@@ -86,6 +87,26 @@ When working in `src-tauri/`, also follow:
 | P0 | Verifier critic resumption protocol | In progress | Landed: delegated verification artifact writes now remap to the parent ideation session, transport-safe wait handling prevents false infra failures while critics are still running, and verifier terminal cleanup falls back to backend-owned round state instead of model-supplied settlement; next remove the remaining transitional verifier finalization surface entirely |
 | P0 | Model-agnostic MCP/tool UX | In progress | Landed: verifier tool surface no longer exposes low-level settlement helpers or model-owned delegate/timestamp/rescue bookkeeping, and verification chat now renders structured enrichment/round/report/cleanup widgets instead of raw payload cards; next extend the same treatment to more brittle workflows |
 | P0 | Startup external-session archival safety | In progress | Observe real runs before widening recovery-specific heuristics |
+
+## Active Verification Cleanup Tracker
+
+| Priority | Stream | Status | Next Step |
+|---|---|---|---|
+| P0 | Stale live verification tool surface | Completed | `update_plan_verification` is gone from live MCP surfaces, prompts, widgets, mocks, and the internal handler naming; remaining work is just stale comments/tests/docs that still narrate the old flow |
+| P0 | Native verification model completion | In progress | Landed: query/runtime/reconciliation/handoff paths plus `post_verification_status` and `reset_and_begin_reverify` are now snapshot-native; next remove `VerificationMetadata` from entities/repositories/tests entirely and stop selecting/persisting the legacy blob |
+| P0 | Ideation / verifier prompt alignment | In progress | Rewrite ideation and team-lead verification instructions to match the actual backend-owned verifier flow exactly; no references to unavailable tools, no prompt-owned orchestration, no migration-journal wording |
+| P1 | Verification timeout policy consistency | Open | Make enrichment, required critics, and optional verification specialists use one explicit bounded wait policy and lock it with runtime/tool-schema tests |
+| P1 | Verification UX lineage | In progress | Upgrade verification tab + chat widgets so users can see run lineage, per-round addressed/remaining gaps, and per-delegate state/result history including running, timed out, empty-result, and infra-failure cases |
+| P1 | Legacy verification helper/test cleanup | In progress | Delete obsolete metadata helpers, stale verification comments, old tool references in mocks/tests, and compatibility assertions that no longer match the native verification model |
+
+## Verification Guardrails
+
+| Rule | Detail |
+|---|---|
+| One normal verification flow | The model may choose specialists/lenses; the backend owns dispatch, waits, settlement, parent routing, persisted run state, and terminal classification |
+| No off-surface references | Prompts, tool descriptions, hints, mocks, widgets, and tests must not reference tools unavailable to that caller agent |
+| Native store is authoritative | Verification run/round/gap lineage belongs in native verification storage; session fields are denormalized summary only |
+| Verification changes are TDD-first | For verification flow changes, add or update the failing backend/frontend/prompt contract test first, then implement |
 
 ## Active Transition Hardening Tracker
 

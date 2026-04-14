@@ -200,14 +200,30 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, entities::VerificationRunSnapshot)> {
         unimplemented!()
     }
 
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,
-    ) -> AppResult<Option<(entities::VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(entities::VerificationStatus, bool)>> {
+        Ok(None)
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _snapshot: &entities::VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _generation: i32,
+    ) -> AppResult<Option<entities::VerificationRunSnapshot>> {
         Ok(None)
     }
 

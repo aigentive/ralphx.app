@@ -31,7 +31,7 @@ pub use artifact_service::ArtifactService;
 pub use bucket_classifier::BucketClassifier;
 pub use gap_fingerprint::{gap_fingerprint, gap_score, jaccard_similarity};
 pub use verification_events::{
-    build_verification_payload, build_verification_started_metadata,
+    build_verification_payload, build_verification_started_snapshot,
     emit_verification_pending_confirmation, emit_verification_started,
     emit_verification_status_changed,
 };

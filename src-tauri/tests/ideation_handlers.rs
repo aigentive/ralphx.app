@@ -303,6 +303,18 @@ fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> serde_json::Value {
     })
 }
 
+fn make_round_with_gaps(
+    fingerprints: Vec<&str>,
+    gap_score: u32,
+    gaps: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "fingerprints": fingerprints,
+        "gap_score": gap_score,
+        "gaps": gaps
+    })
+}
+
 /// Happy path: session with 3 gaps and 2 rounds → response includes
 /// current_gaps (3 items) and rounds (2 items with correct scores/counts).
 #[tokio::test]
@@ -325,8 +337,23 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
         make_gap("medium", "testing", "No unit tests"),
     ];
     let rounds = vec![
-        make_round(vec!["fp-a", "fp-b"], 13), // round 1: 2 fingerprints, score 13
-        make_round(vec!["fp-a", "fp-b", "fp-c"], 10), // round 2: 3 fingerprints, score 10
+        make_round_with_gaps(
+            vec!["fp-a", "fp-b"],
+            13,
+            vec![
+                make_gap("critical", "architecture", "Missing auth layer"),
+                make_gap("high", "performance", "No caching strategy"),
+            ],
+        ),
+        make_round_with_gaps(
+            vec!["fp-a", "fp-b", "fp-c"],
+            10,
+            vec![
+                make_gap("critical", "architecture", "Missing auth layer"),
+                make_gap("high", "performance", "No caching strategy"),
+                make_gap("medium", "testing", "No unit tests"),
+            ],
+        ),
     ];
     let metadata = make_metadata_json(gaps, rounds, 2, 5);
 
@@ -369,6 +396,16 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
     assert_eq!(r2.round, 2);
     assert_eq!(r2.gap_score, 10);
     assert_eq!(r2.gap_count, 3);
+
+    assert_eq!(response.round_details.len(), 2, "expected 2 round details");
+    let d1 = &response.round_details[0];
+    assert_eq!(d1.round, 1);
+    assert_eq!(d1.gaps.len(), 2);
+    assert_eq!(d1.gaps[0].description, "Missing auth layer");
+    let d2 = &response.round_details[1];
+    assert_eq!(d2.round, 2);
+    assert_eq!(d2.gaps.len(), 3);
+    assert_eq!(d2.gaps[2].description, "No unit tests");
 }
 
 /// Empty metadata test: verification_metadata = NULL → current_gaps: [] and rounds: [].
@@ -406,6 +443,10 @@ async fn test_get_plan_verification_null_metadata_returns_empty_vecs() {
     let response = result.unwrap().0;
     assert!(response.current_gaps.is_empty(), "current_gaps must be empty for NULL metadata");
     assert!(response.rounds.is_empty(), "rounds must be empty for NULL metadata");
+    assert!(
+        response.round_details.is_empty(),
+        "round_details must be empty for NULL metadata"
+    );
     assert!(response.gap_score.is_none());
 }
 
@@ -505,7 +546,7 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
     }
 }
 
-/// Round-trip integration test: write gaps via POST /verification (update_plan_verification),
+/// Round-trip integration test: write gaps via POST /verification (post_verification_status),
 /// then read via GET /verification (get_plan_verification), and verify current_gaps contains
 /// the same data with correct field names.
 #[tokio::test]
@@ -523,8 +564,8 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
         .await
         .unwrap();
 
-    // POST: write gaps via update_plan_verification handler
-    let post_result = update_plan_verification(
+    // POST: write gaps via post_verification_status handler
+    let post_result = post_verification_status(
         State(state.clone()),
         Path(session_id_str.clone()),
         Json(UpdateVerificationRequest {
@@ -594,7 +635,7 @@ async fn test_condition6_reviewing_critical_gaps_overrides_to_needs_revision() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -631,7 +672,7 @@ async fn test_condition6_reviewing_medium_gaps_overrides_to_needs_revision() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -670,7 +711,7 @@ async fn test_condition6_convergence_takes_priority_over_reviewing_with_gaps() {
 
     // max_rounds=1, round=1 → condition 3 fires first (max_rounds) → Verified
     // condition 6 then sees Verified (not Reviewing) and does not fire
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -705,7 +746,7 @@ async fn test_condition6_reviewing_no_gaps_stays_reviewing() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -734,7 +775,7 @@ async fn test_condition6_reviewing_in_progress_false_with_gaps_overrides_to_need
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -778,7 +819,7 @@ async fn test_rule_a_non_terminal_preserves_in_progress_true() {
     let session_id_str = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id_str),
         Json(UpdateVerificationRequest {
@@ -820,6 +861,90 @@ async fn test_rule_a_non_terminal_preserves_in_progress_true() {
     );
 }
 
+/// Rule A must also clear stale terminal convergence metadata when a live reviewing round
+/// continues after an earlier infra/runtime failure marker was left behind.
+#[tokio::test]
+async fn test_rule_a_clears_stale_convergence_reason_on_live_round_update() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let stale_metadata = serde_json::json!({
+        "v": 1,
+        "current_round": 1,
+        "max_rounds": 5,
+        "rounds": [],
+        "current_gaps": [],
+        "convergence_reason": "agent_error",
+        "best_round_index": null,
+        "parse_failures": []
+    })
+    .to_string();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::Reviewing,
+            true,
+            Some(stale_metadata),
+        )
+        .await
+        .unwrap();
+
+    let result = post_verification_status(
+        State(state.clone()),
+        Path(session_id_str),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "completeness".to_string(),
+                description: "Missing migration registration".to_string(),
+                why_it_matters: None,
+                source: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "needs_revision");
+    assert!(
+        resp.in_progress,
+        "stale convergence_reason must not force a live round terminal"
+    );
+    assert!(
+        resp.convergence_reason.is_none(),
+        "stale convergence_reason must be cleared on live round continuation"
+    );
+
+    let saved = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(saved.verification_in_progress);
+    let meta: serde_json::Value =
+        serde_json::from_str(saved.verification_metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert!(
+        meta["convergence_reason"].is_null(),
+        "stored convergence_reason must be cleared for the continued round"
+    );
+}
+
 /// Rule B: convergence_reason present → terminal guard forces in_progress=false.
 ///
 /// Covers auto-convergence paths (conditions 1–4) that set convergence_reason without
@@ -834,7 +959,7 @@ async fn test_rule_b_terminal_guard_max_rounds_forces_in_progress_false() {
 
     // max_rounds=3, round=3 → server-side condition 3 fires: new_status=Verified, convergence_reason="max_rounds"
     // Terminal guard then fires (convergence_reason.is_some()) → effective_in_progress=false
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id_str),
         Json(UpdateVerificationRequest {
@@ -899,7 +1024,7 @@ async fn test_rule_b_terminal_guard_zero_blocking_verified_forces_in_progress_fa
 
     // Orchestrator sends: status=verified + convergence_reason=zero_blocking + in_progress=true
     // Terminal guard must override in_progress to false (matches!(new_status, Verified))
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id_str),
         Json(UpdateVerificationRequest {
@@ -958,7 +1083,7 @@ async fn test_needs_revision_to_verified_with_convergence_reason() {
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -998,7 +1123,7 @@ async fn test_needs_revision_to_verified_without_convergence_reason() {
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1045,7 +1170,7 @@ async fn test_zombie_generation_mismatch() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Stale agent sends generation=999 → must be rejected with 409
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1066,7 +1191,7 @@ async fn test_zombie_generation_mismatch() {
     assert_eq!(status, StatusCode::CONFLICT, "must return 409 CONFLICT for generation mismatch");
 
     // Correct generation (5) → must succeed
-    let result_ok = update_plan_verification(
+    let result_ok = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1102,7 +1227,7 @@ async fn test_zombie_guard_skipped_when_no_generation_provided() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // No generation → guard not triggered → must succeed even though stored generation is 7
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1139,7 +1264,7 @@ async fn test_zombie_terminal_call_stale_generation_rejected() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Zombie agent sends terminal status (in_progress=false) with stale generation=1 → must be rejected
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1182,7 +1307,7 @@ async fn test_zombie_terminal_call_correct_generation_succeeds() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Correct generation → terminal call must succeed
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1223,7 +1348,7 @@ async fn test_zombie_terminal_call_no_generation_no_guard() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // No generation parameter → guard skipped, terminal call proceeds normally
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1261,7 +1386,7 @@ async fn test_single_round_zero_gaps_does_not_converge() {
 
     // Round 1 with 0 gaps — zero_blocking_converged would be true,
     // but the round guard (round >= 2) prevents convergence.
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1334,7 +1459,7 @@ async fn test_iterative_convergence_decreasing_gaps() {
 
     // Round 2: agent sends needs_revision with 0 critical + 0 high + 0 medium (all cleared)
     // Server computes: zero_blocking_converged = true, round=2 >= 2 → Verified
-    let round2 = update_plan_verification(
+    let round2 = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1406,7 +1531,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
     };
 
     // Round 1: Unverified → reviewing + gaps → condition 6 → needs_revision, rounds=[fp1]
-    let round1 = update_plan_verification(
+    let round1 = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1459,7 +1584,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
         ]
     };
 
-    let round2 = update_plan_verification(
+    let round2 = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1495,7 +1620,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
     // jaccard(fp3, fp2) = 1.0 ≥ 0.8 ✓ (same gaps)
     // jaccard(fp2, fp1) = 0.0 (completely different descriptions) < 0.8 ✗
     // → 2-pair requirement NOT met → no convergence
-    let round3 = update_plan_verification(
+    let round3 = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1562,7 +1687,7 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     };
 
     // Round 1: Unverified → reviewing + critical gaps → condition 6 → needs_revision, rounds=[fp1]
-    let round1 = update_plan_verification(
+    let round1 = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1591,7 +1716,7 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     // Round 2: Reviewing → needs_revision + same gaps, round=2
     // Before push: rounds=[fp1] (len==1) → "need 2 consecutive" → not yet. After: rounds=[fp1, fp2=fp1]
     // zero_blocking: critical_count=1 > 0 → false. → needs_revision stays.
-    let round2 = update_plan_verification(
+    let round2 = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1622,7 +1747,7 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     // jaccard(new_fp, fp2) = jaccard(fp1, fp1) = 1.0 ≥ 0.8 ✓
     // jaccard(fp2, fp1) = jaccard(fp1, fp1) = 1.0 ≥ 0.8 ✓
     // → jaccard_converged = true → Verified
-    let round3 = update_plan_verification(
+    let round3 = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1664,7 +1789,7 @@ async fn test_max_rounds_exit_behavior() {
 
     // Round 3 = max_rounds=3: gaps present but max_rounds fires → verified
     // (condition 3 takes priority over condition 6)
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1719,7 +1844,7 @@ async fn test_reverify_verified_to_reviewing_returns_200() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1756,7 +1881,7 @@ async fn test_reverify_skipped_to_reviewing_returns_200() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1834,7 +1959,7 @@ async fn test_reverify_clears_all_stale_metadata() {
         .unwrap();
 
     // Trigger re-verify with no gaps — safe from condition 6
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -1874,20 +1999,19 @@ async fn test_reverify_clears_all_stale_metadata() {
     assert!(updated.verification_in_progress);
     assert_eq!(updated.verification_generation, 4, "generation must be 4 in DB");
 
-    // Parse metadata JSON to confirm all stale fields were cleared
-    let meta: serde_json::Value = serde_json::from_str(
-        updated.verification_metadata.as_deref().unwrap_or("{}"),
-    )
-    .unwrap();
-    assert_eq!(meta["current_gaps"], serde_json::json!([]), "current_gaps must be empty");
-    assert_eq!(meta["rounds"], serde_json::json!([]), "rounds must be empty");
-    assert!(meta["convergence_reason"].is_null(), "convergence_reason must be null");
-    assert!(meta["best_round_index"].is_null(), "best_round_index must be null");
-    assert_eq!(meta["current_round"], 0, "current_round must be reset to 0");
-    assert_eq!(meta["parse_failures"], serde_json::json!([]), "parse_failures must be cleared");
+    // Legacy metadata stays cleared; native reverify state is carried by the new generation snapshot.
+    assert!(
+        updated.verification_metadata.is_none(),
+        "legacy verification_metadata must remain NULL after reverify"
+    );
+    assert_eq!(updated.verification_current_round, None);
+    assert_eq!(updated.verification_max_rounds, None);
+    assert_eq!(updated.verification_gap_count, 0);
+    assert_eq!(updated.verification_gap_score, Some(0));
+    assert_eq!(updated.verification_convergence_reason, None);
 
     // Confirm next valid call succeeds with new generation — do NOT call reviewing→reviewing (422)
-    let next = update_plan_verification(
+    let next = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1933,7 +2057,7 @@ async fn test_skipped_to_needs_revision_blocked() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -1972,7 +2096,7 @@ async fn test_skipped_to_verified_blocked() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -2016,7 +2140,7 @@ async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Re-verify: generation increments from 5 → 6
-    let reverify = update_plan_verification(
+    let reverify = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2036,7 +2160,7 @@ async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
     assert_eq!(reverify.0.verification_generation, 6, "generation must be 6 after reset");
 
     // Zombie agent sends needs_revision with old generation=5 → must be rejected with 409
-    let zombie = update_plan_verification(
+    let zombie = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2068,7 +2192,7 @@ async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
     );
 
     // Fresh agent with correct generation=6 → must succeed
-    let fresh = update_plan_verification(
+    let fresh = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -2130,7 +2254,7 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -2189,7 +2313,7 @@ async fn test_verified_to_skipped_still_allowed() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -2258,7 +2382,7 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
         .unwrap();
 
     // Re-verify: Verified → Reviewing (clears metadata, increments gen 1 → 2)
-    let reverify = update_plan_verification(
+    let reverify = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2279,7 +2403,7 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
     assert!(reverify.0.current_gaps.is_empty(), "old gaps must be cleared after re-verify");
 
     // Round 1 with fresh gaps using new generation=2
-    let round1 = update_plan_verification(
+    let round1 = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2340,10 +2464,10 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
 // External origin guard tests
 // ============================================================================
 
-/// External session + status=skipped → update_plan_verification must return 403.
+/// External session + status=skipped → post_verification_status must return 403.
 ///
 /// Proof Obligation 1: external agent attempts to skip verification via the internal HTTP handler.
-/// The guard at the top of update_plan_verification checks session.origin == External before
+/// The guard at the top of post_verification_status checks session.origin == External before
 /// processing any transition logic.
 #[tokio::test]
 async fn test_update_verification_rejects_skip_for_external_origin() {
@@ -2361,7 +2485,7 @@ async fn test_update_verification_rejects_skip_for_external_origin() {
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -2501,7 +2625,7 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
 
     // Round 2: 0 gaps → server auto-detects zero_blocking, overrides to Verified,
     // then calls auto_propose_for_external (external + zero_blocking guard passes).
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2653,7 +2777,7 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(parent_id_str.clone()),
         Json(UpdateVerificationRequest {
@@ -2743,6 +2867,8 @@ async fn test_auto_propose_skipped_for_internal_session() {
     // Default origin = Internal (no .origin() call needed)
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
+        .verification_generation(1)
+        .verification_status(VerificationStatus::Reviewing)
         .build();
     let session_id_obj = session.id.clone();
     let session_id = session.id.as_str().to_string();
@@ -2774,7 +2900,7 @@ async fn test_auto_propose_skipped_for_internal_session() {
         .unwrap();
 
     // Round 2: zero_blocking convergence on internal session
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2835,7 +2961,7 @@ async fn test_auto_propose_skipped_for_non_zero_blocking() {
 
     // Round 3 = max_rounds=3: critical gap still present → server forces convergence via max_rounds
     // (not zero_blocking). auto_propose call site guard fails on convergence_reason check.
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -2879,7 +3005,7 @@ async fn test_auto_propose_skipped_for_non_zero_blocking() {
 }
 
 #[tokio::test]
-async fn test_update_plan_verification_remaps_verification_child_session_id_to_parent() {
+async fn test_post_verification_status_remaps_verification_child_session_id_to_parent() {
     let state = setup_test_state().await;
     let project_id = ProjectId::new();
 
@@ -2905,7 +3031,7 @@ async fn test_update_plan_verification_remaps_verification_child_session_id_to_p
         .await
         .unwrap();
 
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(child_id.as_str().to_string()),
         Json(UpdateVerificationRequest {
@@ -3010,6 +3136,78 @@ async fn test_get_plan_verification_remaps_verification_child_session_id_to_pare
 }
 
 #[tokio::test]
+async fn test_get_plan_verification_uses_native_round_store_when_metadata_is_missing() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(1)
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let round_update = post_verification_status(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "critical".to_string(),
+                category: "completeness".to_string(),
+                description: "Migration not registered".to_string(),
+                why_it_matters: Some("Backfill will never execute".to_string()),
+                source: Some("completeness".to_string()),
+            }]),
+            convergence_reason: Some("escalated_to_parent".to_string()),
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("round update must succeed");
+
+    assert_eq!(round_update.0.status, "needs_revision");
+    assert_eq!(round_update.0.current_gaps.len(), 1);
+    assert_eq!(round_update.0.round_details.len(), 1);
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::NeedsRevision,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let queried = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id),
+    )
+    .await
+    .expect("query must succeed")
+    .0;
+
+    assert_eq!(queried.status, "needs_revision");
+    assert_eq!(queried.current_gaps.len(), 1, "native store must preserve current gaps");
+    assert_eq!(queried.rounds.len(), 1, "native store must preserve round summaries");
+    assert_eq!(queried.round_details.len(), 1, "native store must preserve round lineage");
+    assert_eq!(queried.round_details[0].gap_count, 1);
+    assert_eq!(
+        queried.round_details[0].gaps[0].description,
+        "Migration not registered"
+    );
+}
+
+#[tokio::test]
 async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_unverified() {
     let state = setup_test_state().await;
     let project_id = ProjectId::new();
@@ -3027,29 +3225,46 @@ async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_
         .await
         .unwrap();
 
-    let metadata = serde_json::json!({
-        "v": 1,
-        "current_round": 2,
-        "max_rounds": 5,
-        "rounds": [{ "fingerprints": ["gap-a"], "gap_score": 10 }],
-        "current_gaps": [{
-            "severity": "critical",
-            "category": "runtime",
-            "description": "stale gap that must not survive infra failure"
-        }],
-        "convergence_reason": null,
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string();
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
             &parent_id,
-            VerificationStatus::Reviewing,
-            true,
-            Some(metadata),
+            &ralphx_lib::domain::entities::VerificationRunSnapshot {
+                generation: 4,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: Some(1),
+                convergence_reason: None,
+                current_gaps: vec![ralphx_lib::domain::entities::VerificationGap {
+                    severity: "critical".to_string(),
+                    category: "runtime".to_string(),
+                    description: "stale gap that must not survive infra failure".to_string(),
+                    why_it_matters: None,
+                    source: Some("completeness".to_string()),
+                }],
+                rounds: vec![ralphx_lib::domain::entities::VerificationRoundSnapshot {
+                    round: 1,
+                    gap_score: 10,
+                    fingerprints: vec!["gap-a".to_string()],
+                    gaps: vec![ralphx_lib::domain::entities::VerificationGap {
+                        severity: "critical".to_string(),
+                        category: "runtime".to_string(),
+                        description: "stale gap that must not survive infra failure".to_string(),
+                        why_it_matters: None,
+                        source: Some("completeness".to_string()),
+                    }],
+                    parse_failed: false,
+                }],
+            },
         )
         .await
         .unwrap();
@@ -3106,17 +3321,25 @@ async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_
         "infra failure must clear in-progress on the parent"
     );
     assert_eq!(refreshed_parent.verification_generation, 5);
-    let stored_meta = refreshed_parent
-        .verification_metadata
-        .expect("infra failure must preserve debug metadata");
     assert!(
-        stored_meta.contains("\"convergence_reason\":\"agent_error\""),
-        "stored metadata must retain the runtime failure reason"
+        refreshed_parent.verification_metadata.is_none(),
+        "legacy verification_metadata must stay unused once native snapshots are authoritative"
     );
+
+    let stored_snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&parent_id, 4)
+        .await
+        .unwrap()
+        .expect("infra failure must persist the native run snapshot for the failed generation");
+    assert_eq!(stored_snapshot.status, VerificationStatus::Unverified);
+    assert!(!stored_snapshot.in_progress);
     assert!(
-        stored_meta.contains("\"current_gaps\":[]"),
-        "stored metadata must clear authoritative current_gaps"
+        stored_snapshot.current_gaps.is_empty(),
+        "native snapshot must also clear authoritative current gaps on infra failure"
     );
+    assert_eq!(stored_snapshot.rounds.len(), 1);
 }
 
 #[tokio::test]
@@ -3416,7 +3639,7 @@ async fn test_reviewing_parent_report_round_succeeds() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Call report_verification_round (status=reviewing, in_progress=true) — must succeed
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -3474,7 +3697,7 @@ async fn test_repeated_reviewing_reports_idempotent() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // First call — round 1 report
-    let first = update_plan_verification(
+    let first = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -3498,7 +3721,7 @@ async fn test_repeated_reviewing_reports_idempotent() {
     assert_eq!(first.unwrap().0.status, "reviewing");
 
     // Second call — round 2 report while parent remains in Reviewing
-    let second = update_plan_verification(
+    let second = post_verification_status(
         State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
@@ -3542,7 +3765,7 @@ async fn test_generation_mismatch_still_fails() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Send stale generation=1 → must return 409 CONFLICT even with Reviewing → Reviewing arm
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -3588,7 +3811,7 @@ async fn test_terminal_complete_still_works() {
     // Terminal call: in_progress=false, status=needs_revision, convergence_reason provided.
     // max_rounds is None to avoid triggering the max_rounds convergence condition
     // (which would auto-promote needs_revision → verified when round == max_rounds).
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(session_id),
         Json(UpdateVerificationRequest {
@@ -3631,6 +3854,56 @@ async fn test_terminal_complete_still_works() {
     );
 }
 
+/// Terminal completion must be idempotent when the backend already reached needs_revision.
+#[tokio::test]
+async fn test_terminal_needs_revision_completion_is_idempotent() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::NeedsRevision)
+        .verification_generation(9)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    let session_id_obj = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = post_verification_status(
+        State(state.clone()),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(1),
+            gaps: None,
+            convergence_reason: Some("escalated_to_parent".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: Some(9),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "terminal needs_revision -> needs_revision should be idempotent: {:?}",
+        result.err()
+    );
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "needs_revision");
+    assert!(!resp.in_progress);
+
+    let refreshed = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(refreshed.verification_status, VerificationStatus::NeedsRevision);
+    assert!(!refreshed.verification_in_progress);
+}
+
 /// PDM-335 regression 5: passing a child verification session ID is correctly remapped
 /// to the parent, and the round report succeeds even when parent is already in Reviewing.
 ///
@@ -3659,7 +3932,7 @@ async fn test_child_session_remap_still_works() {
 
     // Call with child session ID — backend must remap to parent and succeed
     // Parent is already in Reviewing, so this exercises the new idempotent arm.
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state.clone()),
         Path(child_id.as_str().to_string()),
         Json(UpdateVerificationRequest {

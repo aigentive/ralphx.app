@@ -24,7 +24,7 @@ use crate::application::reconciliation::recovery_queue::{
 use crate::application::reconciliation::verification_handoff::ReconcileChildCompleteResult;
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionPurpose,
-    VerificationMetadata, VerificationStatus,
+    VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::{
@@ -219,13 +219,6 @@ impl VerificationReconciliationService {
                 continue;
             }
 
-            // Cold boot: inject app_restart metadata. Periodic: preserve existing metadata.
-            let metadata = if cold_boot {
-                build_convergence_metadata("app_restart")
-            } else {
-                session.verification_metadata.clone()
-            };
-
             // Force-reset via update_verification_state (unconditional).
             // reset_verification() guards on in_progress=false and is only for
             // conditional resets on plan artifact updates — not for crash recovery.
@@ -235,7 +228,7 @@ impl VerificationReconciliationService {
                     &session.id,
                     VerificationStatus::Unverified,
                     false,
-                    metadata,
+                    None,
                 )
                 .await
             {
@@ -386,13 +379,11 @@ impl VerificationReconciliationService {
                 }
             };
 
-            // Extract recovery metadata from parent's verification_metadata
-            let parsed_meta: Option<VerificationMetadata> = parent
-                .verification_metadata
-                .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok());
+            // Extract recovery metadata from the native verification snapshot when present.
+            let snapshot =
+                load_effective_verification_view(&self.ideation_session_repo, &parent).await;
 
-            let current_round = parsed_meta.as_ref().map(|m| m.rounds.len() as u32);
+            let current_round = snapshot.as_ref().map(|run| run.current_round);
             let verification_generation = if parent.verification_generation >= 0 {
                 Some(parent.verification_generation as u32)
             } else {
@@ -951,7 +942,7 @@ async fn resolve_verification_parent(
 /// Reconcile verification state when a verification child agent's run completes successfully.
 ///
 /// Called from `handle_stream_success` when the completed session has
-/// `session_purpose == Verification`. Analyzes `verification_metadata` on the parent
+/// `session_purpose == Verification`. Analyzes the parent's native verification run view
 /// to determine the correct terminal status, updates the parent, archives the child,
 /// and emits a frontend event.
 ///
@@ -986,72 +977,53 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
         }
     };
 
-    // Parse verification_metadata from parent
-    let parsed_meta: Option<VerificationMetadata> = parent
-        .verification_metadata
-        .as_ref()
-        .and_then(|s| match serde_json::from_str(s) {
-            Ok(m) => Some(m),
-            Err(e) => {
-                tracing::warn!(
-                    parent_id = %parent_id.as_str(),
-                    error = %e,
-                    "Failed to parse verification_metadata — treating as None"
-                );
-                None
-            }
-        });
+    // Load the authoritative verification snapshot for this generation.
+    let snapshot = load_effective_verification_view(repo, &parent).await;
 
-    let has_convergence_reason = parsed_meta
+    let has_convergence_reason = snapshot
         .as_ref()
-        .and_then(|m| m.convergence_reason.as_deref())
+        .and_then(|run| run.convergence_reason.as_deref())
         .is_some();
-    let has_rounds = parsed_meta
+    let has_rounds = snapshot
         .as_ref()
-        .map(|m| !m.rounds.is_empty())
+        .map(|run| !run.rounds.is_empty())
         .unwrap_or(false);
 
-    // Determine terminal status and emit metadata based on what the agent produced
-    let (terminal_status, updated_metadata_json, emit_metadata, convergence_reason_override) =
+    // Determine terminal status and emit native snapshot state based on what the agent produced.
+    let (terminal_status, emit_snapshot, convergence_reason_override) =
         if has_convergence_reason {
             // Branch 1: Agent completed with convergence_reason — map to terminal status
-            let reason = parsed_meta
+            let reason = snapshot
                 .as_ref()
                 .unwrap()
                 .convergence_reason
                 .as_deref()
                 .unwrap_or("");
             let status = convergence_reason_to_status(reason);
-            // Keep existing metadata as-is (convergence_reason already present)
-            (status, parent.verification_metadata.clone(), parsed_meta.clone(), None::<String>)
+            (status, snapshot.clone(), None::<String>)
         } else if has_rounds {
             // Branch 2: Agent crashed mid-round with partial progress
-            let mut updated_m = parsed_meta.clone().unwrap();
-            updated_m.convergence_reason = Some("agent_crashed_mid_round".to_string());
-            let updated_json = serde_json::to_string(&updated_m).ok();
+            let mut updated_snapshot = snapshot.clone().unwrap();
+            updated_snapshot.status = VerificationStatus::NeedsRevision;
+            updated_snapshot.in_progress = false;
+            updated_snapshot.convergence_reason = Some("agent_crashed_mid_round".to_string());
             (
                 VerificationStatus::NeedsRevision,
-                updated_json,
-                Some(updated_m),
+                Some(updated_snapshot),
                 None::<String>,
             )
         } else {
-            // Branch 3: No metadata or empty rounds — agent completed without any updates
-            let minimal_json = serde_json::to_string(&serde_json::json!({
-                "convergence_reason": "agent_completed_without_update",
-            }))
-            .ok();
+            // Branch 3: No snapshot or empty rounds — agent completed without any updates
             (
                 VerificationStatus::Unverified,
-                minimal_json,
-                None::<VerificationMetadata>,
+                None::<VerificationRunSnapshot>,
                 Some("agent_completed_without_update".to_string()),
             )
         };
 
     // Update parent verification state
     match repo
-        .update_verification_state(parent_id, terminal_status, false, updated_metadata_json)
+        .update_verification_state(parent_id, terminal_status, false, None)
         .await
     {
         Ok(()) => {
@@ -1080,7 +1052,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
             parent_id.as_str(),
             terminal_status,
             false,
-            emit_metadata.as_ref(),
+            emit_snapshot.as_ref(),
             convergence_reason_override.as_deref(),
             Some(parent.verification_generation),
         );
@@ -1094,7 +1066,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
 
     Some(ReconcileChildCompleteResult {
         terminal_status,
-        parsed_meta: emit_metadata,
+        parsed_snapshot: emit_snapshot,
     })
 }
 
@@ -1169,16 +1141,13 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
         }
     };
 
-    // Build minimal metadata JSON with the error convergence_reason
-    let error_metadata_json = build_convergence_metadata(convergence_reason);
-
     // Reset parent to Unverified with the given reason
     match repo
         .update_verification_state(
             &parent_id,
             VerificationStatus::Unverified,
             false,
-            error_metadata_json,
+            None,
         )
         .await
     {
@@ -1258,78 +1227,28 @@ async fn archive_sibling_verification_children(
     }
 }
 
-/// Build a minimal convergence metadata JSON string containing only `convergence_reason`.
-///
-/// Used to inject a reason into sessions that have no existing structured metadata
-/// (cold-boot resets, error paths, agent-completed-without-update). Returns `None`
-/// only when `serde_json` serialization unexpectedly fails.
-fn build_convergence_metadata(reason: &str) -> Option<String> {
-    serde_json::to_string(&serde_json::json!({
-        "convergence_reason": reason,
-    }))
-    .ok()
-}
-
-/// Determine the terminal verification status and associated metadata for a completed child agent.
-///
-/// Three decision branches based on metadata state:
-/// - `convergence_reason` set → map to status via `convergence_reason_to_status`, keep existing metadata
-/// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
-/// - no metadata or empty rounds → agent completed without updates → `Unverified`
-///
-/// Returns `(terminal_status, updated_metadata_json, emit_metadata, convergence_reason_override)`.
-#[allow(dead_code)]
-fn determine_terminal_status_and_metadata(
-    parsed_meta: Option<VerificationMetadata>,
-    existing_metadata_json: Option<String>,
-) -> (
-    VerificationStatus,
-    Option<String>,
-    Option<VerificationMetadata>,
-    Option<String>,
-) {
-    let has_convergence_reason = parsed_meta
-        .as_ref()
-        .and_then(|m| m.convergence_reason.as_deref())
-        .is_some();
-    let has_rounds = parsed_meta
-        .as_ref()
-        .map(|m| !m.rounds.is_empty())
-        .unwrap_or(false);
-
-    if has_convergence_reason {
-        // Branch 1: Agent completed with convergence_reason — map to terminal status
-        let reason = parsed_meta
-            .as_ref()
-            .unwrap()
-            .convergence_reason
-            .as_deref()
-            .unwrap_or("");
-        let status = convergence_reason_to_status(reason);
-        // Keep existing metadata as-is (convergence_reason already present)
-        (status, existing_metadata_json, parsed_meta, None::<String>)
-    } else if has_rounds {
-        // Branch 2: Agent crashed mid-round with partial progress
-        let mut updated_m = parsed_meta.unwrap();
-        updated_m.convergence_reason = Some("agent_crashed_mid_round".to_string());
-        let updated_json = serde_json::to_string(&updated_m).ok();
-        (
-            VerificationStatus::NeedsRevision,
-            updated_json,
-            Some(updated_m),
-            None::<String>,
-        )
-    } else {
-        // Branch 3: No metadata or empty rounds — agent completed without any updates
-        let minimal_json = build_convergence_metadata("agent_completed_without_update");
-        (
-            VerificationStatus::Unverified,
-            minimal_json,
-            None::<VerificationMetadata>,
-            Some("agent_completed_without_update".to_string()),
-        )
+async fn load_effective_verification_view(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    session: &IdeationSession,
+) -> Option<VerificationRunSnapshot> {
+    match repo
+        .get_verification_run_snapshot(&session.id, session.verification_generation)
+        .await
+    {
+        Ok(Some(snapshot)) => Some(snapshot),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!(
+                session_id = %session.id.as_str(),
+                generation = session.verification_generation,
+                error = %e,
+                "Failed to load native verification snapshot"
+            );
+            None
+        }
     }
 }
+
 
 /// Map a `convergence_reason` string to the appropriate `VerificationStatus`.
 ///

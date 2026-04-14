@@ -6,11 +6,11 @@ use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
+    VerificationConfirmationStatus, VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
@@ -36,7 +36,9 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
     verification_status, verification_in_progress, verification_metadata, \
-    verification_generation, source_project_id, source_session_id, session_purpose, \
+    verification_generation, verification_current_round, verification_max_rounds, \
+    verification_gap_count, verification_gap_score, verification_convergence_reason, \
+    source_project_id, source_session_id, session_purpose, \
     cross_project_checked, plan_version_last_read, origin, \
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
@@ -67,6 +69,17 @@ impl SqliteIdeationSessionRepository {
         Self {
             db: DbConnection::from_shared(conn),
         }
+    }
+
+    fn verification_summary_from_snapshot(
+        snapshot: &VerificationRunSnapshot,
+    ) -> (Option<i64>, Option<i64>, i64, Option<i64>, Option<String>) {
+        let current_round = (snapshot.current_round > 0).then_some(snapshot.current_round as i64);
+        let max_rounds = (snapshot.max_rounds > 0).then_some(snapshot.max_rounds as i64);
+        let gap_count = snapshot.current_gaps.len() as i64;
+        let gap_score = Some(crate::domain::services::gap_score(&snapshot.current_gaps) as i64);
+        let convergence_reason = snapshot.convergence_reason.clone();
+        (current_round, max_rounds, gap_count, gap_score, convergence_reason)
     }
 
     // ============================================================================
@@ -223,6 +236,7 @@ impl SqliteIdeationSessionRepository {
         let rows = conn.execute(
             "UPDATE ideation_sessions SET verification_status = 'unverified', \
              verification_in_progress = 0, verification_metadata = NULL, \
+             verification_generation = verification_generation + 1, \
              updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0 \
              AND verification_status != 'imported_verified'",
             rusqlite::params![id, now.to_rfc3339()],
@@ -646,7 +660,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         id: &IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        metadata_json: Option<String>,
+        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         let id = id.as_str().to_string();
         let status_str = status.to_string();
@@ -655,8 +669,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET verification_status = ?2, verification_in_progress = ?3, verification_metadata = ?4, updated_at = ?5 WHERE id = ?1",
-                    rusqlite::params![id, status_str, in_progress_int, metadata_json, now.to_rfc3339()],
+                    "UPDATE ideation_sessions SET verification_status = ?2, verification_in_progress = ?3, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, updated_at = ?4 WHERE id = ?1",
+                    rusqlite::params![id, status_str, in_progress_int, now.to_rfc3339()],
                 )?;
                 Ok(())
             })
@@ -670,7 +684,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let rows = conn.execute(
-                    "UPDATE ideation_sessions SET verification_status = 'unverified', verification_in_progress = 0, verification_metadata = NULL, updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
+                    "UPDATE ideation_sessions SET verification_status = 'unverified', verification_in_progress = 0, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, verification_generation = verification_generation + 1, updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
                     rusqlite::params![id, now.to_rfc3339()],
                 )?;
                 Ok(rows > 0)
@@ -681,43 +695,44 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         session_id: &str,
-    ) -> AppResult<(i32, VerificationMetadata)> {
+    ) -> AppResult<(i32, VerificationRunSnapshot)> {
         let session_id = session_id.to_string();
         self.db
             .run_transaction(move |conn| {
-                // Read current metadata + generation
-                let (metadata_json, current_gen): (Option<String>, i32) = conn.query_row(
-                    "SELECT verification_metadata, verification_generation FROM ideation_sessions WHERE id = ?1",
+                let current_gen: i32 = conn.query_row(
+                    "SELECT verification_generation FROM ideation_sessions WHERE id = ?1",
                     rusqlite::params![session_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| row.get(0),
                 ).map_err(|e| crate::error::AppError::Database(format!("Session not found: {e}")))?;
 
-                // Parse existing metadata (or use default), then clear all stale fields
-                let mut metadata: VerificationMetadata = metadata_json
-                    .as_deref()
-                    .and_then(|s| serde_json::from_str(s).ok())
-                    .unwrap_or_default();
-                metadata.current_gaps = vec![];
-                metadata.rounds = vec![];
-                metadata.convergence_reason = None;
-                metadata.best_round_index = None;
-                metadata.current_round = 0;
-                metadata.parse_failures = vec![];
-
-                let new_metadata_json = serde_json::to_string(&metadata)
-                    .map_err(|e| crate::error::AppError::Database(format!("Metadata serialize failed: {e}")))?;
                 let new_gen = current_gen + 1;
+                let snapshot = VerificationRunSnapshot {
+                    generation: new_gen,
+                    status: VerificationStatus::Reviewing,
+                    in_progress: true,
+                    current_round: 0,
+                    max_rounds: 0,
+                    best_round_index: None,
+                    convergence_reason: None,
+                    current_gaps: Vec::new(),
+                    rounds: Vec::new(),
+                };
 
-                // Atomic: clear metadata + increment generation + set status + set in_progress
+                // Atomic: increment generation + set status + set in_progress.
                 let rows_affected = conn.execute(
                     "UPDATE ideation_sessions SET \
                        verification_status = 'reviewing', \
                        verification_in_progress = 1, \
                        verification_generation = ?2, \
-                       verification_metadata = ?3, \
+                       verification_metadata = NULL, \
+                       verification_current_round = NULL, \
+                       verification_max_rounds = NULL, \
+                       verification_gap_count = 0, \
+                       verification_gap_score = NULL, \
+                       verification_convergence_reason = NULL, \
                        updated_at = CURRENT_TIMESTAMP \
                      WHERE id = ?1",
-                    rusqlite::params![session_id, new_gen, new_metadata_json],
+                    rusqlite::params![session_id, new_gen],
                 )?;
 
                 if rows_affected == 0 {
@@ -726,7 +741,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     ));
                 }
 
-                Ok((new_gen, metadata))
+                Ok((new_gen, snapshot))
             })
             .await
     }
@@ -734,25 +749,331 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     async fn get_verification_status(
         &self,
         id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(VerificationStatus, bool)>> {
         let id = id.as_str().to_string();
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT verification_status, verification_in_progress, verification_metadata FROM ideation_sessions WHERE id = ?1",
+                    "SELECT verification_status, verification_in_progress FROM ideation_sessions WHERE id = ?1",
                     [&id],
                     |row| {
                         let status_str: Option<String> = row.get(0).unwrap_or(None);
                         let in_progress: Option<i64> = row.get(1).unwrap_or(None);
-                        let metadata: Option<String> = row.get(2).unwrap_or(None);
                         let status = status_str
                             .as_deref()
                             .and_then(|s| s.parse().ok())
                             .unwrap_or_default();
                         let in_prog = in_progress.map(|v| v != 0).unwrap_or(false);
-                        Ok((status, in_prog, metadata))
+                        Ok((status, in_prog))
                     },
                 )
+            })
+            .await
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        snapshot: &VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        let session_id = id.as_str().to_string();
+        let snapshot = snapshot.clone();
+        self.db
+            .run(move |conn| {
+                let tx = conn.unchecked_transaction()?;
+                let now = Utc::now().to_rfc3339();
+                let completed_at = if snapshot.in_progress {
+                    None
+                } else {
+                    Some(now.clone())
+                };
+
+                let run_id = tx
+                    .query_row(
+                        "SELECT id FROM verification_runs WHERE session_id = ?1 AND generation = ?2",
+                        rusqlite::params![session_id, snapshot.generation],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+                tx.execute(
+                    "INSERT INTO verification_runs (
+                        id, session_id, generation, status, in_progress,
+                        current_round, max_rounds, best_round_index, convergence_reason,
+                        created_at, updated_at, completed_at
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                    ON CONFLICT(session_id, generation) DO UPDATE SET
+                        status = excluded.status,
+                        in_progress = excluded.in_progress,
+                        current_round = excluded.current_round,
+                        max_rounds = excluded.max_rounds,
+                        best_round_index = excluded.best_round_index,
+                        convergence_reason = excluded.convergence_reason,
+                        updated_at = excluded.updated_at,
+                        completed_at = excluded.completed_at",
+                    rusqlite::params![
+                        &run_id,
+                        &session_id,
+                        snapshot.generation,
+                        snapshot.status.to_string(),
+                        snapshot.in_progress as i32,
+                        if snapshot.current_round > 0 {
+                            Some(snapshot.current_round as i64)
+                        } else {
+                            None
+                        },
+                        if snapshot.max_rounds > 0 {
+                            Some(snapshot.max_rounds as i64)
+                        } else {
+                            None
+                        },
+                        snapshot.best_round_index.map(|value| value as i64),
+                        snapshot.convergence_reason.as_deref(),
+                        &now,
+                        &now,
+                        completed_at.as_deref(),
+                    ],
+                )?;
+
+                let (
+                    summary_current_round,
+                    summary_max_rounds,
+                    summary_gap_count,
+                    summary_gap_score,
+                    summary_convergence_reason,
+                ) = Self::verification_summary_from_snapshot(&snapshot);
+                tx.execute(
+                    "UPDATE ideation_sessions
+                     SET verification_status = ?2,
+                         verification_in_progress = ?3,
+                         verification_current_round = ?4,
+                         verification_max_rounds = ?5,
+                         verification_gap_count = ?6,
+                         verification_gap_score = ?7,
+                         verification_convergence_reason = ?8,
+                         updated_at = ?9
+                     WHERE id = ?1 AND verification_generation = ?10",
+                    rusqlite::params![
+                        &session_id,
+                        snapshot.status.to_string(),
+                        if snapshot.in_progress { 1i64 } else { 0i64 },
+                        summary_current_round,
+                        summary_max_rounds,
+                        summary_gap_count,
+                        summary_gap_score,
+                        summary_convergence_reason,
+                        &now,
+                        snapshot.generation,
+                    ],
+                )?;
+
+                tx.execute(
+                    "DELETE FROM verification_round_gaps
+                     WHERE round_id IN (SELECT id FROM verification_rounds WHERE run_id = ?1)",
+                    rusqlite::params![&run_id],
+                )?;
+                tx.execute(
+                    "DELETE FROM verification_run_current_gaps WHERE run_id = ?1",
+                    rusqlite::params![&run_id],
+                )?;
+                tx.execute(
+                    "DELETE FROM verification_rounds WHERE run_id = ?1",
+                    rusqlite::params![&run_id],
+                )?;
+
+                for round in &snapshot.rounds {
+                    let round_id = uuid::Uuid::new_v4().to_string();
+                    tx.execute(
+                        "INSERT INTO verification_rounds (
+                            id, run_id, round_number, gap_score, parse_failed, created_at
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                        rusqlite::params![
+                            &round_id,
+                            &run_id,
+                            round.round as i64,
+                            round.gap_score as i64,
+                            round.parse_failed as i32,
+                            &now,
+                        ],
+                    )?;
+
+                    for (index, gap) in round.gaps.iter().enumerate() {
+                        let fingerprint = round
+                            .fingerprints
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| gap.description.clone());
+                        tx.execute(
+                            "INSERT INTO verification_round_gaps (
+                                id, round_id, sort_order, severity, category, description,
+                                why_it_matters, source, fingerprint
+                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                            rusqlite::params![
+                                uuid::Uuid::new_v4().to_string(),
+                                &round_id,
+                                index as i64,
+                                &gap.severity,
+                                &gap.category,
+                                &gap.description,
+                                gap.why_it_matters.as_deref(),
+                                gap.source.as_deref(),
+                                fingerprint,
+                            ],
+                        )?;
+                    }
+                }
+
+                for (index, gap) in snapshot.current_gaps.iter().enumerate() {
+                    tx.execute(
+                        "INSERT INTO verification_run_current_gaps (
+                            id, run_id, sort_order, severity, category, description,
+                            why_it_matters, source
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        rusqlite::params![
+                            uuid::Uuid::new_v4().to_string(),
+                            &run_id,
+                            index as i64,
+                            &gap.severity,
+                            &gap.category,
+                            &gap.description,
+                            gap.why_it_matters.as_deref(),
+                            gap.source.as_deref(),
+                        ],
+                    )?;
+                }
+
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        generation: i32,
+    ) -> AppResult<Option<VerificationRunSnapshot>> {
+        let session_id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let run_row = conn
+                    .query_row(
+                        "SELECT id, status, in_progress, current_round, max_rounds,
+                                best_round_index, convergence_reason
+                         FROM verification_runs
+                         WHERE session_id = ?1 AND generation = ?2",
+                        rusqlite::params![session_id, generation],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, i64>(2)?,
+                                row.get::<_, Option<i64>>(3)?,
+                                row.get::<_, Option<i64>>(4)?,
+                                row.get::<_, Option<i64>>(5)?,
+                                row.get::<_, Option<String>>(6)?,
+                            ))
+                        },
+                    )
+                    .optional()?;
+
+                let Some((
+                    run_id,
+                    status_str,
+                    in_progress,
+                    current_round,
+                    max_rounds,
+                    best_round_index,
+                    convergence_reason,
+                )) = run_row else {
+                    return Ok(None);
+                };
+
+                let status = status_str.parse().unwrap_or(VerificationStatus::Unverified);
+                let mut round_stmt = conn.prepare(
+                    "SELECT id, round_number, gap_score, parse_failed
+                     FROM verification_rounds
+                     WHERE run_id = ?1
+                     ORDER BY round_number ASC",
+                )?;
+                let round_rows = round_stmt
+                    .query_map(rusqlite::params![run_id], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let mut rounds = Vec::with_capacity(round_rows.len());
+                for (round_id, round_number, gap_score, parse_failed) in round_rows {
+                    let mut gap_stmt = conn.prepare(
+                        "SELECT severity, category, description, why_it_matters, source, fingerprint
+                         FROM verification_round_gaps
+                         WHERE round_id = ?1
+                         ORDER BY sort_order ASC",
+                    )?;
+                    let gap_rows = gap_stmt
+                        .query_map(rusqlite::params![round_id], |row| {
+                            Ok((
+                                crate::domain::entities::VerificationGap {
+                                    severity: row.get(0)?,
+                                    category: row.get(1)?,
+                                    description: row.get(2)?,
+                                    why_it_matters: row.get(3)?,
+                                    source: row.get(4)?,
+                                },
+                                row.get::<_, String>(5)?,
+                            ))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let mut gaps = Vec::with_capacity(gap_rows.len());
+                    let mut fingerprints = Vec::with_capacity(gap_rows.len());
+                    for (gap, fingerprint) in gap_rows {
+                        gaps.push(gap);
+                        fingerprints.push(fingerprint);
+                    }
+                    rounds.push(crate::domain::entities::VerificationRoundSnapshot {
+                        round: round_number as u32,
+                        gap_score: gap_score as u32,
+                        fingerprints,
+                        gaps,
+                        parse_failed: parse_failed != 0,
+                    });
+                }
+
+                let mut current_gap_stmt = conn.prepare(
+                    "SELECT severity, category, description, why_it_matters, source
+                     FROM verification_run_current_gaps
+                     WHERE run_id = ?1
+                     ORDER BY sort_order ASC",
+                )?;
+                let current_gaps = current_gap_stmt
+                    .query_map(rusqlite::params![&run_id], |row| {
+                        Ok(crate::domain::entities::VerificationGap {
+                            severity: row.get(0)?,
+                            category: row.get(1)?,
+                            description: row.get(2)?,
+                            why_it_matters: row.get(3)?,
+                            source: row.get(4)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(Some(VerificationRunSnapshot {
+                    generation,
+                    status,
+                    in_progress: in_progress != 0,
+                    current_round: current_round.unwrap_or(0) as u32,
+                    max_rounds: max_rounds.unwrap_or(0) as u32,
+                    best_round_index: best_round_index.map(|value| value as u32),
+                    convergence_reason,
+                    current_gaps,
+                    rounds,
+                }))
             })
             .await
     }
@@ -765,22 +1086,11 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     ) -> AppResult<()> {
         let id = id.as_str().to_string();
         let now = Utc::now();
-        let metadata_json = serde_json::json!({
-            "v": 1,
-            "current_round": 0,
-            "max_rounds": 0,
-            "rounds": [],
-            "current_gaps": [],
-            "convergence_reason": convergence_reason,
-            "best_round_index": null,
-            "parse_failures": []
-        })
-        .to_string();
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = ?3, updated_at = ?4, verification_generation = verification_generation + 1 WHERE id = ?1",
-                    rusqlite::params![id, new_plan_artifact_id, metadata_json, now.to_rfc3339()],
+                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = 0, verification_convergence_reason = ?3, updated_at = ?4, verification_generation = verification_generation + 1 WHERE id = ?1",
+                    rusqlite::params![id, new_plan_artifact_id, convergence_reason, now.to_rfc3339()],
                 )?;
                 Ok(())
             })
@@ -806,18 +1116,6 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             "created_at": now_str,
             "created_by": "system",
             "version": version,
-        })
-        .to_string();
-
-        let session_metadata_json = serde_json::json!({
-            "v": 1,
-            "current_round": 0,
-            "max_rounds": 0,
-            "rounds": [],
-            "current_gaps": [],
-            "convergence_reason": convergence_reason,
-            "best_round_index": null,
-            "parse_failures": []
         })
         .to_string();
 
@@ -850,14 +1148,19 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      SET plan_artifact_id = ?2, \
                          verification_status = 'skipped', \
                          verification_in_progress = 0, \
-                         verification_metadata = ?3, \
+                         verification_metadata = NULL, \
+                         verification_current_round = NULL, \
+                         verification_max_rounds = NULL, \
+                         verification_gap_count = 0, \
+                         verification_gap_score = 0, \
+                         verification_convergence_reason = ?3, \
                          updated_at = ?4, \
                          verification_generation = verification_generation + 1 \
                      WHERE id = ?1",
                     rusqlite::params![
                         session_id,
                         artifact_id_clone,
-                        session_metadata_json,
+                        convergence_reason,
                         now.to_rfc3339(),
                     ],
                 )?;
@@ -874,7 +1177,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET verification_generation = verification_generation + 1 WHERE id = ?1",
+                    "UPDATE ideation_sessions SET verification_generation = verification_generation + 1, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL WHERE id = ?1",
                     rusqlite::params![id],
                 )?;
                 Ok(())

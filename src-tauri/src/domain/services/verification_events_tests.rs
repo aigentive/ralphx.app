@@ -1,10 +1,10 @@
 use super::build_verification_payload;
 
 use crate::domain::entities::{
-    VerificationGap, VerificationMetadata, VerificationRound, VerificationStatus,
+    VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 
-// ===== None metadata (B2, B3, B4 paths) =====
+// ===== None snapshot (B2, B3, B4 paths) =====
 
 #[test]
 fn test_none_metadata_produces_empty_arrays() {
@@ -53,11 +53,14 @@ fn test_none_metadata_with_convergence_reason_override() {
     assert_eq!(payload["rounds"], serde_json::Value::Array(vec![]));
 }
 
-// ===== Some metadata (B1 backend path) =====
+// ===== Some snapshot (B1 backend path) =====
 
 #[test]
-fn test_some_metadata_includes_gaps_and_rounds() {
-    let metadata = VerificationMetadata {
+fn test_some_snapshot_includes_gaps_and_rounds() {
+    let snapshot = VerificationRunSnapshot {
+        generation: 3,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_round: 2,
         max_rounds: 5,
         current_gaps: vec![
@@ -84,24 +87,30 @@ fn test_some_metadata_includes_gaps_and_rounds() {
             },
         ],
         rounds: vec![
-            VerificationRound {
+            VerificationRoundSnapshot {
+                round: 1,
                 fingerprints: vec!["fp1".to_string()],
                 gap_score: 13,
+                gaps: vec![],
+                parse_failed: false,
             },
-            VerificationRound {
+            VerificationRoundSnapshot {
+                round: 2,
                 fingerprints: vec!["fp2".to_string()],
                 gap_score: 14,
+                gaps: vec![],
+                parse_failed: false,
             },
         ],
         convergence_reason: Some("max_rounds".to_string()),
-        ..Default::default()
+        best_round_index: None,
     };
 
     let payload = build_verification_payload(
         "sess-3",
         VerificationStatus::NeedsRevision,
         false,
-        Some(&metadata),
+        Some(&snapshot),
         None,
         Some(3),
     );
@@ -130,17 +139,24 @@ fn test_some_metadata_includes_gaps_and_rounds() {
 }
 
 #[test]
-fn test_some_metadata_convergence_reason_override_wins() {
-    let metadata = VerificationMetadata {
+fn test_some_snapshot_convergence_reason_override_wins() {
+    let snapshot = VerificationRunSnapshot {
+        generation: 4,
+        status: VerificationStatus::Verified,
+        in_progress: false,
         convergence_reason: Some("from_metadata".to_string()),
-        ..Default::default()
+        current_round: 0,
+        max_rounds: 0,
+        current_gaps: vec![],
+        rounds: vec![],
+        best_round_index: None,
     };
 
     let payload = build_verification_payload(
         "sess-4",
         VerificationStatus::Verified,
         false,
-        Some(&metadata),
+        Some(&snapshot),
         Some("explicit_override"),
         Some(4),
     );
@@ -150,14 +166,24 @@ fn test_some_metadata_convergence_reason_override_wins() {
 }
 
 #[test]
-fn test_some_metadata_empty_gaps_and_rounds() {
-    let metadata = VerificationMetadata::default();
+fn test_some_snapshot_empty_gaps_and_rounds() {
+    let snapshot = VerificationRunSnapshot {
+        generation: 5,
+        status: VerificationStatus::Reviewing,
+        in_progress: true,
+        current_round: 0,
+        max_rounds: 0,
+        current_gaps: vec![],
+        rounds: vec![],
+        convergence_reason: None,
+        best_round_index: None,
+    };
 
     let payload = build_verification_payload(
         "sess-5",
         VerificationStatus::Reviewing,
         true,
-        Some(&metadata),
+        Some(&snapshot),
         None,
         Some(5),
     );
@@ -175,7 +201,10 @@ fn test_some_metadata_empty_gaps_and_rounds() {
 #[test]
 fn test_gap_score_weighted_calculation() {
     // critical*10 + high*3 + medium*1 + unknown*0
-    let metadata = VerificationMetadata {
+    let snapshot = VerificationRunSnapshot {
+        generation: 0,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_gaps: vec![
             VerificationGap {
                 severity: "critical".to_string(),
@@ -206,14 +235,18 @@ fn test_gap_score_weighted_calculation() {
                 source: None,
             },
         ],
-        ..Default::default()
+        current_round: 0,
+        max_rounds: 0,
+        rounds: vec![],
+        convergence_reason: None,
+        best_round_index: None,
     };
 
     let payload = build_verification_payload(
         "sess-6",
         VerificationStatus::NeedsRevision,
         false,
-        Some(&metadata),
+        Some(&snapshot),
         None,
         None,
     );
@@ -287,9 +320,13 @@ fn test_fixture_schema_matches_canonical_payload() {
 /// Verifies build_verification_payload produces output matching the fixture's schema shape.
 #[test]
 fn test_payload_shape_matches_fixture_schema() {
-    let metadata = VerificationMetadata {
+    let snapshot = VerificationRunSnapshot {
+        generation: 9,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_round: 3,
         max_rounds: 5,
+        best_round_index: None,
         current_gaps: vec![
             VerificationGap {
                 severity: "critical".to_string(),
@@ -307,20 +344,22 @@ fn test_payload_shape_matches_fixture_schema() {
             },
         ],
         rounds: vec![
-            VerificationRound {
+            VerificationRoundSnapshot {
+                round: 1,
                 fingerprints: vec!["no-auth-admin".to_string(), "missing-tests".to_string()],
                 gap_score: 13,
+                gaps: vec![],
+                parse_failed: false,
             },
         ],
         convergence_reason: None,
-        ..Default::default()
     };
 
     let payload = build_verification_payload(
         "sess-fixture-shape",
         VerificationStatus::NeedsRevision,
         false,
-        Some(&metadata),
+        Some(&snapshot),
         None,
         Some(9),
     );
@@ -374,7 +413,7 @@ fn test_imported_verified_payload_does_not_panic() {
     assert_eq!(payload["status"], "imported_verified");
     assert_eq!(payload["in_progress"], false);
     assert_eq!(payload["generation"], serde_json::Value::Null);
-    // All numeric fields are null when metadata is None
+    // All numeric fields are null when snapshot is None
     assert_eq!(payload["round"], serde_json::Value::Null);
     assert_eq!(payload["max_rounds"], serde_json::Value::Null);
     assert_eq!(payload["gap_score"], serde_json::Value::Null);
@@ -382,19 +421,25 @@ fn test_imported_verified_payload_does_not_panic() {
     assert_eq!(payload["rounds"], serde_json::Value::Array(vec![]));
 }
 
-/// ImportedVerified with metadata: status field is serialized as "imported_verified".
+/// ImportedVerified with snapshot: status field is serialized as "imported_verified".
 #[test]
-fn test_imported_verified_payload_with_metadata() {
-    let metadata = VerificationMetadata {
+fn test_imported_verified_payload_with_snapshot() {
+    let snapshot = VerificationRunSnapshot {
+        generation: 11,
+        status: VerificationStatus::ImportedVerified,
+        in_progress: false,
         current_round: 0,
         max_rounds: 0,
-        ..Default::default()
+        best_round_index: None,
+        current_gaps: vec![],
+        rounds: vec![],
+        convergence_reason: None,
     };
     let payload = build_verification_payload(
         "sess-imported-meta",
         VerificationStatus::ImportedVerified,
         false,
-        Some(&metadata),
+        Some(&snapshot),
         None,
         Some(11),
     );

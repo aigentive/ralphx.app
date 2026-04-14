@@ -9,7 +9,7 @@ use rusqlite::Connection;
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
+    VerificationConfirmationStatus, VerificationRunSnapshot, VerificationStatus,
 };
 use crate::error::AppResult;
 
@@ -128,7 +128,9 @@ pub trait IdeationSessionRepository: Send + Sync {
         parent_id: Option<&IdeationSessionId>,
     ) -> AppResult<()>;
 
-    /// Update verification state atomically (status + in_progress flag + metadata)
+    /// Update verification state atomically (status + in_progress flag).
+    ///
+    /// `metadata_json` is transitional plumbing and must remain `None` in live callers.
     async fn update_verification_state(
         &self,
         id: &IdeationSessionId,
@@ -143,11 +145,28 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// Returns `true` if the reset occurred (rows_affected > 0), `false` if skipped (in_progress=1).
     async fn reset_verification(&self, id: &IdeationSessionId) -> AppResult<bool>;
 
-    /// Get a session's verification status + metadata (lightweight read)
+    /// Get a session's verification status flags (lightweight read)
     async fn get_verification_status(
         &self,
         id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>>;
+    ) -> AppResult<Option<(VerificationStatus, bool)>>;
+
+    /// Persist the native verification run snapshot for the current generation.
+    ///
+    /// The session summary columns remain the fast list-view projection, while this
+    /// snapshot stores normalized round/gap lineage keyed by `(session_id, generation)`.
+    async fn save_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        snapshot: &VerificationRunSnapshot,
+    ) -> AppResult<()>;
+
+    /// Load the native verification run snapshot for `(session_id, generation)`.
+    async fn get_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        generation: i32,
+    ) -> AppResult<Option<VerificationRunSnapshot>>;
 
     /// Atomic revert-and-skip: update plan_artifact_id + set verification status=skipped
     async fn revert_plan_and_skip_verification(
@@ -189,8 +208,7 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// Called ONLY for terminal→reviewing transitions (Verified, Skipped, ImportedVerified).
     /// NOT for NeedsRevision → Reviewing (normal inter-round flow).
     ///
-    /// Returns `(new_gen, cleared_metadata)` — handler uses new_gen in the response and
-    /// cleared_metadata for event emission (the pre-call local metadata is stale after reset).
+    /// Returns `(new_gen, cleared_snapshot)` for the new reviewing generation.
     ///
     /// # Errors
     ///
@@ -198,7 +216,7 @@ pub trait IdeationSessionRepository: Send + Sync {
     async fn reset_and_begin_reverify(
         &self,
         session_id: &str,
-    ) -> AppResult<(i32, VerificationMetadata)>;
+    ) -> AppResult<(i32, VerificationRunSnapshot)>;
 
     /// Find sessions where `verification_in_progress = 1` and `updated_at < stale_before`.
     async fn get_stale_in_progress_sessions(

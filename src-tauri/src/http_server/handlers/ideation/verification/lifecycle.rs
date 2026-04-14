@@ -233,7 +233,7 @@ pub async fn stop_verification(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    use crate::domain::entities::ideation::{VerificationRunSnapshot, VerificationStatus};
 
     let session_id_obj =
         crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
@@ -285,20 +285,42 @@ pub async fn stop_verification(
     // Kill any running verification child agents (best-effort)
     stop_verification_children(&session_id, &state.app_state).await.ok();
 
-    // Update metadata: preserve existing metadata and set convergence_reason = "user_stopped"
-    let mut metadata: VerificationMetadata = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
-    metadata.convergence_reason = Some("user_stopped".to_string());
-    let metadata_json = serde_json::to_string(&metadata).ok();
+    // Update native verification snapshot state for the current generation.
+    let mut snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load verification snapshot for {} before stop: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification snapshot",
+            )
+        })?
+        .unwrap_or(VerificationRunSnapshot {
+            generation: session.verification_generation,
+            status: VerificationStatus::Skipped,
+            in_progress: true,
+            current_round: 0,
+            max_rounds: 0,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: Vec::new(),
+            rounds: Vec::new(),
+        });
+    snapshot.status = VerificationStatus::Skipped;
+    snapshot.in_progress = false;
+    snapshot.convergence_reason = Some("user_stopped".to_string());
 
     // Persist: verification_status = skipped, verification_in_progress = false
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false, metadata_json)
+        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false, None)
         .await
         .map_err(|e| {
             error!(
@@ -308,6 +330,22 @@ pub async fn stop_verification(
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to stop verification",
+            )
+        })?;
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(&session_id_obj, &snapshot)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to persist verification snapshot for {} after stop: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to persist verification snapshot",
             )
         })?;
 
@@ -331,7 +369,7 @@ pub async fn stop_verification(
             &session_id,
             VerificationStatus::Skipped,
             false,
-            Some(&metadata),
+            Some(&snapshot),
             Some("user_stopped"),
             Some(session.verification_generation),
         );
@@ -356,7 +394,7 @@ pub async fn mark_verification_infra_failure(
     Path(session_id): Path<String>,
     Json(req): Json<VerificationInfraFailureRequest>,
 ) -> Result<Json<VerificationResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    use crate::domain::entities::ideation::{VerificationRunSnapshot, VerificationStatus};
 
     let (session_id, session_id_obj, session) =
         resolve_verification_parent_session(&state, session_id).await?;
@@ -392,23 +430,44 @@ pub async fn mark_verification_infra_failure(
         ));
     }
 
-    let mut metadata: VerificationMetadata = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
+    let mut snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load verification snapshot for {} before infra failure: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification snapshot",
+            )
+        })?
+        .unwrap_or(VerificationRunSnapshot {
+            generation: session.verification_generation,
+            status: VerificationStatus::Unverified,
+            in_progress: false,
+            current_round: 0,
+            max_rounds: 0,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: Vec::new(),
+            rounds: Vec::new(),
+        });
     if let Some(round) = req.round {
-        metadata.current_round = round;
+        snapshot.current_round = round;
     }
     if let Some(max_rounds) = req.max_rounds {
-        metadata.max_rounds = max_rounds;
+        snapshot.max_rounds = max_rounds;
     }
-    metadata.current_gaps.clear();
-    metadata.convergence_reason =
+    snapshot.status = VerificationStatus::Unverified;
+    snapshot.in_progress = false;
+    snapshot.current_gaps.clear();
+    snapshot.convergence_reason =
         Some(req.convergence_reason.unwrap_or_else(|| "agent_error".to_string()));
-    let convergence_reason = metadata.convergence_reason.clone();
-    let metadata_json = serde_json::to_string(&metadata).ok();
-
+    let convergence_reason = snapshot.convergence_reason.clone();
     state
         .app_state
         .ideation_session_repo
@@ -416,7 +475,7 @@ pub async fn mark_verification_infra_failure(
             &session_id_obj,
             VerificationStatus::Unverified,
             false,
-            metadata_json,
+            None,
         )
         .await
         .map_err(|e| {
@@ -427,6 +486,22 @@ pub async fn mark_verification_infra_failure(
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to update verification state",
+            )
+        })?;
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(&session_id_obj, &snapshot)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to persist verification snapshot for infra failure on {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to persist verification snapshot",
             )
         })?;
 
@@ -453,7 +528,7 @@ pub async fn mark_verification_infra_failure(
             &session_id,
             VerificationStatus::Unverified,
             false,
-            Some(&metadata),
+            Some(&snapshot),
             convergence_reason.as_deref(),
             Some(next_generation),
         );
@@ -470,6 +545,7 @@ pub async fn mark_verification_infra_failure(
     let mut response =
         get_plan_verification(State(state), ProjectScope(None), Path(session_id)).await?;
     response.0.verification_generation = next_generation;
+    response.0.convergence_reason = convergence_reason;
     Ok(response)
 }
 /// POST /api/ideation/sessions/:id/revert-and-skip
@@ -497,7 +573,7 @@ pub async fn revert_and_skip(
                 if e.0 == StatusCode::FORBIDDEN {
                     json_error(
                         StatusCode::FORBIDDEN,
-                        "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+                        "External sessions cannot skip plan verification. Run verification to completion.",
                     )
                 } else {
                     e

@@ -191,14 +191,30 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, crate::domain::entities::VerificationRunSnapshot)> {
         unimplemented!()
     }
 
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(VerificationStatus, bool)>> {
+        Ok(None)
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _snapshot: &crate::domain::entities::VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _generation: i32,
+    ) -> AppResult<Option<crate::domain::entities::VerificationRunSnapshot>> {
         Ok(None)
     }
 

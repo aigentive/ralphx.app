@@ -9,7 +9,7 @@ use crate::application::reconciliation::verification_handoff::{
     VERIFICATION_RESULT_METADATA_KEY,
 };
 use crate::domain::entities::{ChatContextType, ChatConversationId, ChatMessage, IdeationSessionId,
-    VerificationGap, VerificationMetadata, VerificationStatus};
+    VerificationGap, VerificationRunSnapshot, VerificationStatus};
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
 use crate::infrastructure::memory::{MemoryChatConversationRepository, MemoryChatMessageRepository};
@@ -24,16 +24,20 @@ fn make_gap(severity: &str, description: &str) -> VerificationGap {
     }
 }
 
-fn make_meta(convergence_reason: Option<&str>, gaps: Vec<VerificationGap>) -> VerificationMetadata {
-    VerificationMetadata {
-        v: 1,
+fn make_snapshot(
+    convergence_reason: Option<&str>,
+    gaps: Vec<VerificationGap>,
+) -> VerificationRunSnapshot {
+    VerificationRunSnapshot {
+        generation: 0,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_round: 3,
         max_rounds: 5,
         rounds: vec![],
         current_gaps: gaps,
         convergence_reason: convergence_reason.map(str::to_string),
         best_round_index: None,
-        parse_failures: vec![],
     }
 }
 
@@ -44,7 +48,7 @@ fn make_meta(convergence_reason: Option<&str>, gaps: Vec<VerificationGap>) -> Ve
 #[tokio::test]
 async fn needs_revision_max_rounds_synthesizes_message() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(
+    let snapshot = make_snapshot(
         Some("max_rounds"),
         vec![
             make_gap("critical", "Auth bypass possible"),
@@ -53,7 +57,7 @@ async fn needs_revision_max_rounds_synthesizes_message() {
     );
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -90,13 +94,13 @@ async fn needs_revision_max_rounds_synthesizes_message() {
 #[tokio::test]
 async fn needs_revision_escalated_to_parent_skips_synthesis() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(
+    let snapshot = make_snapshot(
         Some(ESCALATED_TO_PARENT),
         vec![make_gap("critical", "Already escalated gap")],
     );
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -122,10 +126,10 @@ async fn needs_revision_escalated_to_parent_skips_synthesis() {
 async fn needs_revision_agent_crashed_empty_gaps_fallback() {
     let parent_id = IdeationSessionId::new();
     // Simulate agent crash: NeedsRevision with no current_gaps
-    let meta = make_meta(Some("agent_crashed_mid_round"), vec![]);
+    let snapshot = make_snapshot(Some("agent_crashed_mid_round"), vec![]);
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -161,10 +165,10 @@ async fn needs_revision_agent_crashed_empty_gaps_fallback() {
 #[tokio::test]
 async fn verified_completion_no_synthesis() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(Some("zero_blocking"), vec![]);
+    let snapshot = make_snapshot(Some("zero_blocking"), vec![]);
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::Verified,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -190,7 +194,7 @@ async fn unverified_completion_no_synthesis() {
     let parent_id = IdeationSessionId::new();
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::Unverified,
-        parsed_meta: None,
+        parsed_snapshot: None,
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());

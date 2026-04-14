@@ -1,6 +1,6 @@
 use ralphx_lib::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationStatus,
+    VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 use ralphx_lib::domain::entities::ideation::{SessionOrigin, SessionPurpose};
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
@@ -906,7 +906,7 @@ async fn test_update_verification_state_roundtrip() {
     repo.create(session.clone()).await.unwrap();
 
     // Default state
-    let (status, in_progress, _) = repo
+    let (status, in_progress) = repo
         .get_verification_status(&session.id)
         .await
         .unwrap()
@@ -915,12 +915,11 @@ async fn test_update_verification_state_roundtrip() {
     assert!(!in_progress);
 
     // Update to reviewing + in_progress
-    let metadata = Some(r#"{"v":1,"current_round":1,"max_rounds":5}"#.to_string());
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
         true,
-        metadata.clone(),
+        Some(r#"{"v":1,"current_round":1,"max_rounds":5}"#.to_string()),
     )
     .await
     .unwrap();
@@ -928,9 +927,12 @@ async fn test_update_verification_state_roundtrip() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
+    assert!(
+        found.verification_metadata.is_none(),
+        "legacy verification_metadata must stay empty after status updates"
+    );
 
-    let (status2, in_progress2, _) = repo
+    let (status2, in_progress2) = repo
         .get_verification_status(&session.id)
         .await
         .unwrap()
@@ -959,7 +961,7 @@ async fn test_update_verification_state_all_status_variants() {
         repo.update_verification_state(&session.id, status, false, None)
             .await
             .unwrap();
-        let (s, _, _) = repo
+        let (s, _) = repo
             .get_verification_status(&session.id)
             .await
             .unwrap()
@@ -996,6 +998,10 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     assert_eq!(found.verification_status, VerificationStatus::Unverified);
     assert!(!found.verification_in_progress);
     assert!(found.verification_metadata.is_none());
+    assert_eq!(
+        found.verification_generation, 1,
+        "reset_verification must increment generation to fence stale verifier callbacks"
+    );
 }
 
 #[tokio::test]
@@ -1024,11 +1030,14 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let reset = repo.reset_verification(&session.id).await.unwrap();
     assert!(!reset, "reset_verification must return false when in_progress=1");
 
-    // All 3 columns should remain unchanged
+    // Status flags remain unchanged while legacy metadata stays empty
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
+    assert!(
+        found.verification_metadata.is_none(),
+        "legacy verification_metadata must stay empty while verification is in progress"
+    );
 }
 
 #[tokio::test]
@@ -1049,6 +1058,73 @@ async fn test_get_verification_status_returns_none_for_nonexistent_session() {
 
     let result = repo.get_verification_status(&id).await.unwrap();
     assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_save_and_get_verification_run_snapshot_roundtrip() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, Some("Verification Snapshot"));
+    repo.create(session.clone()).await.unwrap();
+
+    let snapshot = VerificationRunSnapshot {
+        generation: 7,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
+        current_round: 2,
+        max_rounds: 5,
+        best_round_index: Some(1),
+        convergence_reason: Some("escalated_to_parent".to_string()),
+        current_gaps: vec![VerificationGap {
+            severity: "high".to_string(),
+            category: "testing".to_string(),
+            description: "Missing regression".to_string(),
+            why_it_matters: Some("Plan can regress at runtime".to_string()),
+            source: Some("completeness".to_string()),
+        }],
+        rounds: vec![
+            VerificationRoundSnapshot {
+                round: 1,
+                gap_score: 10,
+                fingerprints: vec!["gap-auth".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "critical".to_string(),
+                    category: "security".to_string(),
+                    description: "Auth missing".to_string(),
+                    why_it_matters: None,
+                    source: Some("completeness".to_string()),
+                }],
+                parse_failed: false,
+            },
+            VerificationRoundSnapshot {
+                round: 2,
+                gap_score: 3,
+                fingerprints: vec!["gap-regression".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "high".to_string(),
+                    category: "testing".to_string(),
+                    description: "Missing regression".to_string(),
+                    why_it_matters: Some("Plan can regress at runtime".to_string()),
+                    source: Some("feasibility".to_string()),
+                }],
+                parse_failed: true,
+            },
+        ],
+    };
+
+    repo.save_verification_run_snapshot(&session.id, &snapshot)
+        .await
+        .unwrap();
+
+    let found = repo
+        .get_verification_run_snapshot(&session.id, 7)
+        .await
+        .unwrap()
+        .expect("snapshot must exist");
+    assert_eq!(found, snapshot);
 }
 
 // ==================== CIRCULAR IMPORT VALIDATION TESTS ====================
@@ -1834,7 +1910,7 @@ async fn test_list_by_group_parent_title_resolved() {
 /// storage precision issues.
 ///
 /// Verifies:
-/// - Returned (new_gen, cleared_metadata) tuple is correct
+/// - Returned (new_gen, cleared_snapshot) tuple is correct
 /// - DB is updated atomically: status=reviewing, in_progress=true, gen=N+1
 /// - All stale metadata fields are cleared in the stored JSON
 #[tokio::test]
@@ -1881,28 +1957,27 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     .unwrap();
 
     // Call reset_and_begin_reverify — must atomically clear metadata, increment gen, set Reviewing
-    let (new_gen, cleared_metadata) = repo
+    let (new_gen, cleared_snapshot) = repo
         .reset_and_begin_reverify(session_id_obj.as_str())
         .await
         .unwrap();
 
     // Assert returned tuple (DB starts at generation=0, so reset increments to 1)
     assert_eq!(new_gen, 1, "generation must be incremented from 0 to 1");
-    assert!(cleared_metadata.current_gaps.is_empty(), "returned current_gaps must be empty");
-    assert!(cleared_metadata.rounds.is_empty(), "returned rounds must be empty");
+    assert_eq!(cleared_snapshot.generation, 1);
+    assert_eq!(cleared_snapshot.status, VerificationStatus::Reviewing);
+    assert!(cleared_snapshot.in_progress);
+    assert!(cleared_snapshot.current_gaps.is_empty(), "returned current_gaps must be empty");
+    assert!(cleared_snapshot.rounds.is_empty(), "returned rounds must be empty");
     assert!(
-        cleared_metadata.convergence_reason.is_none(),
+        cleared_snapshot.convergence_reason.is_none(),
         "returned convergence_reason must be None"
     );
     assert!(
-        cleared_metadata.best_round_index.is_none(),
+        cleared_snapshot.best_round_index.is_none(),
         "returned best_round_index must be None"
     );
-    assert_eq!(cleared_metadata.current_round, 0, "returned current_round must be 0");
-    assert!(
-        cleared_metadata.parse_failures.is_empty(),
-        "returned parse_failures must be empty"
-    );
+    assert_eq!(cleared_snapshot.current_round, 0, "returned current_round must be 0");
 
     // Assert DB was updated atomically
     let updated = repo.get_by_id(&session_id_obj).await.unwrap().unwrap();
@@ -1914,35 +1989,16 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     assert!(updated.verification_in_progress, "DB in_progress must be true");
     assert_eq!(updated.verification_generation, 1, "DB generation must be 1");
 
-    // Parse stored metadata to verify SQLite-level JSON serialization is correct
-    let stored_meta: serde_json::Value = serde_json::from_str(
-        updated.verification_metadata.as_deref().unwrap_or("{}"),
-    )
-    .unwrap();
-    assert_eq!(
-        stored_meta["current_gaps"],
-        serde_json::json!([]),
-        "SQLite current_gaps must be empty array"
-    );
-    assert_eq!(
-        stored_meta["rounds"],
-        serde_json::json!([]),
-        "SQLite rounds must be empty array"
-    );
+    // Legacy metadata should stay cleared; native reverify state lives in the returned snapshot.
     assert!(
-        stored_meta["convergence_reason"].is_null(),
-        "SQLite convergence_reason must be null"
+        updated.verification_metadata.is_none(),
+        "SQLite legacy verification_metadata must remain NULL after native reverify reset"
     );
-    assert!(
-        stored_meta["best_round_index"].is_null(),
-        "SQLite best_round_index must be null"
-    );
-    assert_eq!(stored_meta["current_round"], 0, "SQLite current_round must be 0");
-    assert_eq!(
-        stored_meta["parse_failures"],
-        serde_json::json!([]),
-        "SQLite parse_failures must be empty array"
-    );
+    assert_eq!(updated.verification_current_round, None);
+    assert_eq!(updated.verification_max_rounds, None);
+    assert_eq!(updated.verification_gap_count, 0);
+    assert_eq!(updated.verification_gap_score, None);
+    assert_eq!(updated.verification_convergence_reason, None);
 }
 
 // ==================== SESSION PURPOSE FILTER TESTS ====================
