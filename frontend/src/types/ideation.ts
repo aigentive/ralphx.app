@@ -39,25 +39,14 @@ export const RoundSummarySchema = z.object({
 
 export type RoundSummary = z.infer<typeof RoundSummarySchema>;
 
-export const VerificationRoundSchema = z.object({
-  round: z.number().int(),
-  gapScore: z.number().int(),
+export const VerificationRoundDetailSchema = z.object({
+  round: z.number(),
+  gapScore: z.number(),
+  gapCount: z.number(),
   gaps: z.array(VerificationGapSchema),
-  fingerprints: z.array(z.string()),
-  parseFailed: z.boolean().optional(),
 });
 
-export type VerificationRound = z.infer<typeof VerificationRoundSchema>;
-
-export const VerificationMetadataSchema = z.object({
-  rounds: z.array(VerificationRoundSchema).optional(),
-  currentRound: z.number().int().optional(),
-  maxRounds: z.number().int().optional(),
-  convergenceReason: z.string().optional(),
-  bestRoundIndex: z.number().int().optional(),
-});
-
-export type VerificationMetadata = z.infer<typeof VerificationMetadataSchema>;
+export type VerificationRoundDetail = z.infer<typeof VerificationRoundDetailSchema>;
 
 // ============================================================================
 // Ideation Session

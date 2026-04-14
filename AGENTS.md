@@ -97,7 +97,7 @@ When working in `src-tauri/`, also follow:
 | P0 | Ideation / verifier prompt alignment | In progress | Rewrite ideation and team-lead verification instructions to match the actual backend-owned verifier flow exactly; no references to unavailable tools, no prompt-owned orchestration, no migration-journal wording |
 | P1 | Verification timeout policy consistency | Open | Make enrichment, required critics, and optional verification specialists use one explicit bounded wait policy and lock it with runtime/tool-schema tests |
 | P1 | Verification UX lineage | In progress | Upgrade verification tab + chat widgets so users can see run lineage, per-round addressed/remaining gaps, and per-delegate state/result history including running, timed out, empty-result, and infra-failure cases |
-| P1 | Legacy verification helper/test cleanup | In progress | Delete obsolete metadata helpers, stale verification comments, old tool references in mocks/tests, and compatibility assertions that no longer match the native verification model |
+| P1 | Legacy verification helper/test cleanup | In progress | Landed: `VerificationMetadata` / `VerificationRound` types and frontend metadata schemas are deleted; next remove the remaining legacy session field/column references and stale test fixtures/comments built around `verification_metadata` |
 
 ## Verification Guardrails
 

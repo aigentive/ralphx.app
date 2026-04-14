@@ -74,12 +74,23 @@ pub struct IdeationSession {
     /// Whether a verification loop is currently active
     #[serde(default)]
     pub verification_in_progress: bool,
-    /// JSON-serialized VerificationMetadata (round history, gaps, convergence reason)
+    /// Legacy verification JSON column. Authoritative verification lineage lives in native snapshots.
     #[serde(default)]
     pub verification_metadata: Option<String>,
     /// Generation counter for zombie protection (incremented on each auto-verify trigger)
     #[serde(default)]
     pub verification_generation: i32,
+    /// Denormalized current round for the active/latest verification generation.
+    pub verification_current_round: Option<u32>,
+    /// Denormalized max round budget for the active/latest verification generation.
+    pub verification_max_rounds: Option<u32>,
+    /// Denormalized unresolved gap count for the active/latest verification generation.
+    #[serde(default)]
+    pub verification_gap_count: u32,
+    /// Denormalized unresolved gap score for the active/latest verification generation.
+    pub verification_gap_score: Option<u32>,
+    /// Denormalized convergence reason for the active/latest verification generation.
+    pub verification_convergence_reason: Option<String>,
     /// Source project ID when this session was imported from another project
     pub source_project_id: Option<String>,
     /// Source session ID when this session was imported from another project
@@ -168,6 +179,11 @@ pub struct IdeationSessionBuilder {
     verification_in_progress: Option<bool>,
     verification_metadata: Option<String>,
     verification_generation: Option<i32>,
+    verification_current_round: Option<u32>,
+    verification_max_rounds: Option<u32>,
+    verification_gap_count: Option<u32>,
+    verification_gap_score: Option<u32>,
+    verification_convergence_reason: Option<String>,
     source_project_id: Option<String>,
     source_session_id: Option<String>,
     source_task_id: Option<TaskId>,
@@ -447,6 +463,11 @@ impl IdeationSessionBuilder {
             verification_in_progress: self.verification_in_progress.unwrap_or(false),
             verification_metadata: self.verification_metadata,
             verification_generation: self.verification_generation.unwrap_or(0),
+            verification_current_round: self.verification_current_round,
+            verification_max_rounds: self.verification_max_rounds,
+            verification_gap_count: self.verification_gap_count.unwrap_or(0),
+            verification_gap_score: self.verification_gap_score,
+            verification_convergence_reason: self.verification_convergence_reason,
             source_project_id: self.source_project_id,
             source_session_id: self.source_session_id,
             source_task_id: self.source_task_id,
@@ -600,6 +621,26 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .map(|v| v as i32)
                 .unwrap_or(0),
+            verification_current_round: row
+                .get::<_, Option<i64>>("verification_current_round")
+                .unwrap_or(None)
+                .map(|v| v as u32),
+            verification_max_rounds: row
+                .get::<_, Option<i64>>("verification_max_rounds")
+                .unwrap_or(None)
+                .map(|v| v as u32),
+            verification_gap_count: row
+                .get::<_, Option<i64>>("verification_gap_count")
+                .unwrap_or(None)
+                .map(|v| v as u32)
+                .unwrap_or(0),
+            verification_gap_score: row
+                .get::<_, Option<i64>>("verification_gap_score")
+                .unwrap_or(None)
+                .map(|v| v as u32),
+            verification_convergence_reason: row
+                .get::<_, Option<String>>("verification_convergence_reason")
+                .unwrap_or(None),
             source_project_id: row
                 .get::<_, Option<String>>("source_project_id")
                 .unwrap_or(None),

@@ -2567,38 +2567,26 @@ fn verification_status_serde_snake_case() {
     assert_eq!(back, VerificationStatus::NeedsRevision);
 }
 
-// ===== VerificationMetadata Tests =====
+// ===== Verification Snapshot Tests =====
 
 #[test]
-fn verification_metadata_default_schema_version_is_1() {
-    let meta = VerificationMetadata::default();
-    assert_eq!(meta.v, 1);
+fn verification_round_snapshot_serde_defaults_parse_failed() {
+    let json = r#"{"round":2,"gap_score":13,"fingerprints":["abc123"],"gaps":[]}"#;
+    let round: VerificationRoundSnapshot = serde_json::from_str(json).unwrap();
+    assert_eq!(round.round, 2);
+    assert_eq!(round.gap_score, 13);
+    assert_eq!(round.fingerprints, vec!["abc123".to_string()]);
+    assert!(!round.parse_failed);
 }
 
 #[test]
-fn verification_metadata_serde_with_all_defaults() {
-    let json = r#"{"v":1}"#;
-    let meta: VerificationMetadata = serde_json::from_str(json).unwrap();
-    assert_eq!(meta.v, 1);
-    assert_eq!(meta.current_round, 0);
-    assert_eq!(meta.max_rounds, 0);
-    assert!(meta.rounds.is_empty());
-    assert!(meta.current_gaps.is_empty());
-    assert!(meta.convergence_reason.is_none());
-    assert!(meta.best_round_index.is_none());
-    assert!(meta.parse_failures.is_empty());
-}
-
-#[test]
-fn verification_metadata_serde_roundtrip() {
-    let meta = VerificationMetadata {
-        v: 1,
+fn verification_run_snapshot_serde_roundtrip() {
+    let snapshot = VerificationRunSnapshot {
+        generation: 4,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_round: 3,
         max_rounds: 5,
-        rounds: vec![VerificationRound {
-            fingerprints: vec!["abc123".to_string()],
-            gap_score: 13,
-        }],
         current_gaps: vec![VerificationGap {
             severity: "critical".to_string(),
             category: "security".to_string(),
@@ -2606,16 +2594,23 @@ fn verification_metadata_serde_roundtrip() {
             why_it_matters: Some("Allows unauthorized access".to_string()),
             source: None,
         }],
+        rounds: vec![VerificationRoundSnapshot {
+            round: 3,
+            gap_score: 13,
+            fingerprints: vec!["abc123".to_string()],
+            gaps: vec![],
+            parse_failed: true,
+        }],
         convergence_reason: Some("zero_blocking".to_string()),
         best_round_index: Some(2),
-        parse_failures: vec![1],
     };
-    let json = serde_json::to_string(&meta).unwrap();
-    let restored: VerificationMetadata = serde_json::from_str(&json).unwrap();
-    assert_eq!(restored.v, 1);
+    let json = serde_json::to_string(&snapshot).unwrap();
+    let restored: VerificationRunSnapshot = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.generation, 4);
     assert_eq!(restored.current_round, 3);
     assert_eq!(restored.rounds.len(), 1);
     assert_eq!(restored.rounds[0].gap_score, 13);
+    assert!(restored.rounds[0].parse_failed);
     assert_eq!(restored.current_gaps[0].severity, "critical");
     assert_eq!(restored.convergence_reason, Some("zero_blocking".to_string()));
 }

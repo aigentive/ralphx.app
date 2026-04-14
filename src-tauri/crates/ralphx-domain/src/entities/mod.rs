@@ -75,7 +75,7 @@ pub use ideation::{
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
     ProposalStatus, SessionLink, SessionOrigin, SessionPurpose, SessionRelationship, TaskProposal,
     UserHintFactor, VerificationConfirmationStatus, VerificationError, VerificationGap,
-    VerificationMetadata, VerificationRound, VerificationStatus,
+    VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,
