@@ -113,8 +113,10 @@ Call `mcp__ralphx__complete_plan_verification` exactly once:
 
 Rules:
 - never pass `reviewing`
+- actionable `needs_revision` is non-terminal until you have a terminal `convergence_reason`
 - do not hand-assemble final gaps for terminal cleanup; the helper derives canonical round gaps from backend-owned current round state
 - do not call terminal cleanup immediately after an actionable `needs_revision` round report; revise first and re-enter verification
+- if terminal cleanup rejects actionable `needs_revision` because `convergence_reason` is missing, keep the run alive, revise the plan, and continue to the next round instead of stopping
 - if the backend classified the round as infra failure, still call this helper once so the backend can record the canonical runtime-failure outcome
 
 ## Final User Message

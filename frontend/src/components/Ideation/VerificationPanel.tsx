@@ -301,10 +301,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     });
   }, [lastVerificationChildId, childLastModel]);
 
-  const verificationStatus = session.verificationStatus ?? "unverified";
+  const sessionVerificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!session.planArtifactId;
   const isApproved = session.status === "accepted";
-  const isInProgress = (session.verificationInProgress ?? false) || !!activeVerificationChildId;
 
   // Fetch full verification data — always fires when a plan exists (not gated on verificationStatus)
   // so that page-load hydration works even when the session cache still shows "unverified".
@@ -329,6 +328,11 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
+  const verificationStatus = verificationData?.status ?? sessionVerificationStatus;
+  const baseVerificationInProgress =
+    verificationData?.inProgress ?? (session.verificationInProgress ?? false);
+  const isInProgress = baseVerificationInProgress || !!activeVerificationChildId;
+
   // Fetch all verification child sessions for the history picker
   const { data: childSessions = [] } = useQuery({
     queryKey: ["childSessions", session.id, "verification"],
@@ -346,7 +350,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     if (verificationData.status === "unverified") return;
     // Only update if the session still shows the default (unverified); avoids overwriting
     // live event-driven updates that may have already set the correct status.
-    if (verificationStatus !== "unverified") return;
+    if (sessionVerificationStatus !== "unverified") return;
     queryClient.setQueryData<SessionWithDataResponse | null>(
       ideationKeys.sessionWithData(session.id),
       (old) =>
@@ -361,7 +365,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
             }
           : old
     );
-  }, [verificationData, verificationStatus, session.id, queryClient]);
+  }, [verificationData, sessionVerificationStatus, session.id, queryClient]);
 
   // Stable boolean extracted from verificationData to prevent object-identity re-fires in the effect below.
   const apiInProgress = verificationData?.inProgress ?? false;
@@ -495,7 +499,12 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   // ── Empty state ──────────────────────────────────────────────────────────
 
-  if (verificationStatus === "unverified" && !hasRounds && !hasVerificationRunEvidence) {
+  if (
+    verificationStatus === "unverified" &&
+    !hasGaps &&
+    !hasRounds &&
+    !hasVerificationRunEvidence
+  ) {
     return (
       <div
         data-testid="verification-empty-state"

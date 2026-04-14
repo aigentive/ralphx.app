@@ -247,6 +247,14 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must not finalize immediately after actionable needs_revision feedback"
     );
     assert!(
+        prompt.contains("actionable `needs_revision` is non-terminal until you have a terminal `convergence_reason`"),
+        "ralphx-plan-verifier prompt must treat actionable needs_revision as non-terminal until a terminal convergence reason exists"
+    );
+    assert!(
+        prompt.contains("if terminal cleanup rejects actionable `needs_revision` because `convergence_reason` is missing"),
+        "ralphx-plan-verifier prompt must tell the model to continue the loop when terminal cleanup rejects actionable needs_revision"
+    );
+    assert!(
         !prompt.contains("if `round_report.status === \"needs_revision\"` and `round_report.in_progress === false`, finish as `needs_revision`"),
         "ralphx-plan-verifier prompt should not finalize immediately on every terminal needs_revision round report"
     );
@@ -309,6 +317,50 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
     assert!(
         !prompt.contains("max_wait_ms: 4000"),
         "ralphx-plan-verifier prompt should not drift back to tiny enrichment wait budgets"
+    );
+}
+
+#[test]
+fn test_ideation_claude_prompt_prioritizes_explicit_reverify_requests() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let prompt = load_harness_agent_prompt(
+        &project_root,
+        "ralphx-ideation",
+        AgentPromptHarness::Claude,
+    )
+    .expect("failed to load canonical ralphx-ideation prompt");
+
+    assert!(
+        prompt.contains(
+            "If the user explicitly asks to re-run or start a fresh verification round"
+        ),
+        "ralphx-ideation Claude prompt must prioritize explicit rerun requests over stale terminal verification results"
+    );
+    assert!(
+        prompt.contains(
+            "start a fresh verification child immediately instead of summarizing blockers and reopening choices"
+        ),
+        "ralphx-ideation Claude prompt must not reopen planning choices when the user already requested a rerun"
+    );
+}
+
+#[test]
+fn test_ideation_claude_prompt_keeps_provider_resume_silent_by_default() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let prompt = load_harness_agent_prompt(
+        &project_root,
+        "ralphx-ideation",
+        AgentPromptHarness::Claude,
+    )
+    .expect("failed to load canonical ralphx-ideation prompt");
+
+    assert!(
+        prompt.contains("Do not behave like recovery mode on normal follow-up turns"),
+        "ralphx-ideation Claude prompt must keep provider_resume turns conversational by default"
+    );
+    assert!(
+        prompt.contains("do not narrate routine refreshes unless the check changes the answer"),
+        "ralphx-ideation Claude prompt must avoid user-facing recovery chatter on ordinary resumed follow-ups"
     );
 }
 

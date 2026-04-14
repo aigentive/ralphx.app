@@ -14,7 +14,7 @@
  * 8. Reset event (status=unverified) allowed even when round regresses
  * 9. Undefined round always accepted (no guard applied)
  * 10. Fallback path (no currentGaps/rounds) calls invalidateQueries for verification
- * 11. Fast path skips verification invalidateQueries unless generation changes
+ * 11. Fast path skips verification invalidateQueries unless generation changes or the update is terminal
  * 12. planVersion stamped from store onto setQueryData call
  * 13. planVersion omitted when store has no planArtifact
  *
@@ -421,12 +421,15 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(childSessionsInvalidation).toBeDefined();
   });
 
-  it("(11) fast path skips verification invalidateQueries when generation is unchanged", async () => {
+  it("(11) fast path skips verification invalidateQueries when generation is unchanged on non-terminal updates", async () => {
     mockGetQueryData = vi.fn().mockReturnValue({ generation: 1, currentRound: 2, gaps: [], rounds: [] });
     renderHook(() => useVerificationEvents());
 
     await act(async () => {
-      fireEvent("plan_verification:status_changed", makeFullVerificationEvent());
+      fireEvent(
+        "plan_verification:status_changed",
+        makeFullVerificationEvent({ status: "reviewing", in_progress: true })
+      );
     });
 
     const verificationInvalidation = mockInvalidateQueries.mock.calls.find(
@@ -464,6 +467,28 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockSetQueryData).toHaveBeenCalledTimes(1);
     const [, cacheData] = mockSetQueryData.mock.calls[0] as [unknown, { planVersion?: number }];
     expect(cacheData.planVersion).toBeUndefined();
+  });
+
+  it("(14) terminal fast path invalidates verification query even when generation is unchanged", async () => {
+    mockGetQueryData = vi.fn().mockReturnValue({
+      generation: 1,
+      currentRound: 1,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+    });
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      fireEvent(
+        "plan_verification:status_changed",
+        makeFullVerificationEvent({ status: "needs_revision", in_progress: false })
+      );
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["verification", SESSION_ID],
+    });
   });
 });
 

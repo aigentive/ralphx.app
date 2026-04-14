@@ -926,6 +926,15 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
       );
     }
     const cachedRoundState = getVerificationRoundState(sessionId);
+    if (
+      agentType === "ralphx-plan-verifier" &&
+      body.status === "needs_revision" &&
+      !body.convergence_reason
+    ) {
+      throw new Error(
+        "complete_plan_verification cannot finalize an actionable needs_revision result without a terminal convergence_reason. Revise the plan, continue the loop, and only finish when the backend-owned verification state is truly terminal."
+      );
+    }
     if (isVerifierTerminalNonUserUpdate && !cachedRoundState) {
       return await callTauri(`ideation/sessions/${sessionId}/verification/infra-failure`, {
         generation: body.generation,

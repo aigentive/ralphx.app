@@ -64,7 +64,7 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 
 - `fresh`: brand-new ideation session. **Do not** run recovery/session-state MCP calls just to confirm emptiness. Start from the current user message and use `<session_history>` only if it is already present.
 - `continuation`: existing RalphX conversation without provider resume. Call `get_session_plan(session_id)` → `list_session_proposals(session_id)` first, then use `get_parent_session_context(session_id)` only if you need parent/child context and `get_pending_confirmations(session_id)` only if you are about to mutate proposals/plan state or need to explain an acceptance gate.
-- `provider_resume`: same as `continuation`, but assume the provider session itself already carries recent context; keep recovery MCP calls minimal and goal-directed.
+- `provider_resume`: assume the provider session itself already carries recent context. Do not behave like recovery mode on normal follow-up turns. Reuse the resumed conversational context by default. Only do a silent backend refresh when the next action is genuinely state-sensitive and plausibly stale, and do not narrate routine refreshes unless the check changes the answer.
 - `recovery`: explicit reconstruction after provider session loss. Call `get_session_plan(session_id)` → `list_session_proposals(session_id)` → `get_parent_session_context(session_id)` → `get_pending_confirmations(session_id)` as needed to rebuild reliable state before proceeding.
 
 Use `<session_history>` for prior conversation context. `<session_history>` prioritizes the **most recent** messages. When `truncated="true"`, **older** messages were omitted to fit the context budget — the user's latest direction is already in the bootstrap. If you need historical context (original problem statement, earlier decisions), call `get_session_messages(session_id, { offset: N })` to paginate backwards through older history.
@@ -170,6 +170,8 @@ The agent decides which layers apply based on plan content. If the plan proposes
 
 **❌ Do NOT run any verification steps yourself. The ralphx-plan-verifier agent handles the entire round loop.**
 
+If the user explicitly asks to re-run or start a fresh verification round, treat that as an instruction to start verification now when no run is active. Do not turn that request into a new planning-choice prompt just because the latest terminal verification result had blockers.
+
 **Delegation:**
 Call `create_child_session(purpose: "verification", inherit_context: true, initial_prompt: "Begin plan verification.")`. The backend auto-initializes verification state and injects `parent_session_id`, `generation`, and `max_rounds` into the prompt automatically — do NOT pass these manually.
 
@@ -243,6 +245,7 @@ Want me to re-verify the updated plan?
 **Handling flow:**
 1. **Parse** — extract: `convergence_reason`, `round`, `max_rounds`, `summary`, `top_blockers`, `recommended_next_action`.
 2. **Classify before reacting** —
+   - If the user's current message is explicitly asking to re-run verification and no verification is active: start a fresh verification child immediately instead of summarizing blockers and reopening choices.
    - If `convergence_reason` is `agent_error`, `agent_crashed_mid_round`, `agent_completed_without_update`, or `critic_parse_failure`: treat it as verifier infrastructure/runtime failure, NOT plan feedback.
    - For those infra/runtime outcomes: do NOT revise the plan just because verification failed, do NOT spawn `Task(Explore)`, and do NOT imply the plan itself is wrong.
 3. **Report** —

@@ -1081,6 +1081,64 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
 }
 
 #[test]
+fn codex_plan_verifier_prompt_treats_actionable_needs_revision_as_non_terminal() {
+    let root = project_root();
+    let prompt = load_harness_agent_prompt(
+        &root,
+        "ralphx-plan-verifier",
+        AgentPromptHarness::Codex,
+    )
+    .expect("missing codex prompt for ralphx-plan-verifier");
+
+    assert!(
+        prompt.contains(
+            "actionable `needs_revision` is non-terminal until you have a terminal `convergence_reason`"
+        ),
+        "codex verifier prompt must keep actionable needs_revision non-terminal"
+    );
+    assert!(
+        prompt.contains(
+            "if terminal cleanup rejects actionable `needs_revision` because `convergence_reason` is missing"
+        ),
+        "codex verifier prompt must continue the loop when terminal cleanup rejects actionable needs_revision"
+    );
+}
+
+#[test]
+fn codex_ideation_prompt_prioritizes_explicit_reverify_requests() {
+    let root = project_root();
+    let prompt = load_harness_agent_prompt(&root, "ralphx-ideation", AgentPromptHarness::Codex)
+        .expect("missing codex prompt for ralphx-ideation");
+
+    assert!(
+        prompt.contains("If the user explicitly asks to re-run or start a fresh verification round"),
+        "codex ideation prompt must prioritize explicit rerun requests over stale terminal verification results"
+    );
+    assert!(
+        prompt.contains(
+            "start the fresh verification child instead of summarizing blockers and reopening choices"
+        ),
+        "codex ideation prompt must not reopen planning choices when the user already requested a rerun"
+    );
+}
+
+#[test]
+fn codex_ideation_prompt_keeps_provider_resume_silent_by_default() {
+    let root = project_root();
+    let prompt = load_harness_agent_prompt(&root, "ralphx-ideation", AgentPromptHarness::Codex)
+        .expect("missing codex prompt for ralphx-ideation");
+
+    assert!(
+        prompt.contains("Do not behave like recovery mode on normal follow-up turns"),
+        "codex ideation prompt must keep provider_resume turns conversational by default"
+    );
+    assert!(
+        prompt.contains("Do not narrate routine refreshes to the user unless the check changes the answer"),
+        "codex ideation prompt must avoid user-facing recovery chatter on ordinary resumed follow-ups"
+    );
+}
+
+#[test]
 fn codex_spawn_capable_prompts_reference_explicit_delegation_tools() {
     let root = project_root();
 

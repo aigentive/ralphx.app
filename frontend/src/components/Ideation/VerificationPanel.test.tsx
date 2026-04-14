@@ -178,6 +178,37 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-history")).toBeInTheDocument();
   });
 
+  it("uses verification query status and gaps even when the session cache still says unverified", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [
+        {
+          severity: "medium",
+          category: "testing",
+          description: "Missing sqlite repo regression",
+        },
+      ],
+      rounds: [],
+      roundDetails: [],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+    expect(screen.getByTestId("address-gaps-button")).toBeInTheDocument();
+    expect(screen.getByTestId("re-verify-button")).toBeInTheDocument();
+  });
+
   it("shows empty state when query returns null (404 — no verification ever started)", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     // Both queries return null/empty

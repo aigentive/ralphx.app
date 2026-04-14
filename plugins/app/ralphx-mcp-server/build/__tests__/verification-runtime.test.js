@@ -350,6 +350,49 @@ describe("verification runtime settlement and terminal cleanup", () => {
             endpoint: "ideation/sessions/parent-session/verification/infra-failure",
         });
     });
+    it("rejects actionable needs_revision cleanup without a terminal convergence reason", async () => {
+        const callTauri = vi.fn();
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        runtime.rememberVerificationRoundState("parent-session", {
+            round: 1,
+            classification: "complete",
+            createdAfter: "2026-04-13T17:24:37.913Z",
+            mergedGaps: [
+                { severity: "medium", category: "testing", description: "Missing repo regression" },
+            ],
+            requiredDelegates: [
+                {
+                    job_id: "job-1",
+                    critic: "completeness",
+                    label: "completeness",
+                    required: true,
+                },
+            ],
+        });
+        await expect(runtime.completePlanVerificationForTool({
+            session_id: "child-session",
+            status: "needs_revision",
+            generation: 7,
+            round: 1,
+        })).rejects.toThrow("complete_plan_verification cannot finalize an actionable needs_revision result without a terminal convergence_reason");
+        expect(callTauri).not.toHaveBeenCalled();
+    });
     it("ignores model-supplied settlement fields and uses cached round state for terminal cleanup", async () => {
         const callTauri = vi.fn(async (endpoint, payload) => {
             if (endpoint === "coordination/delegate/wait") {

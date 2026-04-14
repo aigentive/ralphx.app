@@ -286,7 +286,7 @@ pub fn try_load_canonical_claude_metadata(
 
     let merged = definition.harnesses.claude.clone().overlay_onto(legacy.clone());
     if merged != legacy {
-        tracing::warn!(
+        tracing::debug!(
             agent = %canonical_agent_name(agent_name),
             canonical_claude_metadata = ?definition.harnesses.claude,
             legacy_claude_metadata = ?legacy,
@@ -318,7 +318,7 @@ pub fn try_load_canonical_codex_metadata(
                     )
                 })?;
                 if fallback.runtime_features != definition.harnesses.codex.runtime_features {
-                    tracing::warn!(
+                    tracing::debug!(
                         agent = %canonical_agent_name(agent_name),
                         canonical_runtime_features = ?definition.harnesses.codex.runtime_features,
                         harness_runtime_features = ?fallback.runtime_features,
