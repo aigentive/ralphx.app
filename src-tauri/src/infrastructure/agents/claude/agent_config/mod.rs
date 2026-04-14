@@ -1509,7 +1509,7 @@ fn load_config() -> LoadedConfig {
     }
 
     let mut cfg = parse_raw_config(EMBEDDED_CONFIG)
-        .map(|mut parsed| {
+        .and_then(|mut parsed| {
             if let Some((claude_path, overlay)) = load_claude_config_overlay() {
                 apply_claude_config_overlay(&mut parsed, overlay);
                 tracing::info!(
@@ -1533,7 +1533,6 @@ fn load_config() -> LoadedConfig {
             }
             resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
         })
-        .flatten()
         .unwrap_or_else(|| {
             let mut runtime = AllRuntimeConfig {
                 stream: StreamTimeoutsConfig::default(),

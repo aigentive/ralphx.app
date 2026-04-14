@@ -32,6 +32,7 @@ fn claude_spawn_override_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+#[allow(clippy::await_holding_lock)]
 async fn with_provider_state_home_override<T, Fut>(
     home: &Path,
     f: impl FnOnce() -> Fut,
@@ -50,6 +51,7 @@ where
     result
 }
 
+#[allow(clippy::await_holding_lock)]
 async fn with_claude_spawn_allowed_in_tests<T, Fut>(f: impl FnOnce() -> Fut) -> T
 where
     Fut: Future<Output = T>,
@@ -221,7 +223,7 @@ fn create_assistant_message_keeps_delegation_conversation_scope() {
         ChatContextType::Delegation,
         "delegated-session",
         "delegated reply",
-        conversation_id.clone(),
+        conversation_id,
         &[],
         &[],
     );
@@ -246,7 +248,7 @@ async fn finalize_assistant_message_emits_delegated_conversation_id() {
         ChatContextType::Delegation,
         "delegated-session",
         "queued delegated reply",
-        conversation_id.clone(),
+        conversation_id,
         &[],
         &[],
     );

@@ -3234,7 +3234,8 @@ async fn test_get_ideation_messages_agent_status_generating() {
             0,
             "conv-id".to_string(),
             "run-id".to_string(),
-            None
+            None,
+            None,
         )
         .await;
 
@@ -3289,7 +3290,8 @@ async fn test_get_ideation_messages_agent_status_waiting_for_input() {
             0,
             "conv-id-wait".to_string(),
             "run-id-wait".to_string(),
-            None
+            None,
+            None,
         )
         .await;
 
@@ -3345,7 +3347,8 @@ async fn test_get_ideation_status_agent_running() {
             0,
             "conv-id-status".to_string(),
             "run-id-status".to_string(),
-            None
+            None,
+            None,
         )
         .await;
 
@@ -3399,7 +3402,8 @@ async fn test_get_ideation_status_agent_waiting_for_input() {
             0,
             "conv-id-waiting".to_string(),
             "run-id-waiting".to_string(),
-            None
+            None,
+            None,
         )
         .await;
 

@@ -85,7 +85,7 @@ fn build_claude_spawnable_command(
     }
     #[cfg(not(test))]
     {
-        build_spawnable_command(
+        crate::infrastructure::agents::claude::build_spawnable_command(
             cli_path,
             plugin_dir,
             prompt,
@@ -125,7 +125,7 @@ fn build_claude_spawnable_interactive_command(
     }
     #[cfg(not(test))]
     {
-        build_spawnable_interactive_command(
+        crate::infrastructure::agents::claude::build_spawnable_interactive_command(
             cli_path,
             plugin_dir,
             prompt,

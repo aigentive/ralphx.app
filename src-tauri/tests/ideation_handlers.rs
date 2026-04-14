@@ -274,6 +274,7 @@ fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> VerificationRoundSnaps
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_snapshot(
     generation: i32,
     status: VerificationStatus,
