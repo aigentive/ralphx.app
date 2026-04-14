@@ -8,9 +8,201 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 use super::*;
+use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, DelegatedSessionId};
 use crate::domain::services::RunningAgentKey;
+
+#[derive(Clone)]
+struct DelegatedTaskSnapshot {
+    status: String,
+    delegated_conversation_id: Option<String>,
+    delegated_agent_run_id: Option<String>,
+    provider_harness: Option<String>,
+    provider_session_id: Option<String>,
+    upstream_provider: Option<String>,
+    provider_profile: Option<String>,
+    logical_model: Option<String>,
+    effective_model_id: Option<String>,
+    logical_effort: Option<String>,
+    effective_effort: Option<String>,
+    approval_policy: Option<String>,
+    sandbox_mode: Option<String>,
+    total_tokens: Option<u64>,
+    duration_ms: Option<u64>,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_creation_tokens: Option<u64>,
+    cache_read_tokens: Option<u64>,
+    estimated_usd: Option<f64>,
+}
+
+fn delegated_total_tokens(
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_creation_tokens: Option<u64>,
+    cache_read_tokens: Option<u64>,
+) -> Option<u64> {
+    let total = input_tokens.unwrap_or(0)
+        + output_tokens.unwrap_or(0)
+        + cache_creation_tokens.unwrap_or(0)
+        + cache_read_tokens.unwrap_or(0);
+    if total == 0
+        && input_tokens.is_none()
+        && output_tokens.is_none()
+        && cache_creation_tokens.is_none()
+        && cache_read_tokens.is_none()
+    {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+fn delegated_duration_ms(
+    started_at: &DateTime<Utc>,
+    completed_at: Option<DateTime<Utc>>,
+) -> Option<u64> {
+    completed_at
+        .and_then(|completed| completed.signed_duration_since(*started_at).to_std().ok())
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+}
+
+async fn load_delegated_task_snapshot(
+    state: &HttpServerState,
+    task: &ActiveStreamingTask,
+) -> Option<DelegatedTaskSnapshot> {
+    let delegated_session_id = task.delegated_session_id.as_deref()?;
+    let session = state
+        .app_state
+        .delegated_session_repo
+        .get_by_id(&DelegatedSessionId::from_string(delegated_session_id))
+        .await
+        .ok()
+        .flatten()?;
+
+    let delegated_conversation = if let Some(conversation_id) = task.delegated_conversation_id.as_deref() {
+        state
+            .app_state
+            .chat_conversation_repo
+            .get_by_id(&ChatConversationId::from_string(conversation_id))
+            .await
+            .ok()
+            .flatten()
+    } else {
+        state
+            .app_state
+            .chat_conversation_repo
+            .get_active_for_context(ChatContextType::Delegation, delegated_session_id)
+            .await
+            .ok()
+            .flatten()
+    };
+
+    let latest_run = if let Some(agent_run_id) = task.delegated_agent_run_id.as_deref() {
+        state
+            .app_state
+            .agent_run_repo
+            .get_by_id(&AgentRunId::from_string(agent_run_id))
+            .await
+            .ok()
+            .flatten()
+    } else if let Some(conversation) = delegated_conversation.as_ref() {
+        state
+            .app_state
+            .agent_run_repo
+            .get_latest_for_conversation(&conversation.id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let status = latest_run
+        .as_ref()
+        .map(|run| run.status.to_string())
+        .unwrap_or_else(|| session.status.clone());
+
+    Some(DelegatedTaskSnapshot {
+        status,
+        delegated_conversation_id: delegated_conversation
+            .as_ref()
+            .map(|conversation| conversation.id.as_str()),
+        delegated_agent_run_id: latest_run.as_ref().map(|run| run.id.as_str()),
+        provider_harness: latest_run
+            .as_ref()
+            .and_then(|run| run.harness.map(|value| value.to_string()))
+            .or_else(|| Some(session.harness.to_string())),
+        provider_session_id: latest_run
+            .as_ref()
+            .and_then(|run| run.provider_session_id.clone())
+            .or_else(|| session.provider_session_id.clone()),
+        upstream_provider: latest_run
+            .as_ref()
+            .and_then(|run| run.upstream_provider.clone()),
+        provider_profile: latest_run
+            .as_ref()
+            .and_then(|run| run.provider_profile.clone()),
+        logical_model: latest_run.as_ref().and_then(|run| run.logical_model.clone()),
+        effective_model_id: latest_run
+            .as_ref()
+            .and_then(|run| run.effective_model_id.clone()),
+        logical_effort: latest_run
+            .as_ref()
+            .and_then(|run| run.logical_effort.map(|value| value.to_string())),
+        effective_effort: latest_run
+            .as_ref()
+            .and_then(|run| run.effective_effort.clone()),
+        approval_policy: latest_run
+            .as_ref()
+            .and_then(|run| run.approval_policy.clone()),
+        sandbox_mode: latest_run
+            .as_ref()
+            .and_then(|run| run.sandbox_mode.clone()),
+        total_tokens: latest_run.as_ref().and_then(|run| {
+            delegated_total_tokens(
+                run.input_tokens,
+                run.output_tokens,
+                run.cache_creation_tokens,
+                run.cache_read_tokens,
+            )
+        }),
+        duration_ms: latest_run
+            .as_ref()
+            .and_then(|run| delegated_duration_ms(&run.started_at, run.completed_at)),
+        input_tokens: latest_run.as_ref().and_then(|run| run.input_tokens),
+        output_tokens: latest_run.as_ref().and_then(|run| run.output_tokens),
+        cache_creation_tokens: latest_run.as_ref().and_then(|run| run.cache_creation_tokens),
+        cache_read_tokens: latest_run.as_ref().and_then(|run| run.cache_read_tokens),
+        estimated_usd: latest_run.as_ref().and_then(|run| run.estimated_usd),
+    })
+}
+
+fn apply_delegated_task_snapshot(task: &mut ActiveStreamingTask, snapshot: &DelegatedTaskSnapshot) {
+    task.status = snapshot.status.clone();
+    task.delegated_conversation_id = snapshot.delegated_conversation_id.clone();
+    task.delegated_agent_run_id = snapshot.delegated_agent_run_id.clone();
+    task.provider_harness = snapshot.provider_harness.clone();
+    task.provider_session_id = snapshot.provider_session_id.clone();
+    task.upstream_provider = snapshot.upstream_provider.clone();
+    task.provider_profile = snapshot.provider_profile.clone();
+    task.logical_model = snapshot.logical_model.clone();
+    task.effective_model_id = snapshot.effective_model_id.clone();
+    task.logical_effort = snapshot.logical_effort.clone();
+    task.effective_effort = snapshot.effective_effort.clone();
+    task.approval_policy = snapshot.approval_policy.clone();
+    task.sandbox_mode = snapshot.sandbox_mode.clone();
+    task.total_tokens = snapshot.total_tokens;
+    task.duration_ms = snapshot.duration_ms;
+    task.input_tokens = snapshot.input_tokens;
+    task.output_tokens = snapshot.output_tokens;
+    task.cache_creation_tokens = snapshot.cache_creation_tokens;
+    task.cache_read_tokens = snapshot.cache_read_tokens;
+    task.estimated_usd = snapshot.estimated_usd;
+}
 
 /// GET /api/conversations/:id/active-state
 ///
@@ -63,20 +255,40 @@ pub async fn get_conversation_active_state(
         .await;
 
     // Build response
-    let response = if let Some(state) = cached_state {
+    let response = if let Some(cached_state) = cached_state {
+        let mut delegated_snapshot_cache =
+            HashMap::<String, Option<DelegatedTaskSnapshot>>::new();
+        let mut streaming_tasks = Vec::with_capacity(cached_state.streaming_tasks.len());
+        for task in cached_state
+            .streaming_tasks
+            .into_iter()
+            .map(ActiveStreamingTask::from)
+        {
+            let mut active_task = task;
+            if let Some(delegated_session_id) = active_task.delegated_session_id.clone() {
+                let snapshot = if let Some(snapshot) = delegated_snapshot_cache.get(&delegated_session_id) {
+                    snapshot.clone()
+                } else {
+                    let snapshot = load_delegated_task_snapshot(&state, &active_task).await;
+                    delegated_snapshot_cache.insert(delegated_session_id.clone(), snapshot.clone());
+                    snapshot
+                };
+                if let Some(snapshot) = snapshot.as_ref() {
+                    apply_delegated_task_snapshot(&mut active_task, snapshot);
+                }
+            }
+            streaming_tasks.push(active_task);
+        }
+
         ActiveStateResponse {
             is_active,
-            tool_calls: state
+            tool_calls: cached_state
                 .tool_calls
                 .into_iter()
                 .map(ActiveToolCall::from)
                 .collect(),
-            streaming_tasks: state
-                .streaming_tasks
-                .into_iter()
-                .map(ActiveStreamingTask::from)
-                .collect(),
-            partial_text: state.partial_text,
+            streaming_tasks,
+            partial_text: cached_state.partial_text,
         }
     } else {
         ActiveStateResponse {

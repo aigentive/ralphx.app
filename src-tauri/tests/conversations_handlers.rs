@@ -1,10 +1,13 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use chrono::Utc;
 use ralphx_lib::application::chat_service::{CachedStreamingTask, CachedToolCall};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::agents::AgentHarnessKind;
 use ralphx_lib::domain::entities::{
-    ChatContextType, ChatConversation, IdeationSessionId, TaskId,
+    AgentRun, ChatContextType, ChatConversation, DelegatedSession, IdeationSessionId, ProjectId,
+    TaskId,
 };
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::handlers::*;
@@ -427,4 +430,110 @@ async fn test_get_active_state_returns_delegated_metadata() {
     assert_eq!(task.input_tokens, Some(10));
     assert_eq!(task.estimated_usd, Some(0.12));
     assert_eq!(task.text_output.as_deref(), Some("delegate done"));
+}
+
+#[tokio::test]
+async fn test_get_active_state_reconciles_stale_delegated_running_task() {
+    let state = setup_test_state().await;
+
+    let parent_task_id = TaskId::new();
+    let parent_conversation = ChatConversation::new_task_execution(parent_task_id);
+    let parent_conversation_id = parent_conversation.id.as_str().to_string();
+    state
+        .app_state
+        .chat_conversation_repo
+        .create(parent_conversation)
+        .await
+        .unwrap();
+
+    let mut delegated_session = DelegatedSession::new(
+        ProjectId::new(),
+        ChatContextType::TaskExecution.to_string(),
+        "parent-context-id",
+        "verification-critic",
+        AgentHarnessKind::Codex,
+    );
+    delegated_session.status = "running".to_string();
+    delegated_session.provider_session_id = Some("delegated-provider-session".to_string());
+    state
+        .app_state
+        .delegated_session_repo
+        .create(delegated_session.clone())
+        .await
+        .unwrap();
+
+    let delegated_conversation = ChatConversation::new_delegation(delegated_session.id.clone());
+    let delegated_conversation_id = delegated_conversation.id.as_str().to_string();
+    state
+        .app_state
+        .chat_conversation_repo
+        .create(delegated_conversation.clone())
+        .await
+        .unwrap();
+
+    let mut delegated_run = AgentRun::new(delegated_conversation.id);
+    delegated_run.complete();
+    delegated_run.harness = Some(AgentHarnessKind::Codex);
+    delegated_run.provider_session_id = Some("run-provider-session".to_string());
+    delegated_run.upstream_provider = Some("openai".to_string());
+    delegated_run.provider_profile = Some("prod".to_string());
+    delegated_run.logical_model = Some("gpt-5.4".to_string());
+    delegated_run.effective_model_id = Some("gpt-5.4-2026-04-01".to_string());
+    delegated_run.approval_policy = Some("never".to_string());
+    delegated_run.sandbox_mode = Some("danger-full-access".to_string());
+    delegated_run.input_tokens = Some(11);
+    delegated_run.output_tokens = Some(29);
+    delegated_run.cache_creation_tokens = Some(7);
+    delegated_run.cache_read_tokens = Some(13);
+    delegated_run.estimated_usd = Some(0.42);
+    delegated_run.completed_at = Some(Utc::now());
+    let delegated_run_id = delegated_run.id.as_str();
+    state
+        .app_state
+        .agent_run_repo
+        .create(delegated_run)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .streaming_state_cache
+        .add_task(
+            &parent_conversation_id,
+            CachedStreamingTask {
+                description: Some("verification-critic".to_string()),
+                subagent_type: Some("delegated".to_string()),
+                model: Some("gpt-5.4".to_string()),
+                status: "running".to_string(),
+                delegated_session_id: Some(delegated_session.id.as_str().to_string()),
+                delegated_conversation_id: Some(delegated_conversation_id),
+                delegated_agent_run_id: Some(delegated_run_id.to_string()),
+                ..cached_streaming_task("toolu_delegate_stale")
+            },
+        )
+        .await;
+
+    let response = get_conversation_active_state(State(state), Path(parent_conversation_id))
+        .await
+        .unwrap();
+
+    let task = &response.0.streaming_tasks[0];
+    assert_eq!(task.status, "completed");
+    assert_eq!(task.provider_harness.as_deref(), Some("codex"));
+    assert_eq!(task.provider_session_id.as_deref(), Some("run-provider-session"));
+    assert_eq!(task.upstream_provider.as_deref(), Some("openai"));
+    assert_eq!(task.provider_profile.as_deref(), Some("prod"));
+    assert_eq!(task.logical_model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        task.effective_model_id.as_deref(),
+        Some("gpt-5.4-2026-04-01")
+    );
+    assert_eq!(task.approval_policy.as_deref(), Some("never"));
+    assert_eq!(task.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(task.input_tokens, Some(11));
+    assert_eq!(task.output_tokens, Some(29));
+    assert_eq!(task.cache_creation_tokens, Some(7));
+    assert_eq!(task.cache_read_tokens, Some(13));
+    assert_eq!(task.total_tokens, Some(60));
+    assert_eq!(task.estimated_usd, Some(0.42));
 }
