@@ -160,6 +160,7 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
         medium: number;
         low: number;
     };
+    optional_timed_out: boolean;
     optional_specialists: {
         name: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
         label: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
@@ -200,6 +201,7 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
     required_findings: ParsedVerificationCriticArtifact[];
     merged_gaps: import("./verification-round-assessment.js").ParsedVerificationGap[];
     gap_counts: import("./verification-round-assessment.js").VerificationGapCounts;
+    optional_timed_out: boolean;
     optional_specialists: {
         name: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
         label: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";

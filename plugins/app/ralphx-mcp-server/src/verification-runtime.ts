@@ -83,7 +83,7 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
   const { callTauri, callTauriGet, agentType, contextType, contextId } = deps;
   const VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS = 90 * 1000;
   const VERIFICATION_REQUIRED_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
-  const VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS = 15 * 1000;
+  const VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
   const VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
   const VERIFICATION_RESCUE_WAIT_SLICE_MS = 15 * 1000;
   const verificationRoundStateBySession = new Map<string, CachedVerificationRoundState>();

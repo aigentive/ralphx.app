@@ -131,6 +131,13 @@ function agentStatusLabel(status: string | undefined): { label: string; variant:
   }
 }
 
+function isDelegateRunningLike(status: string | undefined): boolean {
+  return status === "running"
+    || status === "queued"
+    || status === "likely_generating"
+    || status === "likely_waiting";
+}
+
 function getRecord(value: unknown): Record<string, unknown> | null {
   return value != null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -175,12 +182,7 @@ function renderSeverityBadges(parsed: Record<string, unknown>) {
   );
 }
 
-function renderDelegateBadges(
-  delegates: unknown[] | undefined,
-  snapshots: unknown[] | undefined
-) {
-  if (!delegates || delegates.length === 0) return null;
-
+function delegateSnapshotByLabel(snapshots: unknown[] | undefined): Map<string, Record<string, unknown>> {
   const snapshotByLabel = new Map<string, Record<string, unknown>>();
   for (const snapshot of snapshots ?? []) {
     const record = getRecord(snapshot);
@@ -189,21 +191,108 @@ function renderDelegateBadges(
       snapshotByLabel.set(label, record);
     }
   }
+  return snapshotByLabel;
+}
+
+function delegateFindingByCritic(findings: unknown[] | undefined): Map<string, Record<string, unknown>> {
+  const findingByCritic = new Map<string, Record<string, unknown>>();
+  for (const finding of findings ?? []) {
+    const record = getRecord(finding);
+    const critic = getString(record, "critic");
+    if (critic && record) {
+      findingByCritic.set(critic, record);
+    }
+  }
+  return findingByCritic;
+}
+
+function getDelegateStatus(snapshot: Record<string, unknown> | undefined): string | undefined {
+  if (!snapshot) return undefined;
+  const delegatedStatus = getRecord(snapshot["delegated_status"]);
+  const latestRun = getRecord(delegatedStatus?.latest_run);
+  const agentState = getRecord(delegatedStatus?.agent_state);
+  return getString(snapshot, "status")
+    ?? getString(latestRun, "status")
+    ?? getString(agentState, "estimated_status");
+}
+
+function getDelegateError(snapshot: Record<string, unknown> | undefined): string | undefined {
+  if (!snapshot) return undefined;
+  const delegatedStatus = getRecord(snapshot["delegated_status"]);
+  const latestRun = getRecord(delegatedStatus?.latest_run);
+  return getString(snapshot, "error")
+    ?? getString(latestRun, "error_message");
+}
+
+function renderDelegateDetails(args: {
+  delegates: unknown[] | undefined;
+  snapshots: unknown[] | undefined;
+  findings: unknown[] | undefined;
+  timedOut: boolean | undefined;
+  compact: boolean | undefined;
+}) {
+  if (!args.delegates || args.delegates.length === 0) return null;
+
+  const snapshotByLabel = delegateSnapshotByLabel(args.snapshots);
+  const findingByCritic = delegateFindingByCritic(args.findings);
 
   return (
-    <WidgetRow compact>
-      {delegates.map((delegate, index) => {
+    <div style={{ display: "grid", gap: args.compact ? 6 : 8 }}>
+      {args.delegates.map((delegate, index) => {
         const record = getRecord(delegate);
         const label = getString(record, "label") ?? getString(record, "critic") ?? `delegate-${index + 1}`;
+        const critic = getString(record, "critic") ?? label;
         const snapshot = snapshotByLabel.get(label);
-        const status = agentStatusLabel(getString(snapshot, "status"));
+        const statusKey = getDelegateStatus(snapshot);
+        const status = agentStatusLabel(statusKey);
+        const finding = findingByCritic.get(critic);
+        const found = getBool(finding, "found") === true;
+        const totalMatches = getNumber(finding, "total_matches") ?? 0;
+        const findingSummary = getString(getRecord(finding?.finding), "summary");
+        const errorMessage = getDelegateError(snapshot);
+
+        let detail = "";
+        if (found) {
+          detail = findingSummary ?? `${totalMatches || 1} finding${(totalMatches || 1) === 1 ? "" : "s"} published.`;
+        } else if (errorMessage) {
+          detail = errorMessage;
+        } else if (args.timedOut && isDelegateRunningLike(statusKey)) {
+          detail = "Timed out while the delegate was still running.";
+        } else if (statusKey === "completed") {
+          detail = "Completed with no findings published.";
+        } else if (statusKey === "failed" || statusKey === "cancelled") {
+          detail = "Delegate ended without a usable result.";
+        } else if (isDelegateRunningLike(statusKey)) {
+          detail = "Delegate is still running.";
+        }
+
         return (
-          <Badge key={`${label}-${index}`} variant={status.variant} compact>
-            {label}
-          </Badge>
+          <div
+            key={`${label}-${index}`}
+            style={{
+              display: "grid",
+              gap: 4,
+              padding: args.compact ? "0" : "2px 0",
+            }}
+          >
+            <WidgetRow compact={args.compact}>
+              <Badge variant="blue" compact>{label}</Badge>
+              <Badge variant={status.variant} compact>{status.label}</Badge>
+              {found && (
+                <Badge variant="success" compact>
+                  {`${totalMatches || 1} finding${(totalMatches || 1) === 1 ? "" : "s"}`}
+                </Badge>
+              )}
+            </WidgetRow>
+            {detail && (
+              <div style={{ fontSize: args.compact ? 10 : 10.5, color: colors.textMuted }}>
+                {truncate(detail, args.compact ? 120 : 180)}
+              </div>
+            )}
+          </div>
         );
       })}
-    </WidgetRow>
+    </div>
   );
 }
 
@@ -268,21 +357,13 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
           Waiting for specialist launches.
         </div>
       )}
-      <WidgetRow compact={compact}>
-        {(selectedSpecialists ?? []).map((specialist, index) => {
-          const record = getRecord(specialist);
-          const label = getString(record, "label") ?? getString(record, "name") ?? `specialist-${index + 1}`;
-          const snapshot = (snapshots ?? [])
-            .map((entry) => getRecord(entry))
-            .find((entry) => getString(entry, "label") === label);
-          const status = agentStatusLabel(getString(snapshot, "status"));
-          return (
-            <Badge key={`${label}-${index}`} variant={status.variant} compact>
-              {label}
-            </Badge>
-          );
-        })}
-      </WidgetRow>
+      {renderDelegateDetails({
+        delegates: selectedSpecialists,
+        snapshots,
+        findings,
+        timedOut,
+        compact,
+      })}
     </VerificationCard>
   );
 }
@@ -293,7 +374,13 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
   const round = getNumber(parsed, "round") ?? getNumber(args, "round");
   const classification = getString(parsed, "classification");
   const delegates = getArray(parsed, "required_delegates");
+  const requiredFindings = getArray(getRecord(parsed["required_critic_settlement"]), "findings_by_critic");
   const summary = getString(getRecord(parsed["required_critic_settlement"]), "summary");
+  const optionalSpecialists = getArray(parsed, "optional_specialists");
+  const optionalDelegates = getArray(parsed, "optional_delegates");
+  const optionalSnapshots = getArray(parsed, "optional_delegate_snapshots");
+  const optionalFindings = getArray(parsed, "optional_findings_by_critic");
+  const optionalTimedOut = getBool(parsed, "optional_timed_out") === true;
 
   if (!classification && toolCall.result == null) {
     return (
@@ -316,9 +403,34 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
     >
       <WidgetRow compact={compact}>
         {round != null && <Badge variant="blue" compact>{`Round ${round}`}</Badge>}
+        {optionalSpecialists && optionalSpecialists.length > 0 && (
+          <Badge variant={optionalTimedOut ? "warning" : "muted"} compact>
+            {optionalTimedOut ? "Optional timed out" : `${optionalSpecialists.length} optional`}
+          </Badge>
+        )}
       </WidgetRow>
       {renderSeverityBadges(parsed)}
-      {renderDelegateBadges(delegates, getArray(parsed, "delegate_snapshots"))}
+      {renderDelegateDetails({
+        delegates,
+        snapshots: getArray(parsed, "delegate_snapshots"),
+        findings: requiredFindings,
+        timedOut: undefined,
+        compact,
+      })}
+      {optionalDelegates && optionalDelegates.length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted }}>
+            Optional specialists
+          </div>
+          {renderDelegateDetails({
+            delegates: optionalDelegates,
+            snapshots: optionalSnapshots,
+            findings: optionalFindings,
+            timedOut: optionalTimedOut,
+            compact,
+          })}
+        </div>
+      )}
       {summary && (
         <div style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted }}>
           {summary}

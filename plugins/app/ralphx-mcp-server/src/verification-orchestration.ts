@@ -360,6 +360,7 @@ export async function runVerificationRoundPass(
         medium: 0,
         low: 0,
       },
+      optional_timed_out: false,
       optional_specialists: optionalSpecialistPayload,
       optional_delegates: optionalLaunches.map(({ job_id, critic, label, required }) => ({
         job_id,
@@ -412,6 +413,7 @@ export async function runVerificationRoundPass(
         medium: 0,
         low: 0,
       },
+      optional_timed_out: false,
       optional_specialists: optionalSpecialistPayload,
       optional_delegates: optionalLaunches.map(({ job_id, critic, label, required }) => ({
         job_id,
@@ -449,6 +451,7 @@ export async function runVerificationRoundPass(
     required_findings: requiredFindings,
     merged_gaps,
     gap_counts,
+    optional_timed_out: optionalSettled.timed_out,
     optional_specialists: optionalSpecialistPayload,
     optional_delegates: optionalSettled.delegates,
     optional_findings_by_critic: optionalSettled.findings_by_critic,

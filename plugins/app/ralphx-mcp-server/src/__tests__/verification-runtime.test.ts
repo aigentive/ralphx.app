@@ -220,6 +220,142 @@ describe("verification runtime settlement and terminal cleanup", () => {
     });
   });
 
+  it("waits longer than 15s by default for optional verification specialists during a round", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-13T16:35:53.000Z"));
+
+    const callTauri = vi.fn(async (endpoint: string, payload?: Record<string, unknown>) => {
+      if (endpoint === "coordination/delegate/start") {
+        const agentName = String(payload?.agent_name ?? "");
+        if (agentName.includes("specialist-ux")) {
+          return {
+            job_id: "optional-ux",
+            delegated_session_id: "delegated-ux",
+            agent_name: agentName,
+          };
+        }
+        return {
+          job_id: `${agentName.split(":").pop() ?? "critic"}-job`,
+          delegated_session_id: `${agentName.split(":").pop() ?? "critic"}-session`,
+          agent_name: agentName,
+        };
+      }
+      if (endpoint === "coordination/delegate/wait") {
+        const jobId = String(payload?.job_id ?? "");
+        const optionalCompleted = Date.now() >= Date.parse("2026-04-13T16:36:13.000Z");
+        if (jobId === "optional-ux") {
+          return {
+            job_id: jobId,
+            status: optionalCompleted ? "completed" : "running",
+            label: "ux",
+            delegated_status: {
+              latest_run: {
+                status: optionalCompleted ? "completed" : "running",
+              },
+              agent_state: {
+                estimated_status: optionalCompleted ? "completed" : "running",
+              },
+            },
+          };
+        }
+        return {
+          job_id: jobId,
+          status: "completed",
+          delegated_status: {
+            latest_run: {
+              status: "completed",
+            },
+            agent_state: {
+              estimated_status: "completed",
+            },
+          },
+        };
+      }
+      throw new Error(`unexpected endpoint ${endpoint}`);
+    });
+    const callTauriGet = vi.fn(async (endpoint: string) => {
+      if (endpoint === "parent_session_context/child-session") {
+        return {
+          parent_session: {
+            id: "parent-session",
+          },
+        };
+      }
+      if (endpoint === "get_session_plan/parent-session") {
+        return {
+          id: "plan-1",
+          content:
+            "## Goal\nShip a UX-visible verification workflow.\n\n## Affected Files\n- `frontend/src/components/Chat/tool-widgets/VerificationWidget.tsx` — update existing UI.\n",
+        };
+      }
+      if (endpoint.startsWith("team/verification-findings/parent-session")) {
+        if (endpoint.includes("created_after=")) {
+          return {
+            findings: [
+              {
+                artifact_id: "finding-1",
+                title: "Completeness finding",
+                created_at: "2026-04-13T16:35:54.000Z",
+                critic: "completeness",
+                round: 1,
+                status: "complete",
+                summary: "No completeness gaps.",
+                gaps: [],
+              },
+              {
+                artifact_id: "finding-2",
+                title: "Feasibility finding",
+                created_at: "2026-04-13T16:35:54.500Z",
+                critic: "feasibility",
+                round: 1,
+                status: "complete",
+                summary: "No feasibility gaps.",
+                gaps: [],
+              },
+            ],
+            count: 2,
+          };
+        }
+        return {
+          findings: [],
+          count: 0,
+        };
+      }
+      throw new Error(`unexpected endpoint ${endpoint}`);
+    });
+
+    const runtime = createVerificationRuntime({
+      callTauri,
+      callTauriGet,
+      agentType: "ralphx-plan-verifier",
+      contextType: "ideation",
+      contextId: "child-session",
+    });
+
+    const roundPromise = runtime.runVerificationRound({
+      round: 1,
+      selected_specialists: ["ux"],
+    });
+
+    await vi.runAllTimersAsync();
+    const result = await roundPromise as {
+      classification: string;
+      optional_timed_out: boolean;
+      optional_delegate_snapshots: Array<{ job_id: string; status: string }>;
+    };
+
+    expect(result.classification).toBe("complete");
+    expect(result.optional_timed_out).toBe(false);
+    expect(result.optional_delegate_snapshots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          job_id: "optional-ux",
+          status: "completed",
+        }),
+      ])
+    );
+  });
+
   it("routes verifier terminal cleanup with missing round context to infra-failure instead of persisting a zero-gap verdict", async () => {
     const callTauri = vi.fn(async (endpoint: string, payload: Record<string, unknown>) => ({
       endpoint,

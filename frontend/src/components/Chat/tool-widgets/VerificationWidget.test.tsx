@@ -45,6 +45,10 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("Timed out")).toBeInTheDocument();
       expect(screen.getByText("intent")).toBeInTheDocument();
       expect(screen.getByText("code-quality")).toBeInTheDocument();
+      expect(screen.getByText("Completed")).toBeInTheDocument();
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+      expect(screen.getByText("Completed with no findings published.")).toBeInTheDocument();
+      expect(screen.getByText("1 finding published.")).toBeInTheDocument();
     });
 
     it("avoids misleading zero-specialist copy when requests were made but launches have not materialized", () => {
@@ -70,14 +74,35 @@ describe("VerificationWidget", () => {
         result: mcpWrap({
           round: 2,
           classification: "complete",
+          optional_timed_out: true,
           gap_counts: { critical: 0, high: 1, medium: 2, low: 0 },
           required_delegates: [
             { label: "completeness", critic: "completeness", job_id: "job-1" },
             { label: "feasibility", critic: "feasibility", job_id: "job-2" },
           ],
+          delegate_snapshots: [
+            { job_id: "job-1", status: "completed", label: "completeness" },
+            { job_id: "job-2", status: "completed", label: "feasibility" },
+          ],
           required_critic_settlement: {
             summary: "Required critics settled cleanly.",
+            findings_by_critic: [
+              { critic: "completeness", found: true, total_matches: 1, finding: { summary: "Completeness found one blocker." } },
+              { critic: "feasibility", found: false, total_matches: 0 },
+            ],
           },
+          optional_specialists: [
+            { label: "ux", critic: "ux", job_id: "job-3" },
+          ],
+          optional_delegates: [
+            { label: "ux", critic: "ux", job_id: "job-3" },
+          ],
+          optional_findings_by_critic: [
+            { critic: "ux", found: false, total_matches: 0 },
+          ],
+          optional_delegate_snapshots: [
+            { job_id: "job-3", status: "running", label: "ux" },
+          ],
         }),
       });
 
@@ -89,6 +114,10 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("M 2")).toBeInTheDocument();
       expect(screen.getByText("completeness")).toBeInTheDocument();
       expect(screen.getByText("feasibility")).toBeInTheDocument();
+      expect(screen.getByText("Optional timed out")).toBeInTheDocument();
+      expect(screen.getByText("Optional specialists")).toBeInTheDocument();
+      expect(screen.getByText("Completeness found one blocker.")).toBeInTheDocument();
+      expect(screen.getByText("Timed out while the delegate was still running.")).toBeInTheDocument();
     });
 
     it("renders backend-authoritative round report state", () => {
