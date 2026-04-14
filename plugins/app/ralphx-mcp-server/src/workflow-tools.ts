@@ -112,7 +112,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
       "Use for documenting specialist findings, debate analyses, or lead-synthesized summaries. " +
       "Verification specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
       "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
-      "Use publish_verification_finding for verification-path specialists and required critics instead of encoding verifier findings into generic TeamResearch content.",
+      "This is the general team-artifact path, not the typed verification-finding path.",
     inputSchema: {
       type: "object",
       examples: [
@@ -131,11 +131,11 @@ export const WORKFLOW_TOOLS: Tool[] = [
         },
         title: {
           type: "string",
-          description: "Clear, concise title for the artifact. Verification flows should use stable prefixes like 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
+          description: "Clear, concise title for the artifact.",
         },
         content: {
           type: "string",
-          description: "Markdown or JSON-string content with research findings or analysis. Plan-verifier critics should publish a structured JSON object instead of freeform prose.",
+          description: "Markdown or JSON-string content with research findings or analysis.",
         },
         artifact_type: {
           type: "string",
@@ -154,7 +154,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
     name: "publish_verification_finding",
     description:
       "Publish a typed verification finding for the current verification round. " +
-      "Use this for verification-path specialists and required plan critics so the backend can aggregate gaps directly from structured metadata instead of reparsing generic TeamResearch documents. " +
+      "Use this for verification-path specialists and required plan critics so the backend can aggregate gaps directly from structured metadata. " +
       "If session_id is omitted, the backend uses the current session context and remaps verification child sessions plus delegated verification specialists/critics to the parent ideation session automatically.",
     inputSchema: {
       type: "object",
@@ -234,8 +234,7 @@ export const WORKFLOW_TOOLS: Tool[] = [
       "Retrieve all team artifacts for a session. " +
       "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
       "Use the PARENT ideation session_id for verification flows; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
-      "Verification flows should generally prefer backend-owned helpers like run_verification_enrichment or run_verification_round instead of hand-filtering summaries client-side. " +
-      "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) when you truly need the full unfiltered artifact list for a session.",
+      "This is the raw artifact listing surface for cases where you genuinely need the full unfiltered team-artifact list.",
     inputSchema: {
       type: "object",
       examples: [{ session_id: "parent-session-id" }],

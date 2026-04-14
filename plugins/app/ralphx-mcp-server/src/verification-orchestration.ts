@@ -15,7 +15,7 @@ export type VerificationManagedDelegate = {
   job_id: string;
   delegated_session_id?: string;
   agent_name: string;
-  artifact_prefix: string;
+  critic: string;
   label?: string;
   required?: boolean;
 };
@@ -27,7 +27,7 @@ type OptionalVerificationSpecialistDefinition = {
     | "ralphx:ralphx-ideation-specialist-prompt-quality"
     | "ralphx:ralphx-ideation-specialist-pipeline-safety"
     | "ralphx:ralphx-ideation-specialist-state-machine";
-  artifact_prefix: "UX: " | "PromptQuality: " | "PipelineSafety: " | "StateMachine: ";
+  critic: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
   label: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
   applies: (plan: VerificationPlanSnapshot) => boolean;
   prompt: (sessionId: string) => string;
@@ -38,21 +38,22 @@ type VerificationEnrichmentDefinition = {
   agent_name:
     | "ralphx:ralphx-ideation-specialist-intent"
     | "ralphx:ralphx-ideation-specialist-code-quality";
-  artifact_prefix: "IntentAlignment: " | "CodeQuality: ";
+  critic: "intent" | "code-quality";
   label: "intent" | "code-quality";
   applies: (plan: VerificationPlanSnapshot) => boolean;
   prompt: (sessionId: string) => string;
 };
 
-type ArtifactByPrefix = Array<{
-  prefix: string;
+type FindingsByCritic = Array<{
+  critic: string;
   found: boolean;
   total_matches: number;
-  artifact?: {
-    id?: string;
-    name?: string;
+  finding?: {
+    artifact_id?: string;
+    title?: string;
     created_at?: string;
-    content?: string;
+    status?: string;
+    summary?: string;
   };
 }>;
 
@@ -62,11 +63,11 @@ type AwaitOptionalDelegateResult = {
   timed_out: boolean;
   delegates: Array<{
     job_id: string;
-    artifact_prefix: string;
+    critic: string;
     label?: string;
     required?: boolean;
   }>;
-  artifacts_by_prefix: ArtifactByPrefix;
+  findings_by_critic: FindingsByCritic;
   delegate_snapshots: unknown[];
 };
 
@@ -77,20 +78,20 @@ export type RequiredCriticRoundResult = {
   rescue_dispatched: boolean;
   required_delegates: Array<{
     job_id: string;
-    artifact_prefix: string;
+    critic: string;
     label?: string;
     required?: boolean;
   }>;
   rescue_delegates?: Array<{
     job_id: string;
-    artifact_prefix: string;
+    critic: string;
     label?: string;
     required?: boolean;
   }>;
   settlement: {
     classification: "complete" | "pending" | "infra_failure";
     verification_findings?: VerificationFindingSummary[];
-    artifacts_by_prefix?: ArtifactByPrefix;
+    findings_by_critic?: FindingsByCritic;
     [key: string]: unknown;
   };
 };
@@ -107,7 +108,7 @@ type VerificationOrchestrationDeps = {
     delegates: VerificationManagedDelegate[];
     sessionId: string;
     createdAfter: string;
-    prefixes: string[];
+    critics: string[];
     includeFullContent: boolean;
     includeMessages: boolean;
     messageLimit: number;
@@ -143,7 +144,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
   {
     name: "ux",
     agent_name: "ralphx:ralphx-ideation-specialist-ux",
-    artifact_prefix: "UX: ",
+    critic: "ux",
     label: "ux",
     applies: (plan) =>
       planMatchesAny(plan.content, [
@@ -160,7 +161,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
   {
     name: "prompt-quality",
     agent_name: "ralphx:ralphx-ideation-specialist-prompt-quality",
-    artifact_prefix: "PromptQuality: ",
+    critic: "prompt-quality",
     label: "prompt-quality",
     applies: (plan) =>
       planMatchesAny(plan.content, [
@@ -176,7 +177,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
   {
     name: "pipeline-safety",
     agent_name: "ralphx:ralphx-ideation-specialist-pipeline-safety",
-    artifact_prefix: "PipelineSafety: ",
+    critic: "pipeline-safety",
     label: "pipeline-safety",
     applies: (plan) =>
       planMatchesAny(plan.content, [
@@ -195,7 +196,7 @@ const OPTIONAL_VERIFICATION_SPECIALISTS: OptionalVerificationSpecialistDefinitio
   {
     name: "state-machine",
     agent_name: "ralphx:ralphx-ideation-specialist-state-machine",
-    artifact_prefix: "StateMachine: ",
+    critic: "state-machine",
     label: "state-machine",
     applies: (plan) =>
       planMatchesAny(plan.content, [
@@ -214,7 +215,7 @@ const VERIFICATION_ENRICHMENT_SPECIALISTS: VerificationEnrichmentDefinition[] = 
   {
     name: "intent",
     agent_name: "ralphx:ralphx-ideation-specialist-intent",
-    artifact_prefix: "IntentAlignment: ",
+    critic: "intent",
     label: "intent",
     applies: () => true,
     prompt: (sessionId) =>
@@ -223,7 +224,7 @@ const VERIFICATION_ENRICHMENT_SPECIALISTS: VerificationEnrichmentDefinition[] = 
   {
     name: "code-quality",
     agent_name: "ralphx:ralphx-ideation-specialist-code-quality",
-    artifact_prefix: "CodeQuality: ",
+    critic: "code-quality",
     label: "code-quality",
     applies: (plan) => hasExistingFileMutations(plan.content),
     prompt: (sessionId) =>
@@ -235,7 +236,7 @@ export async function runVerificationEnrichmentPass(
   deps: VerificationOrchestrationDeps,
   args: {
     sessionId: string;
-    disabledSpecialists: Set<string>;
+    selectedSpecialists: Set<string>;
     includeFullContent: boolean;
     includeMessages: boolean;
     messageLimit: number;
@@ -248,9 +249,8 @@ export async function runVerificationEnrichmentPass(
     throw new Error("Verification enrichment requires an existing plan.");
   }
 
-  const selected = VERIFICATION_ENRICHMENT_SPECIALISTS.filter(
-    (specialist) =>
-      !args.disabledSpecialists.has(specialist.name) && specialist.applies(plan)
+  const selected = VERIFICATION_ENRICHMENT_SPECIALISTS.filter((specialist) =>
+    args.selectedSpecialists.has(specialist.name)
   );
   const createdAfter = new Date(Date.now() - 5000).toISOString();
   const launches = await Promise.all(
@@ -260,18 +260,17 @@ export async function runVerificationEnrichmentPass(
         parentSessionId: args.sessionId,
         prompt: specialist.prompt(args.sessionId),
       })),
-      artifact_prefix: specialist.artifact_prefix,
+      critic: specialist.critic,
       label: specialist.label,
       required: false,
-    })
-    )
+    }))
   );
 
   const settled = await deps.awaitOptionalDelegates({
     delegates: launches,
     sessionId: args.sessionId,
     createdAfter,
-    prefixes: selected.map((specialist) => specialist.artifact_prefix),
+    critics: selected.map((specialist) => specialist.critic),
     includeFullContent: args.includeFullContent,
     includeMessages: args.includeMessages,
     messageLimit: args.messageLimit,
@@ -281,11 +280,11 @@ export async function runVerificationEnrichmentPass(
 
   return {
     session_id: args.sessionId,
-    disabled_specialists: Array.from(args.disabledSpecialists.values()),
+    requested_specialists: Array.from(args.selectedSpecialists.values()),
     selected_specialists: selected.map((specialist) => ({
       name: specialist.name,
       label: specialist.label,
-      artifact_prefix: specialist.artifact_prefix,
+      critic: specialist.critic,
       agent_name: specialist.agent_name,
     })),
     ...settled,
@@ -297,7 +296,7 @@ export async function runVerificationRoundPass(
   args: {
     sessionId: string;
     round: number;
-    disabledSpecialists: Set<string>;
+    selectedSpecialists: Set<string>;
     includeFullContent: boolean;
     includeMessages: boolean;
     messageLimit: number;
@@ -311,11 +310,9 @@ export async function runVerificationRoundPass(
     throw new Error("Verification round requires an existing plan.");
   }
 
-  const optionalSpecialists = OPTIONAL_VERIFICATION_SPECIALISTS.filter(
-    (specialist) =>
-      !args.disabledSpecialists.has(specialist.name) && specialist.applies(plan)
+  const optionalSpecialists = OPTIONAL_VERIFICATION_SPECIALISTS.filter((specialist) =>
+    args.selectedSpecialists.has(specialist.name)
   );
-  const createdAfter = new Date(Date.now() - 5000).toISOString();
   const optionalLaunches = await Promise.all(
     optionalSpecialists.map(async (specialist) => ({
       ...(await deps.startDelegate({
@@ -323,7 +320,7 @@ export async function runVerificationRoundPass(
         parentSessionId: args.sessionId,
         prompt: specialist.prompt(args.sessionId),
       })),
-      artifact_prefix: specialist.artifact_prefix,
+      critic: specialist.critic,
       label: specialist.label,
       required: false,
     }))
@@ -338,6 +335,13 @@ export async function runVerificationRoundPass(
     maxWaitMs: args.maxWaitMs,
     pollIntervalMs: args.pollIntervalMs,
   });
+
+  const optionalSpecialistPayload = optionalSpecialists.map((specialist) => ({
+    name: specialist.name,
+    label: specialist.label,
+    critic: specialist.critic,
+    agent_name: specialist.agent_name,
+  }));
 
   if (requiredRound.settlement.classification !== "complete") {
     return {
@@ -356,21 +360,14 @@ export async function runVerificationRoundPass(
         medium: 0,
         low: 0,
       },
-      optional_specialists: optionalSpecialists.map((specialist) => ({
-        name: specialist.name,
-        label: specialist.label,
-        artifact_prefix: specialist.artifact_prefix,
-        agent_name: specialist.agent_name,
+      optional_specialists: optionalSpecialistPayload,
+      optional_delegates: optionalLaunches.map(({ job_id, critic, label, required }) => ({
+        job_id,
+        critic,
+        label,
+        required,
       })),
-      optional_delegates: optionalLaunches.map(
-        ({ job_id, artifact_prefix, label, required }) => ({
-          job_id,
-          artifact_prefix,
-          label,
-          required,
-        })
-      ),
-      optional_artifacts_by_prefix: [],
+      optional_findings_by_critic: [],
       optional_delegate_snapshots: [],
     };
   }
@@ -403,7 +400,7 @@ export async function runVerificationRoundPass(
         ...requiredRound.settlement,
         classification: "infra_failure" as const,
         recommended_next_action: "complete_verification_with_infra_failure",
-        summary: `Required critic artifacts were published but unusable: ${unusableRequired
+        summary: `Required critic findings were published but unusable: ${unusableRequired
           .map((finding) => finding.label)
           .join(", ")}.`,
       },
@@ -415,21 +412,14 @@ export async function runVerificationRoundPass(
         medium: 0,
         low: 0,
       },
-      optional_specialists: optionalSpecialists.map((specialist) => ({
-        name: specialist.name,
-        label: specialist.label,
-        artifact_prefix: specialist.artifact_prefix,
-        agent_name: specialist.agent_name,
+      optional_specialists: optionalSpecialistPayload,
+      optional_delegates: optionalLaunches.map(({ job_id, critic, label, required }) => ({
+        job_id,
+        critic,
+        label,
+        required,
       })),
-      optional_delegates: optionalLaunches.map(
-        ({ job_id, artifact_prefix, label, required }) => ({
-          job_id,
-          artifact_prefix,
-          label,
-          required,
-        })
-      ),
-      optional_artifacts_by_prefix: [],
+      optional_findings_by_critic: [],
       optional_delegate_snapshots: [],
     };
   }
@@ -440,7 +430,7 @@ export async function runVerificationRoundPass(
     delegates: optionalLaunches,
     sessionId: args.sessionId,
     createdAfter: requiredRound.created_after,
-    prefixes: optionalSpecialists.map((specialist) => specialist.artifact_prefix),
+    critics: optionalSpecialists.map((specialist) => specialist.critic),
     includeFullContent: args.includeFullContent,
     includeMessages: args.includeMessages,
     messageLimit: args.messageLimit,
@@ -459,14 +449,9 @@ export async function runVerificationRoundPass(
     required_findings: requiredFindings,
     merged_gaps,
     gap_counts,
-    optional_specialists: optionalSpecialists.map((specialist) => ({
-      name: specialist.name,
-      label: specialist.label,
-      artifact_prefix: specialist.artifact_prefix,
-      agent_name: specialist.agent_name,
-    })),
+    optional_specialists: optionalSpecialistPayload,
     optional_delegates: optionalSettled.delegates,
-    optional_artifacts_by_prefix: optionalSettled.artifacts_by_prefix,
+    optional_findings_by_critic: optionalSettled.findings_by_critic,
     optional_delegate_snapshots: optionalSettled.delegate_snapshots,
   };
 }

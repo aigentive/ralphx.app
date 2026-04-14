@@ -8,19 +8,20 @@ export type VerificationManagedDelegate = {
     job_id: string;
     delegated_session_id?: string;
     agent_name: string;
-    artifact_prefix: string;
+    critic: string;
     label?: string;
     required?: boolean;
 };
-type ArtifactByPrefix = Array<{
-    prefix: string;
+type FindingsByCritic = Array<{
+    critic: string;
     found: boolean;
     total_matches: number;
-    artifact?: {
-        id?: string;
-        name?: string;
+    finding?: {
+        artifact_id?: string;
+        title?: string;
         created_at?: string;
-        content?: string;
+        status?: string;
+        summary?: string;
     };
 }>;
 type AwaitOptionalDelegateResult = {
@@ -29,11 +30,11 @@ type AwaitOptionalDelegateResult = {
     timed_out: boolean;
     delegates: Array<{
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }>;
-    artifacts_by_prefix: ArtifactByPrefix;
+    findings_by_critic: FindingsByCritic;
     delegate_snapshots: unknown[];
 };
 export type RequiredCriticRoundResult = {
@@ -43,20 +44,20 @@ export type RequiredCriticRoundResult = {
     rescue_dispatched: boolean;
     required_delegates: Array<{
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }>;
     rescue_delegates?: Array<{
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }>;
     settlement: {
         classification: "complete" | "pending" | "infra_failure";
         verification_findings?: VerificationFindingSummary[];
-        artifacts_by_prefix?: ArtifactByPrefix;
+        findings_by_critic?: FindingsByCritic;
         [key: string]: unknown;
     };
 };
@@ -72,7 +73,7 @@ type VerificationOrchestrationDeps = {
         delegates: VerificationManagedDelegate[];
         sessionId: string;
         createdAfter: string;
-        prefixes: string[];
+        critics: string[];
         includeFullContent: boolean;
         includeMessages: boolean;
         messageLimit: number;
@@ -91,7 +92,7 @@ type VerificationOrchestrationDeps = {
 };
 export declare function runVerificationEnrichmentPass(deps: VerificationOrchestrationDeps, args: {
     sessionId: string;
-    disabledSpecialists: Set<string>;
+    selectedSpecialists: Set<string>;
     includeFullContent: boolean;
     includeMessages: boolean;
     messageLimit: number;
@@ -103,25 +104,25 @@ export declare function runVerificationEnrichmentPass(deps: VerificationOrchestr
     timed_out: boolean;
     delegates: Array<{
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }>;
-    artifacts_by_prefix: ArtifactByPrefix;
+    findings_by_critic: FindingsByCritic;
     delegate_snapshots: unknown[];
     session_id: string;
-    disabled_specialists: string[];
+    requested_specialists: string[];
     selected_specialists: {
-        name: "code-quality" | "intent";
-        label: "code-quality" | "intent";
-        artifact_prefix: "IntentAlignment: " | "CodeQuality: ";
+        name: "intent" | "code-quality";
+        label: "intent" | "code-quality";
+        critic: "intent" | "code-quality";
         agent_name: "ralphx:ralphx-ideation-specialist-intent" | "ralphx:ralphx-ideation-specialist-code-quality";
     }[];
 }>;
 export declare function runVerificationRoundPass(deps: VerificationOrchestrationDeps, args: {
     sessionId: string;
     round: number;
-    disabledSpecialists: Set<string>;
+    selectedSpecialists: Set<string>;
     includeFullContent: boolean;
     includeMessages: boolean;
     messageLimit: number;
@@ -135,13 +136,13 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
     classification: "pending" | "infra_failure";
     required_delegates: {
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }[];
     rescue_delegates: {
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }[];
@@ -149,7 +150,7 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
         [key: string]: unknown;
         classification: "complete" | "pending" | "infra_failure";
         verification_findings?: VerificationFindingSummary[];
-        artifacts_by_prefix?: ArtifactByPrefix;
+        findings_by_critic?: FindingsByCritic;
     };
     required_findings: ParsedVerificationCriticArtifact[];
     merged_gaps: never[];
@@ -160,18 +161,18 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
         low: number;
     };
     optional_specialists: {
-        name: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
-        label: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
-        artifact_prefix: "UX: " | "PromptQuality: " | "PipelineSafety: " | "StateMachine: ";
+        name: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
+        label: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
+        critic: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
         agent_name: "ralphx:ralphx-ideation-specialist-ux" | "ralphx:ralphx-ideation-specialist-prompt-quality" | "ralphx:ralphx-ideation-specialist-pipeline-safety" | "ralphx:ralphx-ideation-specialist-state-machine";
     }[];
     optional_delegates: {
         job_id: string;
-        artifact_prefix: "UX: " | "PromptQuality: " | "PipelineSafety: " | "StateMachine: ";
-        label: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
+        critic: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
+        label: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
         required: boolean;
     }[];
-    optional_artifacts_by_prefix: never[];
+    optional_findings_by_critic: never[];
     optional_delegate_snapshots: never[];
 } | {
     session_id: string;
@@ -180,13 +181,13 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
     classification: "complete";
     required_delegates: {
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }[];
     rescue_delegates: {
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }[];
@@ -194,24 +195,24 @@ export declare function runVerificationRoundPass(deps: VerificationOrchestration
         [key: string]: unknown;
         classification: "complete" | "pending" | "infra_failure";
         verification_findings?: VerificationFindingSummary[];
-        artifacts_by_prefix?: ArtifactByPrefix;
+        findings_by_critic?: FindingsByCritic;
     };
     required_findings: ParsedVerificationCriticArtifact[];
     merged_gaps: import("./verification-round-assessment.js").ParsedVerificationGap[];
     gap_counts: import("./verification-round-assessment.js").VerificationGapCounts;
     optional_specialists: {
-        name: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
-        label: "ux" | "prompt-quality" | "pipeline-safety" | "state-machine";
-        artifact_prefix: "UX: " | "PromptQuality: " | "PipelineSafety: " | "StateMachine: ";
+        name: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
+        label: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
+        critic: "ux" | "pipeline-safety" | "prompt-quality" | "state-machine";
         agent_name: "ralphx:ralphx-ideation-specialist-ux" | "ralphx:ralphx-ideation-specialist-prompt-quality" | "ralphx:ralphx-ideation-specialist-pipeline-safety" | "ralphx:ralphx-ideation-specialist-state-machine";
     }[];
     optional_delegates: {
         job_id: string;
-        artifact_prefix: string;
+        critic: string;
         label?: string;
         required?: boolean;
     }[];
-    optional_artifacts_by_prefix: ArtifactByPrefix;
+    optional_findings_by_critic: FindingsByCritic;
     optional_delegate_snapshots: unknown[];
 }>;
 export {};

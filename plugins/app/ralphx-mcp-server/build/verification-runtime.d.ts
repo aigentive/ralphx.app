@@ -1,14 +1,5 @@
 import { assessVerificationRound, type VerificationFindingSummary, type VerificationRoundDelegateInput, type VerificationRoundDelegateSnapshot } from "./verification-round-assessment.js";
 import { type RequiredCriticRoundResult, type VerificationPlanSnapshot } from "./verification-orchestration.js";
-export type TeamArtifactSummary = {
-    id: string;
-    name: string;
-    artifact_type: string;
-    version: number;
-    content_preview: string;
-    created_at: string;
-    author_teammate?: string | null;
-};
 type VerificationFindingMatch = {
     critic: string;
     found: boolean;
@@ -25,14 +16,6 @@ export type VerificationSettlementArgs = {
     message_limit?: number;
     max_wait_ms?: number;
     poll_interval_ms?: number;
-};
-export type VerificationAssessmentArgs = {
-    session_id: string;
-    delegates: VerificationRoundDelegateInput[];
-    created_after?: string;
-    rescue_budget_exhausted?: boolean;
-    include_messages?: boolean;
-    message_limit?: number;
 };
 type ManagedVerificationDelegate = VerificationRoundDelegateInput & {
     agent_name: string;
@@ -51,10 +34,17 @@ type AwaitVerificationRoundSettlementResult = {
     classification: "complete" | "pending" | "infra_failure";
     recommended_next_action: "continue_round_analysis" | "perform_single_rescue_or_wait" | "complete_verification_with_infra_failure";
     summary: string;
-    missing_required_prefixes: string[];
+    missing_required_critics: string[];
     delegate_assessments: ReturnType<typeof assessVerificationRound>["delegate_assessments"];
-    artifacts_by_prefix: ReturnType<typeof assessVerificationRound>["artifacts_by_prefix"];
+    findings_by_critic: ReturnType<typeof assessVerificationRound>["findings_by_critic"];
     delegate_snapshots: VerificationRoundDelegateSnapshot[];
+};
+type CachedVerificationRoundState = {
+    round: number;
+    classification: "complete" | "pending" | "infra_failure";
+    createdAfter: string;
+    requiredDelegates: VerificationRoundDelegateInput[];
+    mergedGaps: unknown[];
 };
 type VerificationRuntimeDeps = {
     callTauri: (endpoint: string, payload: Record<string, unknown>) => Promise<unknown>;
@@ -64,7 +54,6 @@ type VerificationRuntimeDeps = {
     contextId?: string;
 };
 export declare function createVerificationRuntime(deps: VerificationRuntimeDeps): {
-    assessVerificationRoundState: (args: VerificationAssessmentArgs) => Promise<Record<string, unknown>>;
     getPlanVerificationForTool: (args: {
         session_id?: string;
     }) => Promise<unknown>;
@@ -79,54 +68,19 @@ export declare function createVerificationRuntime(deps: VerificationRuntimeDeps)
         session_id?: string;
         status: string;
         round?: number;
-        gaps?: unknown[];
         convergence_reason?: string;
         generation: number;
-        required_delegates?: VerificationRoundDelegateInput[];
-        created_after?: string;
-        rescue_budget_exhausted?: boolean;
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
     }) => Promise<unknown>;
     runVerificationEnrichment: (args: {
         session_id?: string;
-        disabled_specialists?: string[];
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
+        selected_specialists?: string[];
     }) => Promise<unknown>;
     runVerificationRound: (args: {
         session_id?: string;
         round: number;
-        disabled_specialists?: string[];
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        optional_wait_ms?: number;
-        poll_interval_ms?: number;
+        selected_specialists?: string[];
     }) => Promise<unknown>;
-    runRequiredVerificationCriticRoundTool: (args: {
-        session_id?: string;
-        round: number;
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
-    }) => Promise<RequiredCriticRoundResult>;
-    awaitVerificationRoundSettlementForTool: (args: VerificationSettlementArgs) => Promise<AwaitVerificationRoundSettlementResult>;
-    selectLatestArtifactsByPrefix: (artifacts: TeamArtifactSummary[], prefixes: string[], createdAfter?: string) => Array<{
-        prefix: string;
-        found: boolean;
-        total_matches: number;
-        artifact?: TeamArtifactSummary;
-    }>;
+    rememberVerificationRoundState: (sessionId: string, state: CachedVerificationRoundState) => void;
     loadVerificationFindingsByCritic: (args: {
         sessionId: string;
         critics: string[];
@@ -145,7 +99,7 @@ export declare function createVerificationRuntime(deps: VerificationRuntimeDeps)
         delegates: ManagedVerificationDelegate[];
         sessionId: string;
         createdAfter: string;
-        prefixes: string[];
+        critics: string[];
         includeFullContent: boolean;
         includeMessages: boolean;
         messageLimit: number;
@@ -157,30 +111,11 @@ export declare function createVerificationRuntime(deps: VerificationRuntimeDeps)
         timed_out: boolean;
         delegates: {
             job_id: string;
-            artifact_prefix: string;
+            critic: string;
             label: string | undefined;
             required: boolean | undefined;
         }[];
-        artifacts_by_prefix: ({
-            prefix: string;
-            found: boolean;
-            total_matches: number;
-            artifact?: TeamArtifactSummary;
-        } | {
-            artifact: {
-                content: string;
-                id: string;
-                name: string;
-                artifact_type: string;
-                version: number;
-                content_preview: string;
-                created_at: string;
-                author_teammate?: string | null;
-            };
-            prefix: string;
-            found: boolean;
-            total_matches: number;
-        })[];
+        findings_by_critic: VerificationFindingMatch[];
         delegate_snapshots: (VerificationRoundDelegateSnapshot & {
             delegated_status?: unknown;
         })[];
@@ -207,6 +142,8 @@ export declare function createVerificationRuntime(deps: VerificationRuntimeDeps)
         pollIntervalMs: number;
     }) => Promise<RequiredCriticRoundResult>;
     awaitVerificationRoundSettlement: (args: VerificationSettlementArgs) => Promise<AwaitVerificationRoundSettlementResult>;
+    getVerificationRoundState: (sessionId: string) => CachedVerificationRoundState | undefined;
+    clearVerificationRoundState: (sessionId: string) => void;
     resolveVerifierParentSessionId: (rawSessionId: unknown, toolName: string) => Promise<string>;
     resolveVerificationFindingSessionId: (rawSessionId: unknown, toolName: string) => Promise<string>;
     resolveContextSessionId: (rawSessionId: unknown, toolName: string) => string;

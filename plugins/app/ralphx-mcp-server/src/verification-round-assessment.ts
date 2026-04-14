@@ -1,10 +1,3 @@
-type ArtifactSummary = {
-  id?: string;
-  name?: string;
-  created_at?: string;
-  content?: string;
-};
-
 export type VerificationFindingGap = {
   severity: string;
   category: string;
@@ -27,16 +20,16 @@ export type VerificationFindingSummary = {
   gaps: VerificationFindingGap[];
 };
 
-export type VerificationRoundArtifactMatch = {
-  prefix: string;
+export type VerificationRoundFindingMatch = {
+  critic: string;
   found: boolean;
   total_matches: number;
-  artifact?: ArtifactSummary;
+  finding?: VerificationFindingSummary;
 };
 
 export type VerificationRoundDelegateInput = {
   job_id: string;
-  artifact_prefix: string;
+  critic: string;
   required?: boolean;
   label?: string;
 };
@@ -57,16 +50,16 @@ export type VerificationRoundDelegateSnapshot = {
 };
 
 type DelegateAssessmentKind =
-  | "artifact_published"
+  | "finding_published"
   | "pending"
   | "infra_failure";
 
 export type VerificationRoundDelegateAssessment = {
   job_id: string;
   label: string;
-  artifact_prefix: string;
+  critic: string;
   required: boolean;
-  artifact_found: boolean;
+  finding_found: boolean;
   assessment: DelegateAssessmentKind;
   status: string;
   reason: string;
@@ -79,9 +72,9 @@ export type VerificationRoundAssessment = {
     | "perform_single_rescue_or_wait"
     | "complete_verification_with_infra_failure";
   summary: string;
-  missing_required_prefixes: string[];
+  missing_required_critics: string[];
   delegate_assessments: VerificationRoundDelegateAssessment[];
-  artifacts_by_prefix: VerificationRoundArtifactMatch[];
+  findings_by_critic: VerificationRoundFindingMatch[];
 };
 
 export type ParsedVerificationGap = {
@@ -155,9 +148,7 @@ export function aggregateVerificationGaps(findings: ParsedVerificationCriticArti
       const key = gapDedupKey(gap);
       const existing = merged.get(key);
       if (!existing) {
-        merged.set(key, {
-          ...gap,
-        });
+        merged.set(key, { ...gap });
         continue;
       }
 
@@ -181,10 +172,7 @@ export function aggregateVerificationGaps(findings: ParsedVerificationCriticArti
     gap_counts[gap.severity] += 1;
   }
 
-  return {
-    merged_gaps,
-    gap_counts,
-  };
+  return { merged_gaps, gap_counts };
 }
 
 function normalizeSeverity(value: unknown): ParsedVerificationGap["severity"] | null {
@@ -199,100 +187,6 @@ function normalizeSource(value: unknown): ParsedVerificationGap["source"] | unde
     return value;
   }
   return undefined;
-}
-
-export function parseVerificationCriticArtifact(params: {
-  prefix: string;
-  label: string;
-  artifact?: ArtifactSummary;
-}): ParsedVerificationCriticArtifact {
-  const base: ParsedVerificationCriticArtifact = {
-    prefix: params.prefix,
-    label: params.label,
-    usable: false,
-    artifact_id: params.artifact?.id,
-    artifact_name: params.artifact?.name,
-    artifact_created_at: params.artifact?.created_at,
-    gaps: [],
-  };
-
-  const rawContent = params.artifact?.content;
-  if (typeof rawContent !== "string" || rawContent.trim().length === 0) {
-    return {
-      ...base,
-      parse_error: "Artifact content is missing.",
-    };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawContent);
-  } catch (error) {
-    return {
-      ...base,
-      parse_error:
-        error instanceof Error ? error.message : "Artifact content is not valid JSON.",
-    };
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return {
-      ...base,
-      parse_error: "Artifact JSON must be an object.",
-    };
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const status = typeof record.status === "string" ? record.status : undefined;
-  const critic = typeof record.critic === "string" ? record.critic : undefined;
-  const round = typeof record.round === "number" ? record.round : undefined;
-  const coverage = typeof record.coverage === "string" ? record.coverage : undefined;
-  const summary = typeof record.summary === "string" ? record.summary : undefined;
-  const rawGaps = Array.isArray(record.gaps) ? record.gaps : [];
-
-  const gaps: ParsedVerificationGap[] = [];
-  for (const gap of rawGaps) {
-    if (!gap || typeof gap !== "object" || Array.isArray(gap)) {
-      continue;
-    }
-    const gapRecord = gap as Record<string, unknown>;
-    const severity = normalizeSeverity(gapRecord.severity);
-    const category =
-      typeof gapRecord.category === "string" ? gapRecord.category.trim() : "";
-    const description =
-      typeof gapRecord.description === "string" ? gapRecord.description.trim() : "";
-    if (!severity || category.length === 0 || description.length === 0) {
-      continue;
-    }
-    const whyItMatters =
-      typeof gapRecord.why_it_matters === "string"
-        ? gapRecord.why_it_matters
-        : undefined;
-    gaps.push({
-      severity,
-      category,
-      description,
-      why_it_matters: whyItMatters,
-      source: normalizeSource(gapRecord.source),
-    });
-  }
-
-  const usable =
-    (status === "complete" || status === "partial" || status === "error") &&
-    typeof critic === "string" &&
-    typeof summary === "string";
-
-  return {
-    ...base,
-    usable,
-    status,
-    critic,
-    round,
-    coverage,
-    summary,
-    gaps,
-    parse_error: usable ? undefined : "Artifact JSON is missing required verifier fields.",
-  };
 }
 
 export function parseTypedVerificationFinding(params: {
@@ -327,8 +221,7 @@ export function parseTypedVerificationFinding(params: {
   const gaps: ParsedVerificationGap[] = [];
   for (const gap of finding.gaps ?? []) {
     const severity = normalizeSeverity(gap.severity);
-    const category =
-      typeof gap.category === "string" ? gap.category.trim() : "";
+    const category = typeof gap.category === "string" ? gap.category.trim() : "";
     const description =
       typeof gap.description === "string" ? gap.description.trim() : "";
     if (!severity || category.length === 0 || description.length === 0) {
@@ -355,8 +248,7 @@ export function parseTypedVerificationFinding(params: {
     status,
     critic: finding.critic,
     round: finding.round,
-    coverage:
-      typeof finding.coverage === "string" ? finding.coverage : undefined,
+    coverage: typeof finding.coverage === "string" ? finding.coverage : undefined,
     summary: finding.summary,
     gaps,
     parse_error: usable ? undefined : "Typed verification finding is missing required fields.",
@@ -374,24 +266,24 @@ function isRunningLike(status?: string | null): boolean {
 
 function classifyDelegate(
   delegate: VerificationRoundDelegateInput,
-  artifact: VerificationRoundArtifactMatch | undefined,
+  findingMatch: VerificationRoundFindingMatch | undefined,
   snapshot: VerificationRoundDelegateSnapshot | undefined,
   rescueBudgetExhausted: boolean
 ): VerificationRoundDelegateAssessment {
-  const label = delegate.label || delegate.artifact_prefix.trim() || delegate.job_id;
+  const label = delegate.label || delegate.critic.trim() || delegate.job_id;
   const required = delegate.required !== false;
-  const artifactFound = artifact?.found === true;
+  const findingFound = findingMatch?.found === true;
 
-  if (artifactFound) {
+  if (findingFound) {
     return {
       job_id: delegate.job_id,
       label,
-      artifact_prefix: delegate.artifact_prefix,
+      critic: delegate.critic,
       required,
-      artifact_found: true,
-      assessment: "artifact_published",
+      finding_found: true,
+      assessment: "finding_published",
       status: "completed",
-      reason: "Required artifact was published for this delegate.",
+      reason: "Required verification finding was published for this delegate.",
     };
   }
 
@@ -403,24 +295,21 @@ function classifyDelegate(
     snapshot?.delegated_status?.latest_run?.error_message ??
     null;
 
-  if (
-    isRunningLike(jobStatus) ||
-    isRunningLike(runStatus) ||
-    isRunningLike(estimatedStatus)
-  ) {
+  if (isRunningLike(jobStatus) || isRunningLike(runStatus) || isRunningLike(estimatedStatus)) {
     return {
       job_id: delegate.job_id,
       label,
-      artifact_prefix: delegate.artifact_prefix,
+      critic: delegate.critic,
       required,
-      artifact_found: false,
+      finding_found: false,
       assessment: "pending",
       status: jobStatus,
-      reason: "Delegate still appears to be running and has not published the required artifact yet.",
+      reason:
+        "Delegate still appears to be running and has not published the required verification finding yet.",
     };
   }
 
-  const terminalWithoutArtifact =
+  const terminalWithoutFinding =
     jobStatus === "completed" ||
     jobStatus === "failed" ||
     jobStatus === "cancelled" ||
@@ -432,44 +321,44 @@ function classifyDelegate(
     return {
       job_id: delegate.job_id,
       label,
-      artifact_prefix: delegate.artifact_prefix,
+      critic: delegate.critic,
       required,
-      artifact_found: false,
+      finding_found: false,
       assessment: "pending",
       status: jobStatus,
       reason:
         error ??
-        (terminalWithoutArtifact
-          ? "Delegate finished without publishing the required artifact yet; the bounded rescue/wait budget is still available."
-          : "Required artifact is still missing and the bounded rescue/wait budget is still available."),
+        (terminalWithoutFinding
+          ? "Delegate finished without publishing the required verification finding yet; the bounded rescue/wait budget is still available."
+          : "Required verification finding is still missing and the bounded rescue/wait budget is still available."),
     };
   }
 
   return {
     job_id: delegate.job_id,
     label,
-    artifact_prefix: delegate.artifact_prefix,
+    critic: delegate.critic,
     required,
-    artifact_found: false,
+    finding_found: false,
     assessment: "infra_failure",
     status: jobStatus,
     reason:
       error ??
-      (terminalWithoutArtifact
-        ? "Delegate reached a terminal state without publishing the required artifact."
-        : "Required artifact is still missing after the allowed wait/rescue budget."),
+      (terminalWithoutFinding
+        ? "Delegate reached a terminal state without publishing the required verification finding."
+        : "Required verification finding is still missing after the allowed wait/rescue budget."),
   };
 }
 
 export function assessVerificationRound(params: {
   delegates: VerificationRoundDelegateInput[];
-  artifactsByPrefix: VerificationRoundArtifactMatch[];
+  findingsByCritic: VerificationRoundFindingMatch[];
   delegateSnapshots: VerificationRoundDelegateSnapshot[];
   rescueBudgetExhausted?: boolean;
 }): VerificationRoundAssessment {
   const rescueBudgetExhausted = params.rescueBudgetExhausted === true;
-  const artifactByPrefix = new Map(
-    params.artifactsByPrefix.map((artifact) => [artifact.prefix, artifact] as const)
+  const findingByCritic = new Map(
+    params.findingsByCritic.map((findingMatch) => [findingMatch.critic, findingMatch] as const)
   );
   const snapshotByJobId = new Map(
     params.delegateSnapshots.map((snapshot) => [snapshot.job_id, snapshot] as const)
@@ -478,22 +367,23 @@ export function assessVerificationRound(params: {
   const delegateAssessments = params.delegates.map((delegate) =>
     classifyDelegate(
       delegate,
-      artifactByPrefix.get(delegate.artifact_prefix),
+      findingByCritic.get(delegate.critic),
       snapshotByJobId.get(delegate.job_id),
       rescueBudgetExhausted
     )
   );
 
   const requiredAssessments = delegateAssessments.filter((delegate) => delegate.required);
-  const missingRequiredPrefixes = requiredAssessments
-    .filter((delegate) => !delegate.artifact_found)
-    .map((delegate) => delegate.artifact_prefix);
+  const missingRequiredCritics = requiredAssessments
+    .filter((delegate) => !delegate.finding_found)
+    .map((delegate) => delegate.critic);
 
-  const classification = missingRequiredPrefixes.length === 0
-    ? "complete"
-    : requiredAssessments.some((delegate) => delegate.assessment === "infra_failure")
-      ? "infra_failure"
-      : "pending";
+  const classification =
+    missingRequiredCritics.length === 0
+      ? "complete"
+      : requiredAssessments.some((delegate) => delegate.assessment === "infra_failure")
+        ? "infra_failure"
+        : "pending";
 
   const recommendedNextAction =
     classification === "complete"
@@ -504,17 +394,17 @@ export function assessVerificationRound(params: {
 
   const summary =
     classification === "complete"
-      ? "All required verification artifacts were published."
+      ? "All required verification findings were published."
       : classification === "pending"
-        ? `Required verification artifacts are still pending for: ${missingRequiredPrefixes.join(", ")}.`
-        : `Required verification artifacts are missing after the allowed wait/rescue budget: ${missingRequiredPrefixes.join(", ")}.`;
+        ? `Required verification findings are still pending for: ${missingRequiredCritics.join(", ")}.`
+        : `Required verification findings are missing after the allowed wait/rescue budget: ${missingRequiredCritics.join(", ")}.`;
 
   return {
     classification,
     recommended_next_action: recommendedNextAction,
     summary,
-    missing_required_prefixes: missingRequiredPrefixes,
+    missing_required_critics: missingRequiredCritics,
     delegate_assessments: delegateAssessments,
-    artifacts_by_prefix: params.artifactsByPrefix,
+    findings_by_critic: params.findingsByCritic,
   };
 }

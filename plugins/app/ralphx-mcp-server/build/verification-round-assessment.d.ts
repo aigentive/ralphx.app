@@ -1,9 +1,3 @@
-type ArtifactSummary = {
-    id?: string;
-    name?: string;
-    created_at?: string;
-    content?: string;
-};
 export type VerificationFindingGap = {
     severity: string;
     category: string;
@@ -24,15 +18,15 @@ export type VerificationFindingSummary = {
     summary: string;
     gaps: VerificationFindingGap[];
 };
-export type VerificationRoundArtifactMatch = {
-    prefix: string;
+export type VerificationRoundFindingMatch = {
+    critic: string;
     found: boolean;
     total_matches: number;
-    artifact?: ArtifactSummary;
+    finding?: VerificationFindingSummary;
 };
 export type VerificationRoundDelegateInput = {
     job_id: string;
-    artifact_prefix: string;
+    critic: string;
     required?: boolean;
     label?: string;
 };
@@ -50,13 +44,13 @@ export type VerificationRoundDelegateSnapshot = {
         } | null;
     } | null;
 };
-type DelegateAssessmentKind = "artifact_published" | "pending" | "infra_failure";
+type DelegateAssessmentKind = "finding_published" | "pending" | "infra_failure";
 export type VerificationRoundDelegateAssessment = {
     job_id: string;
     label: string;
-    artifact_prefix: string;
+    critic: string;
     required: boolean;
-    artifact_found: boolean;
+    finding_found: boolean;
     assessment: DelegateAssessmentKind;
     status: string;
     reason: string;
@@ -65,9 +59,9 @@ export type VerificationRoundAssessment = {
     classification: "complete" | "pending" | "infra_failure";
     recommended_next_action: "continue_round_analysis" | "perform_single_rescue_or_wait" | "complete_verification_with_infra_failure";
     summary: string;
-    missing_required_prefixes: string[];
+    missing_required_critics: string[];
     delegate_assessments: VerificationRoundDelegateAssessment[];
-    artifacts_by_prefix: VerificationRoundArtifactMatch[];
+    findings_by_critic: VerificationRoundFindingMatch[];
 };
 export type ParsedVerificationGap = {
     severity: "critical" | "high" | "medium" | "low";
@@ -101,18 +95,13 @@ export declare function aggregateVerificationGaps(findings: ParsedVerificationCr
     merged_gaps: ParsedVerificationGap[];
     gap_counts: VerificationGapCounts;
 };
-export declare function parseVerificationCriticArtifact(params: {
-    prefix: string;
-    label: string;
-    artifact?: ArtifactSummary;
-}): ParsedVerificationCriticArtifact;
 export declare function parseTypedVerificationFinding(params: {
     label: string;
     finding?: VerificationFindingSummary;
 }): ParsedVerificationCriticArtifact;
 export declare function assessVerificationRound(params: {
     delegates: VerificationRoundDelegateInput[];
-    artifactsByPrefix: VerificationRoundArtifactMatch[];
+    findingsByCritic: VerificationRoundFindingMatch[];
     delegateSnapshots: VerificationRoundDelegateSnapshot[];
     rescueBudgetExhausted?: boolean;
 }): VerificationRoundAssessment;

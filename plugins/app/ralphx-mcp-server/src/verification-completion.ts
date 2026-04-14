@@ -15,7 +15,7 @@ export type VerificationTerminalBody = {
 
 export type VerificationSettlementResult = {
   classification: "complete" | "pending" | "infra_failure";
-  missing_required_prefixes: string[];
+  missing_required_critics: string[];
   verification_findings?: VerificationFindingSummary[];
   [key: string]: unknown;
 };
@@ -65,7 +65,7 @@ export async function completePlanVerificationWithSettlement(
 
   if (settledRound.classification === "pending") {
     throw new Error(
-      `Required verification delegates are still pending for: ${settledRound.missing_required_prefixes.join(", ")}. Wait for settlement before terminal completion.`
+      `Required verification delegates are still pending for: ${settledRound.missing_required_critics.join(", ")}. Wait for settlement before terminal completion.`
     );
   }
 

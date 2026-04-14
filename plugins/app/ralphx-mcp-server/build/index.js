@@ -22,7 +22,7 @@ import { permissionRequestTool, handlePermissionRequest, } from "./permission-ha
 import { handleAskUserQuestion } from "./question-handler.js";
 import { handleRequestTeamPlan } from "./team-plan-handler.js";
 import { hydrateRalphxRuntimeEnvFromCli, parseCliOptionFromArgs, } from "./runtime-context.js";
-import { createVerificationRuntime, } from "./verification-runtime.js";
+import { createVerificationRuntime } from "./verification-runtime.js";
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
  * Exported for unit testing.
@@ -127,7 +127,7 @@ const RALPHX_PROJECT_ID = runtimeContext.projectId;
 const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
 const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
-const { assessVerificationRoundState, getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, runRequiredVerificationCriticRoundTool, awaitVerificationRoundSettlementForTool, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
+const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
     agentType: AGENT_TYPE,
@@ -458,20 +458,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         else if (name === "report_verification_round") {
             result = await reportVerificationRoundForTool(args);
         }
-        else if (name === "assess_verification_round") {
-            result = await assessVerificationRoundState(args);
-        }
         else if (name === "run_verification_enrichment") {
             result = await runVerificationEnrichment(args);
         }
         else if (name === "run_verification_round") {
             result = await runVerificationRound(args);
-        }
-        else if (name === "run_required_verification_critic_round") {
-            result = await runRequiredVerificationCriticRoundTool(args);
-        }
-        else if (name === "await_verification_round_settlement") {
-            result = await awaitVerificationRoundSettlementForTool(args);
         }
         else if (name === "complete_plan_verification") {
             result = await completePlanVerificationForTool(args);

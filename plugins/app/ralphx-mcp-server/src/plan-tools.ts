@@ -112,7 +112,6 @@ export const PLAN_TOOLS: Tool[] = [
         {
           session_id: "parent-session-id",
           round: 1,
-          gaps: [],
           generation: 3,
         },
       ],
@@ -125,186 +124,26 @@ export const PLAN_TOOLS: Tool[] = [
           type: "integer",
           description: "Current round number (1-based).",
         },
-        gaps: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              severity: {
-                type: "string",
-                enum: ["critical", "high", "medium", "low"],
-              },
-              category: { type: "string" },
-              description: { type: "string" },
-              why_it_matters: { type: "string" },
-              source: {
-                type: "string",
-                enum: ["layer1", "layer2", "both"],
-                description: "Which critic layer identified this gap (for per-critic tracking)",
-              },
-            },
-            required: ["severity", "category", "description"],
-          },
-          description: "Merged current-round gaps after critic/specialist processing.",
-        },
         generation: {
           type: "integer",
           description:
-            "Generation counter for zombie protection. Pass on every verifier call. If mismatched, the server rejects the request.",
+            "Generation counter for zombie protection. Pass on every verifier call. The backend reads the current-round merged gaps from the last run_verification_round result instead of trusting prompt-assembled round state.",
         },
       },
       required: ["round", "generation"],
     },
   },
   {
-    name: "assess_verification_round",
-    description:
-      "Verifier-oriented helper that classifies whether required critic findings are complete, still pending, or an infrastructure failure. " +
-      "Use this after bounded delegate waits / rescue attempts instead of inferring runtime failure from raw delegate_wait snapshots and artifact polls inside the prompt. " +
-      "The tool checks current-round typed finding publication on the PARENT ideation session and combines that with live delegate job state.",
-    inputSchema: {
-      type: "object",
-      examples: [
-        {
-          session_id: "parent-session-id",
-          created_after: "2026-04-13T10:00:00Z",
-          rescue_budget_exhausted: true,
-          delegates: [
-            {
-              job_id: "job-completeness",
-              artifact_prefix: "Completeness: ",
-              required: true,
-              label: "completeness",
-            },
-            {
-              job_id: "job-feasibility",
-              artifact_prefix: "Feasibility: ",
-              required: true,
-              label: "feasibility",
-            },
-          ],
-        },
-      ],
-      properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
-        created_after: {
-          type: "string",
-          description: "Optional RFC3339 threshold for current-round artifact collection.",
-        },
-        rescue_budget_exhausted: {
-          type: "boolean",
-          description:
-            "Set true after the verifier has used its allowed wait/rescue budget. Missing required artifacts then classify as infra_failure instead of pending.",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether returned artifact matches should include full content. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether delegated job status hydration should include recent delegated-session messages. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        delegates: {
-          type: "array",
-          description:
-            "Delegated critic/specialist jobs expected to publish current-round findings. artifact_prefix is the stable slot label for this delegate in settlement output.",
-          items: {
-            type: "object",
-            properties: {
-              job_id: {
-                type: "string",
-                description: "Delegation job ID returned by delegate_start.",
-              },
-              artifact_prefix: {
-                type: "string",
-                description: "Stable slot label for this delegate in settlement output, for example 'Completeness: '.",
-              },
-              required: {
-                type: "boolean",
-                description: "Whether this delegate is required for the round classification. Default: true.",
-              },
-              label: {
-                type: "string",
-                description: "Optional short label for summaries, for example 'completeness' or 'feasibility'.",
-              },
-            },
-            required: ["job_id", "artifact_prefix"],
-          },
-        },
-      },
-      required: ["delegates"],
-    },
-  },
-  {
-    name: "run_required_verification_critic_round",
-    description:
-      "Verifier-oriented orchestration helper that runs the required completeness and feasibility critics for one verification round on the PARENT ideation session. " +
-      "The helper owns initial critic dispatch, one bounded rescue pass for any still-missing required critic finding, and final settlement. " +
-      "Use this instead of manually stitching together delegate_start, rescue replacement, and await_verification_round_settlement for required critics in prompt logic.",
-    inputSchema: {
-      type: "object",
-      examples: [
-        {
-          session_id: "parent-session-id",
-          round: 3,
-          max_wait_ms: 600000,
-          poll_interval_ms: 750,
-        },
-      ],
-      properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
-        round: {
-          type: "integer",
-          description: "Current verification round number (1-based).",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether returned artifact matches should include full content. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether settlement snapshots should include recent delegated-session messages. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        max_wait_ms: {
-          type: "integer",
-          description: "Maximum wait budget for each settlement pass. Default: 600000, max: 600000.",
-        },
-        poll_interval_ms: {
-          type: "integer",
-          description: "Polling interval between settlement checks. Default: 750, minimum: 100.",
-        },
-      },
-      required: ["round"],
-    },
-  },
-  {
     name: "run_verification_enrichment",
     description:
       "Backend-owned one-time verification enrichment helper for the PARENT ideation session. " +
-      "The helper reads the current plan, decides whether intent and code-quality enrichment apply, dispatches those specialists once, waits a bounded amount for artifact publication or terminal delegate state, and returns the latest enrichment artifacts plus delegate snapshots. " +
-      "Use this instead of manually selecting enrichment specialists, dispatching them, and polling artifacts in the verifier prompt.",
+      "The verifier chooses which enrichment specialists to run. The backend dispatches those specialists once, waits a bounded amount for typed finding publication or terminal delegate state, and returns the latest findings plus delegate snapshots.",
     inputSchema: {
       type: "object",
       examples: [
         {
           session_id: "parent-session-id",
-          disabled_specialists: ["code-quality"],
-          max_wait_ms: 15000,
-          poll_interval_ms: 500,
+          selected_specialists: ["intent", "code-quality"],
         },
       ],
       properties: {
@@ -312,30 +151,10 @@ export const PLAN_TOOLS: Tool[] = [
           type: "string",
           description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
         },
-        disabled_specialists: {
+        selected_specialists: {
           type: "array",
           items: { type: "string" },
-          description: "Optional specialist short names to skip, for example ['intent', 'code-quality'].",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether returned artifact matches should include full content. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether returned delegate snapshots should include recent delegated-session messages. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        max_wait_ms: {
-          type: "integer",
-          description: "Maximum wall-clock time to wait for enrichment delegates to publish artifacts or settle. Default: 15000, max: 600000.",
-        },
-        poll_interval_ms: {
-          type: "integer",
-          description: "Polling interval between enrichment snapshots. Default: 500, min: 100.",
+          description: "Explicit enrichment specialists to run. Allowed values: ['intent', 'code-quality'].",
         },
       },
       required: [],
@@ -345,18 +164,14 @@ export const PLAN_TOOLS: Tool[] = [
     name: "run_verification_round",
     description:
       "Backend-owned verification round driver for the PARENT ideation session. " +
-      "The helper reads the current plan, selects optional specialists, dispatches them, runs the required completeness + feasibility critics through the existing required-critic helper, waits for bounded optional-settlement, and returns structured required critic findings plus backend-owned merged gaps instead of raw artifact JSON. " +
-      "Use this as the primary verifier round tool so the prompt only synthesizes findings and revises the plan.",
+      "The verifier chooses which optional specialists to run. The backend dispatches those specialists, runs the required completeness + feasibility critics, waits for bounded settlement, and returns structured required critic findings plus backend-owned merged gaps.",
     inputSchema: {
       type: "object",
       examples: [
         {
           session_id: "parent-session-id",
           round: 2,
-          disabled_specialists: ["ux"],
-          max_wait_ms: 600000,
-          optional_wait_ms: 15000,
-          poll_interval_ms: 750,
+          selected_specialists: ["ux", "pipeline-safety"],
         },
       ],
       properties: {
@@ -368,133 +183,13 @@ export const PLAN_TOOLS: Tool[] = [
           type: "integer",
           description: "Current verification round number (1-based).",
         },
-        disabled_specialists: {
+        selected_specialists: {
           type: "array",
           items: { type: "string" },
-          description: "Optional specialist short names to skip, for example ['ux', 'pipeline-safety'].",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether returned artifact matches should include full content. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether returned delegate snapshots should include recent delegated-session messages. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        max_wait_ms: {
-          type: "integer",
-          description: "Maximum wait budget for each required-critic settlement pass. Default: 600000, max: 600000.",
-        },
-        optional_wait_ms: {
-          type: "integer",
-          description: "Maximum wait budget for optional specialist artifact collection after required critics settle. Default: 15000, max: 600000.",
-        },
-        poll_interval_ms: {
-          type: "integer",
-          description: "Polling interval between settlement snapshots. Default: 750, min: 100.",
+          description: "Explicit optional specialists to run. Allowed values: ['ux', 'prompt-quality', 'pipeline-safety', 'state-machine'].",
         },
       },
       required: ["round"],
-    },
-  },
-  {
-    name: "await_verification_round_settlement",
-    description:
-      "Verifier-oriented helper that waits for required delegated critics/specialists to either publish their current-round artifacts or reach a terminal delegated state. " +
-      "This is the first-class synchronization barrier for verification rounds: use it instead of narrating manual poll loops in the chat. " +
-      "The tool polls round-local artifacts on the PARENT ideation session plus live delegated job state, then returns a settled classification (`complete`, `pending`, or `infra_failure`).",
-    inputSchema: {
-      type: "object",
-      examples: [
-        {
-          session_id: "parent-session-id",
-          created_after: "2026-04-13T10:00:00Z",
-          rescue_budget_exhausted: false,
-          max_wait_ms: 600000,
-          poll_interval_ms: 750,
-          delegates: [
-            {
-              job_id: "job-completeness",
-              artifact_prefix: "Completeness: ",
-              required: true,
-              label: "completeness",
-            },
-            {
-              job_id: "job-feasibility",
-              artifact_prefix: "Feasibility: ",
-              required: true,
-              label: "feasibility",
-            },
-          ],
-        },
-      ],
-      properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
-        created_after: {
-          type: "string",
-          description: "Optional RFC3339 threshold for current-round artifact collection.",
-        },
-        rescue_budget_exhausted: {
-          type: "boolean",
-          description:
-            "Set true after the verifier has used its allowed wait/rescue budget. Missing required artifacts then classify as infra_failure instead of pending.",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether returned artifact matches should include full content. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether delegated job status hydration should include recent delegated-session messages. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        max_wait_ms: {
-          type: "integer",
-          description: "Maximum wall-clock time to wait for delegates/artifacts to settle before returning. Default: 600000, max: 600000.",
-        },
-        poll_interval_ms: {
-          type: "integer",
-          description: "Polling interval between settlement snapshots. Default: 750, min: 100.",
-        },
-        delegates: {
-          type: "array",
-          description:
-            "Delegated critic/specialist jobs expected to publish current-round findings. artifact_prefix is the stable slot label for this delegate in settlement output.",
-          items: {
-            type: "object",
-            properties: {
-              job_id: {
-                type: "string",
-                description: "Delegation job ID returned by delegate_start.",
-              },
-              artifact_prefix: {
-                type: "string",
-                description: "Stable slot label for this delegate in settlement output, for example 'Completeness: '.",
-              },
-              required: {
-                type: "boolean",
-                description: "Whether this delegate is required for the round classification. Default: true.",
-              },
-              label: {
-                type: "string",
-                description: "Optional short label for summaries, for example 'completeness' or 'feasibility'.",
-              },
-            },
-            required: ["job_id", "artifact_prefix"],
-          },
-        },
-      },
-      required: ["delegates"],
     },
   },
   {
@@ -503,8 +198,7 @@ export const PLAN_TOOLS: Tool[] = [
       "Verifier-friendly helper for terminal verification updates on the PARENT ideation session. " +
       "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
       "This is the simpler alias for update_plan_verification with in_progress fixed to false. " +
-      "When `required_delegates` is provided, the tool first waits on the current verification round until required delegate state/artifacts have settled before sending the terminal update. " +
-      "When that settled round has typed required-critic findings, the helper derives the canonical terminal gap list from those findings instead of trusting prompt-assembled `gaps`. " +
+      "For verifier-owned runs, the helper uses the backend-owned current round state created by run_verification_round instead of trusting prompt-supplied settlement fields. " +
       "If the required delegate set settles as infrastructure/runtime failure, the backend resets the parent to unverified instead of recording a bogus content verdict. " +
       "Use verified or needs_revision for normal terminal outcomes; skipped remains available only where skip is actually allowed by the backend. Do NOT pass reviewing here. " +
       "If generation is stale, call get_plan_verification again instead of guessing.",
@@ -517,21 +211,6 @@ export const PLAN_TOOLS: Tool[] = [
           round: 1,
           convergence_reason: "zero_blocking",
           generation: 3,
-          required_delegates: [
-            {
-              job_id: "job-completeness",
-              artifact_prefix: "Completeness: ",
-              required: true,
-              label: "completeness",
-            },
-            {
-              job_id: "job-feasibility",
-              artifact_prefix: "Feasibility: ",
-              required: true,
-              label: "feasibility",
-            },
-          ],
-          created_after: "2026-04-13T10:00:00Z",
         },
       ],
       properties: {
@@ -548,28 +227,6 @@ export const PLAN_TOOLS: Tool[] = [
         round: {
           type: "integer",
           description: "Current round number (1-based). Include when it helps downstream summaries.",
-        },
-        gaps: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              severity: {
-                type: "string",
-                enum: ["critical", "high", "medium", "low"],
-              },
-              category: { type: "string" },
-              description: { type: "string" },
-              why_it_matters: { type: "string" },
-              source: {
-                type: "string",
-                enum: ["layer1", "layer2", "both"],
-                description: "Which critic layer identified this gap (for per-critic tracking)",
-              },
-            },
-            required: ["severity", "category", "description"],
-          },
-          description: "Optional terminal gap list. When required_delegates + created_after are provided for a verifier round, the helper derives canonical gaps from typed required-critic findings instead.",
         },
         convergence_reason: {
           type: "string",
@@ -591,62 +248,6 @@ export const PLAN_TOOLS: Tool[] = [
           type: "integer",
           description:
             "Generation counter for zombie protection. Pass on every verifier call. If mismatched, the server rejects the request.",
-        },
-        created_after: {
-          type: "string",
-          description: "Optional RFC3339 threshold for current-round artifact settlement before terminal completion.",
-        },
-        rescue_budget_exhausted: {
-          type: "boolean",
-          description:
-            "Set true after the verifier has used its allowed wait/rescue budget for the required delegates of this round.",
-        },
-        include_full_content: {
-          type: "boolean",
-          description: "Whether settlement should fetch full artifact content for the latest matching artifacts. Default: true.",
-        },
-        include_messages: {
-          type: "boolean",
-          description: "Whether delegated job status hydration should include recent delegated-session messages during settlement. Default: true.",
-        },
-        message_limit: {
-          type: "integer",
-          description: "Optional delegated recent-message limit when include_messages is true. Default: 5, max: 50.",
-        },
-        max_wait_ms: {
-          type: "integer",
-          description: "Maximum time to wait for required delegates to settle before terminal completion. Default: 600000, max: 600000.",
-        },
-        poll_interval_ms: {
-          type: "integer",
-          description: "Polling interval used while waiting for required delegates to settle. Default: 750, min: 100.",
-        },
-        required_delegates: {
-          type: "array",
-          description:
-            "Optional required delegated critic/specialist jobs for this terminal update. When provided, completion is blocked until the round settles or the helper classifies an infra failure.",
-          items: {
-            type: "object",
-            properties: {
-              job_id: {
-                type: "string",
-                description: "Delegation job ID returned by delegate_start.",
-              },
-              artifact_prefix: {
-                type: "string",
-                description: "Stable slot label for this delegate in settlement output, for example 'Completeness: '.",
-              },
-              required: {
-                type: "boolean",
-                description: "Whether this delegate is required for the round classification. Default: true.",
-              },
-              label: {
-                type: "string",
-                description: "Optional short label for summaries, for example 'completeness' or 'feasibility'.",
-              },
-            },
-            required: ["job_id", "artifact_prefix"],
-          },
         },
       },
       required: ["status", "generation"],

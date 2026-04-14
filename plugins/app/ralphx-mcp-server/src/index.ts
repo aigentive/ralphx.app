@@ -47,12 +47,7 @@ import {
   hydrateRalphxRuntimeEnvFromCli,
   parseCliOptionFromArgs,
 } from "./runtime-context.js";
-import { type VerificationRoundDelegateInput } from "./verification-round-assessment.js";
-import {
-  createVerificationRuntime,
-  type VerificationAssessmentArgs,
-  type VerificationSettlementArgs,
-} from "./verification-runtime.js";
+import { createVerificationRuntime } from "./verification-runtime.js";
 
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
@@ -169,14 +164,11 @@ const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
 
 const {
-  assessVerificationRoundState,
   getPlanVerificationForTool,
   reportVerificationRoundForTool,
   completePlanVerificationForTool,
   runVerificationEnrichment,
   runVerificationRound,
-  runRequiredVerificationCriticRoundTool,
-  awaitVerificationRoundSettlementForTool,
   resolveVerificationFindingSessionId,
   resolveContextSessionId,
 } = createVerificationRuntime({
@@ -561,63 +553,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await reportVerificationRoundForTool(args as {
         session_id?: string;
         round: number;
-        gaps?: unknown[];
         generation: number;
       });
-    } else if (name === "assess_verification_round") {
-      result = await assessVerificationRoundState(args as VerificationAssessmentArgs);
     } else if (name === "run_verification_enrichment") {
       result = await runVerificationEnrichment(args as {
         session_id?: string;
-        disabled_specialists?: string[];
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
+        selected_specialists?: string[];
       });
     } else if (name === "run_verification_round") {
       result = await runVerificationRound(args as {
         session_id?: string;
         round: number;
-        disabled_specialists?: string[];
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        optional_wait_ms?: number;
-        poll_interval_ms?: number;
+        selected_specialists?: string[];
       });
-    } else if (name === "run_required_verification_critic_round") {
-      result = await runRequiredVerificationCriticRoundTool(args as {
-        session_id?: string;
-        round: number;
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
-      });
-    } else if (name === "await_verification_round_settlement") {
-      result = await awaitVerificationRoundSettlementForTool(
-        args as VerificationSettlementArgs
-      );
     } else if (name === "complete_plan_verification") {
       result = await completePlanVerificationForTool(args as {
         session_id?: string;
         status: string;
         round?: number;
-        gaps?: unknown[];
         convergence_reason?: string;
         generation: number;
-        required_delegates?: VerificationRoundDelegateInput[];
-        created_after?: string;
-        rescue_budget_exhausted?: boolean;
-        include_full_content?: boolean;
-        include_messages?: boolean;
-        message_limit?: number;
-        max_wait_ms?: number;
-        poll_interval_ms?: number;
       });
     } else if (name === "update_plan_verification") {
       // POST /api/ideation/sessions/:id/verification

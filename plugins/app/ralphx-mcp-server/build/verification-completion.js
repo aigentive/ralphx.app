@@ -12,7 +12,7 @@ export async function completePlanVerificationWithSettlement(deps) {
         poll_interval_ms: deps.pollIntervalMs,
     });
     if (settledRound.classification === "pending") {
-        throw new Error(`Required verification delegates are still pending for: ${settledRound.missing_required_prefixes.join(", ")}. Wait for settlement before terminal completion.`);
+        throw new Error(`Required verification delegates are still pending for: ${settledRound.missing_required_critics.join(", ")}. Wait for settlement before terminal completion.`);
     }
     if (deps.body.status === "verified" && settledRound.classification !== "complete") {
         throw new Error(`Cannot complete verification as verified while required delegate coverage is ${settledRound.classification}.`);

@@ -17,6 +17,100 @@ function mcpWrap(obj: unknown): unknown {
 }
 
 describe("VerificationWidget", () => {
+  describe("backend-owned verifier flow widgets", () => {
+    it("renders enrichment progress with specialist status instead of raw payload fallback", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_enrichment", {
+        arguments: { selected_specialists: ["intent", "code-quality"] },
+        result: mcpWrap({
+          selected_specialists: [
+            { name: "intent", label: "intent", critic: "intent" },
+            { name: "code-quality", label: "code-quality", critic: "code-quality" },
+          ],
+          timed_out: true,
+          findings_by_critic: [
+            { critic: "intent", found: false, total_matches: 0 },
+            { critic: "code-quality", found: true, total_matches: 1 },
+          ],
+          delegate_snapshots: [
+            { job_id: "intent-1", status: "completed", label: "intent" },
+            { job_id: "quality-1", status: "running", label: "code-quality" },
+          ],
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification enrichment")).toBeInTheDocument();
+      expect(screen.getByText("2 specialists")).toBeInTheDocument();
+      expect(screen.getByText("Timed out")).toBeInTheDocument();
+      expect(screen.getByText("intent")).toBeInTheDocument();
+      expect(screen.getByText("code-quality")).toBeInTheDocument();
+    });
+
+    it("renders round progress, classification, and severity counts for run_verification_round", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_round", {
+        arguments: { round: 2 },
+        result: mcpWrap({
+          round: 2,
+          classification: "complete",
+          gap_counts: { critical: 0, high: 1, medium: 2, low: 0 },
+          required_delegates: [
+            { label: "completeness", critic: "completeness", job_id: "job-1" },
+            { label: "feasibility", critic: "feasibility", job_id: "job-2" },
+          ],
+          required_critic_settlement: {
+            summary: "Required critics settled cleanly.",
+          },
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification round")).toBeInTheDocument();
+      expect(screen.getByText("Round 2")).toBeInTheDocument();
+      expect(screen.getByText("complete")).toBeInTheDocument();
+      expect(screen.getByText("H 1")).toBeInTheDocument();
+      expect(screen.getByText("M 2")).toBeInTheDocument();
+      expect(screen.getByText("completeness")).toBeInTheDocument();
+      expect(screen.getByText("feasibility")).toBeInTheDocument();
+    });
+
+    it("renders backend-authoritative round report state", () => {
+      const toolCall = makeToolCall("mcp__ralphx__report_verification_round", {
+        arguments: { round: 1 },
+        result: mcpWrap({
+          status: "reviewing",
+          in_progress: true,
+          current_round: 1,
+          current_gaps: [{ severity: "medium", category: "api", description: "gap" }],
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Round report")).toBeInTheDocument();
+      expect(screen.getByText("reviewing")).toBeInTheDocument();
+      expect(screen.getByText("1 gap")).toBeInTheDocument();
+    });
+
+    it("renders terminal cleanup outcome including infra settlement summary", () => {
+      const toolCall = makeToolCall("mcp__ralphx__complete_plan_verification", {
+        arguments: { status: "needs_revision" },
+        result: mcpWrap({
+          status: "unverified",
+          convergence_reason: "agent_error",
+          settlement: {
+            classification: "infra_failure",
+            summary: "Required verification findings were missing.",
+          },
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Final cleanup")).toBeInTheDocument();
+      expect(screen.getByText("infra_failure")).toBeInTheDocument();
+      expect(screen.getByText("Agent error")).toBeInTheDocument();
+      expect(screen.getByText("Required verification findings were missing.")).toBeInTheDocument();
+    });
+  });
+
   describe("UpdateVerification (update_plan_verification)", () => {
     it("shows loading state when result has no status", () => {
       const toolCall = makeToolCall("mcp__ralphx__update_plan_verification", {

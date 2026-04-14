@@ -26,7 +26,7 @@ Read the bootstrap prompt and capture:
 - your verification child session id
 - `generation`
 - `max_rounds`
-- optional `DISABLED_SPECIALISTS`
+- optional specialist choices for enrichment and round lenses
 
 Then:
 1. `mcp__ralphx__get_parent_session_context(session_id: <OWN_SESSION_ID>)`
@@ -49,11 +49,12 @@ After startup:
 ## Enrichment
 
 Before round 1 call:
-- `mcp__ralphx__run_verification_enrichment(disabled_specialists: <DISABLED_SPECIALISTS>)`
+- choose any enrichment specialists you need from `intent`, `code-quality`
+- `mcp__ralphx__run_verification_enrichment(selected_specialists: <SELECTED_ENRICHMENT_SPECIALISTS>)`
 
 If enrichment returns:
-- `IntentAlignment: ` artifact: inject a short `## Intent Alignment Warning`
-- `CodeQuality: ` artifact: inject a short `## Code Quality Improvements`
+- an `intent` finding: inject a short `## Intent Alignment Warning`
+- a `code-quality` finding: inject a short `## Code Quality Improvements`
 
 Use `mcp__ralphx__edit_plan_artifact` when anchored edits are safe, otherwise `mcp__ralphx__update_plan_artifact`. Do not rewrite `## Goal`.
 
@@ -61,13 +62,11 @@ Use `mcp__ralphx__edit_plan_artifact` when anchored edits are safe, otherwise `m
 
 For each round:
 1. increment `current_round`
-2. call `mcp__ralphx__run_verification_round(round: <current_round>, disabled_specialists: <DISABLED_SPECIALISTS>)`
-3. store:
-   - `latest_required_delegates_for_this_round = round_result.required_delegates`
-   - `current_round_created_after = round_result.created_after`
+2. choose any optional specialists you need from `ux`, `prompt-quality`, `pipeline-safety`, `state-machine`
+3. call `mcp__ralphx__run_verification_round(round: <current_round>, selected_specialists: <SELECTED_ROUND_SPECIALISTS>)`
 
 Respect `round_result.classification` literally:
-- `infra_failure` or `pending`: stop the run and go straight to Final Cleanup with `status="needs_revision"` and `convergence_reason="agent_error"`. Do not inspect optional artifacts further. Do not invent fallback findings.
+- `infra_failure` or `pending`: stop the run and go straight to Final Cleanup with `status="needs_revision"` and `convergence_reason="agent_error"`. Do not inspect optional specialist findings further. Do not invent fallback findings.
 - `complete`: continue.
 
 Use backend-owned gap output:
@@ -75,10 +74,10 @@ Use backend-owned gap output:
 - `round_result.gap_counts`
 - `round_result.required_findings`
 
-Optional specialist artifacts may help the next revision, but they do not create authoritative blockers on their own.
+Optional specialist findings may help the next revision, but they do not create authoritative blockers on their own.
 
 Report each complete round with:
-- `mcp__ralphx__report_verification_round(round: <current_round>, gaps: <round_result.merged_gaps>, generation: <generation>)`
+- `mcp__ralphx__report_verification_round(round: <current_round>, generation: <generation>)`
 - store the response as `round_report`
 
 Backend state is authoritative:
@@ -107,16 +106,13 @@ Call `mcp__ralphx__complete_plan_verification` exactly once:
   "generation": <generation>,
   "status": "<verified|needs_revision>",
   "convergence_reason": "<reason>",
-  "required_delegates": <latest_required_delegates_for_this_round>,
-  "created_after": "<current_round_created_after>",
-  "rescue_budget_exhausted": true
+  "round": <current_round>
 }
 ```
 
 Rules:
-- never omit `required_delegates`
 - never pass `reviewing`
-- do not hand-assemble final gaps for terminal cleanup; the helper derives canonical round gaps from typed required-critic findings
+- do not hand-assemble final gaps for terminal cleanup; the helper derives canonical round gaps from backend-owned current round state
 - if the backend classified the round as infra failure, still call this helper once so the backend can record the canonical runtime-failure outcome
 
 ## Final User Message

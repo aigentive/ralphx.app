@@ -95,7 +95,6 @@ describe('getToolRecoveryHint', () => {
         const hint = getToolRecoveryHint('update_plan_verification');
         expect(hint).toContain('PARENT ideation session_id');
         expect(hint).toContain('backend remaps it automatically');
-        expect(hint).toContain('prefer those narrower helpers');
         expect(hint).toContain('status=reviewing');
         expect(hint).toContain('Example reviewing payload:');
         expect(hint).toContain('Example terminal payload:');
@@ -104,7 +103,7 @@ describe('getToolRecoveryHint', () => {
         const hint = getToolRecoveryHint('report_verification_round');
         expect(hint).toContain('verifier-friendly helper');
         expect(hint).toContain('backend remaps it to the parent automatically');
-        expect(hint).toContain('status=reviewing and in_progress=true are filled in automatically');
+        expect(hint).toContain('current-round gaps come from the backend-owned run_verification_round state');
         expect(hint).toContain('Example payload:');
     });
     it('returns narrower verifier-helper guidance for complete_plan_verification', () => {
@@ -112,35 +111,19 @@ describe('getToolRecoveryHint', () => {
         expect(hint).toContain('terminal verification updates');
         expect(hint).toContain('backend remaps it to the parent automatically');
         expect(hint).toContain('in_progress=false is filled in automatically');
+        expect(hint).toContain('do not try to pass delegate, timestamp, rescue, or wait bookkeeping');
         expect(hint).toContain('External sessions cannot use status=skipped');
-    });
-    it('returns classification guidance for assess_verification_round', () => {
-        const hint = getToolRecoveryHint('assess_verification_round');
-        expect(hint).toContain('bounded wait/rescue attempts');
-        expect(hint).toContain('rescue_budget_exhausted=true');
-        expect(hint).toContain('infrastructure failure');
-    });
-    it('returns required-critic round guidance for run_required_verification_critic_round', () => {
-        const hint = getToolRecoveryHint('run_required_verification_critic_round');
-        expect(hint).toContain('first-class required-critic round driver');
-        expect(hint).toContain('one bounded rescue pass');
-        expect(hint).toContain('final required_delegates set');
     });
     it('returns enrichment guidance for run_verification_enrichment', () => {
         const hint = getToolRecoveryHint('run_verification_enrichment');
         expect(hint).toContain('backend-owned one-time enrichment driver');
-        expect(hint).toContain('intent/code-quality specialists');
+        expect(hint).toContain('You choose the enrichment specialists');
     });
     it('returns round-driver guidance for run_verification_round', () => {
         const hint = getToolRecoveryHint('run_verification_round');
         expect(hint).toContain('primary verifier round driver');
         expect(hint).toContain('structured required critic findings');
-    });
-    it('returns settlement guidance for await_verification_round_settlement', () => {
-        const hint = getToolRecoveryHint('await_verification_round_settlement');
-        expect(hint).toContain('synchronization barrier');
-        expect(hint).toContain('current-round artifacts');
-        expect(hint).toContain('manual poll loops');
+        expect(hint).toContain('You choose the optional specialists');
     });
     it('returns verifier-debugging guidance for get_child_session_status', () => {
         const hint = getToolRecoveryHint('get_child_session_status');
@@ -149,7 +132,7 @@ describe('getToolRecoveryHint', () => {
     });
     it('returns invariant-context guidance for send_ideation_session_message', () => {
         const hint = getToolRecoveryHint('send_ideation_session_message');
-        expect(hint).toContain('SESSION_ID, ROUND, artifact prefix/schema');
+        expect(hint).toContain('SESSION_ID, ROUND, critic/schema');
         expect(hint).toContain('Example payload:');
     });
     it('returns null for an unknown tool', () => {
@@ -251,6 +234,9 @@ describe('getFilteredTools', () => {
         expect(toolNames).not.toContain('update_plan_verification');
         expect(toolNames).not.toContain('get_team_artifacts');
         expect(toolNames).not.toContain('get_artifact');
+        expect(toolNames).not.toContain('assess_verification_round');
+        expect(toolNames).not.toContain('run_required_verification_critic_round');
+        expect(toolNames).not.toContain('await_verification_round_settlement');
     });
     it('should expose read-only filesystem tools for qa prep', () => {
         setAgentType('qa-prep');
@@ -385,7 +371,7 @@ describe('New team tool definitions', () => {
         it('should document parent-session targeting for verification flows', () => {
             expect(tool?.description).toContain('PARENT ideation session_id');
             expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
-            expect(tool?.description).toContain('Use publish_verification_finding');
+            expect(tool?.description).toContain('general team-artifact path');
             expect(tool?.inputSchema.properties?.session_id?.description).toContain('auto-remapped to that parent');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
@@ -430,8 +416,7 @@ describe('New team tool definitions', () => {
         it('should document round-oriented verification lookup guidance', () => {
             expect(tool?.description).toContain('PARENT ideation session_id');
             expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
-            expect(tool?.description).toContain('prefer backend-owned helpers like run_verification_enrichment or run_verification_round');
-            expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
+            expect(tool?.description).toContain('raw artifact listing surface');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
             });
@@ -492,35 +477,28 @@ describe('New team tool definitions', () => {
             expect(tool?.description).toContain('Verifier-friendly helper');
             expect(tool?.description).toContain('backend remaps it automatically');
             expect(tool?.description).toContain('in_progress fixed to false');
-            expect(tool?.description).toContain('derives the canonical terminal gap list from those findings');
+            expect(tool?.description).toContain('uses the backend-owned current round state');
             expect(tool?.description).toContain("skipped remains available only where skip is actually allowed by the backend");
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
                 status: 'verified',
                 convergence_reason: 'zero_blocking',
-                required_delegates: expect.any(Array),
-                created_after: '2026-04-13T10:00:00Z',
+                round: 1,
+                generation: 3,
             });
             expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('gaps');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('required_delegates');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('created_after');
             expect((tool?.inputSchema).examples).toHaveLength(1);
             expect((tool?.inputSchema).properties.status.enum).not.toContain('reviewing');
             expect(tool?.inputSchema.properties?.session_id?.description).toContain('backend resolves the canonical parent automatically');
-            expect(tool?.inputSchema.properties?.gaps?.description).toContain('derives canonical gaps from typed required-critic findings');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('gaps');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('required_delegates');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('created_after');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('rescue_budget_exhausted');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('max_wait_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('poll_interval_ms');
             expect(tool?.inputSchema.required).toEqual(['status', 'generation']);
-        });
-    });
-    describe('run_required_verification_critic_round', () => {
-        const tool = PLAN_TOOLS.find((t) => t.name === 'run_required_verification_critic_round');
-        it('should expose the backend-owned required critic round helper', () => {
-            expect(tool).toBeDefined();
-            expect(tool?.description).toContain('required completeness and feasibility critics');
-            expect(tool?.description).toContain('one bounded rescue pass');
-            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
-                session_id: 'parent-session-id',
-                round: 3,
-                max_wait_ms: 600000,
-            });
-            expect(tool?.inputSchema.required).toEqual(['round']);
         });
     });
     describe('run_verification_enrichment', () => {
@@ -528,11 +506,18 @@ describe('New team tool definitions', () => {
         it('should expose the backend-owned enrichment helper', () => {
             expect(tool).toBeDefined();
             expect(tool?.description).toContain('one-time verification enrichment helper');
-            expect(tool?.description).toContain('intent and code-quality enrichment');
+            expect(tool?.description).toContain('verifier chooses which enrichment specialists to run');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
-                max_wait_ms: 15000,
-                poll_interval_ms: 500,
+                selected_specialists: ['intent', 'code-quality'],
             });
+            expect(tool?.inputSchema.properties).toHaveProperty('selected_specialists');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('disabled_specialists');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('max_wait_ms');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('poll_interval_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('max_wait_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('poll_interval_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('include_full_content');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('include_messages');
             expect(tool?.inputSchema.required).toEqual([]);
         });
     });
@@ -542,11 +527,20 @@ describe('New team tool definitions', () => {
             expect(tool).toBeDefined();
             expect(tool?.description).toContain('verification round driver');
             expect(tool?.description).toContain('structured required critic findings');
+            expect(tool?.description).toContain('verifier chooses which optional specialists to run');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 round: 2,
-                max_wait_ms: 600000,
-                optional_wait_ms: 15000,
+                selected_specialists: ['ux', 'pipeline-safety'],
             });
+            expect(tool?.inputSchema.properties).toHaveProperty('selected_specialists');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('disabled_specialists');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('max_wait_ms');
+            expect((tool?.inputSchema).examples?.[0]).not.toHaveProperty('optional_wait_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('max_wait_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('optional_wait_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('poll_interval_ms');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('include_full_content');
+            expect(tool?.inputSchema.properties).not.toHaveProperty('include_messages');
             expect(tool?.inputSchema.required).toEqual(['round']);
         });
     });
@@ -568,7 +562,7 @@ describe('New team tool definitions', () => {
         it('should document full-context verifier nudges and example payload', () => {
             expect(tool).toBeDefined();
             expect(tool?.description).toContain('repeat the full invariant context');
-            expect(tool?.description).toContain('SESSION_ID, ROUND, expected artifact prefix/schema');
+            expect(tool?.description).toContain('SESSION_ID, ROUND, expected critic/schema');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'verification-child-session-id',
             });
@@ -949,27 +943,26 @@ describe('delegation bridge tools', () => {
 });
 describe('verification round helper tools', () => {
     const allTools = getAllTools();
-    it('assess_verification_round should exist in ALL_TOOLS', () => {
+    it('assess_verification_round should not exist in ALL_TOOLS', () => {
         const tool = allTools.find((entry) => entry.name === 'assess_verification_round');
-        expect(tool).toBeDefined();
-        expect(tool?.inputSchema.properties).toHaveProperty('session_id');
-        expect(tool?.inputSchema.properties).toHaveProperty('delegates');
-        expect(tool?.inputSchema.properties).toHaveProperty('rescue_budget_exhausted');
+        expect(tool).toBeUndefined();
     });
-    it('await_verification_round_settlement should exist in ALL_TOOLS', () => {
+    it('await_verification_round_settlement should not exist in ALL_TOOLS', () => {
         const tool = allTools.find((entry) => entry.name === 'await_verification_round_settlement');
-        expect(tool).toBeDefined();
-        expect(tool?.inputSchema.properties).toHaveProperty('session_id');
-        expect(tool?.inputSchema.properties).toHaveProperty('delegates');
-        expect(tool?.inputSchema.properties).toHaveProperty('max_wait_ms');
+        expect(tool).toBeUndefined();
     });
-    it('plan verifier should expose assess_verification_round', () => {
+    it('plan verifier should only expose the high-level verification helpers', () => {
         expect(toolsByAgent()[PLAN_VERIFIER]).toContain('run_verification_enrichment');
         expect(toolsByAgent()[PLAN_VERIFIER]).toContain('run_verification_round');
         setAgentType(PLAN_VERIFIER);
         const toolNames = getFilteredTools().map((tool) => tool.name);
         expect(toolNames).toContain('run_verification_enrichment');
         expect(toolNames).toContain('run_verification_round');
+        expect(toolNames).toContain('report_verification_round');
+        expect(toolNames).toContain('complete_plan_verification');
+        expect(toolNames).not.toContain('assess_verification_round');
+        expect(toolNames).not.toContain('run_required_verification_critic_round');
+        expect(toolNames).not.toContain('await_verification_round_settlement');
         expect(toolNames).not.toContain('delegate_start');
     });
 });

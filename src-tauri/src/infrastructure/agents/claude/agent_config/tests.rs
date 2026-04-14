@@ -239,8 +239,8 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must treat the backend round report as the authoritative next-step signal"
     );
     assert!(
-        prompt.contains("created_after"),
-        "ralphx-plan-verifier prompt must pass created_after through the terminal cleanup contract"
+        !prompt.contains("created_after"),
+        "ralphx-plan-verifier prompt should not supply round-settlement timestamps from prompt memory"
     );
     assert!(
         prompt.contains("omit `session_id`"),
@@ -255,12 +255,16 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt should not drift back to low-level settlement choreography"
     );
     assert!(
-        prompt.contains("required_delegates"),
-        "ralphx-plan-verifier prompt must pass required_delegates during terminal cleanup so completion cannot bypass the settlement barrier"
+        !prompt.contains("required_delegates"),
+        "ralphx-plan-verifier prompt should not pass required delegate state during terminal cleanup"
     );
     assert!(
         prompt.contains("do not hand-assemble final gaps"),
         "ralphx-plan-verifier prompt must leave terminal gap derivation to the backend helper"
+    );
+    assert!(
+        !prompt.contains("rescue_budget_exhausted"),
+        "ralphx-plan-verifier prompt should not pass settlement bookkeeping flags during terminal cleanup"
     );
     assert!(
         !prompt.contains("\"gaps\": <final_merged_gaps>"),

@@ -363,7 +363,7 @@ export const SUPPORT_TOOLS = [
             "Returns delivery_status: 'sent' (written to active stdin), " +
             "'queued' (agent busy, will receive on next turn), or 'spawned' (new agent run started). " +
             "Use to nudge verification agents, inject context, send escalation payloads, or send stop signals. " +
-            "When nudging critics/verifiers, repeat the full invariant context they need (for example SESSION_ID, ROUND, expected artifact prefix/schema) instead of sending a vague follow-up.",
+            "When nudging critics/verifiers, repeat the full invariant context they need (for example SESSION_ID, ROUND, expected critic/schema) instead of sending a vague follow-up.",
         inputSchema: {
             type: "object",
             examples: [

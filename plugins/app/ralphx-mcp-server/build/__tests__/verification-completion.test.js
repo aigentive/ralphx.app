@@ -23,13 +23,13 @@ describe("completePlanVerificationWithSettlement", () => {
             requiredDelegates: [
                 {
                     job_id: "job-1",
-                    artifact_prefix: "Completeness: ",
+                    critic: "completeness",
                     label: "completeness",
                     required: true,
                 },
                 {
                     job_id: "job-2",
-                    artifact_prefix: "Feasibility: ",
+                    critic: "feasibility",
                     label: "feasibility",
                     required: true,
                 },
@@ -43,7 +43,7 @@ describe("completePlanVerificationWithSettlement", () => {
             pollIntervalMs: 750,
             awaitVerificationRoundSettlement: async () => ({
                 classification: "infra_failure",
-                missing_required_prefixes: ["Completeness: "],
+                missing_required_critics: ["completeness"],
             }),
             callInfraFailure,
             callCompletion,

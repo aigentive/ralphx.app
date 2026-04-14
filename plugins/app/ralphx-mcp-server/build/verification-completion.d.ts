@@ -8,7 +8,7 @@ export type VerificationTerminalBody = {
 };
 export type VerificationSettlementResult = {
     classification: "complete" | "pending" | "infra_failure";
-    missing_required_prefixes: string[];
+    missing_required_critics: string[];
     verification_findings?: VerificationFindingSummary[];
     [key: string]: unknown;
 };

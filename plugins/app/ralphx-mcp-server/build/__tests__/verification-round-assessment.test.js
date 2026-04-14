@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { aggregateVerificationGaps, assessVerificationRound, } from "../verification-round-assessment.js";
 describe("assessVerificationRound", () => {
-    it("classifies the round as complete when all required artifacts are present", () => {
+    it("classifies the round as complete when all required findings are present", () => {
         const result = assessVerificationRound({
             delegates: [
-                { job_id: "job-1", artifact_prefix: "Completeness: ", required: true },
-                { job_id: "job-2", artifact_prefix: "Feasibility: ", required: true },
+                { job_id: "job-1", critic: "completeness", required: true },
+                { job_id: "job-2", critic: "feasibility", required: true },
             ],
-            artifactsByPrefix: [
-                { prefix: "Completeness: ", found: true, total_matches: 1, artifact: { id: "a1" } },
-                { prefix: "Feasibility: ", found: true, total_matches: 1, artifact: { id: "a2" } },
+            findingsByCritic: [
+                { critic: "completeness", found: true, total_matches: 1, finding: { artifact_id: "a1", title: "Completeness: Round 1", created_at: "2026-04-13T17:25:41Z", critic: "completeness", round: 1, status: "complete", summary: "done", gaps: [] } },
+                { critic: "feasibility", found: true, total_matches: 1, finding: { artifact_id: "a2", title: "Feasibility: Round 1", created_at: "2026-04-13T17:25:28Z", critic: "feasibility", round: 1, status: "complete", summary: "done", gaps: [] } },
             ],
             delegateSnapshots: [
                 { job_id: "job-1", status: "completed" },
@@ -18,15 +18,15 @@ describe("assessVerificationRound", () => {
         });
         expect(result.classification).toBe("complete");
         expect(result.recommended_next_action).toBe("continue_round_analysis");
-        expect(result.missing_required_prefixes).toEqual([]);
+        expect(result.missing_required_critics).toEqual([]);
     });
     it("classifies the round as pending before rescue budget is exhausted when a required delegate is still running", () => {
         const result = assessVerificationRound({
             delegates: [
-                { job_id: "job-1", artifact_prefix: "Completeness: ", required: true },
+                { job_id: "job-1", critic: "completeness", required: true },
             ],
-            artifactsByPrefix: [
-                { prefix: "Completeness: ", found: false, total_matches: 0 },
+            findingsByCritic: [
+                { critic: "completeness", found: false, total_matches: 0 },
             ],
             delegateSnapshots: [
                 {
@@ -43,17 +43,17 @@ describe("assessVerificationRound", () => {
         });
         expect(result.classification).toBe("pending");
         expect(result.recommended_next_action).toBe("perform_single_rescue_or_wait");
-        expect(result.missing_required_prefixes).toEqual(["Completeness: "]);
+        expect(result.missing_required_critics).toEqual(["completeness"]);
     });
-    it("classifies the round as infra failure when rescue budget is exhausted and a required artifact is still missing", () => {
+    it("classifies the round as infra failure when rescue budget is exhausted and a required finding is still missing", () => {
         const result = assessVerificationRound({
             delegates: [
-                { job_id: "job-1", artifact_prefix: "Completeness: ", required: true, label: "completeness" },
-                { job_id: "job-2", artifact_prefix: "Feasibility: ", required: true, label: "feasibility" },
+                { job_id: "job-1", critic: "completeness", required: true, label: "completeness" },
+                { job_id: "job-2", critic: "feasibility", required: true, label: "feasibility" },
             ],
-            artifactsByPrefix: [
-                { prefix: "Completeness: ", found: false, total_matches: 0 },
-                { prefix: "Feasibility: ", found: true, total_matches: 1, artifact: { id: "a2" } },
+            findingsByCritic: [
+                { critic: "completeness", found: false, total_matches: 0 },
+                { critic: "feasibility", found: true, total_matches: 1, finding: { artifact_id: "a2", title: "Feasibility: Round 1", created_at: "2026-04-13T17:25:28Z", critic: "feasibility", round: 1, status: "complete", summary: "done", gaps: [] } },
             ],
             delegateSnapshots: [
                 {
@@ -69,16 +69,16 @@ describe("assessVerificationRound", () => {
         });
         expect(result.classification).toBe("infra_failure");
         expect(result.recommended_next_action).toBe("complete_verification_with_infra_failure");
-        expect(result.missing_required_prefixes).toEqual(["Completeness: "]);
+        expect(result.missing_required_critics).toEqual(["completeness"]);
         expect(result.delegate_assessments[0]?.reason).toContain("terminal state");
     });
     it("keeps the round pending when rescue budget is exhausted but the required delegate is still running", () => {
         const result = assessVerificationRound({
             delegates: [
-                { job_id: "job-1", artifact_prefix: "Completeness: ", required: true, label: "completeness" },
+                { job_id: "job-1", critic: "completeness", required: true, label: "completeness" },
             ],
-            artifactsByPrefix: [
-                { prefix: "Completeness: ", found: false, total_matches: 0 },
+            findingsByCritic: [
+                { critic: "completeness", found: false, total_matches: 0 },
             ],
             delegateSnapshots: [
                 {
@@ -98,7 +98,7 @@ describe("assessVerificationRound", () => {
         });
         expect(result.classification).toBe("pending");
         expect(result.recommended_next_action).toBe("perform_single_rescue_or_wait");
-        expect(result.missing_required_prefixes).toEqual(["Completeness: "]);
+        expect(result.missing_required_critics).toEqual(["completeness"]);
     });
 });
 describe("aggregateVerificationGaps", () => {
