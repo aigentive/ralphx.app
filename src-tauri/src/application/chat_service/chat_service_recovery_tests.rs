@@ -26,9 +26,7 @@ async fn test_recovery_metadata_includes_verification_fields_when_in_progress() 
     let mut session = IdeationSession::new(project_id);
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
-    // current_round=2 encoded in metadata JSON
-    session.verification_metadata =
-        Some(r#"{"schema_version":1,"current_round":2,"rounds":[]}"#.to_string());
+    session.verification_current_round = Some(2);
 
     let session_id = session.id.clone();
     session_repo.create(session).await.unwrap();
@@ -50,7 +48,7 @@ async fn test_recovery_metadata_includes_verification_fields_when_in_progress() 
     let m = metadata.unwrap();
     assert_eq!(m.verification_status, "reviewing");
     assert!(m.verification_in_progress, "must capture in_progress=true before reset");
-    assert_eq!(m.current_round, 2, "must extract current_round from metadata JSON");
+    assert_eq!(m.current_round, 2, "must extract current_round from summary fields");
 
     // Recovery resets verification state when in_progress=true
     let after = session_repo.get_by_id(&session_id).await.unwrap().unwrap();
@@ -94,7 +92,7 @@ async fn test_recovery_metadata_no_reset_when_not_in_progress() {
     let m = metadata.unwrap();
     assert_eq!(m.verification_status, "verified");
     assert!(!m.verification_in_progress);
-    assert_eq!(m.current_round, 0, "current_round is 0 when no metadata JSON present");
+    assert_eq!(m.current_round, 0, "current_round is 0 when no summary is present");
 
     // Status must NOT be reset since verification was not in-progress
     let after = session_repo.get_by_id(&session_id).await.unwrap().unwrap();

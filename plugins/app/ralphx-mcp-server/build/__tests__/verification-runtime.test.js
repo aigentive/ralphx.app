@@ -50,6 +50,79 @@ describe("verification runtime parent resolution", () => {
     });
 });
 describe("verification runtime settlement and terminal cleanup", () => {
+    it("waits longer than 15s by default for enrichment delegates before calling the pass timed out", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-04-13T16:35:53.000Z"));
+        const callTauri = vi.fn(async (endpoint) => {
+            if (endpoint === "coordination/delegate/start") {
+                return {
+                    job_id: "job-1",
+                    delegated_session_id: "delegated-1",
+                    agent_name: "ralphx:ralphx-ideation-specialist-intent",
+                };
+            }
+            if (endpoint === "coordination/delegate/wait") {
+                const completed = Date.now() >= Date.parse("2026-04-13T16:36:13.000Z");
+                return {
+                    job_id: "job-1",
+                    status: completed ? "completed" : "running",
+                    delegated_status: {
+                        latest_run: {
+                            status: completed ? "completed" : "running",
+                        },
+                        agent_state: {
+                            estimated_status: completed ? "completed" : "running",
+                        },
+                    },
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            if (endpoint === "get_session_plan/parent-session") {
+                return {
+                    id: "plan-1",
+                    content: "## Goal\nFlip merge validation default.\n\n## Affected Files\n- `src-tauri/foo.rs` — update existing code.\n",
+                };
+            }
+            if (endpoint.startsWith("team/verification-findings/")) {
+                return {
+                    findings: [],
+                    count: 0,
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        const enrichmentPromise = runtime.runVerificationEnrichment({
+            selected_specialists: ["intent"],
+        });
+        await vi.advanceTimersByTimeAsync(21_000);
+        const result = await enrichmentPromise;
+        expect(result).toMatchObject({
+            timed_out: false,
+            requested_specialists: ["intent"],
+            findings_by_critic: [
+                {
+                    critic: "intent",
+                    found: false,
+                },
+            ],
+        });
+    });
     it("keeps timed-out required critics pending when they are still running and clamps the wait budget to the tool-safe cap", async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-04-13T16:35:53.000Z"));

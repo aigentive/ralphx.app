@@ -642,7 +642,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Guard: skip auto-archival for verification child sessions.
                 // The run_completed hook (Fix 1) handles archival after confirming parent state
                 // is reconciled. Auto-archiving here creates a race with the agent's final MCP
-                // call (update_plan_verification). The periodic reconciler is the fallback for
+                // call (post_verification_status). The periodic reconciler is the fallback for
                 // orphaned children if Fix 1's hook fails for any reason.
                 if context_type == ChatContextType::Ideation {
                     let session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.clone());

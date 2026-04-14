@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VerificationWidget } from "./VerificationWidget";
+import { getToolCallWidget } from "./registry";
 import type { ToolCall } from "./shared.constants";
 
 function makeToolCall(name: string, overrides: Partial<ToolCall> = {}): ToolCall {
@@ -40,10 +41,27 @@ describe("VerificationWidget", () => {
 
       render(<VerificationWidget toolCall={toolCall} />);
       expect(screen.getByText("Verification enrichment")).toBeInTheDocument();
-      expect(screen.getByText("2 specialists")).toBeInTheDocument();
+      expect(screen.getByText("2 launched")).toBeInTheDocument();
       expect(screen.getByText("Timed out")).toBeInTheDocument();
       expect(screen.getByText("intent")).toBeInTheDocument();
       expect(screen.getByText("code-quality")).toBeInTheDocument();
+    });
+
+    it("avoids misleading zero-specialist copy when requests were made but launches have not materialized", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_enrichment", {
+        arguments: { selected_specialists: ["intent", "code-quality"] },
+        result: mcpWrap({
+          selected_specialists: [],
+          timed_out: true,
+          findings_by_critic: [],
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification enrichment")).toBeInTheDocument();
+      expect(screen.getByText("2 requested")).toBeInTheDocument();
+      expect(screen.queryByText("0 specialists")).not.toBeInTheDocument();
+      expect(screen.getByText("Waiting for specialist launches.")).toBeInTheDocument();
     });
 
     it("renders round progress, classification, and severity counts for run_verification_round", () => {
@@ -111,57 +129,9 @@ describe("VerificationWidget", () => {
     });
   });
 
-  describe("UpdateVerification (update_plan_verification)", () => {
-    it("shows loading state when result has no status", () => {
-      const toolCall = makeToolCall("mcp__ralphx__update_plan_verification", {
-        result: mcpWrap({}),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("Updating verification...")).toBeInTheDocument();
-    });
-
-    it("renders status badge and round info", () => {
-      const toolCall = makeToolCall("mcp__ralphx__update_plan_verification", {
-        result: mcpWrap({
-          status: "reviewing",
-          current_round: 2,
-          max_rounds: 5,
-          current_gaps: [],
-        }),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("reviewing")).toBeInTheDocument();
-      expect(screen.getByText("Round 2/5")).toBeInTheDocument();
-    });
-
-    it("renders gap count badge when gaps present", () => {
-      const toolCall = makeToolCall("mcp__ralphx__update_plan_verification", {
-        result: mcpWrap({
-          status: "needs_revision",
-          current_round: 1,
-          max_rounds: 5,
-          current_gaps: [
-            { severity: "high", category: "auth", description: "Missing check" },
-            { severity: "low", category: "perf", description: "Slow query" },
-          ],
-        }),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("2 gaps")).toBeInTheDocument();
-    });
-
-    it("renders convergence badge when reason present", () => {
-      const toolCall = makeToolCall("mcp__ralphx__update_plan_verification", {
-        result: mcpWrap({
-          status: "verified",
-          current_round: 3,
-          max_rounds: 5,
-          current_gaps: [],
-          convergence_reason: "zero_blocking",
-        }),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("All gaps resolved")).toBeInTheDocument();
+  describe("legacy verification tool cleanup", () => {
+    it("does not register a widget for removed update_plan_verification calls", () => {
+      expect(getToolCallWidget("mcp__ralphx__update_plan_verification")).toBeUndefined();
     });
   });
 

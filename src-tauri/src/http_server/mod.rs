@@ -168,7 +168,7 @@ pub async fn start_http_server(
         // Plan verification tools (ralphx-ideation + worker agents)
         .route(
             "/api/ideation/sessions/:id/verification",
-            post(update_plan_verification),
+            post(post_verification_status),
         )
         .route(
             "/api/ideation/sessions/:id/verification",

@@ -33,7 +33,6 @@ type VerificationTool =
   | "run_verification_round"
   | "report_verification_round"
   | "complete_plan_verification"
-  | "update_plan_verification"
   | "get_plan_verification"
   | "get_child_session_status"
   | "get_verification_confirmation_status"
@@ -51,7 +50,6 @@ function getToolType(toolName: string): VerificationTool | null {
   if (name.includes("run_verification_round")) return "run_verification_round";
   if (name.includes("report_verification_round")) return "report_verification_round";
   if (name.includes("complete_plan_verification")) return "complete_plan_verification";
-  if (name.includes("update_plan_verification")) return "update_plan_verification";
   if (name.includes("get_plan_verification")) return "get_plan_verification";
   if (name.includes("get_child_session_status")) return "get_child_session_status";
   if (name.includes("get_verification_confirmation_status")) return "get_verification_confirmation_status";
@@ -249,6 +247,7 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
   const specialistCount = selectedSpecialists?.length ?? 0;
   const foundCount = (findings ?? []).filter((entry) => getBool(entry, "found") === true).length;
   const compactProps = compact === undefined ? {} : { compact };
+  const showRequestedOnly = Array.isArray(requested) && requested.length > 0 && specialistCount === 0;
 
   return (
     <VerificationCard
@@ -258,12 +257,17 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
       badge={<Badge variant={timedOut ? "warning" : "blue"} compact>{timedOut ? "Timed out" : "Running"}</Badge>}
     >
       <WidgetRow compact={compact}>
-        <Badge variant="blue" compact>{specialistCount} specialists</Badge>
+        {specialistCount > 0 && <Badge variant="blue" compact>{specialistCount} launched</Badge>}
         {foundCount > 0 && <Badge variant="success" compact>{foundCount} findings</Badge>}
         {Array.isArray(requested) && requested.length > 0 && (
           <Badge variant="muted" compact>{requested.length} requested</Badge>
         )}
       </WidgetRow>
+      {showRequestedOnly && (
+        <div style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted }}>
+          Waiting for specialist launches.
+        </div>
+      )}
       <WidgetRow compact={compact}>
         {(selectedSpecialists ?? []).map((specialist, index) => {
           const record = getRecord(specialist);
@@ -407,49 +411,6 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
         </div>
       )}
     </VerificationCard>
-  );
-}
-
-function UpdateVerification({ toolCall, compact }: ToolCallWidgetProps) {
-  const parsed = parseMcpToolResult(toolCall.result);
-  const status = getString(parsed, "status");
-  const currentRound = getNumber(parsed, "current_round");
-  const maxRounds = getNumber(parsed, "max_rounds");
-  const gaps = getArray(parsed, "current_gaps");
-  const convergenceReason = getString(parsed, "convergence_reason");
-
-  if (!status) {
-    return (
-      <InlineIndicator
-        icon={<ShieldCheck size={11} style={{ color: colors.textMuted }} />}
-        text="Updating verification..."
-      />
-    );
-  }
-
-  const variant = statusBadgeVariant(status);
-  const iconColor = iconColorForVariant(variant);
-  const gapCount = gaps?.length ?? 0;
-  const hasHighSeverity = gaps?.some((g) => {
-    const severity = getString(g as Record<string, unknown>, "severity");
-    return severity === "critical" || severity === "high";
-  });
-  const convLabel = convergenceLabel(convergenceReason);
-
-  return (
-    <WidgetRow compact={compact}>
-      <ShieldCheck size={12} style={{ color: iconColor, flexShrink: 0 }} />
-      {currentRound != null && maxRounds != null && (
-        <span style={{ fontSize: compact ? 10.5 : 11, color: colors.textSecondary }}>
-          Round {currentRound}/{maxRounds}
-        </span>
-      )}
-      <Badge variant={variant} compact>{status}</Badge>
-      {gapCount > 0 && (
-        <Badge variant={hasHighSeverity ? "error" : "accent"} compact>{gapCount} gaps</Badge>
-      )}
-      {convLabel && <Badge variant="muted" compact>{convLabel}</Badge>}
-    </WidgetRow>
   );
 }
 
@@ -625,8 +586,6 @@ export const VerificationWidget = React.memo(function VerificationWidget(props: 
       return <div data-testid="verification-widget-round-report"><RoundReport {...props} /></div>;
     case "complete_plan_verification":
       return <div data-testid="verification-widget-complete"><CompleteVerification {...props} /></div>;
-    case "update_plan_verification":
-      return <div data-testid="verification-widget-update"><UpdateVerification {...props} /></div>;
     case "get_plan_verification":
       return <div data-testid="verification-widget-get"><GetVerification {...props} /></div>;
     case "get_child_session_status":

@@ -1907,6 +1907,17 @@ pub struct VerificationRoundSummary {
     pub gap_count: u32,
 }
 
+/// Per-round detail in the API response with full gap snapshots when available.
+#[derive(Debug, Serialize)]
+pub struct VerificationRoundDetailResponse {
+    /// 1-based round number (derived from array index)
+    pub round: u32,
+    pub gap_score: u32,
+    pub gap_count: u32,
+    #[serde(default)]
+    pub gaps: Vec<VerificationGapResponse>,
+}
+
 /// Continuity context for the most recent verification child session.
 /// Populated only when the parent session has at least one verification child.
 #[derive(Debug, Serialize, Deserialize)]
@@ -1956,6 +1967,9 @@ pub struct VerificationResponse {
     /// Round history summaries — last 10 rounds in chronological order (empty if no metadata)
     #[serde(default)]
     pub rounds: Vec<VerificationRoundSummary>,
+    /// Full round history details — last 10 rounds in chronological order (empty if no metadata)
+    #[serde(default)]
+    pub round_details: Vec<VerificationRoundDetailResponse>,
     /// Plan artifact version when verification ran — null if session has no linked plan
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_version: Option<u32>,

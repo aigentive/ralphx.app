@@ -463,9 +463,10 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   const gaps = verificationData?.gaps ?? [];
   const rounds = verificationData?.rounds ?? [];
+  const roundDetails = verificationData?.roundDetails ?? [];
   const gapScore = verificationData?.gapScore ?? (session.gapScore != null ? session.gapScore : undefined);
   const hasGaps = gaps.length > 0;
-  const hasRounds = rounds.length > 0;
+  const hasRounds = rounds.length > 0 || roundDetails.length > 0;
   const hasVerificationRunEvidence =
     childSessions.length > 0 ||
     activeVerificationChildId != null ||
@@ -808,6 +809,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           </div>
           <VerificationHistory
             rounds={rounds}
+            roundDetails={roundDetails}
             {...(hasGaps && { currentGaps: gaps })}
             {...(gapScore !== undefined && { gapScore })}
             status={verificationStatus}

@@ -289,6 +289,7 @@ async function updateVerificationQueryCache({
         ...(convergenceReason != null && { convergenceReason }),
         gaps: transformedGaps,
         rounds: [],  // Event rounds have different shape (fingerprints); safety net refetch fills this
+        roundDetails: [],
         ...(planVersion !== undefined && { planVersion }),
       };
       queryClient.setQueryData(["verification", sessionId], cacheData);

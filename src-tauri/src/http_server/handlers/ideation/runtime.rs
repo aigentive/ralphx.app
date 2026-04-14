@@ -110,7 +110,7 @@ pub(crate) async fn build_child_session_status_response(
     session_id: &str,
     params: &ChildSessionStatusParams,
 ) -> Result<ChildSessionStatusResponse, JsonError> {
-    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    use crate::domain::entities::ideation::VerificationStatus;
     use crate::domain::entities::IdeationSessionId;
     use crate::domain::services::RunningAgentKey;
     use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
@@ -209,30 +209,33 @@ pub(crate) async fn build_child_session_status_response(
         None
     };
 
-    // Step 5: Build VerificationInfo from session entity if verification has been started.
-    // gap_score and current_round live in the verification_metadata JSON blob.
-    // Malformed JSON → return verification: None (no panic).
+    // Step 5: Build VerificationInfo from the native verification snapshot when verification
+    // has started.
     let verification = if session.verification_status != VerificationStatus::Unverified {
-        let (current_round, gap_score) = if let Some(meta_json) = &session.verification_metadata {
-            match serde_json::from_str::<VerificationMetadata>(meta_json) {
-                Ok(meta) => {
-                    let round = if meta.current_round > 0 {
-                        Some(meta.current_round)
-                    } else {
-                        None
-                    };
-                    let score = meta.rounds.last().map(|r| r.gap_score);
-                    (round, score)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to parse verification_metadata for session {}: {}",
-                        session_id,
-                        e
-                    );
-                    (None, None)
-                }
-            }
+        let native_snapshot = state
+            .app_state
+            .ideation_session_repo
+            .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to get native verification snapshot for session {}: {}",
+                    session_id, e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to get verification snapshot",
+                )
+            })?;
+
+        let (current_round, gap_score) = if let Some(snapshot) = native_snapshot {
+            let round = if snapshot.current_round > 0 {
+                Some(snapshot.current_round)
+            } else {
+                None
+            };
+            let score = snapshot.rounds.last().map(|r| r.gap_score);
+            (round, score)
         } else {
             (None, None)
         };

@@ -71,6 +71,18 @@ export const ApiRoundSummarySchema = z.object({
   gapCount: val.gap_count,
 }));
 
+export const ApiRoundDetailSchema = z.object({
+  round: z.number(),
+  gap_score: z.number(),
+  gap_count: z.number(),
+  gaps: z.array(ApiVerificationGapSchema).optional().default([]),
+}).transform((val) => ({
+  round: val.round,
+  gapScore: val.gap_score,
+  gapCount: val.gap_count,
+  gaps: val.gaps,
+}));
+
 /**
  * Verification status response schema (snake_case from HTTP server)
  */
@@ -85,6 +97,7 @@ export const VerificationResponseSchema = z.object({
   best_round_index: z.number().int().optional(),
   current_gaps: z.array(ApiVerificationGapSchema).optional().default([]),
   rounds: z.array(ApiRoundSummarySchema).optional().default([]),
+  round_details: z.array(ApiRoundDetailSchema).optional().default([]),
   plan_version: z.number().int().optional(),
   verification_generation: z.number().int(),
 });

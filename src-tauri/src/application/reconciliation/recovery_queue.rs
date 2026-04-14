@@ -60,7 +60,7 @@ pub enum RecoveryKind {
 /// Supplemental metadata for recovery context injection.
 #[derive(Debug, Clone, Default)]
 pub struct RecoveryMetadata {
-    /// Current verification round from parent's verification_metadata (for VerificationAgent).
+    /// Current verification round from the parent's native verification summary.
     pub current_round: Option<u32>,
     /// Verification generation counter — must NOT be incremented during recovery (Constraint 2).
     pub verification_generation: Option<u32>,

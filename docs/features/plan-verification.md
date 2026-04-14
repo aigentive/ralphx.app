@@ -35,14 +35,14 @@ ralphx-plan-verifier agent (in child session):
       D. Critics return structured gaps (JSON)
          ├─ Parse failure? → record in sliding window
       E. Merge gaps, compute fingerprints, Jaccard similarity
-      F. update_plan_verification(parent_session_id, ...) — writes to PARENT session
+      F. report_verification_round(parent_session_id, round, generation) — persists the backend-owned round result on the PARENT session
       G. Convergence check:
            ┌─ 0 critical AND 0 high AND 0 medium (round ≥ 2) → "zero_blocking" ✅
            ├─ Jaccard(round_N, round_N+1) ≥ 0.8 for 2 rounds → "jaccard_converged" ✅
            ├─ current_round ≥ max_rounds → "max_rounds" ✅ (hard cap)
            └─ ≥ 3 parse failures in last 5 rounds → "critic_parse_failure" ✅
       H. Not converged → correct plan via update_plan_artifact / edit_plan_artifact → next round
-      I. Converged → update_plan_verification(parent_session_id, in_progress=false)
+      I. Converged → complete_plan_verification(parent_session_id, status, generation)
         │
         ▼
 Child session archived automatically on agent exit
@@ -133,14 +133,17 @@ Typed errors (no string comparison):
 | `RoundExceedsMax { round, max }` | Critic reports round > max_rounds |
 | `AgentCrashed { round }` | Recovery resets stuck session |
 
-## MCP Tools (Orchestrator)
+## MCP Tools
 
 | Tool | Method | Description |
 |------|--------|-------------|
-| `update_plan_verification` | POST | Reports round results from critic. Required: `session_id`, `status`. Optional: `gaps`, `round`, `convergence_reason`, `in_progress` |
+| `run_verification_enrichment` | POST | Runs verifier-selected enrichment specialists and returns delegate snapshots plus typed findings |
+| `run_verification_round` | POST | Runs one backend-owned verification round with required critics plus optional specialists |
+| `report_verification_round` | POST | Persists the current round outcome using backend-owned merged gaps and convergence checks |
+| `complete_plan_verification` | POST | Finalizes a verification run using backend-owned current-round state |
 | `get_plan_verification` | GET | Reads current verification status, round history, and gap list |
 
-Available to: `ralphx-ideation`, `ralphx-ideation-team-lead`, `ralphx-plan-verifier`.
+Available to: `ralphx-plan-verifier` for the verifier-owned helpers; `ralphx-ideation` and `ralphx-ideation-team-lead` only start/observe/stop verification via child-session + status tools.
 
 ## Tauri Events
 
@@ -192,7 +195,7 @@ Error messages are relayed verbatim to external agents via the MCP server:
 
 | Status | Error Message |
 |--------|--------------|
-| `Unverified` | "Cannot create proposals: plan verification has not been run. Either run verification (update_plan_verification with status 'reviewing') or skip it (update_plan_verification with status 'skipped', convergence_reason 'user_skipped')." |
+| `Unverified` | "Cannot create proposals: plan verification has not been run. Start verification before mutating proposals." |
 | `Reviewing` | "Cannot {operation} proposals: plan verification is in progress (round {N}/{max}). Complete the current verification round before modifying proposals." |
 | `NeedsRevision` | "Cannot {operation} proposals: plan verification found {N} unresolved gap(s). Update the plan to address gaps (update_plan_artifact), then re-run verification." |
 

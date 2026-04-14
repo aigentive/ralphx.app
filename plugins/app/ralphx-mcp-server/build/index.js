@@ -467,11 +467,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         else if (name === "complete_plan_verification") {
             result = await completePlanVerificationForTool(args);
         }
-        else if (name === "update_plan_verification") {
-            // POST /api/ideation/sessions/:id/verification
-            const { session_id, ...body } = args;
-            result = await callTauri(`ideation/sessions/${session_id}/verification`, body);
-        }
         else if (name === "revert_and_skip") {
             // POST /api/ideation/sessions/:id/revert-and-skip
             const { session_id, plan_version_to_restore } = args;

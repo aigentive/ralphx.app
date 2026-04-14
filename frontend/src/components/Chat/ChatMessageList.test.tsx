@@ -128,9 +128,8 @@ describe("ChatMessageList - Scroll Behavior", () => {
   });
 
   describe("streaming auto-scroll", () => {
-    it("suppresses TypingIndicator when streaming tool calls are active", () => {
-      // StreamingToolIndicator is now rendered OUTSIDE ChatMessageList (in parent panels)
-      // ChatMessageList only shows TypingIndicator when there are no tool calls active
+    it("keeps ChatMessageList free of the parent-level streaming tool strip", () => {
+      // StreamingToolIndicator is rendered OUTSIDE ChatMessageList (in parent panels).
       const streamingToolCalls: ToolCall[] = [
         {
           id: "tool-1",
@@ -1809,7 +1808,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
     });
 
-    it("(2) agent running + tool calls + no content blocks → shows ToolCallIndicator fallback", () => {
+    it("(2) agent running + tool calls + no content blocks → shows tool fallback and typing indicator", () => {
       const toolCalls: ToolCall[] = [
         { id: "tc-1", name: GENERIC, arguments: { url: "https://example.com" } },
       ];
@@ -1824,7 +1823,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
-      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
 
     it("(2b) shows multiple ToolCallIndicators when multiple pending tool calls and no content blocks", () => {
@@ -1844,7 +1843,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       const indicators = screen.getAllByTestId("tool-call-indicator");
       expect(indicators).toHaveLength(2);
-      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
 
     it("(3) agent running + content blocks → neither fallback shown (content blocks render loop handles display)", () => {
@@ -1866,7 +1865,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
     });
 
-    it("shows ToolCallIndicator fallback when tool calls exist but content blocks is empty array", () => {
+    it("shows ToolCallIndicator fallback and typing indicator when tool calls exist but content blocks is empty array", () => {
       // streamingContentBlocks=[] (empty array, not undefined) also triggers fallback
       render(
         <ChatMessageList
@@ -1878,7 +1877,7 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
-      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
     });
   });
 });

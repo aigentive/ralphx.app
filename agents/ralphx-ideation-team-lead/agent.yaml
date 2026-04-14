@@ -26,7 +26,6 @@ capabilities:
     - create_child_session
     - get_parent_session_context
     - get_session_messages
-    - update_plan_verification
     - get_plan_verification
     - revert_and_skip
     - stop_verification

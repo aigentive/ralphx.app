@@ -41,8 +41,20 @@ pub struct SessionData {
     pub title: Option<String>,
     pub status: String,
     pub team_mode: String,
-    pub verification_status: String,
-    pub verification_metadata: Option<serde_json::Value>,
+    pub verification: Option<VerificationExportData>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationExportData {
+    pub status: String,
+    pub in_progress: bool,
+    pub generation: i32,
+    pub current_round: Option<u32>,
+    pub max_rounds: Option<u32>,
+    pub gap_count: u32,
+    pub gap_score: Option<u32>,
+    pub convergence_reason: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -129,7 +141,13 @@ impl SessionExportService {
                     status: String,
                     team_mode: String,
                     verification_status: String,
-                    verification_metadata: Option<String>,
+                    verification_in_progress: bool,
+                    verification_generation: i32,
+                    verification_current_round: Option<u32>,
+                    verification_max_rounds: Option<u32>,
+                    verification_gap_count: u32,
+                    verification_gap_score: Option<u32>,
+                    verification_convergence_reason: Option<String>,
                     plan_artifact_id: Option<String>,
                     project_name: Option<String>,
                 }
@@ -137,7 +155,9 @@ impl SessionExportService {
                 let maybe_session: Option<SessionRow> = conn
                     .query_row(
                         "SELECT s.title, s.status, COALESCE(s.team_mode, 'solo'), s.verification_status, \
-                         s.verification_metadata, s.plan_artifact_id, p.name \
+                         s.verification_in_progress, s.verification_generation, s.verification_current_round, \
+                         s.verification_max_rounds, s.verification_gap_count, s.verification_gap_score, \
+                         s.verification_convergence_reason, s.plan_artifact_id, p.name \
                          FROM ideation_sessions s \
                          LEFT JOIN projects p ON p.id = s.project_id \
                          WHERE s.id = ?1 AND s.project_id = ?2",
@@ -148,9 +168,15 @@ impl SessionExportService {
                                 status: row.get(1)?,
                                 team_mode: row.get(2)?,
                                 verification_status: row.get(3)?,
-                                verification_metadata: row.get(4)?,
-                                plan_artifact_id: row.get(5)?,
-                                project_name: row.get(6)?,
+                                verification_in_progress: row.get::<_, Option<i64>>(4)?.unwrap_or(0) != 0,
+                                verification_generation: row.get::<_, Option<i32>>(5)?.unwrap_or(0),
+                                verification_current_round: row.get(6)?,
+                                verification_max_rounds: row.get(7)?,
+                                verification_gap_count: row.get::<_, Option<u32>>(8)?.unwrap_or(0),
+                                verification_gap_score: row.get(9)?,
+                                verification_convergence_reason: row.get(10)?,
+                                plan_artifact_id: row.get(11)?,
+                                project_name: row.get(12)?,
                             })
                         },
                     )
@@ -164,17 +190,20 @@ impl SessionExportService {
                     ))
                 })?;
 
-                let verification_metadata: Option<serde_json::Value> =
-                    session_row.verification_metadata.as_deref().and_then(|s| {
-                        serde_json::from_str(s).ok()
-                    });
-
                 let session_data = SessionData {
                     title: session_row.title,
                     status: session_row.status,
                     team_mode: session_row.team_mode,
-                    verification_status: session_row.verification_status,
-                    verification_metadata,
+                    verification: Some(VerificationExportData {
+                        status: session_row.verification_status,
+                        in_progress: session_row.verification_in_progress,
+                        generation: session_row.verification_generation,
+                        current_round: session_row.verification_current_round,
+                        max_rounds: session_row.verification_max_rounds,
+                        gap_count: session_row.verification_gap_count,
+                        gap_score: session_row.verification_gap_score,
+                        convergence_reason: session_row.verification_convergence_reason,
+                    }),
                 };
 
                 // Resolve version chain if plan exists

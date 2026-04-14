@@ -109,7 +109,6 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__run_verification_round": VerificationWidget,
   "mcp__ralphx__report_verification_round": VerificationWidget,
   "mcp__ralphx__complete_plan_verification": VerificationWidget,
-  "mcp__ralphx__update_plan_verification": VerificationWidget,
   "mcp__ralphx__get_plan_verification": VerificationWidget,
   "mcp__ralphx__get_child_session_status": VerificationWidget,
   "mcp__ralphx__get_verification_confirmation_status": VerificationWidget,

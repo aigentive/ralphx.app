@@ -10,7 +10,7 @@ use ralphx_lib::domain::entities::ideation::{
 };
 use ralphx_lib::domain::entities::{
     ChatContextType, ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionId,
-    ProjectId,
+    ProjectId, VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot,
 };
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::handlers::*;
@@ -282,36 +282,10 @@ fn make_gap(severity: &str, category: &str, description: &str) -> serde_json::Va
     })
 }
 
-fn make_gap_with_why(
-    severity: &str,
-    category: &str,
-    description: &str,
-    why: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "severity": severity,
-        "category": category,
-        "description": description,
-        "why_it_matters": why
-    })
-}
-
 fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> serde_json::Value {
     serde_json::json!({
         "fingerprints": fingerprints,
         "gap_score": gap_score
-    })
-}
-
-fn make_round_with_gaps(
-    fingerprints: Vec<&str>,
-    gap_score: u32,
-    gaps: Vec<serde_json::Value>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "fingerprints": fingerprints,
-        "gap_score": gap_score,
-        "gaps": gaps
     })
 }
 
@@ -331,40 +305,100 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
         .await
         .unwrap();
 
-    let gaps = vec![
-        make_gap_with_why("critical", "architecture", "Missing auth layer", "Security risk"),
-        make_gap("high", "performance", "No caching strategy"),
-        make_gap("medium", "testing", "No unit tests"),
-    ];
-    let rounds = vec![
-        make_round_with_gaps(
-            vec!["fp-a", "fp-b"],
-            13,
-            vec![
-                make_gap("critical", "architecture", "Missing auth layer"),
-                make_gap("high", "performance", "No caching strategy"),
-            ],
-        ),
-        make_round_with_gaps(
-            vec!["fp-a", "fp-b", "fp-c"],
-            10,
-            vec![
-                make_gap("critical", "architecture", "Missing auth layer"),
-                make_gap("high", "performance", "No caching strategy"),
-                make_gap("medium", "testing", "No unit tests"),
-            ],
-        ),
-    ];
-    let metadata = make_metadata_json(gaps, rounds, 2, 5);
-
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(
+        .save_verification_run_snapshot(
             &session_id,
-            VerificationStatus::NeedsRevision,
-            false,
-            Some(metadata),
+            &VerificationRunSnapshot {
+                generation: 0,
+                status: VerificationStatus::NeedsRevision,
+                in_progress: false,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![
+                    VerificationGap {
+                        severity: "critical".to_string(),
+                        category: "architecture".to_string(),
+                        description: "Missing auth layer".to_string(),
+                        why_it_matters: Some("Security risk".to_string()),
+                        source: None,
+                    },
+                    VerificationGap {
+                        severity: "high".to_string(),
+                        category: "performance".to_string(),
+                        description: "No caching strategy".to_string(),
+                        why_it_matters: None,
+                        source: None,
+                    },
+                    VerificationGap {
+                        severity: "medium".to_string(),
+                        category: "testing".to_string(),
+                        description: "No unit tests".to_string(),
+                        why_it_matters: None,
+                        source: None,
+                    },
+                ],
+                rounds: vec![
+                    VerificationRoundSnapshot {
+                        round: 1,
+                        gap_score: 13,
+                        fingerprints: vec!["fp-a".to_string(), "fp-b".to_string()],
+                        gaps: vec![
+                            VerificationGap {
+                                severity: "critical".to_string(),
+                                category: "architecture".to_string(),
+                                description: "Missing auth layer".to_string(),
+                                why_it_matters: None,
+                                source: None,
+                            },
+                            VerificationGap {
+                                severity: "high".to_string(),
+                                category: "performance".to_string(),
+                                description: "No caching strategy".to_string(),
+                                why_it_matters: None,
+                                source: None,
+                            },
+                        ],
+                        parse_failed: false,
+                    },
+                    VerificationRoundSnapshot {
+                        round: 2,
+                        gap_score: 10,
+                        fingerprints: vec![
+                            "fp-a".to_string(),
+                            "fp-b".to_string(),
+                            "fp-c".to_string(),
+                        ],
+                        gaps: vec![
+                            VerificationGap {
+                                severity: "critical".to_string(),
+                                category: "architecture".to_string(),
+                                description: "Missing auth layer".to_string(),
+                                why_it_matters: None,
+                                source: None,
+                            },
+                            VerificationGap {
+                                severity: "high".to_string(),
+                                category: "performance".to_string(),
+                                description: "No caching strategy".to_string(),
+                                why_it_matters: None,
+                                source: None,
+                            },
+                            VerificationGap {
+                                severity: "medium".to_string(),
+                                category: "testing".to_string(),
+                                description: "No unit tests".to_string(),
+                                why_it_matters: None,
+                                source: None,
+                            },
+                        ],
+                        parse_failed: false,
+                    },
+                ],
+            },
         )
         .await
         .unwrap();

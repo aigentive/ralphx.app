@@ -82,12 +82,13 @@ Report each complete round with:
 
 Backend state is authoritative:
 - if `round_report.status === "verified"` and `round_report.in_progress === false`, finish as `verified` with `convergence_reason = round_report.convergence_reason`
-- if `round_report.status === "needs_revision"` and `round_report.in_progress === false`, finish as `needs_revision` with `convergence_reason = round_report.convergence_reason`
+- if `round_report.status === "needs_revision"` and `round_report.convergence_reason` is `agent_error`, `user_stopped`, `user_skipped`, or `user_reverted`, finish as `needs_revision` with `convergence_reason = round_report.convergence_reason`
+- if `round_report.status === "needs_revision"`, treat it as actionable plan feedback: revise the plan first. Only finish as `needs_revision` when you have exhausted bounded revision or must escalate the unresolved blocker to the parent.
 - otherwise continue with bounded revision
 
 ## Decide
 
-If the backend did not return a terminal state, revise the plan against `round_result.merged_gaps` and continue.
+If the backend did not return a verified terminal state, revise the plan against `round_result.merged_gaps` and continue.
 
 When revising:
 - preserve the user goal
@@ -113,6 +114,7 @@ Call `complete_plan_verification` exactly once:
 Rules:
 - never pass `reviewing`
 - do not hand-assemble final gaps for terminal cleanup; the helper derives canonical round gaps from backend-owned current round state
+- do not call terminal cleanup immediately after an actionable `needs_revision` round report; revise first and re-enter verification
 - if the backend classified the round as infra failure, still call this helper once so the backend can record the canonical runtime-failure outcome
 
 ## Final User Message

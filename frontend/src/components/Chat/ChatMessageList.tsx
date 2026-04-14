@@ -704,16 +704,17 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
             {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              streamingToolCalls.length > 0
-                ? streamingToolCalls.map((tc, idx) => (
-                    <ToolCallIndicator
-                      key={`pending-tool-${idx}`}
-                      toolCall={tc}
-                      isStreaming={tc.result == null && !tc.error}
-                      className="mb-2"
-                    />
-                  ))
-                : <TypingIndicator />
+              <>
+                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                  <ToolCallIndicator
+                    key={`pending-tool-${idx}`}
+                    toolCall={tc}
+                    isStreaming={tc.result == null && !tc.error}
+                    className="mb-2"
+                  />
+                ))}
+                <TypingIndicator />
+              </>
             )}
 
           </div>
@@ -954,16 +955,17 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
             {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              streamingToolCalls.length > 0
-                ? streamingToolCalls.map((tc, idx) => (
-                    <ToolCallIndicator
-                      key={`pending-tool-${idx}`}
-                      toolCall={tc}
-                      isStreaming={tc.result == null && !tc.error}
-                      className="mb-2"
-                    />
-                  ))
-                : <TypingIndicator />
+              <>
+                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                  <ToolCallIndicator
+                    key={`pending-tool-${idx}`}
+                    toolCall={tc}
+                    isStreaming={tc.result == null && !tc.error}
+                    className="mb-2"
+                  />
+                ))}
+                <TypingIndicator />
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>

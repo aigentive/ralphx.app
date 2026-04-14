@@ -103,8 +103,8 @@ ralphx-plan-verifier agent. Failure emits `ideation:verification_status_changed`
 
 ## Stage 4: Plan Verification
 
-- **Handler:** `update_plan_verification()` — `ideation.rs:1164`
-- **HTTP:** POST `/api/ideation/sessions/{id}/verification` (MCP tool: `update_plan_verification`)
+- **Handler family:** verification round/report/finalize endpoints under `src-tauri/src/http_server/handlers/ideation/verification/`
+- **HTTP:** backend-owned verification APIs (`/api/ideation/sessions/{id}/verification`, `/infra-failure`, plus verifier helper surfaces in the MCP server)
 - **Agent:** `ralphx-plan-verifier` (multi-round adversarial loop using Layer 1 and Layer 2 critics)
 
 **State machine:**
@@ -253,7 +253,7 @@ Once `finalize_proposals` completes and session transitions to Accepted:
                     │  Layer 1 + Layer 2       │
                     │  critics per round       │
                     └───────────┬─────────────┘
-                                │ update_plan_verification(Verified)
+                                │ complete_plan_verification(Verified)
                                 ▼
                     ┌─────────────────────────┐
                     │   ralphx-ideation  │

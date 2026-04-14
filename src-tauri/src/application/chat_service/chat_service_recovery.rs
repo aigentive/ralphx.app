@@ -331,11 +331,7 @@ async fn build_ideation_recovery_metadata<R: Runtime>(
     let verification_was_in_progress = session.verification_in_progress;
     let verification_status_str = session.verification_status.to_string();
     let current_round = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-        .and_then(|v| v.get("current_round").and_then(|r| r.as_u64()))
-        .map(|r| r as u32)
+        .verification_current_round
         .unwrap_or(0);
 
     // If verification was in-progress when the session crashed, force-reset it.

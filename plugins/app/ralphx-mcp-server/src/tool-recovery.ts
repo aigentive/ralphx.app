@@ -22,19 +22,6 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
   }
 
   switch (toolName) {
-    case "update_plan_verification": {
-      const examples = formatToolExamples(tool, 2);
-      return [
-        "Use the PARENT ideation session_id as the canonical target. If a verification child session_id is passed, the backend remaps it automatically.",
-        "Use status=reviewing with in_progress=true for mid-round updates; use verified or needs_revision with in_progress=false for terminal updates.",
-        "Re-read get_plan_verification if generation/in_progress is unclear instead of guessing.",
-        ...examples.map((example, index) =>
-          index === 0
-            ? `Example reviewing payload: ${example}`
-            : `Example terminal payload: ${example}`
-        ),
-      ].join("\n");
-    }
     case "report_verification_round": {
       const examples = formatToolExamples(tool);
       return [
@@ -58,7 +45,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
     case "get_plan_verification": {
       const examples = formatToolExamples(tool);
       return [
-        "Call this on the PARENT ideation session before retrying report_verification_round, complete_plan_verification, or update_plan_verification. If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "Call this on the PARENT ideation session before retrying report_verification_round or complete_plan_verification. If a verification child session_id is passed, the backend remaps it to the parent automatically.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }

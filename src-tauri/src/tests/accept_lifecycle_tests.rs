@@ -20,7 +20,7 @@
 //        entry) — archive_after_stop is unconditional.
 //   T18. Accept with no verification children — no-op, no errors.
 //   T19. Terminal state (Verified) path — same cleanup as accept; stop_verification_children
-//        is also called by update_plan_verification when new_status is Verified/Skipped.
+//        is also called by post_verification_status when new_status is Verified/Skipped.
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -245,10 +245,10 @@ async fn test_accept_with_no_verification_children_is_noop() {
 
 // ── T19: Terminal state (Verified) path stops agent and archives child ────────
 //
-// When update_plan_verification sets new_status = Verified or Skipped, it calls
+// When post_verification_status sets new_status = Verified or Skipped, it calls
 // stop_verification_children(&session_id, &state.app_state).await.ok().
 // This test verifies that exact call path's outcome without re-testing the full
-// update_plan_verification HTTP handler.
+// post_verification_status HTTP handler.
 //
 // Same assertions as T16 — both accept and terminal-state paths call the same
 // function. This test is named separately for traceability against Proof Obligation 3.
@@ -293,7 +293,7 @@ async fn test_terminal_state_verified_stops_agent_and_archives_child() {
         )
         .await;
 
-    // Simulate the update_plan_verification handler reaching Verified and calling cleanup
+    // Simulate the post_verification_status handler reaching Verified and calling cleanup
     stop_verification_children(parent_id.as_str(), &state)
         .await
         .expect("stop_verification_children must succeed on terminal state");

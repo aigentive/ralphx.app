@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal, VerificationMetadata};
+use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal};
 
 // Re-export shared ChatMessageResponse
 pub use crate::commands::chat_responses::ChatMessageResponse;
@@ -80,11 +80,7 @@ pub struct IdeationSessionResponse {
 
 impl From<IdeationSession> for IdeationSessionResponse {
     fn from(session: IdeationSession) -> Self {
-        let gap_score = session
-            .verification_metadata
-            .as_deref()
-            .and_then(|s| serde_json::from_str::<VerificationMetadata>(s).ok())
-            .and_then(|m| m.rounds.last().map(|r| r.gap_score as i32));
+        let gap_score = session.verification_gap_score.map(|score| score as i32);
         Self {
             id: session.id.as_str().to_string(),
             project_id: session.project_id.as_str().to_string(),

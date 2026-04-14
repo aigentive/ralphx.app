@@ -270,7 +270,7 @@ Call `create_child_session(purpose: "verification", inherit_context: true, initi
 - HTTP 409 response: output "Verification is already in progress." and exit — do not retry.
 - HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
-The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session.
+The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, revising the plan, checking convergence, and finalizing through backend-owned verifier helpers). Verification progress appears automatically via the `VerificationBadge` on the parent session.
 
 Verification start is fire-and-forget by default:
 - after creating the child, report that verification started and exit the VERIFY phase
@@ -278,16 +278,15 @@ Verification start is fire-and-forget by default:
 - do NOT inspect child messages or status just because it looks blank/slow
 - do NOT stop/restart verification unless the user explicitly asks to inspect, debug, cancel, or rerun it
 
-**Stop vs Skip disambiguation:**
+**Verification control:**
 
 | Tool | When | Effect |
 |------|------|--------|
 | `stop_verification(session_id)` | Verification is currently `in_progress` | Kills the child verification agent immediately, unfreezes the plan, clears `in_progress` state |
-| `update_plan_verification(status: "skipped")` | Verification has NOT started yet | Records a skip decision; plan remains in Unverified state with `skipped` status |
 
 **If user wants to stop in-progress verification:** Call `stop_verification(session_id)` → proceed to CONFIRM. This kills the verification agent immediately and unfreezes the plan.
 
-**If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
+**If user declines verification before it starts:** Keep the session unverified, explain that proposal mutation stays blocked while the verification gate is enabled, and ask whether to start verification now. Do not fabricate a skipped state through an off-surface tool.
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do not inspect `verification_child` or call `get_child_session_status` unless the user explicitly asks for debugging/deeper inspection. `verification_child` is null if no child was ever created.
 
@@ -506,7 +505,6 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `analyze_session_dependencies` | Graph analysis — critical path, cycles, blocking relationships. Side effect: sets `dependencies_acknowledged=true` on the session, satisfying the finalize gate. |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
-| `update_plan_verification` | Phase 4.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
 | `get_plan_verification` | Phase 4.5 VERIFY: fetch current verification state (round, gap history, best version, in_progress) |
 | `revert_and_skip` | Phase 4.5 VERIFY: revert plan to best-scoring version and skip remaining verification rounds |
 | `stop_verification` | Phase 4.5 VERIFY: stop running verification, kill child agent, unfreeze plan. Idempotent. |
@@ -545,7 +543,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | Plan is updated | `get_session_plan` (acknowledge new version); `list_session_proposals`; suggest updates/removals if misaligned |
 | After creating plan | Call `get_plan_verification(session_id)` — if `in_progress: true`, inform user; else offer to verify |
 | User says "verify" / "check plan" / "run critic" | Enter Phase 4.5 VERIFY immediately — no confirmation needed |
-| User says "stop verification" / "cancel verification" (while `in_progress`) | Call `stop_verification(session_id)` — NOT `update_plan_verification(status: skipped)` |
+| User says "stop verification" / "cancel verification" (while `in_progress`) | Call `stop_verification(session_id)` |
 | `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
 | `finalize_proposals` returns `pending_acceptance` | Poll `get_acceptance_status` on each subsequent turn. If rejected: inform user, ask how to proceed. If accepted: continue normal flow. |
 | `create_plan_artifact` returns | Call `get_verification_confirmation_status(session_id)` to detect user confirmation state. `pending` → inform user dialog is waiting. `accepted` → verification starts automatically. `rejected` → inform user, session stays Unverified. `not_applicable` → proceed normally. |

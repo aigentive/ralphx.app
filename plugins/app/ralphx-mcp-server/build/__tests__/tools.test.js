@@ -91,13 +91,8 @@ describe('getAllowedToolNames', () => {
     });
 });
 describe('getToolRecoveryHint', () => {
-    it('returns parent-session and example guidance for update_plan_verification', () => {
-        const hint = getToolRecoveryHint('update_plan_verification');
-        expect(hint).toContain('PARENT ideation session_id');
-        expect(hint).toContain('backend remaps it automatically');
-        expect(hint).toContain('status=reviewing');
-        expect(hint).toContain('Example reviewing payload:');
-        expect(hint).toContain('Example terminal payload:');
+    it('does not expose recovery guidance for removed update_plan_verification', () => {
+        expect(getToolRecoveryHint('update_plan_verification')).toBeNull();
     });
     it('returns narrower verifier-helper guidance for report_verification_round', () => {
         const hint = getToolRecoveryHint('report_verification_round');
@@ -113,6 +108,11 @@ describe('getToolRecoveryHint', () => {
         expect(hint).toContain('in_progress=false is filled in automatically');
         expect(hint).toContain('do not try to pass delegate, timestamp, rescue, or wait bookkeeping');
         expect(hint).toContain('External sessions cannot use status=skipped');
+    });
+    it('keeps verifier recovery guidance surface-local for get_plan_verification', () => {
+        const hint = getToolRecoveryHint('get_plan_verification');
+        expect(hint).toContain('retrying report_verification_round or complete_plan_verification');
+        expect(hint).not.toContain('update_plan_verification');
     });
     it('returns enrichment guidance for run_verification_enrichment', () => {
         const hint = getToolRecoveryHint('run_verification_enrichment');
@@ -141,11 +141,11 @@ describe('getToolRecoveryHint', () => {
 });
 describe('formatToolErrorMessage', () => {
     it('appends details and a usage hint for known high-friction tools', () => {
-        const text = formatToolErrorMessage('update_plan_verification', 'Cannot update verification state on a verification child session.', 'Use the parent session id instead.');
-        expect(text).toContain('ERROR: Cannot update verification state on a verification child session.');
+        const text = formatToolErrorMessage('report_verification_round', 'Verification round state is stale.', 'Use the parent session id instead.');
+        expect(text).toContain('ERROR: Verification round state is stale.');
         expect(text).toContain('Details: Use the parent session id instead.');
-        expect(text).toContain('Usage hint for update_plan_verification:');
-        expect(text).toContain('Example reviewing payload:');
+        expect(text).toContain('Usage hint for report_verification_round:');
+        expect(text).toContain('Example payload:');
     });
     it('leaves unknown tools without a usage-hint section', () => {
         const text = formatToolErrorMessage('not_a_real_tool', 'boom');
@@ -174,6 +174,7 @@ describe('getFilteredTools', () => {
         expect(toolNames).toContain('create_task_proposal');
         expect(toolNames).toContain('update_task_proposal');
         expect(toolNames).toContain('get_session_plan');
+        expect(toolNames).not.toContain('update_plan_verification');
         // Should match allowlist count
         expect(tools.length).toBe(toolsByAgent()[IDEATION_TEAM_LEAD].length);
     });
@@ -213,6 +214,17 @@ describe('getFilteredTools', () => {
         expect(toolNames).not.toContain('save_team_session_state');
         // Should match allowlist count
         expect(tools.length).toBe(toolsByAgent()[WORKER_TEAM_MEMBER].length);
+    });
+    it('should keep ralphx-ideation on start/observe/stop verification tools only', () => {
+        setAgentType(ORCHESTRATOR_IDEATION);
+        const tools = getFilteredTools();
+        const toolNames = tools.map((t) => t.name);
+        expect(toolNames).toContain('create_child_session');
+        expect(toolNames).toContain('get_plan_verification');
+        expect(toolNames).toContain('stop_verification');
+        expect(toolNames).not.toContain('update_plan_verification');
+        expect(toolNames).not.toContain('report_verification_round');
+        expect(toolNames).not.toContain('complete_plan_verification');
     });
     it('should scope ralphx-plan-verifier to the narrower verification helpers', () => {
         setAgentType('ralphx-plan-verifier');
@@ -423,33 +435,9 @@ describe('New team tool definitions', () => {
         });
     });
     describe('update_plan_verification', () => {
-        const tool = PLAN_TOOLS.find((t) => t.name === 'update_plan_verification');
-        it('should document parent-session targeting and terminal usage', () => {
-            expect(tool).toBeDefined();
-            expect(tool?.description).toContain('PARENT ideation session_id');
-            expect(tool?.description).toContain('backend remaps it automatically');
-            expect(tool?.description).toContain("status='reviewing'");
-            expect(tool?.description).toContain("External sessions cannot use status='skipped'");
-            expect(tool?.description).toContain('Example reviewing payload');
-            expect(tool?.description).toContain('Example terminal payload');
-        });
-        it('should document generation and child-session constraints in schema descriptions', () => {
-            const sessionId = tool?.inputSchema.properties?.session_id;
-            const status = tool?.inputSchema.properties?.status;
-            const generation = tool?.inputSchema.properties?.generation;
-            expect(sessionId.description).toContain('auto-remapped');
-            expect(status.description).toContain('Use reviewing for in-progress rounds');
-            expect(generation.description).toContain('Pass on every verifier call');
-            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
-                session_id: 'parent-session-id',
-                status: 'reviewing',
-                in_progress: true,
-            });
-            expect((tool?.inputSchema).examples?.[1]).toMatchObject({
-                status: 'verified',
-                in_progress: false,
-                convergence_reason: 'zero_blocking',
-            });
+        it('should be absent from the live public tool registry', () => {
+            expect(PLAN_TOOLS.find((t) => t.name === 'update_plan_verification')).toBeUndefined();
+            expect(getAllTools().map((tool) => tool.name)).not.toContain('update_plan_verification');
         });
     });
     describe('report_verification_round', () => {
@@ -458,9 +446,9 @@ describe('New team tool definitions', () => {
             expect(tool).toBeDefined();
             expect(tool?.description).toContain('Verifier-friendly helper');
             expect(tool?.description).toContain('backend remaps it automatically');
-            expect(tool?.description).toContain('status fixed to reviewing');
-            expect(tool?.description).toContain('in_progress fixed to true');
             expect(tool?.description).toContain('response is authoritative for next-step control flow');
+            expect(tool?.description).toContain('actionable plan feedback');
+            expect(tool?.description).not.toContain('update_plan_verification');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
                 round: 1,
@@ -476,8 +464,9 @@ describe('New team tool definitions', () => {
             expect(tool).toBeDefined();
             expect(tool?.description).toContain('Verifier-friendly helper');
             expect(tool?.description).toContain('backend remaps it automatically');
-            expect(tool?.description).toContain('in_progress fixed to false');
             expect(tool?.description).toContain('uses the backend-owned current round state');
+            expect(tool?.description).toContain('Do not call it immediately after an actionable needs_revision round report');
+            expect(tool?.description).not.toContain('update_plan_verification');
             expect(tool?.description).toContain("skipped remains available only where skip is actually allowed by the backend");
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',

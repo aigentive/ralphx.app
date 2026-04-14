@@ -239,6 +239,18 @@ fn test_plan_verifier_prompt_uses_backend_owned_verification_helpers() {
         "ralphx-plan-verifier prompt must treat the backend round report as the authoritative next-step signal"
     );
     assert!(
+        prompt.contains("treat it as actionable plan feedback: revise the plan first"),
+        "ralphx-plan-verifier prompt must revise first on actionable needs_revision feedback"
+    );
+    assert!(
+        prompt.contains("do not call terminal cleanup immediately after an actionable `needs_revision` round report"),
+        "ralphx-plan-verifier prompt must not finalize immediately after actionable needs_revision feedback"
+    );
+    assert!(
+        !prompt.contains("if `round_report.status === \"needs_revision\"` and `round_report.in_progress === false`, finish as `needs_revision`"),
+        "ralphx-plan-verifier prompt should not finalize immediately on every terminal needs_revision round report"
+    );
+    assert!(
         !prompt.contains("created_after"),
         "ralphx-plan-verifier prompt should not supply round-settlement timestamps from prompt memory"
     );

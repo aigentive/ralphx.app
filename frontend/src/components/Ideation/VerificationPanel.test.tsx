@@ -144,6 +144,40 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
+  it("keeps verification history visible when only roundDetails remain after current gaps are cleared", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [],
+      rounds: [],
+      roundDetails: [
+        {
+          round: 1,
+          gapScore: 8,
+          gapCount: 2,
+          gaps: [
+            { severity: "critical", category: "completeness", description: "Missing migration registration" },
+            { severity: "high", category: "testing", description: "Missing register-project coverage" },
+          ],
+        },
+      ],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+    expect(screen.getByTestId("verification-history")).toBeInTheDocument();
+  });
+
   it("shows empty state when query returns null (404 — no verification ever started)", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     // Both queries return null/empty

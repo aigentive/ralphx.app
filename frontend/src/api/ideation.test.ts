@@ -851,12 +851,28 @@ describe("VerificationResponseSchema", () => {
       rounds: [
         { round: 1, gap_score: 60, gap_count: 1 },
       ],
+      round_details: [
+        {
+          round: 1,
+          gap_score: 60,
+          gap_count: 1,
+          gaps: [{ severity: "high", category: "security", description: "Missing auth" }],
+        },
+      ],
     };
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([
       { severity: "high", category: "security", description: "Missing auth" },
     ]);
     expect(result.rounds).toEqual([{ round: 1, gapScore: 60, gapCount: 1 }]);
+    expect(result.round_details).toEqual([
+      {
+        round: 1,
+        gapScore: 60,
+        gapCount: 1,
+        gaps: [{ severity: "high", category: "security", description: "Missing auth" }],
+      },
+    ]);
   });
 
   it("defaults current_gaps and rounds to [] when omitted", () => {
@@ -869,6 +885,7 @@ describe("VerificationResponseSchema", () => {
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([]);
     expect(result.rounds).toEqual([]);
+    expect(result.round_details).toEqual([]);
   });
 
   it("transforms why_it_matters in nested gaps", () => {
@@ -964,6 +981,16 @@ describe("ideationApi.verification", () => {
     rounds: [
       { round: 1, gap_score: 80, gap_count: 1 },
     ],
+    round_details: [
+      {
+        round: 1,
+        gap_score: 80,
+        gap_count: 1,
+        gaps: [
+          { severity: "high", category: "security", description: "Missing auth", why_it_matters: "Critical risk" },
+        ],
+      },
+    ],
     ...overrides,
   });
 
@@ -988,6 +1015,14 @@ describe("ideationApi.verification", () => {
         { severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" },
       ]);
       expect(result.rounds).toEqual([{ round: 1, gapScore: 80, gapCount: 1 }]);
+      expect(result.roundDetails).toEqual([
+        {
+          round: 1,
+          gapScore: 80,
+          gapCount: 1,
+          gaps: [{ severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" }],
+        },
+      ]);
     });
 
     it("throws when response is not ok", async () => {

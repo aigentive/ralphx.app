@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VerificationHistory } from "./VerificationHistory";
-import type { RoundSummary, VerificationGap } from "@/types/ideation";
+import type { RoundSummary, VerificationGap, VerificationRoundDetail } from "@/types/ideation";
 
 const mockRounds: RoundSummary[] = [
   { round: 1, gapScore: 23, gapCount: 4 },
@@ -13,6 +13,26 @@ const mockGaps: VerificationGap[] = [
   { severity: "high", category: "correctness", description: "Missing null check", whyItMatters: "Will crash" },
   { severity: "medium", category: "performance", description: "No caching" },
   { severity: "low", category: "style", description: "Inconsistent naming" },
+];
+
+const mockRoundDetails: VerificationRoundDetail[] = [
+  {
+    round: 1,
+    gapScore: 13,
+    gapCount: 2,
+    gaps: [
+      { severity: "critical", category: "completeness", description: "Missing migration registration" },
+      { severity: "high", category: "testing", description: "Missing register-project coverage" },
+    ],
+  },
+  {
+    round: 2,
+    gapScore: 3,
+    gapCount: 1,
+    gaps: [
+      { severity: "high", category: "testing", description: "Missing register-project coverage" },
+    ],
+  },
 ];
 
 describe("VerificationHistory", () => {
@@ -107,5 +127,22 @@ describe("VerificationHistory", () => {
     render(<VerificationHistory rounds={[]} currentGaps={mockGaps} />);
     // mockGaps has no critical severity
     expect(screen.queryByText(/Critical/)).not.toBeInTheDocument();
+  });
+
+  it("renders round lineage with addressed gaps when round details are present", () => {
+    render(
+      <VerificationHistory
+        rounds={mockRounds}
+        roundDetails={mockRoundDetails}
+        currentGaps={mockRoundDetails[1]?.gaps}
+      />
+    );
+
+    expect(screen.getByText(/Round Lineage/i)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining after round 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining after round 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Addressed Since Round 1/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Missing register-project coverage").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Missing migration registration").length).toBeGreaterThan(1);
   });
 });

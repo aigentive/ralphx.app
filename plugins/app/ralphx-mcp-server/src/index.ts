@@ -574,17 +574,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         convergence_reason?: string;
         generation: number;
       });
-    } else if (name === "update_plan_verification") {
-      // POST /api/ideation/sessions/:id/verification
-      const { session_id, ...body } = args as {
-        session_id: string;
-        status: string;
-        in_progress?: boolean;
-        round?: number;
-        gaps?: unknown[];
-        convergence_reason?: string;
-      };
-      result = await callTauri(`ideation/sessions/${session_id}/verification`, body);
     } else if (name === "revert_and_skip") {
       // POST /api/ideation/sessions/:id/revert-and-skip
       const { session_id, plan_version_to_restore } = args as {

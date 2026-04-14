@@ -195,7 +195,7 @@ pub async fn create_plan_artifact(
             .get_verification_status(&session_id)
             .await
         {
-            Ok(Some((status, verification_in_progress, _))) => {
+            Ok(Some((status, verification_in_progress))) => {
                 if !verification_in_progress
                     && !matches!(status, VerificationStatus::ImportedVerified)
                 {

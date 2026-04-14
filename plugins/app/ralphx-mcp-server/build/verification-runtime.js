@@ -6,7 +6,7 @@ export function createVerificationRuntime(deps) {
     const VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS = 90 * 1000;
     const VERIFICATION_REQUIRED_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
     const VERIFICATION_OPTIONAL_WAIT_DEFAULT_MS = 15 * 1000;
-    const VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS = 15 * 1000;
+    const VERIFICATION_ENRICHMENT_WAIT_DEFAULT_MS = VERIFICATION_TOOL_WAIT_BUDGET_CAP_MS;
     const VERIFICATION_RESCUE_WAIT_SLICE_MS = 15 * 1000;
     const verificationRoundStateBySession = new Map();
     function normalizeMessageLimit(messageLimit) {

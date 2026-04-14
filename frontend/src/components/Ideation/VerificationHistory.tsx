@@ -7,7 +7,12 @@
 
 import { TrendingDown, TrendingUp, Minus, CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { RoundSummary, VerificationGap, VerificationStatus } from "@/types/ideation";
+import type {
+  RoundSummary,
+  VerificationGap,
+  VerificationRoundDetail,
+  VerificationStatus,
+} from "@/types/ideation";
 
 // ============================================================================
 // Types
@@ -16,6 +21,8 @@ import type { RoundSummary, VerificationGap, VerificationStatus } from "@/types/
 export interface VerificationHistoryProps {
   /** Round summaries for the score trend timeline */
   rounds: RoundSummary[];
+  /** Full round detail snapshots when the backend provides them */
+  roundDetails?: VerificationRoundDetail[];
   /** Final/current gaps for the last round */
   currentGaps?: VerificationGap[];
   /** Gap score for the current/final round */
@@ -55,6 +62,10 @@ function groupGapsBySeverity(gaps: VerificationGap[]): Record<string, Verificati
     grouped[gap.severity]!.push(gap);
   }
   return grouped;
+}
+
+function gapKey(gap: VerificationGap): string {
+  return `${gap.severity}::${gap.category}::${gap.description}`;
 }
 
 // ============================================================================
@@ -198,12 +209,108 @@ function GapBreakdown({ gaps }: { gaps: VerificationGap[] }) {
   );
 }
 
+function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[] }) {
+  return (
+    <div className="space-y-4">
+      <div
+        className="text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "hsl(220 10% 50%)" }}
+      >
+        Round Lineage
+      </div>
+      {roundDetails.map((round, index) => {
+        const previous = index > 0 ? roundDetails[index - 1] : undefined;
+        const currentKeys = new Set(round.gaps.map(gapKey));
+        const resolved = previous
+          ? previous.gaps.filter((gap) => !currentKeys.has(gapKey(gap)))
+          : [];
+
+        return (
+          <div
+            key={round.round}
+            className="rounded-lg px-3 py-3 space-y-2"
+            style={{
+              background: "hsla(220 10% 100% / 0.03)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
+            }}
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 82%)" }}>
+                Round {round.round}
+              </span>
+              <span className="text-[11px]" style={{ color: "hsl(220 10% 55%)" }}>
+                Score {round.gapScore}
+              </span>
+              <span className="text-[11px]" style={{ color: "hsl(220 10% 55%)" }}>
+                {round.gapCount} gap{round.gapCount === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-medium mb-1" style={{ color: "hsl(220 10% 65%)" }}>
+                Remaining after round {round.round}
+              </div>
+              {round.gaps.length > 0 ? (
+                <div className="space-y-1.5">
+                  {round.gaps.map((gap, gapIndex) => (
+                    <div
+                      key={`${round.round}-${gapIndex}-${gapKey(gap)}`}
+                      className="rounded-md px-2.5 py-2"
+                      style={{ background: "hsla(220 10% 100% / 0.04)" }}
+                    >
+                      <div className="text-[12px]" style={{ color: "hsl(220 10% 82%)" }}>
+                        {gap.description}
+                      </div>
+                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "hsl(220 10% 45%)" }}>
+                        {gap.severity} · {gap.category}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+                  No gaps remained after this round.
+                </div>
+              )}
+            </div>
+
+            {resolved.length > 0 && (
+              <div>
+                <div className="text-[11px] font-medium mb-1" style={{ color: "hsl(145 70% 45%)" }}>
+                  Addressed Since Round {previous?.round}
+                </div>
+                <div className="space-y-1.5">
+                  {resolved.map((gap, gapIndex) => (
+                    <div
+                      key={`${round.round}-resolved-${gapIndex}-${gapKey(gap)}`}
+                      className="rounded-md px-2.5 py-2"
+                      style={{ background: "hsla(145 70% 45% / 0.08)" }}
+                    >
+                      <div className="text-[12px]" style={{ color: "hsl(220 10% 82%)" }}>
+                        {gap.description}
+                      </div>
+                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "hsl(220 10% 45%)" }}>
+                        {gap.severity} · {gap.category}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ============================================================================
 // Main component
 // ============================================================================
 
 export function VerificationHistory({
   rounds,
+  roundDetails,
   currentGaps,
   gapScore,
   status,
@@ -211,6 +318,7 @@ export function VerificationHistory({
 }: VerificationHistoryProps) {
   const isVerified = status === "verified";
   const hasGaps = currentGaps !== undefined && currentGaps.length > 0;
+  const hasRoundDetails = roundDetails !== undefined && roundDetails.length > 0;
   const convergenceLabel = convergenceReason
     ? (CONVERGENCE_LABELS[convergenceReason] ?? convergenceReason)
     : undefined;
@@ -271,8 +379,10 @@ export function VerificationHistory({
         </p>
       )}
 
+      {hasRoundDetails && <RoundLineage roundDetails={roundDetails!} />}
+
       {/* Final gaps */}
-      {hasGaps && <GapBreakdown gaps={currentGaps!} />}
+      {hasGaps && !hasRoundDetails && <GapBreakdown gaps={currentGaps!} />}
     </div>
   );
 }

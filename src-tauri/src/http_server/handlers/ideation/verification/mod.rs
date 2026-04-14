@@ -34,7 +34,7 @@ mod update;
 pub use self::auto_propose::auto_propose_with_retry;
 pub use self::lifecycle::{mark_verification_infra_failure, revert_and_skip, stop_verification};
 pub use self::query::get_plan_verification;
-pub use self::update::update_plan_verification;
+pub use self::update::post_verification_status;
 
 pub(crate) use self::lifecycle::stop_verification_children;
 pub(crate) use self::lifecycle::{stop_and_archive_children, ChildFilter};

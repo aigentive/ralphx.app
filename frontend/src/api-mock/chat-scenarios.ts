@@ -522,8 +522,8 @@ const chatScenarioFixtures: Record<MockChatScenarioName, MockChatScenario> = {
             {
               type: "tool_use",
               id: "verification-update-1",
-              name: "mcp__ralphx__update_plan_verification",
-              arguments: {},
+              name: "mcp__ralphx__report_verification_round",
+              arguments: { round: 2, generation: 4 },
               result: [
                 {
                   type: "text",

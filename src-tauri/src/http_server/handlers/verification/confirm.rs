@@ -51,7 +51,7 @@ pub async fn confirm_verification(
                 .get_verification_status(&session_id)
                 .await
                 .map_err(map_app_err_local)?;
-            if matches!(vs, Some((_, true, _))) {
+            if matches!(vs, Some((_, true))) {
                 // Verification already running — idempotent success.
                 return Ok(Json(VerificationActionResponse {
                     status: "ok".to_string(),
