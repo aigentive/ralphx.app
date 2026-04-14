@@ -347,7 +347,6 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
         &["Write", "Edit", "Task", "LSP", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
         false,
     ),
-    ("ralphx-plan-verifier", "base_tools", &["Task"], false),
     ("ralphx-plan-critic-completeness", "critic_tools", &[], false),
     ("ralphx-plan-critic-implementation-feasibility", "critic_tools", &[], false),
     ("ralphx-research-deep-researcher", "base_tools", &["Write", "Task"], false),

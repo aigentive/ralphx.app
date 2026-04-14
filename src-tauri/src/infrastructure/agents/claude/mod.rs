@@ -222,6 +222,12 @@ fn is_test_environment() -> bool {
 }
 
 pub fn ensure_claude_spawn_allowed() -> Result<(), String> {
+    if let Ok(value) = std::env::var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS") {
+        if value == "1" || value.eq_ignore_ascii_case("true") {
+            return Ok(());
+        }
+    }
+
     if is_test_environment() {
         return Err("Claude spawn disabled in tests".to_string());
     }
@@ -1196,6 +1202,24 @@ pub fn build_spawnable_command(
 ) -> Result<SpawnableCommand, String> {
     let mut cmd =
         build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override, model_override)?;
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
+    configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
+}
+
+#[cfg(test)]
+pub fn build_spawnable_command_for_test(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd =
+        build_base_cli_command_inner(cli_path, plugin_dir, agent, false, effort_override, model_override, false)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
     Ok(SpawnableCommand::new(cmd, stdin_prompt))

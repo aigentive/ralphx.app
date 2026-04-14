@@ -27,6 +27,11 @@ fn provider_state_home_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn claude_spawn_override_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 async fn with_provider_state_home_override<T, Fut>(
     home: &Path,
     f: impl FnOnce() -> Fut,
@@ -41,6 +46,21 @@ where
     match previous {
         Some(value) => std::env::set_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE", value),
         None => std::env::remove_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE"),
+    }
+    result
+}
+
+async fn with_claude_spawn_allowed_in_tests<T, Fut>(f: impl FnOnce() -> Fut) -> T
+where
+    Fut: Future<Output = T>,
+{
+    let _guard = claude_spawn_override_lock().lock().expect("lock poisoned");
+    let previous = std::env::var_os("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS");
+    std::env::set_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS", "1");
+    let result = f().await;
+    match previous {
+        Some(value) => std::env::set_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS", value),
+        None => std::env::remove_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS"),
     }
     result
 }
@@ -2336,25 +2356,28 @@ async fn test_plan_verifier_sets_subagent_cap_env_var() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        Some("verification"),
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        None,
-        None,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            Some("verification"),
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -2385,25 +2408,28 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        Some("verification"),
-        None, // no project_id → no project row
-        false,
-        attachment_repo,
-        artifact_repo,
-        None,
-        None,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            Some("verification"),
+            None, // no project_id → no project row
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -2439,25 +2465,28 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
     // No entity_status → ralphx-ideation (default ideation agent)
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        None, // no entity_status → ralphx-ideation
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        None,
-        None,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None, // no entity_status → ralphx-ideation
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -2500,25 +2529,28 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
     // entity_status=None → ralphx-ideation (non-verifier ideation agent)
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        None,          // no entity_status → ralphx-ideation
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        None,
-        None,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,          // model_override=None; resolved_model_override will be "opus" from primary bucket
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None,          // no entity_status → ralphx-ideation
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,          // model_override=None; resolved_model_override will be "opus" from primary bucket
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -2561,25 +2593,28 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
         let conv = ChatConversation::new_ideation(session_id.clone());
 
         // --- Test build_command ---
-        let build_result = build_command(
-            std::path::Path::new("/fake/claude"),
-            std::path::Path::new("/fake/plugin"),
-            &conv,
-            "continue",
-            std::path::Path::new("/tmp"),
-            None,
-            Some("proj-1"),
-            false,
-            Arc::new(MemoryChatAttachmentRepository::new()),
-            Arc::new(MemoryArtifactRepository::new()),
-            None,
-            None,
-            Some(Arc::clone(&settings_repo_seeded)),
-            &[],
-            0,
-            None,
-            None,
-        )
+        let build_result = with_claude_spawn_allowed_in_tests(|| async {
+            build_command(
+                std::path::Path::new("/fake/claude"),
+                std::path::Path::new("/fake/plugin"),
+                &conv,
+                "continue",
+                std::path::Path::new("/tmp"),
+                None,
+                Some("proj-1"),
+                false,
+                Arc::new(MemoryChatAttachmentRepository::new()),
+                Arc::new(MemoryArtifactRepository::new()),
+                None,
+                None,
+                Some(Arc::clone(&settings_repo_seeded)),
+                &[],
+                0,
+                None,
+                None,
+            )
+            .await
+        })
         .await;
 
         assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
@@ -2596,29 +2631,32 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
         );
 
         // --- Test build_resume_command ---
-        let resume_result = build_resume_command(
-            std::path::Path::new("/fake/claude"),
-            std::path::Path::new("/fake/plugin"),
-            ChatContextType::Ideation,
-            session_id.as_str(),
-            "continue",
-            std::path::Path::new("/tmp"),
-            "fake-session-id",
-            Some("proj-1"),
-            false,
-            Arc::new(MemoryChatAttachmentRepository::new()),
-            Arc::new(MemoryArtifactRepository::new()),
-            None,
-            None,
-            Some(settings_repo_seeded),
-            Arc::new(MemoryIdeationSessionRepository::new()),
-            empty_delegated_session_repo(),
-            Arc::new(MemoryTaskRepository::new()),
-            &[],
-            0,
-            None,
-            None,
-        )
+        let resume_result = with_claude_spawn_allowed_in_tests(|| async {
+            build_resume_command(
+                std::path::Path::new("/fake/claude"),
+                std::path::Path::new("/fake/plugin"),
+                ChatContextType::Ideation,
+                session_id.as_str(),
+                "continue",
+                std::path::Path::new("/tmp"),
+                "fake-session-id",
+                Some("proj-1"),
+                false,
+                Arc::new(MemoryChatAttachmentRepository::new()),
+                Arc::new(MemoryArtifactRepository::new()),
+                None,
+                None,
+                Some(settings_repo_seeded),
+                Arc::new(MemoryIdeationSessionRepository::new()),
+                empty_delegated_session_repo(),
+                Arc::new(MemoryTaskRepository::new()),
+                &[],
+                0,
+                None,
+                None,
+            )
+            .await
+        })
         .await;
 
         assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
@@ -2647,25 +2685,28 @@ async fn test_build_command_resumes_from_provider_session_ref_without_legacy_ali
     let home = make_claude_home_with_session("provider-only-session");
 
     let result = with_provider_state_home_override(home.path(), || async {
-        build_command(
-            std::path::Path::new("/fake/claude"),
-            std::path::Path::new("/fake/plugin"),
-            &conversation,
-            "continue",
-            std::path::Path::new("/tmp"),
-            None,
-            None,
-            false,
-            Arc::new(MemoryChatAttachmentRepository::new()),
-            Arc::new(MemoryArtifactRepository::new()),
-            None,
-            None,
-            None,
-            &[],
-            0,
-            None,
-            None,
-        )
+        with_claude_spawn_allowed_in_tests(|| async {
+            build_command(
+                std::path::Path::new("/fake/claude"),
+                std::path::Path::new("/fake/plugin"),
+                &conversation,
+                "continue",
+                std::path::Path::new("/tmp"),
+                None,
+                None,
+                false,
+                Arc::new(MemoryChatAttachmentRepository::new()),
+                Arc::new(MemoryArtifactRepository::new()),
+                None,
+                None,
+                None,
+                &[],
+                0,
+                None,
+                None,
+            )
+            .await
+        })
         .await
     })
     .await;

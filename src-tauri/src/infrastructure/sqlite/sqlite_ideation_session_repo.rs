@@ -1429,7 +1429,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 };
 
                 // Data query with LEFT JOIN for parent title and correlated subqueries for progress.
-                // SESSION_COLUMNS are selected first, followed by:
+                // SESSION_COLUMNS are selected first, followed by named aliases:
                 // parent_session_title, active_count, done_count, total_count,
                 // verification_child_count, has_pending_prompt.
                 // Params: ?1=project_id, ?2=offset, ?3=limit, ?4=search_pattern (when present)
@@ -1489,12 +1489,14 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
                 let row_mapper = |row: &rusqlite::Row<'_>| {
                     let session = IdeationSession::from_row(row)?;
-                    let parent_session_title: Option<String> = row.get(39)?;
-                    let active_count: Option<i64> = row.get(40)?;
-                    let done_count: Option<i64> = row.get(41)?;
-                    let total_count: Option<i64> = row.get(42)?;
-                    let verification_child_count: i64 = row.get(43)?;
-                    let has_pending_prompt: bool = row.get::<_, bool>(44)?;
+                    let parent_session_title: Option<String> =
+                        row.get("parent_session_title")?;
+                    let active_count: Option<i64> = row.get("active_count")?;
+                    let done_count: Option<i64> = row.get("done_count")?;
+                    let total_count: Option<i64> = row.get("total_count")?;
+                    let verification_child_count: i64 =
+                        row.get("verification_child_count")?;
+                    let has_pending_prompt: bool = row.get("has_pending_prompt")?;
 
                     let progress = if let (Some(active), Some(done_ct), Some(total)) =
                         (active_count, done_count, total_count)

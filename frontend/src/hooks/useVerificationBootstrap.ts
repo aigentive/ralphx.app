@@ -24,8 +24,8 @@ export function useVerificationBootstrap() {
     if (!activeProjectId) return;
 
     verificationApi.getPendingVerificationConfirmations(activeProjectId)
-      .then((items) => {
-        const sessionIds = items.map((item) => item.session_id);
+      .then((response) => {
+        const sessionIds = response.sessions.map((item) => item.session_id);
         hydrateVerificationQueue(sessionIds);
         logger.debug(
           "[VerificationBootstrap] Hydrated",

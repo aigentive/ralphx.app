@@ -23,8 +23,7 @@ use crate::domain::repositories::{
 };
 use crate::infrastructure::agents::claude::agent_names;
 use crate::infrastructure::agents::claude::{
-    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
-    ContentBlockItem, SpawnableCommand, ToolCall,
+    mcp_agent_type, ContentBlockItem, SpawnableCommand, ToolCall,
 };
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
@@ -59,6 +58,85 @@ pub struct ProviderSpawnableCommand {
 pub enum ProviderResumeMode {
     Resume,
     Recovery,
+}
+
+fn build_claude_spawnable_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    #[cfg(test)]
+    {
+        crate::infrastructure::agents::claude::build_spawnable_command_for_test(
+            cli_path,
+            plugin_dir,
+            prompt,
+            agent,
+            resume_session,
+            working_directory,
+            effort_override,
+            model_override,
+        )
+    }
+    #[cfg(not(test))]
+    {
+        build_spawnable_command(
+            cli_path,
+            plugin_dir,
+            prompt,
+            agent,
+            resume_session,
+            working_directory,
+            effort_override,
+            model_override,
+        )
+    }
+}
+
+fn build_claude_spawnable_interactive_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    is_external_mcp: bool,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    #[cfg(test)]
+    {
+        crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test(
+            cli_path,
+            plugin_dir,
+            prompt,
+            agent,
+            resume_session,
+            working_directory,
+            is_external_mcp,
+            effort_override,
+            model_override,
+        )
+    }
+    #[cfg(not(test))]
+    {
+        build_spawnable_interactive_command(
+            cli_path,
+            plugin_dir,
+            prompt,
+            agent,
+            resume_session,
+            working_directory,
+            is_external_mcp,
+            effort_override,
+            model_override,
+        )
+    }
 }
 
 struct BuildHarnessCommandRequest<'a> {
@@ -1736,7 +1814,7 @@ async fn build_command_from_resolved_settings(
         }
     };
 
-    let mut spawnable = build_spawnable_command(
+    let mut spawnable = build_claude_spawnable_command(
         cli_path,
         plugin_dir,
         &prompt,
@@ -1793,7 +1871,7 @@ async fn build_recovery_command_from_resolved_settings(
     )
     .await?;
 
-    let mut spawnable = build_spawnable_command(
+    let mut spawnable = build_claude_spawnable_command(
         cli_path,
         plugin_dir,
         &prompt,
@@ -2133,7 +2211,7 @@ pub async fn build_interactive_command(
     .await?;
     let prompt = format!("{}{}", initial_prompt, attachment_context);
 
-    let mut spawnable = build_spawnable_interactive_command(
+    let mut spawnable = build_claude_spawnable_interactive_command(
         cli_path,
         plugin_dir,
         &prompt,
@@ -2318,7 +2396,7 @@ async fn build_resume_command_from_resolved_settings(
                 total_available,
             );
 
-            let mut spawnable = build_spawnable_command(
+            let mut spawnable = build_claude_spawnable_command(
                 cli_path,
                 plugin_dir,
                 &resume_prompt,

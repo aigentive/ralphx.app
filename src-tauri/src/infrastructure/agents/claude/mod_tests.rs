@@ -41,6 +41,43 @@ fn make_temp_project_plugin_dir() -> (tempfile::TempDir, std::path::PathBuf, std
     (dir, root, plugin_dir)
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).expect("create destination dir");
+    for entry in std::fs::read_dir(src).expect("read source dir") {
+        let entry = entry.expect("read dir entry");
+        let file_type = entry.file_type().expect("read file type");
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else if file_type.is_file() {
+            std::fs::copy(&src_path, &dst_path).unwrap_or_else(|err| {
+                panic!(
+                    "copy {} -> {} failed: {err}",
+                    src_path.display(),
+                    dst_path.display()
+                )
+            });
+        }
+    }
+}
+
+fn make_isolated_live_project_plugin_dir() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
+    let dir = tempfile::TempDir::new().expect("create temp project dir");
+    let root = dir.path().to_path_buf();
+    let repo_root = repo_project_root();
+    let plugin_dir = root.join("plugins/app");
+
+    copy_dir_recursive(&repo_root.join("plugins/app"), &plugin_dir);
+    copy_dir_recursive(&repo_root.join("agents"), &root.join("agents"));
+
+    (dir, root, plugin_dir)
+}
+
 /// Parse the JSON args array from a generated MCP config temp file.
 fn get_json_args(config_path: &Path) -> Vec<String> {
     let content = std::fs::read_to_string(config_path).expect("read config file");
@@ -593,8 +630,7 @@ max_turns: 80
 
 #[test]
 fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowed_tools() {
-    let root = repo_project_root();
-    let plugin_dir = root.join("plugins/app");
+    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt = std::fs::read_to_string(
@@ -653,8 +689,7 @@ description: Monitors task execution and intervenes when problems occur
 
 #[test]
 fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics_for_live_agents() {
-    let root = repo_project_root();
-    let plugin_dir = root.join("plugins/app");
+    let (_dir, root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let agent_names = crate::infrastructure::agents::harness_agent_catalog::list_canonical_prompt_backed_agents(

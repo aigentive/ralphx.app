@@ -55,13 +55,16 @@ export type PendingVerificationEvent = z.infer<typeof PendingVerificationEventSc
 
 export const PendingVerificationConfirmationItemSchema = z.object({
   session_id: z.string(),
-  title: z.string(),
-  plan_artifact_id: z.string(),
+  session_title: z.string().nullable().optional(),
+  plan_artifact_id: z.string().nullable().optional(),
+  available_specialists: z.array(SpecialistEntrySchema).default([]),
 });
 
 export type PendingVerificationConfirmationItem = z.infer<typeof PendingVerificationConfirmationItemSchema>;
 
-export const PendingVerificationConfirmationsResponseSchema = z.array(PendingVerificationConfirmationItemSchema);
+export const PendingVerificationConfirmationsResponseSchema = z.object({
+  sessions: z.array(PendingVerificationConfirmationItemSchema),
+});
 
 export type PendingVerificationConfirmationsResponse = z.infer<typeof PendingVerificationConfirmationsResponseSchema>;
 

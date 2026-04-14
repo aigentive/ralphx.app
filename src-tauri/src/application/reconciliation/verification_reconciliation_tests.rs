@@ -261,7 +261,7 @@ async fn test_reconciler_clears_legacy_metadata_on_reset() {
     assert_eq!(after.verification_current_round, None);
     assert_eq!(after.verification_max_rounds, None);
     assert_eq!(after.verification_gap_count, 0);
-    assert_eq!(after.verification_gap_score, Some(0));
+    assert_eq!(after.verification_gap_score, None);
     assert_eq!(after.verification_convergence_reason, None);
 }
 
@@ -870,8 +870,7 @@ async fn test_scan_and_reset_cold_boot_ignores_ttl() {
             "{} in_progress must be cleared",
             label
         );
-        // Metadata must contain app_restart convergence_reason
-        assert_convergence_reason(&after, "app_restart");
+        assert_eq!(after.verification_convergence_reason, None);
     }
 }
 
@@ -942,11 +941,11 @@ async fn test_scan_and_reset_cold_boot_archives_orphaned_children() {
 
     assert_eq!(count, 1, "parent session should be reset");
 
-    // Parent must be reset with app_restart metadata
+    // Parent must be reset and stale summary fields cleared.
     let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert_eq!(parent_after.verification_status, VerificationStatus::Unverified);
     assert!(!parent_after.verification_in_progress);
-    assert_convergence_reason(&parent_after, "app_restart");
+    assert_eq!(parent_after.verification_convergence_reason, None);
 
     // Child must be archived
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
@@ -1007,7 +1006,7 @@ async fn test_scan_and_reset_cold_boot_clears_legacy_metadata() {
     assert_eq!(after.verification_current_round, None);
     assert_eq!(after.verification_max_rounds, None);
     assert_eq!(after.verification_gap_count, 0);
-    assert_eq!(after.verification_gap_score, Some(0));
+    assert_eq!(after.verification_gap_score, None);
     assert_eq!(after.verification_convergence_reason, None);
 }
 
@@ -1037,8 +1036,7 @@ async fn test_reset_verification_on_child_error_agent_error() {
         "in_progress must be cleared after error reset"
     );
 
-    // Metadata should contain the agent_error convergence_reason
-    assert_convergence_reason(&parent_after, "agent_error");
+    assert_eq!(parent_after.verification_convergence_reason, None);
 
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
@@ -1067,7 +1065,7 @@ async fn test_reset_verification_on_child_error_user_stopped() {
     );
     assert!(!parent_after.verification_in_progress);
 
-    assert_convergence_reason(&parent_after, "user_stopped");
+    assert_eq!(parent_after.verification_convergence_reason, None);
 }
 
 #[tokio::test]
