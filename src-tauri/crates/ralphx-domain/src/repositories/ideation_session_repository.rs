@@ -129,14 +129,11 @@ pub trait IdeationSessionRepository: Send + Sync {
     ) -> AppResult<()>;
 
     /// Update verification state atomically (status + in_progress flag).
-    ///
-    /// `metadata_json` is transitional plumbing and must remain `None` in live callers.
     async fn update_verification_state(
         &self,
         id: &IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        metadata_json: Option<String>,
     ) -> AppResult<()>;
 
     /// Conditionally reset verification status to `unverified` — ONLY when `verification_in_progress = 0`.

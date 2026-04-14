@@ -142,7 +142,7 @@ impl SessionReopenService {
             .update_status(session_id, IdeationSessionStatus::Active)
             .await?;
 
-        // 9. Reset verification state (status → unverified, in_progress → false, metadata → NULL).
+        // 9. Reset verification state (status → unverified, in_progress → false).
         // A reopened session starts a fresh verification cycle. Use update_verification_state
         // (unconditional) because reset_verification() guards on in_progress=false.
         self.ideation_session_repo
@@ -150,7 +150,6 @@ impl SessionReopenService {
                 session_id,
                 crate::domain::entities::VerificationStatus::Unverified,
                 false,
-                None,
             )
             .await?;
 

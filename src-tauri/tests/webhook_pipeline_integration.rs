@@ -97,7 +97,7 @@ async fn mark_session_verified(state: &HttpServerState, session_id: &IdeationSes
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(session_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(session_id, VerificationStatus::Verified, false)
         .await
         .expect("Failed to mark session verified");
 }

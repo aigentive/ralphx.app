@@ -188,7 +188,6 @@ impl IdeationSessionRepository for MockSessionRepository {
         _id: &IdeationSessionId,
         _status: entities::VerificationStatus,
         _in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         Ok(())
     }

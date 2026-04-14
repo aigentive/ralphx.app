@@ -197,8 +197,7 @@ async fn test_update_verification_state_roundtrip() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1,"current_round":2}"#.to_string()),
+        true
     )
     .await
     .unwrap();
@@ -219,8 +218,7 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::NeedsRevision,
-        false,
-        Some(r#"{"v":1}"#.to_string()),
+        false
     )
     .await
     .unwrap();
@@ -247,8 +245,7 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1,"current_round":3}"#.to_string()),
+        true
     )
     .await
     .unwrap();
@@ -346,8 +343,7 @@ async fn test_archive_clears_verification_in_progress_when_set() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1}"#.to_string()),
+        true
     )
     .await
     .unwrap();
@@ -403,8 +399,7 @@ async fn test_reset_verification_is_noop_for_imported_verified() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::ImportedVerified,
-        false,
-        Some(r#"{"v":1}"#.to_string()),
+        false
     )
     .await
     .unwrap();
@@ -443,7 +438,6 @@ async fn test_get_stale_in_progress_sessions_excludes_archived() {
         &session.id,
         VerificationStatus::Reviewing,
         true,
-        None,
     )
     .await
     .unwrap();
@@ -470,7 +464,6 @@ async fn test_get_stale_in_progress_sessions_includes_active() {
         &session.id,
         VerificationStatus::Reviewing,
         true,
-        None,
     )
     .await
     .unwrap();

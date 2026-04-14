@@ -2949,8 +2949,7 @@ async fn test_trigger_verification_already_running() {
         .update_verification_state(
             &created.id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -3023,8 +3022,7 @@ async fn test_get_plan_verification_basic() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Verified,
-            false,
-            None,
+            false
         )
         .await
         .unwrap();
@@ -3236,8 +3234,7 @@ async fn test_get_ideation_messages_agent_status_generating() {
             0,
             "conv-id".to_string(),
             "run-id".to_string(),
-            None,
-            None,
+            None
         )
         .await;
 
@@ -3292,8 +3289,7 @@ async fn test_get_ideation_messages_agent_status_waiting_for_input() {
             0,
             "conv-id-wait".to_string(),
             "run-id-wait".to_string(),
-            None,
-            None,
+            None
         )
         .await;
 
@@ -3349,8 +3345,7 @@ async fn test_get_ideation_status_agent_running() {
             0,
             "conv-id-status".to_string(),
             "run-id-status".to_string(),
-            None,
-            None,
+            None
         )
         .await;
 
@@ -3404,8 +3399,7 @@ async fn test_get_ideation_status_agent_waiting_for_input() {
             0,
             "conv-id-waiting".to_string(),
             "run-id-waiting".to_string(),
-            None,
-            None,
+            None
         )
         .await;
 
@@ -4261,8 +4255,7 @@ async fn test_get_plan_verification_external_verification_child_shape() {
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -4308,8 +4301,7 @@ async fn test_get_plan_verification_external_no_child_returns_null() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();

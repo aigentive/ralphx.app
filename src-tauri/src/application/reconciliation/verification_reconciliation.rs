@@ -228,7 +228,6 @@ impl VerificationReconciliationService {
                     &session.id,
                     VerificationStatus::Unverified,
                     false,
-                    None,
                 )
                 .await
             {
@@ -1023,7 +1022,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
 
     // Update parent verification state
     match repo
-        .update_verification_state(parent_id, terminal_status, false, None)
+        .update_verification_state(parent_id, terminal_status, false)
         .await
     {
         Ok(()) => {
@@ -1146,8 +1145,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
         .update_verification_state(
             &parent_id,
             VerificationStatus::Unverified,
-            false,
-            None,
+            false
         )
         .await
     {

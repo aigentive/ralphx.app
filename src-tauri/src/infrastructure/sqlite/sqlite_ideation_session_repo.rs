@@ -660,7 +660,6 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         id: &IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         let id = id.as_str().to_string();
         let status_str = status.to_string();

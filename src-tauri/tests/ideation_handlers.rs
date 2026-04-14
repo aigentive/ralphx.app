@@ -289,6 +289,100 @@ fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> serde_json::Value {
     })
 }
 
+fn snapshot_from_legacy_metadata_json(
+    generation: i32,
+    status: VerificationStatus,
+    in_progress: bool,
+    raw: &str,
+) -> VerificationRunSnapshot {
+    let parsed: serde_json::Value =
+        serde_json::from_str(raw).expect("legacy verification metadata JSON");
+    let current_round = parsed
+        .get("current_round")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0) as u32;
+    let max_rounds = parsed
+        .get("max_rounds")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0) as u32;
+    let best_round_index = parsed
+        .get("best_round_index")
+        .and_then(|value| value.as_u64())
+        .map(|value| value as u32);
+    let convergence_reason = parsed
+        .get("convergence_reason")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+
+    let current_gaps = parsed
+        .get("current_gaps")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|gap| VerificationGap {
+            severity: gap
+                .get("severity")
+                .and_then(|value| value.as_str())
+                .unwrap_or("low")
+                .to_string(),
+            category: gap
+                .get("category")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            description: gap
+                .get("description")
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+                .to_string(),
+            why_it_matters: gap
+                .get("why_it_matters")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()),
+            source: None,
+        })
+        .collect();
+
+    let rounds = parsed
+        .get("rounds")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(index, round)| VerificationRoundSnapshot {
+            round: (index + 1) as u32,
+            gap_score: round
+                .get("gap_score")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(0) as u32,
+            fingerprints: round
+                .get("fingerprints")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|value| value.as_str().map(|entry| entry.to_string()))
+                .collect(),
+            gaps: Vec::new(),
+            parse_failed: false,
+        })
+        .collect();
+
+    VerificationRunSnapshot {
+        generation,
+        status,
+        in_progress,
+        current_round,
+        max_rounds,
+        best_round_index,
+        convergence_reason,
+        current_gaps,
+        rounds,
+    }
+}
+
 /// Happy path: session with 3 gaps and 2 rounds → response includes
 /// current_gaps (3 items) and rounds (2 items with correct scores/counts).
 #[tokio::test]
@@ -464,8 +558,7 @@ async fn test_get_plan_verification_without_native_snapshot_returns_empty_vecs()
         .update_verification_state(
             &session_id,
             VerificationStatus::Unverified,
-            false,
-            None,
+            false
         )
         .await
         .unwrap();
@@ -484,9 +577,9 @@ async fn test_get_plan_verification_without_native_snapshot_returns_empty_vecs()
     assert!(response.gap_score.is_none());
 }
 
-/// Malformed metadata test: partial JSON → serde defaults produce empty vecs, no panic.
+/// Reviewing state with no native snapshot must not panic and should return empty arrays.
 #[tokio::test]
-async fn test_get_plan_verification_malformed_metadata_no_panic() {
+async fn test_get_plan_verification_reviewing_without_snapshot_no_panic() {
     let state = setup_test_state().await;
     let project_id = ProjectId::new();
     let session = IdeationSession::new(project_id);
@@ -499,16 +592,13 @@ async fn test_get_plan_verification_malformed_metadata_no_panic() {
         .await
         .unwrap();
 
-    // Partial JSON: only schema version present, all other fields absent
-    let partial_json = r#"{"v": 1}"#.to_string();
     state
         .app_state
         .ideation_session_repo
         .update_verification_state(
             &session_id,
             VerificationStatus::Reviewing,
-            true,
-            Some(partial_json),
+            true
         )
         .await
         .unwrap();
@@ -516,10 +606,10 @@ async fn test_get_plan_verification_malformed_metadata_no_panic() {
     let result =
         get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
 
-    assert!(result.is_ok(), "malformed metadata must not panic the handler");
+    assert!(result.is_ok(), "missing snapshot must not panic the handler");
     let response = result.unwrap().0;
-    assert!(response.current_gaps.is_empty(), "serde defaults: current_gaps should be []");
-    assert!(response.rounds.is_empty(), "serde defaults: rounds should be []");
+    assert!(response.current_gaps.is_empty(), "current_gaps should be empty without a native snapshot");
+    assert!(response.rounds.is_empty(), "rounds should be empty without a native snapshot");
 }
 
 /// Rounds cap test: session with 15 rounds → last 10 returned in chronological order
@@ -551,8 +641,21 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
         .update_verification_state(
             &session_id,
             VerificationStatus::NeedsRevision,
-            false,
-            Some(metadata),
+            false
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &snapshot_from_legacy_metadata_json(
+                0,
+                VerificationStatus::NeedsRevision,
+                false,
+                &metadata,
+            ),
         )
         .await
         .unwrap();
@@ -923,8 +1026,21 @@ async fn test_rule_a_clears_stale_convergence_reason_on_live_round_update() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            Some(stale_metadata),
+            true
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                &stale_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -1057,7 +1173,7 @@ async fn test_rule_b_terminal_guard_zero_blocking_verified_forces_in_progress_fa
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, true, None)
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, true)
         .await
         .unwrap();
 
@@ -1118,7 +1234,7 @@ async fn test_needs_revision_to_verified_with_convergence_reason() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false, None)
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false)
         .await
         .unwrap();
 
@@ -1158,7 +1274,7 @@ async fn test_needs_revision_to_verified_without_convergence_reason() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false, None)
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false)
         .await
         .unwrap();
 
@@ -1490,8 +1606,21 @@ async fn test_iterative_convergence_decreasing_gaps() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            Some(round1_metadata),
+            true
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                &round1_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2025,8 +2154,21 @@ async fn test_reverify_clears_all_stale_metadata() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Verified,
-            false,
-            Some(stale_metadata),
+            false
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                3,
+                VerificationStatus::Verified,
+                false,
+                &stale_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2317,8 +2459,21 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::ImportedVerified,
-            false,
-            Some(stale_metadata),
+            false
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                2,
+                VerificationStatus::ImportedVerified,
+                false,
+                &stale_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2441,8 +2596,21 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Verified,
-            false,
-            Some(old_metadata),
+            false
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                1,
+                VerificationStatus::Verified,
+                false,
+                &old_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2686,8 +2854,21 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            Some(round1_metadata),
+            true
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                &round1_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2840,8 +3021,21 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            Some(round1_metadata),
+            true
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &parent_id,
+            &snapshot_from_legacy_metadata_json(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                &round1_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -2962,8 +3156,21 @@ async fn test_auto_propose_skipped_for_internal_session() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            Some(round1_metadata),
+            true
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &snapshot_from_legacy_metadata_json(
+                1,
+                VerificationStatus::Reviewing,
+                true,
+                &round1_metadata,
+            ),
         )
         .await
         .unwrap();
@@ -3172,8 +3379,7 @@ async fn test_get_plan_verification_remaps_verification_child_session_id_to_pare
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -3250,8 +3456,7 @@ async fn test_get_plan_verification_uses_native_round_store_when_metadata_is_mis
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::NeedsRevision,
-            false,
-            None,
+            false
         )
         .await
         .unwrap();
@@ -3297,7 +3502,7 @@ async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
     state
@@ -3464,8 +3669,7 @@ async fn test_get_plan_verification_no_child_returns_null() {
         .update_verification_state(
             &session_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -3519,8 +3723,7 @@ async fn test_get_plan_verification_active_child_populates_active_id() {
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -3588,8 +3791,7 @@ async fn test_get_plan_verification_archived_child_no_active_id() {
         .update_verification_state(
             &parent_id,
             VerificationStatus::Verified,
-            false,
-            None,
+            false
         )
         .await
         .unwrap();
@@ -3655,8 +3857,7 @@ async fn test_get_plan_verification_child_last_orchestrator_message() {
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();

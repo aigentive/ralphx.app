@@ -320,7 +320,7 @@ pub async fn stop_verification(
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false, None)
+        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false)
         .await
         .map_err(|e| {
             error!(
@@ -474,8 +474,7 @@ pub async fn mark_verification_infra_failure(
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Unverified,
-            false,
-            None,
+            false
         )
         .await
         .map_err(|e| {

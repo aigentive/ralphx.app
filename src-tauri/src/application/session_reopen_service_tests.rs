@@ -506,10 +506,9 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         id: &crate::domain::entities::IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        metadata_json: Option<String>,
     ) -> crate::error::AppResult<()> {
         self.inner
-            .update_verification_state(id, status, in_progress, metadata_json)
+            .update_verification_state(id, status, in_progress)
             .await
     }
 

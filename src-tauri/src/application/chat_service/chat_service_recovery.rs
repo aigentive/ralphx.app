@@ -344,7 +344,6 @@ async fn build_ideation_recovery_metadata<R: Runtime>(
                 &session_id,
                 VerificationStatus::Unverified,
                 false,
-                None,
             )
             .await
         {

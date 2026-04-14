@@ -262,7 +262,6 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
         &session_id,
         VerificationStatus::NeedsRevision,
         true, // in_progress — orchestrator correcting plan
-        Some(round1_meta.clone()),
     )
     .await
     .unwrap();
@@ -294,7 +293,6 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
         &session_id,
         VerificationStatus::Verified,
         false, // in_progress cleared on convergence
-        Some(round2_meta.clone()),
     )
     .await
     .unwrap();
@@ -345,8 +343,7 @@ async fn test_high_gaps_block_zero_blocking_convergence() {
     repo.update_verification_state(
         &session_id,
         VerificationStatus::NeedsRevision,
-        true,
-        Some(round1_meta.clone()),
+        true
     )
     .await
     .unwrap();
@@ -366,8 +363,7 @@ async fn test_high_gaps_block_zero_blocking_convergence() {
     repo.update_verification_state(
         &session_id,
         VerificationStatus::NeedsRevision, // NOT Verified — high gap still present
-        true,
-        Some(round2_meta.clone()),
+        true
     )
     .await
     .unwrap();
@@ -414,8 +410,7 @@ async fn test_hard_cap_exit_after_max_rounds() {
         repo.update_verification_state(
             &session_id,
             VerificationStatus::NeedsRevision,
-            true,
-            Some(meta.clone()),
+            true
         )
         .await
         .unwrap();
@@ -443,8 +438,7 @@ async fn test_hard_cap_exit_after_max_rounds() {
     repo.update_verification_state(
         &session_id,
         VerificationStatus::Verified,
-        false,
-        Some(cap_meta.clone()),
+        false
     )
     .await
     .unwrap();
@@ -529,7 +523,7 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     assert_eq!(after_reset.verification_current_round, None);
     assert_eq!(after_reset.verification_max_rounds, None);
     assert_eq!(after_reset.verification_gap_count, 0);
-    assert_eq!(after_reset.verification_gap_score, Some(0));
+    assert_eq!(after_reset.verification_gap_score, None);
     assert_eq!(after_reset.verification_convergence_reason, None);
 
     // Gate still blocks (now unverified, gate enabled)
@@ -540,12 +534,11 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     );
 
     // Simulate successful retry: user re-triggers verification → orchestrator converges
-    let retry_meta = metadata_converged("zero_blocking", 1);
+    let _retry_meta = metadata_converged("zero_blocking", 1);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::Verified,
-        false,
-        Some(retry_meta),
+        false
     )
     .await
     .unwrap();
@@ -918,12 +911,11 @@ async fn test_verification_child_updates_parent_state() {
     repo.create(child).await.unwrap();
 
     // Round 1: ralphx-plan-verifier calls post_verification_status(parent_id) — gaps found
-    let round1_meta = metadata_with_gaps(1, 2, 1, 4);
+    let _round1_meta = metadata_with_gaps(1, 2, 1, 4);
     repo.update_verification_state(
         &parent_id,
         VerificationStatus::NeedsRevision,
         true, // still in progress — loop continues
-        Some(round1_meta),
     )
     .await
     .unwrap();
@@ -945,12 +937,11 @@ async fn test_verification_child_updates_parent_state() {
     );
 
     // Round 2: ralphx-plan-verifier calls post_verification_status(parent_id) — zero_blocking
-    let round2_meta = metadata_converged("zero_blocking", 2);
+    let _round2_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
         VerificationStatus::Verified,
         false, // in_progress cleared on convergence
-        Some(round2_meta),
     )
     .await
     .unwrap();
@@ -1011,12 +1002,11 @@ async fn test_verification_child_archived_on_completion() {
     assert_eq!(active_children.len(), 1, "child must be visible before completion");
 
     // Step 1: ralphx-plan-verifier calls post_verification_status(parent_id, in_progress=false)
-    let final_meta = metadata_converged("zero_blocking", 2);
+    let _final_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
         VerificationStatus::Verified,
-        false,
-        Some(final_meta),
+        false
     )
     .await
     .unwrap();
@@ -1167,7 +1157,6 @@ async fn test_spawn_failure_resets_parent() {
         &parent_id,
         VerificationStatus::Unverified,
         false, // in_progress cleared — lock released
-        None,  // metadata cleared
     )
     .await
     .unwrap();
@@ -1186,7 +1175,7 @@ async fn test_spawn_failure_resets_parent() {
     assert_eq!(parent_after.verification_current_round, None);
     assert_eq!(parent_after.verification_max_rounds, None);
     assert_eq!(parent_after.verification_gap_count, 0);
-    assert_eq!(parent_after.verification_gap_score, Some(0));
+    assert_eq!(parent_after.verification_gap_score, None);
     assert_eq!(parent_after.verification_convergence_reason, None);
 
     // Gate still blocks (session unverified) but for the right reason
@@ -1286,12 +1275,11 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
     repo.create(session).await.unwrap();
 
     // Step 1: Verifier escalates — sets NeedsRevision + escalated_to_parent, in_progress=false
-    let escalation_meta = metadata_converged("escalated_to_parent", 3);
+    let _escalation_meta = metadata_converged("escalated_to_parent", 3);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::NeedsRevision,
         false, // verifier exits cleanly — in_progress cleared before sending message
-        Some(escalation_meta),
     )
     .await
     .unwrap();
@@ -1331,12 +1319,11 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
     );
 
     // Step 4: Parent resolves gaps and re-verifies with new child session → zero_blocking
-    let reverify_meta = metadata_converged("zero_blocking", 2);
+    let _reverify_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::Verified,
-        false,
-        Some(reverify_meta),
+        false
     )
     .await
     .unwrap();
@@ -1495,7 +1482,6 @@ async fn test_verification_child_spawn_failure_archives_child_and_unblocks_paren
         &parent_id,
         VerificationStatus::Unverified,
         false, // in_progress cleared — lock released
-        None,
     )
     .await
     .unwrap();

@@ -813,7 +813,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Verified, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Verified, true)
         .await
         .unwrap();
 
@@ -854,7 +854,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session2_id, VerificationStatus::NeedsRevision, true, None)
+        .update_verification_state(&session2_id, VerificationStatus::NeedsRevision, true)
         .await
         .unwrap();
 
@@ -1228,7 +1228,7 @@ async fn test_create_plan_artifact_skips_trigger_when_already_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -1306,7 +1306,7 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -1892,7 +1892,7 @@ async fn test_edit_plan_artifact_resets_verification() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_session_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_session_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 
@@ -1953,7 +1953,7 @@ async fn test_edit_plan_artifact_preserves_verification_during_loop() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -2392,7 +2392,7 @@ async fn test_6a_prime_freeze_released_when_verification_complete() {
 
     // Set verification_in_progress=true and register child as running (freeze active)
     session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
     running_registry
@@ -2421,7 +2421,7 @@ async fn test_6a_prime_freeze_released_when_verification_complete() {
 
     // Set verification_in_progress=false (verification round completed)
     session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 
@@ -2548,7 +2548,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -2596,7 +2596,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 
@@ -2643,7 +2643,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -2697,7 +2697,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 

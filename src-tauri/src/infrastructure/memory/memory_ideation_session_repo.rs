@@ -273,7 +273,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         id: &IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
             session.verification_status = status;

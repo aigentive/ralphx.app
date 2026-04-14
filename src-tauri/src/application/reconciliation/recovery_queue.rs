@@ -339,18 +339,12 @@ impl RecoveryQueueProcessor {
                 // Step 6: Fallback — reset parent verification state to Unverified.
                 // Matches current cold-boot behavior so the user can re-trigger verification.
                 let parent_id = IdeationSessionId::from_string(parent_session_id.clone());
-                let fallback_metadata = serde_json::json!({
-                    "convergence_reason": "recovery_failed"
-                })
-                .to_string();
-
                 if let Err(repo_err) = self
                     .ideation_session_repo
                     .update_verification_state(
                         &parent_id,
                         VerificationStatus::Unverified,
                         false,
-                        Some(fallback_metadata),
                     )
                     .await
                 {

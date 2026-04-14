@@ -508,7 +508,6 @@ impl IdeationSessionRepository for MockIdeationRepo {
         _id: &IdeationSessionId,
         _status: VerificationStatus,
         _in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         unimplemented!()
     }

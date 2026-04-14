@@ -918,8 +918,7 @@ async fn test_update_verification_state_roundtrip() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1,"current_round":1,"max_rounds":5}"#.to_string()),
+        true
     )
     .await
     .unwrap();
@@ -954,7 +953,7 @@ async fn test_update_verification_state_all_status_variants() {
         VerificationStatus::Skipped,
         VerificationStatus::Unverified,
     ] {
-        repo.update_verification_state(&session.id, status, false, None)
+        repo.update_verification_state(&session.id, status, false)
             .await
             .unwrap();
         let (s, _) = repo
@@ -980,8 +979,7 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::NeedsRevision,
-        false,
-        Some(r#"{"v":1}"#.to_string()),
+        false
     )
     .await
     .unwrap();
@@ -1009,14 +1007,11 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let session = create_test_session(&project_id, Some("In Progress Session"));
     repo.create(session.clone()).await.unwrap();
 
-    let metadata = Some(r#"{"v":1,"current_round":3}"#.to_string());
-
     // Set to reviewing with in_progress = true
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        metadata.clone(),
+        true
     )
     .await
     .unwrap();
@@ -1921,28 +1916,10 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     repo.create(session).await.unwrap();
 
     // Set stale metadata: 2 rounds, 1 gap, convergence_reason set, parse_failures non-empty
-    let stale_meta = serde_json::json!({
-        "v": 1,
-        "current_round": 2,
-        "max_rounds": 5,
-        "rounds": [
-            {"fingerprints": ["fp-a", "fp-b"], "gap_score": 10},
-            {"fingerprints": ["fp-a"], "gap_score": 6}
-        ],
-        "current_gaps": [
-            {"severity": "critical", "category": "security", "description": "Auth bypass risk", "why_it_matters": null}
-        ],
-        "convergence_reason": "max_rounds",
-        "best_round_index": 1,
-        "parse_failures": [1]
-    })
-    .to_string();
-
     repo.update_verification_state(
         &session_id_obj,
         VerificationStatus::Verified,
         false,
-        Some(stale_meta),
     )
     .await
     .unwrap();
@@ -2100,8 +2077,7 @@ async fn test_archive_clears_verification_in_progress_when_set() {
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1}"#.to_string()),
+        true
     )
     .await
     .unwrap();

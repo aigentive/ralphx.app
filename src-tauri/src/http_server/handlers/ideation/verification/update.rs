@@ -493,7 +493,7 @@ pub async fn post_verification_status(
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, new_status, effective_in_progress, None)
+        .update_verification_state(&session_id_obj, new_status, effective_in_progress)
         .await
         .map_err(|e| {
             error!(

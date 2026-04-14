@@ -270,7 +270,7 @@ INFO  session_id=... "Reconciliation reset stuck verification"
 
 | File | Purpose |
 |------|---------|
-| `domain/entities/ideation/types.rs` | `VerificationStatus`, `VerificationMetadata`, `VerificationGap`, `VerificationError` |
+| `domain/entities/ideation/` + `domain/entities/mod.rs` | `VerificationStatus`, `VerificationGap`, `VerificationRunSnapshot`, `VerificationRoundSnapshot`, `VerificationError` |
 | `domain/services/gap_fingerprint.rs` | 4-layer normalization + Jaccard similarity |
 | `domain/services/verification_gate.rs` | `check_verification_gate()` — shared across all 3 acceptance paths |
 | `domain/repositories/ideation_session_repository.rs` | `update_verification_state()`, `reset_verification()`, `get_verification_status()`, `revert_plan_and_skip_with_artifact()` |
