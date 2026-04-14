@@ -254,122 +254,37 @@ async fn test_get_session_messages_returns_chronological_order() {
 // get_plan_verification handler tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn make_metadata_json(
-    current_gaps: Vec<serde_json::Value>,
-    rounds: Vec<serde_json::Value>,
-    current_round: u32,
-    max_rounds: u32,
-) -> String {
-    serde_json::json!({
-        "v": 1,
-        "current_round": current_round,
-        "max_rounds": max_rounds,
-        "rounds": rounds,
-        "current_gaps": current_gaps,
-        "convergence_reason": null,
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string()
+fn make_gap(severity: &str, category: &str, description: &str) -> VerificationGap {
+    VerificationGap {
+        severity: severity.to_string(),
+        category: category.to_string(),
+        description: description.to_string(),
+        why_it_matters: None,
+        source: None,
+    }
 }
 
-fn make_gap(severity: &str, category: &str, description: &str) -> serde_json::Value {
-    serde_json::json!({
-        "severity": severity,
-        "category": category,
-        "description": description,
-        "why_it_matters": null
-    })
+fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> VerificationRoundSnapshot {
+    VerificationRoundSnapshot {
+        round: 0,
+        gap_score,
+        fingerprints: fingerprints.into_iter().map(|value| value.to_string()).collect(),
+        gaps: Vec::new(),
+        parse_failed: false,
+    }
 }
 
-fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> serde_json::Value {
-    serde_json::json!({
-        "fingerprints": fingerprints,
-        "gap_score": gap_score
-    })
-}
-
-fn snapshot_from_legacy_metadata_json(
+fn make_snapshot(
     generation: i32,
     status: VerificationStatus,
     in_progress: bool,
-    raw: &str,
+    current_round: u32,
+    max_rounds: u32,
+    current_gaps: Vec<VerificationGap>,
+    rounds: Vec<VerificationRoundSnapshot>,
+    convergence_reason: Option<&str>,
+    best_round_index: Option<u32>,
 ) -> VerificationRunSnapshot {
-    let parsed: serde_json::Value =
-        serde_json::from_str(raw).expect("legacy verification metadata JSON");
-    let current_round = parsed
-        .get("current_round")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0) as u32;
-    let max_rounds = parsed
-        .get("max_rounds")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(0) as u32;
-    let best_round_index = parsed
-        .get("best_round_index")
-        .and_then(|value| value.as_u64())
-        .map(|value| value as u32);
-    let convergence_reason = parsed
-        .get("convergence_reason")
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string());
-
-    let current_gaps = parsed
-        .get("current_gaps")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|gap| VerificationGap {
-            severity: gap
-                .get("severity")
-                .and_then(|value| value.as_str())
-                .unwrap_or("low")
-                .to_string(),
-            category: gap
-                .get("category")
-                .and_then(|value| value.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            description: gap
-                .get("description")
-                .and_then(|value| value.as_str())
-                .unwrap_or("")
-                .to_string(),
-            why_it_matters: gap
-                .get("why_it_matters")
-                .and_then(|value| value.as_str())
-                .map(|value| value.to_string()),
-            source: None,
-        })
-        .collect();
-
-    let rounds = parsed
-        .get("rounds")
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .enumerate()
-        .map(|(index, round)| VerificationRoundSnapshot {
-            round: (index + 1) as u32,
-            gap_score: round
-                .get("gap_score")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0) as u32,
-            fingerprints: round
-                .get("fingerprints")
-                .and_then(|value| value.as_array())
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|value| value.as_str().map(|entry| entry.to_string()))
-                .collect(),
-            gaps: Vec::new(),
-            parse_failed: false,
-        })
-        .collect();
-
     VerificationRunSnapshot {
         generation,
         status,
@@ -377,9 +292,16 @@ fn snapshot_from_legacy_metadata_json(
         current_round,
         max_rounds,
         best_round_index,
-        convergence_reason,
+        convergence_reason: convergence_reason.map(|value| value.to_string()),
         current_gaps,
-        rounds,
+        rounds: rounds
+            .into_iter()
+            .enumerate()
+            .map(|(index, round)| VerificationRoundSnapshot {
+                round: if round.round == 0 { (index + 1) as u32 } else { round.round },
+                ..round
+            })
+            .collect(),
     }
 }
 
@@ -629,11 +551,20 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
         .unwrap();
 
     // Build 15 rounds with distinct gap_scores (1..=15) so we can verify ordering
-    let rounds: Vec<serde_json::Value> = (1u32..=15)
+    let rounds: Vec<VerificationRoundSnapshot> = (1u32..=15)
         .map(|i| make_round(vec!["fp-x"], i))
         .collect();
-
-    let metadata = make_metadata_json(vec![], rounds, 15, 15);
+    let snapshot = make_snapshot(
+        0,
+        VerificationStatus::NeedsRevision,
+        false,
+        15,
+        15,
+        vec![],
+        rounds,
+        None,
+        None,
+    );
 
     state
         .app_state
@@ -648,15 +579,7 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id,
-            &snapshot_from_legacy_metadata_json(
-                0,
-                VerificationStatus::NeedsRevision,
-                false,
-                &metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id, &snapshot)
         .await
         .unwrap();
 
@@ -1008,17 +931,17 @@ async fn test_rule_a_clears_stale_convergence_reason_on_live_round_update() {
     let session_id_str = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let stale_metadata = serde_json::json!({
-        "v": 1,
-        "current_round": 1,
-        "max_rounds": 5,
-        "rounds": [],
-        "current_gaps": [],
-        "convergence_reason": "agent_error",
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string();
+    let stale_snapshot = make_snapshot(
+        0,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+        vec![],
+        vec![],
+        Some("agent_error"),
+        None,
+    );
 
     state
         .app_state
@@ -1033,15 +956,7 @@ async fn test_rule_a_clears_stale_convergence_reason_on_live_round_update() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                0,
-                VerificationStatus::Reviewing,
-                true,
-                &stale_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &stale_snapshot)
         .await
         .unwrap();
 
@@ -1598,7 +1513,17 @@ async fn test_iterative_convergence_decreasing_gaps() {
     let prior_rounds = vec![
         make_round(vec!["no-authentication-layer", "no-caching-strategy", "no-retry-mechanism"], 50),
     ];
-    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    let round1_snapshot = make_snapshot(
+        0,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+        prior_gaps,
+        prior_rounds,
+        None,
+        None,
+    );
 
     state
         .app_state
@@ -1613,15 +1538,7 @@ async fn test_iterative_convergence_decreasing_gaps() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                0,
-                VerificationStatus::Reviewing,
-                true,
-                &round1_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &round1_snapshot)
         .await
         .unwrap();
 
@@ -2130,23 +2047,21 @@ async fn test_reverify_clears_all_stale_metadata() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // Set stale metadata from a prior verification run
-    let stale_metadata = serde_json::json!({
-        "v": 1,
-        "current_round": 3,
-        "max_rounds": 5,
-        "rounds": [
-            {"fingerprints": ["fp-auth", "fp-scale"], "gap_score": 12},
-            {"fingerprints": ["fp-auth"], "gap_score": 8},
-            {"fingerprints": ["fp-auth"], "gap_score": 8}
+    let stale_snapshot = make_snapshot(
+        3,
+        VerificationStatus::Verified,
+        false,
+        3,
+        5,
+        vec![make_gap("high", "security", "No auth")],
+        vec![
+            make_round(vec!["fp-auth", "fp-scale"], 12),
+            make_round(vec!["fp-auth"], 8),
+            make_round(vec!["fp-auth"], 8),
         ],
-        "current_gaps": [
-            {"severity": "high", "category": "security", "description": "No auth", "why_it_matters": null}
-        ],
-        "convergence_reason": "max_rounds",
-        "best_round_index": 2,
-        "parse_failures": [1]
-    })
-    .to_string();
+        Some("max_rounds"),
+        Some(2),
+    );
 
     state
         .app_state
@@ -2161,15 +2076,7 @@ async fn test_reverify_clears_all_stale_metadata() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                3,
-                VerificationStatus::Verified,
-                false,
-                &stale_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &stale_snapshot)
         .await
         .unwrap();
 
@@ -2439,19 +2346,17 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let stale_metadata = serde_json::json!({
-        "v": 1,
-        "current_round": 2,
-        "max_rounds": 3,
-        "rounds": [{"fingerprints": ["fp-imported"], "gap_score": 5}],
-        "current_gaps": [
-            {"severity": "medium", "category": "docs", "description": "Missing docs", "why_it_matters": null}
-        ],
-        "convergence_reason": "zero_blocking",
-        "best_round_index": 0,
-        "parse_failures": []
-    })
-    .to_string();
+    let stale_snapshot = make_snapshot(
+        2,
+        VerificationStatus::ImportedVerified,
+        false,
+        2,
+        3,
+        vec![make_gap("medium", "docs", "Missing docs")],
+        vec![make_round(vec!["fp-imported"], 5)],
+        Some("zero_blocking"),
+        Some(0),
+    );
 
     state
         .app_state
@@ -2466,15 +2371,7 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                2,
-                VerificationStatus::ImportedVerified,
-                false,
-                &stale_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &stale_snapshot)
         .await
         .unwrap();
 
@@ -2576,19 +2473,17 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let old_metadata = serde_json::json!({
-        "v": 1,
-        "current_round": 1,
-        "max_rounds": 1,
-        "rounds": [{"fingerprints": ["old-gap-fp"], "gap_score": 5}],
-        "current_gaps": [
-            {"severity": "high", "category": "old", "description": "Old outdated gap", "why_it_matters": null}
-        ],
-        "convergence_reason": "max_rounds",
-        "best_round_index": 0,
-        "parse_failures": []
-    })
-    .to_string();
+    let old_snapshot = make_snapshot(
+        1,
+        VerificationStatus::Verified,
+        false,
+        1,
+        1,
+        vec![make_gap("high", "old", "Old outdated gap")],
+        vec![make_round(vec!["old-gap-fp"], 5)],
+        Some("max_rounds"),
+        Some(0),
+    );
 
     state
         .app_state
@@ -2603,15 +2498,7 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                1,
-                VerificationStatus::Verified,
-                false,
-                &old_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &old_snapshot)
         .await
         .unwrap();
 
@@ -2847,7 +2734,17 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
         vec!["no-authentication-layer", "no-unit-tests"],
         30,
     )];
-    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    let round1_snapshot = make_snapshot(
+        0,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+        prior_gaps,
+        prior_rounds,
+        None,
+        None,
+    );
     state
         .app_state
         .ideation_session_repo
@@ -2861,15 +2758,7 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                0,
-                VerificationStatus::Reviewing,
-                true,
-                &round1_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &round1_snapshot)
         .await
         .unwrap();
 
@@ -3014,7 +2903,17 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
         vec!["no-authentication-layer", "no-unit-tests"],
         30,
     )];
-    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    let round1_snapshot = make_snapshot(
+        0,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+        prior_gaps,
+        prior_rounds,
+        None,
+        None,
+    );
     state
         .app_state
         .ideation_session_repo
@@ -3028,15 +2927,7 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &parent_id,
-            &snapshot_from_legacy_metadata_json(
-                0,
-                VerificationStatus::Reviewing,
-                true,
-                &round1_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&parent_id, &round1_snapshot)
         .await
         .unwrap();
 
@@ -3149,7 +3040,17 @@ async fn test_auto_propose_skipped_for_internal_session() {
         vec!["no-authentication-layer", "no-unit-tests"],
         30,
     )];
-    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    let round1_snapshot = make_snapshot(
+        1,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+        prior_gaps,
+        prior_rounds,
+        None,
+        None,
+    );
     state
         .app_state
         .ideation_session_repo
@@ -3163,15 +3064,7 @@ async fn test_auto_propose_skipped_for_internal_session() {
     state
         .app_state
         .ideation_session_repo
-        .save_verification_run_snapshot(
-            &session_id_obj,
-            &snapshot_from_legacy_metadata_json(
-                1,
-                VerificationStatus::Reviewing,
-                true,
-                &round1_metadata,
-            ),
-        )
+        .save_verification_run_snapshot(&session_id_obj, &round1_snapshot)
         .await
         .unwrap();
 
