@@ -999,7 +999,10 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
                 .as_deref()
                 .unwrap_or("");
             let status = convergence_reason_to_status(reason);
-            (status, snapshot.clone(), None::<String>)
+            let mut updated_snapshot = snapshot.clone().unwrap();
+            updated_snapshot.status = status;
+            updated_snapshot.in_progress = false;
+            (status, Some(updated_snapshot), None::<String>)
         } else if has_rounds {
             // Branch 2: Agent crashed mid-round with partial progress
             let mut updated_snapshot = snapshot.clone().unwrap();
@@ -1026,6 +1029,18 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
         .await
     {
         Ok(()) => {
+            if let Some(snapshot) = emit_snapshot.as_ref() {
+                if let Err(save_err) = repo
+                    .save_verification_run_snapshot(parent_id, snapshot)
+                    .await
+                {
+                    tracing::warn!(
+                        parent_id = %parent_id.as_str(),
+                        error = %save_err,
+                        "Failed to persist reconciled verification snapshot after child completion"
+                    );
+                }
+            }
             tracing::info!(
                 parent_id = %parent_id.as_str(),
                 child_id = %child_id.as_str(),

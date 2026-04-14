@@ -58,67 +58,36 @@ fn assert_convergence_reason(session: &IdeationSession, expected_reason: &str) {
     );
 }
 
-fn snapshot_from_test_json(
+fn make_snapshot(
     generation: i32,
     status: VerificationStatus,
     in_progress: bool,
-    metadata: &str,
-) -> Option<VerificationRunSnapshot> {
-    let meta: serde_json::Value = serde_json::from_str(metadata).ok()?;
-    let current_round = meta["current_round"].as_u64().unwrap_or(0) as u32;
-    let max_rounds = meta["max_rounds"].as_u64().unwrap_or(0) as u32;
-    let convergence_reason = meta["convergence_reason"]
-        .as_str()
-        .map(ToString::to_string);
-
-    let current_gaps = meta["current_gaps"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|gap| VerificationGap {
-            severity: gap["severity"].as_str().unwrap_or("medium").to_string(),
-            category: gap["category"].as_str().unwrap_or("completeness").to_string(),
-            description: gap["description"].as_str().unwrap_or("gap").to_string(),
-            why_it_matters: gap["why_it_matters"]
-                .as_str()
-                .map(ToString::to_string),
-            source: gap["source"].as_str().map(ToString::to_string),
-        })
-        .collect::<Vec<_>>();
-
-    let rounds = meta["rounds"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .enumerate()
-        .map(|(idx, round)| VerificationRoundSnapshot {
-            round: round["round"]
-                .as_u64()
-                .map(|value| value as u32)
-                .unwrap_or((idx + 1) as u32),
-            gap_score: round["gap_score"].as_u64().unwrap_or(0) as u32,
-            fingerprints: round["fingerprints"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|value| value.as_str().map(ToString::to_string))
-                .collect(),
-            gaps: vec![],
-            parse_failed: false,
-        })
-        .collect::<Vec<_>>();
-
-    Some(VerificationRunSnapshot {
+    current_round: u32,
+    max_rounds: u32,
+    convergence_reason: Option<&str>,
+    round_scores: &[u32],
+) -> VerificationRunSnapshot {
+    VerificationRunSnapshot {
         generation,
         status,
         in_progress,
         current_round,
         max_rounds,
-        best_round_index: meta["best_round_index"].as_u64().map(|value| value as u32),
-        convergence_reason,
-        current_gaps,
-        rounds,
-    })
+        best_round_index: None,
+        convergence_reason: convergence_reason.map(ToString::to_string),
+        current_gaps: Vec::<VerificationGap>::new(),
+        rounds: round_scores
+            .iter()
+            .enumerate()
+            .map(|(idx, gap_score)| VerificationRoundSnapshot {
+                round: (idx + 1) as u32,
+                gap_score: *gap_score,
+                fingerprints: vec![],
+                gaps: vec![],
+                parse_failed: false,
+            })
+            .collect(),
+    }
 }
 
 #[tokio::test]
@@ -256,7 +225,7 @@ async fn test_reconciler_clears_legacy_metadata_on_reset() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // Session stuck in verification for 2 hours with stale legacy metadata
+    // Session stuck in verification for 2 hours with stale pre-native verification state
     let mut session = IdeationSession::new(project_id);
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
@@ -474,7 +443,7 @@ async fn test_reconciler_manual_session_reset_after_long_threshold() {
 /// Parent has verification_in_progress=true; child has session_purpose=Verification.
 async fn make_parent_child_pair(
     repo: &Arc<crate::infrastructure::memory::MemoryIdeationSessionRepository>,
-    parent_snapshot_json: Option<String>,
+    parent_snapshot: Option<VerificationRunSnapshot>,
 ) -> (
     crate::domain::entities::IdeationSessionId,
     crate::domain::entities::IdeationSessionId,
@@ -486,17 +455,10 @@ async fn make_parent_child_pair(
     parent.verification_in_progress = true;
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
-    if let Some(snapshot_json) = parent_snapshot_json {
-        if let Some(snapshot) = snapshot_from_test_json(
-            0,
-            VerificationStatus::Reviewing,
-            true,
-            &snapshot_json,
-        ) {
-            repo.save_verification_run_snapshot(&parent_id, &snapshot)
-                .await
-                .unwrap();
-        }
+    if let Some(snapshot) = parent_snapshot {
+        repo.save_verification_run_snapshot(&parent_id, &snapshot)
+            .await
+            .unwrap();
     }
 
     let mut child = IdeationSession::new(project_id);
@@ -514,9 +476,20 @@ async fn test_reconcile_child_complete_convergence_zero_blocking() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[{"fingerprints":[],"gap_score":0}],"current_gaps":[],"convergence_reason":"zero_blocking","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                Some("zero_blocking"),
+                &[0],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -598,7 +571,7 @@ async fn test_reconcile_child_complete_uses_native_verification_snapshot_when_me
     assert_eq!(
         parent_after.verification_status,
         VerificationStatus::Verified,
-        "native zero_blocking convergence should map to Verified even without legacy metadata"
+        "native zero_blocking convergence should map to Verified even without any older seed fixture"
     );
     assert!(!parent_after.verification_in_progress);
 }
@@ -609,9 +582,20 @@ async fn test_reconcile_child_complete_convergence_jaccard_converged() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":3,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"jaccard_converged","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                3,
+                5,
+                Some("jaccard_converged"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -632,9 +616,20 @@ async fn test_reconcile_child_complete_max_rounds_needs_revision() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":5,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"max_rounds","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                5,
+                5,
+                Some("max_rounds"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -665,10 +660,20 @@ async fn test_reconcile_child_complete_crashed_mid_round() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    // Has rounds but no convergence_reason — agent crashed mid-round
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[{"fingerprints":[],"gap_score":5}],"current_gaps":[],"convergence_reason":null,"best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                None,
+                &[5],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -697,12 +702,12 @@ async fn test_reconcile_child_complete_crashed_mid_round() {
 }
 
 #[tokio::test]
-async fn test_reconcile_child_complete_no_metadata() {
+async fn test_reconcile_child_complete_no_snapshot() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    // No metadata at all — agent completed without any updates
+    // No native snapshot at all — agent completed without any updates
     let (parent_id, child_id) = make_parent_child_pair(&repo, None).await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
@@ -717,7 +722,7 @@ async fn test_reconcile_child_complete_no_metadata() {
     assert_eq!(
         parent_after.verification_status,
         VerificationStatus::Unverified,
-        "no metadata should result in Unverified"
+        "no snapshot should result in Unverified"
     );
     assert!(!parent_after.verification_in_progress);
 
@@ -726,33 +731,6 @@ async fn test_reconcile_child_complete_no_metadata() {
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived
     );
-}
-
-#[tokio::test]
-async fn test_reconcile_child_complete_malformed_metadata() {
-    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
-    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
-        repo.clone();
-
-    // Malformed JSON — parse fails, treated as None → Unverified
-    let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some("{invalid json".to_string())).await;
-
-    reconcile_verification_on_child_complete::<tauri::Wry>(
-        &parent_id,
-        &child_id,
-        &dyn_repo,
-        None,
-    )
-    .await;
-
-    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
-    assert_eq!(
-        parent_after.verification_status,
-        VerificationStatus::Unverified,
-        "malformed metadata should be treated as None → Unverified"
-    );
-    assert!(!parent_after.verification_in_progress);
 }
 
 #[tokio::test]
@@ -988,7 +966,7 @@ async fn test_scan_and_reset_cold_boot_empty_repo_is_noop() {
     assert_eq!(count, 0);
 }
 
-/// Cold boot clears stale legacy metadata instead of carrying it forward.
+/// Cold boot clears stale pre-native verification state instead of carrying it forward.
 #[tokio::test]
 async fn test_scan_and_reset_cold_boot_clears_legacy_metadata() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
@@ -1159,9 +1137,20 @@ async fn test_escalated_to_parent_maps_to_needs_revision() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":3,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"escalated_to_parent","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                3,
+                5,
+                Some("escalated_to_parent"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -1189,9 +1178,20 @@ async fn test_user_stopped_maps_to_skipped() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"user_stopped","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                Some("user_stopped"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -2187,22 +2187,16 @@ async fn make_service_with_tracking(
     (svc, registry, processor, chat_service)
 }
 
-/// Build test snapshot seed JSON with `n` rounds (so rounds.len() == n → current_round == n).
-fn make_verification_snapshot_seed_json(n_rounds: usize) -> String {
-    let rounds: Vec<serde_json::Value> = (0..n_rounds)
-        .map(|_| serde_json::json!({"fingerprints": [], "gap_score": 0}))
-        .collect();
-    serde_json::json!({
-        "v": 1,
-        "current_round": n_rounds,
-        "max_rounds": 5,
-        "rounds": rounds,
-        "current_gaps": [],
-        "convergence_reason": null,
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string()
+fn make_recovery_snapshot(generation: i32, n_rounds: usize) -> VerificationRunSnapshot {
+    make_snapshot(
+        generation,
+        VerificationStatus::Reviewing,
+        true,
+        n_rounds as u32,
+        5,
+        None,
+        &vec![0; n_rounds],
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2220,16 +2214,9 @@ async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
     parent.verification_generation = 2;
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
-    if let Some(snapshot) = snapshot_from_test_json(
-        2,
-        VerificationStatus::Reviewing,
-        true,
-        &make_verification_snapshot_seed_json(3),
-    ) {
-        repo.save_verification_run_snapshot(&parent_id, &snapshot)
-            .await
-            .unwrap();
-    }
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(2, 3))
+        .await
+        .unwrap();
 
     // Verification child linked to parent
     let child = make_verification_child(project_id, &parent_id);
@@ -2319,16 +2306,9 @@ async fn test_recovery_fallback_on_send_message_failure() {
     parent.verification_generation = 1;
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
-    if let Some(snapshot) = snapshot_from_test_json(
-        1,
-        VerificationStatus::Reviewing,
-        true,
-        &make_verification_snapshot_seed_json(2),
-    ) {
-        repo.save_verification_run_snapshot(&parent_id, &snapshot)
-            .await
-            .unwrap();
-    }
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(1, 2))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
@@ -2389,16 +2369,9 @@ async fn test_double_spawn_prevention_processor_cleans_stale_entry() {
     let parent = make_parent_in_progress(project_id.clone());
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
-    if let Some(snapshot) = snapshot_from_test_json(
-        0,
-        VerificationStatus::Reviewing,
-        true,
-        &make_verification_snapshot_seed_json(1),
-    ) {
-        repo.save_verification_run_snapshot(&parent_id, &snapshot)
-            .await
-            .unwrap();
-    }
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(0, 1))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
@@ -2533,16 +2506,9 @@ async fn test_mixed_recovery_verification_agent_spawned_after_ideation_placehold
     let parent = make_parent_in_progress(project_id.clone());
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
-    if let Some(snapshot) = snapshot_from_test_json(
-        0,
-        VerificationStatus::Reviewing,
-        true,
-        &make_verification_snapshot_seed_json(2),
-    ) {
-        repo.save_verification_run_snapshot(&parent_id, &snapshot)
-            .await
-            .unwrap();
-    }
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(0, 2))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
