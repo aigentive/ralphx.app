@@ -15,6 +15,27 @@ import type { ToolCall } from "./ToolCallIndicator";
 import { createTestQueryClient } from "@/test/store-utils";
 import { chatApi, type ChatMessageResponse } from "@/api/chat";
 
+type EventHandler = (payload: unknown) => void;
+
+const listeners = new Map<string, Set<EventHandler>>();
+
+function mockSubscribe(event: string, handler: EventHandler) {
+  if (!listeners.has(event)) {
+    listeners.set(event, new Set());
+  }
+  listeners.get(event)!.add(handler);
+  return () => {
+    listeners.get(event)?.delete(handler);
+  };
+}
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: mockSubscribe,
+    emit: vi.fn(),
+  }),
+}));
+
 // ============================================================================
 // Test Data
 // ============================================================================
@@ -94,6 +115,7 @@ function renderWithQueryClient(ui: React.ReactElement) {
 }
 
 afterEach(() => {
+  listeners.clear();
   vi.restoreAllMocks();
 });
 

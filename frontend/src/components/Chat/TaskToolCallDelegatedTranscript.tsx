@@ -1,4 +1,7 @@
-import { useConversation } from "@/hooks/useChat";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { chatKeys, useConversation } from "@/hooks/useChat";
+import { useEventBus } from "@/providers/EventProvider";
 import {
   buildTaskCardTranscriptEntriesFromConversation,
   TaskCardTranscriptView,
@@ -28,8 +31,31 @@ export function TaskToolCallDelegatedTranscript({
   conversationId: string;
   fallbackText: string | undefined;
 }) {
+  const bus = useEventBus();
+  const queryClient = useQueryClient();
   const delegatedConversation = useConversation(conversationId);
   const messages = delegatedConversation.data?.messages ?? [];
+
+  useEffect(() => {
+    const invalidateTranscript = (payload: { conversation_id?: string }) => {
+      if (payload.conversation_id !== conversationId) {
+        return;
+      }
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversation(conversationId),
+      });
+    };
+
+    const unsubscribers = [
+      bus.subscribe<{ conversation_id?: string }>("agent:message_created", invalidateTranscript),
+      bus.subscribe<{ conversation_id?: string }>("agent:run_completed", invalidateTranscript),
+      bus.subscribe<{ conversation_id?: string }>("agent:error", invalidateTranscript),
+    ];
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [bus, conversationId, queryClient]);
 
   if (delegatedConversation.isLoading) {
     return (
