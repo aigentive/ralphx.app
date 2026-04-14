@@ -35,8 +35,8 @@ const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
-    verification_status, verification_in_progress, verification_metadata, \
-    verification_generation, verification_current_round, verification_max_rounds, \
+    verification_status, verification_in_progress, verification_generation, \
+    verification_current_round, verification_max_rounds, \
     verification_gap_count, verification_gap_score, verification_convergence_reason, \
     source_project_id, source_session_id, session_purpose, \
     cross_project_checked, plan_version_last_read, origin, \
@@ -235,7 +235,7 @@ impl SqliteIdeationSessionRepository {
         let now = Utc::now();
         let rows = conn.execute(
             "UPDATE ideation_sessions SET verification_status = 'unverified', \
-             verification_in_progress = 0, verification_metadata = NULL, \
+             verification_in_progress = 0, \
              verification_generation = verification_generation + 1, \
              updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0 \
              AND verification_status != 'imported_verified'",
@@ -669,7 +669,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET verification_status = ?2, verification_in_progress = ?3, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, updated_at = ?4 WHERE id = ?1",
+                    "UPDATE ideation_sessions SET verification_status = ?2, verification_in_progress = ?3, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, updated_at = ?4 WHERE id = ?1",
                     rusqlite::params![id, status_str, in_progress_int, now.to_rfc3339()],
                 )?;
                 Ok(())
@@ -684,7 +684,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let rows = conn.execute(
-                    "UPDATE ideation_sessions SET verification_status = 'unverified', verification_in_progress = 0, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, verification_generation = verification_generation + 1, updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
+                    "UPDATE ideation_sessions SET verification_status = 'unverified', verification_in_progress = 0, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = NULL, verification_convergence_reason = NULL, verification_generation = verification_generation + 1, updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
                     rusqlite::params![id, now.to_rfc3339()],
                 )?;
                 Ok(rows > 0)
@@ -724,7 +724,6 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                        verification_status = 'reviewing', \
                        verification_in_progress = 1, \
                        verification_generation = ?2, \
-                       verification_metadata = NULL, \
                        verification_current_round = NULL, \
                        verification_max_rounds = NULL, \
                        verification_gap_count = 0, \
@@ -1089,7 +1088,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = NULL, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = 0, verification_convergence_reason = ?3, updated_at = ?4, verification_generation = verification_generation + 1 WHERE id = ?1",
+                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_current_round = NULL, verification_max_rounds = NULL, verification_gap_count = 0, verification_gap_score = 0, verification_convergence_reason = ?3, updated_at = ?4, verification_generation = verification_generation + 1 WHERE id = ?1",
                     rusqlite::params![id, new_plan_artifact_id, convergence_reason, now.to_rfc3339()],
                 )?;
                 Ok(())
@@ -1148,7 +1147,6 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      SET plan_artifact_id = ?2, \
                          verification_status = 'skipped', \
                          verification_in_progress = 0, \
-                         verification_metadata = NULL, \
                          verification_current_round = NULL, \
                          verification_max_rounds = NULL, \
                          verification_gap_count = 0, \
@@ -1441,9 +1439,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
                          s.inherited_plan_artifact_id, s.seed_task_id, s.parent_session_id, s.created_at, \
                          s.updated_at, s.archived_at, s.converted_at, s.team_mode, s.team_config_json, \
-                         s.verification_status, s.verification_in_progress, s.verification_metadata, \
-                         s.verification_generation, s.source_project_id, s.source_session_id, \
-                         s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
+                         s.verification_status, s.verification_in_progress, s.verification_generation, \
+                         s.verification_current_round, s.verification_max_rounds, s.verification_gap_count, \
+                         s.verification_gap_score, s.verification_convergence_reason, \
+                         s.source_project_id, s.source_session_id, s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
                          s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
                          s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
                          s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
@@ -1468,9 +1467,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
                          s.inherited_plan_artifact_id, s.seed_task_id, s.parent_session_id, s.created_at, \
                          s.updated_at, s.archived_at, s.converted_at, s.team_mode, s.team_config_json, \
-                         s.verification_status, s.verification_in_progress, s.verification_metadata, \
-                         s.verification_generation, s.source_project_id, s.source_session_id, \
-                         s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
+                         s.verification_status, s.verification_in_progress, s.verification_generation, \
+                         s.verification_current_round, s.verification_max_rounds, s.verification_gap_count, \
+                         s.verification_gap_score, s.verification_convergence_reason, \
+                         s.source_project_id, s.source_session_id, s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
                          s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
                          s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
                          s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \

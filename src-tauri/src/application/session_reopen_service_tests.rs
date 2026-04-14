@@ -294,8 +294,10 @@ async fn test_reopen_resets_verification_state() {
     let mut session = IdeationSession::new(project_id.clone());
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
-    session.verification_metadata =
-        Some(r#"{"schema_version":1,"current_round":3,"rounds":[]}"#.to_string());
+    session.verification_current_round = Some(3);
+    session.verification_max_rounds = Some(5);
+    session.verification_gap_count = 2;
+    session.verification_gap_score = Some(13);
 
     let created = state.ideation_session_repo.create(session).await.unwrap();
     state
@@ -323,10 +325,6 @@ async fn test_reopen_resets_verification_state() {
     assert!(
         !reopened.verification_in_progress,
         "verification_in_progress must be cleared on reopen"
-    );
-    assert!(
-        reopened.verification_metadata.is_none(),
-        "verification_metadata must be cleared on reopen"
     );
 }
 

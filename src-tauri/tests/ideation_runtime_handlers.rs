@@ -10,7 +10,8 @@ use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::entities::ideation::{SessionPurpose, VerificationStatus};
 use ralphx_lib::domain::entities::{
     ChatContextType, ChatMessage, IdeationSessionBuilder, IdeationSessionId, InternalStatus,
-    Project, ProjectId, Task,
+    Project, ProjectId, Task, VerificationGap, VerificationRoundSnapshot,
+    VerificationRunSnapshot,
 };
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::handlers::*;
@@ -313,32 +314,52 @@ async fn test_get_child_session_status_heartbeat_at_exact_threshold_is_likely_wa
 }
 
 #[tokio::test]
-async fn test_get_child_session_status_valid_verification_metadata_populated() {
+async fn test_get_child_session_status_native_verification_snapshot_populated() {
     let state = setup_test_state().await;
 
-    let metadata_json = serde_json::json!({
-        "v": 1,
-        "current_round": 2,
-        "max_rounds": 5,
-        "rounds": [
-            {"fingerprints": ["fp-1"], "gap_score": 7},
-            {"fingerprints": ["fp-2"], "gap_score": 3}
-        ],
-        "current_gaps": [],
-        "convergence_reason": null,
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string();
-
-    let mut session = IdeationSessionBuilder::new()
+    let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
         .verification_status(VerificationStatus::Reviewing)
         .verification_generation(2)
         .build();
-    session.verification_metadata = Some(metadata_json);
+    let session_id_obj = session.id.clone();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &VerificationRunSnapshot {
+                generation: 2,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: Some(2),
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![
+                    VerificationRoundSnapshot {
+                        round: 1,
+                        gap_score: 7,
+                        fingerprints: vec!["fp-1".to_string()],
+                        gaps: vec![],
+                        parse_failed: false,
+                    },
+                    VerificationRoundSnapshot {
+                        round: 2,
+                        gap_score: 3,
+                        fingerprints: vec!["fp-2".to_string()],
+                        gaps: vec![],
+                        parse_failed: false,
+                    },
+                ],
+            },
+        )
+        .await
+        .unwrap();
 
     let result = get_child_session_status_handler(
         State(state),
@@ -352,7 +373,7 @@ async fn test_get_child_session_status_valid_verification_metadata_populated() {
     let verification = resp.verification.expect("verification must be populated for non-Unverified status");
     assert_eq!(verification.status, "reviewing");
     assert_eq!(verification.generation, 2);
-    assert_eq!(verification.current_round, Some(2), "current_round=2 from metadata");
+    assert_eq!(verification.current_round, Some(2), "current_round=2 from native snapshot");
     assert_eq!(
         verification.gap_score,
         Some(3),
@@ -361,14 +382,85 @@ async fn test_get_child_session_status_valid_verification_metadata_populated() {
 }
 
 #[tokio::test]
-async fn test_get_child_session_status_malformed_metadata_returns_none() {
+async fn test_get_child_session_status_prefers_native_verification_snapshot() {
     let state = setup_test_state().await;
 
-    let mut session = IdeationSessionBuilder::new()
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .verification_generation(2)
+        .build();
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id_obj,
+            &VerificationRunSnapshot {
+                generation: 2,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: Some(2),
+                convergence_reason: None,
+                current_gaps: vec![VerificationGap {
+                    severity: "high".to_string(),
+                    category: "completeness".to_string(),
+                    description: "Missing registration".to_string(),
+                    why_it_matters: Some("Migration never executes".to_string()),
+                    source: Some("completeness".to_string()),
+                }],
+                rounds: vec![
+                    VerificationRoundSnapshot {
+                        round: 1,
+                        gap_score: 7,
+                        fingerprints: vec!["fp-1".to_string()],
+                        gaps: vec![],
+                        parse_failed: false,
+                    },
+                    VerificationRoundSnapshot {
+                        round: 2,
+                        gap_score: 3,
+                        fingerprints: vec!["fp-2".to_string()],
+                        gaps: vec![],
+                        parse_failed: false,
+                    },
+                ],
+            },
+        )
+        .await
+        .unwrap();
+
+    let result = get_child_session_status_handler(
+        State(state),
+        Path(session_id),
+        Query(no_messages_params()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok: {:?}", result.err());
+    let resp = result.unwrap().0;
+    let verification = resp
+        .verification
+        .expect("verification must be populated for non-Unverified status");
+    assert_eq!(verification.status, "reviewing");
+    assert_eq!(verification.generation, 2);
+    assert_eq!(verification.current_round, Some(2));
+    assert_eq!(verification.gap_score, Some(3));
+}
+
+#[tokio::test]
+async fn test_get_child_session_status_without_native_snapshot_returns_empty_verification_detail() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
         .verification_status(VerificationStatus::Reviewing)
         .build();
-    session.verification_metadata = Some("not-valid-json{{{".to_string());
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
@@ -379,17 +471,17 @@ async fn test_get_child_session_status_malformed_metadata_returns_none() {
     )
     .await;
 
-    assert!(result.is_ok(), "malformed metadata must not cause 500: {:?}", result.err());
+    assert!(result.is_ok(), "missing native snapshot must not cause 500: {:?}", result.err());
     let resp = result.unwrap().0;
     let verification = resp.verification.expect("VerificationInfo present for non-Unverified status");
     assert_eq!(verification.status, "reviewing");
     assert!(
         verification.gap_score.is_none(),
-        "malformed metadata → gap_score must be None"
+        "without a native snapshot gap_score must be None"
     );
     assert!(
         verification.current_round.is_none(),
-        "malformed metadata → current_round must be None"
+        "without a native snapshot current_round must be None"
     );
 }
 

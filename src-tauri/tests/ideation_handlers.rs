@@ -408,9 +408,9 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
     assert_eq!(d2.gaps[2].description, "No unit tests");
 }
 
-/// Empty metadata test: verification_metadata = NULL → current_gaps: [] and rounds: [].
+/// No native snapshot stored yet → current_gaps: [] and round_details: [].
 #[tokio::test]
-async fn test_get_plan_verification_null_metadata_returns_empty_vecs() {
+async fn test_get_plan_verification_without_native_snapshot_returns_empty_vecs() {
     let state = setup_test_state().await;
     let project_id = ProjectId::new();
     let session = IdeationSession::new(project_id);
@@ -937,10 +937,15 @@ async fn test_rule_a_clears_stale_convergence_reason_on_live_round_update() {
         .unwrap()
         .unwrap();
     assert!(saved.verification_in_progress);
-    let meta: serde_json::Value =
-        serde_json::from_str(saved.verification_metadata.as_deref().unwrap_or("{}")).unwrap();
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, saved.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(
-        meta["convergence_reason"].is_null(),
+        snapshot.convergence_reason.is_none(),
         "stored convergence_reason must be cleared for the continued round"
     );
 }
@@ -1550,15 +1555,23 @@ async fn test_jaccard_convergence_same_fingerprints() {
 
     assert_eq!(round1.0.status, "needs_revision", "round 1 → needs_revision (condition 6)");
 
-    // Read current metadata (persisted by round 1) so we can reset status to Reviewing
+    // Read current snapshot (persisted by round 1) so we can reset status to Reviewing
     // while keeping the rounds/fingerprints intact.
     let after_r1 = state.app_state.ideation_session_repo
         .get_by_id(&session_id_obj).await.unwrap().unwrap();
-    let r1_metadata = after_r1.verification_metadata.clone();
+    let mut r1_snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, after_r1.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    r1_snapshot.status = VerificationStatus::Reviewing;
+    r1_snapshot.in_progress = true;
 
-    // Reset status to Reviewing (keeps round 1 fingerprints in metadata)
+    // Reset status to Reviewing (keeps round 1 fingerprints in the native snapshot)
     state.app_state.ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Reviewing, true, r1_metadata)
+        .save_verification_run_snapshot(&session_id_obj, &r1_snapshot)
         .await.unwrap();
 
     // Round 2: Reviewing → needs_revision + different gaps (with critical), round=2
@@ -1607,10 +1620,18 @@ async fn test_jaccard_convergence_same_fingerprints() {
     // Reset status to Reviewing again (keeps 2-round metadata)
     let after_r2 = state.app_state.ideation_session_repo
         .get_by_id(&session_id_obj).await.unwrap().unwrap();
-    let r2_metadata = after_r2.verification_metadata.clone();
+    let mut r2_snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, after_r2.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    r2_snapshot.status = VerificationStatus::Reviewing;
+    r2_snapshot.in_progress = true;
 
     state.app_state.ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Reviewing, true, r2_metadata)
+        .save_verification_run_snapshot(&session_id_obj, &r2_snapshot)
         .await.unwrap();
 
     // Round 3: same gaps as round 2 → jaccard(fp3=fp2, fp2)=1.0 BUT jaccard(fp2, fp1)<1.0
@@ -1709,8 +1730,17 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     // Reset to Reviewing, preserving round 1's metadata (fingerprints)
     let after_r1 = state.app_state.ideation_session_repo
         .get_by_id(&session_id_obj).await.unwrap().unwrap();
+    let mut after_r1_snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, after_r1.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    after_r1_snapshot.status = VerificationStatus::Reviewing;
+    after_r1_snapshot.in_progress = true;
     state.app_state.ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Reviewing, true, after_r1.verification_metadata)
+        .save_verification_run_snapshot(&session_id_obj, &after_r1_snapshot)
         .await.unwrap();
 
     // Round 2: Reviewing → needs_revision + same gaps, round=2
@@ -1738,8 +1768,17 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     // Reset to Reviewing again, preserving round 1+2 metadata
     let after_r2 = state.app_state.ideation_session_repo
         .get_by_id(&session_id_obj).await.unwrap().unwrap();
+    let mut after_r2_snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, after_r2.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
+    after_r2_snapshot.status = VerificationStatus::Reviewing;
+    after_r2_snapshot.in_progress = true;
     state.app_state.ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Reviewing, true, after_r2.verification_metadata)
+        .save_verification_run_snapshot(&session_id_obj, &after_r2_snapshot)
         .await.unwrap();
 
     // Round 3: Reviewing → needs_revision + same gaps, round=3
@@ -2000,10 +2039,6 @@ async fn test_reverify_clears_all_stale_metadata() {
     assert_eq!(updated.verification_generation, 4, "generation must be 4 in DB");
 
     // Legacy metadata stays cleared; native reverify state is carried by the new generation snapshot.
-    assert!(
-        updated.verification_metadata.is_none(),
-        "legacy verification_metadata must remain NULL after reverify"
-    );
     assert_eq!(updated.verification_current_round, None);
     assert_eq!(updated.verification_max_rounds, None);
     assert_eq!(updated.verification_gap_count, 0);
@@ -2288,14 +2323,11 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
         .unwrap();
     assert_eq!(updated.verification_generation, 3);
 
-    let meta: serde_json::Value = serde_json::from_str(
-        updated.verification_metadata.as_deref().unwrap_or("{}"),
-    )
-    .unwrap();
-    assert_eq!(meta["current_gaps"], serde_json::json!([]));
-    assert_eq!(meta["rounds"], serde_json::json!([]));
-    assert!(meta["convergence_reason"].is_null());
-    assert_eq!(meta["current_round"], 0);
+    assert_eq!(updated.verification_current_round, None);
+    assert_eq!(updated.verification_max_rounds, None);
+    assert_eq!(updated.verification_gap_count, 0);
+    assert_eq!(updated.verification_gap_score, Some(0));
+    assert_eq!(updated.verification_convergence_reason, None);
 }
 
 /// Regression: Verified → Skipped still allowed after new re-verify arms.
@@ -2444,17 +2476,20 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
         .await
         .unwrap()
         .unwrap();
-    let meta: serde_json::Value = serde_json::from_str(
-        final_session.verification_metadata.as_deref().unwrap_or("{}"),
-    )
-    .unwrap();
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, final_session.verification_generation)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        meta["current_gaps"][0]["description"],
+        snapshot.current_gaps[0].description,
         "Completely new security gap found in fresh review",
         "DB must contain new gap"
     );
     assert_ne!(
-        meta["current_gaps"][0]["description"].as_str().unwrap_or(""),
+        snapshot.current_gaps[0].description,
         "Old outdated gap",
         "old gap must not be present in DB"
     );
@@ -3321,11 +3356,6 @@ async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_
         "infra failure must clear in-progress on the parent"
     );
     assert_eq!(refreshed_parent.verification_generation, 5);
-    assert!(
-        refreshed_parent.verification_metadata.is_none(),
-        "legacy verification_metadata must stay unused once native snapshots are authoritative"
-    );
-
     let stored_snapshot = state
         .app_state
         .ideation_session_repo

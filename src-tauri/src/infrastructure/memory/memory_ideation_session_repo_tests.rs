@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::{VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot};
 use crate::domain::entities::VerificationStatus;
 
 #[tokio::test]
@@ -184,7 +185,7 @@ async fn test_update_verification_state_roundtrip() {
     repo.create(session.clone()).await.unwrap();
 
     // Default
-    let (status, in_progress, _) = repo
+    let (status, in_progress) = repo
         .get_verification_status(&session.id)
         .await
         .unwrap()
@@ -193,12 +194,11 @@ async fn test_update_verification_state_roundtrip() {
     assert!(!in_progress);
 
     // Update
-    let metadata = Some(r#"{"v":1,"current_round":2}"#.to_string());
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
         true,
-        metadata.clone(),
+        Some(r#"{"v":1,"current_round":2}"#.to_string()),
     )
     .await
     .unwrap();
@@ -206,7 +206,6 @@ async fn test_update_verification_state_roundtrip() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
 }
 
 #[tokio::test]
@@ -231,7 +230,10 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Unverified);
     assert!(!found.verification_in_progress);
-    assert!(found.verification_metadata.is_none());
+    assert_eq!(
+        found.verification_generation, 1,
+        "reset_verification must increment generation to fence stale verifier callbacks"
+    );
 }
 
 #[tokio::test]
@@ -241,14 +243,12 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let session = IdeationSession::new(project_id.clone());
     repo.create(session.clone()).await.unwrap();
 
-    let metadata = Some(r#"{"v":1,"current_round":3}"#.to_string());
-
     // Set to reviewing with in_progress = true
     repo.update_verification_state(
         &session.id,
         VerificationStatus::Reviewing,
         true,
-        metadata.clone(),
+        Some(r#"{"v":1,"current_round":3}"#.to_string()),
     )
     .await
     .unwrap();
@@ -259,7 +259,6 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
 }
 
 #[tokio::test]
@@ -268,6 +267,70 @@ async fn test_get_verification_status_returns_none_for_nonexistent() {
     let id = IdeationSessionId::new();
     let result = repo.get_verification_status(&id).await.unwrap();
     assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_save_and_get_verification_run_snapshot_roundtrip() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    repo.create(session.clone()).await.unwrap();
+
+    let snapshot = VerificationRunSnapshot {
+        generation: 4,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
+        current_round: 2,
+        max_rounds: 5,
+        best_round_index: Some(1),
+        convergence_reason: Some("escalated_to_parent".to_string()),
+        current_gaps: vec![VerificationGap {
+            severity: "high".to_string(),
+            category: "testing".to_string(),
+            description: "Missing regression".to_string(),
+            why_it_matters: Some("Plan can regress at runtime".to_string()),
+            source: Some("completeness".to_string()),
+        }],
+        rounds: vec![
+            VerificationRoundSnapshot {
+                round: 1,
+                gap_score: 10,
+                fingerprints: vec!["gap-auth".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "critical".to_string(),
+                    category: "security".to_string(),
+                    description: "Auth missing".to_string(),
+                    why_it_matters: None,
+                    source: Some("completeness".to_string()),
+                }],
+                parse_failed: false,
+            },
+            VerificationRoundSnapshot {
+                round: 2,
+                gap_score: 3,
+                fingerprints: vec!["gap-regression".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "high".to_string(),
+                    category: "testing".to_string(),
+                    description: "Missing regression".to_string(),
+                    why_it_matters: Some("Plan can regress at runtime".to_string()),
+                    source: Some("feasibility".to_string()),
+                }],
+                parse_failed: true,
+            },
+        ],
+    };
+
+    repo.save_verification_run_snapshot(&session.id, &snapshot)
+        .await
+        .unwrap();
+
+    let found = repo
+        .get_verification_run_snapshot(&session.id, 4)
+        .await
+        .unwrap()
+        .expect("snapshot must exist");
+    assert_eq!(found, snapshot);
 }
 
 // ==================== ARCHIVE CLEARS VERIFICATION_IN_PROGRESS TESTS ====================
@@ -357,8 +420,6 @@ async fn test_reset_verification_is_noop_for_imported_verified() {
         "ImportedVerified status must not be changed by reset_verification"
     );
     assert!(!found.verification_in_progress);
-    // Metadata is preserved (reset was skipped entirely)
-    assert_eq!(found.verification_metadata, Some(r#"{"v":1}"#.to_string()));
 }
 
 // ==================== STALE QUERY EXCLUDES ARCHIVED SESSIONS TESTS ====================

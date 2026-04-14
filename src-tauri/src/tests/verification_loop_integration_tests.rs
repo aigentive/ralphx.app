@@ -19,7 +19,10 @@ use chrono::{Duration, Utc};
 use crate::application::reconciliation::verification_reconciliation::{
     VerificationReconciliationConfig, VerificationReconciliationService,
 };
-use crate::domain::entities::{IdeationSession, ProjectId, SessionPurpose, VerificationStatus};
+use crate::domain::entities::{
+    IdeationSession, ProjectId, SessionPurpose, VerificationGap, VerificationRoundSnapshot,
+    VerificationRunSnapshot, VerificationStatus,
+};
 use crate::domain::entities::ideation::VerificationError;
 use crate::domain::ideation::config::IdeationSettings;
 use crate::domain::repositories::IdeationSessionRepository;
@@ -121,6 +124,116 @@ fn metadata_converged(reason: &str, round: u32) -> String {
     .to_string()
 }
 
+fn snapshot_with_gaps(
+    generation: i32,
+    status: VerificationStatus,
+    in_progress: bool,
+    critical: u32,
+    high: u32,
+    round: u32,
+    max_rounds: u32,
+) -> VerificationRunSnapshot {
+    let critical_gaps = (0..critical).map(|i| VerificationGap {
+        severity: "critical".to_string(),
+        category: "architecture".to_string(),
+        description: format!("Critical gap number {}", i),
+        why_it_matters: None,
+        source: None,
+    });
+    let high_gaps = (0..high).map(|i| VerificationGap {
+        severity: "high".to_string(),
+        category: "security".to_string(),
+        description: format!("High gap number {}", i),
+        why_it_matters: None,
+        source: None,
+    });
+    let current_gaps = critical_gaps.chain(high_gaps).collect::<Vec<_>>();
+
+    VerificationRunSnapshot {
+        generation,
+        status,
+        in_progress,
+        current_round: round,
+        max_rounds,
+        best_round_index: None,
+        convergence_reason: None,
+        current_gaps: current_gaps.clone(),
+        rounds: vec![VerificationRoundSnapshot {
+            round,
+            gap_score: critical * 10 + high * 3,
+            fingerprints: vec![],
+            gaps: current_gaps,
+            parse_failed: false,
+        }],
+    }
+}
+
+async fn save_snapshot_from_metadata(
+    repo: &Arc<MemoryIdeationSessionRepository>,
+    session_id: &crate::domain::entities::IdeationSessionId,
+    generation: i32,
+    status: VerificationStatus,
+    in_progress: bool,
+    metadata: &str,
+) {
+    let meta: serde_json::Value = serde_json::from_str(metadata).expect("test metadata must parse");
+    let current_round = meta["current_round"].as_u64().unwrap_or(0) as u32;
+    let max_rounds = meta["max_rounds"].as_u64().unwrap_or(0) as u32;
+    let convergence_reason = meta["convergence_reason"]
+        .as_str()
+        .map(ToString::to_string);
+    let current_gaps = meta["current_gaps"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|gap| VerificationGap {
+            severity: gap["severity"].as_str().unwrap_or("medium").to_string(),
+            category: gap["category"].as_str().unwrap_or("completeness").to_string(),
+            description: gap["description"].as_str().unwrap_or("gap").to_string(),
+            why_it_matters: gap["why_it_matters"].as_str().map(ToString::to_string),
+            source: gap["source"].as_str().map(ToString::to_string),
+        })
+        .collect::<Vec<_>>();
+    let rounds = meta["rounds"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(idx, round)| VerificationRoundSnapshot {
+            round: round["round"]
+                .as_u64()
+                .map(|value| value as u32)
+                .unwrap_or((idx + 1) as u32),
+            gap_score: round["gap_score"].as_u64().unwrap_or(0) as u32,
+            fingerprints: round["fingerprints"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|value| value.as_str().map(ToString::to_string))
+                .collect(),
+            gaps: vec![],
+            parse_failed: false,
+        })
+        .collect::<Vec<_>>();
+
+    repo.save_verification_run_snapshot(
+        session_id,
+        &VerificationRunSnapshot {
+            generation,
+            status,
+            in_progress,
+            current_round,
+            max_rounds,
+            best_round_index: meta["best_round_index"].as_u64().map(|value| value as u32),
+            convergence_reason,
+            current_gaps,
+            rounds,
+        },
+    )
+    .await
+    .unwrap();
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 1: Full convergence loop — zero_blocking exit
 //
@@ -149,10 +262,19 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
         &session_id,
         VerificationStatus::NeedsRevision,
         true, // in_progress — orchestrator correcting plan
-        Some(round1_meta),
+        Some(round1_meta.clone()),
     )
     .await
     .unwrap();
+    save_snapshot_from_metadata(
+        &repo,
+        &session_id,
+        0,
+        VerificationStatus::NeedsRevision,
+        true,
+        &round1_meta,
+    )
+    .await;
 
     let after_r1 = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(after_r1.verification_status, VerificationStatus::NeedsRevision);
@@ -172,10 +294,19 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
         &session_id,
         VerificationStatus::Verified,
         false, // in_progress cleared on convergence
-        Some(round2_meta),
+        Some(round2_meta.clone()),
     )
     .await
     .unwrap();
+    save_snapshot_from_metadata(
+        &repo,
+        &session_id,
+        0,
+        VerificationStatus::Verified,
+        false,
+        &round2_meta,
+    )
+    .await;
 
     let after_r2 = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(
@@ -215,10 +346,19 @@ async fn test_high_gaps_block_zero_blocking_convergence() {
         &session_id,
         VerificationStatus::NeedsRevision,
         true,
-        Some(round1_meta),
+        Some(round1_meta.clone()),
     )
     .await
     .unwrap();
+    save_snapshot_from_metadata(
+        &repo,
+        &session_id,
+        0,
+        VerificationStatus::NeedsRevision,
+        true,
+        &round1_meta,
+    )
+    .await;
 
     // Round 2: 0 critical but 1 high remaining — must NOT converge under zero_blocking
     // The HTTP handler enforces this; here we verify the gate still blocks NeedsRevision.
@@ -227,10 +367,19 @@ async fn test_high_gaps_block_zero_blocking_convergence() {
         &session_id,
         VerificationStatus::NeedsRevision, // NOT Verified — high gap still present
         true,
-        Some(round2_meta),
+        Some(round2_meta.clone()),
     )
     .await
     .unwrap();
+    save_snapshot_from_metadata(
+        &repo,
+        &session_id,
+        0,
+        VerificationStatus::NeedsRevision,
+        true,
+        &round2_meta,
+    )
+    .await;
 
     let after_r2 = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(
@@ -266,10 +415,19 @@ async fn test_hard_cap_exit_after_max_rounds() {
             &session_id,
             VerificationStatus::NeedsRevision,
             true,
-            Some(meta),
+            Some(meta.clone()),
         )
         .await
         .unwrap();
+        save_snapshot_from_metadata(
+            &repo,
+            &session_id,
+            0,
+            VerificationStatus::NeedsRevision,
+            true,
+            &meta,
+        )
+        .await;
 
         let s = repo.get_by_id(&session_id).await.unwrap().unwrap();
         assert!(s.verification_in_progress, "still looping at round {}", round);
@@ -286,10 +444,19 @@ async fn test_hard_cap_exit_after_max_rounds() {
         &session_id,
         VerificationStatus::Verified,
         false,
-        Some(cap_meta),
+        Some(cap_meta.clone()),
     )
     .await
     .unwrap();
+    save_snapshot_from_metadata(
+        &repo,
+        &session_id,
+        0,
+        VerificationStatus::Verified,
+        false,
+        &cap_meta,
+    )
+    .await;
 
     let final_session = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(
@@ -302,11 +469,10 @@ async fn test_hard_cap_exit_after_max_rounds() {
         "in_progress must be false after hard cap"
     );
 
-    // Verify the convergence_reason is stored in metadata
-    let meta_str = final_session.verification_metadata.clone().unwrap();
-    assert!(
-        meta_str.contains("max_rounds"),
-        "metadata must record convergence_reason=max_rounds"
+    assert_eq!(
+        final_session.verification_convergence_reason.as_deref(),
+        Some("max_rounds"),
+        "native summary must record convergence_reason=max_rounds"
     );
 
     // Gate passes after hard-cap verified
@@ -360,10 +526,11 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
         !after_reset.verification_in_progress,
         "reset must clear in_progress flag"
     );
-    assert!(
-        after_reset.verification_metadata.is_none(),
-        "reset must clear verification metadata"
-    );
+    assert_eq!(after_reset.verification_current_round, None);
+    assert_eq!(after_reset.verification_max_rounds, None);
+    assert_eq!(after_reset.verification_gap_count, 0);
+    assert_eq!(after_reset.verification_gap_score, Some(0));
+    assert_eq!(after_reset.verification_convergence_reason, None);
 
     // Gate still blocks (now unverified, gate enabled)
     let gate_after_reset = acceptance_gate(&after_reset, &settings_with_gate_enabled());
@@ -453,12 +620,10 @@ async fn test_revert_and_skip_atomic_sets_skipped_and_updates_plan() {
         "plan_artifact_id must point to the reverted original version"
     );
 
-    // Metadata must record convergence_reason=user_reverted
-    let meta_str = after.verification_metadata.clone().unwrap();
-    assert!(
-        meta_str.contains("user_reverted"),
-        "metadata must record convergence_reason=user_reverted, got: {}",
-        meta_str
+    assert_eq!(
+        after.verification_convergence_reason.as_deref(),
+        Some("user_reverted"),
+        "native summary must record convergence_reason=user_reverted"
     );
 
     // Gate must allow acceptance after skip
@@ -496,9 +661,16 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
     let mut reviewing = make_session(&project_id);
     reviewing.verification_status = VerificationStatus::Reviewing;
     reviewing.verification_in_progress = true;
-    reviewing.verification_metadata = Some(metadata_with_gaps(2, 3, 2, 5));
+    reviewing.verification_current_round = Some(2);
+    reviewing.verification_max_rounds = Some(5);
     let reviewing_id = reviewing.id.clone();
     repo.create(reviewing).await.unwrap();
+    repo.save_verification_run_snapshot(
+        &reviewing_id,
+        &snapshot_with_gaps(0, VerificationStatus::Reviewing, true, 2, 3, 2, 5),
+    )
+    .await
+    .unwrap();
 
     let s = repo.get_by_id(&reviewing_id).await.unwrap().unwrap();
     let gate = acceptance_gate(&s, &settings);
@@ -515,9 +687,18 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
     let mut needs_revision = make_session(&project_id);
     needs_revision.verification_status = VerificationStatus::NeedsRevision;
     needs_revision.verification_in_progress = false;
-    needs_revision.verification_metadata = Some(metadata_with_gaps(0, 2, 3, 5));
+    needs_revision.verification_current_round = Some(3);
+    needs_revision.verification_max_rounds = Some(5);
+    needs_revision.verification_gap_count = 2;
+    needs_revision.verification_gap_score = Some(6);
     let needs_revision_id = needs_revision.id.clone();
     repo.create(needs_revision).await.unwrap();
+    repo.save_verification_run_snapshot(
+        &needs_revision_id,
+        &snapshot_with_gaps(0, VerificationStatus::NeedsRevision, false, 0, 2, 3, 5),
+    )
+    .await
+    .unwrap();
 
     let s = repo.get_by_id(&needs_revision_id).await.unwrap().unwrap();
     let gate = acceptance_gate(&s, &settings);
@@ -630,7 +811,7 @@ fn test_verification_gap_source_field_serializes_and_excludes_from_fingerprint()
 //
 // These tests cover the full child-session model introduced in Phase 2:
 //   7.  Auto-verify creates a verification child session with correct properties
-//   8.  Child updates parent state via update_plan_verification
+//   8.  Child updates parent state via post_verification_status
 //   9.  Child is archived when ralphx-plan-verifier agent completes
 //   10. Orphaned verification child reconciled (parent reset, child archived)
 //   11. Spawn failure resets parent in_progress
@@ -709,7 +890,7 @@ async fn test_auto_verify_creates_verification_child_session() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 8: Verification child updates parent state
 //
-// The ralphx-plan-verifier agent calls update_plan_verification(parent_id) to update
+// The ralphx-plan-verifier agent calls post_verification_status(parent_id) to update
 // the parent session's verification state. This simulates the agent running
 // critic rounds and reporting results to the parent session.
 //
@@ -736,7 +917,7 @@ async fn test_verification_child_updates_parent_state() {
     child.parent_session_id = Some(parent_id.clone());
     repo.create(child).await.unwrap();
 
-    // Round 1: ralphx-plan-verifier calls update_plan_verification(parent_id) — gaps found
+    // Round 1: ralphx-plan-verifier calls post_verification_status(parent_id) — gaps found
     let round1_meta = metadata_with_gaps(1, 2, 1, 4);
     repo.update_verification_state(
         &parent_id,
@@ -763,7 +944,7 @@ async fn test_verification_child_updates_parent_state() {
         "gate must block while verification is in progress"
     );
 
-    // Round 2: ralphx-plan-verifier calls update_plan_verification(parent_id) — zero_blocking
+    // Round 2: ralphx-plan-verifier calls post_verification_status(parent_id) — zero_blocking
     let round2_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
@@ -796,7 +977,7 @@ async fn test_verification_child_updates_parent_state() {
 // Test 9: Verification child archived on completion
 //
 // When the ralphx-plan-verifier agent finishes:
-//   Step 1: ralphx-plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+//   Step 1: ralphx-plan-verifier calls post_verification_status(parent_id, in_progress=false)
 //   Step 2: backend auto-archives the child on agent:run_completed
 //
 // After both steps:
@@ -829,7 +1010,7 @@ async fn test_verification_child_archived_on_completion() {
     let active_children = repo.get_verification_children(&parent_id).await.unwrap();
     assert_eq!(active_children.len(), 1, "child must be visible before completion");
 
-    // Step 1: ralphx-plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+    // Step 1: ralphx-plan-verifier calls post_verification_status(parent_id, in_progress=false)
     let final_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
@@ -1002,10 +1183,11 @@ async fn test_spawn_failure_resets_parent() {
         VerificationStatus::Unverified,
         "spawn failure must reset status to Unverified"
     );
-    assert!(
-        parent_after.verification_metadata.is_none(),
-        "spawn failure must clear metadata"
-    );
+    assert_eq!(parent_after.verification_current_round, None);
+    assert_eq!(parent_after.verification_max_rounds, None);
+    assert_eq!(parent_after.verification_gap_count, 0);
+    assert_eq!(parent_after.verification_gap_score, Some(0));
+    assert_eq!(parent_after.verification_convergence_reason, None);
 
     // Gate still blocks (session unverified) but for the right reason
     let gate = acceptance_gate(&parent_after, &settings_with_gate_enabled());

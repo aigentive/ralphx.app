@@ -499,7 +499,6 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
         verification_current_round: None,
         verification_max_rounds: None,

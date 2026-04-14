@@ -927,10 +927,6 @@ async fn test_update_verification_state_roundtrip() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert!(
-        found.verification_metadata.is_none(),
-        "legacy verification_metadata must stay empty after status updates"
-    );
 
     let (status2, in_progress2) = repo
         .get_verification_status(&session.id)
@@ -997,7 +993,6 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Unverified);
     assert!(!found.verification_in_progress);
-    assert!(found.verification_metadata.is_none());
     assert_eq!(
         found.verification_generation, 1,
         "reset_verification must increment generation to fence stale verifier callbacks"
@@ -1034,10 +1029,6 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert!(
-        found.verification_metadata.is_none(),
-        "legacy verification_metadata must stay empty while verification is in progress"
-    );
 }
 
 #[tokio::test]
@@ -1989,11 +1980,7 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     assert!(updated.verification_in_progress, "DB in_progress must be true");
     assert_eq!(updated.verification_generation, 1, "DB generation must be 1");
 
-    // Legacy metadata should stay cleared; native reverify state lives in the returned snapshot.
-    assert!(
-        updated.verification_metadata.is_none(),
-        "SQLite legacy verification_metadata must remain NULL after native reverify reset"
-    );
+    // Native reverify state lives in the returned snapshot rather than the session row.
     assert_eq!(updated.verification_current_round, None);
     assert_eq!(updated.verification_max_rounds, None);
     assert_eq!(updated.verification_gap_count, 0);

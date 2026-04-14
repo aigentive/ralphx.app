@@ -745,7 +745,6 @@ fn make_ideation_session(session_id: &str, project_id: &ProjectId) -> IdeationSe
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,

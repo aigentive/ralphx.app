@@ -122,7 +122,6 @@ fn make_active_session() -> IdeationSession {
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
@@ -1906,6 +1905,7 @@ async fn test_edit_plan_artifact_resets_verification() {
         .unwrap();
     assert_eq!(before.verification_status, VerificationStatus::Verified);
     assert!(!before.verification_in_progress);
+    let gen_before = before.verification_generation;
 
     // Edit the plan
     let _ = edit_plan_artifact(
@@ -1936,6 +1936,11 @@ async fn test_edit_plan_artifact_resets_verification() {
         "Verification should be reset to Unverified after editing plan"
     );
     assert!(!after.verification_in_progress, "in_progress should remain false");
+    assert_eq!(
+        after.verification_generation,
+        gen_before + 1,
+        "plan edits that invalidate finished verification must increment generation"
+    );
 }
 
 /// Test 7: Verification preserved during loop — edit while in_progress=1 does NOT reset.

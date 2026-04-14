@@ -74,9 +74,6 @@ pub struct IdeationSession {
     /// Whether a verification loop is currently active
     #[serde(default)]
     pub verification_in_progress: bool,
-    /// Legacy verification JSON column. Authoritative verification lineage lives in native snapshots.
-    #[serde(default)]
-    pub verification_metadata: Option<String>,
     /// Generation counter for zombie protection (incremented on each auto-verify trigger)
     #[serde(default)]
     pub verification_generation: i32,
@@ -177,7 +174,6 @@ pub struct IdeationSessionBuilder {
     title_source: Option<String>,
     verification_status: Option<VerificationStatus>,
     verification_in_progress: Option<bool>,
-    verification_metadata: Option<String>,
     verification_generation: Option<i32>,
     verification_current_round: Option<u32>,
     verification_max_rounds: Option<u32>,
@@ -461,7 +457,6 @@ impl IdeationSessionBuilder {
             title_source: self.title_source,
             verification_status: self.verification_status.unwrap_or_default(),
             verification_in_progress: self.verification_in_progress.unwrap_or(false),
-            verification_metadata: self.verification_metadata,
             verification_generation: self.verification_generation.unwrap_or(0),
             verification_current_round: self.verification_current_round,
             verification_max_rounds: self.verification_max_rounds,
@@ -613,9 +608,6 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .map(|v| v != 0)
                 .unwrap_or(false),
-            verification_metadata: row
-                .get::<_, Option<String>>("verification_metadata")
-                .unwrap_or(None),
             verification_generation: row
                 .get::<_, Option<i64>>("verification_generation")
                 .unwrap_or(None)

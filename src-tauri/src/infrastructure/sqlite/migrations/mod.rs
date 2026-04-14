@@ -195,8 +195,6 @@ mod v51_repair_plan_branches_tests;
 #[cfg(test)]
 mod v56_api_keys_tests;
 #[cfg(test)]
-mod v57_plan_verification_tests;
-#[cfg(test)]
 mod v58_metrics_index_tests;
 #[cfg(test)]
 mod v59_project_metrics_config_tests;
@@ -298,9 +296,15 @@ mod v20260413043153_drop_agent_lane_settings_fallback_harness_tests;
 mod v20260410124500_chat_message_usage;
 #[cfg(test)]
 mod v20260410124500_chat_message_usage_tests;
+mod v20260414060000_verification_run_store;
+#[cfg(test)]
+mod v20260414060000_verification_run_store_tests;
+mod v20260414123000_drop_verification_metadata_column;
+#[cfg(test)]
+mod v20260414123000_drop_verification_metadata_column_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260413043153;
+pub const SCHEMA_VERSION: i64 = 20260414123000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -849,6 +853,16 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260413043153,
         name: "drop_agent_lane_settings_fallback_harness",
         migrate: v20260413043153_drop_agent_lane_settings_fallback_harness::migrate,
+    },
+    Migration {
+        version: 20260414060000,
+        name: "verification_run_store",
+        migrate: v20260414060000_verification_run_store::migrate,
+    },
+    Migration {
+        version: 20260414123000,
+        name: "drop_verification_metadata_column",
+        migrate: v20260414123000_drop_verification_metadata_column::migrate,
     },
 ];
 

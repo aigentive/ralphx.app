@@ -278,7 +278,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
             session.verification_status = status;
             session.verification_in_progress = in_progress;
-            session.verification_metadata = None;
             Self::clear_verification_summary(session);
             session.updated_at = Utc::now();
         }
@@ -296,7 +295,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             }
             session.verification_status = VerificationStatus::Unverified;
             session.verification_in_progress = false;
-            session.verification_metadata = None;
             Self::clear_verification_summary(session);
             session.verification_generation += 1;
             session.updated_at = Utc::now();
@@ -331,7 +329,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         session.verification_status = VerificationStatus::Reviewing;
         session.verification_in_progress = true;
         session.verification_generation = new_gen;
-        session.verification_metadata = None;
         Self::clear_verification_summary(session);
         session.updated_at = chrono::Utc::now();
 
@@ -393,7 +390,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 Some(crate::domain::entities::ArtifactId::from_string(new_plan_artifact_id));
             session.verification_status = VerificationStatus::Skipped;
             session.verification_in_progress = false;
-            session.verification_metadata = None;
             session.verification_current_round = None;
             session.verification_max_rounds = None;
             session.verification_gap_count = 0;
@@ -420,7 +416,6 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 Some(crate::domain::entities::ArtifactId::from_string(new_artifact_id));
             session.verification_status = VerificationStatus::Skipped;
             session.verification_in_progress = false;
-            session.verification_metadata = None;
             session.verification_current_round = None;
             session.verification_max_rounds = None;
             session.verification_gap_count = 0;
