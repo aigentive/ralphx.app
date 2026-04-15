@@ -22,7 +22,11 @@ fn make_temp_plugin_dir() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::TempDir::new().unwrap();
     let plugin_dir = dir.path().to_path_buf();
     std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
-    std::fs::write(plugin_dir.join("ralphx-mcp-server/build/index.js"), "// fake").unwrap();
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake",
+    )
+    .unwrap();
     (dir, plugin_dir)
 }
 
@@ -32,13 +36,35 @@ fn make_temp_project_plugin_dir() -> (tempfile::TempDir, std::path::PathBuf, std
     let plugin_dir = root.join("plugins/app");
     std::fs::create_dir_all(plugin_dir.join("agents")).unwrap();
     std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
-    std::fs::write(plugin_dir.join("ralphx-mcp-server/build/index.js"), "// fake").unwrap();
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake",
+    )
+    .unwrap();
     std::fs::write(
         plugin_dir.join(".mcp.json"),
         r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"]}}}"#,
     )
     .unwrap();
     (dir, root, plugin_dir)
+}
+
+fn seed_runnable_mcp_runtime(plugin_dir: &Path, runtime_marker: &str) {
+    std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
+    std::fs::create_dir_all(
+        plugin_dir.join("ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk"),
+    )
+    .unwrap();
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        runtime_marker,
+    )
+    .unwrap();
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk/package.json"),
+        "{}",
+    )
+    .unwrap();
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
@@ -62,11 +88,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
     }
 }
 
-fn make_isolated_live_project_plugin_dir() -> (
-    tempfile::TempDir,
-    std::path::PathBuf,
-    std::path::PathBuf,
-) {
+fn make_isolated_live_project_plugin_dir(
+) -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
     let dir = tempfile::TempDir::new().expect("create temp project dir");
     let root = dir.path().to_path_buf();
     let repo_root = repo_project_root();
@@ -236,7 +259,10 @@ fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
         .unwrap()
         .strip_prefix("--allowed-tools=")
         .unwrap();
-    assert!(!value.is_empty(), "--allowed-tools value should not be empty");
+    assert!(
+        !value.is_empty(),
+        "--allowed-tools value should not be empty"
+    );
     assert_ne!(
         value, "__NONE__",
         "--allowed-tools should contain real tools, not __NONE__"
@@ -434,7 +460,11 @@ fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
         .as_object()
         .and_then(|servers| servers.values().next())
         .and_then(|server| server["args"].as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let allowed_tools_arg = args.iter().find(|a| a.starts_with("--allowed-tools="));
     if let Some(arg) = allowed_tools_arg {
@@ -458,7 +488,11 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
         .as_object()
         .and_then(|servers| servers.values().next())
         .and_then(|server| server["args"].as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let allowed_tools_arg = args.iter().find(|a| a.starts_with("--allowed-tools="));
     if let Some(arg) = allowed_tools_arg {
@@ -471,7 +505,8 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
 }
 
 #[test]
-fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_without_legacy_agent_file() {
+fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_without_legacy_agent_file(
+) {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
     let agent_root = root.join("agents/ralphx-ideation");
     std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
@@ -504,10 +539,8 @@ skills:
 
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
-    let generated_prompt = std::fs::read_to_string(
-        generated_dir.join("agents/ralphx-ideation.md"),
-    )
-    .expect("read generated agent prompt");
+    let generated_prompt = std::fs::read_to_string(generated_dir.join("agents/ralphx-ideation.md"))
+        .expect("read generated agent prompt");
 
     assert!(
         generated_prompt.contains("name: ralphx-ideation"),
@@ -633,10 +666,9 @@ fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowe
     let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
-    let generated_prompt = std::fs::read_to_string(
-        generated_dir.join("agents/ralphx-plan-verifier.md"),
-    )
-    .expect("read generated agent prompt");
+    let generated_prompt =
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-plan-verifier.md"))
+            .expect("read generated agent prompt");
     let (frontmatter, _) = split_frontmatter(&generated_prompt);
     let disallowed_tools = frontmatter["disallowedTools"]
         .as_sequence()
@@ -692,13 +724,16 @@ fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics
     let (_dir, root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
-    let agent_names = crate::infrastructure::agents::harness_agent_catalog::list_canonical_prompt_backed_agents(
-        &root,
-        crate::infrastructure::agents::harness_agent_catalog::AgentPromptHarness::Claude,
-    );
+    let agent_names =
+        crate::infrastructure::agents::harness_agent_catalog::list_canonical_prompt_backed_agents(
+            &root,
+            crate::infrastructure::agents::harness_agent_catalog::AgentPromptHarness::Claude,
+        );
 
     for agent_name in agent_names {
-        let generated_path = generated_dir.join("agents").join(format!("{agent_name}.md"));
+        let generated_path = generated_dir
+            .join("agents")
+            .join(format!("{agent_name}.md"));
         let generated_markdown =
             std::fs::read_to_string(&generated_path).expect("read generated agent markdown");
         let definition = load_canonical_agent_definition(&root, &agent_name)
@@ -740,9 +775,71 @@ fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics
             "generated Claude mcpServers presence drifted from runtime config for {agent_name}"
         );
         assert_eq!(
-            canonical_body,
-            generated_body,
+            canonical_body, generated_body,
             "generated Claude prompt body drifted from canonical source for {agent_name}"
         );
     }
+}
+
+#[test]
+fn test_materialize_generated_plugin_dir_uses_fallback_runtime_entries_when_local_bundle_is_incomplete(
+) {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    std::fs::create_dir_all(root.join("agents/ralphx-plan-verifier/claude"))
+        .expect("create canonical claude dir");
+    std::fs::write(
+        root.join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        root.join("agents/ralphx-plan-verifier/claude/prompt.md"),
+        "Local canonical verifier prompt",
+    )
+    .expect("write local canonical prompt");
+    std::fs::write(
+        plugin_dir.join(".mcp.json"),
+        r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["local-config"]}}}"#,
+    )
+    .expect("write local mcp config");
+    std::fs::write(
+        plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// incomplete local runtime",
+    )
+    .expect("write incomplete local runtime");
+
+    let fallback_dir = tempfile::TempDir::new().expect("create fallback runtime dir");
+    let fallback_plugin_dir = fallback_dir.path().join("plugins/app");
+    std::fs::create_dir_all(&fallback_plugin_dir).expect("create fallback plugin dir");
+    std::fs::write(
+        fallback_plugin_dir.join(".mcp.json"),
+        r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["fallback-config"]}}}"#,
+    )
+    .expect("write fallback mcp config");
+    seed_runnable_mcp_runtime(&fallback_plugin_dir, "// fallback runtime");
+
+    let generated_dir = materialize_generated_plugin_dir_with_runtime_source(
+        &plugin_dir,
+        Some(&fallback_plugin_dir),
+    )
+    .expect("materialize generated plugin dir");
+
+    assert_eq!(
+        std::fs::read_to_string(generated_dir.join(".mcp.json"))
+            .expect("read generated mcp config"),
+        r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["local-config"]}}}"#,
+        "generated plugin should preserve the local config surface"
+    );
+    assert_eq!(
+        std::fs::read_to_string(generated_dir.join("ralphx-mcp-server/build/index.js"))
+            .expect("read generated runtime entry"),
+        "// fallback runtime",
+        "generated plugin should link the runnable fallback runtime bundle"
+    );
+    assert!(
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-plan-verifier.md"))
+            .expect("read generated prompt")
+            .contains("Local canonical verifier prompt"),
+        "generated plugin should keep canonical prompts from the local RalphX checkout"
+    );
 }

@@ -284,17 +284,14 @@ pub(crate) fn resolve_default_harness_plugin_dir(working_directory: &Path) -> Pa
     resolve_plugin_dir(working_directory)
 }
 
-pub(crate) fn resolve_base_harness_plugin_dir(working_directory: &Path) -> PathBuf {
-    crate::infrastructure::agents::claude::resolve_base_plugin_dir(working_directory)
-}
-
 pub(crate) fn resolve_harness_plugin_dir(
     harness: AgentHarnessKind,
     working_directory: &Path,
 ) -> PathBuf {
     match harness {
-        AgentHarnessKind::Claude => resolve_default_harness_plugin_dir(working_directory),
-        AgentHarnessKind::Codex => resolve_base_harness_plugin_dir(working_directory),
+        AgentHarnessKind::Claude | AgentHarnessKind::Codex => {
+            resolve_default_harness_plugin_dir(working_directory)
+        }
     }
 }
 
@@ -795,6 +792,16 @@ mod tests {
         assert_eq!(
             bootstrap.plugin_dir,
             resolve_harness_plugin_dir(AgentHarnessKind::Codex, &bootstrap.working_directory)
+        );
+    }
+
+    #[test]
+    fn resolve_harness_plugin_dir_uses_generated_plugin_dir_for_codex() {
+        let working_directory = PathBuf::from("/tmp/example");
+
+        assert_eq!(
+            resolve_harness_plugin_dir(AgentHarnessKind::Codex, &working_directory),
+            resolve_default_harness_plugin_dir(&working_directory)
         );
     }
 }

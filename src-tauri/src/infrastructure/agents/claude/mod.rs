@@ -52,8 +52,9 @@ pub use model_resolver::{
     resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
 #[allow(unused_imports)]
-pub(crate) use generated_plugin::materialize_generated_plugin_dir;
-
+pub(crate) use generated_plugin::{
+    materialize_generated_plugin_dir, materialize_generated_plugin_dir_with_runtime_source,
+};
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;

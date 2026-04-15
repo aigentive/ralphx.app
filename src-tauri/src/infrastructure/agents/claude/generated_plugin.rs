@@ -1,17 +1,26 @@
 use crate::infrastructure::agents::claude::plugin_repo_root;
-use crate::infrastructure::agents::claude::{claude_runtime_config, get_agent_config};
-use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, AgentPromptHarness, CanonicalAgentDefinition,
-    CanonicalClaudeAgentMetadata,
+use crate::infrastructure::agents::claude::{
+    claude_runtime_config, find_base_plugin_dir, get_agent_config,
 };
-use std::collections::HashSet;
+use crate::infrastructure::agents::harness_agent_catalog::{
+    load_canonical_agent_definition, load_harness_agent_prompt,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
+    CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
+};
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use tracing::warn;
 
 const GENERATED_PLUGIN_DIR_REL_DEBUG: &str = ".artifacts/generated/claude-plugin";
 const GENERATED_PLUGIN_DIR_REL_PROD: &str = "generated/claude-plugin";
+const INTERNAL_MCP_SERVER_DIR: &str = "ralphx-mcp-server";
+const EXTERNAL_MCP_SERVER_DIR: &str = "ralphx-external-mcp";
+const MCP_RUNTIME_ENTRY_REL: &str = "ralphx-mcp-server/build/index.js";
+const MCP_RUNTIME_SDK_MARKER_REL: &str =
+    "ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk/package.json";
+const FALLBACK_RUNTIME_ENTRY_NAMES: &[&str] = &[INTERNAL_MCP_SERVER_DIR, EXTERNAL_MCP_SERVER_DIR];
 
 fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -19,11 +28,23 @@ fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
 }
 
 pub(crate) fn materialize_generated_plugin_dir(base_plugin_dir: &Path) -> Result<PathBuf, String> {
+    materialize_generated_plugin_dir_with_runtime_source(
+        base_plugin_dir,
+        find_base_plugin_dir().as_deref(),
+    )
+}
+
+pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
+    base_plugin_dir: &Path,
+    fallback_runtime_plugin_dir: Option<&Path>,
+) -> Result<PathBuf, String> {
     let _guard = generated_plugin_materialization_lock()
         .lock()
         .map_err(|_| "Generated Claude plugin materialization lock poisoned".to_string())?;
     let project_root = resolve_project_root_from_plugin_dir(base_plugin_dir);
     let generated_plugin_dir = generated_plugin_dir_for_base(base_plugin_dir);
+    let runtime_source_plugin_dir =
+        resolve_runtime_entries_source_plugin_dir(base_plugin_dir, fallback_runtime_plugin_dir);
 
     fs::create_dir_all(&generated_plugin_dir).map_err(|error| {
         format!(
@@ -32,10 +53,36 @@ pub(crate) fn materialize_generated_plugin_dir(base_plugin_dir: &Path) -> Result
         )
     })?;
 
-    sync_runtime_entries(base_plugin_dir, &generated_plugin_dir)?;
+    sync_runtime_entries(
+        base_plugin_dir,
+        &runtime_source_plugin_dir,
+        &generated_plugin_dir,
+    )?;
     sync_generated_agent_prompts(base_plugin_dir, &generated_plugin_dir, &project_root)?;
 
     Ok(generated_plugin_dir)
+}
+
+pub(crate) fn resolve_runtime_entries_source_plugin_dir(
+    base_plugin_dir: &Path,
+    fallback_runtime_plugin_dir: Option<&Path>,
+) -> PathBuf {
+    if plugin_dir_has_runnable_mcp_runtime(base_plugin_dir) {
+        return base_plugin_dir.to_path_buf();
+    }
+
+    if let Some(fallback_runtime_plugin_dir) = fallback_runtime_plugin_dir.filter(|candidate| {
+        *candidate != base_plugin_dir && plugin_dir_has_runnable_mcp_runtime(candidate)
+    }) {
+        warn!(
+            base_plugin_dir = %base_plugin_dir.display(),
+            fallback_runtime_plugin_dir = %fallback_runtime_plugin_dir.display(),
+            "Local plugin dir is missing runnable MCP runtime dependencies; falling back to canonical runtime bundle"
+        );
+        return fallback_runtime_plugin_dir.to_path_buf();
+    }
+
+    base_plugin_dir.to_path_buf()
 }
 
 fn generated_plugin_dir_for_base(base_plugin_dir: &Path) -> PathBuf {
@@ -47,7 +94,12 @@ fn generated_plugin_dir_for_base(base_plugin_dir: &Path) -> PathBuf {
     }
 }
 
-fn sync_runtime_entries(base_plugin_dir: &Path, generated_plugin_dir: &Path) -> Result<(), String> {
+fn sync_runtime_entries(
+    base_plugin_dir: &Path,
+    runtime_source_plugin_dir: &Path,
+    generated_plugin_dir: &Path,
+) -> Result<(), String> {
+    let mut entry_names = BTreeSet::new();
     for entry in fs::read_dir(base_plugin_dir).map_err(|error| {
         format!(
             "Failed to read base Claude plugin dir {}: {error}",
@@ -60,14 +112,41 @@ fn sync_runtime_entries(base_plugin_dir: &Path, generated_plugin_dir: &Path) -> 
                 base_plugin_dir.display()
             )
         })?;
-        let file_name = entry.file_name();
+        let file_name = entry.file_name().to_string_lossy().to_string();
         if file_name == "agents" || file_name == ".DS_Store" {
             continue;
         }
+        entry_names.insert(file_name);
+    }
+
+    for runtime_entry_name in FALLBACK_RUNTIME_ENTRY_NAMES {
+        if runtime_source_plugin_dir.join(runtime_entry_name).exists() {
+            entry_names.insert((*runtime_entry_name).to_string());
+        }
+    }
+
+    for file_name in entry_names {
         let target = generated_plugin_dir.join(&file_name);
-        ensure_symlink(&entry.path(), &target)?;
+        let preferred_runtime_source = runtime_source_plugin_dir.join(&file_name);
+        let source = if FALLBACK_RUNTIME_ENTRY_NAMES.contains(&file_name.as_str())
+            && preferred_runtime_source.exists()
+        {
+            preferred_runtime_source
+        } else {
+            base_plugin_dir.join(&file_name)
+        };
+
+        if !source.exists() {
+            continue;
+        }
+        ensure_symlink(&source, &target)?;
     }
     Ok(())
+}
+
+fn plugin_dir_has_runnable_mcp_runtime(plugin_dir: &Path) -> bool {
+    plugin_dir.join(MCP_RUNTIME_ENTRY_REL).is_file()
+        && plugin_dir.join(MCP_RUNTIME_SDK_MARKER_REL).is_file()
 }
 
 fn sync_generated_agent_prompts(
@@ -120,7 +199,8 @@ fn sync_generated_agent_prompts(
             }
 
             let short_name = entry.file_name().to_string_lossy().to_string();
-            let Some(definition) = load_canonical_agent_definition(project_root, &short_name) else {
+            let Some(definition) = load_canonical_agent_definition(project_root, &short_name)
+            else {
                 continue;
             };
 
