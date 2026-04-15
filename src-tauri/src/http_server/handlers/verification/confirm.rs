@@ -20,6 +20,21 @@ pub async fn confirm_verification(
         .await
         .map_err(map_app_err_local)?;
 
+    if let Some(session) = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_for_status)
+        .await
+        .map_err(map_app_err_local)?
+    {
+        crate::http_server::handlers::ideation::repair_blank_orphaned_verification_generation(
+            &state.app_state,
+            &session,
+        )
+        .await
+        .map_err(map_app_err_local)?;
+    }
+
     // Run transaction: verify session exists + trigger auto-verify
     let sid_clone = session_id_str.clone();
     let (session_id, maybe_generation) = state

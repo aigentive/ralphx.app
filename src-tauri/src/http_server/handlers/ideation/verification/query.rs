@@ -10,12 +10,14 @@ pub async fn get_plan_verification(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(session_id): Path<String>,
-    axum::extract::Query(params): axum::extract::Query<crate::http_server::types::VerificationQueryParams>,
+    axum::extract::Query(params): axum::extract::Query<
+        crate::http_server::types::VerificationQueryParams,
+    >,
 ) -> Result<Json<VerificationResponse>, JsonError> {
     use crate::domain::services::gap_score;
     use crate::http_server::types::{
-        VerificationGapResponse, VerificationRoundDetailResponse,
-        VerificationRunHistoryEntryResponse, VerificationRoundSummary,
+        VerificationGapResponse, VerificationRoundDetailResponse, VerificationRoundSummary,
+        VerificationRunHistoryEntryResponse,
     };
 
     let requested_session_id = session_id;
@@ -117,32 +119,61 @@ pub async fn get_plan_verification(
         ));
     }
 
-    let (status, in_progress) = if let Some(run) = snapshot.as_ref() {
+    let child_state = match load_verification_child_state(
+        &state.app_state.ideation_session_repo,
+        &session_id_obj,
+    )
+    .await
+    {
+        Ok(child_state) => Some(child_state),
+        Err(error) => {
+            error!(
+                "Failed to load verification child state for {}: {}",
+                session_id, error
+            );
+            None
+        }
+    };
+
+    let stale_blank_active_generation = child_state.as_ref().is_some_and(|child_state| {
+        selected_generation == active_generation
+            && is_blank_orphaned_active_generation(
+                summary_in_progress,
+                snapshot.as_ref(),
+                child_state,
+            )
+    });
+    let effective_snapshot = if stale_blank_active_generation {
+        None
+    } else {
+        snapshot.as_ref()
+    };
+
+    let (status, in_progress) = if let Some(run) = effective_snapshot {
         (run.status, run.in_progress)
     } else {
         (summary_status, summary_in_progress)
     };
 
-    let current_round = snapshot.as_ref().and_then(|run| {
+    let current_round = effective_snapshot.and_then(|run| {
         if run.current_round > 0 {
             Some(run.current_round)
         } else {
             None
         }
     });
-    let max_rounds = snapshot.as_ref().and_then(|run| {
+    let max_rounds = effective_snapshot.and_then(|run| {
         if run.max_rounds > 0 {
             Some(run.max_rounds)
         } else {
             None
         }
     });
-    let gap_sc = snapshot.as_ref().map(|run| gap_score(&run.current_gaps));
-    let convergence_reason = snapshot.as_ref().and_then(|run| run.convergence_reason.clone());
-    let best_round_index = snapshot.as_ref().and_then(|run| run.best_round_index);
+    let gap_sc = effective_snapshot.map(|run| gap_score(&run.current_gaps));
+    let convergence_reason = effective_snapshot.and_then(|run| run.convergence_reason.clone());
+    let best_round_index = effective_snapshot.and_then(|run| run.best_round_index);
 
-    let current_gaps = snapshot
-        .as_ref()
+    let current_gaps = effective_snapshot
         .map(|run| {
             run.current_gaps
                 .iter()
@@ -157,8 +188,7 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let rounds = snapshot
-        .as_ref()
+    let rounds = effective_snapshot
         .map(|run| {
             run.rounds
                 .iter()
@@ -178,8 +208,7 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let round_details = snapshot
-        .as_ref()
+    let round_details = effective_snapshot
         .map(|run| {
             run.rounds
                 .iter()
@@ -228,6 +257,11 @@ pub async fn get_plan_verification(
         )
     })?
     .into_iter()
+    .filter(|run| {
+        !(stale_blank_active_generation
+            && run.generation == active_generation
+            && is_blank_in_progress_snapshot(run))
+    })
     .map(|run| VerificationRunHistoryEntryResponse {
         generation: run.generation,
         status: run.status.to_string(),
@@ -260,13 +294,8 @@ pub async fn get_plan_verification(
         use crate::http_server::types::VerificationChildInfo;
         use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
 
-        match state
-            .app_state
-            .ideation_session_repo
-            .get_latest_verification_child(&session_id_obj)
-            .await
-        {
-            Ok(Some(child)) => {
+        match child_state.and_then(|state| state.latest_child) {
+            Some(child) => {
                 let child_id_str = child.id.as_str().to_string();
                 let child_session_id = IdeationSessionId::from_string(child_id_str.clone());
 
@@ -318,12 +347,11 @@ pub async fn get_plan_verification(
 
                 // active_child_session_id: Some only when in_progress=true and child not archived
                 let latest_child_archived = child.status == IdeationSessionStatus::Archived;
-                let active_child_session_id =
-                    if summary_in_progress && !latest_child_archived {
-                        Some(child_id_str.clone())
-                    } else {
-                        None
-                    };
+                let active_child_session_id = if in_progress && !latest_child_archived {
+                    Some(child_id_str.clone())
+                } else {
+                    None
+                };
 
                 Some(VerificationChildInfo {
                     active_child_session_id,
@@ -336,14 +364,7 @@ pub async fn get_plan_verification(
                     last_assistant_message_at,
                 })
             }
-            Ok(None) => None,
-            Err(e) => {
-                error!(
-                    "Failed to fetch verification child for {}: {}",
-                    session_id, e
-                );
-                None
-            }
+            None => None,
         }
     };
 

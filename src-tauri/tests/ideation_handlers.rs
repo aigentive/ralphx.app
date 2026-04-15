@@ -555,6 +555,102 @@ async fn test_get_plan_verification_reviewing_without_snapshot_no_panic() {
     assert!(response.rounds.is_empty(), "rounds should be empty without a native snapshot");
 }
 
+#[tokio::test]
+async fn test_get_plan_verification_hides_blank_orphaned_active_generation() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .verification_generation(20)
+        .build();
+    let session_id = session.id.clone();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                20,
+                VerificationStatus::Reviewing,
+                true,
+                0,
+                5,
+                vec![],
+                vec![],
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::Unverified,
+            false
+        )
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(session_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&child_id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await
+    .expect("handler must succeed");
+
+    assert_eq!(result.0.status, "unverified");
+    assert!(
+        !result.0.in_progress,
+        "blank orphaned active generation must not block fresh verification"
+    );
+    assert!(
+        result
+            .0
+            .run_history
+            .iter()
+            .all(|run| run.generation != 20),
+        "blank orphaned active generation should be filtered out of run history"
+    );
+    let child_info = result
+        .0
+        .verification_child
+        .expect("latest archived child should still be exposed for continuity");
+    assert!(child_info.latest_child_archived);
+    assert!(child_info.active_child_session_id.is_none());
+}
+
 /// Rounds cap test: session with 15 rounds → last 10 returned in chronological order
 /// (rounds 6-15, i.e. 1-based indices 6..=15 from the original vec).
 #[tokio::test]

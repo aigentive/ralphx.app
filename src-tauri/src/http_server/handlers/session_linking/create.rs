@@ -15,6 +15,25 @@ async fn initialize_verification_state(
         ));
     }
 
+    if parent.verification_in_progress {
+        crate::http_server::handlers::ideation::repair_blank_orphaned_verification_generation(
+            &state.app_state,
+            parent,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to repair stale verification state for {}: {}",
+                parent_id.as_str(),
+                e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to repair verification state: {}", e),
+            )
+        })?;
+    }
+
     let verification_max_rounds = default_verification_max_rounds();
     let parent_id_str = parent_id.as_str().to_string();
     let verify_result = state
