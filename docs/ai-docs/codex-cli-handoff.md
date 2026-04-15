@@ -4,7 +4,7 @@ Updated: 2026-04-07
 
 ## Worktree
 
-- Repo: `/Users/lazabogdan/ralphx-worktrees/codex`
+- Repo: `/Users/example/ralphx-worktrees/codex`
 - Branch: `codex-cli-discovery`
 - Discovery PR: `https://github.com/aigentive/ralphx/pull/17`
 
@@ -84,7 +84,7 @@ Updated: 2026-04-07
 
 ### Core architecture
 
-- Reefagent uses model-prefix routing in `/Users/lazabogdan/Code/reefbot.ai/src/registry.ts`
+- Reefagent uses model-prefix routing in `/Users/example/Code/reefbot.ai/src/registry.ts`
   - `pro:` -> `claude-code`
   - `codex:` -> `codex-cli`
 - Both CLI providers set `managesOwnSessions = true`
@@ -115,8 +115,8 @@ Updated: 2026-04-07
 ### Codex MCP bridge in Reefagent
 
 - Claude uses stdio MCP via `src/providers/cli-agent/mcp-config.ts` and `src/commands/mcp.ts`
-- Codex uses HTTP JSON-RPC bridge at `/Users/lazabogdan/Code/reefbot.ai/src/gateway/http.ts` on `/mcp/codex`
-- Both converge on shared tool execution in `/Users/lazabogdan/Code/reefbot.ai/src/mcp/server.ts`
+- Codex uses HTTP JSON-RPC bridge at `/Users/example/Code/reefbot.ai/src/gateway/http.ts` on `/mcp/codex`
+- Both converge on shared tool execution in `/Users/example/Code/reefbot.ai/src/mcp/server.ts`
 
 ### Reefagent config examples
 

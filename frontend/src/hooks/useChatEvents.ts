@@ -348,6 +348,12 @@ export function useChatEvents({
             store.setToolCallStartTime(storeKey, id, Date.now());
           }
           store.updateLastAgentEvent(storeKey);
+        } else if (storeKey && result != null) {
+          const store = useChatStore.getState();
+          store.removeToolCallStartTime(storeKey, id);
+          store.updateLastAgentEvent(storeKey);
+          store.setLastToolCallCompletionTimestamp(storeKey, Date.now());
+          store.setToolCallCompletionTimestamp(storeKey, id, Date.now());
         }
 
         // Route to parent task's childToolCalls if this is a subagent tool call

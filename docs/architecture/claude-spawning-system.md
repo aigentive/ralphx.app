@@ -501,9 +501,9 @@ Both environment variables must be set on the spawned process.
 ### Real Spawn Example
 
 ```bash
-cd /Users/lazabogdan/Code/ralphx && \
+cd /Users/example/Code/ralphx && \
 env CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
-/Users/lazabogdan/.local/share/claude/versions/2.1.42 \
+/Users/example/.local/share/claude/versions/2.1.42 \
   --agent-id wave-1@merge-hardening-tests \
   --agent-name wave-1 \
   --team-name merge-hardening-tests \

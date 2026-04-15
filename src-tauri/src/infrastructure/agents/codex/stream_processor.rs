@@ -14,6 +14,12 @@ pub struct CodexItemError {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexFileChange {
+    pub path: String,
+    pub kind: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CodexItem {
     pub id: Option<String>,
@@ -37,6 +43,10 @@ pub struct CodexItem {
     pub aggregated_output: Option<String>,
     #[serde(default)]
     pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub changes: Option<Vec<CodexFileChange>>,
     #[serde(default)]
     pub sender_thread_id: Option<String>,
     #[serde(default)]
@@ -62,6 +72,7 @@ pub struct CodexStreamEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexCommandExecution {
     pub id: Option<String>,
+    pub command: Option<String>,
     pub status: Option<String>,
     pub aggregated_output: Option<String>,
     pub exit_code: Option<i32>,
@@ -111,9 +122,6 @@ pub fn extract_codex_thread_id(event: &CodexStreamEvent) -> Option<String> {
 
 pub fn extract_codex_tool_call_snapshot(event: &CodexStreamEvent) -> Option<CodexToolCallSnapshot> {
     let item = event.item.as_ref()?;
-    if item.item_type != "mcp_tool_call" {
-        return None;
-    }
 
     let phase = match event.event_type.as_str() {
         "item.started" => CodexToolCallPhase::Started,
@@ -121,29 +129,76 @@ pub fn extract_codex_tool_call_snapshot(event: &CodexStreamEvent) -> Option<Code
         _ => return None,
     };
 
-    let name = match (item.server.as_deref(), item.tool.as_deref()) {
-        (Some(server), Some(tool)) => format!("{server}::{tool}"),
-        (None, Some(tool)) => tool.to_string(),
+    let tool_call = match item.item_type.as_str() {
+        "mcp_tool_call" => {
+            let name = match (item.server.as_deref(), item.tool.as_deref()) {
+                (Some(server), Some(tool)) => format!("{server}::{tool}"),
+                (None, Some(tool)) => tool.to_string(),
+                _ => return None,
+            };
+
+            ToolCall {
+                id: item.id.clone(),
+                name,
+                arguments: item.arguments.clone().unwrap_or_default(),
+                result: item.result.clone(),
+                parent_tool_use_id: None,
+                diff_context: None,
+                stats: None,
+            }
+        }
+        "command_execution" => {
+            let arguments = item
+                .command
+                .as_ref()
+                .map(|command| serde_json::json!({ "command": command }))
+                .unwrap_or_else(|| serde_json::json!({}));
+            let result = match phase {
+                CodexToolCallPhase::Started => None,
+                CodexToolCallPhase::Completed => Some(serde_json::json!({
+                    "text": item.aggregated_output.clone().unwrap_or_default(),
+                    "exit_code": item.exit_code,
+                    "status": item.status.clone(),
+                })),
+            };
+
+            ToolCall {
+                id: item.id.clone(),
+                name: "bash".to_string(),
+                arguments,
+                result,
+                parent_tool_use_id: None,
+                diff_context: None,
+                stats: None,
+            }
+        }
+        "file_change" => {
+            let result = match phase {
+                CodexToolCallPhase::Started => None,
+                CodexToolCallPhase::Completed => Some(serde_json::json!({
+                    "status": item.status.clone(),
+                })),
+            };
+
+            ToolCall {
+                id: item.id.clone(),
+                name: "file_change".to_string(),
+                arguments: serde_json::json!({
+                    "changes": item.changes.clone().unwrap_or_default(),
+                }),
+                result,
+                parent_tool_use_id: None,
+                diff_context: None,
+                stats: None,
+            }
+        }
         _ => return None,
     };
 
-    Some(CodexToolCallSnapshot {
-        phase,
-        tool_call: ToolCall {
-            id: item.id.clone(),
-            name,
-            arguments: item.arguments.clone().unwrap_or_default(),
-            result: item.result.clone(),
-            parent_tool_use_id: None,
-            diff_context: None,
-            stats: None,
-        },
-    })
+    Some(CodexToolCallSnapshot { phase, tool_call })
 }
 
-pub fn extract_codex_command_execution(
-    event: &CodexStreamEvent,
-) -> Option<CodexCommandExecution> {
+pub fn extract_codex_command_execution(event: &CodexStreamEvent) -> Option<CodexCommandExecution> {
     let item = event.item.as_ref()?;
     if item.item_type != "command_execution" {
         return None;
@@ -151,6 +206,7 @@ pub fn extract_codex_command_execution(
 
     Some(CodexCommandExecution {
         id: item.id.clone(),
+        command: item.command.clone(),
         status: item.status.clone(),
         aggregated_output: item.aggregated_output.clone(),
         exit_code: item.exit_code,
@@ -204,6 +260,28 @@ pub fn extract_codex_usage(event: &CodexStreamEvent) -> Option<CodexUsage> {
 mod tests {
     use super::*;
 
+    fn codex_item(item_type: &str) -> CodexItem {
+        CodexItem {
+            id: None,
+            item_type: item_type.to_string(),
+            text: None,
+            server: None,
+            tool: None,
+            arguments: None,
+            result: None,
+            error: None,
+            status: None,
+            aggregated_output: None,
+            exit_code: None,
+            command: None,
+            changes: None,
+            sender_thread_id: None,
+            receiver_thread_ids: None,
+            prompt: None,
+            agents_states: None,
+        }
+    }
+
     #[test]
     fn extract_codex_usage_ignores_non_turn_completed_events() {
         let event = CodexStreamEvent {
@@ -244,6 +322,106 @@ mod tests {
     }
 
     #[test]
+    fn extract_codex_tool_call_snapshot_normalizes_command_execution_as_bash() {
+        let mut item = codex_item("command_execution");
+        item.id = Some("item_0".to_string());
+        item.command = Some("/bin/zsh -lc pwd".to_string());
+        item.aggregated_output = Some("/workspace/project\n".to_string());
+        item.exit_code = Some(0);
+        item.status = Some("completed".to_string());
+
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: Some(item),
+            usage: None,
+        };
+
+        let snapshot = extract_codex_tool_call_snapshot(&event).expect("bash snapshot");
+        assert_eq!(snapshot.phase, CodexToolCallPhase::Completed);
+        assert_eq!(snapshot.tool_call.id.as_deref(), Some("item_0"));
+        assert_eq!(snapshot.tool_call.name, "bash");
+        assert_eq!(
+            snapshot.tool_call.arguments,
+            serde_json::json!({ "command": "/bin/zsh -lc pwd" })
+        );
+        assert_eq!(
+            snapshot.tool_call.result,
+            Some(serde_json::json!({
+                "text": "/workspace/project\n",
+                "exit_code": 0,
+                "status": "completed",
+            }))
+        );
+    }
+
+    #[test]
+    fn extract_codex_tool_call_snapshot_normalizes_file_change() {
+        let mut item = codex_item("file_change");
+        item.id = Some("item_1".to_string());
+        item.status = Some("completed".to_string());
+        item.changes = Some(vec![CodexFileChange {
+            path: "/workspace/file.txt".to_string(),
+            kind: "update".to_string(),
+        }]);
+
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: Some(item),
+            usage: None,
+        };
+
+        let snapshot = extract_codex_tool_call_snapshot(&event).expect("file_change snapshot");
+        assert_eq!(snapshot.phase, CodexToolCallPhase::Completed);
+        assert_eq!(snapshot.tool_call.id.as_deref(), Some("item_1"));
+        assert_eq!(snapshot.tool_call.name, "file_change");
+        assert_eq!(
+            snapshot.tool_call.arguments,
+            serde_json::json!({
+                "changes": [
+                    {
+                        "path": "/workspace/file.txt",
+                        "kind": "update",
+                    }
+                ]
+            })
+        );
+        assert_eq!(
+            snapshot.tool_call.result,
+            Some(serde_json::json!({ "status": "completed" }))
+        );
+    }
+
+    #[test]
+    fn extract_codex_command_execution_keeps_command() {
+        let mut item = codex_item("command_execution");
+        item.id = Some("item_7".to_string());
+        item.command = Some("/bin/zsh -lc cargo test".to_string());
+        item.status = Some("completed".to_string());
+        item.aggregated_output = Some("ok\n".to_string());
+        item.exit_code = Some(0);
+
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: Some(item),
+            usage: None,
+        };
+
+        assert_eq!(
+            extract_codex_command_execution(&event),
+            Some(CodexCommandExecution {
+                id: Some("item_7".to_string()),
+                command: Some("/bin/zsh -lc cargo test".to_string()),
+                status: Some("completed".to_string()),
+                aggregated_output: Some("ok\n".to_string()),
+                exit_code: Some(0),
+            })
+        );
+    }
+
+    #[test]
     fn resource_probe_method_not_found_is_non_fatal() {
         let event = CodexStreamEvent {
             event_type: "item.completed".to_string(),
@@ -257,11 +435,16 @@ mod tests {
                 arguments: None,
                 result: None,
                 error: Some(CodexItemError {
-                    message: Some("resources/list failed for 'ralphx': Mcp error: -32601: Method not found".to_string()),
+                    message: Some(
+                        "resources/list failed for 'ralphx': Mcp error: -32601: Method not found"
+                            .to_string(),
+                    ),
                 }),
                 status: None,
                 aggregated_output: None,
                 exit_code: None,
+                command: None,
+                changes: None,
                 sender_thread_id: None,
                 receiver_thread_ids: None,
                 prompt: None,
@@ -295,6 +478,8 @@ mod tests {
                 status: None,
                 aggregated_output: None,
                 exit_code: None,
+                command: None,
+                changes: None,
                 sender_thread_id: None,
                 receiver_thread_ids: None,
                 prompt: None,

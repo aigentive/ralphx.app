@@ -20,9 +20,9 @@ Any of these should activate this guide:
 
 | Source | Path |
 |--------|------|
-| Project logs | `~/.claude/projects/-Users-lazabogdan-Code-ralphx/*.jsonl` |
+| Project logs | `~/.claude/projects/-Users-example-Code-ralphx/*.jsonl` |
 | Plan files | `~/.claude/plans/*.md` |
-| Session metadata | `~/.claude/projects/-Users-lazabogdan-Code-ralphx/<uuid>/subagents/` |
+| Session metadata | `~/.claude/projects/-Users-example-Code-ralphx/<uuid>/subagents/` |
 
 **684 JSONL files** (as of 2026-02-13), UUID-named, 0.9 KB to 20.8 MB each.
 
@@ -43,7 +43,7 @@ git log --format="%ai %s" <sha>
 python3 -c "
 import json, os, glob
 target_date = '2026-02-13'  # from commit timestamps
-for f in sorted(glob.glob('/Users/lazabogdan/.claude/projects/-Users-lazabogdan-Code-ralphx/*.jsonl')):
+for f in sorted(glob.glob('/Users/example/.claude/projects/-Users-example-Code-ralphx/*.jsonl')):
     try:
         with open(f) as fh:
             first = json.loads(fh.readline())

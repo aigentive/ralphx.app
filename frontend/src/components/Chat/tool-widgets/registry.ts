@@ -27,6 +27,7 @@ import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
 import { BashWidget } from "./BashWidget";
+import { FileChangeWidget } from "./FileChangeWidget";
 import { SkillWidget } from "./SkillWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
 import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
@@ -43,6 +44,7 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Bash tool → BashWidget (terminal output card)
   "bash": BashWidget,
+  "file_change": FileChangeWidget,
   // File read tool → ReadWidget (file preview card)
   "read": ReadWidget,
   // Search tools → GrepWidget / GlobWidget

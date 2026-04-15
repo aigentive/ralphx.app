@@ -160,5 +160,20 @@ describe("BashWidget — duration display", () => {
       expect(screen.getByTestId("bash-duration")).toBeInTheDocument();
       expect(screen.getByText("exit 0")).toBeInTheDocument();
     });
+
+    it("reads structured Codex command results with explicit exit_code", () => {
+      renderWithContext(
+        makeToolCall({
+          result: {
+            text: "Tests passed",
+            exit_code: 0,
+            status: "completed",
+          },
+        }),
+      );
+
+      expect(screen.getByText("exit 0")).toBeInTheDocument();
+      expect(screen.getByText("Tests passed")).toBeInTheDocument();
+    });
   });
 });

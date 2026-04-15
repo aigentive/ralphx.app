@@ -31,6 +31,13 @@ interface BashArgs {
   description?: string;
 }
 
+interface BashResultObject {
+  text?: string;
+  aggregated_output?: string;
+  exit_code?: number;
+  exitCode?: number;
+}
+
 interface ParsedBash {
   command: string;
   description: string;
@@ -47,6 +54,7 @@ function parseBashToolCall(toolCall: ToolCallWidgetProps["toolCall"]): ParsedBas
 
   // Result is a string (stdout/stderr output) or an object with text
   let output = "";
+  let explicitExitCode: number | null = null;
   if (typeof toolCall.result === "string") {
     output = stripAnsiCodes(toolCall.result);
   } else if (toolCall.result != null) {
@@ -57,14 +65,22 @@ function parseBashToolCall(toolCall: ToolCallWidgetProps["toolCall"]): ParsedBas
         .filter((item): item is { text: string } => typeof item === "object" && item !== null && typeof (item as Record<string, unknown>).text === "string")
         .map((item) => item.text);
       output = stripAnsiCodes(texts.join("\n"));
-    } else if (typeof resultObj.text === "string") {
-      output = stripAnsiCodes(resultObj.text);
+    } else if (typeof (resultObj as BashResultObject).text === "string") {
+      output = stripAnsiCodes((resultObj as BashResultObject).text ?? "");
+    } else if (typeof (resultObj as BashResultObject).aggregated_output === "string") {
+      output = stripAnsiCodes((resultObj as BashResultObject).aggregated_output ?? "");
     } else {
       try {
         output = stripAnsiCodes(JSON.stringify(toolCall.result, null, 2));
       } catch {
         output = stripAnsiCodes(String(toolCall.result));
       }
+    }
+
+    if (typeof (resultObj as BashResultObject).exit_code === "number") {
+      explicitExitCode = (resultObj as BashResultObject).exit_code ?? null;
+    } else if (typeof (resultObj as BashResultObject).exitCode === "number") {
+      explicitExitCode = (resultObj as BashResultObject).exitCode ?? null;
     }
   }
 
@@ -75,6 +91,8 @@ function parseBashToolCall(toolCall: ToolCallWidgetProps["toolCall"]): ParsedBas
     // Try to extract exit code from error message
     const match = toolCall.error.match(/exit (?:code|status)[:\s]*(\d+)/i);
     exitCode = match?.[1] ? parseInt(match[1], 10) : 1;
+  } else if (explicitExitCode !== null) {
+    exitCode = explicitExitCode;
   } else {
     // Check output for exit code patterns
     const match = output.match(/exit (?:code|status)[:\s]*(\d+)/i);

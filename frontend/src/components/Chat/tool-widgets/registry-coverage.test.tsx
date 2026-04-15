@@ -148,6 +148,21 @@ describe("tool widget registry coverage", () => {
       expectedText: "Create Task",
     },
     {
+      label: "file change widget",
+      toolCall: makeToolCall("file_change", {
+        arguments: {
+          changes: [
+            {
+              path: "/workspace/file.txt",
+              kind: "update",
+            },
+          ],
+        },
+        result: { status: "completed" },
+      }),
+      expectedText: "file.txt",
+    },
+    {
       label: "mcp context widget",
       toolCall: makeToolCall("mcp__ralphx__request_team_plan", {
         arguments: {

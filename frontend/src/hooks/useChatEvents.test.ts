@@ -89,6 +89,7 @@ vi.mock("@/lib/chat-context-registry", () => ({
 // ============================================================================
 
 import { useChatEvents } from "./useChatEvents";
+import { useChatStore } from "@/stores/chatStore";
 
 // ============================================================================
 // Helpers
@@ -105,6 +106,7 @@ interface DefaultProps {
   setStreamingContentBlocks: ReturnType<typeof vi.fn>;
   setStreamingTasks: ReturnType<typeof vi.fn>;
   setIsFinalizing: ReturnType<typeof vi.fn>;
+  storeKey?: string;
 }
 
 function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
@@ -116,6 +118,7 @@ function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
     setStreamingContentBlocks: vi.fn(),
     setStreamingTasks: vi.fn(),
     setIsFinalizing: vi.fn(),
+    storeKey: undefined,
     ...overrides,
   };
 }
@@ -160,6 +163,12 @@ describe("useChatEvents", () => {
     mockGetQueryData.mockClear();
     mockQueryData = undefined;
     cacheSubscribers.length = 0;
+    useChatStore.setState({
+      toolCallStartTimes: {},
+      lastToolCallCompletionTimestamp: {},
+      toolCallCompletionTimestamps: {},
+      lastAgentEventTimestamp: {},
+    });
     // Default: full feature flags (task_execution context)
     mockContextConfig = {
       supportsStreamingText: true,
@@ -238,6 +247,40 @@ describe("useChatEvents", () => {
       const result = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, existing, 1);
       expect(result).toHaveLength(1);
       expect(result[0]!.result).toBe("file content here");
+    });
+
+    it("clears active tool timing when a direct tool call completes on the same id", () => {
+      const props = makeProps({ storeKey: "task_execution:ctx-123" });
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "bash",
+          tool_id: "toolu_codex_001",
+          arguments: { command: "/bin/zsh -lc pwd" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const startedAt = useChatStore.getState().toolCallStartTimes["task_execution:ctx-123"]?.toolu_codex_001;
+      expect(typeof startedAt).toBe("number");
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "bash",
+          tool_id: "toolu_codex_001",
+          arguments: { command: "/bin/zsh -lc pwd" },
+          result: { text: "/Users/example/Code/ralphx\n", exit_code: 0, status: "completed" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const store = useChatStore.getState();
+      expect(store.toolCallStartTimes["task_execution:ctx-123"]?.toolu_codex_001).toBeUndefined();
+      expect(store.toolCallCompletionTimestamps["task_execution:ctx-123"]?.toolu_codex_001).toEqual(expect.any(Number));
+      expect(store.lastToolCallCompletionTimestamp["task_execution:ctx-123"]).toEqual(expect.any(Number));
     });
 
     it("should update existing tool calls with result payload when result:toolu events arrive", () => {

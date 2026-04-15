@@ -19,7 +19,7 @@ Landed so far:
 - Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`
 
 Tracker reference:
-- [AGENTS.md](/Users/lazabogdan/Code/ralphx/AGENTS.md)
+- [AGENTS.md](/Users/example/Code/ralphx/AGENTS.md)
 
 ## Problem
 
@@ -41,12 +41,12 @@ Codex currently wraps those same prompts via `compose_codex_prompt(...)`, which 
 
 ### Source Of Truth Today
 
-- Runtime agent config is loaded from [ralphx.yaml](/Users/lazabogdan/Code/ralphx/config/ralphx.yaml)
-- Canonical prompt bodies now live under [agents](/Users/lazabogdan/Code/ralphx/agents)
-- Claude runtime resolves `system_prompt_file` from [agent_config/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs)
-- Claude runtime/plugin bootstrap is built in [claude/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/mod.rs)
-- Codex currently loads those same prompt files through [compose_codex_prompt](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/codex/mod.rs)
-- Chat/runtime Codex spawn paths call that from [chat_service_context.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/application/chat_service/chat_service_context.rs)
+- Runtime agent config is loaded from [ralphx.yaml](/Users/example/Code/ralphx/config/ralphx.yaml)
+- Canonical prompt bodies now live under [agents](/Users/example/Code/ralphx/agents)
+- Claude runtime resolves `system_prompt_file` from [agent_config/mod.rs](/Users/example/Code/ralphx/src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs)
+- Claude runtime/plugin bootstrap is built in [claude/mod.rs](/Users/example/Code/ralphx/src-tauri/src/infrastructure/agents/claude/mod.rs)
+- Codex currently loads those same prompt files through [compose_codex_prompt](/Users/example/Code/ralphx/src-tauri/src/infrastructure/agents/codex/mod.rs)
+- Chat/runtime Codex spawn paths call that from [chat_service_context.rs](/Users/example/Code/ralphx/src-tauri/src/application/chat_service/chat_service_context.rs)
 
 ### Why This Is Wrong
 
