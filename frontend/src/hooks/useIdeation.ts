@@ -13,6 +13,8 @@ import { taskKeys } from "@/hooks/useTasks";
 import type { SessionGroupCounts } from "@/types/ideation";
 import { useIdeationStore } from "@/stores/ideationStore";
 
+const dependencyGraphsQueryKey = ["dependencies", "graph"] as const;
+
 /**
  * Query key factory for ideation
  */
@@ -194,6 +196,9 @@ export function useReopenSession() {
         queryKey: taskKeys.all,
       });
       queryClient.invalidateQueries({
+        queryKey: dependencyGraphsQueryKey,
+      });
+      queryClient.invalidateQueries({
         queryKey: ideationKeys.proposals(),
       });
       queryClient.invalidateQueries({
@@ -271,6 +276,9 @@ export function useResetAndReaccept() {
       });
       queryClient.invalidateQueries({
         queryKey: taskKeys.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: dependencyGraphsQueryKey,
       });
       queryClient.invalidateQueries({
         queryKey: ideationKeys.proposals(),

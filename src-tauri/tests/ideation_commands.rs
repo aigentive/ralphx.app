@@ -757,6 +757,69 @@ async fn test_analyze_dependencies_empty_session() {
 }
 
 #[tokio::test]
+async fn test_analyze_dependencies_acknowledges_session_for_accept_gate() {
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    let session = IdeationSession::new(project_id);
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create ideation session in test");
+
+    let proposal1 = TaskProposal::new(
+        created_session.id.clone(),
+        "Proposal 1",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    let proposal2 = TaskProposal::new(
+        created_session.id.clone(),
+        "Proposal 2",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+
+    state
+        .task_proposal_repo
+        .create(proposal1)
+        .await
+        .expect("Failed to create first task proposal in test");
+    state
+        .task_proposal_repo
+        .create(proposal2)
+        .await
+        .expect("Failed to create second task proposal in test");
+
+    let before = state
+        .ideation_session_repo
+        .get_by_id(&created_session.id)
+        .await
+        .expect("Failed to load ideation session before analysis")
+        .expect("Expected ideation session to exist before analysis");
+    assert!(
+        !before.dependencies_acknowledged,
+        "precondition: session must start unacknowledged"
+    );
+
+    analyze_dependencies_for_session(&state, &created_session.id)
+        .await
+        .expect("analyze_dependencies_for_session should succeed");
+
+    let after = state
+        .ideation_session_repo
+        .get_by_id(&created_session.id)
+        .await
+        .expect("Failed to load ideation session after analysis")
+        .expect("Expected ideation session to exist after analysis");
+    assert!(
+        after.dependencies_acknowledged,
+        "dependency analysis must acknowledge the session for the accept gate"
+    );
+}
+
+#[tokio::test]
 async fn test_dependency_graph_response_serialization() {
     use ralphx_lib::domain::entities::DependencyGraph;
 

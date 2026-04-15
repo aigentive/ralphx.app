@@ -14,9 +14,12 @@ import {
   useIdeationSessions,
   useCreateIdeationSession,
   useArchiveIdeationSession,
+  useReopenSession,
   ideationKeys,
 } from "./useIdeation";
 import { ideationApi } from "@/api/ideation";
+import { dependencyKeys } from "./useDependencyGraph";
+import { taskKeys } from "./useTasks";
 import type { IdeationSession, TaskProposal, ChatMessage } from "@/types/ideation";
 
 // Mock the ideation API
@@ -28,6 +31,7 @@ vi.mock("@/api/ideation", () => ({
       list: vi.fn(),
       create: vi.fn(),
       archive: vi.fn(),
+      reopen: vi.fn(),
       delete: vi.fn(),
     },
   },
@@ -363,3 +367,54 @@ describe("useArchiveIdeationSession", () => {
   });
 });
 
+describe("useReopenSession", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("invalidates dependency graphs after a reopen", async () => {
+    vi.mocked(ideationApi.sessions.reopen).mockResolvedValueOnce(undefined);
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: 0,
+        },
+      },
+    });
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const { result } = renderHook(() => useReopenSession(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("session-1");
+    });
+
+    expect(ideationApi.sessions.reopen).toHaveBeenCalledWith("session-1");
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ideationKeys.sessionDetail("session-1"),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ideationKeys.sessions(),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: taskKeys.all,
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: dependencyKeys.graphs(),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ideationKeys.proposals(),
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["plan-branch"],
+    });
+  });
+});
