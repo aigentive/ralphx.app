@@ -67,6 +67,15 @@ export interface VerificationStatusResponse {
     convergenceReason?: string;
   }>;
   planVersion?: number;
+  verificationChild?: {
+    activeChildSessionId?: string | undefined;
+    latestChildSessionId?: string | undefined;
+    latestChildArchived?: boolean | undefined;
+    latestChildUpdatedAt?: string | undefined;
+    agentState?: string | undefined;
+    lastAssistantMessage?: string | null | undefined;
+    lastAssistantMessageAt?: string | null | undefined;
+  };
 }
 
 export interface TaskProposalResponse {

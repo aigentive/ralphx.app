@@ -45,6 +45,16 @@ function formatUsd(value: number | null): string {
   }).format(value);
 }
 
+function formatCoverageLine(label: string, complete: number, total: number): string {
+  if (total <= 0) {
+    return `${label} unavailable`;
+  }
+  if (complete >= total) {
+    return `${label} captured on all provider turns`;
+  }
+  return `${label} captured on ${complete} of ${total} provider turns`;
+}
+
 export function ConversationStatsPopover({
   conversationId,
   fallbackConversation,
@@ -133,25 +143,30 @@ export function ConversationStatsPopover({
               <div>
                 <div className="uppercase tracking-[0.08em] text-white/38">Coverage</div>
                 <div className="mt-1 text-white/70">
-                  Messages: {stats.usageCoverage.providerMessagesWithUsage}/
-                  {stats.usageCoverage.providerMessageCount}
+                  {formatCoverageLine(
+                    "Usage",
+                    stats.usageCoverage.providerMessagesWithUsage,
+                    stats.usageCoverage.providerMessageCount,
+                  )}
                 </div>
                 {stats.usageCoverage.runCount > 0 && (
                   <div className="text-white/70">
-                    Runs: {stats.usageCoverage.runsWithUsage}/{stats.usageCoverage.runCount}
+                    {`Run usage captured on ${stats.usageCoverage.runsWithUsage} of ${stats.usageCoverage.runCount} runs`}
                   </div>
                 )}
               </div>
               <div>
                 <div className="uppercase tracking-[0.08em] text-white/38">Attribution</div>
                 <div className="mt-1 text-white/70">
-                  Messages: {stats.attributionCoverage.providerMessagesWithAttribution}/
-                  {stats.attributionCoverage.providerMessageCount}
+                  {formatCoverageLine(
+                    "Attribution",
+                    stats.attributionCoverage.providerMessagesWithAttribution,
+                    stats.attributionCoverage.providerMessageCount,
+                  )}
                 </div>
                 {stats.attributionCoverage.runCount > 0 && (
                   <div className="text-white/70">
-                    Runs: {stats.attributionCoverage.runsWithAttribution}/
-                    {stats.attributionCoverage.runCount}
+                    {`Run attribution captured on ${stats.attributionCoverage.runsWithAttribution} of ${stats.attributionCoverage.runCount} runs`}
                   </div>
                 )}
               </div>

@@ -124,6 +124,15 @@ export const VerificationResponseSchema = z.object({
   verification_generation: z.number().int(),
   selected_generation: z.number().int(),
   run_history: z.array(ApiVerificationRunHistoryEntrySchema).optional().default([]),
+  verification_child: z.object({
+    activeChildSessionId: z.string().optional(),
+    latestChildSessionId: z.string().optional(),
+    latestChildArchived: z.boolean().optional(),
+    latestChildUpdatedAt: z.string().optional(),
+    agentState: z.string().optional(),
+    lastAssistantMessage: z.string().nullable().optional(),
+    lastAssistantMessageAt: z.string().nullable().optional(),
+  }).optional(),
 });
 
 /**

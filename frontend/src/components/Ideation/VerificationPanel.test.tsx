@@ -338,6 +338,11 @@ describe("VerificationPanel — page-load hydration", () => {
       gaps: [],
       rounds: [],
       roundDetails: [],
+      verificationChild: {
+        latestChildSessionId: "child-run-1",
+        agentState: "likely_generating",
+        lastAssistantMessage: "Bootstrapping the verifier context before round 1.",
+      },
       runHistory: [
         {
           generation: 20,
@@ -382,6 +387,11 @@ describe("VerificationPanel — page-load hydration", () => {
       gaps: [],
       rounds: [],
       roundDetails: [],
+      verificationChild: {
+        latestChildSessionId: "child-run-1",
+        agentState: "likely_generating",
+        lastAssistantMessage: "Bootstrapping the verifier context before round 1.",
+      },
       runHistory: [
         {
           generation: 21,
@@ -427,6 +437,9 @@ describe("VerificationPanel — page-load hydration", () => {
       expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current run");
     });
     expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Run 1");
+    expect(screen.getByTestId("verification-current-run-bootstrap")).toBeInTheDocument();
+    expect(screen.getByText("Verification is warming up")).toBeInTheDocument();
+    expect(screen.getByText("Bootstrapping the verifier context before round 1.")).toBeInTheDocument();
   });
 
   it("auto-update effect sets activeVerificationChildId only on first mount (both null)", async () => {

@@ -2,10 +2,11 @@ use super::*;
 
 pub async fn edit_plan_artifact(
     State(state): State<HttpServerState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<EditPlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, HttpError> {
     let input_artifact_id = req.artifact_id.clone();
-    let caller_session_id = req.caller_session_id;
+    let caller_session_id = resolve_caller_session_id(&headers, req.caller_session_id.as_deref());
     let edits = req.edits;
 
     if edits.is_empty() {

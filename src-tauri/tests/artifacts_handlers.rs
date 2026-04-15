@@ -295,6 +295,7 @@ async fn test_child_can_update_own_plan() {
     // Child updates its own plan
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: child_artifact_id.clone(),
             content: "v2 content".to_string(),
@@ -369,6 +370,7 @@ async fn test_update_inherited_only_plan_returns_422_with_clear_message() {
     // Act: try to update the inherited-only artifact
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: orphan_id.as_str().to_string(),
             content: "Attempted override".to_string(),
@@ -510,6 +512,7 @@ async fn test_parent_plan_unaffected_by_child_plan_operations() {
     // Child updates its own plan
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: child_artifact_id.clone(),
             content: "Child content v2".to_string(),
@@ -770,6 +773,7 @@ async fn test_update_plan_artifact_resets_verification_when_not_in_progress() {
     // Update the plan artifact
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "Updated content".to_string(),
@@ -898,6 +902,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     // Since the session for the artifact has in_progress=false, the update succeeds normally.
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id,
             content: "Auto-corrected content from verification loop".to_string(),
@@ -1058,6 +1063,7 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
     // Update → v2
     let v2 = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: v1_id.clone(),
             content: "v2 content".to_string(),
@@ -1072,6 +1078,7 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
     // Update again using the STALE v1 ID — should still succeed, resolving to v2 first
     let v3 = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: v1_id.clone(), // stale
             content: "v3 content".to_string(),
@@ -1371,6 +1378,7 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
     // reset_verification_sync has in_progress=0 guard — no-op while running
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: latest_artifact_id,
             content: "auto-corrected plan content".to_string(),
@@ -1466,6 +1474,7 @@ async fn test_update_plan_artifact_batch_updates_linked_proposals() {
     // Update the plan artifact — proposals must be re-linked to the new artifact
     let updated = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "new plan content".to_string(),
@@ -1708,6 +1717,7 @@ async fn test_edit_plan_artifact_happy_path() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -1739,6 +1749,7 @@ async fn test_edit_plan_artifact_resolves_stale_id() {
     // First update to create a stale original ID
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: original_artifact_id.clone(),
             content: "v2 content with unique anchor phrase here".to_string(),
@@ -1753,6 +1764,7 @@ async fn test_edit_plan_artifact_resolves_stale_id() {
     // Edit using the ORIGINAL (stale) artifact ID — should auto-resolve to v2
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: original_artifact_id.clone(), // stale ID
             edits: vec![PlanEdit {
@@ -1797,6 +1809,7 @@ async fn test_edit_plan_artifact_rejects_inherited_plan() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: orphan_id.clone(),
             edits: vec![PlanEdit {
@@ -1850,6 +1863,7 @@ async fn test_edit_plan_artifact_rejects_archived_session() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -1897,6 +1911,7 @@ async fn test_edit_plan_artifact_rejects_file_backed_artifact() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -1955,6 +1970,7 @@ async fn test_edit_plan_artifact_resets_verification() {
     // Edit the plan
     let _ = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2015,6 +2031,7 @@ async fn test_edit_plan_artifact_preserves_verification_during_loop() {
     // Edit plan while verification loop is running
     let _ = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2056,6 +2073,7 @@ async fn test_edit_plan_artifact_rejects_empty_edits() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![],
@@ -2083,6 +2101,7 @@ async fn test_edit_plan_artifact_rejects_empty_old_text() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2113,6 +2132,7 @@ async fn test_edit_plan_artifact_rejects_oversized_input() {
     let oversized_old_text = "x".repeat(100_001); // 1 byte over 100KB limit
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2157,6 +2177,7 @@ async fn test_edit_plan_artifact_rejects_oversized_output() {
     // new_text is well under the 100KB per-field limit.
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2204,6 +2225,7 @@ async fn test_edit_plan_artifact_response_has_correct_event_fields() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2288,6 +2310,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
     // Edit the plan — proposals must follow to the new version
     let edited = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2567,6 +2590,15 @@ async fn setup_freeze_state(registry: Arc<MemoryRunningAgentRegistry>) -> HttpSe
     }
 }
 
+fn caller_session_header(session_id: &IdeationSessionId) -> axum::http::HeaderMap {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-ralphx-caller-session-id",
+        axum::http::HeaderValue::from_str(session_id.as_str()).unwrap(),
+    );
+    headers
+}
+
 /// 6D: update_plan_artifact returns 409 during freeze; 200 with caller_session_id bypass.
 #[tokio::test]
 async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
@@ -2605,6 +2637,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     // update_plan_artifact WITHOUT caller_session_id → 409
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "attempted overwrite during freeze".to_string(),
@@ -2624,6 +2657,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     // update_plan_artifact WITH caller_session_id = child.id → 200
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "verifier update — allowed".to_string(),
@@ -2648,6 +2682,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     // update_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "update after freeze released".to_string(),
@@ -2700,6 +2735,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     // edit_plan_artifact WITHOUT caller_session_id → 409
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2722,6 +2758,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     // edit_plan_artifact WITH caller_session_id = child.id → 200
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2749,6 +2786,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     // edit_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2762,6 +2800,105 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     assert!(
         result.is_ok(),
         "Should succeed after verification_in_progress set to false: {:?}",
+        result.err()
+    );
+}
+
+/// 6D'': update_plan_artifact also honors the transport-owned caller-session header.
+#[tokio::test]
+async fn test_6d_double_prime_update_plan_artifact_header_bypasses_freeze() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = update_plan_artifact(
+        State(state.clone()),
+        caller_session_header(&child_id),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "header-based verifier update".to_string(),
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "transport-owned caller header should bypass the freeze without body caller_session_id: {:?}",
+        result.err()
+    );
+}
+
+/// 6D''': edit_plan_artifact also honors the transport-owned caller-session header.
+#[tokio::test]
+async fn test_6d_triple_prime_edit_plan_artifact_header_bypasses_freeze() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        caller_session_header(&child_id),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "header-based verifier edit".to_string(),
+            }],
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "transport-owned caller header should bypass the freeze without body caller_session_id: {:?}",
         result.err()
     );
 }

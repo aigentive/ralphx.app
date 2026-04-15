@@ -138,6 +138,16 @@ describe('getToolRecoveryHint', () => {
     it('returns null for an unknown tool', () => {
         expect(getToolRecoveryHint('not_a_real_tool')).toBeNull();
     });
+    it('keeps plan edit caller identity off the live tool schema', () => {
+        const updateTool = PLAN_TOOLS.find((t) => t.name === 'update_plan_artifact');
+        const editTool = PLAN_TOOLS.find((t) => t.name === 'edit_plan_artifact');
+        expect(updateTool).toBeDefined();
+        expect(editTool).toBeDefined();
+        expect(updateTool?.inputSchema.properties).not.toHaveProperty('caller_session_id');
+        expect(editTool?.inputSchema.properties).not.toHaveProperty('caller_session_id');
+        expect(updateTool?.description).toContain('derived automatically from live app context');
+        expect(editTool?.description).toContain('derived automatically from live app context');
+    });
 });
 describe('formatToolErrorMessage', () => {
     it('appends details and a usage hint for known high-friction tools', () => {

@@ -37,4 +37,4 @@ pub use shared::{apply_edits, check_verification_freeze, EditError};
 pub use update::update_plan_artifact;
 
 use events::emit_plan_update_events;
-use shared::{finalize_plan_update, map_app_err};
+use shared::{finalize_plan_update, map_app_err, resolve_caller_session_id};

@@ -165,11 +165,14 @@ async function executeFetch(url, init, label) {
  * @returns Response data
  * @throws TauriClientError on HTTP errors
  */
-export async function callTauri(endpoint, args) {
+export async function callTauri(endpoint, args, options) {
     const url = `${TAURI_API_URL}/api/${endpoint}`;
     return executeFetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            ...(options?.headers ?? {}),
+        },
         body: JSON.stringify(args),
     }, `POST /api/${endpoint}`);
 }
@@ -179,11 +182,14 @@ export async function callTauri(endpoint, args) {
  * @returns Response data
  * @throws TauriClientError on HTTP errors
  */
-export async function callTauriGet(endpoint) {
+export async function callTauriGet(endpoint, options) {
     const url = `${TAURI_API_URL}/api/${endpoint}`;
     return executeFetch(url, {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            ...(options?.headers ?? {}),
+        },
     }, `GET /api/${endpoint}`);
 }
 //# sourceMappingURL=tauri-client.js.map

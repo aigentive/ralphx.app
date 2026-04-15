@@ -11,6 +11,9 @@ export declare class TauriClientError extends Error {
     details?: string | undefined;
     constructor(message: string, statusCode: number, details?: string | undefined);
 }
+export interface TauriCallOptions {
+    headers?: Record<string, string>;
+}
 /**
  * Call a Tauri backend endpoint via HTTP POST
  * @param endpoint - Endpoint path (e.g., "create_task_proposal")
@@ -18,12 +21,12 @@ export declare class TauriClientError extends Error {
  * @returns Response data
  * @throws TauriClientError on HTTP errors
  */
-export declare function callTauri(endpoint: string, args: Record<string, unknown>): Promise<unknown>;
+export declare function callTauri(endpoint: string, args: Record<string, unknown>, options?: TauriCallOptions): Promise<unknown>;
 /**
  * Call a Tauri backend endpoint via HTTP GET
  * @param endpoint - Endpoint path (e.g., "task_context/task-123")
  * @returns Response data
  * @throws TauriClientError on HTTP errors
  */
-export declare function callTauriGet(endpoint: string): Promise<unknown>;
+export declare function callTauriGet(endpoint: string, options?: TauriCallOptions): Promise<unknown>;
 //# sourceMappingURL=tauri-client.d.ts.map

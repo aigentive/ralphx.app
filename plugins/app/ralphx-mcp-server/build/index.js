@@ -127,6 +127,14 @@ const RALPHX_PROJECT_ID = runtimeContext.projectId;
 const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
 const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
+function buildArtifactMutationTransportHeaders() {
+    if (RALPHX_CONTEXT_TYPE !== "ideation" || !RALPHX_CONTEXT_ID) {
+        return undefined;
+    }
+    return {
+        "X-RalphX-Caller-Session-Id": RALPHX_CONTEXT_ID,
+    };
+}
 const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
     callTauri,
     callTauriGet,
@@ -451,6 +459,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // Also handle get_session_plan as GET
             const { session_id } = args;
             result = await callTauriGet(`get_session_plan/${session_id}`);
+        }
+        else if (name === "update_plan_artifact" || name === "edit_plan_artifact") {
+            const artifactMutationArgs = { ...(args ?? {}) };
+            delete artifactMutationArgs.caller_session_id;
+            result = await callTauri(name, artifactMutationArgs, {
+                headers: buildArtifactMutationTransportHeaders(),
+            });
         }
         else if (name === "get_plan_verification") {
             result = await getPlanVerificationForTool(args);

@@ -74,6 +74,24 @@ function statusLabel(status: VerificationStatus | undefined): string {
   }
 }
 
+function verificationAgentLabel(agentState: string | undefined): string {
+  switch (agentState) {
+    case "running":
+    case "queued":
+    case "likely_generating":
+      return "Generating";
+    case "likely_waiting":
+      return "Waiting";
+    case "completed":
+      return "Completed";
+    case "failed":
+    case "cancelled":
+      return "Failed";
+    default:
+      return "Bootstrapping";
+  }
+}
+
 // ============================================================================
 // VerificationRunPicker sub-component
 // ============================================================================
@@ -511,6 +529,14 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const gapScore = verificationData?.gapScore ?? (session.gapScore != null ? session.gapScore : undefined);
   const hasGaps = gaps.length > 0;
   const hasRounds = rounds.length > 0 || roundDetails.length > 0;
+  const currentRunSelected =
+    currentGeneration != null && autoDisplayGeneration === currentGeneration;
+  const verificationChild = currentVerificationData?.verificationChild;
+  const showCurrentRunBootstrap =
+    currentRunSelected &&
+    isInProgress &&
+    !hasGaps &&
+    !hasRounds;
   const hasVerificationRunEvidence =
     childSessions.length > 0 ||
     activeVerificationChildId != null ||
@@ -756,6 +782,114 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           )}
         </div>
       </div>
+
+      {showCurrentRunBootstrap && (
+        <div
+          data-testid="verification-current-run-bootstrap"
+          className="relative overflow-hidden rounded-xl p-4"
+          style={{
+            background:
+              "radial-gradient(circle at top right, hsla(14 100% 60% / 0.12), transparent 42%), hsla(220 10% 100% / 0.02)",
+            border: "1px solid hsla(220 10% 100% / 0.08)",
+          }}
+        >
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "hsl(220 10% 48%)" }}
+              >
+                Current Run
+              </div>
+              <div
+                className="mt-1 text-[15px] font-semibold"
+                style={{ color: "hsl(220 10% 88%)" }}
+              >
+                Verification is warming up
+              </div>
+              <p
+                className="mt-2 text-[12px] leading-relaxed"
+                style={{ color: "hsl(220 10% 58%)" }}
+              >
+                {verificationChild?.lastAssistantMessage
+                  ? verificationChild.lastAssistantMessage
+                  : "The verifier is loading parent context, enrichment, and the first critic round before the lineage view fills in."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ background: "hsl(14 100% 62%)" }}
+              />
+              <div
+                className="px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+                style={{
+                  color: "hsl(14 100% 68%)",
+                  background: "hsla(14 100% 60% / 0.1)",
+                  border: "1px solid hsla(14 100% 60% / 0.18)",
+                }}
+              >
+                {verificationAgentLabel(verificationChild?.agentState)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "72%",
+                background: "linear-gradient(90deg, hsla(14 100% 60% / 0.16), hsla(14 100% 60% / 0.04))",
+              }}
+            />
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "58%",
+                animationDelay: "120ms",
+                background: "linear-gradient(90deg, hsla(220 10% 100% / 0.12), hsla(220 10% 100% / 0.03))",
+              }}
+            />
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "40%",
+                animationDelay: "240ms",
+                background: "linear-gradient(90deg, hsla(220 10% 100% / 0.1), hsla(220 10% 100% / 0.02))",
+              }}
+            />
+          </div>
+
+          <div
+            className="mt-4 flex flex-wrap items-center gap-2 text-[11px]"
+            style={{ color: "hsl(220 10% 52%)" }}
+          >
+            {currentVerificationData?.currentRound != null && currentVerificationData?.maxRounds != null && (
+              <span
+                className="px-2 py-1 rounded-md"
+                style={{
+                  background: "hsla(220 10% 100% / 0.04)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                Round {currentVerificationData.currentRound}/{currentVerificationData.maxRounds}
+              </span>
+            )}
+            {verificationChild?.latestChildSessionId && (
+              <span
+                className="px-2 py-1 rounded-md font-mono"
+                style={{
+                  background: "hsla(220 10% 100% / 0.04)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                {verificationChild.latestChildSessionId.slice(0, 8)}…
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Gap list */}
       {hasGaps && (

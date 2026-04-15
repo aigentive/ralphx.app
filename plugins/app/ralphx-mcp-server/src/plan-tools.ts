@@ -39,7 +39,7 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "update_plan_artifact",
     description:
-      "Update an existing implementation plan's content. Creates a NEW version with a new artifact ID (immutable version chain). Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before updating. Linked proposals are automatically re-linked to the new version (plan_version_at_creation is preserved). The response includes `previous_artifact_id` and `session_id` for reference. You do NOT need to call get_session_plan between updates to refresh the ID.",
+      "Update an existing implementation plan's content. Creates a NEW version with a new artifact ID (immutable version chain). Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before updating. Linked proposals are automatically re-linked to the new version (plan_version_at_creation is preserved). The response includes `previous_artifact_id` and `session_id` for reference. You do NOT need to call get_session_plan between updates to refresh the ID. Caller-session routing for verification freeze bypass is derived automatically from live app context; do not pass it manually.",
     inputSchema: {
       type: "object",
       properties: {
@@ -52,11 +52,6 @@ export const PLAN_TOOLS: Tool[] = [
           type: "string",
           description:
             "Updated plan content in markdown format. This will create a new version of the artifact with a new ID.",
-        },
-        caller_session_id: {
-          type: "string",
-          description:
-            "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
         },
       },
       required: ["artifact_id", "content"],
@@ -289,7 +284,7 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "edit_plan_artifact",
     description:
-      "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed.",
+      "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed. Caller-session routing for verification freeze bypass is derived automatically from live app context; do not pass it manually.",
     inputSchema: {
       type: "object",
       properties: {
@@ -321,11 +316,6 @@ export const PLAN_TOOLS: Tool[] = [
           },
           description:
             "List of edit operations to apply sequentially. Each operation finds old_text and replaces with new_text.",
-        },
-        caller_session_id: {
-          type: "string",
-          description:
-            "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
         },
       },
       required: ["artifact_id", "edits"],

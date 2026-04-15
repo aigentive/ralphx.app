@@ -108,6 +108,7 @@ function toVerificationStatusResponse(
       status: entry.status as VerificationStatusResponse["status"],
     })),
     ...(raw.plan_version !== undefined && { planVersion: raw.plan_version }),
+    ...(raw.verification_child !== undefined && { verificationChild: raw.verification_child }),
   };
 }
 

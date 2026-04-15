@@ -26,6 +26,10 @@ export class TauriClientError extends Error {
   }
 }
 
+export interface TauriCallOptions {
+  headers?: Record<string, string>;
+}
+
 /**
  * Safely parse a 2xx HTTP response body as JSON.
  * Returns null for empty bodies or non-JSON text instead of throwing.
@@ -203,14 +207,18 @@ async function executeFetch(
  */
 export async function callTauri(
   endpoint: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  options?: TauriCallOptions,
 ): Promise<unknown> {
   const url = `${TAURI_API_URL}/api/${endpoint}`;
   return executeFetch(
     url,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers ?? {}),
+      },
       body: JSON.stringify(args),
     },
     `POST /api/${endpoint}`
@@ -223,13 +231,19 @@ export async function callTauri(
  * @returns Response data
  * @throws TauriClientError on HTTP errors
  */
-export async function callTauriGet(endpoint: string): Promise<unknown> {
+export async function callTauriGet(
+  endpoint: string,
+  options?: TauriCallOptions,
+): Promise<unknown> {
   const url = `${TAURI_API_URL}/api/${endpoint}`;
   return executeFetch(
     url,
     {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers ?? {}),
+      },
     },
     `GET /api/${endpoint}`
   );

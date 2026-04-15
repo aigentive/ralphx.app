@@ -123,7 +123,8 @@ describe("ConversationStatsPopover", () => {
     fireEvent.click(screen.getByTestId("chat-session-stats-button"));
 
     expect(await screen.findByText("Coverage")).toBeInTheDocument();
-    expect(screen.getAllByText("Messages: 1/1")).toHaveLength(2);
+    expect(screen.getByText("Usage captured on all provider turns")).toBeInTheDocument();
+    expect(screen.getByText("Attribution captured on all provider turns")).toBeInTheDocument();
     expect(screen.queryByText(/Runs:/)).not.toBeInTheDocument();
   });
 
