@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -17,12 +17,17 @@ use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::{
     UpdateVerificationRequest, VerificationGapRequest, VerificationInfraFailureRequest,
+    VerificationQueryParams,
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 
 fn unrestricted_scope() -> ProjectScope {
     ProjectScope(None)
+}
+
+fn default_verification_query() -> Query<VerificationQueryParams> {
+    Query(VerificationQueryParams::default())
 }
 
 async fn setup_test_state() -> HttpServerState {
@@ -420,8 +425,13 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await;
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
     let response = result.unwrap().0;
@@ -486,8 +496,13 @@ async fn test_get_plan_verification_without_native_snapshot_returns_empty_vecs()
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await;
 
     assert!(result.is_ok());
     let response = result.unwrap().0;
@@ -526,8 +541,13 @@ async fn test_get_plan_verification_reviewing_without_snapshot_no_panic() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await;
 
     assert!(result.is_ok(), "missing snapshot must not panic the handler");
     let response = result.unwrap().0;
@@ -584,8 +604,13 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await;
 
     assert!(result.is_ok());
     let response = result.unwrap().0;
@@ -661,7 +686,7 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
 
     // GET: read back via get_plan_verification handler
     let get_result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id_str)).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id_str), default_verification_query()).await;
 
     assert!(get_result.is_ok(), "GET should succeed: {:?}", get_result.err());
     let response = get_result.unwrap().0;
@@ -3282,6 +3307,7 @@ async fn test_get_plan_verification_remaps_verification_child_session_id_to_pare
         State(state),
         unrestricted_scope(),
         Path(child_id.as_str().to_string()),
+        default_verification_query(),
     )
     .await
     .expect("handler must succeed via parent remap");
@@ -3359,6 +3385,7 @@ async fn test_get_plan_verification_uses_native_round_store_when_metadata_is_mis
         State(state),
         unrestricted_scope(),
         Path(session_id),
+        default_verification_query(),
     )
     .await
     .expect("query must succeed")
@@ -3372,6 +3399,125 @@ async fn test_get_plan_verification_uses_native_round_store_when_metadata_is_mis
     assert_eq!(
         queried.round_details[0].gaps[0].description,
         "Migration not registered"
+    );
+}
+
+#[tokio::test]
+async fn test_get_plan_verification_exposes_native_run_history_and_selected_generation() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(20)
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                18,
+                VerificationStatus::NeedsRevision,
+                false,
+                2,
+                5,
+                vec![make_gap("high", "testing", "Missing migration regression")],
+                vec![
+                    make_round(vec!["fp-a", "fp-b"], 8),
+                    make_round(vec!["fp-a"], 3),
+                ],
+                Some("escalated_to_parent"),
+                Some(1),
+            ),
+        )
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                20,
+                VerificationStatus::Reviewing,
+                true,
+                0,
+                5,
+                vec![],
+                vec![],
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+
+    let current = get_plan_verification(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        default_verification_query(),
+    )
+    .await
+    .expect("current generation query must succeed")
+    .0;
+
+    assert_eq!(current.status, "reviewing");
+    assert!(current.in_progress);
+    assert_eq!(current.verification_generation, 20);
+    assert_eq!(current.selected_generation, 20);
+    assert_eq!(
+        current
+            .run_history
+            .iter()
+            .map(|entry| entry.generation)
+            .collect::<Vec<_>>(),
+        vec![20, 18]
+    );
+    assert_eq!(current.run_history[0].status, "reviewing");
+    assert_eq!(current.run_history[1].status, "needs_revision");
+    assert_eq!(current.run_history[1].round_count, 2);
+    assert_eq!(current.run_history[1].gap_count, 1);
+
+    let historical = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        Query(VerificationQueryParams {
+            generation: Some(18),
+        }),
+    )
+    .await
+    .expect("historical generation query must succeed")
+    .0;
+
+    assert_eq!(historical.verification_generation, 20);
+    assert_eq!(historical.selected_generation, 18);
+    assert_eq!(historical.status, "needs_revision");
+    assert!(!historical.in_progress);
+    assert_eq!(historical.current_round, Some(2));
+    assert_eq!(historical.round_details.len(), 2);
+    assert_eq!(historical.current_gaps.len(), 1);
+    assert_eq!(
+        historical.current_gaps[0].description,
+        "Missing migration regression"
     );
 }
 
@@ -3568,10 +3714,14 @@ async fn test_get_plan_verification_no_child_returns_null() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string()))
-            .await
-            .expect("handler must succeed");
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await
+    .expect("handler must succeed");
 
     assert!(
         result.0.verification_child.is_none(),
@@ -3622,10 +3772,14 @@ async fn test_get_plan_verification_active_child_populates_active_id() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
-            .await
-            .expect("handler must succeed");
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(parent_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await
+    .expect("handler must succeed");
 
     let child_info = result
         .0
@@ -3690,10 +3844,14 @@ async fn test_get_plan_verification_archived_child_no_active_id() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
-            .await
-            .expect("handler must succeed");
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(parent_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await
+    .expect("handler must succeed");
 
     let child_info = result
         .0
@@ -3756,10 +3914,14 @@ async fn test_get_plan_verification_child_last_orchestrator_message() {
         .await
         .unwrap();
 
-    let result =
-        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
-            .await
-            .expect("handler must succeed");
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(parent_id.as_str().to_string()),
+        default_verification_query(),
+    )
+    .await
+    .expect("handler must succeed");
 
     let child_info = result
         .0

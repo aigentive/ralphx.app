@@ -1945,6 +1945,28 @@ pub struct VerificationChildInfo {
     pub last_assistant_message_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationRunHistoryEntryResponse {
+    pub generation: i32,
+    pub status: String,
+    pub in_progress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_round: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_rounds: Option<u32>,
+    pub round_count: u32,
+    pub gap_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap_score: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub convergence_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct VerificationQueryParams {
+    pub generation: Option<i32>,
+}
+
 /// Response for GET/POST verification status
 #[derive(Debug, Serialize)]
 pub struct VerificationResponse {
@@ -1975,6 +1997,11 @@ pub struct VerificationResponse {
     pub plan_version: Option<u32>,
     /// Current verification generation counter
     pub verification_generation: i32,
+    /// The generation represented by current_gaps / rounds / round_details in this response.
+    pub selected_generation: i32,
+    /// Cross-generation native verification lineage (newest first).
+    #[serde(default)]
+    pub run_history: Vec<VerificationRunHistoryEntryResponse>,
     /// Continuity context for the most recent verification child session, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_child: Option<VerificationChildInfo>,

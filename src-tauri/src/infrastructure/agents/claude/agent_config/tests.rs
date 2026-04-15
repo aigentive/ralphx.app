@@ -1438,7 +1438,6 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         "get_parent_session_context",
         "run_verification_enrichment",
         "run_verification_round",
-        "report_verification_round",
         "complete_plan_verification",
         "get_plan_verification",
         "update_plan_artifact",

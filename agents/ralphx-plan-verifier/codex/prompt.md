@@ -78,9 +78,9 @@ Use backend-owned gap output:
 
 Optional specialist findings may help the next revision, but they do not create authoritative blockers on their own.
 
-Report each complete round with:
-- `report_verification_round(round: <current_round>, generation: <generation>)`
-- store the response as `round_report`
+When `round_result.classification === "complete"`, the runtime auto-publishes the authoritative round report.
+- read `round_result.round_report`
+- if `round_result.round_report` is missing, treat that as runtime failure instead of inventing the next state
 
 Backend state is authoritative:
 - if `round_report.status === "verified"` and `round_report.in_progress === false`, finish as `verified` with `convergence_reason = round_report.convergence_reason`

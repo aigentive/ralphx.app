@@ -296,6 +296,7 @@ async function updateVerificationQueryCache({
         // lineage until a refetch replaces it with authoritative round summaries/details.
         rounds: preservedRounds,
         roundDetails: preservedRoundDetails,
+        runHistory: cached?.runHistory ?? [],
         ...(planVersion !== undefined && { planVersion }),
       };
       queryClient.setQueryData(["verification", sessionId], cacheData);

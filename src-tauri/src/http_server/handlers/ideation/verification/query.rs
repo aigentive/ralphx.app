@@ -10,10 +10,12 @@ pub async fn get_plan_verification(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(session_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<crate::http_server::types::VerificationQueryParams>,
 ) -> Result<Json<VerificationResponse>, JsonError> {
     use crate::domain::services::gap_score;
     use crate::http_server::types::{
-        VerificationGapResponse, VerificationRoundDetailResponse, VerificationRoundSummary,
+        VerificationGapResponse, VerificationRoundDetailResponse,
+        VerificationRunHistoryEntryResponse, VerificationRoundSummary,
     };
 
     let requested_session_id = session_id;
@@ -65,7 +67,7 @@ pub async fn get_plan_verification(
         )
     };
 
-    let (status, in_progress) = state
+    let (summary_status, summary_in_progress) = state
         .app_state
         .ideation_session_repo
         .get_verification_status(&session_id_obj)
@@ -82,10 +84,13 @@ pub async fn get_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
+    let active_generation = resolved_session.verification_generation;
+    let selected_generation = params.generation.unwrap_or(active_generation);
+
     let snapshot = match state
         .app_state
         .ideation_session_repo
-        .get_verification_run_snapshot(&session_id_obj, resolved_session.verification_generation)
+        .get_verification_run_snapshot(&session_id_obj, selected_generation)
         .await
     {
         Ok(Some(snapshot)) => Some(snapshot),
@@ -100,6 +105,22 @@ pub async fn get_plan_verification(
                 "Failed to load verification snapshot",
             ));
         }
+    };
+
+    if params.generation.is_some() && snapshot.is_none() {
+        return Err(json_error(
+            StatusCode::NOT_FOUND,
+            format!(
+                "Verification generation {} not found for session {}",
+                selected_generation, session_id
+            ),
+        ));
+    }
+
+    let (status, in_progress) = if let Some(run) = snapshot.as_ref() {
+        (run.status, run.in_progress)
+    } else {
+        (summary_status, summary_in_progress)
     };
 
     let current_round = snapshot.as_ref().and_then(|run| {
@@ -189,7 +210,38 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let verification_generation = resolved_session.verification_generation;
+    let run_history = collect_verification_run_history(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session_id_obj,
+        active_generation,
+        10,
+    )
+    .await
+    .map_err(|error| {
+        error!(
+            "Failed to load verification run history for {}: {}",
+            session_id, error
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification run history",
+        )
+    })?
+    .into_iter()
+    .map(|run| VerificationRunHistoryEntryResponse {
+        generation: run.generation,
+        status: run.status.to_string(),
+        in_progress: run.in_progress,
+        current_round: (run.current_round > 0).then_some(run.current_round),
+        max_rounds: (run.max_rounds > 0).then_some(run.max_rounds),
+        round_count: run.rounds.len() as u32,
+        gap_count: run.current_gaps.len() as u32,
+        gap_score: Some(gap_score(&run.current_gaps)),
+        convergence_reason: run.convergence_reason,
+    })
+    .collect::<Vec<_>>();
+
+    let verification_generation = active_generation;
     let plan_version = if let Some(ref artifact_id) = resolved_session.plan_artifact_id {
         state
             .app_state
@@ -267,7 +319,7 @@ pub async fn get_plan_verification(
                 // active_child_session_id: Some only when in_progress=true and child not archived
                 let latest_child_archived = child.status == IdeationSessionStatus::Archived;
                 let active_child_session_id =
-                    if in_progress && !latest_child_archived {
+                    if summary_in_progress && !latest_child_archived {
                         Some(child_id_str.clone())
                     } else {
                         None
@@ -309,6 +361,29 @@ pub async fn get_plan_verification(
         round_details,
         plan_version,
         verification_generation,
+        selected_generation,
+        run_history,
         verification_child,
     }))
+}
+
+async fn collect_verification_run_history(
+    repo: &dyn crate::domain::repositories::IdeationSessionRepository,
+    session_id: &IdeationSessionId,
+    active_generation: i32,
+    limit: usize,
+) -> crate::error::AppResult<Vec<crate::domain::entities::VerificationRunSnapshot>> {
+    let mut runs = Vec::new();
+    for generation in (0..=active_generation).rev() {
+        if let Some(snapshot) = repo
+            .get_verification_run_snapshot(session_id, generation)
+            .await?
+        {
+            runs.push(snapshot);
+            if runs.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(runs)
 }

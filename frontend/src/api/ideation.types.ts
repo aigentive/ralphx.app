@@ -46,6 +46,7 @@ export interface VerificationStatusResponse {
   status: VerificationStatus;
   inProgress: boolean;
   generation?: number;
+  selectedGeneration?: number;
   currentRound?: number;
   maxRounds?: number;
   gapScore?: number;
@@ -54,6 +55,17 @@ export interface VerificationStatusResponse {
   gaps: VerificationGap[];
   rounds: RoundSummary[];
   roundDetails: VerificationRoundDetail[];
+  runHistory: Array<{
+    generation: number;
+    status: VerificationStatus;
+    inProgress: boolean;
+    currentRound?: number;
+    maxRounds?: number;
+    roundCount: number;
+    gapCount: number;
+    gapScore?: number;
+    convergenceReason?: string;
+  }>;
   planVersion?: number;
 }
 

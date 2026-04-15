@@ -271,6 +271,20 @@ describe("verification runtime settlement and terminal cleanup", () => {
           },
         };
       }
+      if (endpoint === "ideation/sessions/parent-session/verification") {
+        return {
+          session_id: "parent-session",
+          status: "verified",
+          in_progress: false,
+          convergence_reason: "zero_blocking",
+          verification_generation: 9,
+          selected_generation: 9,
+          current_gaps: [],
+          rounds: [{ round: 1, gap_score: 0, gap_count: 0 }],
+          round_details: [{ round: 1, gap_score: 0, gap_count: 0, gaps: [] }],
+          run_history: [],
+        };
+      }
       throw new Error(`unexpected endpoint ${endpoint}`);
     });
     const callTauriGet = vi.fn(async (endpoint: string) => {
@@ -286,6 +300,19 @@ describe("verification runtime settlement and terminal cleanup", () => {
           id: "plan-1",
           content:
             "## Goal\nShip a UX-visible verification workflow.\n\n## Affected Files\n- `frontend/src/components/Chat/tool-widgets/VerificationWidget.tsx` — update existing UI.\n",
+        };
+      }
+      if (endpoint === "ideation/sessions/parent-session/verification") {
+        return {
+          session_id: "parent-session",
+          status: "reviewing",
+          in_progress: true,
+          verification_generation: 9,
+          selected_generation: 9,
+          current_gaps: [],
+          rounds: [],
+          round_details: [],
+          run_history: [],
         };
       }
       if (endpoint.startsWith("team/verification-findings/parent-session")) {
@@ -340,11 +367,21 @@ describe("verification runtime settlement and terminal cleanup", () => {
     await vi.runAllTimersAsync();
     const result = await roundPromise as {
       classification: string;
+      round_report?: { status: string; in_progress: boolean; convergence_reason?: string };
+      verification_status?: string;
+      verification_in_progress?: boolean;
       optional_timed_out: boolean;
       optional_delegate_snapshots: Array<{ job_id: string; status: string }>;
     };
 
     expect(result.classification).toBe("complete");
+    expect(result.round_report).toMatchObject({
+      status: "verified",
+      in_progress: false,
+      convergence_reason: "zero_blocking",
+    });
+    expect(result.verification_status).toBe("verified");
+    expect(result.verification_in_progress).toBe(false);
     expect(result.optional_timed_out).toBe(false);
     expect(result.optional_delegate_snapshots).toEqual(
       expect.arrayContaining([
@@ -353,6 +390,15 @@ describe("verification runtime settlement and terminal cleanup", () => {
           status: "completed",
         }),
       ])
+    );
+    expect(callTauri).toHaveBeenCalledWith(
+      "ideation/sessions/parent-session/verification",
+      expect.objectContaining({
+        status: "reviewing",
+        in_progress: true,
+        generation: 9,
+        round: 1,
+      })
     );
   });
 

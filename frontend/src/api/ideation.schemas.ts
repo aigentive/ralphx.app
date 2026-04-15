@@ -83,6 +83,28 @@ export const ApiRoundDetailSchema = z.object({
   gaps: val.gaps,
 }));
 
+export const ApiVerificationRunHistoryEntrySchema = z.object({
+  generation: z.number().int(),
+  status: z.string(),
+  in_progress: z.boolean(),
+  current_round: z.number().int().optional(),
+  max_rounds: z.number().int().optional(),
+  round_count: z.number().int(),
+  gap_count: z.number().int(),
+  gap_score: z.number().int().optional(),
+  convergence_reason: z.string().optional(),
+}).transform((val) => ({
+  generation: val.generation,
+  status: val.status,
+  inProgress: val.in_progress,
+  ...(val.current_round !== undefined && { currentRound: val.current_round }),
+  ...(val.max_rounds !== undefined && { maxRounds: val.max_rounds }),
+  roundCount: val.round_count,
+  gapCount: val.gap_count,
+  ...(val.gap_score !== undefined && { gapScore: val.gap_score }),
+  ...(val.convergence_reason !== undefined && { convergenceReason: val.convergence_reason }),
+}));
+
 /**
  * Verification status response schema (snake_case from HTTP server)
  */
@@ -100,6 +122,8 @@ export const VerificationResponseSchema = z.object({
   round_details: z.array(ApiRoundDetailSchema).optional().default([]),
   plan_version: z.number().int().optional(),
   verification_generation: z.number().int(),
+  selected_generation: z.number().int(),
+  run_history: z.array(ApiVerificationRunHistoryEntrySchema).optional().default([]),
 });
 
 /**

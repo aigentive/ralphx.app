@@ -542,7 +542,13 @@ pub async fn mark_verification_infra_failure(
     });
 
     let mut response =
-        get_plan_verification(State(state), ProjectScope(None), Path(session_id)).await?;
+        get_plan_verification(
+            State(state),
+            ProjectScope(None),
+            Path(session_id),
+            axum::extract::Query(crate::http_server::types::VerificationQueryParams::default()),
+        )
+        .await?;
     response.0.verification_generation = next_generation;
     response.0.convergence_reason = convergence_reason;
     Ok(response)

@@ -328,40 +328,48 @@ describe("VerificationPanel — page-load hydration", () => {
     });
   });
 
-  it("handleRunSelect calls setLastVerificationChildId only — does NOT call setActiveVerificationChildId", async () => {
+  it("run selection is generation-based and does not mutate verification child store state", async () => {
     const { useQuery } = await import("@tanstack/react-query");
-    const childSession = {
-      id: "child-run-1",
-      sessionPurpose: "verification",
-      createdAt: "2026-01-01T00:00:00Z",
+    const verificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      generation: 20,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+      runHistory: [
+        {
+          generation: 20,
+          status: "reviewing",
+          inProgress: true,
+          roundCount: 0,
+          gapCount: 0,
+        },
+        {
+          generation: 18,
+          status: "needs_revision",
+          inProgress: false,
+          roundCount: 2,
+          gapCount: 1,
+        },
+      ],
     };
     vi.mocked(useQuery)
-      .mockReturnValueOnce({ data: null } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
-
-    // activeVerificationChildId already set — should NOT be re-asserted by handleRunSelect.
-    // lastVerificationChildId is empty so the auto-update effect guard (latestId !== lastVerificationChildId)
-    // evaluates true, triggering setLastVerificationChildId while skipping setActiveVerificationChildId.
-    mockStoreState = {
-      ...mockStoreState,
-      activeVerificationChildId: { "session-1": "child-run-1" },
-      lastVerificationChildId: {},
-    };
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
 
     const { VerificationPanel } = await import("./VerificationPanel");
     const { userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     render(<VerificationPanel session={baseSession} />);
 
-    // Open the run picker (only shown when runs.length > 1, so use single-run label path)
-    // When only 1 run, picker is non-interactive — validate indirectly via store calls
-    // The auto-update effect should call setLastVerificationChildId but NOT setActiveVerificationChildId
-    // (since activeVerificationChildId is already non-null)
-    await waitFor(() => {
-      expect(mockSetLastVerificationChildId).toHaveBeenCalledWith("session-1", "child-run-1");
-    });
+    await user.click(await screen.findByTestId("verification-run-picker-trigger"));
+    await user.click(await screen.findByTestId("verification-run-option-1"));
+
     expect(mockSetActiveVerificationChildId).not.toHaveBeenCalled();
-    void user;
+    expect(mockSetLastVerificationChildId).not.toHaveBeenCalled();
   });
 
   it("auto-update effect sets activeVerificationChildId only on first mount (both null)", async () => {
@@ -373,6 +381,7 @@ describe("VerificationPanel — page-load hydration", () => {
     };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: null } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // Both IDs null — first mount scenario
@@ -474,6 +483,7 @@ describe("VerificationPanel — page-load hydration", () => {
     const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // activeVerificationChildId=null, lastVerificationChildId="child-old" (terminated child)
@@ -499,6 +509,7 @@ describe("VerificationPanel — page-load hydration", () => {
     const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // activeVerificationChildId=null (cleared by termination), lastVerificationChildId="child-terminated"

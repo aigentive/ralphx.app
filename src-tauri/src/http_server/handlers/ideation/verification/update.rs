@@ -240,6 +240,8 @@ pub async fn post_verification_status(
             round_details: vec![],
             plan_version: None,
             verification_generation: new_gen,
+            selected_generation: new_gen,
+            run_history: vec![],
             verification_child: None,
         }));
     }
@@ -770,6 +772,8 @@ pub async fn post_verification_status(
         round_details: post_round_details,
         plan_version: None,
         verification_generation: response_generation,
+        selected_generation: response_generation,
+        run_history: vec![],
         verification_child: None,
     }))
 }

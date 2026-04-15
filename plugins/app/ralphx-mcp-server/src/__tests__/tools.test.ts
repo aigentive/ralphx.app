@@ -320,7 +320,6 @@ describe('getFilteredTools', () => {
     expect(toolNames).toContain('fs_glob');
     expect(toolNames).toContain('run_verification_enrichment');
     expect(toolNames).toContain('run_verification_round');
-    expect(toolNames).toContain('report_verification_round');
     expect(toolNames).toContain('complete_plan_verification');
     expect(toolNames).toContain('get_plan_verification');
     expect(toolNames).not.toContain('send_ideation_session_message');
@@ -1200,7 +1199,6 @@ describe('verification round helper tools', () => {
     const toolNames = getFilteredTools().map((tool) => tool.name);
     expect(toolNames).toContain('run_verification_enrichment');
     expect(toolNames).toContain('run_verification_round');
-    expect(toolNames).toContain('report_verification_round');
     expect(toolNames).toContain('complete_plan_verification');
     expect(toolNames).not.toContain('assess_verification_round');
     expect(toolNames).not.toContain('run_required_verification_critic_round');

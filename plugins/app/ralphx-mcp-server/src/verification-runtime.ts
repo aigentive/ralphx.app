@@ -1084,6 +1084,40 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
           : [],
       });
     }
+
+    if (
+      agentType === "ralphx-plan-verifier" &&
+      ((result as { classification?: string }).classification ?? "pending") === "complete"
+    ) {
+      const verificationView = await getPlanVerificationForTool({});
+      const generation =
+        typeof (verificationView as { verification_generation?: unknown }).verification_generation ===
+        "number"
+          ? ((verificationView as { verification_generation: number }).verification_generation ?? 0)
+          : undefined;
+      if (generation === undefined) {
+        throw new Error(
+          "run_verification_round could not resolve the authoritative verification generation for round reporting."
+        );
+      }
+      const roundReport = await reportVerificationRoundForTool({
+        round: args.round,
+        generation,
+      }) as Record<string, unknown>;
+      return {
+        ...(result as Record<string, unknown>),
+        round_report: roundReport,
+        verification_status:
+          typeof roundReport.status === "string" ? roundReport.status : undefined,
+        verification_in_progress:
+          typeof roundReport.in_progress === "boolean" ? roundReport.in_progress : undefined,
+        verification_convergence_reason:
+          typeof roundReport.convergence_reason === "string"
+            ? roundReport.convergence_reason
+            : undefined,
+      };
+    }
+
     return result;
   }
 
