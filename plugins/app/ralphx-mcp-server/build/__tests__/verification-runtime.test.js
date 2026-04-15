@@ -188,6 +188,108 @@ describe("verification runtime settlement and terminal cleanup", () => {
             missing_required_critics: ["completeness"],
         });
     });
+    it("persists a durable round-start marker before waiting on required critics", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-04-15T07:16:00.000Z"));
+        const callTauri = vi.fn(async (endpoint, payload) => {
+            if (endpoint === "coordination/delegate/start") {
+                const agentName = String(payload?.agent_name ?? "");
+                return {
+                    job_id: `${agentName.split(":").pop() ?? "critic"}-job`,
+                    delegated_session_id: `${agentName.split(":").pop() ?? "critic"}-session`,
+                    agent_name: agentName,
+                };
+            }
+            if (endpoint === "coordination/delegate/wait") {
+                return {
+                    job_id: String(payload?.job_id ?? ""),
+                    status: "running",
+                    delegated_status: {
+                        latest_run: {
+                            status: "running",
+                        },
+                        agent_state: {
+                            estimated_status: "running",
+                        },
+                    },
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "reviewing",
+                    in_progress: true,
+                    verification_generation: 9,
+                    selected_generation: 9,
+                    current_round: 1,
+                    max_rounds: 5,
+                    current_gaps: [],
+                    rounds: [],
+                    round_details: [],
+                    run_history: [],
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const callTauriGet = vi.fn(async (endpoint) => {
+            if (endpoint === "parent_session_context/child-session") {
+                return {
+                    parent_session: {
+                        id: "parent-session",
+                    },
+                };
+            }
+            if (endpoint === "get_session_plan/parent-session") {
+                return {
+                    id: "plan-1",
+                    content: "## Goal\nShip a robust verifier loop.\n\n## Affected Files\n- `src-tauri/src/application/reconciliation/verification_reconciliation.rs` — update existing logic.\n",
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "reviewing",
+                    in_progress: true,
+                    verification_generation: 9,
+                    selected_generation: 9,
+                    current_round: 0,
+                    max_rounds: 5,
+                    current_gaps: [],
+                    rounds: [],
+                    round_details: [],
+                    run_history: [],
+                };
+            }
+            if (endpoint.startsWith("team/verification-findings/parent-session")) {
+                return {
+                    findings: [],
+                    count: 0,
+                };
+            }
+            throw new Error(`unexpected endpoint ${endpoint}`);
+        });
+        const runtime = createVerificationRuntime({
+            callTauri,
+            callTauriGet,
+            agentType: "ralphx-plan-verifier",
+            contextType: "ideation",
+            contextId: "child-session",
+        });
+        const roundPromise = runtime.runVerificationRound({
+            round: 1,
+            selected_specialists: [],
+        });
+        await vi.advanceTimersByTimeAsync(91_000);
+        const result = await roundPromise;
+        expect(result.classification).toBe("pending");
+        expect(callTauri).toHaveBeenCalledWith("ideation/sessions/parent-session/verification", expect.objectContaining({
+            status: "reviewing",
+            in_progress: true,
+            round: 1,
+            generation: 9,
+            max_rounds: 5,
+        }));
+    });
     it("waits longer than 15s by default for optional verification specialists during a round", async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date("2026-04-13T16:35:53.000Z"));
@@ -238,6 +340,20 @@ describe("verification runtime settlement and terminal cleanup", () => {
                     },
                 };
             }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "verified",
+                    in_progress: false,
+                    convergence_reason: "zero_blocking",
+                    verification_generation: 9,
+                    selected_generation: 9,
+                    current_gaps: [],
+                    rounds: [{ round: 1, gap_score: 0, gap_count: 0 }],
+                    round_details: [{ round: 1, gap_score: 0, gap_count: 0, gaps: [] }],
+                    run_history: [],
+                };
+            }
             throw new Error(`unexpected endpoint ${endpoint}`);
         });
         const callTauriGet = vi.fn(async (endpoint) => {
@@ -252,6 +368,19 @@ describe("verification runtime settlement and terminal cleanup", () => {
                 return {
                     id: "plan-1",
                     content: "## Goal\nShip a UX-visible verification workflow.\n\n## Affected Files\n- `frontend/src/components/Chat/tool-widgets/VerificationWidget.tsx` — update existing UI.\n",
+                };
+            }
+            if (endpoint === "ideation/sessions/parent-session/verification") {
+                return {
+                    session_id: "parent-session",
+                    status: "reviewing",
+                    in_progress: true,
+                    verification_generation: 9,
+                    selected_generation: 9,
+                    current_gaps: [],
+                    rounds: [],
+                    round_details: [],
+                    run_history: [],
                 };
             }
             if (endpoint.startsWith("team/verification-findings/parent-session")) {
@@ -303,6 +432,13 @@ describe("verification runtime settlement and terminal cleanup", () => {
         await vi.runAllTimersAsync();
         const result = await roundPromise;
         expect(result.classification).toBe("complete");
+        expect(result.round_report).toMatchObject({
+            status: "verified",
+            in_progress: false,
+            convergence_reason: "zero_blocking",
+        });
+        expect(result.verification_status).toBe("verified");
+        expect(result.verification_in_progress).toBe(false);
         expect(result.optional_timed_out).toBe(false);
         expect(result.optional_delegate_snapshots).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -310,6 +446,12 @@ describe("verification runtime settlement and terminal cleanup", () => {
                 status: "completed",
             }),
         ]));
+        expect(callTauri).toHaveBeenCalledWith("ideation/sessions/parent-session/verification", expect.objectContaining({
+            status: "reviewing",
+            in_progress: true,
+            generation: 9,
+            round: 1,
+        }));
     });
     it("routes verifier terminal cleanup with missing round context to infra-failure instead of persisting a zero-gap verdict", async () => {
         const callTauri = vi.fn(async (endpoint, payload) => ({

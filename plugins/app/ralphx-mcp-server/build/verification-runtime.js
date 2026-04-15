@@ -555,6 +555,26 @@ export function createVerificationRuntime(deps) {
         const sessionId = await resolveVerifierParentSessionId(args.session_id, "get_plan_verification");
         return await callTauriGet(`ideation/sessions/${sessionId}/verification`);
     }
+    async function markVerificationRoundStartedForTool(args) {
+        const verificationView = await callTauriGet(`ideation/sessions/${args.sessionId}/verification`);
+        const generation = typeof verificationView.verification_generation === "number"
+            ? verificationView.verification_generation
+            : undefined;
+        if (generation === undefined) {
+            throw new Error("run_verification_round could not resolve the authoritative verification generation for round-start persistence.");
+        }
+        const maxRounds = typeof verificationView.max_rounds === "number"
+            ? verificationView.max_rounds
+            : undefined;
+        await callTauri(`ideation/sessions/${args.sessionId}/verification`, {
+            status: "reviewing",
+            in_progress: true,
+            round: args.round,
+            generation,
+            ...(maxRounds !== undefined ? { max_rounds: maxRounds } : {}),
+        });
+        return { generation, ...(maxRounds !== undefined ? { maxRounds } : {}) };
+    }
     async function reportVerificationRoundForTool(args) {
         const { session_id: rawSessionId, ...body } = args;
         const sessionId = await resolveVerifierParentSessionId(rawSessionId, "report_verification_round");
@@ -664,6 +684,10 @@ export function createVerificationRuntime(deps) {
     }
     async function runVerificationRound(args) {
         const sessionId = await resolveVerifierParentSessionId(args.session_id, "run_verification_round");
+        const roundStart = await markVerificationRoundStartedForTool({
+            sessionId,
+            round: args.round,
+        });
         const result = await runVerificationRoundPass({
             loadPlanSnapshot: loadVerificationPlanSnapshot,
             startDelegate: async ({ agentName, parentSessionId, prompt, delegatedSessionId }) => {
@@ -711,6 +735,22 @@ export function createVerificationRuntime(deps) {
                     ? (result.merged_gaps ?? [])
                     : [],
             });
+        }
+        if (agentType === "ralphx-plan-verifier" &&
+            (result.classification ?? "pending") === "complete") {
+            const roundReport = await reportVerificationRoundForTool({
+                round: args.round,
+                generation: roundStart.generation,
+            });
+            return {
+                ...result,
+                round_report: roundReport,
+                verification_status: typeof roundReport.status === "string" ? roundReport.status : undefined,
+                verification_in_progress: typeof roundReport.in_progress === "boolean" ? roundReport.in_progress : undefined,
+                verification_convergence_reason: typeof roundReport.convergence_reason === "string"
+                    ? roundReport.convergence_reason
+                    : undefined,
+            };
         }
         return result;
     }

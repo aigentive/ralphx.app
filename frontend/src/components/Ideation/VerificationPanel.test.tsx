@@ -372,6 +372,63 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(mockSetLastVerificationChildId).not.toHaveBeenCalled();
   });
 
+  it("keeps the current generation selected while the live run is still bootstrapping", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const currentVerificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      generation: 21,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+      runHistory: [
+        {
+          generation: 21,
+          status: "reviewing",
+          inProgress: true,
+          roundCount: 0,
+          gapCount: 0,
+        },
+        {
+          generation: 18,
+          status: "needs_revision",
+          inProgress: false,
+          roundCount: 2,
+          gapCount: 1,
+        },
+      ],
+    };
+    const historicalVerificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      generation: 18,
+      gaps: [
+        {
+          severity: "high",
+          category: "testing",
+          description: "Old historical gap that should not replace the live run",
+        },
+      ],
+      rounds: [{ round: 1, gapScore: 4, gapCount: 1 }],
+      roundDetails: [{ round: 1, gapScore: 4, gapCount: 1, gaps: [] }],
+    };
+
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: currentVerificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: historicalVerificationData } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current run");
+    });
+    expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Run 1");
+  });
+
   it("auto-update effect sets activeVerificationChildId only on first mount (both null)", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const childSession = {

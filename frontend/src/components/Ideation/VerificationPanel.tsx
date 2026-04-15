@@ -52,6 +52,8 @@ interface VerificationRunEntry {
   gapCount: number;
 }
 
+const EMPTY_CHILD_SESSIONS: Array<{ id: string; createdAt: string }> = [];
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -322,19 +324,13 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   });
 
   const currentGeneration = currentVerificationData?.generation ?? null;
-  const currentHasVisibleHistory =
-    (currentVerificationData?.gaps?.length ?? 0) > 0 ||
-    (currentVerificationData?.rounds?.length ?? 0) > 0 ||
-    (currentVerificationData?.roundDetails?.length ?? 0) > 0;
   const autoDisplayGeneration =
     selectedGeneration ??
-    (currentHasVisibleHistory
-      ? currentGeneration
-      : currentVerificationData?.runHistory?.find(
-          (run) =>
-            run.generation !== currentGeneration &&
-            (run.roundCount > 0 || run.gapCount > 0)
-        )?.generation ?? currentGeneration);
+    currentGeneration ??
+    currentVerificationData?.runHistory?.find(
+      (run) => run.roundCount > 0 || run.gapCount > 0
+    )?.generation ??
+    null;
   const shouldLoadHistoricalGeneration =
     autoDisplayGeneration != null &&
     currentGeneration != null &&
@@ -372,7 +368,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     staleTime: 4_000,
     refetchInterval: 10_000,
   });
-  const childSessions = Array.isArray(rawChildSessions) ? rawChildSessions : [];
+  const childSessions = Array.isArray(rawChildSessions) ? rawChildSessions : EMPTY_CHILD_SESSIONS;
 
   // Hydrate session query cache from verification API response on page load.
   // The session schema defaults verificationStatus to "unverified", so if the server

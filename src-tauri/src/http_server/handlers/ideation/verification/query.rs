@@ -258,9 +258,15 @@ pub async fn get_plan_verification(
     })?
     .into_iter()
     .filter(|run| {
-        !(stale_blank_active_generation
-            && run.generation == active_generation
-            && is_blank_in_progress_snapshot(run))
+        if !is_blank_in_progress_snapshot(run) {
+            return true;
+        }
+
+        if run.generation != active_generation {
+            return false;
+        }
+
+        !stale_blank_active_generation
     })
     .map(|run| VerificationRunHistoryEntryResponse {
         generation: run.generation,

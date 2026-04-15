@@ -3618,6 +3618,152 @@ async fn test_get_plan_verification_exposes_native_run_history_and_selected_gene
 }
 
 #[tokio::test]
+async fn test_get_plan_verification_filters_stale_blank_historical_generation_from_run_history() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(21)
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                18,
+                VerificationStatus::NeedsRevision,
+                false,
+                2,
+                5,
+                vec![make_gap("high", "testing", "Missing migration regression")],
+                vec![
+                    make_round(vec!["fp-a", "fp-b"], 8),
+                    make_round(vec!["fp-a"], 3),
+                ],
+                Some("escalated_to_parent"),
+                Some(1),
+            ),
+        )
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                20,
+                VerificationStatus::Reviewing,
+                true,
+                0,
+                5,
+                vec![],
+                vec![],
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &make_snapshot(
+                21,
+                VerificationStatus::Reviewing,
+                true,
+                0,
+                5,
+                vec![],
+                vec![],
+                None,
+                None,
+            ),
+        )
+        .await
+        .unwrap();
+
+    let active_child = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .parent_session_id(session_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(active_child)
+        .await
+        .unwrap();
+
+    let current = get_plan_verification(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        default_verification_query(),
+    )
+    .await
+    .expect("current generation query must succeed")
+    .0;
+
+    assert_eq!(current.verification_generation, 21);
+    assert_eq!(current.selected_generation, 21);
+    assert_eq!(
+        current
+            .run_history
+            .iter()
+            .map(|entry| entry.generation)
+            .collect::<Vec<_>>(),
+        vec![21, 18],
+        "historical blank in-progress generations must be filtered out of run history",
+    );
+
+    let historical = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        Query(VerificationQueryParams {
+            generation: Some(18),
+        }),
+    )
+    .await
+    .expect("historical generation query must succeed")
+    .0;
+
+    assert_eq!(historical.verification_generation, 21);
+    assert_eq!(historical.selected_generation, 18);
+    assert_eq!(
+        historical
+            .run_history
+            .iter()
+            .map(|entry| entry.generation)
+            .collect::<Vec<_>>(),
+        vec![21, 18],
+        "historical blank in-progress generations must stay hidden even when viewing an older run",
+    );
+}
+
+#[tokio::test]
 async fn test_mark_verification_infra_failure_remaps_child_and_resets_parent_to_unverified() {
     let state = setup_test_state().await;
     let project_id = ProjectId::new();

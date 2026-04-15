@@ -41,6 +41,7 @@ paths:
 | Start / confirmation path | `src-tauri/src/http_server/handlers/verification/{confirm,helpers}.rs` + `src-tauri/src/http_server/handlers/artifacts/create.rs` | Manual confirm, auto-start, child spawn |
 | Native verification store | `src-tauri/crates/ralphx-domain/src/entities/ideation/types.rs` + `src-tauri/src/infrastructure/sqlite/sqlite_ideation_session_repo.rs` | Parent summary fields vs native run snapshots |
 | Verifier MCP runtime | `plugins/app/ralphx-mcp-server/src/{verification-runtime,verification-orchestration,verification-round-assessment,verification-completion}.ts` | Delegate dispatch, waits, settlement, completion gating |
+| Verifier MCP build artifact | `plugins/app/ralphx-mcp-server/build/{index,verification-runtime}.js` | The desktop app executes the built MCP bundle, so verifier runtime source changes are not live until `cd plugins/app/ralphx-mcp-server && npm run build` refreshes `build/*` |
 | Verifier prompt / tool contract | `agents/ralphx-plan-verifier/agent.yaml` + `agents/ralphx-plan-verifier/{claude,codex}/prompt.md` | Live verifier surface and workflow |
 | Verification tab | `frontend/src/components/Ideation/VerificationPanel.tsx` + `frontend/src/components/Ideation/VerificationHistory.tsx` | Left-panel lineage/history/gaps |
 | Verification chat widgets | `frontend/src/components/Chat/tool-widgets/VerificationWidget.tsx` + `frontend/src/components/Chat/verification-tool-calls.ts` | Right-chat progress/result cards and stale-card collapse |
@@ -189,6 +190,7 @@ Plan create/update or explicit confirm
 | If You Change | Also Update |
 |---|---|
 | Verifier MCP tools or prompt workflow | `agents/ralphx-plan-verifier/**`, `agent-mcp-tools.md`, `plugins/app/ralphx-mcp-server/src/tools.ts`, MCP tests |
+| `plugins/app/ralphx-mcp-server/src/verification-*.ts` | Rebuild `plugins/app/ralphx-mcp-server/build/*` with `npm run build` before smoke/commit; the app executes the compiled bundle, not the TypeScript source |
 | Parent verification payload shape | Rust handler/response types + frontend query/event consumers + widget tests |
 | Native snapshot schema | Migration + SQLite repo load/save + domain types + integration tests |
 | Verification tab behavior | `VerificationPanel.tsx` + `VerificationHistory.tsx` + chat/widget surfaces if the same state also appears in transcript |
