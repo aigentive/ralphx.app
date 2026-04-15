@@ -88,7 +88,12 @@ When working in `src-tauri/`, also follow:
 
 ## Active Verification Cleanup Tracker
 
-No open verification cleanup tracker items.
+| Priority | Stream | Status | Next Step |
+|---|---|---|---|
+| P1 | 2026-04-15 verifier runtime chatter + invalid helper retries | In progress | `session_id` routing for verifier-owned helpers is now backend-derived and removed from the live verifier tool surface; next trim any remaining retry/recovery narration that still leaks into the verification child transcript after the next smoke pass |
+| P1 | 2026-04-15 delegated verification provider hydration | In progress | Backfill delegated verification `provider_session_id` consistently into `delegated_sessions` as well as `chat_conversations`; latest run stored provider session ids only on the conversation rows, leaving delegated-session hydration/event paths with incomplete attribution |
+| P1 | 2026-04-15 verification authoritative read fan-out | In progress | Collapse per-widget `useVerificationStatus()` polling into shared verification state for chat cards; the latest verifier child message persisted 11 verification widgets (`get_plan_verification`, round report, final cleanup) and each currently mounts an authoritative `/verification` query with `staleTime: 0` + `refetchOnMount: "always"`, producing repeated child→parent remap reads and avoidable backend/UI churn |
+| P2 | 2026-04-15 verification child transcript persistence granularity | In progress | Decide whether verifier turns should keep persisting as one giant assistant/orchestrator message or be split into step-level persisted transcript boundaries; the latest child conversation stored only the kickoff user message plus one 169 KB assistant message with all 26 verification tool calls/content blocks, which makes replay hydration brittle when a single normalization/parser path regresses |
 
 ## Verification Guardrails
 

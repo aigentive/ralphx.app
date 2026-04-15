@@ -23,6 +23,13 @@ function mcpWrap(obj: unknown): unknown {
   return [{ type: "text", text: JSON.stringify(obj) }];
 }
 
+function persistedMcpWrap(obj: unknown): unknown {
+  return {
+    content: [{ type: "text", text: JSON.stringify(obj) }],
+    structured_content: null,
+  };
+}
+
 describe("VerificationWidget", () => {
   beforeEach(() => {
     mockUseVerificationStatus.mockReset();
@@ -82,6 +89,33 @@ describe("VerificationWidget", () => {
       expect(screen.getAllByText("Requested")).toHaveLength(2);
     });
 
+    it("unwraps persisted enrichment payloads stored in MCP object form", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_enrichment", {
+        arguments: { selected_specialists: ["intent", "code-quality"] },
+        result: persistedMcpWrap({
+          selected_specialists: [
+            { name: "intent", label: "intent", critic: "intent" },
+            { name: "code-quality", label: "code-quality", critic: "code-quality" },
+          ],
+          findings_by_critic: [
+            { critic: "intent", found: false, total_matches: 0 },
+            { critic: "code-quality", found: true, total_matches: 1 },
+          ],
+          delegate_snapshots: [
+            { job_id: "intent-1", status: "completed", label: "intent" },
+            { job_id: "quality-1", status: "running", label: "code-quality" },
+          ],
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification enrichment")).toBeInTheDocument();
+      expect(screen.getByText("2 launched")).toBeInTheDocument();
+      expect(screen.getByText("1 findings")).toBeInTheDocument();
+      expect(screen.getByText("Completed")).toBeInTheDocument();
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+    });
+
     it("renders round progress, classification, and severity counts for run_verification_round", () => {
       const toolCall = makeToolCall("mcp__ralphx__run_verification_round", {
         arguments: { round: 2 },
@@ -132,6 +166,25 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("Optional specialists")).toBeInTheDocument();
       expect(screen.getByText("Completeness found one blocker.")).toBeInTheDocument();
       expect(screen.getByText("Timed out while the delegate was still running.")).toBeInTheDocument();
+    });
+
+    it("unwraps persisted round payloads stored in MCP object form", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_round", {
+        arguments: { round: 2 },
+        result: persistedMcpWrap({
+          round: 2,
+          classification: "complete",
+          gap_counts: { critical: 0, high: 1, medium: 2, low: 0 },
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification round")).toBeInTheDocument();
+      expect(screen.getByText("complete")).toBeInTheDocument();
+      expect(screen.getByText("Round 2")).toBeInTheDocument();
+      expect(screen.getByText("H 1")).toBeInTheDocument();
+      expect(screen.getByText("M 2")).toBeInTheDocument();
+      expect(screen.queryByText(/^Running$/)).not.toBeInTheDocument();
     });
 
     it("renders backend-authoritative round report state", () => {

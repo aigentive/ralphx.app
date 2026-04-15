@@ -20,6 +20,13 @@ function mcpWrap(payload: unknown): unknown {
   return [{ type: "text", text: JSON.stringify(payload) }];
 }
 
+function persistedMcpWrap(payload: unknown): unknown {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structured_content: null,
+  };
+}
+
 describe("normalizeToolCallTranscriptPayload", () => {
   it("drops a stale verification round card once a later round report resolves the same round", () => {
     const { toolCalls } = normalizeToolCallTranscriptPayload({
@@ -92,6 +99,60 @@ describe("normalizeToolCallTranscriptPayload", () => {
     expect(toolCalls).toHaveLength(2);
     expect(toolCalls[0]?.name).toBe("mcp__ralphx__run_verification_enrichment");
     expect(toolCalls[1]?.name).toBe("mcp__ralphx__report_verification_round");
+  });
+
+  it("keeps meaningful persisted enrichment results wrapped in MCP object form", () => {
+    const { toolCalls } = normalizeToolCallTranscriptPayload({
+      toolCalls: [
+        makeToolCall("mcp__ralphx__run_verification_enrichment", {
+          arguments: { selected_specialists: ["intent"] },
+          result: persistedMcpWrap({
+            selected_specialists: [{ label: "intent", critic: "intent" }],
+            delegate_snapshots: [{ job_id: "job-1", status: "completed", label: "intent" }],
+            findings_by_critic: [{ critic: "intent", found: true, total_matches: 1 }],
+          }),
+        }),
+        makeToolCall("mcp__ralphx__report_verification_round", {
+          arguments: { round: 1 },
+          result: persistedMcpWrap({
+            status: "needs_revision",
+            in_progress: false,
+            current_round: 1,
+          }),
+        }),
+      ],
+    });
+
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]?.name).toBe("mcp__ralphx__run_verification_enrichment");
+    expect(toolCalls[1]?.name).toBe("mcp__ralphx__report_verification_round");
+  });
+
+  it("drops persisted run_verification_round once a later persisted round report resolves that round", () => {
+    const { toolCalls } = normalizeToolCallTranscriptPayload({
+      toolCalls: [
+        makeToolCall("mcp__ralphx__run_verification_round", {
+          arguments: { round: 2 },
+          result: persistedMcpWrap({
+            round: 2,
+            classification: "complete",
+            gap_counts: { critical: 0, high: 1, medium: 0, low: 0 },
+          }),
+        }),
+        makeToolCall("mcp__ralphx__report_verification_round", {
+          arguments: { round: 2 },
+          result: persistedMcpWrap({
+            status: "needs_revision",
+            in_progress: true,
+            current_round: 2,
+            current_gaps: [{ severity: "high", category: "scope", description: "gap" }],
+          }),
+        }),
+      ],
+    });
+
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]?.name).toBe("mcp__ralphx__report_verification_round");
   });
 });
 

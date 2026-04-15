@@ -37,15 +37,20 @@ describe("completePlanVerificationWithSettlement", () => {
           recommended_next_action: "continue_round_analysis",
           verification_findings: [
             {
+              artifact_id: "finding-1",
+              title: "Completeness: Round 2",
+              created_at: "2026-04-15T03:47:12.000Z",
               critic: "completeness",
-              found: true,
-              total_matches: 1,
-              finding: {
-                summary: "Need one more revision pass.",
-                severity: "high",
-                category: "scope",
-                description: "The plan still misses a required path.",
-              },
+              round: 2,
+              status: "partial",
+              summary: "Need one more revision pass.",
+              gaps: [
+                {
+                  severity: "high",
+                  category: "scope",
+                  description: "The plan still misses a required path.",
+                },
+              ],
             },
           ],
         }),

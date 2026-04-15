@@ -1,4 +1,12 @@
 import { aggregateVerificationGaps, parseTypedVerificationFinding, } from "./verification-round-assessment.js";
+const TERMINAL_NEEDS_REVISION_REASONS = new Set([
+    "max_rounds",
+    "critic_parse_failure",
+    "user_stopped",
+    "user_skipped",
+    "user_reverted",
+    "escalated_to_parent",
+]);
 export async function completePlanVerificationWithSettlement(deps) {
     const settledRound = await deps.awaitVerificationRoundSettlement({
         session_id: deps.sessionId,
@@ -24,6 +32,15 @@ export async function completePlanVerificationWithSettlement(deps) {
         const verificationFindings = Array.isArray(settledRound.verification_findings)
             ? settledRound.verification_findings
             : [];
+        const nextAction = typeof settledRound.recommended_next_action === "string"
+            ? settledRound.recommended_next_action
+            : undefined;
+        if (deps.body.status === "needs_revision" &&
+            (!deps.body.convergence_reason
+                || !TERMINAL_NEEDS_REVISION_REASONS.has(deps.body.convergence_reason)
+                || nextAction === "continue_round_analysis")) {
+            throw new Error("Cannot complete verification as needs_revision while backend settlement still requires bounded revision. Revise the plan and continue the active verification loop instead of forcing terminal cleanup.");
+        }
         const requiredLabels = Array.from(new Set(deps.requiredDelegates
             .map((delegate) => delegate.label?.trim().toLowerCase())
             .filter((label) => Boolean(label))));

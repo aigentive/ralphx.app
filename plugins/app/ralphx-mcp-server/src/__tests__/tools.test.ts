@@ -148,7 +148,7 @@ describe('getToolRecoveryHint', () => {
   it('returns narrower verifier-helper guidance for report_verification_round', () => {
     const hint = getToolRecoveryHint('report_verification_round');
     expect(hint).toContain('verifier-friendly helper');
-    expect(hint).toContain('backend remaps it to the parent automatically');
+    expect(hint).toContain('Do not pass session_id');
     expect(hint).toContain('current-round gaps come from the backend-owned run_verification_round state');
     expect(hint).toContain('Example payload:');
   });
@@ -156,7 +156,7 @@ describe('getToolRecoveryHint', () => {
   it('returns narrower verifier-helper guidance for complete_plan_verification', () => {
     const hint = getToolRecoveryHint('complete_plan_verification');
     expect(hint).toContain('terminal verification updates');
-    expect(hint).toContain('backend remaps it to the parent automatically');
+    expect(hint).toContain('Do not pass session_id');
     expect(hint).toContain('in_progress=false is filled in automatically');
     expect(hint).toContain('do not try to pass delegate, timestamp, rescue, or wait bookkeeping');
     expect(hint).toContain('External sessions cannot use status=skipped');
@@ -576,19 +576,28 @@ describe('New team tool definitions', () => {
     it('should expose the verifier-friendly round helper with fixed semantics', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('Verifier-friendly helper');
-      expect(tool?.description).toContain('backend remaps it automatically');
+      expect(tool?.description).toContain('Do not pass session_id');
       expect(tool?.description).toContain('response is authoritative for next-step control flow');
       expect(tool?.description).toContain('actionable plan feedback');
       expect(tool?.description).not.toContain('update_plan_verification');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
-        session_id: 'parent-session-id',
         round: 1,
         generation: 3,
       });
-      expect((tool?.inputSchema.properties?.session_id as any)?.description).toContain(
-        'backend resolves the canonical parent automatically'
-      );
+      expect((tool?.inputSchema.properties as any)).not.toHaveProperty('session_id');
       expect(tool?.inputSchema.required).toEqual(['round', 'generation']);
+    });
+  });
+
+  describe('get_plan_verification', () => {
+    const tool = PLAN_TOOLS.find((t) => t.name === 'get_plan_verification');
+
+    it('should derive the parent session automatically for verifier-owned reads', () => {
+      expect(tool).toBeDefined();
+      expect(tool?.description).toContain('do not pass session_id');
+      expect((tool?.inputSchema.properties as any)).toEqual({});
+      expect((tool?.inputSchema as any).examples?.[0]).toEqual({});
+      expect(tool?.inputSchema.required).toEqual([]);
     });
   });
 
@@ -598,13 +607,12 @@ describe('New team tool definitions', () => {
     it('should expose the verifier-friendly terminal helper with fixed semantics', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('Verifier-friendly helper');
-      expect(tool?.description).toContain('backend remaps it automatically');
+      expect(tool?.description).toContain('Do not pass session_id');
       expect(tool?.description).toContain('uses the backend-owned current round state');
       expect(tool?.description).toContain('Do not call it immediately after an actionable needs_revision round report');
       expect(tool?.description).not.toContain('update_plan_verification');
       expect(tool?.description).toContain("skipped remains available only where skip is actually allowed by the backend");
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
-        session_id: 'parent-session-id',
         status: 'verified',
         convergence_reason: 'zero_blocking',
         round: 1,
@@ -615,9 +623,7 @@ describe('New team tool definitions', () => {
       expect((tool?.inputSchema as any).examples?.[0]).not.toHaveProperty('created_after');
       expect((tool?.inputSchema as any).examples).toHaveLength(1);
       expect((tool?.inputSchema as any).properties.status.enum).not.toContain('reviewing');
-      expect((tool?.inputSchema.properties?.session_id as any)?.description).toContain(
-        'backend resolves the canonical parent automatically'
-      );
+      expect((tool?.inputSchema.properties as any)).not.toHaveProperty('session_id');
       expect((tool?.inputSchema.properties as any)).not.toHaveProperty('gaps');
       expect((tool?.inputSchema.properties as any)).not.toHaveProperty('required_delegates');
       expect((tool?.inputSchema.properties as any)).not.toHaveProperty('created_after');
@@ -634,10 +640,12 @@ describe('New team tool definitions', () => {
     it('should expose the backend-owned enrichment helper', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('one-time verification enrichment helper');
+      expect(tool?.description).toContain('do not pass session_id');
       expect(tool?.description).toContain('verifier chooses which enrichment specialists to run');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         selected_specialists: ['intent', 'code-quality'],
       });
+      expect((tool?.inputSchema.properties as any)).not.toHaveProperty('session_id');
       expect((tool?.inputSchema.properties as any)).toHaveProperty('selected_specialists');
       expect((tool?.inputSchema.properties as any)).not.toHaveProperty('disabled_specialists');
       expect((tool?.inputSchema as any).examples?.[0]).not.toHaveProperty('max_wait_ms');
@@ -656,12 +664,14 @@ describe('New team tool definitions', () => {
     it('should expose the backend-owned round driver', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('verification round driver');
+      expect(tool?.description).toContain('do not pass session_id');
       expect(tool?.description).toContain('structured required critic findings');
       expect(tool?.description).toContain('verifier chooses which optional specialists to run');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         round: 2,
         selected_specialists: ['ux', 'pipeline-safety'],
       });
+      expect((tool?.inputSchema.properties as any)).not.toHaveProperty('session_id');
       expect((tool?.inputSchema.properties as any)).toHaveProperty('selected_specialists');
       expect((tool?.inputSchema.properties as any)).not.toHaveProperty('disabled_specialists');
       expect((tool?.inputSchema as any).examples?.[0]).not.toHaveProperty('max_wait_ms');

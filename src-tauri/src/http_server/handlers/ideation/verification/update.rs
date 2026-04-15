@@ -312,6 +312,11 @@ pub async fn post_verification_status(
             }
         });
         run_snapshot.current_round = round_number;
+        let prior_rounds: Vec<&VerificationRoundSnapshot> = run_snapshot
+            .rounds
+            .iter()
+            .filter(|round| round.round != round_number)
+            .collect();
 
         // ── Server-side convergence evaluation (D3) ──
         // Evaluate before pushing new round — current_gaps still reflect the previous round.
@@ -323,9 +328,9 @@ pub async fn post_verification_status(
         let zero_blocking_converged = critical_count == 0 && high_count == 0 && medium_count == 0;
 
         // Condition 2: Jaccard ≥ 0.8 for 2 consecutive rounds (R4-C2)
-        let jaccard_converged = if run_snapshot.rounds.len() >= 2 {
-            let prev_round = run_snapshot.rounds.last().unwrap();
-            let prev_prev_round = &run_snapshot.rounds[run_snapshot.rounds.len() - 2];
+        let jaccard_converged = if prior_rounds.len() >= 2 {
+            let prev_round = prior_rounds.last().unwrap();
+            let prev_prev_round = prior_rounds[prior_rounds.len() - 2];
             let new_fp_set: HashSet<String> = fingerprints.iter().cloned().collect();
             let prev_fp_set: HashSet<String> = prev_round.fingerprints.iter().cloned().collect();
             let prev_prev_fp_set: HashSet<String> =
@@ -340,8 +345,8 @@ pub async fn post_verification_status(
                 "Verification Jaccard similarity (2-round check)"
             );
             jaccard_curr >= 0.8 && jaccard_prev >= 0.8
-        } else if run_snapshot.rounds.len() == 1 {
-            let prev_round = run_snapshot.rounds.last().unwrap();
+        } else if prior_rounds.len() == 1 {
+            let prev_round = prior_rounds.last().unwrap();
             let new_fp_set: HashSet<String> = fingerprints.iter().cloned().collect();
             let prev_fp_set: HashSet<String> = prev_round.fingerprints.iter().cloned().collect();
             let jaccard = jaccard_similarity(&new_fp_set, &prev_fp_set);
@@ -356,30 +361,29 @@ pub async fn post_verification_status(
             false
         };
 
-        // Track best version (lowest gap_score)
-        let round_idx = run_snapshot.rounds.len() as u32;
-        let is_better = run_snapshot.best_round_index.is_none() || {
-            let best_idx = run_snapshot.best_round_index.unwrap() as usize;
-            run_snapshot
-                .rounds
-                .get(best_idx)
-                .map(|r| r.gap_score)
-                .unwrap_or(u32::MAX)
-                > score
+        let current_round_snapshot = VerificationRoundSnapshot {
+            round: round_number,
+            fingerprints,
+            gap_score: score,
+            gaps: gaps.clone(),
+            parse_failed: req.parse_failed == Some(true),
         };
-        if is_better {
-            run_snapshot.best_round_index = Some(round_idx);
-        }
-
-        run_snapshot
+        if let Some(existing_round) = run_snapshot
             .rounds
-            .push(VerificationRoundSnapshot {
-                round: round_number,
-                fingerprints,
-                gap_score: score,
-                gaps: gaps.clone(),
-                parse_failed: req.parse_failed == Some(true),
-            });
+            .iter_mut()
+            .find(|round| round.round == round_number)
+        {
+            *existing_round = current_round_snapshot;
+        } else {
+            run_snapshot.rounds.push(current_round_snapshot);
+            run_snapshot.rounds.sort_by_key(|round| round.round);
+        }
+        run_snapshot.best_round_index = run_snapshot
+            .rounds
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, round)| round.gap_score)
+            .map(|(index, _)| index as u32);
         run_snapshot.current_gaps = gaps;
 
         // Auto-converge: override NeedsRevision → Verified when conditions are met

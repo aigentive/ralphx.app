@@ -3906,6 +3906,90 @@ async fn test_repeated_reviewing_reports_idempotent() {
     assert!(resp2.in_progress, "in_progress must remain true");
 }
 
+/// PDM-335 regression 2b: retrying the same round replaces the existing round snapshot
+/// instead of persisting a duplicate round number.
+#[tokio::test]
+async fn test_same_round_report_retry_replaces_existing_snapshot() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    let session_id_obj = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let first = post_verification_status(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "testing".to_string(),
+                description: "First round gap".to_string(),
+                why_it_matters: Some("Needs coverage".to_string()),
+                source: Some("completeness".to_string()),
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+    assert!(first.is_ok(), "initial round report must succeed: {:?}", first.err());
+
+    let retry = post_verification_status(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "medium".to_string(),
+                category: "testing".to_string(),
+                description: "Updated round gap".to_string(),
+                why_it_matters: Some("Retry payload should replace".to_string()),
+                source: Some("feasibility".to_string()),
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        retry.is_ok(),
+        "same-round retry must replace the persisted round snapshot instead of failing: {:?}",
+        retry.err()
+    );
+
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, 0)
+        .await
+        .unwrap()
+        .expect("native verification snapshot must exist");
+
+    assert_eq!(
+        snapshot.rounds.len(),
+        1,
+        "same-round retries must not persist duplicate round numbers"
+    );
+    assert_eq!(snapshot.rounds[0].round, 1);
+    assert_eq!(snapshot.rounds[0].gap_score, 1);
+    assert_eq!(snapshot.rounds[0].gaps[0].description, "Updated round gap");
+    assert_eq!(snapshot.current_gaps[0].description, "Updated round gap");
+}
+
 /// PDM-335 regression 3: generation mismatch still returns 409 CONFLICT.
 ///
 /// The new idempotent arm must not bypass the generation guard — zombie protection

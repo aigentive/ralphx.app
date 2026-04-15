@@ -10,6 +10,7 @@ export type VerificationSettlementResult = {
     classification: "complete" | "pending" | "infra_failure";
     missing_required_critics: string[];
     verification_findings?: VerificationFindingSummary[];
+    recommended_next_action?: string;
     [key: string]: unknown;
 };
 export declare function completePlanVerificationWithSettlement(deps: {

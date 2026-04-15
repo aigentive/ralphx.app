@@ -103,23 +103,18 @@ export const PLAN_TOOLS: Tool[] = [
     name: "report_verification_round",
     description:
       "Verifier-friendly helper for reporting an in-progress verification round on the PARENT ideation session. " +
-      "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
+      "The parent session remains canonical and is derived automatically from the active verification child context. Do not pass session_id. " +
       "Use this after each round once the merged gap list is ready. The response is authoritative for next-step control flow: it returns the backend verification state after convergence checks, so the verifier should use returned status/in_progress/convergence_reason instead of re-implementing zero-blocking, jaccard, or max-round rules in the prompt. " +
       "If the response says needs_revision, treat that as actionable plan feedback unless the convergence_reason is a terminal non-actionable runtime/user stop reason. If generation is stale, call get_plan_verification again instead of guessing.",
     inputSchema: {
       type: "object",
       examples: [
         {
-          session_id: "parent-session-id",
           round: 1,
           generation: 3,
         },
       ],
       properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
         round: {
           type: "integer",
           description: "Current round number (1-based).",
@@ -137,20 +132,16 @@ export const PLAN_TOOLS: Tool[] = [
     name: "run_verification_enrichment",
     description:
       "Backend-owned one-time verification enrichment helper for the PARENT ideation session. " +
+      "The parent session is derived automatically from the active verification child context; do not pass session_id. " +
       "The verifier chooses which enrichment specialists to run. The backend dispatches those specialists once, waits a bounded amount for typed finding publication or terminal delegate state, and returns the latest findings plus delegate snapshots.",
     inputSchema: {
       type: "object",
       examples: [
         {
-          session_id: "parent-session-id",
           selected_specialists: ["intent", "code-quality"],
         },
       ],
       properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
         selected_specialists: {
           type: "array",
           items: { type: "string" },
@@ -164,21 +155,17 @@ export const PLAN_TOOLS: Tool[] = [
     name: "run_verification_round",
     description:
       "Backend-owned verification round driver for the PARENT ideation session. " +
+      "The parent session is derived automatically from the active verification child context; do not pass session_id. " +
       "The verifier chooses which optional specialists to run. The backend dispatches those specialists, runs the required completeness + feasibility critics, waits for bounded settlement, and returns structured required critic findings plus backend-owned merged gaps.",
     inputSchema: {
       type: "object",
       examples: [
         {
-          session_id: "parent-session-id",
           round: 2,
           selected_specialists: ["ux", "pipeline-safety"],
         },
       ],
       properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
         round: {
           type: "integer",
           description: "Current verification round number (1-based).",
@@ -196,7 +183,7 @@ export const PLAN_TOOLS: Tool[] = [
     name: "complete_plan_verification",
     description:
       "Verifier-friendly helper for terminal verification updates on the PARENT ideation session. " +
-      "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
+      "The parent session remains canonical and is derived automatically from the active verification child context. Do not pass session_id. " +
       "For verifier-owned runs, the helper uses the backend-owned current round state created by run_verification_round instead of trusting prompt-supplied settlement fields. " +
       "If the required delegate set settles as infrastructure/runtime failure, the backend resets the parent to unverified instead of recording a bogus content verdict. " +
       "Call this only for true terminal outcomes: verified, exhausted revision, explicit escalation, or runtime/user stop. Do not call it immediately after an actionable needs_revision round report. " +
@@ -206,7 +193,6 @@ export const PLAN_TOOLS: Tool[] = [
       type: "object",
       examples: [
         {
-          session_id: "parent-session-id",
           status: "verified",
           round: 1,
           convergence_reason: "zero_blocking",
@@ -214,10 +200,6 @@ export const PLAN_TOOLS: Tool[] = [
         },
       ],
       properties: {
-        session_id: {
-          type: "string",
-          description: "Optional PARENT ideation session ID being verified. In verifier child context the backend resolves the canonical parent automatically.",
-        },
         status: {
           type: "string",
           enum: ["needs_revision", "verified", "skipped"],
@@ -256,17 +238,12 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "get_plan_verification",
     description:
-      "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. Verification child session_ids are auto-remapped to the parent ideation session. " +
+      "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. The canonical parent session is derived automatically from the active verification child context, so do not pass session_id. " +
       "If a verification update call is rejected, call this again on the parent session and copy the returned generation/in_progress values instead of guessing.",
     inputSchema: {
       type: "object",
-      examples: [{ session_id: "parent-session-id" }],
-      properties: {
-        session_id: {
-          type: "string",
-          description: "Optional ideation session ID to inspect. In verifier child context the backend resolves the canonical parent automatically.",
-        },
-      },
+      examples: [{}],
+      properties: {},
       required: [],
     },
   },

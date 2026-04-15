@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("verification runtime parent resolution", () => {
-  it("remaps the active verifier child session id to the canonical parent session", async () => {
+  it("ignores model-supplied verifier session ids and resolves the canonical parent session", async () => {
     const callTauri = vi.fn();
     const callTauriGet = vi.fn(async (endpoint: string) => {
       if (endpoint === "parent_session_context/child-session") {
@@ -30,7 +30,7 @@ describe("verification runtime parent resolution", () => {
 
     await expect(
       runtime.resolveVerifierParentSessionId(
-        "child-session",
+        "wrong-session",
         "run_verification_enrichment"
       )
     ).resolves.toBe("parent-session");
@@ -381,7 +381,7 @@ describe("verification runtime settlement and terminal cleanup", () => {
     });
 
     const result = await runtime.completePlanVerificationForTool({
-      session_id: "child-session",
+      session_id: "wrong-session",
       status: "needs_revision",
       convergence_reason: "agent_error",
       generation: 6,
@@ -447,7 +447,7 @@ describe("verification runtime settlement and terminal cleanup", () => {
 
     await expect(
       runtime.completePlanVerificationForTool({
-        session_id: "child-session",
+        session_id: "wrong-session",
         status: "needs_revision",
         generation: 7,
         round: 1,
@@ -535,7 +535,7 @@ describe("verification runtime settlement and terminal cleanup", () => {
     });
 
     const result = await runtime.completePlanVerificationForTool({
-      session_id: "child-session",
+      session_id: "wrong-session",
       status: "verified",
       convergence_reason: "zero_blocking",
       generation: 7,

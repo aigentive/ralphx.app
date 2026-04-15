@@ -506,19 +506,10 @@ export function createVerificationRuntime(deps) {
             const canonicalParentId = typeof parentContext.parent_session?.id === "string" && parentContext.parent_session.id.length > 0
                 ? parentContext.parent_session.id
                 : undefined;
-            if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
-                const providedSessionId = rawSessionId.trim();
-                if (providedSessionId === contextId && canonicalParentId) {
-                    return canonicalParentId;
-                }
-                if (canonicalParentId && providedSessionId === canonicalParentId) {
-                    return canonicalParentId;
-                }
-                return providedSessionId;
-            }
             if (canonicalParentId) {
                 return canonicalParentId;
             }
+            throw new Error(`${toolName} requires an active ralphx-plan-verifier child session with a resolvable parent ideation session.`);
         }
         if (typeof rawSessionId === "string" && rawSessionId.trim().length > 0) {
             return rawSessionId.trim();

@@ -26,7 +26,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use this verifier-friendly helper for in-progress rounds on the PARENT ideation session.",
-        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "Do not pass session_id; the backend derives the canonical parent session from the active verification child context.",
         "You only provide round and generation; status=reviewing, in_progress=true, and current-round gaps come from the backend-owned run_verification_round state.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
@@ -35,7 +35,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use this verifier-friendly helper for terminal verification updates on the PARENT ideation session.",
-        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "Do not pass session_id; the backend derives the canonical parent session from the active verification child context.",
         "You provide the terminal status and generation; in_progress=false is filled in automatically.",
         "The helper uses backend-owned current-round state from run_verification_round; do not try to pass delegate, timestamp, rescue, or wait bookkeeping through the model.",
         "External sessions cannot use status=skipped.",
@@ -45,7 +45,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
     case "get_plan_verification": {
       const examples = formatToolExamples(tool);
       return [
-        "Call this on the PARENT ideation session before retrying report_verification_round or complete_plan_verification. If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "Call this before retrying report_verification_round or complete_plan_verification. The backend derives the canonical parent session from the active verification child context, so do not pass session_id.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }
@@ -77,6 +77,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use this as the backend-owned one-time enrichment driver.",
+        "Do not pass session_id; the backend derives the canonical parent session from the active verification child context.",
         "You choose the enrichment specialists; the backend dispatches them, waits a bounded amount, and returns the latest typed findings plus delegate snapshots.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
@@ -85,6 +86,7 @@ export function getToolRecoveryHintFromRegistry(tools: Tool[], toolName: string)
       const examples = formatToolExamples(tool);
       return [
         "Use this as the primary verifier round driver.",
+        "Do not pass session_id; the backend derives the canonical parent session from the active verification child context.",
         "You choose the optional specialists; the backend dispatches them, runs the required critics, waits for bounded settlement, and returns structured required critic findings plus backend-owned merged_gaps.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
