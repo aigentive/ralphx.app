@@ -41,7 +41,10 @@ interface ProposalsToolbarProps {
    *  signal that the plan can be accepted despite incomplete dependency analysis. */
   analysisTimedOut?: boolean;
   /** Session for verification gate — blocks accept when verification is required */
-  session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
+  session?: Pick<
+    IdeationSessionResponse,
+    "id" | "planArtifactId" | "sessionPurpose" | "verificationStatus" | "verificationInProgress"
+  > | null;
   /** True when agent-initiated finalization is pending user confirmation */
   isPendingAcceptance?: boolean;
 }

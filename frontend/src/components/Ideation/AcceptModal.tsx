@@ -24,7 +24,10 @@ interface AcceptModalProps {
   isAccepting?: boolean;
   warnings?: string[];
   /** Session for verification gate — shows warning and blocks accept when unverified */
-  session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
+  session?: Pick<
+    IdeationSessionResponse,
+    "id" | "planArtifactId" | "sessionPurpose" | "verificationStatus" | "verificationInProgress"
+  > | null;
   /** Working directory for git branch listing */
   workingDirectory?: string | undefined;
   /** Default base branch to pre-fill the selector */
