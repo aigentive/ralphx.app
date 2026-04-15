@@ -1432,6 +1432,15 @@ fn test_readonly_agent_has_get_plan_verification_not_update() {
 fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
     let config =
         get_agent_config("ralphx-plan-verifier").expect("ralphx-plan-verifier should exist");
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let codex_prompt = std::fs::read_to_string(
+        manifest_dir.join("../agents/ralphx-plan-verifier/codex/prompt.md"),
+    )
+    .expect("codex verifier prompt should load");
+    let claude_prompt = std::fs::read_to_string(
+        manifest_dir.join("../agents/ralphx-plan-verifier/claude/prompt.md"),
+    )
+    .expect("claude verifier prompt should load");
 
     for tool in [
         "get_session_plan",
@@ -1511,6 +1520,21 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
             .contains(&"get_child_session_status".to_string()),
         "ralphx-plan-verifier should not include stale MCP tool get_child_session_status"
     );
+
+    for prompt in [&codex_prompt, &claude_prompt] {
+        assert!(
+            prompt.contains(
+                "do not wait for child shutdown or terminal cleanup before editing"
+            ),
+            "verifier prompts should describe in-place revision rather than waiting for child shutdown"
+        );
+        assert!(
+            prompt.contains(
+                "do not mention or invent `caller_session_id` or any manual freeze-bypass parameter"
+            ),
+            "verifier prompts should forbid manual caller_session_id freeze-bypass narration"
+        );
+    }
 }
 
 #[test]

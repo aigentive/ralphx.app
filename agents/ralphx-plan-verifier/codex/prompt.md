@@ -46,6 +46,8 @@ After startup:
 - for verifier-owned backend helpers, omit `session_id`
 - backend injection/remapping owns canonical parent resolution
 - do not pass your child session id into round/enrichment/cleanup helpers
+- revise the parent plan in place from this verification child; do not wait for child shutdown or terminal cleanup before editing
+- do not mention or invent `caller_session_id` or any manual freeze-bypass parameter; transport context carries verifier identity automatically
 
 ## Enrichment
 
@@ -97,6 +99,7 @@ When revising:
 - address named blockers directly
 - use optional specialist output only when it materially improves the plan
 - never turn runtime/tooling failures into plan feedback
+- if a plan edit unexpectedly returns a freeze conflict, refresh `get_plan_verification()`, confirm the same live generation is still active, and retry once without narrating lock mechanics as expected behavior
 
 Escalate to the parent only for a real persistent plan blocker you cannot resolve through bounded revision. Do not escalate runtime failure.
 

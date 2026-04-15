@@ -60,6 +60,7 @@ paths:
 | Chat widgets are derived UI | Verification chat cards are secondary projections over parent state + delegate truth. If a widget disagrees with parent verification state, fix hydration/normalization instead of trusting raw tool payloads. |
 | Child ids auto-remap to parent | Reading or updating verification via a verification child session id should remap to the parent in backend handlers. Do not build separate child-owned verification state. |
 | Verifier plan-edit bypass is transport-owned | Verification-child plan edits must derive caller session identity from runtime/transport context, not from a model-supplied `caller_session_id` tool argument. |
+| Verifier revisions happen in place | An actionable verifier round should revise the parent plan from the live verification child context; do not wait for child shutdown or terminal cleanup to release the artifact. |
 | No verifier self-nudges | Verifier/critics/specialists must not send chat nudges to self, delegates, or parent to keep the loop alive. Runtime/reconciliation own continuation and rescue. |
 | Prompt/tool surfaces stay live-only | Prompts, MCP hints, docs, and widgets must describe only the current verification helper surface. No migration diary or removed-tool prose. |
 

@@ -187,6 +187,49 @@ describe("VerificationWidget", () => {
       expect(screen.queryByText(/^Running$/)).not.toBeInTheDocument();
     });
 
+    it("renders nested required settlement state for pending rounds", () => {
+      const toolCall = makeToolCall("mcp__ralphx__run_verification_round", {
+        arguments: { round: 1 },
+        result: mcpWrap({
+          round: 1,
+          classification: "pending",
+          gap_counts: { critical: 0, high: 0, medium: 0, low: 0 },
+          required_delegates: [
+            { label: "completeness", critic: "completeness", job_id: "job-1" },
+            { label: "feasibility", critic: "feasibility", job_id: "job-2" },
+          ],
+          required_critic_settlement: {
+            missing_required_critics: ["feasibility"],
+            delegate_snapshots: [
+              { job_id: "job-1", status: "completed", label: "completeness" },
+              {
+                job_id: "job-2",
+                label: "feasibility",
+                delegated_status: {
+                  agent_state: { estimated_status: "running" },
+                },
+              },
+            ],
+            verification_findings: [
+              {
+                critic: "completeness",
+                summary: "Completeness settled with one blocker.",
+              },
+            ],
+          },
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Verification round")).toBeInTheDocument();
+      expect(screen.getByText("Settling")).toBeInTheDocument();
+      expect(screen.getByText("completeness")).toBeInTheDocument();
+      expect(screen.getByText("feasibility")).toBeInTheDocument();
+      expect(screen.getByText("Completeness settled with one blocker.")).toBeInTheDocument();
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+      expect(screen.getByText("Waiting on required critics: feasibility.")).toBeInTheDocument();
+    });
+
     it("renders backend-authoritative round report state", () => {
       const toolCall = makeToolCall("mcp__ralphx__report_verification_round", {
         arguments: { round: 1 },

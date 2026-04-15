@@ -193,6 +193,65 @@ function renderSeverityBadges(parsed: Record<string, unknown>) {
   );
 }
 
+function getRequiredSettlement(parsed: Record<string, unknown>): Record<string, unknown> | null {
+  return getRecord(parsed["required_critic_settlement"]);
+}
+
+function getRequiredSettlementSnapshots(
+  parsed: Record<string, unknown>,
+  settlement: Record<string, unknown> | null,
+): unknown[] | undefined {
+  return getArray(settlement, "delegate_snapshots") ?? getArray(parsed, "delegate_snapshots");
+}
+
+function normalizeRequiredSettlementFindings(
+  settlement: Record<string, unknown> | null,
+): unknown[] | undefined {
+  const findingsByCritic = getArray(settlement, "findings_by_critic");
+  if (findingsByCritic && findingsByCritic.length > 0) {
+    return findingsByCritic;
+  }
+
+  const verificationFindings = getArray(settlement, "verification_findings");
+  if (!verificationFindings || verificationFindings.length === 0) {
+    return undefined;
+  }
+
+  return verificationFindings.flatMap((entry) => {
+    const record = getRecord(entry);
+    const critic = getString(record, "critic");
+    if (!record || !critic) {
+      return [];
+    }
+
+    return [{
+      critic,
+      found: true,
+      total_matches: 1,
+      finding: record,
+    }];
+  });
+}
+
+function requiredSettlementSummary(
+  settlement: Record<string, unknown> | null,
+): string | undefined {
+  const summary = getString(settlement, "summary");
+  if (summary) {
+    return summary;
+  }
+
+  const missingCritics = (getArray(settlement, "missing_required_critics") ?? [])
+    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    .map((entry) => entry.trim());
+
+  if (missingCritics.length > 0) {
+    return `Waiting on required critics: ${missingCritics.join(", ")}.`;
+  }
+
+  return undefined;
+}
+
 function delegateSnapshotByLabel(snapshots: unknown[] | undefined): Map<string, Record<string, unknown>> {
   const snapshotByLabel = new Map<string, Record<string, unknown>>();
   for (const snapshot of snapshots ?? []) {
@@ -428,9 +487,10 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
   const args = getRecord(toolCall.arguments) ?? {};
   const round = getNumber(parsed, "round") ?? getNumber(args, "round");
   const classification = getString(parsed, "classification");
+  const settlement = getRequiredSettlement(parsed);
   const delegates = getArray(parsed, "required_delegates");
-  const requiredFindings = getArray(getRecord(parsed["required_critic_settlement"]), "findings_by_critic");
-  const summary = getString(getRecord(parsed["required_critic_settlement"]), "summary");
+  const requiredFindings = normalizeRequiredSettlementFindings(settlement);
+  const summary = requiredSettlementSummary(settlement);
   const optionalSpecialists = getArray(parsed, "optional_specialists");
   const optionalDelegates = getArray(parsed, "optional_delegates");
   const optionalSnapshots = getArray(parsed, "optional_delegate_snapshots");
@@ -446,7 +506,8 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
     );
   }
 
-  const variant = statusBadgeVariant(classification);
+  const variant = classification === "pending" ? "warning" : statusBadgeVariant(classification);
+  const classificationLabel = classification === "pending" ? "Settling" : classification;
   const compactProps = compact === undefined ? {} : { compact };
 
   return (
@@ -454,7 +515,7 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
       {...compactProps}
       icon={<ListChecks size={12} style={{ color: iconColorForVariant(variant) }} />}
       title="Verification round"
-      badge={<Badge variant={variant} compact>{classification ?? "Running"}</Badge>}
+      badge={<Badge variant={variant} compact>{classificationLabel ?? "Running"}</Badge>}
     >
       <WidgetRow compact={compact}>
         {round != null && <Badge variant="blue" compact>{`Round ${round}`}</Badge>}
@@ -467,7 +528,7 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
       {renderSeverityBadges(parsed)}
       {renderDelegateDetails({
         delegates,
-        snapshots: getArray(parsed, "delegate_snapshots"),
+        snapshots: getRequiredSettlementSnapshots(parsed, settlement),
         findings: requiredFindings,
         timedOut: undefined,
         compact,
