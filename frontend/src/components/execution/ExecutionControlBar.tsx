@@ -147,7 +147,7 @@ export function ExecutionControlBar({
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
   const isStopped = haltMode === "stopped";
-  const canPauseToggle = !isLoading && !isStopped;
+  const canPauseToggle = !isLoading;
   const statusColor = getStatusColor(runningCount, isPaused, haltMode);
   const statusState = isStopped ? "stopped" : getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
@@ -497,18 +497,18 @@ export function ExecutionControlBar({
                 size="default"
                 onClick={onPauseToggle}
                 disabled={!canPauseToggle}
-                aria-label={isStopped ? "Execution stopped" : isPaused ? "Resume execution" : "Pause execution"}
+                aria-label={isStopped ? "Start execution" : isPaused ? "Resume execution" : "Pause execution"}
                 aria-pressed={isPaused && !isStopped}
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
                   /* macOS Tahoe: flat button styling */
                   backgroundColor: isStopped
-                    ? "hsl(220 10% 18%)"
+                    ? "hsla(14 100% 60% / 0.15)"
                     : isPaused
                       ? "hsla(45 90% 55% / 0.15)"
                       : "hsl(220 10% 18%)",
                   color: isStopped
-                    ? "hsl(220 10% 45%)"
+                    ? "hsl(14 100% 68%)"
                     : isPaused
                       ? STATUS_COLORS.paused
                       : "hsl(220 10% 90%)",
@@ -519,21 +519,21 @@ export function ExecutionControlBar({
                 {isLoading ? (
                   <Loader2 className="w-[18px] h-[18px] animate-spin" />
                 ) : isStopped ? (
-                  <Square className="w-[18px] h-[18px]" />
+                  <Play className="w-[18px] h-[18px]" />
                 ) : isPaused ? (
                   <Play className="w-[18px] h-[18px]" />
                 ) : (
                   <Pause className="w-[18px] h-[18px]" />
                 )}
                 <span className="hidden sm:inline">
-                  {isStopped ? "Stopped" : isPaused ? "Resume" : "Pause"}
+                  {isStopped ? "Start" : isPaused ? "Resume" : "Pause"}
                 </span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
               <p>
                 {isStopped
-                  ? "Execution was stopped. Restart tasks manually."
+                  ? "Start execution again. Stopped tasks remain stopped until you restart them."
                   : isPaused
                   ? "Resume paused tasks and queue ⌘P"
                   : "Pause execution (running tasks will pause) ⌘P"}
@@ -568,7 +568,7 @@ export function ExecutionControlBar({
             <TooltipContent side="top">
               <p>
                 {isStopped
-                  ? "Execution was already stopped. Restart tasks manually."
+                  ? "Execution is halted. Press Start or restart a task to run ready work."
                   : canStop
                   ? "Stop all running tasks (manual restart required) ⌘⇧S"
                   : "No tasks currently running"}

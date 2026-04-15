@@ -25,6 +25,39 @@ vi.mock("@/hooks/useConfirmation", () => ({
 
 vi.mock("@/lib/tauri", () => ({
   api: {
+    execution: {
+      getStatus: vi.fn(async () => ({
+        isPaused: false,
+        haltMode: "running",
+        runningCount: 0,
+        maxConcurrent: 10,
+        globalMaxConcurrent: 20,
+        queuedCount: 0,
+        canStartTask: true,
+        ideationActive: 0,
+        ideationIdle: 0,
+        ideationWaiting: 0,
+        ideationMaxProject: 0,
+        ideationMaxGlobal: 0,
+      })),
+      resume: vi.fn(async () => ({
+        success: true,
+        status: {
+          isPaused: false,
+          haltMode: "running",
+          runningCount: 0,
+          maxConcurrent: 10,
+          globalMaxConcurrent: 20,
+          queuedCount: 0,
+          canStartTask: true,
+          ideationActive: 0,
+          ideationIdle: 0,
+          ideationWaiting: 0,
+          ideationMaxProject: 0,
+          ideationMaxGlobal: 0,
+        },
+      })),
+    },
     tasks: {
       move: vi.fn(async () => ({})),
       restart: vi.fn(async () => ({ type: "Success", task: {} })),
@@ -57,8 +90,33 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { api } from "@/lib/tauri";
 
 const mockUseTaskSteps = vi.mocked(useTaskSteps);
+const mockApiExecutionGetStatus = vi.mocked(api.execution.getStatus);
+const mockApiExecutionResume = vi.mocked(api.execution.resume);
 const mockApiTasksMove = vi.mocked(api.tasks.move);
+const mockApiTasksRestart = vi.mocked(api.tasks.restart);
 const mockApiTasksUnblock = vi.mocked(api.tasks.unblock);
+
+const runningExecutionStatus = {
+  isPaused: false,
+  haltMode: "running" as const,
+  runningCount: 0,
+  maxConcurrent: 10,
+  globalMaxConcurrent: 20,
+  queuedCount: 0,
+  canStartTask: true,
+  ideationActive: 0,
+  ideationIdle: 0,
+  ideationWaiting: 0,
+  ideationMaxProject: 0,
+  ideationMaxGlobal: 0,
+};
+
+const stoppedExecutionStatus = {
+  ...runningExecutionStatus,
+  isPaused: true,
+  haltMode: "stopped" as const,
+  canStartTask: false,
+};
 
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
@@ -95,6 +153,12 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 describe("BasicTaskDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApiExecutionGetStatus.mockResolvedValue(runningExecutionStatus);
+    mockApiExecutionResume.mockResolvedValue({
+      success: true,
+      status: runningExecutionStatus,
+    });
+    mockApiTasksRestart.mockResolvedValue({ type: "Success", task: {} });
     mockUseTaskSteps.mockReturnValue({
       data: [],
       isLoading: false,
@@ -423,6 +487,22 @@ describe("BasicTaskDetail", () => {
 
       await waitFor(() => {
         expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined, undefined);
+      });
+    });
+
+    it("resumes execution after restart when the project is globally stopped", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "failed" });
+      mockConfirmation.confirm = vi.fn(async () => true);
+      mockApiExecutionGetStatus.mockResolvedValue(stoppedExecutionStatus);
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("restart-button"));
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined, undefined);
+        expect(mockApiExecutionResume).toHaveBeenCalledWith(task.projectId);
       });
     });
   });
@@ -1078,4 +1158,3 @@ describe("BasicTaskDetail", () => {
     });
   });
 });
-

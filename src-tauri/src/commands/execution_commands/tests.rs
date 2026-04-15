@@ -3769,24 +3769,14 @@ async fn test_load_execution_halt_mode_reads_persisted_stop_state() {
 }
 
 #[tokio::test]
-async fn test_ensure_resume_allowed_rejects_stopped_halt_mode() {
-    let app_state = AppState::new_test();
-    persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped)
-        .await
-        .unwrap();
-
-    let error = ensure_resume_allowed(&app_state).await.unwrap_err();
-    assert_eq!(error, RESUME_AFTER_STOP_ERROR);
-}
-
-#[tokio::test]
-async fn test_ensure_resume_allowed_accepts_paused_halt_mode() {
+async fn test_load_execution_halt_mode_reads_persisted_paused_state() {
     let app_state = AppState::new_test();
     persist_execution_halt_mode(&app_state, ExecutionHaltMode::Paused)
         .await
         .unwrap();
 
-    ensure_resume_allowed(&app_state).await.unwrap();
+    let halt_mode = load_execution_halt_mode(&app_state).await.unwrap();
+    assert_eq!(halt_mode, ExecutionHaltMode::Paused);
 }
 
 #[tokio::test]

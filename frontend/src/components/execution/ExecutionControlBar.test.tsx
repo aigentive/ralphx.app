@@ -107,11 +107,11 @@ describe("ExecutionControlBar", () => {
       expect(screen.getByTestId("pause-toggle-button")).toHaveTextContent("Resume");
     });
 
-    it("renders disabled stopped button after stop", () => {
+    it("renders start button after stop", () => {
       renderBar({ isPaused: true, haltMode: "stopped" });
       const pauseBtn = screen.getByTestId("pause-toggle-button");
-      expect(pauseBtn).toHaveTextContent("Stopped");
-      expect(pauseBtn).toBeDisabled();
+      expect(pauseBtn).toHaveTextContent("Start");
+      expect(pauseBtn).not.toBeDisabled();
     });
 
     it("calls onPauseToggle when clicked", () => {

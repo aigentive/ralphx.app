@@ -110,7 +110,7 @@ export const executionApi = {
     ),
 
   /**
-   * Resume execution after pause (relaunches paused queued work)
+   * Resume or start execution (relaunches paused work and reopens stopped queues)
    * Phase 82: Optional projectId scopes resume to specific project
    * @param projectId - Optional project ID to resume
    * @returns Command response with success and current status

@@ -30,13 +30,6 @@ pub(super) async fn load_execution_halt_mode(
         .map_err(|e| e.to_string())
 }
 
-pub(super) async fn ensure_resume_allowed(app_state: &AppState) -> Result<(), String> {
-    if load_execution_halt_mode(app_state).await? == ExecutionHaltMode::Stopped {
-        return Err(RESUME_AFTER_STOP_ERROR.to_string());
-    }
-    Ok(())
-}
-
 pub(super) fn queued_message_to_send_options(
     message: &crate::domain::services::QueuedMessage,
 ) -> SendMessageOptions {

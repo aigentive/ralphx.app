@@ -144,7 +144,9 @@ pub async fn pause_execution(
 /// Resume execution (restores Paused tasks and allows picking up new tasks)
 /// This restores only Paused tasks (NOT Stopped) to their previous agent-active state.
 /// Uses status history to find the pre-pause state and re-runs entry actions.
-/// After restoring, triggers the scheduler to pick up waiting Ready tasks.
+/// If execution was previously Stopped, this simply reopens the scheduler gate so
+/// manually restarted Ready tasks can run again. After restoring, triggers the
+/// scheduler to pick up waiting Ready tasks.
 /// Phase 82: Optional project_id for per-project scoping.
 ///
 /// ## Resume contract
@@ -156,8 +158,8 @@ pub async fn pause_execution(
 ///
 /// ## Stopped vs Paused
 /// `Stopped` tasks are intentionally excluded. `Stopped` is terminal — requires the user
-/// to manually trigger `Retry` (→ `ready`) before the task can re-execute. Only `Paused`
-/// (non-terminal) is auto-restored by resume.
+/// to manually trigger `Retry` (→ `ready`) before the task can re-execute. `resume_execution`
+/// may still clear the global halt gate after a stop, but it never auto-restores stopped tasks.
 #[tauri::command]
 pub async fn resume_execution(
     project_id: Option<String>,
@@ -165,7 +167,7 @@ pub async fn resume_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
-    ensure_resume_allowed(&app_state).await?;
+    let previous_halt_mode = load_execution_halt_mode(&app_state).await?;
 
     // Sync runtime quota with persisted project settings before can_start_task() loops
     let project_id = project_id.map(|id| ProjectId::from_string(id));
@@ -306,7 +308,7 @@ pub async fn resume_execution(
                 "haltMode": "running",
                 "runningCount": execution_state.running_count(),
                 "maxConcurrent": execution_state.max_concurrent(),
-                "reason": "resumed",
+                "reason": if previous_halt_mode == ExecutionHaltMode::Stopped { "started" } else { "resumed" },
                 "projectId": effective_project_id.as_ref().map(|p| p.as_str()),
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }),
@@ -464,10 +466,10 @@ pub(crate) async fn determine_paused_restore_status(
 /// | | `stop_execution` | `pause_execution` |
 /// |---|---|---|
 /// | Result state | `Stopped` (terminal) | `Paused` (non-terminal) |
-/// | Auto-resume | ❌ No — user must retry | ✅ Yes — via `resume_execution` |
+/// | Auto-resume | ❌ No — user must retry individual tasks | ✅ Yes — via `resume_execution` |
 /// | Metadata written | None | `PauseReason::UserInitiated` |
 /// | `running_count` | Decremented by `on_exit` | Decremented by `on_exit` |
-/// | Restart path | `Retry` → `ready` → re-execute | `resume_execution` → previous state |
+/// | Global restart path | `resume_execution` reopens scheduling, but stopped tasks still need manual retry | `resume_execution` → previous state |
 #[tauri::command]
 pub async fn stop_execution(
     project_id: Option<String>,

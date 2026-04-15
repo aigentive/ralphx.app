@@ -70,7 +70,7 @@ export function useExecutionStatus(projectId?: string) {
 }
 
 /**
- * Hook to pause/resume execution
+ * Hook to pause/start/resume execution
  * Phase 82: Now accepts optional projectId for per-project pause/resume
  *
  * @param projectId - Optional project ID to scope pause/resume to
@@ -91,6 +91,7 @@ export function usePauseExecution(projectId?: string) {
   const queryClient = useQueryClient();
   const executionStatus = useUiStore((state) => state.executionStatus);
   const setExecutionStatus = useUiStore((state) => state.setExecutionStatus);
+  const haltMode = executionStatus.haltMode ?? (executionStatus.isPaused ? "paused" : "running");
 
   const pauseMutation = useMutation({
     mutationFn: async () => {
@@ -115,10 +116,7 @@ export function usePauseExecution(projectId?: string) {
   });
 
   const toggle = () => {
-    if (executionStatus.haltMode === "stopped") {
-      return;
-    }
-    if (executionStatus.isPaused) {
+    if (executionStatus.isPaused || haltMode === "stopped") {
       resumeMutation.mutate();
     } else {
       pauseMutation.mutate();
@@ -128,19 +126,19 @@ export function usePauseExecution(projectId?: string) {
   return {
     toggle,
     pause: () => {
-      if (executionStatus.haltMode !== "stopped") {
+      if (haltMode === "running") {
         pauseMutation.mutate();
       }
     },
     resume: () => {
-      if (executionStatus.haltMode !== "stopped") {
+      if (haltMode !== "running") {
         resumeMutation.mutate();
       }
     },
     isPending: pauseMutation.isPending || resumeMutation.isPending,
     isError: pauseMutation.isError || resumeMutation.isError,
     error: pauseMutation.error || resumeMutation.error,
-    canPauseToggle: executionStatus.haltMode !== "stopped",
+    canPauseToggle: !(pauseMutation.isPending || resumeMutation.isPending),
   };
 }
 
