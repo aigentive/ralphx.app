@@ -655,6 +655,66 @@ async fn test_reconcile_child_complete_max_rounds_needs_revision() {
 }
 
 #[tokio::test]
+async fn test_reconcile_child_complete_actionable_needs_revision_requests_auto_continue() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) =
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::NeedsRevision,
+                true,
+                1,
+                5,
+                None,
+                &[4],
+            )),
+        )
+        .await;
+    repo.update_verification_state(&parent_id, VerificationStatus::NeedsRevision, true)
+        .await
+        .unwrap();
+
+    let result = reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    match result {
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            assert_eq!(request.snapshot.status, VerificationStatus::NeedsRevision);
+            assert!(request.snapshot.in_progress);
+            assert!(
+                request
+                    .continuation_message
+                    .contains("Continue the active verification loop in this same session")
+            );
+        }
+        other => panic!("expected auto-continue outcome, got {:?}", other.map(|_| ())),
+    }
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::NeedsRevision);
+    assert!(
+        parent_after.verification_in_progress,
+        "auto-continue must keep parent verification marked in progress"
+    );
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must stay active for same-session auto-continue"
+    );
+}
+
+#[tokio::test]
 async fn test_reconcile_child_complete_crashed_mid_round() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =

@@ -31,6 +31,17 @@ use crate::domain::services::{
     emit_verification_status_changed, is_process_alive, RunningAgentRegistry,
 };
 
+#[derive(Debug, Clone)]
+pub(crate) struct VerificationAutoContinueRequest {
+    pub continuation_message: String,
+    pub snapshot: VerificationRunSnapshot,
+}
+
+pub(crate) enum ReconcileVerificationChildCompletion {
+    Terminal(ReconcileChildCompleteResult),
+    AutoContinue(VerificationAutoContinueRequest),
+}
+
 /// Configuration for the verification reconciliation service.
 #[derive(Debug, Clone, Copy)]
 pub struct VerificationReconciliationConfig {
@@ -946,15 +957,17 @@ async fn resolve_verification_parent(
 /// and emits a frontend event.
 ///
 /// Three decision branches based on native run-snapshot state:
+/// - actionable `needs_revision` + `in_progress=true` + no `convergence_reason`
+///   → keep child alive and auto-continue the loop in-place
 /// - `convergence_reason` set → map to status via `convergence_reason_to_status`
 /// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
 /// - no snapshot or empty rounds → agent completed without updates → `Unverified`
-pub async fn reconcile_verification_on_child_complete<R: Runtime>(
+pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
     parent_id: &IdeationSessionId,
     child_id: &IdeationSessionId,
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
-) -> Option<ReconcileChildCompleteResult> {
+) -> Option<ReconcileVerificationChildCompletion> {
     // Resolve parent (fetch + 3-guard check)
     let parent = match resolve_verification_parent(
         parent_id,
@@ -978,6 +991,38 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
 
     // Load the authoritative verification snapshot for this generation.
     let snapshot = load_effective_verification_view(repo, &parent).await;
+
+    if let Some(run) = snapshot.as_ref() {
+        if run.status == VerificationStatus::NeedsRevision
+            && run.in_progress
+            && run.convergence_reason.is_none()
+        {
+            tracing::info!(
+                parent_id = %parent_id.as_str(),
+                child_id = %child_id.as_str(),
+                current_round = run.current_round,
+                max_rounds = run.max_rounds,
+                gap_count = run.current_gaps.len(),
+                "Verification child exited on actionable non-terminal needs_revision; queueing in-place continuation"
+            );
+            return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                VerificationAutoContinueRequest {
+                    continuation_message: format!(
+                        "[System] Continue the active verification loop in this same session.\n\
+                         The backend-owned verification state is still actionable non-terminal \
+                         needs_revision (round {}/{}), so terminal cleanup must not end the run \
+                         yet.\n\
+                         Refresh get_plan_verification and get_session_plan, revise the plan \
+                         against the current actionable gaps, then continue to the next \
+                         verification round. Do not call complete_plan_verification again until \
+                         the backend-owned state is truly terminal with a convergence_reason.",
+                        run.current_round, run.max_rounds
+                    ),
+                    snapshot: run.clone(),
+                },
+            ));
+        }
+    }
 
     let has_convergence_reason = snapshot
         .as_ref()
@@ -1078,10 +1123,12 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     // Orphan cleanup: archive any OTHER active verification children of this parent
     archive_sibling_verification_children(repo, parent_id, Some(child_id)).await;
 
-    Some(ReconcileChildCompleteResult {
-        terminal_status,
-        parsed_snapshot: emit_snapshot,
-    })
+    Some(ReconcileVerificationChildCompletion::Terminal(
+        ReconcileChildCompleteResult {
+            terminal_status,
+            parsed_snapshot: emit_snapshot,
+        },
+    ))
 }
 
 /// Reset parent verification state when a verification child agent errors or is stopped.

@@ -883,6 +883,9 @@ export function useChatEvents({
         if (!isRelevant(payload)) return;
 
         queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(payload.conversation_id),
+        });
+        queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
         });
       })

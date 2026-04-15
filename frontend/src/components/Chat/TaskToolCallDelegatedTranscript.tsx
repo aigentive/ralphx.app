@@ -2,10 +2,8 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatKeys, useConversation } from "@/hooks/useChat";
 import { useEventBus } from "@/providers/EventProvider";
-import {
-  buildTaskCardTranscriptEntriesFromConversation,
-  TaskCardTranscriptView,
-} from "./TaskCardTranscript";
+import { TaskCardTranscriptView } from "./TaskCardTranscript";
+import { buildTaskCardTranscriptEntriesFromConversation } from "./TaskCardTranscript.utils";
 
 function FallbackText({ text }: { text: string }) {
   return (

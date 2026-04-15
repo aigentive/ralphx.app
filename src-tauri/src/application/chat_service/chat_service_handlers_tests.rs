@@ -11,7 +11,7 @@ use crate::application::{
 };
 use crate::domain::entities::{
     app_state::ExecutionHaltMode, ChatConversation, IdeationSessionId, InternalStatus, Project,
-    ProjectId, Task,
+    ProjectId, Task, VerificationStatus,
 };
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 use crate::error::AppResult;
@@ -957,6 +957,94 @@ async fn test_recovery_retry_background_context_preserves_execution_side_runtime
 
     let mut child = ctx.child;
     let _ = child.wait().await;
+}
+
+#[tokio::test]
+async fn test_handle_verification_child_completion_queues_hidden_auto_continue() {
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    let mut parent = crate::domain::entities::IdeationSession::new(project_id.clone());
+    parent.verification_status = VerificationStatus::NeedsRevision;
+    parent.verification_in_progress = true;
+    let parent_id = parent.id.clone();
+    state.ideation_session_repo.create(parent).await.unwrap();
+
+    state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &parent_id,
+            &crate::domain::entities::VerificationRunSnapshot {
+                generation: 0,
+                status: VerificationStatus::NeedsRevision,
+                in_progress: true,
+                current_round: 1,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![crate::domain::entities::VerificationRoundSnapshot {
+                    round: 1,
+                    gap_score: 4,
+                    fingerprints: vec![],
+                    gaps: vec![],
+                    parse_failed: false,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut child = crate::domain::entities::IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    state.ideation_session_repo.create(child).await.unwrap();
+
+    handle_verification_child_completion::<MockRuntime>(
+        &child_id,
+        &parent_id,
+        &state.ideation_session_repo,
+        &state.chat_conversation_repo,
+        &state.chat_message_repo,
+        &state.message_queue,
+        &None,
+        &None,
+    )
+    .await;
+
+    let queued = state
+        .message_queue
+        .get_queued(ChatContextType::Ideation, child_id.as_str());
+    assert_eq!(queued.len(), 1, "auto-continue must queue one hidden control message");
+    assert_eq!(
+        queued[0].metadata_override.as_deref(),
+        Some(VERIFICATION_AUTO_CONTINUE_METADATA)
+    );
+    assert!(
+        queued[0]
+            .content
+            .contains("Continue the active verification loop in this same session"),
+        "queued control prompt must instruct the verifier to continue the same loop"
+    );
+
+    let child_after = state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(child_after.status, crate::domain::entities::IdeationSessionStatus::Archived);
+
+    let parent_conversation = state
+        .chat_conversation_repo
+        .get_active_for_context(ChatContextType::Ideation, parent_id.as_str())
+        .await
+        .unwrap();
+    assert!(
+        parent_conversation.is_none(),
+        "auto-continue must not inject a parent-thread handoff message"
+    );
 }
 
 /// Sub-branch B: Cancelled { turns_finalized: 0, completion_tool_called: true }

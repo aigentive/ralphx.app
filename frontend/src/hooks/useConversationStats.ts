@@ -8,6 +8,25 @@ export const conversationStatsKey = (conversationId: string) =>
 
 export { buildFallbackConversationStats } from "@/lib/chat/conversation-stats";
 
+export function selectConversationStats(
+  stats: ConversationStatsResponse | null | undefined,
+  fallbackStats: ConversationStatsResponse | null,
+): ConversationStatsResponse | null {
+  if (!stats) {
+    return fallbackStats;
+  }
+
+  if (
+    fallbackStats
+    && stats.usageCoverage.effectiveTotalsSource === "none"
+    && fallbackStats.usageCoverage.effectiveTotalsSource !== "none"
+  ) {
+    return fallbackStats;
+  }
+
+  return stats;
+}
+
 export function useConversationStats(
   conversationId: string | null,
   options?: {
@@ -33,10 +52,11 @@ export function useConversationStats(
     options?.fallbackConversation,
     options?.fallbackMessages,
   );
+  const selectedStats = selectConversationStats(statsQuery.data, fallbackStats);
 
   return {
     ...statsQuery,
-    data: statsQuery.data ?? fallbackStats,
-    isLoading: statsQuery.isLoading && !fallbackStats,
+    data: selectedStats,
+    isLoading: statsQuery.isLoading && !selectedStats,
   };
 }

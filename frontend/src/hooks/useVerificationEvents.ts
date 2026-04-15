@@ -309,10 +309,14 @@ async function updateVerificationQueryCache({
       );
     }
 
-    // Fast path carries authoritative headline state, but terminal same-generation updates
-    // still need a refetch so the Verification tab can hydrate native round lineage/detail.
+    // Fast path carries authoritative headline state. For terminal same-generation updates,
+    // mark the query stale without an immediate refetch so an active Verification tab does
+    // not get clobbered by a behind-persistence response from the server.
     if (generationChanged || !inProgress) {
-      queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+      queryClient.invalidateQueries({
+        queryKey: ["verification", sessionId],
+        refetchType: generationChanged ? "active" : "none",
+      });
     }
   } else {
     // No fast path data — must invalidate to trigger refetch.

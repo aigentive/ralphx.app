@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -48,7 +48,7 @@ impl CodexCliClient {
     }
 
     fn resolve_cli(&self) -> AgentResult<(PathBuf, CodexCliCapabilities)> {
-        if self.cli_path == PathBuf::from("codex") {
+        if self.cli_path == Path::new("codex") {
             let resolved = resolve_codex_cli().map_err(AgentError::CliNotAvailable)?;
             return Ok((resolved.path, resolved.capabilities));
         }

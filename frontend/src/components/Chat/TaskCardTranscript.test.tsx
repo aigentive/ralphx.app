@@ -4,11 +4,13 @@ import type { ChatMessageResponse } from "@/api/chat";
 import type { StreamingTask } from "@/types/streaming-task";
 import type { ToolCall } from "./ToolCallIndicator";
 import {
+  TaskCardTranscriptView,
+} from "./TaskCardTranscript";
+import {
   buildTaskCardTranscriptEntriesFromConversation,
   buildTaskCardTranscriptEntryFromStreamingTask,
   buildTaskCardTranscriptEntryFromToolCall,
-  TaskCardTranscriptView,
-} from "./TaskCardTranscript";
+} from "./TaskCardTranscript.utils";
 
 function makeToolCall(overrides?: Partial<ToolCall>): ToolCall {
   return {

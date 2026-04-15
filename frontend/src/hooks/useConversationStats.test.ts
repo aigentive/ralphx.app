@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildFallbackConversationStats } from "./useConversationStats";
+import {
+  buildFallbackConversationStats,
+  selectConversationStats,
+} from "./useConversationStats";
+import type { ConversationStatsResponse } from "@/api/chat";
 import type { ChatConversation } from "@/types/chat-conversation";
 import type { ChatMessageResponse } from "@/api/chat";
 
@@ -112,5 +116,103 @@ describe("buildFallbackConversationStats", () => {
     });
     expect(stats?.usageCoverage.effectiveTotalsSource).toBe("none");
     expect(stats?.usageCoverage.providerMessageCount).toBe(0);
+  });
+});
+
+describe("selectConversationStats", () => {
+  function makeBackendStats(
+    overrides: Partial<ConversationStatsResponse> = {},
+  ): ConversationStatsResponse {
+    return {
+      conversationId: conversation.id,
+      contextType: conversation.contextType,
+      contextId: conversation.contextId,
+      providerHarness: conversation.providerHarness,
+      upstreamProvider: conversation.upstreamProvider,
+      providerProfile: conversation.providerProfile,
+      messageUsageTotals: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        estimatedUsd: null,
+      },
+      runUsageTotals: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        estimatedUsd: null,
+      },
+      effectiveUsageTotals: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        estimatedUsd: null,
+      },
+      usageCoverage: {
+        providerMessageCount: 1,
+        providerMessagesWithUsage: 0,
+        runCount: 0,
+        runsWithUsage: 0,
+        effectiveTotalsSource: "none",
+      },
+      attributionCoverage: {
+        providerMessageCount: 1,
+        providerMessagesWithAttribution: 1,
+        runCount: 0,
+        runsWithAttribution: 0,
+      },
+      byHarness: [],
+      byUpstreamProvider: [],
+      byModel: [],
+      byEffort: [],
+      ...overrides,
+    };
+  }
+
+  it("prefers richer fallback message stats when the backend payload still reports no totals", () => {
+    const fallbackStats = buildFallbackConversationStats(conversation, [
+      message({
+        id: "assistant-live",
+        inputTokens: 80,
+        outputTokens: 12,
+        cacheReadTokens: 5,
+      }),
+    ]);
+
+    const backendStats = makeBackendStats();
+
+    expect(selectConversationStats(backendStats, fallbackStats)).toEqual(fallbackStats);
+  });
+
+  it("keeps backend stats when they already have an effective totals source", () => {
+    const fallbackStats = buildFallbackConversationStats(conversation, [
+      message({
+        id: "assistant-live",
+        inputTokens: 80,
+        outputTokens: 12,
+      }),
+    ]);
+
+    const backendStats = makeBackendStats({
+      effectiveUsageTotals: {
+        inputTokens: 200,
+        outputTokens: 30,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        estimatedUsd: null,
+      },
+      usageCoverage: {
+        providerMessageCount: 1,
+        providerMessagesWithUsage: 1,
+        runCount: 0,
+        runsWithUsage: 0,
+        effectiveTotalsSource: "messages",
+      },
+    });
+
+    expect(selectConversationStats(backendStats, fallbackStats)).toEqual(backendStats);
   });
 });

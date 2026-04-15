@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow, WidgetCard, WidgetHeader } from "./shared";
+import { useVerificationStatus } from "@/hooks/useVerificationStatus";
 import {
   colors,
   getString,
@@ -43,6 +44,16 @@ type VerificationChildData = {
   agentState?: string;
   lastAssistantMessage?: string | null;
 };
+
+function getVerificationSessionId(
+  parsed: Record<string, unknown>,
+  args: Record<string, unknown> | null,
+): string | undefined {
+  return getString(parsed, "session_id")
+    ?? getString(parsed, "sessionId")
+    ?? getString(args, "session_id")
+    ?? getString(args, "sessionId");
+}
 
 function getToolType(toolName: string): VerificationTool | null {
   const name = toolName.toLowerCase();
@@ -442,10 +453,13 @@ function RunVerificationRound({ toolCall, compact }: ToolCallWidgetProps) {
 
 function RoundReport({ toolCall, compact }: ToolCallWidgetProps) {
   const parsed = parseMcpToolResult(toolCall.result);
-  const status = getString(parsed, "status");
-  const currentRound = getNumber(parsed, "current_round");
-  const gaps = getArray(parsed, "current_gaps");
-  const gapLabel = gaps?.length === 1 ? "1 gap" : `${gaps?.length ?? 0} gaps`;
+  const args = getRecord(toolCall.arguments);
+  const sessionId = getVerificationSessionId(parsed, args);
+  const { data: authoritative } = useVerificationStatus(sessionId);
+  const status = authoritative?.status ?? getString(parsed, "status");
+  const currentRound = authoritative?.currentRound ?? getNumber(parsed, "current_round");
+  const gapCount = authoritative?.gaps.length ?? getArray(parsed, "current_gaps")?.length ?? 0;
+  const gapLabel = gapCount === 1 ? "1 gap" : `${gapCount} gaps`;
 
   if (!status && toolCall.result == null) {
     return (
@@ -467,7 +481,7 @@ function RoundReport({ toolCall, compact }: ToolCallWidgetProps) {
     >
       <WidgetRow compact={compact}>
         {currentRound != null && <Badge variant="blue" compact>{`Round ${currentRound}`}</Badge>}
-        {gaps != null && <Badge variant={gaps.length > 0 ? "accent" : "success"} compact>{gapLabel}</Badge>}
+        <Badge variant={gapCount > 0 ? "accent" : "success"} compact>{gapLabel}</Badge>
       </WidgetRow>
     </VerificationCard>
   );
@@ -475,12 +489,17 @@ function RoundReport({ toolCall, compact }: ToolCallWidgetProps) {
 
 function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const parsed = parseMcpToolResult(toolCall.result);
+  const args = getRecord(toolCall.arguments);
   const raw = extractRawText(toolCall.result);
-  const status = getString(parsed, "status");
+  const sessionId = getVerificationSessionId(parsed, args);
+  const { data: authoritative } = useVerificationStatus(sessionId);
+  const status = authoritative?.status ?? getString(parsed, "status");
   const settlement = getRecord(parsed["settlement"]);
   const settlementClassification = getString(settlement, "classification");
   const settlementSummary = getString(settlement, "summary");
-  const convergence = convergenceLabel(getString(parsed, "convergence_reason"));
+  const convergence = convergenceLabel(
+    authoritative?.convergenceReason ?? getString(parsed, "convergence_reason"),
+  );
 
   if (!status && raw == null) {
     return (
@@ -528,11 +547,15 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
 
 function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const parsed = parseMcpToolResult(toolCall.result);
-  const status = getString(parsed, "status");
-  const inProgress = getBool(parsed, "in_progress");
-  const currentRound = getNumber(parsed, "current_round");
-  const maxRounds = getNumber(parsed, "max_rounds");
-  const convergenceReason = getString(parsed, "convergence_reason");
+  const args = getRecord(toolCall.arguments);
+  const sessionId = getVerificationSessionId(parsed, args);
+  const { data: authoritative } = useVerificationStatus(sessionId);
+  const status = authoritative?.status ?? getString(parsed, "status");
+  const inProgress = authoritative?.inProgress ?? getBool(parsed, "in_progress");
+  const currentRound = authoritative?.currentRound ?? getNumber(parsed, "current_round");
+  const maxRounds = authoritative?.maxRounds ?? getNumber(parsed, "max_rounds");
+  const convergenceReason =
+    authoritative?.convergenceReason ?? getString(parsed, "convergence_reason");
   const verificationChild = (parsed["verification_child"] ?? null) as VerificationChildData | null;
 
   if (!status) {

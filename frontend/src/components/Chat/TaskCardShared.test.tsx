@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTaskCardSummaryParts, getTaskCardKindLabel } from "./TaskCardShared";
+import { buildTaskCardSummaryParts, getTaskCardKindLabel } from "./TaskCardShared.utils";
 
 describe("TaskCardShared", () => {
   it("classifies task card kind labels across delegate, agent, and task names", () => {

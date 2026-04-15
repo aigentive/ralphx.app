@@ -23,9 +23,9 @@ import {
   TaskCardSummary,
 } from "./TaskCardShared";
 import {
-  buildTaskCardTranscriptEntryFromStreamingTask,
   TaskCardTranscriptView,
 } from "./TaskCardTranscript";
+import { buildTaskCardTranscriptEntryFromStreamingTask } from "./TaskCardTranscript.utils";
 import { TaskToolCallDelegatedTranscript } from "./TaskToolCallDelegatedTranscript";
 import { canonicalizeToolName } from "./tool-widgets/tool-name";
 

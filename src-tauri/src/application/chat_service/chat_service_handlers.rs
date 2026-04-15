@@ -48,6 +48,7 @@ use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
 use crate::application::reconciliation::verification_handoff;
+use crate::application::reconciliation::verification_reconciliation::ReconcileVerificationChildCompletion;
 use crate::utils::secret_redactor::redact;
 
 fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
@@ -55,6 +56,83 @@ fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
         context_type,
         ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project
     )
+}
+
+const VERIFICATION_AUTO_CONTINUE_METADATA: &str = r#"{"resume_in_place":true}"#;
+
+fn queue_verification_auto_continue(
+    message_queue: &Arc<MessageQueue>,
+    child_id: &IdeationSessionId,
+    continuation_message: String,
+) {
+    let mut queued = crate::domain::services::QueuedMessage::new(continuation_message);
+    queued.metadata_override = Some(VERIFICATION_AUTO_CONTINUE_METADATA.to_string());
+    message_queue.queue_front_existing(ChatContextType::Ideation, child_id.as_str(), queued);
+}
+
+async fn handle_verification_child_completion<R: Runtime>(
+    child_id: &IdeationSessionId,
+    parent_id: &IdeationSessionId,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    message_queue: &Arc<MessageQueue>,
+    app_handle: &Option<AppHandle<R>>,
+    verification_child_registry: &Option<
+        Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
+    >,
+) {
+    let reconcile_result = crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
+        parent_id,
+        child_id,
+        ideation_session_repo,
+        app_handle.as_ref(),
+    )
+    .await;
+
+    match reconcile_result {
+        Some(ReconcileVerificationChildCompletion::Terminal(result)) => {
+            verification_handoff::maybe_inject_verification_result_message(
+                parent_id,
+                &result,
+                conversation_repo,
+                chat_message_repo,
+                message_queue,
+            )
+            .await;
+
+            if let Some(registry) = verification_child_registry {
+                tracing::info!(
+                    context_id = child_id.as_str(),
+                    "Sending SIGTERM to verification child process after terminal reconciliation"
+                );
+                registry.remove_and_kill(child_id.as_str());
+            }
+        }
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            queue_verification_auto_continue(
+                message_queue,
+                child_id,
+                request.continuation_message,
+            );
+            tracing::info!(
+                context_id = child_id.as_str(),
+                current_round = request.snapshot.current_round,
+                max_rounds = request.snapshot.max_rounds,
+                gap_count = request.snapshot.current_gaps.len(),
+                "Queued hidden resume-in-place continuation for actionable non-terminal verification state"
+            );
+
+            if let Some(registry) = verification_child_registry {
+                tracing::info!(
+                    context_id = child_id.as_str(),
+                    "Sending SIGTERM to verification child process before in-place verification continuation"
+                );
+                registry.remove_and_kill(child_id.as_str());
+            }
+        }
+        None => {}
+    }
 }
 
 /// Returns true if all steps for `task_id` are Completed or Skipped (and at least one
@@ -963,37 +1041,17 @@ pub(super) async fn handle_stream_success<R: Runtime>(
             Ok(Some(child_session)) => {
                 if child_session.session_purpose == SessionPurpose::Verification {
                     if let Some(parent_id) = child_session.parent_session_id {
-                        let reconcile_result = crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
-                            &parent_id,
+                        handle_verification_child_completion(
                             &child_id,
+                            &parent_id,
                             ideation_session_repo,
-                            app_handle.as_ref(),
+                            conversation_repo,
+                            chat_message_repo,
+                            message_queue,
+                            app_handle,
+                            verification_child_registry,
                         )
                         .await;
-
-                        // Synthesize and inject <verification-result> handoff message
-                        // when reconcile returns NeedsRevision and the dedup guard allows it.
-                        // Fire-and-forget: errors are logged but never block the handler.
-                        if let Some(result) = reconcile_result {
-                            verification_handoff::maybe_inject_verification_result_message(
-                                &parent_id,
-                                &result,
-                                conversation_repo,
-                                chat_message_repo,
-                                message_queue,
-                            )
-                            .await;
-
-                            // Fix A: Kill the lingering verification child process after
-                            // terminal reconciliation so the 600s idle timeout cannot fire.
-                            if let Some(registry) = verification_child_registry {
-                                tracing::info!(
-                                    context_id,
-                                    "Sending SIGTERM to verification child process after terminal reconciliation"
-                                );
-                                registry.remove_and_kill(context_id);
-                            }
-                        }
                     }
                 }
             }

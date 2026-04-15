@@ -87,7 +87,7 @@ pub fn build_conversation_stats_response(
     messages: &[ChatMessage],
     runs: &[AgentRun],
 ) -> ConversationStatsResponse {
-    let aggregates = build_usage_aggregates(&[conversation.clone()], messages, runs);
+    let aggregates = build_usage_aggregates(std::slice::from_ref(conversation), messages, runs);
 
     ConversationStatsResponse {
         conversation_id: conversation.id.as_str(),

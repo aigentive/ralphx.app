@@ -23,9 +23,9 @@ import {
   extractTaskStats,
 } from "./TaskToolCallCard.utils";
 import {
-  buildTaskCardTranscriptEntryFromToolCall,
   TaskCardTranscriptView,
 } from "./TaskCardTranscript";
+import { buildTaskCardTranscriptEntryFromToolCall } from "./TaskCardTranscript.utils";
 import {
   formatProviderModelEffortLabel,
 } from "./provider-harness";

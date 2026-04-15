@@ -870,7 +870,7 @@ describe("useChatEvents", () => {
   });
 
   describe("agent:usage_updated", () => {
-    it("invalidates conversation stats during a live turn", () => {
+    it("invalidates both conversation stats and the conversation transcript during a live turn", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -883,6 +883,9 @@ describe("useChatEvents", () => {
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversations", CONV_ID],
       });
     });
   });

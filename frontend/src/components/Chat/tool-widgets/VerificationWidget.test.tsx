@@ -1,8 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { VerificationWidget } from "./VerificationWidget";
 import { getToolCallWidget } from "./registry";
 import type { ToolCall } from "./shared.constants";
+
+const mockUseVerificationStatus = vi.fn(() => ({ data: undefined }));
+
+vi.mock("@/hooks/useVerificationStatus", () => ({
+  useVerificationStatus: (sessionId: string | undefined) => mockUseVerificationStatus(sessionId),
+}));
 
 function makeToolCall(name: string, overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -18,6 +24,11 @@ function mcpWrap(obj: unknown): unknown {
 }
 
 describe("VerificationWidget", () => {
+  beforeEach(() => {
+    mockUseVerificationStatus.mockReset();
+    mockUseVerificationStatus.mockReturnValue({ data: undefined });
+  });
+
   describe("backend-owned verifier flow widgets", () => {
     it("renders enrichment progress with specialist status instead of raw payload fallback", () => {
       const toolCall = makeToolCall("mcp__ralphx__run_verification_enrichment", {
@@ -137,6 +148,39 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("1 gap")).toBeInTheDocument();
     });
 
+    it("prefers authoritative live state over stale round report payloads", () => {
+      mockUseVerificationStatus.mockReturnValue({
+        data: {
+          sessionId: "session-1",
+          status: "needs_revision",
+          inProgress: false,
+          currentRound: 2,
+          maxRounds: 5,
+          convergenceReason: "max_rounds",
+          gaps: [{ severity: "high", category: "api", description: "fresh gap" }],
+          rounds: [],
+          roundDetails: [],
+        },
+      });
+
+      const toolCall = makeToolCall("mcp__ralphx__report_verification_round", {
+        arguments: { round: 1 },
+        result: mcpWrap({
+          session_id: "session-1",
+          status: "reviewing",
+          in_progress: true,
+          current_round: 1,
+          current_gaps: [],
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("needs_revision")).toBeInTheDocument();
+      expect(screen.getByText("Round 2")).toBeInTheDocument();
+      expect(screen.getByText("1 gap")).toBeInTheDocument();
+      expect(screen.queryByText("reviewing")).not.toBeInTheDocument();
+    });
+
     it("renders terminal cleanup outcome including infra settlement summary", () => {
       const toolCall = makeToolCall("mcp__ralphx__complete_plan_verification", {
         arguments: { status: "needs_revision" },
@@ -156,6 +200,40 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("Agent error")).toBeInTheDocument();
       expect(screen.getByText("Required verification findings were missing.")).toBeInTheDocument();
     });
+
+    it("prefers authoritative live state over stale final cleanup payloads", () => {
+      mockUseVerificationStatus.mockReturnValue({
+        data: {
+          sessionId: "session-1",
+          status: "needs_revision",
+          inProgress: false,
+          currentRound: 2,
+          maxRounds: 5,
+          convergenceReason: "max_rounds",
+          gaps: [{ severity: "high", category: "api", description: "fresh gap" }],
+          rounds: [],
+          roundDetails: [],
+        },
+      });
+
+      const toolCall = makeToolCall("mcp__ralphx__complete_plan_verification", {
+        arguments: { status: "needs_revision" },
+        result: mcpWrap({
+          session_id: "session-1",
+          status: "unverified",
+          convergence_reason: "agent_error",
+          settlement: {
+            classification: "infra_failure",
+            summary: "Required verification findings were missing.",
+          },
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("needs_revision")).toBeInTheDocument();
+      expect(screen.getByText("Max rounds")).toBeInTheDocument();
+      expect(screen.queryByText("Agent error")).not.toBeInTheDocument();
+    });
   });
 
   describe("legacy verification tool cleanup", () => {
@@ -165,6 +243,37 @@ describe("VerificationWidget", () => {
   });
 
   describe("GetVerification (get_plan_verification)", () => {
+    it("prefers authoritative live verification state over stale tool payloads", () => {
+      mockUseVerificationStatus.mockReturnValue({
+        data: {
+          sessionId: "session-1",
+          status: "needs_revision",
+          inProgress: false,
+          currentRound: 2,
+          maxRounds: 5,
+          convergenceReason: "max_rounds",
+          gaps: [],
+          rounds: [],
+          roundDetails: [],
+        },
+      });
+
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({
+          session_id: "session-1",
+          status: "reviewing",
+          in_progress: true,
+          current_round: 1,
+          max_rounds: 5,
+        }),
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("needs_revision")).toBeInTheDocument();
+      expect(screen.getByText("Round 2/5")).toBeInTheDocument();
+      expect(screen.queryByText("reviewing")).not.toBeInTheDocument();
+    });
+
     it("shows loading state when result has no status", () => {
       const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
         result: mcpWrap({}),

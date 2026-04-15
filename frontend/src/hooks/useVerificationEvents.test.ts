@@ -374,7 +374,10 @@ describe("useVerificationEvents — race condition fix", () => {
     ];
     expect(cacheData.generation).toBe(2);
     expect(cacheData.currentRound).toBe(1);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["verification", SESSION_ID] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["verification", SESSION_ID],
+      refetchType: "active",
+    });
   });
 
   it("(8) reset event (status=unverified) allowed even when round regresses below cached", async () => {
@@ -469,7 +472,7 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(cacheData.planVersion).toBeUndefined();
   });
 
-  it("(14) terminal fast path invalidates verification query even when generation is unchanged", async () => {
+  it("(14) terminal fast path marks the verification query stale without immediate refetch when generation is unchanged", async () => {
     mockGetQueryData = vi.fn().mockReturnValue({
       generation: 1,
       currentRound: 1,
@@ -488,6 +491,7 @@ describe("useVerificationEvents — race condition fix", () => {
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["verification", SESSION_ID],
+      refetchType: "none",
     });
   });
 });
