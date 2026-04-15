@@ -40,10 +40,7 @@ fn make_project(repo_path: &str) -> Project {
     p
 }
 
-fn make_task_with_branch_and_meta(
-    task_branch: &str,
-    metadata: Option<serde_json::Value>,
-) -> Task {
+fn make_task_with_branch_and_meta(task_branch: &str, metadata: Option<serde_json::Value>) -> Task {
     let mut t = Task::new(
         ProjectId::from_string("proj-1".to_string()),
         "Test task".into(),
@@ -126,10 +123,7 @@ fn setup_conflicting_git_repo() -> RealGitRepo {
         .current_dir(path)
         .output();
 
-    RealGitRepo {
-        dir,
-        task_branch,
-    }
+    RealGitRepo { dir, task_branch }
 }
 
 // ==================
@@ -151,6 +145,7 @@ async fn test_fresh_task_branch_passes_silently() {
         &project,
         "integration-fresh-task",
         None, // no plan branch — skip plan check
+        None,
         None,
         None,
         "executing",
@@ -200,6 +195,7 @@ async fn test_stale_task_branch_routes_to_merging() {
         None, // no plan branch → source check uses main as target
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -223,7 +219,10 @@ async fn test_stale_task_branch_routes_to_merging() {
                 freshness_metadata.source_update_conflict,
                 "source_update_conflict must be true"
             );
-            assert!(!freshness_metadata.plan_update_conflict, "plan_update_conflict must be false");
+            assert!(
+                !freshness_metadata.plan_update_conflict,
+                "plan_update_conflict must be false"
+            );
             assert_eq!(
                 freshness_metadata.freshness_conflict_count, 1,
                 "conflict count must be incremented to 1"
@@ -263,6 +262,7 @@ async fn test_freshness_disabled_skips_check() {
         &project,
         "integration-disabled",
         Some("plan/any-plan"),
+        None,
         None,
         None,
         "executing",
@@ -306,11 +306,16 @@ async fn test_fresh_branch_updates_last_check_timestamp() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
-    assert!(result1.is_ok(), "First call must succeed. Got: {:?}", result1);
+    assert!(
+        result1.is_ok(),
+        "First call must succeed. Got: {:?}",
+        result1
+    );
     let meta1 = result1.unwrap();
     let ts1 = meta1
         .last_freshness_check_at
@@ -331,11 +336,16 @@ async fn test_fresh_branch_updates_last_check_timestamp() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
-    assert!(result2.is_ok(), "Second call must succeed. Got: {:?}", result2);
+    assert!(
+        result2.is_ok(),
+        "Second call must succeed. Got: {:?}",
+        result2
+    );
     let meta2 = result2.unwrap();
     let ts2 = meta2
         .last_freshness_check_at
@@ -375,11 +385,16 @@ async fn test_skip_window_prevents_recheck() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg_no_skip,
     )
     .await;
-    assert!(result1.is_ok(), "First call must succeed. Got: {:?}", result1);
+    assert!(
+        result1.is_ok(),
+        "First call must succeed. Got: {:?}",
+        result1
+    );
     let meta1 = result1.unwrap();
     let original_ts = meta1
         .last_freshness_check_at
@@ -401,6 +416,7 @@ async fn test_skip_window_prevents_recheck() {
         &task2,
         &project,
         "integration-skip-window-2",
+        None,
         None,
         None,
         None,

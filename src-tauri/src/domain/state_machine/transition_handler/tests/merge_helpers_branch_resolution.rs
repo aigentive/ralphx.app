@@ -3,10 +3,11 @@
 // Extracted from side_effects.rs (lines 5722–6106).
 
 use super::super::merge_helpers::{
-    discover_and_attach_task_branch, resolve_merge_branches, resolve_task_base_branch,
+    discover_and_attach_task_branch, resolve_effective_base_branch, resolve_merge_branches,
+    resolve_task_base_branch,
 };
 use super::helpers::*;
-use crate::domain::entities::{PlanBranchStatus, TaskId};
+use crate::domain::entities::{ExecutionPlanId, PlanBranchStatus, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};
 use std::sync::Arc;
@@ -167,6 +168,59 @@ async fn resolve_task_base_branch_returns_default_when_no_matching_branch() {
     assert_eq!(result, "main");
 }
 
+#[tokio::test]
+async fn resolve_task_base_branch_uses_execution_plan_id_without_session_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_path = tmp.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["branch", "ralphx/test/plan-exec-id"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    let mut project = make_project(Some("main"));
+    project.working_directory = repo_path.to_string_lossy().to_string();
+
+    let mut task = make_task(None, None);
+    task.execution_plan_id = Some(ExecutionPlanId::from_string("exec-123"));
+    task.ideation_session_id = None;
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_plan_branch(
+        "art-exec-id",
+        "ralphx/test/plan-exec-id",
+        PlanBranchStatus::Active,
+        None,
+    );
+    pb.execution_plan_id = Some(ExecutionPlanId::from_string("exec-123"));
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let result = resolve_task_base_branch(&task, &project, &repo, &None, &None, &None).await;
+    assert_eq!(result, "ralphx/test/plan-exec-id");
+}
+
 // ==================
 // stale merge_task_id cleanup tests
 // ==================
@@ -213,7 +267,8 @@ async fn resolve_task_base_branch_clears_stale_merge_task_id_when_task_deleted()
     let plan_opt: Option<Arc<dyn PlanBranchRepository>> = Some(plan_repo.clone());
     let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
 
-    let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt, &None, &None).await;
+    let result =
+        resolve_task_base_branch(&task, &project, &plan_opt, &task_opt, &None, &None).await;
     // Fix D: merged branches now fall back to project base (no resurrection)
     assert_eq!(result, "main");
 }
@@ -255,13 +310,17 @@ async fn resolve_task_base_branch_keeps_valid_merge_task_id() {
 
     // Create the merge task in task repo so it exists
     let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-    let merge_task = make_task_with_status("existing-merge-task", crate::domain::entities::InternalStatus::Blocked);
+    let merge_task = make_task_with_status(
+        "existing-merge-task",
+        crate::domain::entities::InternalStatus::Blocked,
+    );
     task_repo.create(merge_task).await.unwrap();
 
     let plan_opt: Option<Arc<dyn PlanBranchRepository>> = Some(plan_repo.clone());
     let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
 
-    let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt, &None, &None).await;
+    let result =
+        resolve_task_base_branch(&task, &project, &plan_opt, &task_opt, &None, &None).await;
     // Fix D: merged branches now fall back to project base (no resurrection)
     assert_eq!(result, "main");
 }
@@ -521,6 +580,57 @@ async fn resolve_merge_branches_merge_task_uses_override_as_target() {
     assert_eq!(source, "ralphx/test/plan-override");
     // Override takes precedence over project base_branch ("main")
     assert_eq!(target, "develop");
+}
+
+#[tokio::test]
+async fn resolve_effective_base_branch_uses_plan_source_branch_for_execution_freshness() {
+    let project = make_project(Some("main"));
+    let mut task = make_task_with_session(
+        Some("art-source"),
+        Some("ralphx/test/task-source"),
+        Some("sess-1"),
+    );
+    task.execution_plan_id = Some(ExecutionPlanId::from_string("exec-source"));
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_plan_branch(
+        "art-source",
+        "ralphx/test/plan-source",
+        PlanBranchStatus::Active,
+        None,
+    );
+    pb.execution_plan_id = Some(ExecutionPlanId::from_string("exec-source"));
+    pb.source_branch = "release/2026-04".to_string();
+    pb.base_branch_override = Some("release/2026-04".to_string());
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let result = resolve_effective_base_branch(&task, &project, &repo, None).await;
+    assert_eq!(result, "release/2026-04");
+}
+
+#[tokio::test]
+async fn resolve_effective_base_branch_uses_override_for_merge_task() {
+    let project = make_project(Some("main"));
+    let mut task = make_task(None, None);
+    task.id = TaskId::from_string("merge-task-effective-base".to_string());
+    task.execution_plan_id = Some(ExecutionPlanId::from_string("exec-effective-base"));
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_plan_branch(
+        "art-effective-base",
+        "ralphx/test/plan-effective-base",
+        PlanBranchStatus::Active,
+        Some("merge-task-effective-base"),
+    );
+    pb.execution_plan_id = Some(ExecutionPlanId::from_string("exec-effective-base"));
+    pb.source_branch = "release/2026-04".to_string();
+    pb.base_branch_override = Some("develop".to_string());
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let result = resolve_effective_base_branch(&task, &project, &repo, Some("develop")).await;
+    assert_eq!(result, "develop");
 }
 
 #[tokio::test]

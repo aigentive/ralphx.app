@@ -291,7 +291,12 @@ impl<'a> TransitionHandler<'a> {
                     &task,
                     &project,
                     task_id_str,
-                    plan_branch.as_deref(),
+                    plan_branch
+                        .as_ref()
+                        .map(|branch| branch.branch_name.as_str()),
+                    plan_branch
+                        .as_ref()
+                        .map(|branch| branch.source_branch.as_str()),
                     app_handle,
                     activity_event_repo,
                     stage,

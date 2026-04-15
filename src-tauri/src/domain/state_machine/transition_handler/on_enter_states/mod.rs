@@ -12,14 +12,15 @@ use super::super::machine::State;
 use super::super::types::FailedData;
 use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
-    compute_merge_worktree_path, compute_task_worktree_path,
-    is_merge_worktree_path, resolve_task_base_branch, restore_task_worktree, slugify,
+    compute_merge_worktree_path, compute_task_worktree_path, is_merge_worktree_path,
+    resolve_task_base_branch, resolve_task_plan_branch_record, restore_task_worktree, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::GitService;
-use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::plan_branch::PlanBranchId;
+use crate::domain::entities::task_metadata::StopRetryingReason;
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
@@ -27,7 +28,6 @@ use crate::domain::entities::{
     MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     Project, ProjectId, Task, TaskCategory, TaskId, TaskStepStatus,
 };
-use crate::domain::entities::task_metadata::StopRetryingReason;
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::domain::services::github_service::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
@@ -46,13 +46,12 @@ async fn get_task_plan_branch(
     task: &crate::domain::entities::Task,
     project: &crate::domain::entities::Project,
     plan_branch_repo: &Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
-    task_repo: &Option<Arc<dyn TaskRepository>>,
-) -> Option<String> {
-    let resolved = resolve_task_base_branch(task, project, plan_branch_repo, task_repo, &None, &None).await;
-    // resolve_task_base_branch returns the plan branch for plan tasks, or project base otherwise.
-    // We only want the plan branch — check if it's different from project base.
+    _task_repo: &Option<Arc<dyn TaskRepository>>,
+) -> Option<crate::domain::entities::PlanBranch> {
+    let plan_branch_repo = plan_branch_repo.as_ref()?;
+    let resolved = resolve_task_plan_branch_record(task, plan_branch_repo).await?;
     let project_base = project.base_branch.as_deref().unwrap_or("main");
-    if resolved != project_base {
+    if resolved.branch_name != project_base {
         Some(resolved)
     } else {
         None
@@ -85,7 +84,10 @@ async fn apply_freshness_result(
             }
             Ok(())
         }
-        Err(FreshnessAction::RouteToMerging { mut freshness_metadata, .. }) => {
+        Err(FreshnessAction::RouteToMerging {
+            mut freshness_metadata,
+            ..
+        }) => {
             // INVARIANT: freshness_count_incremented_by signals to the corrective handler
             // (task_transition_service.rs) that freshness_conflict_count was already
             // incremented by ensure_branches_fresh(). The conflict marker scan path does
@@ -135,11 +137,7 @@ async fn create_fresh_branch_and_worktree(
     pr_creation_guard: &Option<Arc<dashmap::DashMap<PlanBranchId, ()>>>,
     github_service: &Option<Arc<dyn GithubServiceTrait>>,
 ) -> AppResult<(String, std::path::PathBuf)> {
-    let branch = format!(
-        "ralphx/{}/task-{}",
-        slugify(&project.name),
-        task_id_str
-    );
+    let branch = format!("ralphx/{}/task-{}", slugify(&project.name), task_id_str);
     let resolved_base = resolve_task_base_branch(
         task,
         project,
@@ -162,8 +160,7 @@ async fn create_fresh_branch_and_worktree(
     {
         return Err(AppError::ExecutionBlocked(format!(
             "{}: structural: base branch '{}' does not exist",
-            GIT_ISOLATION_ERROR_PREFIX,
-            base_branch
+            GIT_ISOLATION_ERROR_PREFIX, base_branch
         )));
     }
 
@@ -203,9 +200,7 @@ async fn create_fresh_branch_and_worktree(
         Ok(_) => Ok((branch, worktree_path_buf)),
         Err(e) => Err(AppError::ExecutionBlocked(format!(
             "{}: could not create worktree at '{}': {}",
-            GIT_ISOLATION_ERROR_PREFIX,
-            worktree_path_str,
-            e
+            GIT_ISOLATION_ERROR_PREFIX, worktree_path_str, e
         ))),
     }
 }
