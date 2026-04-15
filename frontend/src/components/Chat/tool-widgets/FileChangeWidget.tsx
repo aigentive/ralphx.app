@@ -30,6 +30,7 @@ function parseChanges(toolCall: ToolCallWidgetProps["toolCall"]): FileChangeEntr
 
 function kindLabel(kind?: string): string {
   switch (kind) {
+    case "add":
     case "create":
       return "created";
     case "delete":

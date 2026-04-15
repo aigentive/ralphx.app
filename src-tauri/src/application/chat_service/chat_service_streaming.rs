@@ -21,8 +21,8 @@ use crate::domain::entities::{
     ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository,
-    ChatMessageRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    TaskRepository,
 };
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
@@ -31,12 +31,12 @@ use crate::infrastructure::agents::claude::{
 };
 use crate::infrastructure::agents::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_thread_id, extract_codex_tool_call_snapshot, extract_codex_usage,
-    parse_codex_event_line, CodexToolCallPhase,
+    extract_codex_file_change_snapshot, extract_codex_thread_id, extract_codex_tool_call_snapshot,
+    extract_codex_usage, parse_codex_event_line, CodexFileChange, CodexFileChangeSnapshot,
+    CodexToolCallPhase, CodexToolCallSnapshot,
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::utils::truncate_str;
 use super::chat_service_errors::StreamError;
 use super::chat_service_types::AgentUsageUpdatedPayload;
 use super::streaming_state_cache::{CachedStreamingTask, CachedToolCall, StreamingStateCache};
@@ -44,6 +44,7 @@ use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
+use crate::utils::truncate_str;
 
 #[doc(hidden)]
 pub(crate) fn stream_mode_for_harness(harness: AgentHarnessKind) -> HarnessStreamMode {
@@ -203,7 +204,9 @@ async fn persist_assistant_message_usage(
         return;
     }
 
-    if let (Some(repo), Some(message_id)) = (chat_message_repo.as_ref(), assistant_message_id.as_ref()) {
+    if let (Some(repo), Some(message_id)) =
+        (chat_message_repo.as_ref(), assistant_message_id.as_ref())
+    {
         let _ = repo
             .update_usage(&ChatMessageId::from_string(message_id.clone()), usage)
             .await;
@@ -235,7 +238,9 @@ async fn persist_assistant_message_snapshot(
     tool_calls: &[ToolCall],
     content_blocks: &[ContentBlockItem],
 ) {
-    if let (Some(repo), Some(message_id)) = (chat_message_repo.as_ref(), assistant_message_id.as_ref()) {
+    if let (Some(repo), Some(message_id)) =
+        (chat_message_repo.as_ref(), assistant_message_id.as_ref())
+    {
         let tool_calls_json = serde_json::to_string(tool_calls).ok();
         let content_blocks_json = serde_json::to_string(content_blocks).ok();
         let _ = repo
@@ -256,7 +261,10 @@ fn codex_tool_call_content_block(tool_call: &ToolCall) -> ContentBlockItem {
         arguments: tool_call.arguments.clone(),
         result: tool_call.result.clone(),
         parent_tool_use_id: tool_call.parent_tool_use_id.clone(),
-        diff_context: None,
+        diff_context: tool_call
+            .diff_context
+            .as_ref()
+            .and_then(|context| serde_json::to_value(context).ok()),
     }
 }
 
@@ -294,10 +302,9 @@ fn upsert_codex_tool_call_snapshot(
             *existing_block = codex_tool_call_content_block(&tool_call);
             return;
         }
-    } else if let Some(existing) = tool_calls
-        .iter_mut()
-        .find(|existing| existing.name == tool_call.name && existing.arguments == tool_call.arguments)
-    {
+    } else if let Some(existing) = tool_calls.iter_mut().find(|existing| {
+        existing.name == tool_call.name && existing.arguments == tool_call.arguments
+    }) {
         if tool_call.result.is_some() || existing.result.is_none() {
             existing.result = tool_call.result.clone();
         }
@@ -313,6 +320,219 @@ fn upsert_codex_tool_call_snapshot(
     }
 
     content_blocks.push(codex_tool_call_content_block(&tool_call));
+}
+
+#[derive(Debug, Clone)]
+struct PendingCodexFileChange {
+    path: String,
+    kind: String,
+    old_content: Option<String>,
+}
+
+fn codex_file_change_tool_call_id(item_id: Option<&str>, path: &str, index: usize) -> String {
+    item_id
+        .map(|id| format!("{id}:{index}"))
+        .unwrap_or_else(|| format!("codex-file-change:{path}:{index}"))
+}
+
+fn codex_file_change_arguments(change: &CodexFileChange) -> serde_json::Value {
+    serde_json::json!({
+        "changes": [
+            {
+                "path": change.path,
+                "kind": change.kind,
+            }
+        ]
+    })
+}
+
+fn codex_file_change_started_snapshot(
+    item_id: Option<&str>,
+    change: &CodexFileChange,
+    index: usize,
+) -> CodexToolCallSnapshot {
+    CodexToolCallSnapshot {
+        phase: CodexToolCallPhase::Started,
+        tool_call: ToolCall {
+            id: Some(codex_file_change_tool_call_id(item_id, &change.path, index)),
+            name: "file_change".to_string(),
+            arguments: codex_file_change_arguments(change),
+            result: None,
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+    }
+}
+
+fn codex_file_change_completed_snapshot(
+    tool_id: String,
+    change: PendingCodexFileChange,
+    status: Option<&str>,
+) -> CodexToolCallSnapshot {
+    let status_result = serde_json::json!({
+        "status": status,
+        "kind": change.kind,
+    });
+
+    let maybe_new_content = std::fs::read_to_string(&change.path).ok();
+    let tool_call = match change.kind.as_str() {
+        "update" => {
+            if let Some(new_content) = maybe_new_content {
+                if let Some(old_content) = change.old_content.clone() {
+                    ToolCall {
+                        id: Some(tool_id),
+                        name: "edit".to_string(),
+                        arguments: serde_json::json!({
+                            "file_path": change.path,
+                            "old_string": old_content,
+                            "new_string": new_content,
+                        }),
+                        result: Some(status_result),
+                        parent_tool_use_id: None,
+                        diff_context: Some(DiffContext {
+                            old_content: change.old_content,
+                            file_path: change.path,
+                        }),
+                        stats: None,
+                    }
+                } else {
+                    ToolCall {
+                        id: Some(tool_id),
+                        name: "write".to_string(),
+                        arguments: serde_json::json!({
+                            "file_path": change.path,
+                            "content": new_content,
+                        }),
+                        result: Some(status_result),
+                        parent_tool_use_id: None,
+                        diff_context: Some(DiffContext {
+                            old_content: None,
+                            file_path: change.path,
+                        }),
+                        stats: None,
+                    }
+                }
+            } else {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "file_change".to_string(),
+                    arguments: serde_json::json!({
+                        "changes": [
+                            {
+                                "path": change.path,
+                                "kind": change.kind,
+                            }
+                        ]
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: None,
+                    stats: None,
+                }
+            }
+        }
+        "add" | "create" => {
+            if let Some(new_content) = maybe_new_content {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "write".to_string(),
+                    arguments: serde_json::json!({
+                        "file_path": change.path,
+                        "content": new_content,
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: Some(DiffContext {
+                        old_content: None,
+                        file_path: change.path,
+                    }),
+                    stats: None,
+                }
+            } else {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "file_change".to_string(),
+                    arguments: serde_json::json!({
+                        "changes": [
+                            {
+                                "path": change.path,
+                                "kind": change.kind,
+                            }
+                        ]
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: None,
+                    stats: None,
+                }
+            }
+        }
+        _ => ToolCall {
+            id: Some(tool_id),
+            name: "file_change".to_string(),
+            arguments: serde_json::json!({
+                "changes": [
+                    {
+                        "path": change.path,
+                        "kind": change.kind,
+                    }
+                ]
+            }),
+            result: Some(status_result),
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+    };
+
+    CodexToolCallSnapshot {
+        phase: CodexToolCallPhase::Completed,
+        tool_call,
+    }
+}
+
+fn resolve_codex_file_change_tool_call_snapshots(
+    snapshot: CodexFileChangeSnapshot,
+    pending_changes: &mut HashMap<String, PendingCodexFileChange>,
+) -> Vec<CodexToolCallSnapshot> {
+    snapshot
+        .changes
+        .into_iter()
+        .enumerate()
+        .map(|(index, change)| {
+            let tool_id =
+                codex_file_change_tool_call_id(snapshot.id.as_deref(), &change.path, index);
+            match snapshot.phase {
+                CodexToolCallPhase::Started => {
+                    pending_changes.insert(
+                        tool_id.clone(),
+                        PendingCodexFileChange {
+                            path: change.path.clone(),
+                            kind: change.kind.clone(),
+                            old_content: std::fs::read_to_string(&change.path).ok(),
+                        },
+                    );
+                    codex_file_change_started_snapshot(snapshot.id.as_deref(), &change, index)
+                }
+                CodexToolCallPhase::Completed => {
+                    let pending =
+                        pending_changes
+                            .remove(&tool_id)
+                            .unwrap_or(PendingCodexFileChange {
+                                path: change.path,
+                                kind: change.kind,
+                                old_content: None,
+                            });
+                    codex_file_change_completed_snapshot(
+                        tool_id,
+                        pending,
+                        snapshot.status.as_deref(),
+                    )
+                }
+            }
+        })
+        .collect()
 }
 
 fn add_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
@@ -931,7 +1151,12 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] ToolCallCompleted"
                         );
                     }
-                    StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                    StreamEvent::TeamMessageSent {
+                        sender,
+                        recipient,
+                        content,
+                        message_type,
+                    } => {
                         tracing::info!(
                             conversation_id = %conversation_id_str,
                             sender = %sender,
@@ -948,7 +1173,11 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TeamCreated"
                         );
                     }
-                    StreamEvent::TeammateSpawned { teammate_name, team_name, .. } => {
+                    StreamEvent::TeammateSpawned {
+                        teammate_name,
+                        team_name,
+                        ..
+                    } => {
                         tracing::info!(
                             conversation_id = %conversation_id_str,
                             teammate_name = %teammate_name,
@@ -966,7 +1195,13 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TurnComplete — accumulated content summary"
                         );
                     }
-                    StreamEvent::TaskStarted { tool_use_id, description, teammate_name, team_name, .. } => {
+                    StreamEvent::TaskStarted {
+                        tool_use_id,
+                        description,
+                        teammate_name,
+                        team_name,
+                        ..
+                    } => {
                         tracing::debug!(
                             conversation_id = %conversation_id_str,
                             tool_use_id = %tool_use_id,
@@ -976,7 +1211,11 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TaskStarted"
                         );
                     }
-                    StreamEvent::TaskCompleted { tool_use_id, agent_id, .. } => {
+                    StreamEvent::TaskCompleted {
+                        tool_use_id,
+                        agent_id,
+                        ..
+                    } => {
                         tracing::debug!(
                             conversation_id = %conversation_id_str,
                             tool_use_id = %tool_use_id,
@@ -1003,15 +1242,14 @@ pub async fn process_stream_background<R: Runtime>(
                     )
                 {
                     if let Some(ref repo) = chat_message_repo {
-                        let msg =
-                            super::chat_service_context::create_assistant_message(
-                                context_type,
-                                context_id,
-                                "",
-                                conversation_id.clone(),
-                                &[],
-                                &[],
-                            );
+                        let msg = super::chat_service_context::create_assistant_message(
+                            context_type,
+                            context_id,
+                            "",
+                            conversation_id.clone(),
+                            &[],
+                            &[],
+                        );
                         let new_id = msg.id.as_str().to_string();
                         let _ = repo.create(msg).await;
                         tracing::debug!(
@@ -1306,12 +1544,10 @@ pub async fn process_stream_background<R: Runtime>(
                         if let (Some(ref repo), Some(ref msg_id)) =
                             (&chat_message_repo, &assistant_message_id)
                         {
-                            let role = super::chat_service_helpers::get_assistant_role(
-                                &context_type,
-                            )
-                            .to_string();
-                            let tool_calls_json =
-                                serde_json::to_string(&processor.tool_calls).ok();
+                            let role =
+                                super::chat_service_helpers::get_assistant_role(&context_type)
+                                    .to_string();
+                            let tool_calls_json = serde_json::to_string(&processor.tool_calls).ok();
                             let content_blocks_json =
                                 serde_json::to_string(&processor.content_blocks).ok();
                             super::chat_service_send_background::finalize_assistant_message(
@@ -1373,12 +1609,9 @@ pub async fn process_stream_background<R: Runtime>(
 
                         // Complete the agent_run DB record so the recovery poll
                         // (`useChatRecovery`) no longer sees status=running.
-                        if let (Some(ref repo), Some(ref run_id)) =
-                            (&agent_run_repo, &agent_run_id)
+                        if let (Some(ref repo), Some(ref run_id)) = (&agent_run_repo, &agent_run_id)
                         {
-                            let _ = repo
-                                .complete(&AgentRunId::from_string(run_id))
-                                .await;
+                            let _ = repo.complete(&AgentRunId::from_string(run_id)).await;
                         }
 
                         // Emit turn_completed (NOT run_completed) for interactive turns.
@@ -1785,11 +2018,17 @@ pub async fn process_stream_background<R: Runtime>(
                         // we re-emit here so the frontend recovers if it missed the initial event.
                         // Try to include conversation_id if the stream processor already created one.
                         let conv_id = if let Some(ref service) = team_service {
-                            service.tracker()
-                                .get_team_status(&team_name).await.ok()
-                                .and_then(|s| s.teammates.iter()
-                                    .find(|t| t.name == teammate_name)
-                                    .and_then(|t| t.conversation_id.clone()))
+                            service
+                                .tracker()
+                                .get_team_status(&team_name)
+                                .await
+                                .ok()
+                                .and_then(|s| {
+                                    s.teammates
+                                        .iter()
+                                        .find(|t| t.name == teammate_name)
+                                        .and_then(|t| t.conversation_id.clone())
+                                })
                         } else {
                             None
                         };
@@ -1951,8 +2190,8 @@ pub async fn process_stream_background<R: Runtime>(
             } else {
                 (false, true)
             };
-            let is_completion_grace_period = completion_signal_tracker
-                .is_in_grace_period(completion_grace_duration);
+            let is_completion_grace_period =
+                completion_signal_tracker.is_in_grace_period(completion_grace_duration);
 
             if should_kill_on_timeout(
                 stream_start.elapsed(),
@@ -2052,7 +2291,10 @@ pub async fn process_stream_background<R: Runtime>(
                         "Stream parse stall after completion tool call, staying in shutdown grace period"
                     );
                 } else {
-                    debug_assert!(false, "parse stall bypass branch should be exhaustively handled");
+                    debug_assert!(
+                        false,
+                        "parse stall bypass branch should be exhaustively handled"
+                    );
                 }
                 // CRITICAL: reset last_parsed_at to prevent hot spin loop
                 last_parsed_at = std::time::Instant::now();
@@ -2213,8 +2455,8 @@ pub async fn process_stream_background<R: Runtime>(
 
     // The execution slot is held unless we're idle between interactive turns
     // (TurnComplete decremented and no new message re-incremented).
-    let execution_slot_held = !between_interactive_turns
-        || !super::uses_execution_slot(context_type);
+    let execution_slot_held =
+        !between_interactive_turns || !super::uses_execution_slot(context_type);
 
     let outcome = StreamOutcome {
         response_text: result.response_text,
@@ -2444,6 +2686,7 @@ async fn process_codex_stream_background<R: Runtime>(
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut completion_signal_tracker = CompletionSignalTracker::default();
     let mut last_emitted_usage = AgentRunUsage::default();
+    let mut pending_codex_file_changes: HashMap<String, PendingCodexFileChange> = HashMap::new();
     let heartbeat_key = running_agent_registry
         .as_ref()
         .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
@@ -2569,7 +2812,18 @@ async fn process_codex_stream_background<R: Runtime>(
                 }
             }
 
+            let mut codex_tool_snapshots = Vec::new();
+            if let Some(file_change_snapshot) = extract_codex_file_change_snapshot(&event) {
+                codex_tool_snapshots.extend(resolve_codex_file_change_tool_call_snapshots(
+                    file_change_snapshot,
+                    &mut pending_codex_file_changes,
+                ));
+            }
             if let Some(snapshot) = extract_codex_tool_call_snapshot(&event) {
+                codex_tool_snapshots.push(snapshot);
+            }
+
+            for snapshot in codex_tool_snapshots {
                 let tool_call = snapshot.tool_call;
                 if is_completion_tool_name(&tool_call.name) {
                     tracing::info!(
@@ -2594,6 +2848,10 @@ async fn process_codex_stream_background<R: Runtime>(
                         "Completion tool call observed during Codex streaming; enabling shutdown grace period"
                     );
                 }
+                let diff_context_value = tool_call
+                    .diff_context
+                    .as_ref()
+                    .and_then(|value| serde_json::to_value(value).ok());
                 streaming_state_cache
                     .upsert_tool_call(
                         &conversation_id_str,
@@ -2605,7 +2863,7 @@ async fn process_codex_stream_background<R: Runtime>(
                             name: tool_call.name.clone(),
                             arguments: tool_call.arguments.clone(),
                             result: tool_call.result.clone(),
-                            diff_context: None,
+                            diff_context: diff_context_value.clone(),
                             parent_tool_use_id: None,
                         },
                     )
@@ -2631,7 +2889,7 @@ async fn process_codex_stream_background<R: Runtime>(
                             conversation_id: conversation_id_str.clone(),
                             context_type: context_type_str.clone(),
                             context_id: context_id_str.clone(),
-                            diff_context: None,
+                            diff_context: diff_context_value,
                             parent_tool_use_id: None,
                             seq: stream_seq,
                         },
@@ -2639,7 +2897,10 @@ async fn process_codex_stream_background<R: Runtime>(
                     stream_seq += 1;
                 }
 
-                if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                if matches!(
+                    context_type,
+                    ChatContextType::TaskExecution | ChatContextType::Merge
+                ) {
                     if let (Some(ref repo), Some(ref task_id)) =
                         (&activity_event_repo, &task_id_for_persistence)
                     {
@@ -2669,14 +2930,9 @@ async fn process_codex_stream_background<R: Runtime>(
             if let Some(command_execution) = extract_codex_command_execution(&event) {
                 if let Some(exit_code) = command_execution.exit_code {
                     if exit_code != 0 {
-                        errors.push(
-                            command_execution
-                                .aggregated_output
-                                .clone()
-                                .unwrap_or_else(|| {
-                                    format!("Codex command_execution failed with exit code {exit_code}")
-                                }),
-                        );
+                        errors.push(command_execution.aggregated_output.clone().unwrap_or_else(
+                            || format!("Codex command_execution failed with exit code {exit_code}"),
+                        ));
                     }
                 }
             }
@@ -2890,7 +3146,9 @@ fn emit_heartbeat<R: Runtime>(
             "reason": reason,
         });
         if let Some(extra_fields) = extra {
-            if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra_fields.as_object()) {
+            if let (Some(obj), Some(extra_obj)) =
+                (payload.as_object_mut(), extra_fields.as_object())
+            {
                 for (k, v) in extra_obj {
                     obj.insert(k.clone(), v.clone());
                 }

@@ -78,6 +78,14 @@ pub struct CodexCommandExecution {
     pub exit_code: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexFileChangeSnapshot {
+    pub id: Option<String>,
+    pub phase: CodexToolCallPhase,
+    pub status: Option<String>,
+    pub changes: Vec<CodexFileChange>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodexToolCallPhase {
     Started,
@@ -172,26 +180,6 @@ pub fn extract_codex_tool_call_snapshot(event: &CodexStreamEvent) -> Option<Code
                 stats: None,
             }
         }
-        "file_change" => {
-            let result = match phase {
-                CodexToolCallPhase::Started => None,
-                CodexToolCallPhase::Completed => Some(serde_json::json!({
-                    "status": item.status.clone(),
-                })),
-            };
-
-            ToolCall {
-                id: item.id.clone(),
-                name: "file_change".to_string(),
-                arguments: serde_json::json!({
-                    "changes": item.changes.clone().unwrap_or_default(),
-                }),
-                result,
-                parent_tool_use_id: None,
-                diff_context: None,
-                stats: None,
-            }
-        }
         _ => return None,
     };
 
@@ -210,6 +198,28 @@ pub fn extract_codex_command_execution(event: &CodexStreamEvent) -> Option<Codex
         status: item.status.clone(),
         aggregated_output: item.aggregated_output.clone(),
         exit_code: item.exit_code,
+    })
+}
+
+pub fn extract_codex_file_change_snapshot(
+    event: &CodexStreamEvent,
+) -> Option<CodexFileChangeSnapshot> {
+    let item = event.item.as_ref()?;
+    if item.item_type != "file_change" {
+        return None;
+    }
+
+    let phase = match event.event_type.as_str() {
+        "item.started" => CodexToolCallPhase::Started,
+        "item.completed" => CodexToolCallPhase::Completed,
+        _ => return None,
+    };
+
+    Some(CodexFileChangeSnapshot {
+        id: item.id.clone(),
+        phase,
+        status: item.status.clone(),
+        changes: item.changes.clone().unwrap_or_default(),
     })
 }
 
@@ -356,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_codex_tool_call_snapshot_normalizes_file_change() {
+    fn extract_codex_file_change_snapshot_keeps_real_file_change_shape() {
         let mut item = codex_item("file_change");
         item.id = Some("item_1".to_string());
         item.status = Some("completed".to_string());
@@ -372,25 +382,17 @@ mod tests {
             usage: None,
         };
 
-        let snapshot = extract_codex_tool_call_snapshot(&event).expect("file_change snapshot");
+        let snapshot = extract_codex_file_change_snapshot(&event).expect("file_change snapshot");
         assert_eq!(snapshot.phase, CodexToolCallPhase::Completed);
-        assert_eq!(snapshot.tool_call.id.as_deref(), Some("item_1"));
-        assert_eq!(snapshot.tool_call.name, "file_change");
+        assert_eq!(snapshot.id.as_deref(), Some("item_1"));
         assert_eq!(
-            snapshot.tool_call.arguments,
-            serde_json::json!({
-                "changes": [
-                    {
-                        "path": "/workspace/file.txt",
-                        "kind": "update",
-                    }
-                ]
-            })
+            snapshot.changes,
+            vec![CodexFileChange {
+                path: "/workspace/file.txt".to_string(),
+                kind: "update".to_string(),
+            }]
         );
-        assert_eq!(
-            snapshot.tool_call.result,
-            Some(serde_json::json!({ "status": "completed" }))
-        );
+        assert_eq!(snapshot.status.as_deref(), Some("completed"));
     }
 
     #[test]
