@@ -561,8 +561,8 @@ impl VerificationReconciliationService {
             let parent_id = IdeationSessionId::from_string(parent_id_str.clone());
             let should_archive = match self.ideation_session_repo.get_by_id(&parent_id).await {
                 Ok(Some(parent)) => {
-                    // Only archive children if the parent's verification loop is not active
-                    !parent.verification_in_progress
+                    // Prefer the native run snapshot when it exists; the parent summary can lag.
+                    !effective_verification_in_progress(&self.ideation_session_repo, &parent).await
                 }
                 Ok(None) => {
                     // Parent deleted — archive orphaned children
@@ -918,11 +918,11 @@ async fn resolve_verification_parent(
                     "resolve_verification_parent: parent is ImportedVerified — skip"
                 );
                 ResolvedParent::ImportedVerified
-            } else if !parent.verification_in_progress {
+            } else if !effective_verification_in_progress(repo, &parent).await {
                 tracing::debug!(
                     parent_id = %parent_id.as_str(),
                     caller,
-                    "resolve_verification_parent: verification not in progress — skip"
+                    "resolve_verification_parent: authoritative verification view is not in progress — skip"
                 );
                 ResolvedParent::AlreadyResolved
             } else {
@@ -993,10 +993,37 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
     let snapshot = load_effective_verification_view(repo, &parent).await;
 
     if let Some(run) = snapshot.as_ref() {
+        if has_pending_unreported_round(run) {
+            repair_parent_verification_from_snapshot(repo, parent_id, run).await;
+            tracing::info!(
+                parent_id = %parent_id.as_str(),
+                child_id = %child_id.as_str(),
+                current_round = run.current_round,
+                max_rounds = run.max_rounds,
+                "Verification child exited while the current round was still pending required-critic settlement; queueing in-place continuation"
+            );
+            return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                VerificationAutoContinueRequest {
+                    continuation_message: format!(
+                        "[System] Continue the active verification loop in this same session.\n\
+                         The backend-owned verification state still has an active round {}/{} \
+                         with no authoritative round report yet, so required verification critics \
+                         may still be settling.\n\
+                         Refresh get_plan_verification, wait for or publish the current round \
+                         result, and do not treat this run as terminal until the backend-owned \
+                         state advances past the active round or gains a convergence_reason.",
+                        run.current_round, run.max_rounds
+                    ),
+                    snapshot: run.clone(),
+                },
+            ));
+        }
+
         if run.status == VerificationStatus::NeedsRevision
             && run.in_progress
             && run.convergence_reason.is_none()
         {
+            repair_parent_verification_from_snapshot(repo, parent_id, run).await;
             tracing::info!(
                 parent_id = %parent_id.as_str(),
                 child_id = %child_id.as_str(),
@@ -1206,10 +1233,37 @@ pub(crate) async fn reset_verification_on_child_error<R: Runtime>(
     let snapshot = load_effective_verification_view(repo, &parent).await;
     if convergence_reason == "agent_error" {
         if let Some(run) = snapshot.as_ref() {
+            if has_pending_unreported_round(run) {
+                repair_parent_verification_from_snapshot(repo, &parent_id, run).await;
+                tracing::info!(
+                    parent_id = %parent_id.as_str(),
+                    child_id = %child_id.as_str(),
+                    current_round = run.current_round,
+                    max_rounds = run.max_rounds,
+                    "Verification child errored while the current round was still pending required-critic settlement; queueing in-place continuation"
+                );
+                return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                    VerificationAutoContinueRequest {
+                        continuation_message: format!(
+                            "[System] Continue the active verification loop in this same session.\n\
+                             The backend-owned verification state still has an active round {}/{} \
+                             with no authoritative round report yet, so required verification critics \
+                             may still be settling.\n\
+                             Refresh get_plan_verification, wait for or publish the current round \
+                             result, and do not treat this run as terminal until the backend-owned \
+                             state advances past the active round or gains a convergence_reason.",
+                            run.current_round, run.max_rounds
+                        ),
+                        snapshot: run.clone(),
+                    },
+                ));
+            }
+
             if run.status == VerificationStatus::NeedsRevision
                 && run.in_progress
                 && run.convergence_reason.is_none()
             {
+                repair_parent_verification_from_snapshot(repo, &parent_id, run).await;
                 tracing::info!(
                     parent_id = %parent_id.as_str(),
                     child_id = %child_id.as_str(),
@@ -1344,6 +1398,42 @@ async fn load_effective_verification_view(
             );
             None
         }
+    }
+}
+
+fn has_pending_unreported_round(run: &VerificationRunSnapshot) -> bool {
+    run.status == VerificationStatus::Reviewing
+        && run.in_progress
+        && run.convergence_reason.is_none()
+        && run.current_round > 0
+        && !run
+            .rounds
+            .iter()
+            .any(|round| round.round == run.current_round)
+}
+
+async fn effective_verification_in_progress(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    session: &IdeationSession,
+) -> bool {
+    load_effective_verification_view(repo, session)
+        .await
+        .map(|snapshot| snapshot.in_progress)
+        .unwrap_or(session.verification_in_progress)
+}
+
+async fn repair_parent_verification_from_snapshot(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    parent_id: &IdeationSessionId,
+    snapshot: &VerificationRunSnapshot,
+) {
+    if let Err(error) = repo.save_verification_run_snapshot(parent_id, snapshot).await {
+        tracing::warn!(
+            parent_id = %parent_id.as_str(),
+            generation = snapshot.generation,
+            error = %error,
+            "Failed to reassert authoritative verification snapshot before auto-continue"
+        );
     }
 }
 

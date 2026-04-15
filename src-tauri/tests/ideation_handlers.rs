@@ -4004,6 +4004,63 @@ async fn test_reviewing_parent_report_round_succeeds() {
     );
 }
 
+#[tokio::test]
+async fn test_reviewing_round_start_without_gaps_persists_current_round_in_native_snapshot() {
+    let state = setup_test_state().await;
+
+    let mut session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    session.verification_in_progress = true;
+    let session_id = session.id.as_str().to_string();
+    let session_id_obj = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = post_verification_status(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(3),
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "round-start persistence without gaps must succeed: {:?}",
+        result.err()
+    );
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "reviewing");
+    assert!(response.in_progress);
+    assert_eq!(response.current_round, Some(3));
+    assert_eq!(response.max_rounds, Some(5));
+
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, 0)
+        .await
+        .unwrap()
+        .expect("native verification snapshot must exist");
+    assert_eq!(snapshot.status, VerificationStatus::Reviewing);
+    assert!(snapshot.in_progress);
+    assert_eq!(snapshot.current_round, 3);
+    assert_eq!(snapshot.max_rounds, 5);
+    assert!(
+        snapshot.rounds.is_empty(),
+        "starting a round without reported gaps must not fabricate a completed round snapshot"
+    );
+}
+
 /// PDM-335 regression 2: two consecutive report_verification_round calls while parent
 /// stays in Reviewing both succeed (idempotent repeated rounds).
 #[tokio::test]

@@ -113,7 +113,7 @@ Plan create/update or explicit confirm
 | Live tool contract | `agents/ralphx-plan-verifier/agent.yaml` | Canonical MCP surface + allowed delegation targets |
 | Claude/Codex prompts | `agents/ralphx-plan-verifier/{claude,codex}/prompt.md` | Workflow contract; should describe runtime-owned helpers, not manual bookkeeping |
 | Required/optional delegate dispatch | `plugins/app/ralphx-mcp-server/src/verification-orchestration.ts` | Starts critics/specialists and gathers delegate snapshots |
-| Settlement barrier | `plugins/app/ralphx-mcp-server/src/verification-runtime.ts` | `awaitVerificationRoundSettlement`, cached round state, wait budgets |
+| Settlement barrier | `plugins/app/ralphx-mcp-server/src/verification-runtime.ts`, `src-tauri/src/http_server/handlers/ideation/verification/update.rs`, `src-tauri/src/application/reconciliation/verification_reconciliation.rs` | Runtime waits on critics, but the active round barrier is also durably mirrored into the native verification snapshot before waiting so reconciliation/orphan cleanup do not depend on verifier-process memory alone |
 | Typed finding aggregation | `plugins/app/ralphx-mcp-server/src/verification-round-assessment.ts` | Merges typed findings, classifies delegate/finding coverage |
 | Terminal completion guard | `plugins/app/ralphx-mcp-server/src/verification-completion.ts` | Rejects premature `needs_revision` / `verified` terminalization, routes infra failures |
 

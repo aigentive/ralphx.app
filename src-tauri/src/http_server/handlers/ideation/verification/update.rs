@@ -287,6 +287,12 @@ pub async fn post_verification_status(
         run_snapshot.max_rounds = max_r;
     }
 
+    if req.in_progress && new_status == VerificationStatus::Reviewing {
+        if let Some(round_number) = req.round {
+            run_snapshot.current_round = round_number;
+        }
+    }
+
     // Process gaps if provided
     if let Some(ref gaps_req) = req.gaps {
         let gaps: Vec<VerificationGap> = gaps_req

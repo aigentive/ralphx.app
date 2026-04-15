@@ -865,6 +865,37 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
     return await callTauriGet(`ideation/sessions/${sessionId}/verification`);
   }
 
+  async function markVerificationRoundStartedForTool(args: {
+    sessionId: string;
+    round: number;
+  }): Promise<{ generation: number; maxRounds?: number }> {
+    const verificationView = await callTauriGet(`ideation/sessions/${args.sessionId}/verification`) as {
+      verification_generation?: unknown;
+      max_rounds?: unknown;
+    };
+    const generation =
+      typeof verificationView.verification_generation === "number"
+        ? verificationView.verification_generation
+        : undefined;
+    if (generation === undefined) {
+      throw new Error(
+        "run_verification_round could not resolve the authoritative verification generation for round-start persistence."
+      );
+    }
+    const maxRounds =
+      typeof verificationView.max_rounds === "number"
+        ? verificationView.max_rounds
+        : undefined;
+    await callTauri(`ideation/sessions/${args.sessionId}/verification`, {
+      status: "reviewing",
+      in_progress: true,
+      round: args.round,
+      generation,
+      ...(maxRounds !== undefined ? { max_rounds: maxRounds } : {}),
+    });
+    return { generation, ...(maxRounds !== undefined ? { maxRounds } : {}) };
+  }
+
   async function reportVerificationRoundForTool(args: {
     session_id?: string;
     round: number;
@@ -1029,6 +1060,10 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
       args.session_id,
       "run_verification_round"
     );
+    const roundStart = await markVerificationRoundStartedForTool({
+      sessionId,
+      round: args.round,
+    });
     const result = await runVerificationRoundPass(
       {
         loadPlanSnapshot: loadVerificationPlanSnapshot,
@@ -1089,20 +1124,9 @@ export function createVerificationRuntime(deps: VerificationRuntimeDeps) {
       agentType === "ralphx-plan-verifier" &&
       ((result as { classification?: string }).classification ?? "pending") === "complete"
     ) {
-      const verificationView = await getPlanVerificationForTool({});
-      const generation =
-        typeof (verificationView as { verification_generation?: unknown }).verification_generation ===
-        "number"
-          ? ((verificationView as { verification_generation: number }).verification_generation ?? 0)
-          : undefined;
-      if (generation === undefined) {
-        throw new Error(
-          "run_verification_round could not resolve the authoritative verification generation for round reporting."
-        );
-      }
       const roundReport = await reportVerificationRoundForTool({
         round: args.round,
-        generation,
+        generation: roundStart.generation,
       }) as Record<string, unknown>;
       return {
         ...(result as Record<string, unknown>),
