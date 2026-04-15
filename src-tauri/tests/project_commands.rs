@@ -4,7 +4,7 @@ use ralphx_lib::application::AppState;
 use ralphx_lib::commands::project_commands::*;
 use ralphx_lib::domain::entities::{
     ArtifactId, GitMode, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    ProjectId, TaskId,
+    ProjectId, TaskId, MergeValidationMode,
 };
 use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository};
 use ralphx_lib::infrastructure::memory::{
@@ -98,6 +98,19 @@ async fn test_create_project_with_defaults() {
     assert_eq!(created.name, "Test Project");
     assert_eq!(created.working_directory, "/test/path");
     assert_eq!(created.git_mode, GitMode::Worktree);
+    assert_eq!(created.merge_validation_mode, MergeValidationMode::Off);
+}
+
+#[test]
+fn parse_merge_validation_mode_or_default_invalid_value_defaults_to_off() {
+    assert_eq!(
+        parse_merge_validation_mode_or_default("strict"),
+        MergeValidationMode::Off
+    );
+    assert_eq!(
+        parse_merge_validation_mode_or_default("warn"),
+        MergeValidationMode::Warn
+    );
 }
 
 #[tokio::test]

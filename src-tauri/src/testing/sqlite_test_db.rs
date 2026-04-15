@@ -13,6 +13,7 @@ use crate::domain::entities::{
     TaskId,
 };
 use crate::infrastructure::sqlite::{open_connection, run_migrations};
+use crate::infrastructure::sqlite::sqlite_project_repo::insert_project_row;
 
 pub struct SqliteTestDb {
     _temp_dir: TempDir,
@@ -60,9 +61,16 @@ impl SqliteTestDb {
 
     pub fn insert_project(&self, project: Project) -> Project {
         self.with_connection(|conn| {
+            insert_project_row(conn, &project).expect("Failed to insert test project");
+        });
+        project
+    }
+
+    pub fn insert_project_using_schema_defaults(&self, project: Project) -> Project {
+        self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 rusqlite::params![
                     project.id.as_str(),
                     project.name.as_str(),
@@ -71,7 +79,6 @@ impl SqliteTestDb {
                     project.base_branch.as_deref(),
                     project.worktree_parent_directory.as_deref(),
                     project.use_feature_branches as i64,
-                    project.merge_validation_mode.to_string(),
                     project.merge_strategy.to_string(),
                     project.detected_analysis.as_deref(),
                     project.custom_analysis.as_deref(),
@@ -81,7 +88,7 @@ impl SqliteTestDb {
                     project.github_pr_enabled as i64,
                 ],
             )
-            .expect("Failed to insert test project");
+            .expect("Failed to insert test project using schema defaults");
         });
         project
     }

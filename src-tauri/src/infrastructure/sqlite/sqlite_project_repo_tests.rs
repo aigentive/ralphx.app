@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::GitMode;
+use crate::domain::entities::{GitMode, MergeValidationMode};
 use crate::testing::SqliteTestDb;
 
 fn setup_test_db() -> SqliteTestDb {
@@ -147,6 +147,30 @@ async fn test_create_and_retrieve_preserves_all_fields() {
     assert_eq!(found.working_directory, project.working_directory);
     assert_eq!(found.git_mode, GitMode::Worktree);
     assert_eq!(found.base_branch, Some("main".to_string()));
+}
+
+#[tokio::test]
+async fn test_get_by_id_uses_schema_default_when_merge_validation_mode_is_omitted() {
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
+    let mut project = create_test_project("Schema Default", "/schema/default");
+    project.merge_validation_mode = MergeValidationMode::Warn;
+
+    let project_id = project.id.clone();
+    db.insert_project_using_schema_defaults(project);
+
+    let stored_mode: String = db.with_connection(|conn| {
+        conn.query_row(
+            "SELECT merge_validation_mode FROM projects WHERE id = ?1",
+            [project_id.as_str()],
+            |row| row.get(0),
+        )
+        .expect("stored merge_validation_mode should exist")
+    });
+    assert_eq!(stored_mode, "off");
+
+    let found = repo.get_by_id(&project_id).await.unwrap().unwrap();
+    assert_eq!(found.merge_validation_mode, MergeValidationMode::Off);
 }
 
 // ==================== GET BY WORKING DIRECTORY TESTS ====================

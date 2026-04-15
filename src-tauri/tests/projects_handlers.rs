@@ -233,6 +233,43 @@ async fn test_register_project_home_subdir_accepted() {
     assert!(result.is_ok(), "Path under HOME must be accepted: {:?}", result.err());
 }
 
+#[tokio::test]
+async fn test_register_project_persists_merge_validation_mode_off() {
+    let (_db, state) = setup_sqlite_register_state();
+    let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
+    let validated_key = make_validated_key(&key_id);
+    let tmp = temp_dir_under_home();
+    let path = tmp.path().to_str().unwrap().to_string();
+
+    let response = register_project_external(
+        State(state.clone()),
+        validated_key,
+        Json(RegisterProjectExternalRequest {
+            working_directory: path,
+            name: Some("DefaultMode".to_string()),
+        }),
+    )
+    .await
+    .expect("registration must succeed");
+
+    let project_id = response.0.id;
+    let merge_validation_mode = state
+        .app_state
+        .db
+        .run(move |conn| {
+            conn.query_row(
+                "SELECT merge_validation_mode FROM projects WHERE id = ?1",
+                [project_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(merge_validation_mode, "off");
+}
+
 // ============================================================================
 // Duplicate working_directory → 409 Conflict
 // ============================================================================

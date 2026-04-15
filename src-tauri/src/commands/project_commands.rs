@@ -82,6 +82,11 @@ impl From<Project> for ProjectResponse {
     }
 }
 
+#[doc(hidden)]
+pub fn parse_merge_validation_mode_or_default(value: &str) -> MergeValidationMode {
+    value.parse().unwrap_or_default()
+}
+
 /// List all projects
 #[tauri::command]
 pub async fn list_projects(state: State<'_, AppState>) -> Result<Vec<ProjectResponse>, String> {
@@ -291,7 +296,7 @@ pub async fn update_project(
         project.base_branch = Some(base_branch);
     }
     if let Some(mode_str) = input.merge_validation_mode {
-        project.merge_validation_mode = mode_str.parse().unwrap_or(MergeValidationMode::Block);
+        project.merge_validation_mode = parse_merge_validation_mode_or_default(&mode_str);
     }
     if let Some(strategy_str) = input.merge_strategy {
         project.merge_strategy = strategy_str.parse().unwrap_or(MergeStrategy::RebaseSquash);

@@ -302,9 +302,12 @@ mod v20260414060000_verification_run_store_tests;
 mod v20260414123000_drop_verification_metadata_column;
 #[cfg(test)]
 mod v20260414123000_drop_verification_metadata_column_tests;
+mod v20260415164250_merge_validation_mode_off;
+#[cfg(test)]
+mod v20260415164250_merge_validation_mode_off_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260414123000;
+pub const SCHEMA_VERSION: i64 = 20260415164250;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -863,6 +866,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260414123000,
         name: "drop_verification_metadata_column",
         migrate: v20260414123000_drop_verification_metadata_column::migrate,
+    },
+    Migration {
+        version: 20260415164250,
+        name: "merge_validation_mode_off",
+        migrate: v20260415164250_merge_validation_mode_off::migrate,
     },
 ];
 

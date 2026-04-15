@@ -10,6 +10,7 @@ use super::*;
 use crate::domain::entities::{InternalStatus, Project, ProjectId, TaskId};
 use crate::domain::services::validate_project_path;
 use crate::error::AppError;
+use crate::infrastructure::sqlite::sqlite_project_repo::insert_project_row;
 
 pub async fn list_tasks(
     State(state): State<HttpServerState>,
@@ -340,31 +341,8 @@ pub async fn register_project_external(
         .app_state
         .db
         .run_transaction(move |conn| {
-            conn.execute(
-                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, \
-                 worktree_parent_directory, use_feature_branches, merge_validation_mode, \
-                 merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, \
-                 updated_at, github_pr_enabled) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                rusqlite::params![
-                    project.id.as_str(),
-                    project.name,
-                    project.working_directory,
-                    project.git_mode.to_string(),
-                    project.base_branch,
-                    project.worktree_parent_directory,
-                    project.use_feature_branches as i64,
-                    project.merge_validation_mode.to_string(),
-                    project.merge_strategy.to_string(),
-                    project.detected_analysis,
-                    project.custom_analysis,
-                    project.analyzed_at,
-                    project.created_at.to_rfc3339(),
-                    project.updated_at.to_rfc3339(),
-                    project.github_pr_enabled as i64,
-                ],
-            )
-            .map_err(|e| AppError::Database(format!("Insert project failed: {e}")))?;
+            insert_project_row(conn, &project)
+                .map_err(|e| AppError::Database(format!("Insert project failed: {e}")))?;
 
             // Auto-add creating key to new project's scope (INSERT OR IGNORE handles races)
             conn.execute(

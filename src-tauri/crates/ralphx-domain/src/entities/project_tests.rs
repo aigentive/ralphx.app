@@ -55,6 +55,7 @@ fn project_new_creates_with_defaults() {
     assert_eq!(project.name, "My Project");
     assert_eq!(project.working_directory, "/path/to/project");
     assert_eq!(project.git_mode, GitMode::Worktree);
+    assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
     assert!(project.base_branch.is_none());
     assert!(project.worktree_parent_directory.is_none());
 }
@@ -157,6 +158,7 @@ fn project_deserializes_from_json() {
     assert_eq!(project.name, "Deserialized");
     assert_eq!(project.working_directory, "/deser/path");
     assert_eq!(project.git_mode, GitMode::Worktree);
+    assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
     assert_eq!(project.base_branch, Some("main".to_string()));
 }
 
@@ -175,6 +177,7 @@ fn project_deserializes_with_null_optionals() {
     let project: Project = serde_json::from_str(json).expect("Should deserialize");
 
     assert!(project.base_branch.is_none());
+    assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
 }
 
 #[test]
@@ -262,8 +265,8 @@ fn worktree_parent_or_default_returns_default_when_empty() {
 // ===== MergeValidationMode Tests =====
 
 #[test]
-fn merge_validation_mode_default_is_block() {
-    assert_eq!(MergeValidationMode::default(), MergeValidationMode::Block);
+fn merge_validation_mode_default_is_off() {
+    assert_eq!(MergeValidationMode::default(), MergeValidationMode::Off);
 }
 
 #[test]
@@ -394,7 +397,7 @@ fn setup_test_db() -> Connection {
             base_branch TEXT,
             worktree_parent_directory TEXT,
             use_feature_branches INTEGER NOT NULL DEFAULT 1,
-            merge_validation_mode TEXT NOT NULL DEFAULT 'block',
+            merge_validation_mode TEXT NOT NULL DEFAULT 'off',
             merge_strategy TEXT NOT NULL DEFAULT 'rebase',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -429,6 +432,7 @@ fn project_from_row_local_mode_maps_to_worktree() {
     assert_eq!(project.working_directory, "/path/to/project");
     // "local" in DB now maps to Worktree (backward compat)
     assert_eq!(project.git_mode, GitMode::Worktree);
+    assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
     assert!(project.base_branch.is_none());
     assert!(project.worktree_parent_directory.is_none());
 }
@@ -521,6 +525,29 @@ fn project_from_row_with_null_base_branch() {
 
     assert!(project.base_branch.is_none());
     assert_eq!(project.git_mode, GitMode::Worktree);
+}
+
+#[test]
+fn project_from_row_invalid_merge_validation_mode_defaults_to_off() {
+    let conn = setup_test_db();
+    conn.execute(
+        r#"INSERT INTO projects (id, name, working_directory, git_mode, merge_validation_mode,
+           created_at, updated_at)
+           VALUES ('proj-bad-mode', 'Bad Mode', '/path', 'worktree', 'strict',
+           '2026-01-24T08:00:00Z', '2026-01-24T08:00:00Z')"#,
+        [],
+    )
+    .unwrap();
+
+    let project: Project = conn
+        .query_row(
+            "SELECT * FROM projects WHERE id = 'proj-bad-mode'",
+            [],
+            Project::from_row,
+        )
+        .unwrap();
+
+    assert_eq!(project.merge_validation_mode, MergeValidationMode::Off);
 }
 
 // ===== MergeStrategy Tests =====
