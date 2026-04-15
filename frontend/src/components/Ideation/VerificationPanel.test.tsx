@@ -251,7 +251,7 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
-  it("renders the selected verification child transcript in the verification tab", async () => {
+  it("keeps verification history visible and does not replace the tab with the child transcript", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const childSession = {
       id: "child-run-1",
@@ -263,30 +263,13 @@ describe("VerificationPanel — page-load hydration", () => {
       status: "needs_revision",
       inProgress: false,
       gaps: [],
-      rounds: [],
-      roundDetails: [],
+      rounds: [{ round: 1, gapScore: 8, gapCount: 2 }],
+      roundDetails: [{ round: 1, gapScore: 8, gapCount: 2, gaps: [] }],
     };
 
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: [{ id: "conv-verify-1", updatedAt: "2026-01-01T00:05:00Z" }],
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: {
-          messages: [
-            {
-              id: "msg-1",
-              role: "assistant",
-              sender: null,
-              content: "Verifier incorporated delegate feedback before the next round.",
-              toolCalls: null,
-              contentBlocks: null,
-            },
-          ],
-        },
-      } as unknown as ReturnType<typeof useQuery>);
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     mockStoreState = {
       ...mockStoreState,
@@ -297,11 +280,9 @@ describe("VerificationPanel — page-load hydration", () => {
     render(<VerificationPanel session={baseSession} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("verification-child-transcript")).toBeInTheDocument();
+      expect(screen.getByTestId("verification-history")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Verifier incorporated delegate feedback before the next round.")
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId("verification-child-transcript")).not.toBeInTheDocument();
   });
 
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {

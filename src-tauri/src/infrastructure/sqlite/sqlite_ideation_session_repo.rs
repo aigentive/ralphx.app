@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension};
 
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
     VerificationConfirmationStatus, VerificationRunSnapshot, VerificationStatus,
@@ -16,6 +17,7 @@ use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
 };
 use crate::domain::repositories::IdeationSessionRepository;
+use crate::domain::services::build_verification_started_snapshot;
 use crate::error::{AppError, AppResult};
 
 use super::DbConnection;
@@ -257,15 +259,21 @@ impl SqliteIdeationSessionRepository {
         id: &str,
     ) -> AppResult<Option<i32>> {
         let now = Utc::now();
+        let now_rfc3339 = now.to_rfc3339();
         let rows = conn.execute(
             "UPDATE ideation_sessions SET \
              verification_status = 'reviewing', \
              verification_in_progress = 1, \
              verification_generation = verification_generation + 1, \
+             verification_current_round = NULL, \
+             verification_max_rounds = NULL, \
+             verification_gap_count = 0, \
+             verification_gap_score = NULL, \
+             verification_convergence_reason = NULL, \
              updated_at = ?2 \
              WHERE id = ?1 AND verification_in_progress = 0 \
              AND verification_status != 'imported_verified'",
-            rusqlite::params![id, now.to_rfc3339()],
+            rusqlite::params![id, &now_rfc3339],
         )?;
         if rows == 0 {
             return Ok(None);
@@ -275,6 +283,48 @@ impl SqliteIdeationSessionRepository {
             [id],
             |row| row.get(0),
         )?;
+
+        let snapshot =
+            build_verification_started_snapshot(generation, default_verification_max_rounds());
+        let run_id = conn
+            .query_row(
+                "SELECT id FROM verification_runs WHERE session_id = ?1 AND generation = ?2",
+                rusqlite::params![id, generation],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        conn.execute(
+            "INSERT INTO verification_runs (
+                id, session_id, generation, status, in_progress,
+                current_round, max_rounds, best_round_index, convergence_reason,
+                created_at, updated_at, completed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL)
+            ON CONFLICT(session_id, generation) DO UPDATE SET
+                status = excluded.status,
+                in_progress = excluded.in_progress,
+                current_round = excluded.current_round,
+                max_rounds = excluded.max_rounds,
+                best_round_index = excluded.best_round_index,
+                convergence_reason = excluded.convergence_reason,
+                updated_at = excluded.updated_at,
+                completed_at = NULL",
+            rusqlite::params![
+                &run_id,
+                id,
+                generation,
+                snapshot.status.to_string(),
+                1i32,
+                Option::<i64>::None,
+                Some(snapshot.max_rounds as i64),
+                Option::<i64>::None,
+                Option::<String>::None,
+                &now_rfc3339,
+                &now_rfc3339,
+            ],
+        )?;
+
         Ok(Some(generation))
     }
 

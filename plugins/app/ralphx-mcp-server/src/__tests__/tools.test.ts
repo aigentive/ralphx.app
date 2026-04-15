@@ -323,6 +323,7 @@ describe('getFilteredTools', () => {
     expect(toolNames).toContain('report_verification_round');
     expect(toolNames).toContain('complete_plan_verification');
     expect(toolNames).toContain('get_plan_verification');
+    expect(toolNames).not.toContain('send_ideation_session_message');
     expect(toolNames).not.toContain('delegate_start');
     expect(toolNames).not.toContain('delegate_wait');
     expect(toolNames).not.toContain('delegate_cancel');

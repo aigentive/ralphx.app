@@ -2,6 +2,7 @@ import type { ToolCall } from "./tool-widgets/shared.constants";
 import { parseMcpToolResultRaw } from "./tool-widgets/shared.constants";
 import { canonicalizeToolName } from "./tool-widgets/tool-name";
 import { normalizeDelegationTranscriptPayload } from "./delegation-tool-calls";
+import type { StreamingContentBlock } from "@/types/streaming-task";
 
 type VerificationMergeable = {
   name?: string;
@@ -67,6 +68,20 @@ function verificationToolName(name: string | undefined): string | null {
   }
 }
 
+function toVerificationMergeable(name: string | undefined, args: unknown, result: unknown): VerificationMergeable {
+  const mergeable: VerificationMergeable = {};
+  if (name !== undefined) {
+    mergeable.name = name;
+  }
+  if (args !== undefined) {
+    mergeable.arguments = args;
+  }
+  if (result !== undefined) {
+    mergeable.result = result;
+  }
+  return mergeable;
+}
+
 function toolRound(entry: VerificationMergeable): number | undefined {
   const parsed = parseMcpToolResultRaw(entry.result);
   return getNumber(parsed, "round")
@@ -85,7 +100,11 @@ function hasMeaningfulEnrichmentResult(entry: VerificationMergeable): boolean {
     || (findings?.length ?? 0) > 0;
 }
 
-function mergeVerificationEntries<T extends VerificationMergeable>(entries: T[]): T[] {
+function mergeVerificationEntries<T>(entries: T[], accessors: {
+  name: (entry: T) => string | undefined;
+  arguments: (entry: T) => unknown;
+  result: (entry: T) => unknown;
+}): T[] {
   const keep = new Array(entries.length).fill(true);
   let sawLaterVerificationStep = false;
   const laterReportedRounds = new Set<number>();
@@ -95,10 +114,16 @@ function mergeVerificationEntries<T extends VerificationMergeable>(entries: T[])
     const entry = entries[index];
     if (entry == null) continue;
 
-    const toolName = verificationToolName(entry.name);
+    const toolName = verificationToolName(accessors.name(entry));
     if (!toolName) continue;
 
-    const round = toolRound(entry);
+    const round = toolRound(
+      toVerificationMergeable(
+        accessors.name(entry),
+        accessors.arguments(entry),
+        accessors.result(entry),
+      )
+    );
 
     if (toolName === COMPLETE_PLAN_VERIFICATION) {
       sawLaterVerificationStep = true;
@@ -130,7 +155,13 @@ function mergeVerificationEntries<T extends VerificationMergeable>(entries: T[])
     if (
       toolName === RUN_VERIFICATION_ENRICHMENT
       && sawLaterVerificationStep
-      && !hasMeaningfulEnrichmentResult(entry)
+      && !hasMeaningfulEnrichmentResult(
+        toVerificationMergeable(
+          accessors.name(entry),
+          accessors.arguments(entry),
+          accessors.result(entry),
+        )
+      )
     ) {
       keep[index] = false;
     }
@@ -152,7 +183,29 @@ export function normalizeToolCallTranscriptPayload<
   });
 
   return {
-    contentBlocks: mergeVerificationEntries(delegated.contentBlocks),
-    toolCalls: mergeVerificationEntries(delegated.toolCalls),
+    contentBlocks: mergeVerificationEntries(delegated.contentBlocks, {
+      name: (entry) => entry.name,
+      arguments: (entry) => entry.arguments,
+      result: (entry) => entry.result,
+    }),
+    toolCalls: mergeVerificationEntries(delegated.toolCalls, {
+      name: (entry) => entry.name,
+      arguments: (entry) => entry.arguments,
+      result: (entry) => entry.result,
+    }),
   };
+}
+
+export function normalizeStreamingVerificationContentBlocks(
+  contentBlocks: StreamingContentBlock[] | null | undefined,
+): StreamingContentBlock[] {
+  if (!contentBlocks || contentBlocks.length === 0) {
+    return [];
+  }
+
+  return mergeVerificationEntries(contentBlocks, {
+    name: (entry) => entry.type === "tool_use" ? entry.toolCall.name : undefined,
+    arguments: (entry) => entry.type === "tool_use" ? entry.toolCall.arguments : undefined,
+    result: (entry) => entry.type === "tool_use" ? entry.toolCall.result : undefined,
+  });
 }

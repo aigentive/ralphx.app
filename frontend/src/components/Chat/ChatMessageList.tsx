@@ -38,6 +38,7 @@ import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext"
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
 import { isProviderRole } from "@/lib/chat/provider-role";
+import { normalizeStreamingVerificationContentBlocks } from "./verification-tool-calls";
 
 // ============================================================================
 // Constants
@@ -248,6 +249,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
+    const normalizedStreamingContentBlocks = useMemo(
+      () => normalizeStreamingVerificationContentBlocks(streamingContentBlocks),
+      [streamingContentBlocks],
+    );
 
     // Footer content hash — drives the streaming auto-scroll useEffect below.
     // NOTE: Virtuoso's followOutput does NOT react to context/Footer changes,
@@ -270,21 +275,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Recompute cumulative text length whenever streaming blocks change.
     // Resets to 0 when streaming ends (no blocks) so the next stream starts fresh.
     useEffect(() => {
-      if (!streamingContentBlocks?.length) {
+      if (!normalizedStreamingContentBlocks.length) {
         setCumulativeTextLength(0);
         return;
       }
-      const total = streamingContentBlocks.reduce(
+      const total = normalizedStreamingContentBlocks.reduce(
         (sum, block) => block.type === "text" ? sum + block.text.length : sum, 0
       );
       setCumulativeTextLength(prev => Math.max(prev, total));
-    }, [streamingContentBlocks]);
+    }, [normalizedStreamingContentBlocks]);
 
     const hasFooterStreamingContent =
       streamingToolCalls.length > 0 ||
       totalChildCalls > 0 ||
       (streamingTasks?.size ?? 0) > 0 ||
-      (streamingContentBlocks?.length ?? 0) > 0;
+      normalizedStreamingContentBlocks.length > 0;
 
     useEffect(() => {
       hasFooterStreamingContentRef.current = hasFooterStreamingContent;
@@ -296,9 +301,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       toolResultCount: streamingToolCalls.filter(tc => tc.result != null || tc.error != null).length,
       childCallCount: totalChildCalls,
       taskCount: streamingTasks?.size ?? 0,
-      contentBlockCount: streamingContentBlocks?.length ?? 0,
+      contentBlockCount: normalizedStreamingContentBlocks.length,
       textLengthBucket: Math.floor(cumulativeTextLength / TEXT_LENGTH_BUCKET_SIZE),
-    }), [streamingToolCalls, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length, cumulativeTextLength]);
+    }), [streamingToolCalls, totalChildCalls, streamingTasks?.size, normalizedStreamingContentBlocks.length, cumulativeTextLength]);
 
     // Streaming auto-scroll — followOutput only fires on totalCount changes,
     // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
@@ -483,7 +488,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Additionally, when isAgentRunning but no streaming content exists yet (the window
     // between DB empty-message creation and the first streaming event), filter the last
     // assistant message if its content is empty/whitespace — prevents the empty "pill" flash.
-    const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
+    const hasActiveStreaming = normalizedStreamingContentBlocks.length > 0 ||
                               (streamingTasks && streamingTasks.size > 0);
     const shouldFilterLastProviderMessage = hasActiveStreaming || isFinalizing;
 
@@ -653,7 +658,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return (
           <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {normalizedStreamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -703,7 +708,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Fallback when agent is running but no content blocks yet:
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
               <>
                 {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
                   <ToolCallIndicator
@@ -722,7 +727,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, streamingContentBlocks,
+      streamingToolCalls, streamingTasks, normalizedStreamingContentBlocks,
       isSending, isAgentRunning, handleFooterRef, providerHarness, providerSessionId,
     ]);
 
@@ -906,7 +911,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {normalizedStreamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -954,7 +959,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Fallback when agent is running but no content blocks yet:
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
               <>
                 {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
                   <ToolCallIndicator

@@ -9,6 +9,7 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
+- `.claude/rules/ideation-verification-architecture.md` for the ideation verification feature map: parent-vs-child ownership, runtime flow, UI surfaces, debugging, and tests
 - `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
@@ -17,6 +18,7 @@ Primary project docs:
 ## Codex Rules
 
 - Read project instructions first: check `CLAUDE.md`, subtree docs, and relevant `.claude/rules/*` before substantial work.
+- When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.
 - Minimal diffs: avoid formatter churn and opportunistic refactors.

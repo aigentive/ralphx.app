@@ -77,6 +77,9 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("2 requested")).toBeInTheDocument();
       expect(screen.queryByText("0 specialists")).not.toBeInTheDocument();
       expect(screen.getByText("Waiting for specialist launches.")).toBeInTheDocument();
+      expect(screen.getByText("intent")).toBeInTheDocument();
+      expect(screen.getByText("code-quality")).toBeInTheDocument();
+      expect(screen.getAllByText("Requested")).toHaveLength(2);
     });
 
     it("renders round progress, classification, and severity counts for run_verification_round", () => {

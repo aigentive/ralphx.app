@@ -307,6 +307,48 @@ function renderDelegateDetails(args: {
   );
 }
 
+function normalizeRequestedDelegateLabels(requested: unknown[] | undefined): string[] {
+  if (!requested) return [];
+  return requested.flatMap((entry) => {
+    if (typeof entry === "string" && entry.trim().length > 0) {
+      return [entry.trim()];
+    }
+    const record = getRecord(entry);
+    const label =
+      getString(record, "label")
+      ?? getString(record, "name")
+      ?? getString(record, "critic");
+    return label ? [label] : [];
+  });
+}
+
+function renderRequestedDelegateDetails(requestedLabels: string[], compact: boolean | undefined) {
+  if (requestedLabels.length === 0) return null;
+
+  return (
+    <div style={{ display: "grid", gap: compact ? 6 : 8 }}>
+      {requestedLabels.map((label) => (
+        <div
+          key={label}
+          style={{
+            display: "grid",
+            gap: 4,
+            padding: compact ? "0" : "2px 0",
+          }}
+        >
+          <WidgetRow compact={compact}>
+            <Badge variant="blue" compact>{label}</Badge>
+            <Badge variant="muted" compact>Requested</Badge>
+          </WidgetRow>
+          <div style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted }}>
+            Waiting for specialist launch.
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function VerificationCard(props: {
   compact?: boolean;
   icon: React.ReactNode;
@@ -333,6 +375,7 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
   const snapshots = getArray(parsed, "delegate_snapshots");
   const findings = getArray(parsed, "findings_by_critic");
   const requested = getArray(args, "selected_specialists");
+  const requestedLabels = normalizeRequestedDelegateLabels(requested);
   const timedOut = getBool(parsed, "timed_out") === true;
 
   if (selectedSpecialists == null && toolCall.result == null) {
@@ -347,7 +390,7 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
   const specialistCount = selectedSpecialists?.length ?? 0;
   const foundCount = (findings ?? []).filter((entry) => getBool(entry, "found") === true).length;
   const compactProps = compact === undefined ? {} : { compact };
-  const showRequestedOnly = Array.isArray(requested) && requested.length > 0 && specialistCount === 0;
+  const showRequestedOnly = requestedLabels.length > 0 && specialistCount === 0;
 
   return (
     <VerificationCard
@@ -368,6 +411,7 @@ function RunVerificationEnrichment({ toolCall, compact }: ToolCallWidgetProps) {
           Waiting for specialist launches.
         </div>
       )}
+      {showRequestedOnly && renderRequestedDelegateDetails(requestedLabels, compact)}
       {renderDelegateDetails({
         delegates: selectedSpecialists,
         snapshots,

@@ -17,7 +17,6 @@ capabilities:
     - complete_plan_verification
     - update_plan_artifact
     - edit_plan_artifact
-    - send_ideation_session_message
 harnesses:
   claude:
     model: opus

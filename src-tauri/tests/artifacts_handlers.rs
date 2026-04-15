@@ -24,6 +24,7 @@ use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegis
 use ralphx_lib::error::AppError;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::agents::claude::verification_config;
 use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 use ralphx_lib::infrastructure::memory::MemoryIdeationSessionRepository;
 use std::sync::Arc;
@@ -1132,6 +1133,45 @@ async fn test_trigger_auto_verify_sync_atomicity_and_skip() {
         VerificationStatus::Reviewing,
         "status must be Reviewing"
     );
+    assert_eq!(
+        after_trigger.verification_current_round, None,
+        "current_round summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_max_rounds, None,
+        "session summary max_rounds stays unset until the native snapshot projects it"
+    );
+    assert_eq!(
+        after_trigger.verification_gap_count, 0,
+        "gap_count summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_gap_score, None,
+        "gap_score summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_convergence_reason, None,
+        "convergence_reason summary must be cleared on a fresh verification start"
+    );
+
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id, 1)
+        .await
+        .unwrap()
+        .expect("fresh verification start must seed a native run snapshot");
+    assert_eq!(snapshot.generation, 1);
+    assert_eq!(snapshot.status, VerificationStatus::Reviewing);
+    assert!(snapshot.in_progress, "fresh snapshot must be in progress");
+    assert_eq!(snapshot.current_round, 0);
+    assert_eq!(
+        snapshot.max_rounds,
+        verification_config().max_rounds,
+        "fresh snapshot must carry the configured round budget"
+    );
+    assert!(snapshot.current_gaps.is_empty(), "fresh snapshot must start gap-free");
+    assert!(snapshot.rounds.is_empty(), "fresh snapshot must start with no round history");
 
     // Second trigger on same session: in_progress=1, so must be skipped
     let sid2 = session_id.as_str().to_string();

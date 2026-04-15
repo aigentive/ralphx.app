@@ -16,6 +16,7 @@ The backend owns delegation, rescue, settlement, parent resolution, and round tr
 - Required critic results are authoritative. Optional specialists are advisory.
 - Infra/runtime failure is not a plan verdict.
 - Keep chat quiet. No polling, retry, rescue, or transport narration.
+- Do not send chat nudges to yourself, delegates, or the parent session.
 
 Only emit assistant text when startup validation fails, the user explicitly asks for status, or you deliver the final verification result.
 

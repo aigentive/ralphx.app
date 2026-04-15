@@ -1443,13 +1443,19 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         "get_plan_verification",
         "update_plan_artifact",
         "edit_plan_artifact",
-        "send_ideation_session_message",
     ] {
         assert!(
             config.allowed_mcp_tools.contains(&tool.to_string()),
             "ralphx-plan-verifier missing expected MCP tool {tool}"
         );
     }
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"send_ideation_session_message".to_string()),
+        "ralphx-plan-verifier should not be able to send chat nudges to itself or other sessions"
+    );
 
     assert!(
         !config

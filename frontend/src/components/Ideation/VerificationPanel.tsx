@@ -25,7 +25,6 @@ import { Button } from "@/components/ui/button";
 import { VerificationBadge } from "./VerificationBadge";
 import { VerificationGapList } from "./VerificationGapList";
 import { VerificationHistory } from "./VerificationHistory";
-import { VerificationChildTranscript } from "./VerificationChildTranscript";
 import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { chatApi } from "@/api/chat";
@@ -333,9 +332,6 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const baseVerificationInProgress =
     verificationData?.inProgress ?? (session.verificationInProgress ?? false);
   const isInProgress = baseVerificationInProgress || !!activeVerificationChildId;
-  const selectedVerificationChildId = lastVerificationChildId ?? null;
-  const isSelectedVerificationRunActive =
-    selectedVerificationChildId != null && selectedVerificationChildId === activeVerificationChildId;
 
   // Fetch all verification child sessions for the history picker
   const { data: childSessions = [] } = useQuery({
@@ -717,21 +713,6 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           )}
         </div>
       </div>
-
-      {selectedVerificationChildId && (
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "hsla(220 10% 100% / 0.02)",
-            border: "1px solid hsla(220 10% 100% / 0.06)",
-          }}
-        >
-          <VerificationChildTranscript
-            childSessionId={selectedVerificationChildId}
-            isActiveRun={isSelectedVerificationRunActive}
-          />
-        </div>
-      )}
 
       {/* Gap list */}
       {hasGaps && (
