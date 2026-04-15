@@ -1022,7 +1022,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Returns true if recovery spawned a retry (no further action needed here
                 // since the Err arm is the last statement in the async block).
                 let error_string = e.to_string();
-                let _recovery_spawned = super::chat_service_handlers::handle_stream_error(
+                let recovery_spawned = super::chat_service_handlers::handle_stream_error(
                     &error_string,
                     Some(&e),
                     context_type,
@@ -1068,6 +1068,90 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &verification_child_registry,
                 )
                 .await;
+
+                if !recovery_spawned {
+                    let queued_resume_in_place = message_queue
+                        .get_queued(context_type, &context_id)
+                        .iter()
+                        .any(|queued_msg| {
+                            super::chat_service_queue::queued_message_resume_in_place(
+                                queued_msg.metadata_override.as_deref(),
+                            )
+                        });
+
+                    if queued_resume_in_place {
+                        let queue_session_id = stored_session_id.clone().or_else(|| {
+                            conversation
+                                .as_ref()
+                                .and_then(|conv| conv.provider_session_ref())
+                                .map(|session_ref| session_ref.provider_session_id.clone())
+                        });
+
+                        if let Some(ref session_id) = queue_session_id {
+                            tracing::info!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                session_id,
+                                "[QUEUE] Processing resume-in-place verification continuation after handled stream error"
+                            );
+
+                            let total_processed = super::chat_service_queue::process_queued_messages(
+                                context_type,
+                                harness,
+                                &context_id,
+                                conversation_id,
+                                session_id,
+                                &message_queue,
+                                &chat_message_repo,
+                                &chat_attachment_repo,
+                                &artifact_repo,
+                                &activity_event_repo,
+                                &task_repo,
+                                &ideation_session_repo,
+                                &cli_path,
+                                &plugin_dir,
+                                &working_directory,
+                                question_state.clone(),
+                                execution_state.clone(),
+                                app_handle.clone(),
+                                resolved_project_id.as_deref(),
+                                team_mode,
+                                cancellation_token.clone(),
+                                run_chain_id.as_deref(),
+                                Some(&agent_run_id),
+                                streaming_state_cache.clone(),
+                            )
+                            .await;
+
+                            tracing::info!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                total_processed,
+                                "[QUEUE] Resume-in-place verification continuation processing finished"
+                            );
+
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "agent:run_completed",
+                                    AgentRunCompletedPayload::with_provider_session(
+                                        conversation_id.as_str().to_string(),
+                                        context_type.to_string(),
+                                        context_id.clone(),
+                                        Some(harness),
+                                        Some(session_id.clone()),
+                                        run_chain_id.clone(),
+                                    ),
+                                );
+                            }
+                        } else {
+                            tracing::warn!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                "[QUEUE] Resume-in-place verification continuation queued but no session_id was available"
+                            );
+                        }
+                    }
+                }
             }
         }
     }.instrument(span));

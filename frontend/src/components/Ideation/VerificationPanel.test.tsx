@@ -251,6 +251,59 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
+  it("renders the selected verification child transcript in the verification tab", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const childSession = {
+      id: "child-run-1",
+      sessionPurpose: "verification",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+    };
+
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({
+        data: [{ id: "conv-verify-1", updatedAt: "2026-01-01T00:05:00Z" }],
+      } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({
+        data: {
+          messages: [
+            {
+              id: "msg-1",
+              role: "assistant",
+              sender: null,
+              content: "Verifier incorporated delegate feedback before the next round.",
+              toolCalls: null,
+              contentBlocks: null,
+            },
+          ],
+        },
+      } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = {
+      ...mockStoreState,
+      lastVerificationChildId: { "session-1": "child-run-1" },
+    };
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-child-transcript")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Verifier incorporated delegate feedback before the next round.")
+    ).toBeInTheDocument();
+  });
+
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     vi.mocked(useQuery)

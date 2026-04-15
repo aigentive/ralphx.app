@@ -1134,17 +1134,18 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
 /// Reset parent verification state when a verification child agent errors or is stopped.
 ///
 /// Used for Path B (agent error — `convergence_reason = "agent_error"`) and
-/// Path C (user stop — `convergence_reason = "user_stopped"`). Always resets parent
-/// to `Unverified` with the given reason, regardless of metadata state.
+/// Path C (user stop — `convergence_reason = "user_stopped"`). For actionable
+/// non-terminal agent exits, returns an auto-continue request instead of resetting
+/// the parent to `Unverified`.
 ///
 /// Looks up the child session internally to find the parent. No-ops if the child is
 /// not a verification session or has no `parent_session_id`.
-pub async fn reset_verification_on_child_error<R: Runtime>(
+pub(crate) async fn reset_verification_on_child_error<R: Runtime>(
     child_id: &IdeationSessionId,
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
     convergence_reason: &str,
-) {
+) -> Option<ReconcileVerificationChildCompletion> {
     // Fetch child to determine purpose and parent_id
     let child_session = match repo.get_by_id(child_id).await {
         Ok(Some(s)) => s,
@@ -1153,7 +1154,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 child_id = %child_id.as_str(),
                 "reset_verification_on_child_error: child session not found"
             );
-            return;
+            return None;
         }
         Err(e) => {
             tracing::warn!(
@@ -1161,13 +1162,13 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 error = %e,
                 "reset_verification_on_child_error: failed to fetch child session"
             );
-            return;
+            return None;
         }
     };
 
     // Only act on verification child sessions
     if child_session.session_purpose != SessionPurpose::Verification {
-        return;
+        return None;
     }
 
     let parent_id = match child_session.parent_session_id {
@@ -1178,7 +1179,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 "Verification child has no parent_session_id — archiving child only"
             );
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
     };
 
@@ -1193,14 +1194,49 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
         ResolvedParent::Ready(p) => p,
         ResolvedParent::NotFound => {
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
-        ResolvedParent::ImportedVerified => return,
+        ResolvedParent::ImportedVerified => return None,
         ResolvedParent::AlreadyResolved => {
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
     };
+
+    let snapshot = load_effective_verification_view(repo, &parent).await;
+    if convergence_reason == "agent_error" {
+        if let Some(run) = snapshot.as_ref() {
+            if run.status == VerificationStatus::NeedsRevision
+                && run.in_progress
+                && run.convergence_reason.is_none()
+            {
+                tracing::info!(
+                    parent_id = %parent_id.as_str(),
+                    child_id = %child_id.as_str(),
+                    current_round = run.current_round,
+                    max_rounds = run.max_rounds,
+                    gap_count = run.current_gaps.len(),
+                    "Verification child errored on actionable non-terminal needs_revision; queueing in-place continuation"
+                );
+                return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                    VerificationAutoContinueRequest {
+                        continuation_message: format!(
+                            "[System] Continue the active verification loop in this same session.\n\
+                             The backend-owned verification state is still actionable non-terminal \
+                             needs_revision (round {}/{}), so this agent_error must not reset or \
+                             finalize the run.\n\
+                             Refresh get_plan_verification and get_session_plan, revise the plan \
+                             against the current actionable gaps, then continue to the next \
+                             verification round. Do not call complete_plan_verification again until \
+                             the backend-owned state is truly terminal with a convergence_reason.",
+                            run.current_round, run.max_rounds
+                        ),
+                        snapshot: run.clone(),
+                    },
+                ));
+            }
+        }
+    }
 
     // Reset parent to Unverified with the given reason
     match repo
@@ -1247,6 +1283,8 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
 
     // Orphan cleanup: archive any other active verification children
     archive_sibling_verification_children(repo, &parent_id, Some(child_id)).await;
+
+    None
 }
 
 /// Archive orphaned sibling verification children of a parent session.

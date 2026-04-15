@@ -86,11 +86,7 @@ When working in `src-tauri/`, also follow:
 
 ## Active Verification Cleanup Tracker
 
-| Priority | Stream | Status | Next Step |
-|---|---|---|---|
-| P0 | Native verification model completion | In progress | Live verification storage, handlers, repos, and reconciliation are snapshot-native and the old `verification_metadata` column is dropped; remaining cleanup is stale verification-era docs/rules like `.claude/rules/agent-mcp-tools.md`, `.claude/rules/agent-type-map.md`, and old external verification docs that still narrate removed tool surfaces or pre-native flow details |
-| P0 | Ideation / verifier prompt alignment | In progress | The dedicated verifier prompts are aligned, but the Claude ideation + team-lead verification sections still narrate the older child-session/manual supervision flow; rewrite those sections to match the backend-owned verifier contract and prune stale tool/routing prose |
-| P1 | Verification UX lineage | In progress | Round lineage and chat-side delegate/result rendering are landed; remaining UX gap is Verification-tab parity for per-delegate outcome/state history so users can inspect running, timed-out, empty-result, and infra-failure delegates without relying on chat widgets alone |
+No open verification cleanup tracker items.
 
 ## Verification Guardrails
 

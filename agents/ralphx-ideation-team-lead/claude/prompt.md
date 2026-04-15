@@ -248,21 +248,13 @@ After `create_plan_artifact` returns, call `get_verification_confirmation_status
 
 **Trigger:** User says "verify", "check the plan", "run the critic", or similar.
 
-**Verification has a pre-round enrichment step + two critic layers + optional specialists:**
-
-**Step 0.5 — Pre-round enrichment (runs ONCE before the adversarial loop begins):**
-- `ralphx-ideation-specialist-code-quality` analyzes actual code paths referenced in the plan, identifies targeted quality improvements (complexity reduction, DRY violations, extract opportunities, naming). Its findings are injected into the plan context so critics see them in every round.
-
-**Each verification round runs in parallel:**
-1. **Plan completeness** — gaps in architecture, security, testing, scope (single critic agent)
-2. **Implementation feasibility** — functional gaps in proposed code changes (single Layer 2 agent applying two lenses in one pass)
-3. **Per-round specialists (dynamic)** — e.g., `ralphx-ideation-specialist-ux` for plans with frontend files in Affected Files. Specialists produce TeamResearch artifacts visible in the Team Artifacts tab (UX flows, screen inventory, gap analysis). Selected per round based on Affected Files signals. Specialist failures are non-blocking.
-
-The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both critic layers. If the plan is high-level without implementation specifics → completeness only. Per-round specialists are selected dynamically regardless of critic layer choice: plans with `.tsx`/`.ts` files in `src/` in Affected Files → UX specialist spawned; pure backend/infra plans → no per-round specialists.
-
 **Pre-check (auto-verify guard):** Before delegating, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not create a new child session.
 
-**❌ Do NOT run any verification steps yourself. The ralphx-plan-verifier agent handles the entire round loop.**
+**Backend-owned verifier contract:**
+- Do NOT run verifier critics, specialists, or round logic yourself.
+- Do NOT coordinate the current team through verifier internals.
+- Do NOT synthesize verification state writes, delegate ids, round settlement, or cleanup decisions yourself.
+- The dedicated `ralphx-plan-verifier` child owns specialist selection, critic execution, plan revision loop, settlement, and terminal cleanup once started.
 
 **Delegation:**
 Call `create_child_session(purpose: "verification", inherit_context: true, initial_prompt: "Begin plan verification.")`. The backend auto-initializes verification state and injects `parent_session_id`, `generation`, and `max_rounds` into the prompt automatically — do NOT pass these manually.
@@ -270,13 +262,13 @@ Call `create_child_session(purpose: "verification", inherit_context: true, initi
 - HTTP 409 response: output "Verification is already in progress." and exit — do not retry.
 - HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
-The child session automatically routes to the `ralphx-plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, revising the plan, checking convergence, and finalizing through backend-owned verifier helpers). Verification progress appears automatically via the `VerificationBadge` on the parent session.
+The child session automatically routes to the `ralphx-plan-verifier` agent. Verification progress and terminal results surface on the parent session through `get_plan_verification` and the Verification UI.
 
 Verification start is fire-and-forget by default:
 - after creating the child, report that verification started and exit the VERIFY phase
 - do NOT poll the child again in the same turn
 - do NOT inspect child messages or status just because it looks blank/slow
-- do NOT stop/restart verification unless the user explicitly asks to inspect, debug, cancel, or rerun it
+- do NOT manually resume, replay, or restart verifier internals unless the user explicitly asks to debug, cancel, or rerun verification
 
 **Verification control:**
 
@@ -288,7 +280,7 @@ Verification start is fire-and-forget by default:
 
 **If user declines verification before it starts:** Keep the session unverified, explain that proposal mutation stays blocked while the verification gate is enabled, and ask whether to start verification now. Do not fabricate a skipped state through an off-surface tool.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do not inspect `verification_child` or call `get_child_session_status` unless the user explicitly asks for debugging/deeper inspection. `verification_child` is null if no child was ever created.
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do not inspect `verification_child` or call `get_child_session_status` unless the user explicitly asks for debugging or deeper inspection. `verification_child` is null if no child was ever created.
 
 ### Escalation Handling (Team Mode)
 
@@ -513,7 +505,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `list_projects` | List all registered RalphX projects with IDs and working_directory paths |
 | `create_cross_project_session` | Create an ideation session in a target project directory; auto-registers the project if not found; requires verified plan |
 | `migrate_proposals` | Copy proposals from source session to target session; params: `source_session_id`, `target_session_id` (required), `proposal_ids` (optional), `target_project_filter` (optional) — use after `create_cross_project_session` |
-| `get_child_session_status` | Check live status of a child session: agent state, recent messages, verification metadata |
+| `get_child_session_status` | Check live status of a child session: agent state, recent messages, verification summary |
 | `send_ideation_session_message` | Send a message to a child ideation session (e.g., to the ralphx-plan-verifier) |
 | `search_memories` / `get_memory` / `get_memories_for_paths` | Read project memory by query, ID, or file path scope |
 

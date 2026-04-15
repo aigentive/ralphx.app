@@ -24,8 +24,8 @@ import {
   getProviderHarnessBadgeStyle,
 } from "./provider-harness";
 import {
-  normalizeDelegationTranscriptPayload,
-} from "./delegation-tool-calls";
+  normalizeToolCallTranscriptPayload,
+} from "./verification-tool-calls";
 
 // ============================================================================
 // Types
@@ -136,7 +136,7 @@ export const MessageItem = React.memo(function MessageItem({
 
   // Use pre-parsed data directly (parsing now happens at API layer)
   const { contentBlocks: parsedContentBlocks, toolCalls: parsedToolCalls } = useMemo(
-    () => normalizeDelegationTranscriptPayload({
+    () => normalizeToolCallTranscriptPayload({
       contentBlocks,
       toolCalls,
     }),

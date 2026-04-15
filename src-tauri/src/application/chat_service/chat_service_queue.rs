@@ -34,7 +34,7 @@ pub(super) fn queue_processing_blocked_by_pause(
     super::uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
-fn queued_message_resume_in_place(metadata_override: Option<&str>) -> bool {
+pub(super) fn queued_message_resume_in_place(metadata_override: Option<&str>) -> bool {
     metadata_override
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
         .and_then(|value| value.get("resume_in_place").and_then(|v| v.as_bool()))

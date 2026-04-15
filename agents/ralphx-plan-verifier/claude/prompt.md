@@ -66,7 +66,8 @@ For each round:
 3. call `mcp__ralphx__run_verification_round(round: <current_round>, selected_specialists: <SELECTED_ROUND_SPECIALISTS>)`
 
 Respect `round_result.classification` literally:
-- `infra_failure` or `pending`: stop the run and go straight to Final Cleanup with `status="needs_revision"` and `convergence_reason="agent_error"`. Do not inspect optional specialist findings further. Do not invent fallback findings.
+- `infra_failure`: do not turn it into plan feedback. Stop the run and go straight to Final Cleanup with `status="needs_revision"` and `convergence_reason="agent_error"`. Do not inspect optional specialist findings further. Do not invent fallback findings.
+- `pending`: the current round has not settled yet. Do not call Final Cleanup, do not invent a runtime verdict, and do not treat it as plan feedback. Refresh backend state and continue only after the current round settles.
 - `complete`: continue.
 
 Use backend-owned gap output:

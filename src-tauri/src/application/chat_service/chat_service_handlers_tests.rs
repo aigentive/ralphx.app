@@ -1246,6 +1246,362 @@ async fn test_handle_stream_error_preserves_existing_content_blocks_without_seri
 }
 
 #[tokio::test]
+async fn test_handle_stream_error_terminal_verification_child_seals_unresolved_tool_calls() {
+    let state = AppState::new_test();
+    let parent_id = IdeationSessionId::new();
+    let child_id = IdeationSessionId::new();
+    let project_id = ProjectId::new();
+
+    let mut parent = crate::domain::entities::IdeationSession::new(project_id.clone());
+    parent.id = parent_id.clone();
+    parent.verification_status = VerificationStatus::NeedsRevision;
+    parent.verification_in_progress = false;
+    parent.verification_generation = 7;
+    state.ideation_session_repo.create(parent).await.unwrap();
+    state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &parent_id,
+            &crate::domain::entities::VerificationRunSnapshot {
+                generation: 7,
+                status: VerificationStatus::NeedsRevision,
+                in_progress: false,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: Some("max_rounds".to_string()),
+                current_gaps: vec![crate::domain::entities::VerificationGap {
+                    severity: "high".to_string(),
+                    category: "scope".to_string(),
+                    description: "Need one more database-default proof.".to_string(),
+                    why_it_matters: None,
+                    source: None,
+                }],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut child = crate::domain::entities::IdeationSession::new(project_id);
+    child.id = child_id.clone();
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    state.ideation_session_repo.create(child).await.unwrap();
+
+    let parent_conversation = state
+        .chat_conversation_repo
+        .create(ChatConversation::new_ideation(parent_id.clone()))
+        .await
+        .unwrap();
+    let child_conversation = state
+        .chat_conversation_repo
+        .create(ChatConversation::new_ideation(child_id.clone()))
+        .await
+        .unwrap();
+
+    let pre_assistant_message = crate::application::chat_service::chat_service_context::create_assistant_message(
+        ChatContextType::Ideation,
+        child_id.as_str(),
+        "Checking verifier MCP context",
+        child_conversation.id.clone(),
+        &[ToolCall {
+            id: Some("probe-1".to_string()),
+            name: "ralphx::read_mcp_resource".to_string(),
+            arguments: serde_json::json!({ "uri": "resource://probe" }),
+            result: None,
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        }],
+        &[
+            ContentBlockItem::Text {
+                text: "Checking verifier MCP context".to_string(),
+            },
+            ContentBlockItem::ToolUse {
+                id: Some("probe-1".to_string()),
+                name: "ralphx::read_mcp_resource".to_string(),
+                arguments: serde_json::json!({ "uri": "resource://probe" }),
+                result: None,
+                parent_tool_use_id: None,
+                diff_context: None,
+            },
+        ],
+    );
+    let pre_assistant_message_id = pre_assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(pre_assistant_message)
+        .await
+        .expect("insert pre-assistant message");
+
+    let event_ctx = crate::application::chat_service::event_context(
+        &child_conversation.id,
+        &ChatContextType::Ideation,
+        child_id.as_str(),
+    );
+    let stream_error = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "agent exited".to_string(),
+    };
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "agent exited",
+        Some(&stream_error),
+        ChatContextType::Ideation,
+        child_id.as_str(),
+        child_conversation.id.clone(),
+        "run-id-terminal-verification",
+        &pre_assistant_message_id,
+        &event_ctx,
+        None,
+        crate::domain::agents::AgentHarnessKind::Codex,
+        false,
+        None,
+        None,
+        None,
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        std::path::Path::new("/tmp"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,
+        false,
+        None,
+        &None,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    assert!(!recovery_spawned);
+
+    let stored = state
+        .chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(pre_assistant_message_id))
+        .await
+        .expect("reload message")
+        .expect("message should still exist");
+    assert_eq!(stored.content, "Checking verifier MCP context");
+
+    let tool_calls: serde_json::Value = serde_json::from_str(
+        stored.tool_calls.as_deref().expect("tool calls should be present"),
+    )
+    .expect("tool calls should remain valid JSON");
+    assert_eq!(
+        tool_calls[0]["result"]["status"],
+        serde_json::json!("aborted"),
+        "terminal verification suppression must seal unresolved tool calls so they do not stay live in the UI"
+    );
+
+    let content_blocks: serde_json::Value = serde_json::from_str(
+        stored
+            .content_blocks
+            .as_deref()
+            .expect("content blocks should be present"),
+    )
+    .expect("content blocks should remain valid JSON");
+    assert_eq!(
+        content_blocks[1]["result"]["status"],
+        serde_json::json!("aborted"),
+        "content block hydration must also stop treating the probe as still running"
+    );
+
+    let parent_messages = state
+        .chat_message_repo
+        .get_by_conversation(&parent_conversation.id)
+        .await
+        .expect("load parent conversation messages");
+    assert!(
+        !parent_messages.is_empty(),
+        "terminal verification suppression should still inject the parent handoff message"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_stream_error_actionable_verification_child_queues_hidden_auto_continue() {
+    let state = AppState::new_test();
+    let parent_id = IdeationSessionId::new();
+    let child_id = IdeationSessionId::new();
+    let project_id = ProjectId::new();
+
+    let mut parent = crate::domain::entities::IdeationSession::new(project_id.clone());
+    parent.id = parent_id.clone();
+    parent.verification_status = VerificationStatus::NeedsRevision;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 4;
+    state.ideation_session_repo.create(parent).await.unwrap();
+    state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &parent_id,
+            &crate::domain::entities::VerificationRunSnapshot {
+                generation: 4,
+                status: VerificationStatus::NeedsRevision,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![crate::domain::entities::VerificationGap {
+                    severity: "high".to_string(),
+                    category: "testing".to_string(),
+                    description: "Need one more regression path.".to_string(),
+                    why_it_matters: None,
+                    source: None,
+                }],
+                rounds: vec![crate::domain::entities::VerificationRoundSnapshot {
+                    round: 2,
+                    gap_score: 3,
+                    fingerprints: vec!["high::testing::Need one more regression path.".to_string()],
+                    gaps: vec![crate::domain::entities::VerificationGap {
+                        severity: "high".to_string(),
+                        category: "testing".to_string(),
+                        description: "Need one more regression path.".to_string(),
+                        why_it_matters: None,
+                        source: None,
+                    }],
+                    parse_failed: false,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut child = crate::domain::entities::IdeationSession::new(project_id);
+    child.id = child_id.clone();
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    state.ideation_session_repo.create(child).await.unwrap();
+
+    let child_conversation = state
+        .chat_conversation_repo
+        .create(ChatConversation::new_ideation(child_id.clone()))
+        .await
+        .unwrap();
+
+    let pre_assistant_message = crate::application::chat_service::chat_service_context::create_assistant_message(
+        ChatContextType::Ideation,
+        child_id.as_str(),
+        "Round 2 critique in progress",
+        child_conversation.id.clone(),
+        &[],
+        &[ContentBlockItem::Text {
+            text: "Round 2 critique in progress".to_string(),
+        }],
+    );
+    let pre_assistant_message_id = pre_assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(pre_assistant_message)
+        .await
+        .expect("insert pre-assistant message");
+
+    let event_ctx = crate::application::chat_service::event_context(
+        &child_conversation.id,
+        &ChatContextType::Ideation,
+        child_id.as_str(),
+    );
+    let stream_error = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "agent exited".to_string(),
+    };
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "agent exited",
+        Some(&stream_error),
+        ChatContextType::Ideation,
+        child_id.as_str(),
+        child_conversation.id,
+        "run-id-auto-continue",
+        &pre_assistant_message_id,
+        &event_ctx,
+        Some("provider-session-verification"),
+        crate::domain::agents::AgentHarnessKind::Codex,
+        false,
+        None,
+        None,
+        None,
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        std::path::Path::new("/tmp"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,
+        false,
+        None,
+        &None,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    assert!(!recovery_spawned);
+
+    let queued = state
+        .message_queue
+        .get_queued(ChatContextType::Ideation, child_id.as_str());
+    assert_eq!(queued.len(), 1, "auto-continue must queue one hidden control message");
+    assert_eq!(
+        queued[0].metadata_override.as_deref(),
+        Some(VERIFICATION_AUTO_CONTINUE_METADATA)
+    );
+
+    let parent_after = state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::NeedsRevision);
+    assert!(parent_after.verification_in_progress);
+
+    let child_after = state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(child_after.status, crate::domain::entities::IdeationSessionStatus::Archived);
+}
+
+#[tokio::test]
 async fn test_handle_stream_error_appends_generic_agent_error_to_existing_content() {
     let state = AppState::new_test();
     let conversation_id = ChatConversationId::new();

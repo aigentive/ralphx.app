@@ -39,6 +39,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
+use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 
 use super::chat_service_context;
 use super::chat_service_errors::{
@@ -605,6 +606,90 @@ async fn read_existing_message_content(
         Ok(Some(msg)) => (msg.content, msg.tool_calls, msg.content_blocks),
         _ => (String::new(), None, None),
     }
+}
+
+fn terminal_tool_result(reason: &str) -> serde_json::Value {
+    serde_json::json!({
+        "status": "aborted",
+        "reason": reason,
+    })
+}
+
+fn seal_unresolved_tool_calls_json(tool_calls_json: Option<String>, reason: &str) -> Option<String> {
+    let raw = tool_calls_json?;
+    let mut tool_calls: Vec<ToolCall> = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(raw),
+    };
+
+    let sealed_result = terminal_tool_result(reason);
+    let mut changed = false;
+    for tool_call in &mut tool_calls {
+        if tool_call.result.is_none() {
+            tool_call.result = Some(sealed_result.clone());
+            changed = true;
+        }
+    }
+
+    if !changed {
+        return Some(raw);
+    }
+
+    serde_json::to_string(&tool_calls).ok().or(Some(raw))
+}
+
+fn seal_unresolved_content_blocks_json(
+    content_blocks_json: Option<String>,
+    reason: &str,
+) -> Option<String> {
+    let raw = content_blocks_json?;
+    let mut content_blocks: Vec<ContentBlockItem> = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(raw),
+    };
+
+    let sealed_result = terminal_tool_result(reason);
+    let mut changed = false;
+    for block in &mut content_blocks {
+        if let ContentBlockItem::ToolUse { result, .. } = block {
+            if result.is_none() {
+                *result = Some(sealed_result.clone());
+                changed = true;
+            }
+        }
+    }
+
+    if !changed {
+        return Some(raw);
+    }
+
+    serde_json::to_string(&content_blocks).ok().or(Some(raw))
+}
+
+async fn finalize_assistant_message_with_terminal_tool_state<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    event_ctx: &EventContextPayload,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls_json: Option<String>,
+    content_blocks_json: Option<String>,
+    reason: &str,
+) {
+    let sealed_tool_calls = seal_unresolved_tool_calls_json(tool_calls_json, reason);
+    let sealed_content_blocks = seal_unresolved_content_blocks_json(content_blocks_json, reason);
+    super::chat_service_send_background::finalize_assistant_message(
+        chat_message_repo,
+        app_handle,
+        event_ctx,
+        message_id,
+        role,
+        content,
+        sealed_tool_calls.as_deref(),
+        sealed_content_blocks.as_deref(),
+    )
+    .await;
 }
 
 /// Handle successful stream completion: task state transitions and merge auto-completion.
@@ -1382,15 +1467,16 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         } else {
             format!("{}\n\n[Agent stopped]", existing_content)
         };
-        super::chat_service_send_background::finalize_assistant_message(
+        finalize_assistant_message_with_terminal_tool_state(
             chat_message_repo,
             app_handle.as_ref(),
             event_ctx,
             pre_assistant_msg_id,
             &get_assistant_role(&context_type).to_string(),
             &stop_note,
-            existing_tool_calls.as_deref(),
-            existing_content_blocks.as_deref(),
+            existing_tool_calls,
+            existing_content_blocks,
+            "stopped",
         )
         .await;
 
@@ -1680,6 +1766,20 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     terminal_status = ?parent_state.terminal_status,
                     "Gate B+C: suppressing agent:error for terminal verification child"
                 );
+                let (existing_content, existing_tool_calls, existing_content_blocks) =
+                    read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
+                finalize_assistant_message_with_terminal_tool_state(
+                    chat_message_repo,
+                    app_handle.as_ref(),
+                    event_ctx,
+                    pre_assistant_msg_id,
+                    &get_assistant_role(&context_type).to_string(),
+                    &existing_content,
+                    existing_tool_calls,
+                    existing_content_blocks,
+                    "verification_parent_resolved",
+                )
+                .await;
                 verification_handoff::inject_verification_handoff_if_missing(
                     &parent_state.parent_id,
                     &parent_state.parent_conversation_id,
@@ -1693,6 +1793,49 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 .await;
                 return false;
             }
+        }
+    }
+
+    if context_type == ChatContextType::Ideation {
+        let child_id = IdeationSessionId::from_string(context_id.to_string());
+        if let Some(ReconcileVerificationChildCompletion::AutoContinue(request)) =
+            crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
+                &child_id,
+                ideation_session_repo,
+                app_handle.as_ref(),
+                "agent_error",
+            )
+            .await
+        {
+            queue_verification_auto_continue(
+                message_queue,
+                &child_id,
+                request.continuation_message,
+            );
+            tracing::info!(
+                context_id = child_id.as_str(),
+                current_round = request.snapshot.current_round,
+                max_rounds = request.snapshot.max_rounds,
+                gap_count = request.snapshot.current_gaps.len(),
+                "Queued hidden resume-in-place continuation after verification child error"
+            );
+
+            let (existing_content, existing_tool_calls, existing_content_blocks) =
+                read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
+            finalize_assistant_message_with_terminal_tool_state(
+                chat_message_repo,
+                app_handle.as_ref(),
+                event_ctx,
+                pre_assistant_msg_id,
+                &get_assistant_role(&context_type).to_string(),
+                &existing_content,
+                existing_tool_calls,
+                existing_content_blocks,
+                "verification_auto_continue",
+            )
+            .await;
+
+            return false;
         }
     }
 
@@ -1721,15 +1864,16 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             redacted_error
         )
     };
-    super::chat_service_send_background::finalize_assistant_message(
+    finalize_assistant_message_with_terminal_tool_state(
         chat_message_repo,
         app_handle.as_ref(),
         event_ctx,
         pre_assistant_msg_id,
         &get_assistant_role(&context_type).to_string(),
         &error_note,
-        existing_tool_calls.as_deref(),
-        existing_content_blocks.as_deref(),
+        existing_tool_calls,
+        existing_content_blocks,
+        "interrupted",
     )
     .await;
 
@@ -2434,19 +2578,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 "Review agent failed but no execution_state available for fallback transition"
             );
         }
-    }
-
-    // Path B: Reset verification state when a verification child errors (no turns produced)
-    // Ideation context falls through all TaskExecution/Merge/Review blocks above.
-    if context_type == ChatContextType::Ideation {
-        let child_id = IdeationSessionId::from_string(context_id.to_string());
-        crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
-            &child_id,
-            ideation_session_repo,
-            app_handle.as_ref(),
-            "agent_error",
-        )
-        .await;
     }
 
     // Emit error event AFTER all state transitions are complete so the UI reflects

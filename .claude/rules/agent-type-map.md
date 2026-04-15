@@ -40,9 +40,9 @@ Canonical authoring flow: `.claude/rules/agent-authoring.md`
 
 | Agent Name | Context | Model | Role |
 |---|---|---|---|
-| `ralphx-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans). MCP: `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `stop_verification` |
+| `ralphx-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans). Key MCP: `create_child_session`, `get_plan_verification`, `stop_verification`, `revert_and_skip` |
 | `ralphx-ideation-readonly` | ideation | opus | Read-only ideation fallback |
-| `ralphx-ideation-team-lead` | ideation | opus | Team mode lead for ideation. MCP: `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `stop_verification` |
+| `ralphx-ideation-team-lead` | ideation | opus | Team mode lead for ideation. Key MCP: `request_team_plan`, `create_child_session`, `get_plan_verification`, `stop_verification` |
 | `ralphx-utility-session-namer` | ideation | sonnet | Names ideation sessions |
 | `ralphx-chat-task` | task | sonnet | Task-level Q&A |
 | `ralphx-chat-project` | project | sonnet | Project-level Q&A |

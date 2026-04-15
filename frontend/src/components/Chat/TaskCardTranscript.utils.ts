@@ -1,7 +1,7 @@
 import type { ChatMessageResponse } from "@/api/chat";
 import type { StreamingTask } from "@/types/streaming-task";
 import type { ToolCall } from "./ToolCallIndicator";
-import { normalizeDelegationTranscriptPayload } from "./delegation-tool-calls";
+import { normalizeToolCallTranscriptPayload } from "./verification-tool-calls";
 
 export type TaskCardTranscriptBlock =
   | { type: "text"; text: string }
@@ -88,7 +88,7 @@ export function buildTaskCardTranscriptEntriesFromConversation(
 ): TaskCardTranscriptEntry[] {
   const entries: Array<TaskCardTranscriptEntry | null> = messages
     .map((message) => {
-      const { contentBlocks, toolCalls } = normalizeDelegationTranscriptPayload({
+      const { contentBlocks, toolCalls } = normalizeToolCallTranscriptPayload({
         contentBlocks: message.contentBlocks,
         toolCalls: message.toolCalls,
       });
