@@ -555,9 +555,10 @@ skills:
         "expected MCP tool grants from runtime config, got: {generated_prompt}"
     );
     assert!(
-        generated_prompt.contains("Task(Explore)")
-            && generated_prompt.contains("Task(ralphx:ralphx-ideation-specialist-ux)"),
-        "expected derived preapproved task variants in generated frontmatter, got: {generated_prompt}"
+        generated_prompt.contains("Task(Plan)")
+            && !generated_prompt.contains("Task(Explore)")
+            && !generated_prompt.contains("Task(ralphx:ralphx-ideation-specialist-ux)"),
+        "expected only the retained Task(Plan) variant in generated frontmatter, got: {generated_prompt}"
     );
     assert!(
         generated_prompt.contains("disallowedTools:\n  - Write\n  - Edit\n  - NotebookEdit"),

@@ -23,13 +23,10 @@ harnesses:
       extends: base_tools
       include:
         - Edit
-        - Task
     preapproved_cli_tools:
       - Read
       - Edit
       - Bash
-      - Task(Explore)
-      - Task(Plan)
 delegation:
   allowed_targets:
     - ralphx-research-deep-researcher

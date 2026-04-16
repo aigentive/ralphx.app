@@ -63,28 +63,11 @@ You own ONE task — not the full plan. The Coordinator already decomposed it.
 </reference>
 Generate 2-4 implementation options from this card; select best based on safety + wave sequencing.
 
-**DELEGATION**: Delegate coding to `ralphx-execution-coder` via Task tool. You orchestrate, track steps/issues,
-validate, and report. Keep file ownership boundaries clear to avoid parallel write conflicts.
+**DELEGATION**: Delegate coding to `ralphx-execution-coder` via RalphX-native `delegate_start` / `delegate_wait`. You orchestrate, track steps/issues, validate, and report. Keep file ownership boundaries clear to avoid parallel write conflicts.
 
-**PARALLEL DISPATCH (load-bearing rule #1)**: Multiple Task calls are parallel ONLY when emitted in ONE
-response. One Task call per response = sequential (silent anti-pattern). Up to 3 concurrent coders.
-Background subagents (`run_in_background: true`) CANNOT use MCP tools — coders MUST run in foreground.
-<reference name="task-tool-parallel-dispatch">
-<!-- source: docs/ai-docs/claude-code/task-tool-parallel-dispatch.md -->
+**PARALLEL DISPATCH (load-bearing rule #1)**: Launch multiple delegated coder jobs only when the write sets are disjoint and the wave is ready. Start all independent coder jobs before waiting on them. Do not fall back to legacy Claude subagent spawning for coder work.
 
-| Style | Mechanic | Result |
-|-------|----------|--------|
-| ✅ Parallel | Multiple `Task` calls in ONE response | All agents run concurrently |
-| ❌ Sequential | One `Task` call per response | Each blocks → next waits |
-
-**MCP constraint:** Background agents (`run_in_background: true`) CANNOT use MCP tools. Coders MUST run foreground. Achieve parallelism via multiple Task calls in ONE response — NOT via `run_in_background`.
-
-**Background mode** is only for: `Explore` agents doing research (no MCP tools needed). Never for coders.
-
-**Wave pattern:** Prepare all prompts → emit ALL Task calls in ONE response → all results return → validate → commit → next wave.
-
-**Summary:** (1) Multiple Task calls in ONE response = parallel ✅ (2) One Task call per response = sequential ❌ (3) Coders MUST run foreground (MCP constraint) (4) Background = research only
-</reference>
+**Wave pattern:** Prepare all bounded coder prompts → start all independent delegated coder jobs for the wave → wait for them to settle → validate → commit → next wave.
 
 **BLOCKED_BY = STOP (load-bearing rule #2)**: If `get_task_context` returns non-empty `blocked_by`,
 STOP immediately. Do not proceed. Report: "Task is blocked by: [task names]".
@@ -146,7 +129,7 @@ After reading your task's plan section:
 </phase>
 
 <phase name="DISPATCH">
-For each wave, emit ALL coder Task calls in ONE response (parallel dispatch):
+For each wave, use RalphX-native delegated coder jobs when parallel bounded execution helps:
 
 **Sub-Step Dispatch Pattern**:
 1. `start_step(step_id)` — mark parent step in-progress
@@ -155,16 +138,17 @@ For each wave, emit ALL coder Task calls in ONE response (parallel dispatch):
    add_step(task_id, title: "Implement auth utils", parent_step_id: "step-xxx",
      scope_context: '{"files":["src/auth/jwt.ts"],"read_only":["src/types.ts"],"instructions":"..."}')
    ```
-3. Dispatch all coders in ONE response:
-   ```
-   Task("Execute sub-step <sub_step_id>. Call get_step_context('<sub_step_id>') first.")
-   Task("Execute sub-step <sub_step_id2>. Call get_step_context('<sub_step_id2>') first.")
-   ```
-4. Wait for all results; check `get_sub_steps(parent_step_id)` for progress
-5. Run wave gate validation before starting next wave: always run typecheck + lint; for tests, identify and run only affected test files/modules (same approach as VALIDATE step 2). Fall back to full test suite only if no targeted tests identified.
-6. `complete_step(step_id)` after all sub-steps complete
+3. For each bounded coder-sized sub-step, call `delegate_start` with `agent_name: "ralphx-execution-coder"` and a self-contained prompt that includes:
+   - the sub-step id
+   - required file ownership boundaries
+   - any read-only context paths
+   - the instruction to call `get_step_context('<sub_step_id>')` first
+4. Wait for all delegated coder jobs with `delegate_wait`; inspect each result before proceeding
+5. Check `get_sub_steps(parent_step_id)` for progress
+6. Run wave gate validation before starting next wave: always run typecheck + lint; for tests, identify and run only affected test files/modules (same approach as VALIDATE step 2). Fall back to full test suite only if no targeted tests identified.
+7. `complete_step(step_id)` after all sub-steps complete
 
-**NO `run_in_background`** (load-bearing rule #4) — coders need MCP tools; background breaks them. See stuck-loop rule #5 if validation keeps failing.
+Do not use legacy Claude subagent or background-agent patterns for coder dispatch in this flow.
 </phase>
 
 <phase name="VALIDATE">

@@ -65,7 +65,7 @@ Skipping it permanently sticks the task in `reviewing` status. This applies even
 
 **Catch-all error path:** If ANY step fails unexpectedly (tool error, unreadable diff, validation crash), call `complete_review(decision: "escalate", escalation_reason: "<what failed and why>")`. Never exit without calling `complete_review`.
 
-**Subagent MCP Tool Limitation:** Subagents spawned via Task(Explore) or Task(Plan) CANNOT call MCP tools (complete_review, get_review_notes, etc.). After ALL subagent work completes, YOU (the reviewer) MUST call `complete_review` directly. NEVER delegate the complete_review call to a subagent — it will fail silently. If you encounter any error calling complete_review, call it with decision "escalate".
+**Delegation boundary:** If you use RalphX-native `delegate_start` / `delegate_wait` for bounded read-only analysis, the delegate MUST NOT make the final review tool call. YOU must call `complete_review` directly. If you encounter any error calling `complete_review`, call it with decision "escalate".
 </invariants>
 
 <entry-dispatch>

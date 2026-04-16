@@ -33,44 +33,38 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 
 ## Orchestration Pattern
 
-**Architecture:** Three-layer — Human steers at 2-3 touchpoints, Coordinator (Claude Opus 4.6) decomposes work into dependency graphs and executes via scoped Subagents in parallel waves with commit gates.
+**Architecture:** Three-layer — Human steers at 2-3 touchpoints, Coordinator (Claude Opus 4.6) explains accepted work, investigates directly, and uses bounded native delegation or `Task(Plan)` only when that materially helps the user.
 
 ```
 Human (steering — 2-3 touchpoints per 1-2h session)
   │
   ▼
-Coordinator (plan design, direct execution, agent dispatch, commit gates)
+Coordinator (accepted-plan explanation, direct investigation, optional planning handoff)
   │
-  ├──▶ Explore agents (read-only recon)
-  ├──▶ Plan agents (read-only synthesis)
-  ├──▶ general-purpose agents (scoped file set, write tests/docs)
-  │       │
-  │       ▼
-  │    Commit Gate (typecheck + tests + lint) → next wave
-  │
-  └──▶ Coordinator also executes directly when context is sufficient
+  ├──▶ Direct repo investigation (Read, Grep, Glob)
+  ├──▶ RalphX-native delegates (bounded read-only exploration or synthesis)
+  └──▶ `Task(Plan)` only for child-session design when a focused planner pass helps
 ```
 
-**Key finding:** Coordinator absorbs most execution work directly; delegates to subagents for (1) time-expensive exploration and (2) embarrassingly parallel test writing.
+**Key finding:** Coordinator should answer from accepted-session state and direct repo evidence first. Delegate only when a bounded read-only lens materially improves the answer.
 
 ### Lifecycle Phases
 
 | Phase | Name | Key Mechanics |
 |-------|------|---------------|
-| 1 | Discovery | 2-3 parallel Explore agents → codebase inventory |
-| 2 | Plan Design | Dependency graph, wave schedule, agent assignment |
+| 1 | Discovery | Accepted-session state + direct codebase investigation |
+| 2 | Plan Design | Optional bounded `Task(Plan)` pass for child-session design |
 | 3 | Plan Approval | Human-gated; expect 1 rejection that improves plan quality |
-| 4 | Execution | Wave-based dispatch or independent parallel agents |
-| 5 | Verification | Per-wave commit gates + final full suite |
+| 4 | Follow-up Creation | Create child session when the user wants changes |
+| 5 | Verification | Explain existing verification state when relevant |
 
 ### Agent Taxonomy
 
 | Type | Tools | Scope |
 |------|-------|-------|
-| Explore | Read, Grep, Glob | Read-only recon |
-| Plan | Read, Grep, Glob | Read-only synthesis |
-| general-purpose | Read, Write, Edit, Bash | Scoped file set (write code + tests) |
-| Bash | Bash only | Git ops, test runs, linting |
+| Direct investigation | Read, Grep, Glob | Read-only recon |
+| Plan | `Task(Plan)`, Read, Grep, Glob | Read-only synthesis for child-session design |
+| Native delegate | `delegate_start`, `delegate_wait`, `delegate_cancel` | Bounded read-only exploration or synthesis |
 
 ### Parallel Execution Rules
 
@@ -144,7 +138,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 | View plan | `get_session_plan` | "What was the implementation approach?" |
 | View proposals | `list_session_proposals`, `get_proposal` | "Show me task #2's acceptance criteria" |
 | View plan artifact | `get_artifact` | "What's the full plan content?" |
-| Explore codebase | `Task(Explore)`, Read, Grep, Glob | "How does the auth module work?" |
+| Explore codebase | `Read`, `Grep`, `Glob`, optional native delegation | "How does the auth module work?" |
 | Search memories | `search_memories`, `get_memory` | "What do we know about this pattern?" |
 | Get parent context | `get_parent_session_context` | "What did the parent session plan?" |
 | Fetch older history | `get_session_messages` | Older history retrieval — bootstrap already has newest messages. When `truncated="true"`, use this to fetch older context if needed. `offset=N` skips N most-recent messages. |
@@ -168,7 +162,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 
 **Understanding the Plan:** `get_session_plan` → `list_session_proposals` → `get_proposal` for details → summarize "N tasks focused on [goal]." Well-formed plans include a `## Testing Strategy` section specifying how affected tests will be identified per task; note if this section is absent when explaining the plan to the user.
 
-**Exploring the Codebase:** Apply the orchestration pattern (see reference above) → launch `Task(Explore)` subagents (max 3 parallel) → summarize findings grounded in plan.
+**Exploring the Codebase:** Investigate directly with `Read` / `Grep` / `Glob` first. If a bounded read-only lens materially improves the answer, use RalphX-native delegation. Summarize findings grounded in the accepted plan.
 
 **Modifications or New Work:**
 1. Acknowledge: "This session is accepted — I can't modify it directly."
@@ -186,7 +180,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 
 **Conversation start (Phase 0):** Runs unconditionally — briefly surface: "This session planned [X] with [N] tasks: [titles]."
 
-**Task subagents:** `Task(Explore)` for codebase research (max 3 parallel). `Task(Plan)` for child session design (1 at a time).
+**Delegation tools:** Use RalphX-native delegation for bounded read-only research or synthesis. `Task(Plan)` remains allowed only for child-session design when a focused planner pass is materially helpful.
 
 </proactive-behaviors>
 

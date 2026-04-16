@@ -30,10 +30,11 @@ fn test_yaml_loaded_has_unique_names() {
 #[test]
 fn test_get_allowed_tools_worker_agent() {
     let tools = get_allowed_tools("ralphx-execution-worker").unwrap();
-    assert!(tools.contains("Read"));
-    assert!(tools.contains("Write"));
-    assert!(tools.contains("Edit"));
-    assert!(tools.contains("Task"));
+    let tool_list: HashSet<_> = tools.split(',').collect();
+    assert!(tool_list.contains("Read"));
+    assert!(tool_list.contains("Write"));
+    assert!(tool_list.contains("Edit"));
+    assert!(!tool_list.contains("Task"));
 }
 
 #[test]
@@ -47,12 +48,14 @@ fn test_get_allowed_tools_mcp_only_agent() {
 #[test]
 fn test_get_preapproved_tools_worker_contains_expected() {
     let tools = get_preapproved_tools("ralphx-execution-worker").unwrap();
-    assert!(tools.contains("mcp__ralphx__get_task_context"));
-    assert!(tools.contains("mcp__ralphx__get_project_analysis"));
-    assert!(tools.contains("Write"));
-    assert!(tools.contains("Task(Explore)"));
+    let tool_list: HashSet<_> = tools.split(',').collect();
+    assert!(tool_list.contains("mcp__ralphx__get_task_context"));
+    assert!(tool_list.contains("mcp__ralphx__get_project_analysis"));
+    assert!(tool_list.contains("Write"));
+    assert!(!tool_list.contains("Task"));
+    assert!(!tool_list.contains("Task(Explore)"));
     // Workers should NOT have memory skills - only dedicated memory agents
-    assert!(!tools.contains("Skill(ralphx:rule-manager)"));
+    assert!(!tool_list.contains("Skill(ralphx:rule-manager)"));
 }
 
 #[test]
@@ -624,6 +627,11 @@ fn test_embedded_config_omits_live_agent_runtime_mirrors_and_uses_canonical_meta
     assert!(
         ideation
             .preapproved_cli_tools
+            .contains(&"Task(Plan)".to_string())
+    );
+    assert!(
+        !ideation
+            .preapproved_cli_tools
             .contains(&"Task(Explore)".to_string())
     );
 
@@ -636,12 +644,9 @@ fn test_embedded_config_omits_live_agent_runtime_mirrors_and_uses_canonical_meta
     assert_eq!(worker.permission_mode.as_deref(), Some("acceptEdits"));
     assert!(worker.resolved_cli_tools.contains(&"Write".to_string()));
     assert!(worker.resolved_cli_tools.contains(&"LSP".to_string()));
+    assert!(!worker.resolved_cli_tools.contains(&"Task".to_string()));
     assert!(worker.allowed_mcp_tools.contains(&"start_step".to_string()));
-    assert!(
-        worker
-            .preapproved_cli_tools
-            .contains(&"Task(Plan)".to_string())
-    );
+    assert!(!worker.preapproved_cli_tools.contains(&"Task".to_string()));
 
     let qa_executor = parsed
         .agents

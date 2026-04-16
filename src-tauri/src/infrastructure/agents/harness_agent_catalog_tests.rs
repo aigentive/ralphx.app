@@ -186,6 +186,26 @@ const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
 ];
 
 const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
+    (
+        "ralphx-ideation",
+        &[
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Task(Explore)",
+            "Task(ralphx:*)",
+        ],
+    ),
+    (
+        "ralphx-ideation-readonly",
+        &[
+            "Write",
+            "Edit",
+            "NotebookEdit",
+            "Task(Explore)",
+            "Task(ralphx:*)",
+        ],
+    ),
     ("ralphx-plan-verifier", &["Write", "Edit", "NotebookEdit"]),
     (
         "ralphx-plan-critic-completeness",
@@ -335,12 +355,12 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
         &["Task", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
         false,
     ),
-    ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
+    ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "LSP"], false),
     ("ralphx-execution-coder", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
-    ("ralphx-execution-reviewer", "base_tools", &["Task"], false),
+    ("ralphx-execution-reviewer", "base_tools", &[], false),
     ("ralphx-qa-prep", "base_tools", &["Task"], false),
     ("ralphx-qa-executor", "base_tools", &["Write", "Edit", "Task"], false),
-    ("ralphx-execution-merger", "base_tools", &["Edit", "Task"], false),
+    ("ralphx-execution-merger", "base_tools", &["Edit"], false),
     (
         "ralphx-execution-team-lead",
         "base_tools",

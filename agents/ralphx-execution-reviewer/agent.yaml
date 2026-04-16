@@ -27,12 +27,8 @@ harnesses:
     model: sonnet
     tools:
       extends: base_tools
-      include:
-        - Task
     preapproved_cli_tools:
       - Bash
-      - Task(Explore)
-      - Task(Plan)
     skills:
       - code-review-checklist
 delegation:

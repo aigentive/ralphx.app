@@ -39,7 +39,6 @@ harnesses:
       include:
         - Write
         - Edit
-        - Task
         - LSP
     preapproved_cli_tools:
       - Read
@@ -51,9 +50,6 @@ harnesses:
       - Write
       - Edit
       - Bash
-      - Task
-      - Task(Explore)
-      - Task(Plan)
 delegation:
   allowed_targets:
     - ralphx-execution-coder

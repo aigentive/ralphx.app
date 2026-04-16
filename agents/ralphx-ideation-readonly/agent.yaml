@@ -27,8 +27,9 @@ harnesses:
       - Write
       - Edit
       - NotebookEdit
-    preapproved_cli_tools:
       - Task(Explore)
+      - Task(ralphx:*)
+    preapproved_cli_tools:
       - Task(Plan)
 delegation:
   allowed_targets:
