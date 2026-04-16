@@ -209,9 +209,26 @@ pub(crate) async fn build_child_session_status_response(
         None
     };
 
+    let (effective_verification_status, _) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for session {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get verification status",
+            )
+        })?;
+
     // Step 5: Build VerificationInfo from the native verification snapshot when verification
     // has started.
-    let verification = if session.verification_status != VerificationStatus::Unverified {
+    let verification = if effective_verification_status != VerificationStatus::Unverified {
         let native_snapshot = state
             .app_state
             .ideation_session_repo
@@ -228,19 +245,15 @@ pub(crate) async fn build_child_session_status_response(
                 )
             })?;
 
-        let (current_round, gap_score) = if let Some(snapshot) = native_snapshot {
-            let round = if snapshot.current_round > 0 {
-                Some(snapshot.current_round)
-            } else {
-                None
-            };
+        let (status, current_round, gap_score) = if let Some(snapshot) = native_snapshot {
+            let round = (snapshot.current_round > 0).then_some(snapshot.current_round);
             let score = snapshot.rounds.last().map(|r| r.gap_score);
-            (round, score)
+            (snapshot.status, round, score)
         } else {
-            (None, None)
+            (effective_verification_status, None, None)
         };
         Some(VerificationInfo {
-            status: session.verification_status.to_string(),
+            status: status.to_string(),
             generation: session.verification_generation,
             current_round,
             gap_score,

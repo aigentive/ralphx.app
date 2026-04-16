@@ -110,19 +110,12 @@ pub(crate) async fn repair_blank_orphaned_verification_generation(
         return Ok(false);
     }
 
-    app_state
-        .ideation_session_repo
-        .update_verification_state(&session.id, VerificationStatus::Unverified, false)
-        .await?;
-
     let mut repaired_snapshot = snapshot;
-    repaired_snapshot.status = VerificationStatus::Unverified;
-    repaired_snapshot.in_progress = false;
-    repaired_snapshot.current_round = 0;
-    repaired_snapshot.max_rounds = 0;
-    repaired_snapshot.best_round_index = None;
-    repaired_snapshot.current_gaps.clear();
-    repaired_snapshot.convergence_reason = None;
+    crate::domain::services::clear_verification_snapshot(
+        &mut repaired_snapshot,
+        VerificationStatus::Unverified,
+        false,
+    );
     app_state
         .ideation_session_repo
         .save_verification_run_snapshot(&session.id, &repaired_snapshot)

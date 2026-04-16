@@ -118,6 +118,24 @@ pub async fn get_ideation_status_http(
         .message_queue
         .count_for_context("ideation", session_id.as_str()) as u32;
 
+    let (effective_verification_status, effective_verification_in_progress) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for session {}: {}",
+                session_id.as_str(),
+                e
+            );
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to load verification status".to_string()),
+            }
+        })?;
+
     let (next_action, hint) = match agent_status.as_str() {
         "waiting_for_input" if unread_message_count > 0 => (
             "fetch_messages".to_string(),
@@ -146,8 +164,8 @@ pub async fn get_ideation_status_http(
         agent_status,
         proposal_count,
         created_at: session.created_at.to_rfc3339(),
-        verification_status: session.verification_status.to_string(),
-        verification_in_progress: session.verification_in_progress,
+        verification_status: effective_verification_status.to_string(),
+        verification_in_progress: effective_verification_in_progress,
         delivery_status,
         expected_proposal_count: session.expected_proposal_count,
         auto_accept_status: session.auto_accept_status.clone(),

@@ -79,7 +79,8 @@ impl SqliteIdeationSessionRepository {
         let current_round = (snapshot.current_round > 0).then_some(snapshot.current_round as i64);
         let max_rounds = (snapshot.max_rounds > 0).then_some(snapshot.max_rounds as i64);
         let gap_count = snapshot.current_gaps.len() as i64;
-        let gap_score = Some(crate::domain::services::gap_score(&snapshot.current_gaps) as i64);
+        let gap_score = (!snapshot.current_gaps.is_empty())
+            .then_some(crate::domain::services::gap_score(&snapshot.current_gaps) as i64);
         let convergence_reason = snapshot.convergence_reason.clone();
         (current_round, max_rounds, gap_count, gap_score, convergence_reason)
     }
@@ -103,11 +104,14 @@ impl SqliteIdeationSessionRepository {
              (id, project_id, title, title_source, status, plan_artifact_id, \
               inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
-              verification_status, source_project_id, source_session_id, session_purpose, \
+              verification_status, verification_in_progress, verification_generation, \
+              verification_current_round, verification_max_rounds, verification_gap_count, \
+              verification_gap_score, verification_convergence_reason, \
+              source_project_id, source_session_id, session_purpose, \
               cross_project_checked, origin, api_key_id, idempotency_key, \
               external_activity_phase, external_last_read_message_id, dependencies_acknowledged, \
               pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, blocker_fingerprint) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -125,6 +129,13 @@ impl SqliteIdeationSessionRepository {
                 session.team_mode,
                 session.team_config_json,
                 session.verification_status.to_string(),
+                if session.verification_in_progress { 1i32 } else { 0i32 },
+                session.verification_generation,
+                session.verification_current_round.map(|value| value as i64),
+                session.verification_max_rounds.map(|value| value as i64),
+                session.verification_gap_count as i64,
+                session.verification_gap_score.map(|value| value as i64),
+                session.verification_convergence_reason,
                 session.source_project_id,
                 session.source_session_id,
                 session.session_purpose.to_string(),
@@ -802,17 +813,39 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT verification_status, verification_in_progress FROM ideation_sessions WHERE id = ?1",
+                    "SELECT verification_status, verification_in_progress, verification_generation
+                     FROM ideation_sessions
+                     WHERE id = ?1",
                     [&id],
                     |row| {
                         let status_str: Option<String> = row.get(0).unwrap_or(None);
                         let in_progress: Option<i64> = row.get(1).unwrap_or(None);
-                        let status = status_str
+                        let generation: i32 = row.get(2).unwrap_or(0);
+                        let summary_status = status_str
                             .as_deref()
                             .and_then(|s| s.parse().ok())
                             .unwrap_or_default();
-                        let in_prog = in_progress.map(|v| v != 0).unwrap_or(false);
-                        Ok((status, in_prog))
+                        let summary_in_progress = in_progress.map(|v| v != 0).unwrap_or(false);
+
+                        let effective = conn
+                            .query_row(
+                                "SELECT status, in_progress
+                                 FROM verification_runs
+                                 WHERE session_id = ?1 AND generation = ?2",
+                                rusqlite::params![&id, generation],
+                                |snapshot_row| {
+                                    let snapshot_status: String = snapshot_row.get(0)?;
+                                    let snapshot_in_progress: i64 = snapshot_row.get(1)?;
+                                    let parsed_status = snapshot_status
+                                        .parse()
+                                        .unwrap_or(summary_status);
+                                    Ok((parsed_status, snapshot_in_progress != 0))
+                                },
+                            )
+                            .optional()?
+                            .unwrap_or((summary_status, summary_in_progress));
+
+                        Ok(effective)
                     },
                 )
             })

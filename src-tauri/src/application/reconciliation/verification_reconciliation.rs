@@ -28,7 +28,9 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::{
-    emit_verification_status_changed, is_process_alive, RunningAgentRegistry,
+    build_blank_verification_snapshot, clear_verification_snapshot,
+    emit_verification_status_changed, is_process_alive,
+    load_current_verification_snapshot_or_default, RunningAgentRegistry,
 };
 
 #[derive(Debug, Clone)]
@@ -230,18 +232,22 @@ impl VerificationReconciliationService {
                 continue;
             }
 
-            // Force-reset via update_verification_state (unconditional).
-            // reset_verification() guards on in_progress=false and is only for
-            // conditional resets on plan artifact updates — not for crash recovery.
-            match self
-                .ideation_session_repo
-                .update_verification_state(
-                    &session.id,
+            let reset_result = async {
+                let mut snapshot = load_current_verification_snapshot_or_default(
+                    self.ideation_session_repo.as_ref(),
+                    session,
                     VerificationStatus::Unverified,
                     false,
                 )
-                .await
-            {
+                .await?;
+                clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+                self.ideation_session_repo
+                    .save_verification_run_snapshot(&session.id, &snapshot)
+                    .await
+            }
+            .await;
+
+            match reset_result {
                 Ok(()) => {
                     if cold_boot {
                         tracing::info!(
@@ -1095,24 +1101,18 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
             )
         };
 
-    // Update parent verification state
+    let authoritative_snapshot = emit_snapshot.unwrap_or_else(|| {
+        let mut snapshot =
+            build_blank_verification_snapshot(parent.verification_generation, terminal_status, false);
+        snapshot.convergence_reason = convergence_reason_override.clone();
+        snapshot
+    });
+
     match repo
-        .update_verification_state(parent_id, terminal_status, false)
+        .save_verification_run_snapshot(parent_id, &authoritative_snapshot)
         .await
     {
         Ok(()) => {
-            if let Some(snapshot) = emit_snapshot.as_ref() {
-                if let Err(save_err) = repo
-                    .save_verification_run_snapshot(parent_id, snapshot)
-                    .await
-                {
-                    tracing::warn!(
-                        parent_id = %parent_id.as_str(),
-                        error = %save_err,
-                        "Failed to persist reconciled verification snapshot after child completion"
-                    );
-                }
-            }
             tracing::info!(
                 parent_id = %parent_id.as_str(),
                 child_id = %child_id.as_str(),
@@ -1125,7 +1125,7 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
             tracing::warn!(
                 parent_id = %parent_id.as_str(),
                 error = %e,
-                "Failed to update parent verification state during reconciliation"
+                "Failed to persist parent verification snapshot during reconciliation"
             );
             // Still archive the child and emit even if update failed
         }
@@ -1138,7 +1138,7 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
             parent_id.as_str(),
             terminal_status,
             false,
-            emit_snapshot.as_ref(),
+            Some(&authoritative_snapshot),
             convergence_reason_override.as_deref(),
             Some(parent.verification_generation),
         );
@@ -1153,7 +1153,7 @@ pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
     Some(ReconcileVerificationChildCompletion::Terminal(
         ReconcileChildCompleteResult {
             terminal_status,
-            parsed_snapshot: emit_snapshot,
+            parsed_snapshot: Some(authoritative_snapshot),
         },
     ))
 }
@@ -1292,15 +1292,20 @@ pub(crate) async fn reset_verification_on_child_error<R: Runtime>(
         }
     }
 
-    // Reset parent to Unverified with the given reason
-    match repo
-        .update_verification_state(
-            &parent_id,
+    let reset_result = async {
+        let mut snapshot = load_current_verification_snapshot_or_default(
+            repo.as_ref(),
+            &parent,
             VerificationStatus::Unverified,
-            false
+            false,
         )
-        .await
-    {
+        .await?;
+        clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+        repo.save_verification_run_snapshot(&parent_id, &snapshot).await
+    }
+    .await;
+
+    match reset_result {
         Ok(()) => {
             tracing::info!(
                 parent_id = %parent_id.as_str(),

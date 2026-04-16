@@ -33,6 +33,19 @@ pub async fn confirm_verification(
         )
         .await
         .map_err(map_app_err_local)?;
+
+        let (_, effective_in_progress) =
+            crate::domain::services::load_effective_verification_status(
+                state.app_state.ideation_session_repo.as_ref(),
+                &session,
+            )
+            .await
+            .map_err(map_app_err_local)?;
+        if effective_in_progress {
+            return Ok(Json(VerificationActionResponse {
+                status: "ok".to_string(),
+            }));
+        }
     }
 
     // Run transaction: verify session exists + trigger auto-verify

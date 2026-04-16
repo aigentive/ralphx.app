@@ -20,7 +20,10 @@ use crate::domain::repositories::{
 };
 use crate::application::AppState;
 use crate::domain::entities::VerificationStatus;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    clear_verification_snapshot, emit_verification_status_changed,
+    load_current_verification_snapshot_or_default,
+};
 use crate::error::{AppError, AppResult};
 use tauri::{Manager, Runtime};
 
@@ -336,17 +339,24 @@ async fn build_ideation_recovery_metadata<R: Runtime>(
 
     // If verification was in-progress when the session crashed, force-reset it.
     // A stuck `verification_in_progress=1` would block reconciliation and confuse the recovered agent.
-    // Use update_verification_state (unconditional) because reset_verification() guards on
-    // in_progress=false (it is only for conditional resets on plan artifact updates).
+    // Reset the authoritative snapshot so the session summary and current-generation state stay aligned.
     if verification_was_in_progress {
-        if let Err(e) = session_repo
-            .update_verification_state(
-                &session_id,
+        let reset_result = async {
+            let mut snapshot = load_current_verification_snapshot_or_default(
+                session_repo.as_ref(),
+                &session,
                 VerificationStatus::Unverified,
                 false,
             )
-            .await
-        {
+            .await?;
+            clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+            session_repo
+                .save_verification_run_snapshot(&session_id, &snapshot)
+                .await
+        }
+        .await;
+
+        if let Err(e) = reset_result {
             tracing::warn!(
                 session_id = session_id.as_str(),
                 error = %e,

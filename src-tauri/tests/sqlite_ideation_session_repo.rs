@@ -1047,6 +1047,61 @@ async fn test_get_verification_status_returns_none_for_nonexistent_session() {
 }
 
 #[tokio::test]
+async fn test_get_verification_status_prefers_active_generation_snapshot_over_stale_summary() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let mut session = create_test_session(&project_id, Some("Snapshot First"));
+    session.verification_generation = 3;
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    repo.save_verification_run_snapshot(
+        &session_id,
+        &VerificationRunSnapshot {
+            generation: 3,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![VerificationGap {
+                severity: "high".to_string(),
+                category: "testing".to_string(),
+                description: "Missing regression".to_string(),
+                why_it_matters: None,
+                source: Some("completeness".to_string()),
+            }],
+            rounds: vec![],
+        },
+    )
+    .await
+    .unwrap();
+
+    repo.update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let (status, in_progress) = repo
+        .get_verification_status(&session_id)
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(
+        status,
+        VerificationStatus::Reviewing,
+        "active-generation snapshot must override stale summary status"
+    );
+    assert!(
+        in_progress,
+        "active-generation snapshot must override stale summary in_progress flag"
+    );
+}
+
+#[tokio::test]
 async fn test_save_and_get_verification_run_snapshot_roundtrip() {
     let db = setup_test_db();
     let project_id = ProjectId::new();

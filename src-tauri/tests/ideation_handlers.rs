@@ -807,6 +807,81 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
     assert_eq!(response.rounds[0].gap_count, 2); // 2 fingerprints (one per gap)
 }
 
+#[tokio::test]
+async fn test_post_verification_status_uses_snapshot_truth_when_summary_is_stale() {
+    let state = setup_test_state().await;
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(4)
+        .build();
+    let session_id = session.id.clone();
+    let session_id_str = session_id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &VerificationRunSnapshot {
+                generation: 4,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 1,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = post_verification_status(
+        State(state.clone()),
+        Path(session_id_str),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "testing".to_string(),
+                description: "Missing regression".to_string(),
+                why_it_matters: Some("runtime behavior is unguarded".to_string()),
+                source: Some("completeness".to_string()),
+            }]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(4),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "active-generation snapshot must drive transition validation: {:?}",
+        result.err()
+    );
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "needs_revision");
+    assert!(!response.in_progress);
+    assert_eq!(response.verification_generation, 4);
+}
+
 // ── Condition 6 tests: reviewing with gaps → needs_revision auto-transition ──
 
 /// Condition 6 test 1: reviewing + critical gaps → overridden to needs_revision
@@ -3928,6 +4003,70 @@ async fn test_mark_verification_infra_failure_rejects_stale_generation() {
         body.contains("Generation mismatch"),
         "error body must explain the zombie-generation rejection"
     );
+}
+
+#[tokio::test]
+async fn test_mark_verification_infra_failure_uses_snapshot_truth_when_summary_is_stale() {
+    let state = setup_test_state().await;
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(9)
+        .build();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &VerificationRunSnapshot {
+                generation: 9,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = mark_verification_infra_failure(
+        State(state.clone()),
+        Path(session_id.as_str().to_string()),
+        Json(VerificationInfraFailureRequest {
+            generation: Some(9),
+            convergence_reason: Some("agent_error".to_string()),
+            round: Some(2),
+            max_rounds: Some(5),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "active-generation snapshot must allow infra-failure cleanup even if summary is stale: {:?}",
+        result.err()
+    );
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "unverified");
+    assert!(!response.in_progress);
+    assert_eq!(response.verification_generation, 10);
 }
 
 // ── verification_child continuity tests ──────────────────────────────────────

@@ -2720,30 +2720,45 @@ async fn fetch_parent_verification_state(
         }
     };
 
-    let (convergence_reason, current_gaps) = match ideation_session_repo
+    let (terminal_status, in_progress, convergence_reason, current_gaps) = match ideation_session_repo
         .get_verification_run_snapshot(
             &parent_session_id,
             parent_session.verification_generation,
         )
         .await
     {
-        Ok(Some(snapshot)) => (snapshot.convergence_reason.clone(), snapshot.current_gaps.clone()),
-        Ok(None) => (parent_session.verification_convergence_reason.clone(), vec![]),
+        Ok(Some(snapshot)) => (
+            snapshot.status,
+            snapshot.in_progress,
+            snapshot.convergence_reason.clone(),
+            snapshot.current_gaps.clone(),
+        ),
+        Ok(None) => (
+            parent_session.verification_status,
+            parent_session.verification_in_progress,
+            parent_session.verification_convergence_reason.clone(),
+            vec![],
+        ),
         Err(e) => {
             tracing::warn!(
                 parent_id = %parent_session_id.as_str(),
                 error = %e,
                 "Gate B: failed to fetch native verification snapshot"
             );
-            (parent_session.verification_convergence_reason.clone(), vec![])
+            (
+                parent_session.verification_status,
+                parent_session.verification_in_progress,
+                parent_session.verification_convergence_reason.clone(),
+                vec![],
+            )
         }
     };
 
     Some(ParentVerificationState {
         parent_id: parent_session_id,
         parent_conversation_id,
-        in_progress: parent_session.verification_in_progress,
-        terminal_status: parent_session.verification_status,
+        in_progress,
+        terminal_status,
         convergence_reason,
         current_gaps,
     })

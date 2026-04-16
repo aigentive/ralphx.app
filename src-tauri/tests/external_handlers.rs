@@ -20,6 +20,7 @@ use ralphx_lib::domain::entities::{
     task::Task,
     types::ProjectId,
     IdeationSessionId, InternalStatus, Priority, ProposalCategory, TaskProposal,
+    VerificationRunSnapshot,
 };
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
 use ralphx_lib::error::AppError;
@@ -2967,6 +2968,89 @@ async fn test_trigger_verification_already_running() {
     assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
     let response = result.unwrap().0;
     assert_eq!(response.status, "already_running");
+}
+
+#[tokio::test]
+async fn test_trigger_verification_uses_snapshot_truth_when_summary_is_stale() {
+    let state = setup_sqlite_test_state().await;
+
+    let pid = ProjectId::from_string("proj-verify-stale-snapshot".to_string());
+    let project = make_project("proj-verify-stale-snapshot", "Stale Snapshot Project");
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let session = IdeationSession::builder()
+        .project_id(pid)
+        .status(IdeationSessionStatus::Active)
+        .verification_generation(2)
+        .build();
+    let session_id = session.id.clone();
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_plan_artifact_id(&created.id, Some("artifact-x".to_string()))
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &VerificationRunSnapshot {
+                generation: 2,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 1,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = trigger_verification_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(TriggerVerificationRequest {
+            session_id: session_id.as_str().to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(
+        response.status, "already_running",
+        "active-generation snapshot must block duplicate external verification starts"
+    );
+
+    let refreshed = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session should still exist");
+    assert_eq!(
+        refreshed.verification_generation, 2,
+        "stale summary must not trigger a new verification generation"
+    );
 }
 
 #[tokio::test]

@@ -34,6 +34,29 @@ async fn initialize_verification_state(
         })?;
     }
 
+    let (_, effective_in_progress) = crate::domain::services::load_effective_verification_status(
+        state.app_state.ideation_session_repo.as_ref(),
+        parent,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load effective verification status for {}: {}",
+            parent_id.as_str(),
+            e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to check verification state: {}", e),
+        )
+    })?;
+    if effective_in_progress {
+        return Err(json_error(
+            StatusCode::CONFLICT,
+            "Verification already in progress",
+        ));
+    }
+
     let verification_max_rounds = default_verification_max_rounds();
     let parent_id_str = parent_id.as_str().to_string();
     let verify_result = state
@@ -77,7 +100,20 @@ async fn initialize_verification_state(
                 })?;
             let fresh_parent = fresh_parent
                 .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
-            if fresh_parent.verification_in_progress {
+            let (_, fresh_in_progress) =
+                crate::domain::services::load_effective_verification_status(
+                    state.app_state.ideation_session_repo.as_ref(),
+                    &fresh_parent,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to re-check effective verification status: {}", e);
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to check verification state: {}", e),
+                    )
+                })?;
+            if fresh_in_progress {
                 Err(json_error(
                     StatusCode::CONFLICT,
                     "Verification already in progress",

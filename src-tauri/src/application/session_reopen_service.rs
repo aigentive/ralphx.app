@@ -9,10 +9,13 @@ use crate::application::app_state::AppState;
 use crate::application::git_service::GitService;
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::domain::entities::plan_branch::PlanBranchStatus;
-use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus};
+use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus, VerificationStatus};
 use crate::domain::repositories::{
     ExecutionPlanRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
     TaskProposalRepository, TaskRepository,
+};
+use crate::domain::services::{
+    clear_verification_snapshot, load_current_verification_snapshot_or_default,
 };
 use crate::error::AppResult;
 use crate::http_server::handlers::ideation::{ChildFilter, stop_and_archive_children};
@@ -142,15 +145,19 @@ impl SessionReopenService {
             .update_status(session_id, IdeationSessionStatus::Active)
             .await?;
 
-        // 9. Reset verification state (status → unverified, in_progress → false).
-        // A reopened session starts a fresh verification cycle. Use update_verification_state
-        // (unconditional) because reset_verification() guards on in_progress=false.
+        // 9. Reset the authoritative verification snapshot for the active generation.
+        // A reopened session starts a fresh verification cycle, so both the session summary
+        // and the current-generation snapshot must be cleared together.
+        let mut snapshot = load_current_verification_snapshot_or_default(
+            self.ideation_session_repo.as_ref(),
+            &session,
+            VerificationStatus::Unverified,
+            false,
+        )
+        .await?;
+        clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
         self.ideation_session_repo
-            .update_verification_state(
-                session_id,
-                crate::domain::entities::VerificationStatus::Unverified,
-                false,
-            )
+            .save_verification_run_snapshot(session_id, &snapshot)
             .await?;
 
         // 10. Clear external activity phase so the session exits the archival filter.

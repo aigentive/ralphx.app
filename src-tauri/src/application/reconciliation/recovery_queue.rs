@@ -21,8 +21,10 @@ use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::interactive_process_registry::{InteractiveProcessKey, InteractiveProcessRegistry};
 use crate::domain::entities::{ChatContextType, IdeationSessionId, IdeationSessionStatus, VerificationStatus};
 use crate::domain::repositories::IdeationSessionRepository;
-use crate::domain::services::RunningAgentRegistry;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    clear_verification_snapshot, emit_verification_status_changed,
+    load_current_verification_snapshot_or_default, RunningAgentRegistry,
+};
 
 /// Configuration for the recovery queue processor.
 #[derive(Debug, Clone)]
@@ -339,20 +341,48 @@ impl RecoveryQueueProcessor {
                 // Step 6: Fallback — reset parent verification state to Unverified.
                 // Matches current cold-boot behavior so the user can re-trigger verification.
                 let parent_id = IdeationSessionId::from_string(parent_session_id.clone());
-                if let Err(repo_err) = self
-                    .ideation_session_repo
-                    .update_verification_state(
-                        &parent_id,
-                        VerificationStatus::Unverified,
-                        false,
-                    )
-                    .await
-                {
-                    tracing::error!(
-                        parent_session_id = %parent_session_id,
-                        error = %repo_err,
-                        "RecoveryQueueProcessor: failed to reset parent verification state after recovery failure"
-                    );
+                match self.ideation_session_repo.get_by_id(&parent_id).await {
+                    Ok(Some(parent_session)) => {
+                        let reset_result = async {
+                            let mut snapshot = load_current_verification_snapshot_or_default(
+                                self.ideation_session_repo.as_ref(),
+                                &parent_session,
+                                VerificationStatus::Unverified,
+                                false,
+                            )
+                            .await?;
+                            clear_verification_snapshot(
+                                &mut snapshot,
+                                VerificationStatus::Unverified,
+                                false,
+                            );
+                            self.ideation_session_repo
+                                .save_verification_run_snapshot(&parent_id, &snapshot)
+                                .await
+                        }
+                        .await;
+
+                        if let Err(repo_err) = reset_result {
+                            tracing::error!(
+                                parent_session_id = %parent_session_id,
+                                error = %repo_err,
+                                "RecoveryQueueProcessor: failed to reset parent verification state after recovery failure"
+                            );
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::error!(
+                            parent_session_id = %parent_session_id,
+                            "RecoveryQueueProcessor: parent session missing during recovery failure fallback"
+                        );
+                    }
+                    Err(repo_err) => {
+                        tracing::error!(
+                            parent_session_id = %parent_session_id,
+                            error = %repo_err,
+                            "RecoveryQueueProcessor: failed to load parent session for recovery failure fallback"
+                        );
+                    }
                 }
 
                 // Step 7: Archive the child session (unrecoverable — spawn failed).

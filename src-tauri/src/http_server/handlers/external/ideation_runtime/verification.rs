@@ -109,6 +109,25 @@ pub async fn trigger_verification_http(
         })?;
     }
 
+    let (_, effective_in_progress) = crate::domain::services::load_effective_verification_status(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load effective verification status for session {}: {}",
+            session_id, e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if effective_in_progress {
+        return Ok(Json(TriggerVerificationResponse {
+            status: "already_running".to_string(),
+            session_id,
+        }));
+    }
+
     let sid_for_trigger = session_id.clone();
     let generation_opt = state
         .app_state

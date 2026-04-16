@@ -50,8 +50,8 @@ impl MemoryIdeationSessionRepository {
         session.verification_max_rounds =
             (snapshot.max_rounds > 0).then_some(snapshot.max_rounds);
         session.verification_gap_count = snapshot.current_gaps.len() as u32;
-        session.verification_gap_score =
-            Some(crate::domain::services::gap_score(&snapshot.current_gaps));
+        session.verification_gap_score = (!snapshot.current_gaps.is_empty())
+            .then_some(crate::domain::services::gap_score(&snapshot.current_gaps));
         session.verification_convergence_reason = snapshot.convergence_reason.clone();
     }
 }
@@ -338,12 +338,25 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         &self,
         id: &IdeationSessionId,
     ) -> AppResult<Option<(VerificationStatus, bool)>> {
-        Ok(self
+        let session = self
             .sessions
             .read()
             .unwrap()
             .get(&id.to_string())
-            .map(|s| (s.verification_status, s.verification_in_progress)))
+            .cloned();
+        let Some(session) = session else {
+            return Ok(None);
+        };
+
+        let effective = self
+            .verification_runs
+            .read()
+            .unwrap()
+            .get(&(id.to_string(), session.verification_generation))
+            .map(|snapshot| (snapshot.status, snapshot.in_progress))
+            .unwrap_or((session.verification_status, session.verification_in_progress));
+
+        Ok(Some(effective))
     }
 
     async fn save_verification_run_snapshot(

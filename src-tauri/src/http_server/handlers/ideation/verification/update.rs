@@ -14,7 +14,9 @@ pub async fn post_verification_status(
     use crate::domain::entities::ideation::{
         VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
     };
-    use crate::domain::services::{gap_fingerprint, gap_score, jaccard_similarity};
+    use crate::domain::services::{
+        gap_fingerprint, gap_score, jaccard_similarity, load_effective_verification_status,
+    };
 
     let requested_session_id = session_id;
     let requested_session_id_obj =
@@ -114,8 +116,21 @@ pub async fn post_verification_status(
         ));
     }
 
+    let (current, current_in_progress) =
+        load_effective_verification_status(state.app_state.ideation_session_repo.as_ref(), &session)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to load effective verification status for {}: {}",
+                    session_id, e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to load verification status",
+                )
+            })?;
+
     // Transition validation matrix
-    let current = session.verification_status;
     let has_convergence_reason = req.convergence_reason.is_some();
     let is_valid = match (current, new_status) {
         (_, VerificationStatus::Skipped) => true,
@@ -265,7 +280,7 @@ pub async fn post_verification_status(
         .unwrap_or(VerificationRunSnapshot {
             generation: session.verification_generation,
             status: current,
-            in_progress: session.verification_in_progress,
+            in_progress: current_in_progress,
             current_round: 0,
             max_rounds: 0,
             best_round_index: None,
@@ -500,23 +515,6 @@ pub async fn post_verification_status(
     }
 
     let current_gap_score = gap_score(&run_snapshot.current_gaps);
-
-    // Persist state
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&session_id_obj, new_status, effective_in_progress)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to update verification state for {}: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update verification state",
-            )
-        })?;
 
     tracing::info!(
         session_id = %session_id,

@@ -16,7 +16,8 @@ use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
     IdeationSessionBuilder, IdeationSessionId, IdeationSessionStatus, Project, ProjectId,
-    SessionOrigin, SessionPurpose, VerificationConfirmationStatus, VerificationStatus,
+    SessionOrigin, SessionPurpose, VerificationConfirmationStatus, VerificationRunSnapshot,
+    VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
@@ -2802,6 +2803,76 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
         "Should succeed after verification_in_progress set to false: {:?}",
         result.err()
     );
+}
+
+/// Freeze must still apply when the parent summary is stale but the active-generation snapshot
+/// says verification is still running.
+#[tokio::test]
+async fn test_6d_update_plan_artifact_uses_snapshot_truth_when_summary_is_stale() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &parent_id,
+            &VerificationRunSnapshot {
+                generation: 0,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = update_plan_artifact(
+        State(state.clone()),
+        axum::http::HeaderMap::new(),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "attempted overwrite during stale-summary freeze".to_string(),
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "snapshot-backed in-progress verification must still freeze plan edits"
+    );
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::CONFLICT);
 }
 
 /// 6D'': update_plan_artifact also honors the transport-owned caller-session header.

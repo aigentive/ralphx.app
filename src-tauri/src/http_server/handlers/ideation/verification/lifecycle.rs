@@ -233,7 +233,7 @@ pub async fn stop_verification(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationRunSnapshot, VerificationStatus};
+    use crate::domain::entities::ideation::VerificationStatus;
 
     let session_id_obj =
         crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
@@ -274,8 +274,25 @@ pub async fn stop_verification(
         ));
     }
 
+    let (effective_status, effective_in_progress) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for {} before stop: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification status",
+            )
+        })?;
+
     // Idempotent: if no verification is running, return 200 without doing anything
-    if !session.verification_in_progress {
+    if !effective_in_progress {
         return Ok(Json(SuccessResponse {
             success: true,
             message: "Verification is not in progress".to_string(),
@@ -286,52 +303,26 @@ pub async fn stop_verification(
     stop_verification_children(&session_id, &state.app_state).await.ok();
 
     // Update native verification snapshot state for the current generation.
-    let mut snapshot = state
-        .app_state
-        .ideation_session_repo
-        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to load verification snapshot for {} before stop: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load verification snapshot",
-            )
-        })?
-        .unwrap_or(VerificationRunSnapshot {
-            generation: session.verification_generation,
-            status: VerificationStatus::Skipped,
-            in_progress: true,
-            current_round: 0,
-            max_rounds: 0,
-            best_round_index: None,
-            convergence_reason: None,
-            current_gaps: Vec::new(),
-            rounds: Vec::new(),
-        });
+    let mut snapshot = crate::domain::services::load_current_verification_snapshot_or_default(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+        effective_status,
+        effective_in_progress,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load verification snapshot for {} before stop: {}",
+            session_id, e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification snapshot",
+        )
+    })?;
     snapshot.status = VerificationStatus::Skipped;
     snapshot.in_progress = false;
     snapshot.convergence_reason = Some("user_stopped".to_string());
-
-    // Persist: verification_status = skipped, verification_in_progress = false
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to update verification state for {}: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to stop verification",
-            )
-        })?;
 
     state
         .app_state
@@ -394,7 +385,7 @@ pub async fn mark_verification_infra_failure(
     Path(session_id): Path<String>,
     Json(req): Json<VerificationInfraFailureRequest>,
 ) -> Result<Json<VerificationResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationRunSnapshot, VerificationStatus};
+    use crate::domain::entities::ideation::VerificationStatus;
 
     let (session_id, session_id_obj, session) =
         resolve_verification_parent_session(&state, session_id).await?;
@@ -421,8 +412,24 @@ pub async fn mark_verification_infra_failure(
         }
     }
 
-    if !session.verification_in_progress
-        && session.verification_status != VerificationStatus::Reviewing
+    let (effective_status, effective_in_progress) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for {} before infra failure: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification status",
+            )
+        })?;
+
+    if !effective_in_progress && effective_status != VerificationStatus::Reviewing
     {
         return Err(json_error(
             StatusCode::CONFLICT,
@@ -430,32 +437,23 @@ pub async fn mark_verification_infra_failure(
         ));
     }
 
-    let mut snapshot = state
-        .app_state
-        .ideation_session_repo
-        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to load verification snapshot for {} before infra failure: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load verification snapshot",
-            )
-        })?
-        .unwrap_or(VerificationRunSnapshot {
-            generation: session.verification_generation,
-            status: VerificationStatus::Unverified,
-            in_progress: false,
-            current_round: 0,
-            max_rounds: 0,
-            best_round_index: None,
-            convergence_reason: None,
-            current_gaps: Vec::new(),
-            rounds: Vec::new(),
-        });
+    let mut snapshot = crate::domain::services::load_current_verification_snapshot_or_default(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+        effective_status,
+        effective_in_progress,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load verification snapshot for {} before infra failure: {}",
+            session_id, e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification snapshot",
+        )
+    })?;
     if let Some(round) = req.round {
         snapshot.current_round = round;
     }
@@ -468,26 +466,6 @@ pub async fn mark_verification_infra_failure(
     snapshot.convergence_reason =
         Some(req.convergence_reason.unwrap_or_else(|| "agent_error".to_string()));
     let convergence_reason = snapshot.convergence_reason.clone();
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(
-            &session_id_obj,
-            VerificationStatus::Unverified,
-            false
-        )
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to mark verification infra failure for {}: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to update verification state",
-            )
-        })?;
-
     state
         .app_state
         .ideation_session_repo

@@ -69,22 +69,8 @@ pub async fn get_plan_verification(
         )
     };
 
-    let (summary_status, summary_in_progress) = state
-        .app_state
-        .ideation_session_repo
-        .get_verification_status(&session_id_obj)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get verification status for {}: {}",
-                session_id, e
-            );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to get verification status",
-            )
-        })?
-        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+    let summary_status = resolved_session.verification_status;
+    let summary_in_progress = resolved_session.verification_in_progress;
 
     let active_generation = resolved_session.verification_generation;
     let selected_generation = params.generation.unwrap_or(active_generation);

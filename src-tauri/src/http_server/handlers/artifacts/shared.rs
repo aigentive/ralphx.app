@@ -110,7 +110,13 @@ pub async fn check_verification_freeze(
     session_repo: &dyn IdeationSessionRepository,
 ) -> Result<(), AppError> {
     for session in owning_sessions {
-        if !session.verification_in_progress {
+        let verification_in_progress = session_repo
+            .get_verification_status(&session.id)
+            .await?
+            .map(|(_, in_progress)| in_progress)
+            .unwrap_or(session.verification_in_progress);
+
+        if !verification_in_progress {
             continue;
         }
 

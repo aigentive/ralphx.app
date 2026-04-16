@@ -1133,6 +1133,19 @@ async fn test_scan_and_reset_cold_boot_clears_legacy_metadata() {
     assert_eq!(after.verification_gap_count, 0);
     assert_eq!(after.verification_gap_score, None);
     assert_eq!(after.verification_convergence_reason, None);
+
+    let snapshot = repo
+        .get_verification_run_snapshot(&session_id, 0)
+        .await
+        .unwrap()
+        .expect("active-generation snapshot should be reset alongside the summary");
+    assert_eq!(snapshot.status, VerificationStatus::Unverified);
+    assert!(!snapshot.in_progress);
+    assert_eq!(snapshot.current_round, 0);
+    assert_eq!(snapshot.max_rounds, 0);
+    assert!(snapshot.current_gaps.is_empty());
+    assert!(snapshot.rounds.is_empty());
+    assert!(snapshot.convergence_reason.is_none());
 }
 
 // ---------------------------------------------------------------------------
