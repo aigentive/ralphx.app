@@ -33,4 +33,4 @@ harnesses:
       - code-review-checklist
 delegation:
   allowed_targets:
-    - ralphx-research-deep-researcher
+    - ralphx-general-explorer

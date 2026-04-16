@@ -399,7 +399,7 @@ fn build_generated_delegation_appendix(
         return None;
     }
 
-    let lines = vec![
+    let mut lines = vec![
         "## RalphX Delegation Policy (AUTO-GENERATED)".to_string(),
         "This agent is allowed to delegate only through RalphX-native delegation tools. This policy is enforced outside the prompt as well.".to_string(),
         format!(
@@ -411,13 +411,38 @@ fn build_generated_delegation_appendix(
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        "- Prefer the narrowest delegate that matches the required capability. Keep read-only analysis on read-only delegates.".to_string(),
         "- Use `delegate_start` to launch an allowed canonical agent with a bounded prompt and exact output contract.".to_string(),
         "- Use `delegate_wait` before depending on delegated output.".to_string(),
         "- Use `delegate_cancel` only when delegated work is stale, superseded, or invalidated.".to_string(),
         "- The MCP transport injects caller identity automatically; do not spoof another agent.".to_string(),
     ];
 
+    let general_target_guidance = policy
+        .allowed_targets
+        .iter()
+        .filter_map(|target| general_delegate_target_guidance(target))
+        .collect::<Vec<_>>();
+    if !general_target_guidance.is_empty() {
+        lines.push("- General target guidance:".to_string());
+        for guidance in general_target_guidance {
+            lines.push(guidance);
+        }
+    }
+
     Some(lines.join("\n"))
+}
+
+fn general_delegate_target_guidance(target: &str) -> Option<String> {
+    match target {
+        "ralphx-general-explorer" => Some(
+            "  - `ralphx-general-explorer`: read-only exploration delegate. Use it for bounded file inspection, pattern search, or evidence gathering without edits. It uses the active harness's read-only analysis surface.".to_string(),
+        ),
+        "ralphx-general-worker" => Some(
+            "  - `ralphx-general-worker`: bounded implementation delegate. Use it when a child must inspect code and make scoped edits, while still being able to do read-only codebase analysis.".to_string(),
+        ),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -29,4 +29,4 @@ harnesses:
       - Bash
 delegation:
   allowed_targets:
-    - ralphx-research-deep-researcher
+    - ralphx-general-explorer

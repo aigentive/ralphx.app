@@ -118,6 +118,8 @@ const CROSS_HARNESS_SUPPORT_AGENTS: &[(&str, &str, &str)] = &[
 ];
 
 const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
+    ("ralphx-general-explorer", "general_explorer", "ralphx-general-explorer"),
+    ("ralphx-general-worker", "general_worker", "ralphx-general-worker"),
     ("ralphx-research-deep-researcher", "researcher", "deep-researcher"),
     ("ralphx-execution-orchestrator", "orchestrator", "orchestrator"),
     ("ralphx-execution-supervisor", "supervisor", "supervisor"),
@@ -132,6 +134,8 @@ const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
 )];
 
 const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
+    "ralphx-general-explorer",
+    "ralphx-general-worker",
     "ralphx-ideation",
     "ralphx-ideation-readonly",
     "ralphx-execution-worker",
@@ -169,6 +173,7 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
 ];
 
 const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
+    "ralphx-general-explorer",
     "ralphx-plan-verifier",
     "ralphx-plan-critic-completeness",
     "ralphx-plan-critic-implementation-feasibility",
@@ -186,6 +191,10 @@ const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
 ];
 
 const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
+    (
+        "ralphx-general-explorer",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
     (
         "ralphx-ideation",
         &[
@@ -252,6 +261,8 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
 ];
 
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
+    "ralphx-general-explorer",
+    "ralphx-general-worker",
     "ralphx-execution-worker",
     "ralphx-execution-coder",
     "ralphx-execution-merger",
@@ -290,6 +301,7 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
 ];
 
 const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
+    ("ralphx-general-worker", "acceptEdits"),
     ("ralphx-execution-worker", "acceptEdits"),
     ("ralphx-execution-coder", "acceptEdits"),
     ("ralphx-execution-merger", "acceptEdits"),
@@ -300,6 +312,8 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
 ];
 
 const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
+    ("ralphx-general-explorer", "sonnet"),
+    ("ralphx-general-worker", "sonnet"),
     ("ralphx-utility-session-namer", "sonnet"),
     ("ralphx-chat-task", "sonnet"),
     ("ralphx-chat-project", "sonnet"),
@@ -340,6 +354,13 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS: &[(&str, &str)] = &[("ralphx-ideation", "max")];
 
 const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = &[
+    ("ralphx-general-explorer", "critic_tools", &[], false),
+    (
+        "ralphx-general-worker",
+        "critic_tools",
+        &["Write", "Edit", "Bash", "LSP"],
+        false,
+    ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),
     ("ralphx-chat-project", "base_tools", &["Task"], false),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
@@ -1203,6 +1224,24 @@ fn canonical_delegation_policy_appendix_is_injected_only_for_delegating_agents()
         !session_namer.contains("## RalphX Delegation Policy (AUTO-GENERATED)"),
         "non-delegating codex prompt should not include the generated delegation appendix"
     );
+}
+
+#[test]
+fn generated_delegation_appendix_describes_general_explorer_usage_for_reviewer_and_merger() {
+    let root = project_root();
+
+    for agent_name in ["ralphx-execution-reviewer", "ralphx-execution-merger"] {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        assert!(
+            prompt.contains("`ralphx-general-explorer`: read-only exploration delegate"),
+            "delegation appendix for {agent_name} should describe the general explorer target"
+        );
+        assert!(
+            prompt.contains("bounded file inspection, pattern search, or evidence gathering without edits"),
+            "delegation appendix for {agent_name} should explain when to use the general explorer"
+        );
+    }
 }
 
 #[test]
