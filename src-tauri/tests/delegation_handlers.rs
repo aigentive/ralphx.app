@@ -257,7 +257,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
                     job_id: start.job_id.clone(),
                     include_delegated_status: Some(true),
                     include_child_status: None,
-                    include_messages: Some(false),
+                    include_messages: Some(true),
                     message_limit: None,
                 }),
             )
@@ -305,7 +305,11 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.upstream_provider.as_deref(), Some("openai"));
     assert_eq!(latest_run.logical_model.as_deref(), Some("gpt-5.4-mini"));
-    assert!(delegated_status.recent_messages.is_none());
+    let recent_messages = delegated_status
+        .recent_messages
+        .expect("delegated status should expose handoff messages when requested");
+    assert_eq!(recent_messages.len(), 1);
+    assert_eq!(recent_messages[0].content, "MOCK_COMPLETION");
 
     let delegated_after = state
         .app_state

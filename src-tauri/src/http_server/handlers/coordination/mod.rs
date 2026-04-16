@@ -15,8 +15,8 @@ use crate::application::chat_service::{
 use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
-    AgentRun, ChatContextType, ChatConversation, DelegatedSession, DelegatedSessionId,
-    IdeationSessionId, SessionPurpose,
+    AgentRun, ChatContextType, ChatConversation, ChatMessage, DelegatedSession,
+    DelegatedSessionId, IdeationSessionId, SessionPurpose,
 };
 use crate::http_server::delegation::DelegationJobSnapshot;
 use crate::http_server::types::{
@@ -526,6 +526,24 @@ fn delegated_run_summary(run: AgentRun) -> DelegatedRunSummary {
     }
 }
 
+fn latest_delegated_handoff_message(messages: Vec<ChatMessage>) -> Option<ChatMessage> {
+    messages.into_iter().rev().find(|message| {
+        !matches!(
+            message.role,
+            crate::domain::entities::MessageRole::User
+                | crate::domain::entities::MessageRole::System
+        ) && !message.content.trim().is_empty()
+    })
+}
+
+fn delegated_handoff_message_summary(message: ChatMessage) -> ChatMessageSummary {
+    ChatMessageSummary {
+        role: message.role.to_string(),
+        content: message.content.chars().take(500).collect(),
+        created_at: message.created_at.to_rfc3339(),
+    }
+}
+
 async fn resolve_parent_conversation_id(
     state: &HttpServerState,
     req: &DelegateStartRequest,
@@ -689,7 +707,7 @@ async fn build_delegated_session_status_response(
     };
 
     let recent_messages = if include_messages {
-        let limit = usize::try_from(u32::min(message_limit.unwrap_or(5), 50)).unwrap_or(5);
+        let _ = message_limit;
         if let Some(conversation) = state
             .app_state
             .chat_conversation_repo
@@ -702,7 +720,7 @@ async fn build_delegated_session_status_response(
                 )
             })?
         {
-            let mut messages = state
+            let messages = state
                 .app_state
                 .chat_message_repo
                 .get_by_conversation(&conversation.id)
@@ -713,17 +731,10 @@ async fn build_delegated_session_status_response(
                         format!("Failed to load delegated messages: {error}"),
                     )
                 })?;
-            if messages.len() > limit {
-                messages = messages.split_off(messages.len() - limit);
-            }
             Some(
-                messages
+                latest_delegated_handoff_message(messages)
+                    .map(delegated_handoff_message_summary)
                     .into_iter()
-                    .map(|message| ChatMessageSummary {
-                        role: message.role.to_string(),
-                        content: message.content.chars().take(500).collect(),
-                        created_at: message.created_at.to_rfc3339(),
-                    })
                     .collect(),
             )
         } else {
@@ -1014,19 +1025,8 @@ pub(crate) async fn start_delegate_impl(
                             .get_by_conversation(&conversation_id)
                             .await
                             .ok()
-                            .and_then(|messages| {
-                                messages
-                                    .into_iter()
-                                    .rev()
-                                    .find(|message| {
-                                        !matches!(
-                                            message.role,
-                                            crate::domain::entities::MessageRole::User
-                                                | crate::domain::entities::MessageRole::System
-                                        )
-                                    })
-                                    .map(|message| message.content)
-                            })
+                            .and_then(latest_delegated_handoff_message)
+                            .map(|message| message.content)
                             .unwrap_or_default();
                         if !content.is_empty() {
                             break;

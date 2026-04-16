@@ -14,7 +14,7 @@ harnesses:
   claude:
     model: sonnet
     tools:
-      extends: critic_tools
+      extends: readonly_tools
     disallowed_tools:
       - Write
       - Edit

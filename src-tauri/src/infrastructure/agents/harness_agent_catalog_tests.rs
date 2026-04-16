@@ -354,10 +354,10 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
 const CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS: &[(&str, &str)] = &[("ralphx-ideation", "max")];
 
 const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = &[
-    ("ralphx-general-explorer", "critic_tools", &[], false),
+    ("ralphx-general-explorer", "readonly_tools", &[], false),
     (
         "ralphx-general-worker",
-        "critic_tools",
+        "readonly_tools",
         &["Write", "Edit", "Bash", "LSP"],
         false,
     ),

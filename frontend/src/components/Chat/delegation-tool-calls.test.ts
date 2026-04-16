@@ -240,4 +240,31 @@ describe("delegation-tool-calls", () => {
       "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
     );
   });
+
+  it("falls back to the delegated handoff message when top-level content is absent", () => {
+    const metadata = extractDelegationMetadata(
+      { agent_name: "ralphx-general-explorer" },
+      {
+        job_id: "job-999",
+        status: "completed",
+        delegated_status: {
+          latest_run: {
+            harness: "codex",
+            logical_model: "gpt-5.4-mini",
+          },
+          recent_messages: [
+            {
+              role: "assistant",
+              content: "Final delegated handoff summary.",
+              created_at: "2026-04-16T10:00:00Z",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(metadata.status).toBe("completed");
+    expect(metadata.textOutput).toBe("Final delegated handoff summary.");
+    expect(metadata.providerHarness).toBe("codex");
+  });
 });
