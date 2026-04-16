@@ -1411,6 +1411,7 @@ fn has_pending_unreported_round(run: &VerificationRunSnapshot) -> bool {
         && run.in_progress
         && run.convergence_reason.is_none()
         && run.current_round > 0
+        && run.rounds.is_empty()
         && !run
             .rounds
             .iter()
