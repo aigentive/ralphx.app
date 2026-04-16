@@ -53,6 +53,40 @@ const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled
 // The SQL queries use NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')
 // to identify active statuses implicitly.
 
+fn preferred_execution_plan_subquery(session_alias: &str) -> String {
+    format!(
+        "COALESCE(\
+            (SELECT ep.id FROM execution_plans ep \
+             WHERE ep.session_id = {session_alias}.id \
+             ORDER BY CASE WHEN ep.status = 'active' THEN 0 ELSE 1 END, ep.created_at DESC \
+             LIMIT 1), \
+            (SELECT task_plan.execution_plan_id FROM tasks task_plan \
+             WHERE task_plan.ideation_session_id = {session_alias}.id \
+               AND task_plan.archived_at IS NULL \
+               AND task_plan.execution_plan_id IS NOT NULL \
+             ORDER BY task_plan.created_at DESC \
+             LIMIT 1)\
+        )"
+    )
+}
+
+fn scoped_session_task_clause(session_alias: &str, task_alias: &str) -> String {
+    let preferred_plan = preferred_execution_plan_subquery(session_alias);
+    format!(
+        "{task_alias}.ideation_session_id = {session_alias}.id \
+         AND {task_alias}.archived_at IS NULL \
+         AND ( \
+           NOT EXISTS ( \
+             SELECT 1 FROM tasks scoped_t \
+             WHERE scoped_t.ideation_session_id = {session_alias}.id \
+               AND scoped_t.archived_at IS NULL \
+               AND scoped_t.execution_plan_id IS NOT NULL \
+           ) \
+           OR {task_alias}.execution_plan_id = {preferred_plan} \
+         )"
+    )
+}
+
 /// SQLite implementation of IdeationSessionRepository for production use
 pub struct SqliteIdeationSessionRepository {
     db: DbConnection,
@@ -82,7 +116,13 @@ impl SqliteIdeationSessionRepository {
         let gap_score = (!snapshot.current_gaps.is_empty())
             .then_some(crate::domain::services::gap_score(&snapshot.current_gaps) as i64);
         let convergence_reason = snapshot.convergence_reason.clone();
-        (current_round, max_rounds, gap_count, gap_score, convergence_reason)
+        (
+            current_round,
+            max_rounds,
+            gap_count,
+            gap_score,
+            convergence_reason,
+        )
     }
 
     // ============================================================================
@@ -95,10 +135,7 @@ impl SqliteIdeationSessionRepository {
     /// Insert a session into the database synchronously (for use inside db.run() closures).
     /// Returns the inserted session unchanged (no re-fetch needed — all fields are set by caller).
     #[doc(hidden)]
-    pub fn insert_sync(
-        conn: &Connection,
-        session: &IdeationSession,
-    ) -> AppResult<IdeationSession> {
+    pub fn insert_sync(conn: &Connection, session: &IdeationSession) -> AppResult<IdeationSession> {
         conn.execute(
             "INSERT INTO ideation_sessions \
              (id, project_id, title, title_source, status, plan_artifact_id, \
@@ -159,11 +196,11 @@ impl SqliteIdeationSessionRepository {
 
     /// Fetch a single session by ID; returns None if not found.
     #[doc(hidden)]
-    pub fn get_by_id_sync(
-        conn: &Connection,
-        id: &str,
-    ) -> AppResult<Option<IdeationSession>> {
-        let sql = format!("SELECT {} FROM ideation_sessions WHERE id = ?1", SESSION_COLUMNS);
+    pub fn get_by_id_sync(conn: &Connection, id: &str) -> AppResult<Option<IdeationSession>> {
+        let sql = format!(
+            "SELECT {} FROM ideation_sessions WHERE id = ?1",
+            SESSION_COLUMNS
+        );
         match conn.query_row(&sql, [id], |row| IdeationSession::from_row(row)) {
             Ok(session) => Ok(Some(session)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -176,7 +213,10 @@ impl SqliteIdeationSessionRepository {
         conn: &Connection,
         plan_artifact_id: &str,
     ) -> AppResult<Vec<IdeationSession>> {
-        let sql = format!("SELECT {} FROM ideation_sessions WHERE plan_artifact_id = ?1", SESSION_COLUMNS);
+        let sql = format!(
+            "SELECT {} FROM ideation_sessions WHERE plan_artifact_id = ?1",
+            SESSION_COLUMNS
+        );
         let mut stmt = conn.prepare(&sql)?;
         let sessions = stmt
             .query_map([plan_artifact_id], IdeationSession::from_row)?
@@ -189,7 +229,10 @@ impl SqliteIdeationSessionRepository {
         conn: &Connection,
         artifact_id: &str,
     ) -> AppResult<Vec<IdeationSession>> {
-        let sql = format!("SELECT {} FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1", SESSION_COLUMNS);
+        let sql = format!(
+            "SELECT {} FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
+            SESSION_COLUMNS
+        );
         let mut stmt = conn.prepare(&sql)?;
         let sessions = stmt
             .query_map([artifact_id], IdeationSession::from_row)?
@@ -230,13 +273,15 @@ impl SqliteIdeationSessionRepository {
              WHERE id IN ({})",
             placeholders.join(", ")
         );
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(2 + session_ids.len());
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            Vec::with_capacity(2 + session_ids.len());
         params.push(Box::new(new_artifact_id.to_string()));
         params.push(Box::new(now));
         for id in session_ids {
             params.push(Box::new(id.clone()));
         }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
         conn.execute(&sql, param_refs.as_slice())?;
         Ok(())
     }
@@ -265,10 +310,7 @@ impl SqliteIdeationSessionRepository {
     /// Returns `Some(new_generation)` if the trigger was applied, `None` if already in_progress
     /// or if the session is `imported_verified`.
     #[doc(hidden)]
-    pub fn trigger_auto_verify_sync(
-        conn: &Connection,
-        id: &str,
-    ) -> AppResult<Option<i32>> {
+    pub fn trigger_auto_verify_sync(conn: &Connection, id: &str) -> AppResult<Option<i32>> {
         let now = Utc::now();
         let now_rfc3339 = now.to_rfc3339();
         let rows = conn.execute(
@@ -390,13 +432,15 @@ impl SqliteIdeationSessionRepository {
         max_depth: usize,
     ) -> AppResult<()> {
         // Fetch the source session to check its project membership
-        let source_session = Self::get_by_id_sync(conn, source_session_id)?
-            .ok_or_else(|| AppError::Validation(format!("Source session not found: {source_session_id}")))?;
+        let source_session = Self::get_by_id_sync(conn, source_session_id)?.ok_or_else(|| {
+            AppError::Validation(format!("Source session not found: {source_session_id}"))
+        })?;
 
         // SELF_REFERENCE: source session is in the target project (can't import from yourself)
         if source_session.project_id.as_str() == target_project_id {
             return Err(AppError::Validation(
-                "SELF_REFERENCE: source session belongs to the same project as the target".to_string(),
+                "SELF_REFERENCE: source session belongs to the same project as the target"
+                    .to_string(),
             ));
         }
 
@@ -444,7 +488,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let id = id.as_str().to_string();
         self.db
             .query_optional(move |conn| {
-                let sql = format!("SELECT {} FROM ideation_sessions WHERE id = ?1", SESSION_COLUMNS);
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions WHERE id = ?1",
+                    SESSION_COLUMNS
+                );
                 conn.query_row(&sql, [&id], |row| IdeationSession::from_row(row))
             })
             .await
@@ -606,7 +653,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let plan_artifact_id = plan_artifact_id.to_string();
         self.db
             .run(move |conn| {
-                let sql = format!("SELECT {} FROM ideation_sessions WHERE plan_artifact_id = ?1", SESSION_COLUMNS);
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions WHERE plan_artifact_id = ?1",
+                    SESSION_COLUMNS
+                );
                 let mut stmt = conn.prepare(&sql)?;
                 let sessions = stmt
                     .query_map([&plan_artifact_id], IdeationSession::from_row)?
@@ -623,7 +673,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let artifact_id = artifact_id.to_string();
         self.db
             .run(move |conn| {
-                let sql = format!("SELECT {} FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1", SESSION_COLUMNS);
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
+                    SESSION_COLUMNS
+                );
                 let mut stmt = conn.prepare(&sql)?;
                 let sessions = stmt
                     .query_map([&artifact_id], IdeationSession::from_row)?
@@ -659,15 +712,22 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
 
                 // Walk up the parent chain iteratively
                 loop {
-                    let ancestor_sql = format!("SELECT {} FROM ideation_sessions WHERE id = ?1", SESSION_COLUMNS);
-                    let result = conn.query_row(&ancestor_sql, [&current_id], |row| IdeationSession::from_row(row));
+                    let ancestor_sql = format!(
+                        "SELECT {} FROM ideation_sessions WHERE id = ?1",
+                        SESSION_COLUMNS
+                    );
+                    let result = conn.query_row(&ancestor_sql, [&current_id], |row| {
+                        IdeationSession::from_row(row)
+                    });
 
                     match result {
                         Ok(session) => {
                             if let Some(parent_id) = &session.parent_session_id {
                                 let parent_id_str = parent_id.as_str().to_string();
                                 current_id = parent_id_str.clone();
-                                match conn.query_row(&ancestor_sql, [&parent_id_str], |row| IdeationSession::from_row(row)) {
+                                match conn.query_row(&ancestor_sql, [&parent_id_str], |row| {
+                                    IdeationSession::from_row(row)
+                                }) {
                                     Ok(parent) => {
                                         chain.push(parent);
                                     }
@@ -759,11 +819,15 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let session_id = session_id.to_string();
         self.db
             .run_transaction(move |conn| {
-                let current_gen: i32 = conn.query_row(
-                    "SELECT verification_generation FROM ideation_sessions WHERE id = ?1",
-                    rusqlite::params![session_id],
-                    |row| row.get(0),
-                ).map_err(|e| crate::error::AppError::Database(format!("Session not found: {e}")))?;
+                let current_gen: i32 = conn
+                    .query_row(
+                        "SELECT verification_generation FROM ideation_sessions WHERE id = ?1",
+                        rusqlite::params![session_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| {
+                        crate::error::AppError::Database(format!("Session not found: {e}"))
+                    })?;
 
                 let new_gen = current_gen + 1;
                 let snapshot = VerificationRunSnapshot {
@@ -795,9 +859,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 )?;
 
                 if rows_affected == 0 {
-                    return Err(crate::error::AppError::Database(
-                        format!("Session not found: {}", session_id),
-                    ));
+                    return Err(crate::error::AppError::Database(format!(
+                        "Session not found: {}",
+                        session_id
+                    )));
                 }
 
                 Ok((new_gen, snapshot))
@@ -836,9 +901,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                                 |snapshot_row| {
                                     let snapshot_status: String = snapshot_row.get(0)?;
                                     let snapshot_in_progress: i64 = snapshot_row.get(1)?;
-                                    let parsed_status = snapshot_status
-                                        .parse()
-                                        .unwrap_or(summary_status);
+                                    let parsed_status =
+                                        snapshot_status.parse().unwrap_or(summary_status);
                                     Ok((parsed_status, snapshot_in_progress != 0))
                                 },
                             )
@@ -1067,7 +1131,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     max_rounds,
                     best_round_index,
                     convergence_reason,
-                )) = run_row else {
+                )) = run_row
+                else {
                     return Ok(None);
                 };
 
@@ -1357,11 +1422,20 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     ) -> AppResult<SessionGroupCounts> {
         let project_id = project_id.as_str().to_string();
         // Normalize empty string to None
-        let search = search.filter(|s| !s.is_empty()).map(|s| {
-            format!("%{}%", s.replace('%', "\\%").replace('_', "\\_"))
-        });
+        let search = search
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("%{}%", s.replace('%', "\\%").replace('_', "\\_")));
         self.db
             .run(move |conn| {
+                let active_task_scope = format!(
+                    "{} AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t")
+                );
+                let any_task_scope = scoped_session_task_clause("s", "t2");
+                let non_terminal_task_scope = format!(
+                    "{} AND t3.internal_status NOT IN ('approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t3")
+                );
                 let search_clause = if search.is_some() {
                     " AND s.title LIKE ?2 ESCAPE '\\' COLLATE NOCASE"
                 } else {
@@ -1373,19 +1447,20 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                       COALESCE(SUM(CASE WHEN s.status = 'archived' THEN 1 ELSE 0 END), 0) as archived, \
                       COALESCE(SUM(CASE WHEN s.status = 'accepted' THEN 1 ELSE 0 END), 0) as total_accepted, \
                       COALESCE(SUM(CASE WHEN s.status = 'accepted' AND EXISTS ( \
-                        SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
-                          AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped') \
+                        SELECT 1 FROM tasks t WHERE {} \
                       ) THEN 1 ELSE 0 END), 0) as in_progress, \
                       COALESCE(SUM(CASE WHEN s.status = 'accepted' \
-                        AND EXISTS (SELECT 1 FROM tasks t2 WHERE t2.ideation_session_id = s.id) \
+                        AND EXISTS (SELECT 1 FROM tasks t2 WHERE {}) \
                         AND NOT EXISTS ( \
-                          SELECT 1 FROM tasks t3 WHERE t3.ideation_session_id = s.id \
-                            AND t3.internal_status NOT IN ('approved','merged','failed','cancelled','stopped') \
+                          SELECT 1 FROM tasks t3 WHERE {} \
                         ) \
                       THEN 1 ELSE 0 END), 0) as done \
                     FROM ideation_sessions s \
                     WHERE s.project_id = ?1 \
                       AND (s.session_purpose IS NULL OR s.session_purpose = 'general'){}",
+                    active_task_scope,
+                    any_task_scope,
+                    non_terminal_task_scope,
                     search_clause
                 );
                 let row = if let Some(ref pattern) = search {
@@ -1437,40 +1512,69 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         let project_id = project_id.as_str().to_string();
         let group = group.to_string();
         // Normalize empty string to None
-        let search = search.filter(|s| !s.is_empty()).map(|s| {
-            format!("%{}%", s.replace('%', "\\%").replace('_', "\\_"))
-        });
+        let search = search
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("%{}%", s.replace('%', "\\%").replace('_', "\\_")));
 
         self.db
             .run(move |conn| {
+                let active_task_scope = format!(
+                    "{} AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t")
+                );
+                let done_probe_scope = format!(
+                    "{} AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t")
+                );
+                let any_task_scope = scoped_session_task_clause("s", "t");
+                let progress_active_scope = format!(
+                    "{} AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t")
+                );
+                let progress_done_scope = format!(
+                    "{} AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')",
+                    scoped_session_task_clause("s", "t")
+                );
+                let progress_total_scope = scoped_session_task_clause("s", "t");
                 // Validate group and build WHERE clause
                 // Note: all variants include session_purpose filter to exclude verification child sessions
                 let where_clause = match group.as_str() {
-                    "drafts" => "s.status = 'active' AND s.project_id = ?1 \
-                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
-                    "archived" => "s.status = 'archived' AND s.project_id = ?1 \
-                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
+                    "drafts" => {
+                        "s.status = 'active' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')"
+                            .to_string()
+                    }
+                    "archived" => {
+                        "s.status = 'archived' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')"
+                            .to_string()
+                    }
                     "in_progress" => {
-                        "s.status = 'accepted' AND s.project_id = ?1 \
-                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
-                         AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
-                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped'))"
+                        format!(
+                            "s.status = 'accepted' AND s.project_id = ?1 \
+                             AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
+                             AND EXISTS (SELECT 1 FROM tasks t WHERE {})",
+                            active_task_scope
+                        )
                     }
                     "done" => {
-                        "s.status = 'accepted' AND s.project_id = ?1 \
-                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
-                         AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
-                         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
-                           AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped'))"
+                        format!(
+                            "s.status = 'accepted' AND s.project_id = ?1 \
+                             AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
+                             AND EXISTS (SELECT 1 FROM tasks t WHERE {}) \
+                             AND NOT EXISTS (SELECT 1 FROM tasks t WHERE {})",
+                            any_task_scope, done_probe_scope
+                        )
                     }
                     "accepted" => {
-                        "s.status = 'accepted' AND s.project_id = ?1 \
-                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
-                         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
-                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) \
-                         AND NOT (EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
-                           AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
-                             AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped')))"
+                        format!(
+                            "s.status = 'accepted' AND s.project_id = ?1 \
+                             AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
+                             AND NOT EXISTS (SELECT 1 FROM tasks t WHERE {}) \
+                             AND NOT (EXISTS (SELECT 1 FROM tasks t WHERE {}) \
+                              AND NOT EXISTS (SELECT 1 FROM tasks t WHERE {}))",
+                            active_task_scope, any_task_scope, done_probe_scope
+                        )
                     }
                     _ => {
                         return Err(AppError::Validation(format!(
@@ -1530,11 +1634,9 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
                          s.source_context_id, s.spawn_reason, s.blocker_fingerprint, \
                          parent.title as parent_session_title, \
-                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
-                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) as active_count, \
-                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
-                           AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')) as done_count, \
-                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count, \
+                         (SELECT COUNT(*) FROM tasks t WHERE {}) as active_count, \
+                         (SELECT COUNT(*) FROM tasks t WHERE {}) as done_count, \
+                         (SELECT COUNT(*) FROM tasks t WHERE {}) as total_count, \
                          (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
                          (s.pending_initial_prompt IS NOT NULL AND s.status = 'active') as has_pending_prompt \
                          FROM ideation_sessions s \
@@ -1542,7 +1644,11 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          WHERE {}{} \
                          ORDER BY s.updated_at DESC \
                          LIMIT ?3 OFFSET ?2",
-                        where_clause, search_clause
+                        progress_active_scope,
+                        progress_done_scope,
+                        progress_total_scope,
+                        where_clause,
+                        search_clause
                     )
                 } else {
                     format!(
@@ -1675,10 +1781,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(count)
     }
 
-    async fn count_active_proposals(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<usize> {
+    async fn count_active_proposals(&self, session_id: &IdeationSessionId) -> AppResult<usize> {
         let session_id = session_id.as_str().to_string();
         self.db
             .run(move |conn| {
@@ -1707,9 +1810,11 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      WHERE api_key_id = ?1 AND idempotency_key = ?2",
                     SESSION_COLUMNS
                 );
-                conn.query_row(&sql, rusqlite::params![api_key_id, idempotency_key], |row| {
-                    IdeationSession::from_row(row)
-                })
+                conn.query_row(
+                    &sql,
+                    rusqlite::params![api_key_id, idempotency_key],
+                    |row| IdeationSession::from_row(row),
+                )
             })
             .await
     }
@@ -1888,11 +1993,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 
-    async fn update_last_effective_model(
-        &self,
-        session_id: &str,
-        model: &str,
-    ) -> AppResult<()> {
+    async fn update_last_effective_model(&self, session_id: &str, model: &str) -> AppResult<()> {
         let session_id = session_id.to_string();
         let model = model.to_string();
         self.db
@@ -2014,10 +2115,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 
-    async fn count_pending_sessions_for_project(
-        &self,
-        project_id: &ProjectId,
-    ) -> AppResult<u32> {
+    async fn count_pending_sessions_for_project(&self, project_id: &ProjectId) -> AppResult<u32> {
         let project_id = project_id.to_string();
         self.db
             .run(move |conn| {
