@@ -18,10 +18,20 @@ use crate::infrastructure::memory::{
 use crate::infrastructure::MockAgenticClient;
 use async_trait::async_trait;
 use futures::Stream;
+use std::fs;
 use std::pin::Pin;
 use tokio::sync::RwLock;
 
 // ==================== Mock Repos for CWD Tests ====================
+
+fn make_local_plugin_task_workdir(task_name: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("create temp repo");
+    let repo_root = dir.path().join("repo");
+    fs::create_dir_all(repo_root.join("plugins/app")).expect("create plugin dir");
+    let task_workdir = repo_root.join(task_name);
+    fs::create_dir_all(&task_workdir).expect("create task workdir");
+    (dir, task_workdir)
+}
 
 /// Minimal mock TaskRepository that returns a configurable task
 struct MockTaskRepoForSpawner {
@@ -898,6 +908,7 @@ fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
 fn test_build_agent_config_for_codex_client_uses_process_mapping() {
     let default_client = Arc::new(MockAgenticClient::new());
     let spawner = AgenticClientSpawner::new(default_client);
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-789");
 
     let config = spawner.build_agent_config(
         AgentHarnessKind::Codex,
@@ -905,7 +916,7 @@ fn test_build_agent_config_for_codex_client_uses_process_mapping() {
         AgentRole::QaRefiner,
         "qa-refiner",
         "task-789",
-        PathBuf::from("/tmp/task-789"),
+        task_workdir.clone(),
         None,
         Some("gpt-5.4".to_string()),
         Some(crate::domain::agents::LogicalEffort::XHigh),
@@ -920,7 +931,7 @@ fn test_build_agent_config_for_codex_client_uses_process_mapping() {
         Some(
             crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
                 AgentHarnessKind::Codex,
-                &PathBuf::from("/tmp/task-789"),
+                &task_workdir,
             )
         )
     );
@@ -1064,6 +1075,7 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
     let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-review-codex");
 
     let project_id = ProjectId::from_string("project-review-codex".to_string());
     let mut project = Project::new(
@@ -1076,7 +1088,7 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
     let mut task = Task::new(project_id.clone(), "Codex reviewer task".to_string());
     task.id = TaskId::from_string("task-review-codex".to_string());
     task.internal_status = crate::domain::entities::InternalStatus::Reviewing;
-    task.worktree_path = Some("/tmp/task-review-codex".to_string());
+    task.worktree_path = Some(task_workdir.to_string_lossy().into_owned());
     task_repo.create(task).await.unwrap();
 
     let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
@@ -1112,7 +1124,7 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
         Some(
             crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
                 AgentHarnessKind::Codex,
-                &PathBuf::from("/tmp/task-review-codex"),
+                &task_workdir,
             )
         )
     );
@@ -1129,6 +1141,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
     let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-merge-codex");
 
     let project_id = ProjectId::from_string("project-merge-codex".to_string());
     let mut project = Project::new(
@@ -1141,7 +1154,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
     let mut task = Task::new(project_id.clone(), "Codex merger task".to_string());
     task.id = TaskId::from_string("task-merge-codex".to_string());
     task.internal_status = crate::domain::entities::InternalStatus::Merging;
-    task.worktree_path = Some("/tmp/task-merge-codex".to_string());
+    task.worktree_path = Some(task_workdir.to_string_lossy().into_owned());
     task_repo.create(task).await.unwrap();
 
     let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
@@ -1177,7 +1190,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
         Some(
             crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
                 AgentHarnessKind::Codex,
-                &PathBuf::from("/tmp/task-merge-codex"),
+                &task_workdir,
             )
         )
     );
