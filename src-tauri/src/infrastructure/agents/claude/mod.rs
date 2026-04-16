@@ -171,7 +171,6 @@ pub fn canonical_short_agent_name(name: &str) -> &str {
         "ralphx-reviewer" => "ralphx-execution-reviewer",
         "ralphx-merger" => "ralphx-execution-merger",
         "ralphx-orchestrator" => "ralphx-execution-orchestrator",
-        "ralphx-supervisor" => "ralphx-execution-supervisor",
         "ralphx-deep-researcher" => "ralphx-research-deep-researcher",
         "project-analyzer" => "ralphx-project-analyzer",
         "memory-capture" => "ralphx-memory-capture",

@@ -51,7 +51,6 @@ harnesses:
       - Write
       - Edit
       - NotebookEdit
-      - Task(Explore)
       - Task(ralphx:*)
     preapproved_cli_tools:
       - Task(Plan)
@@ -72,3 +71,4 @@ delegation:
     - ralphx-ideation-specialist-state-machine
     - ralphx-ideation-advocate
     - ralphx-ideation-critic
+    - ralphx-general-explorer

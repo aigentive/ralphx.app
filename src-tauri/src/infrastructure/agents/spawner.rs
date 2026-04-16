@@ -172,9 +172,6 @@ impl AgenticClientSpawner {
             "qa-tester" => AgentRole::QaTester,
             "reviewer" | "ralphx-reviewer" | "ralphx-execution-reviewer" => AgentRole::Reviewer,
             "merger" | "ralphx-merger" | "ralphx-execution-merger" => AgentRole::Reviewer,
-            "supervisor" | "ralphx-supervisor" | "ralphx-execution-supervisor" => {
-                AgentRole::Supervisor
-            }
             other => AgentRole::Custom(other.to_string()),
         }
     }

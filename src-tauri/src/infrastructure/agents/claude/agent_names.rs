@@ -28,7 +28,6 @@ pub const SHORT_REVIEWER: &str = "ralphx-execution-reviewer";
 pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
 pub const SHORT_QA_EXECUTOR: &str = "ralphx-qa-executor";
 pub const SHORT_ORCHESTRATOR: &str = "ralphx-execution-orchestrator";
-pub const SHORT_SUPERVISOR: &str = "ralphx-execution-supervisor";
 pub const SHORT_DEEP_RESEARCHER: &str = "ralphx-research-deep-researcher";
 pub const SHORT_PROJECT_ANALYZER: &str = "ralphx-project-analyzer";
 pub const SHORT_MERGER: &str = "ralphx-execution-merger";

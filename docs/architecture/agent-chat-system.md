@@ -72,7 +72,6 @@ Steps 1-3 same, but step 5 uses the harness-native continuation path when provid
 | 10 | `ralphx-review-history` | `SHORT_REVIEW_HISTORY` | review | default | Task "approved" (read-only history) | per-review |
 | 11 | `ralphx-execution-merger` | `SHORT_MERGER` | merge | default | Task enters "merging" | per-merge |
 | 12 | `ralphx-execution-orchestrator` | `SHORT_ORCHESTRATOR` | orchestration | opus | Multi-task coordination | -- |
-| 13 | `ralphx-execution-supervisor` | `SHORT_SUPERVISOR` | orchestration | haiku | Monitoring worker agents | -- |
 | 14 | `ralphx-qa-prep` | `SHORT_QA_PREP` | qa | sonnet | Task enters "ready" | fire-and-forget |
 | 15 | `ralphx-qa-executor` | `SHORT_QA_EXECUTOR` | qa | sonnet | QA execution phase | -- |
 | 16 | `ralphx-research-deep-researcher` | `SHORT_DEEP_RESEARCHER` | research | opus | Research tasks | -- |
@@ -96,7 +95,6 @@ Steps 1-3 same, but step 5 uses the harness-native continuation path when provid
 | ralphx-review-history | get_review_notes, get_task_context, get_task_issues, get_task_steps, get_step_progress, get_issue_progress, get/get_version/get_related/search_project artifacts, search/get/get_for_paths memories |
 | ralphx-execution-merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_project_analysis, get_task_context, search/get/get_for_paths memories |
 | ralphx-execution-orchestrator | search/get/get_for_paths memories |
-| ralphx-execution-supervisor | (no MCP tools) |
 | ralphx-qa-prep | fs_read_file, fs_list_dir, fs_grep, fs_glob |
 | ralphx-qa-executor | (no MCP tools) |
 | ralphx-research-deep-researcher | search/get/get_for_paths memories |
@@ -353,7 +351,6 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 | `agents/ralphx-review-history/` | Read-only review history |
 | `agents/ralphx-execution-merger/` | Merge conflict resolver |
 | `agents/ralphx-execution-orchestrator/` | Multi-task orchestrator |
-| `agents/ralphx-execution-supervisor/` | Execution monitor |
 | `agents/ralphx-qa-prep/` | QA preparation |
 | `agents/ralphx-qa-executor/` | QA execution |
 | `agents/ralphx-research-deep-researcher/` | Research agent |

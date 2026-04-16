@@ -15,7 +15,6 @@ export declare const CODER = "ralphx-execution-coder";
 export declare const SESSION_NAMER = "ralphx-utility-session-namer";
 export declare const MERGER = "ralphx-execution-merger";
 export declare const PROJECT_ANALYZER = "ralphx-project-analyzer";
-export declare const SUPERVISOR = "supervisor";
 export declare const QA_PREP = "qa-prep";
 export declare const QA_TESTER = "qa-tester";
 export declare const ORCHESTRATOR = "ralphx-execution-orchestrator";

@@ -339,7 +339,6 @@ Requirements for the support cohort:
 Shared-prompt general cohort:
 - `ralphx-research-deep-researcher`
 - `ralphx-execution-orchestrator`
-- `ralphx-execution-supervisor`
 - `ralphx-qa-prep`
 - `ralphx-qa-executor`
 

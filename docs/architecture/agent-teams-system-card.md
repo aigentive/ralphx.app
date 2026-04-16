@@ -881,7 +881,7 @@ RalphX already has quality enforcement:
 | Review requirement | State machine: executing → reviewing (mandatory) | Could add review teammate to team |
 | Wave gates | Worker validates each coder wave | TeammateIdle hook to verify wave results |
 | Issue tracking | MCP tools: mark_issue_in_progress/addressed | TaskCompleted hook to check all issues resolved |
-| Supervisor monitoring | `ralphx-execution-supervisor` detects loops/stalls | TeammateIdle hook as lightweight alternative |
+| Supervisor monitoring | Supervisor service or TeammateIdle hook | TeammateIdle hook as lightweight alternative |
 
 ### 11.4 Combining RalphX Hooks with Team Hooks
 
@@ -1016,7 +1016,6 @@ The table below shows **template mappings** — predefined agent types that can 
 | `ralphx-execution-reviewer` | **Teammate** (reviewer) | sonnet | review completion, task context |
 | `ralphx-ideation` | **Team Lead** (ideation) | opus | proposals, plans, analysis |
 | `ralphx-research-deep-researcher` | **Teammate** (researcher) | opus | WebFetch, WebSearch, memories |
-| `ralphx-execution-supervisor` | **Teammate** (monitor) | haiku | pattern detection |
 | `ralphx-execution-merger` | **Standalone** (not team) | opus | merge target, conflict resolution |
 
 #### 14.3.1 Dynamic Team Roles (Default Behavior)

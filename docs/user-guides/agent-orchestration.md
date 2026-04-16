@@ -26,7 +26,7 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 3. [Agent Lifecycle](#agent-lifecycle)
 4. [The Execution Pipeline](#the-execution-pipeline)
    - [Worker and Coder Agents](#worker-and-coder-agents)
-   - [Supervisor Agent](#supervisor-agent)
+   - [Supervisor Service](#supervisor-service)
    - [Reviewer Agent](#reviewer-agent)
    - [Merger Agent](#merger-agent)
 5. [Ideation Agents](#ideation-agents)
@@ -93,7 +93,6 @@ RalphX uses specialized agents across execution, review, merge, ideation, QA, an
 |-------|------|-------|--------------|
 | **ralphx-execution-worker** | Orchestrates task execution; decomposes work and delegates to coders | Sonnet | Task enters Executing |
 | **ralphx-execution-coder** | Implements a scoped sub-task with exclusive file ownership | Sonnet | Dispatched by worker |
-| **ralphx-execution-supervisor** | Monitors worker for loops, stalls, and errors; injects guidance | Haiku | Runs alongside worker |
 | **ralphx-execution-reviewer** | Reviews the git diff; approves, requests changes, or escalates | Sonnet | Task enters Reviewing |
 | **ralphx-execution-merger** | Resolves git merge conflicts that programmatic rebase couldn't handle | Opus | Task enters Merging with conflicts |
 | **ralphx-qa-prep** | Generates acceptance criteria and test steps from the task spec | Sonnet | Task enters Ready (background) |
@@ -174,9 +173,9 @@ Worker
 
 **What you see:** The task's conversation panel shows the worker's activity. Step progress updates in the task detail view as each sub-scope starts and completes.
 
-### Supervisor Agent
+### Supervisor Service
 
-Alongside every worker runs a lightweight **supervisor** agent (Haiku model). It monitors for problems:
+Supervisor monitoring is owned by the backend supervisor service rather than a spawned agent. The settings and alert types remain in place for future execution-lane integration, but there is no dedicated supervisor agent in the live catalog today.
 
 | Pattern detected | What the supervisor does |
 |-----------------|--------------------------|
@@ -186,7 +185,7 @@ Alongside every worker runs a lightweight **supervisor** agent (Haiku model). It
 | High token usage with no progress | Pauses and notifies you |
 | Critical loop detected | Kills the agent and analyzes the failure |
 
-You'll see supervisor alerts in the task conversation or in the task detail view if the supervisor pauses the task.
+When the supervisor service is wired into live execution, its alerts appear in the task conversation or task detail view.
 
 ### Reviewer Agent
 
@@ -469,7 +468,7 @@ Reviewers are read-only — they examine the worktree but don't commit changes.
 
 **What to do:**
 1. Open the task's conversation to check the last agent output.
-2. The supervisor will inject guidance if it detects a stall (after ~2.5 minutes with no git diff).
+2. The supervisor service thresholds are intended to flag stalls (after ~2.5 minutes with no git diff) once live monitoring is wired in.
 3. The reconciler will auto-restart the agent if the process died.
 4. If the issue persists, click **Stop** then **Restart** for a clean agent respawn.
 

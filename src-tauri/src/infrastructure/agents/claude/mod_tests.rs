@@ -690,33 +690,15 @@ fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowe
 }
 
 #[test]
-fn test_materialize_generated_plugin_dir_omits_mcp_servers_for_agents_without_mcp_tools() {
-    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/ralphx-execution-supervisor");
-    std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
-    std::fs::write(
-        agent_root.join("agent.yaml"),
-        r#"name: ralphx-execution-supervisor
-role: supervisor
-description: Monitors task execution and intervenes when problems occur
-"#,
-    )
-    .expect("write shared definition");
-    std::fs::write(
-        agent_root.join("shared/prompt.md"),
-        "Canonical supervisor prompt",
-    )
-    .expect("write shared prompt");
-
+fn test_materialize_generated_plugin_dir_omits_removed_supervisor_agent() {
+    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
-    let generated_prompt =
-        std::fs::read_to_string(generated_dir.join("agents/ralphx-execution-supervisor.md"))
-            .expect("read generated supervisor prompt");
+    let generated_prompt_path = generated_dir.join("agents/ralphx-execution-supervisor.md");
 
     assert!(
-        !generated_prompt.contains("\nmcpServers:"),
-        "expected no MCP server frontmatter for agents without MCP tools, got: {generated_prompt}"
+        !generated_prompt_path.exists(),
+        "removed supervisor agent should not be materialized into generated Claude assets"
     );
 }
 

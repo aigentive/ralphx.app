@@ -203,11 +203,11 @@ When **Require Human Review** is on, even after AI approval the task stays in Re
 
 **Location:** Settings → Supervisor
 
-The supervisor is a lightweight Haiku agent that monitors worker agents for loops, stuck behavior, and runaway token usage.
+The supervisor settings configure the backend watchdog service thresholds used for loop, stall, and runaway-token detection. There is no separate live supervisor agent in the current catalog.
 
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
-| **Enable Supervisor** | On | On/Off | Enable watchdog monitoring alongside worker agents |
+| **Enable Supervisor** | On | On/Off | Enable watchdog monitoring thresholds for execution runs |
 | **Loop Threshold** | 3 | 2–10 | Number of identical tool calls before loop detection triggers |
 | **Stuck Timeout** | 150 seconds (~2.5 minutes) | 60–1800 | Seconds without git diff progress before stuck detection triggers (5 checks at 30-second intervals) |
 
@@ -221,7 +221,7 @@ The supervisor is a lightweight Haiku agent that monitors worker agents for loop
 | Token usage over threshold with no progress | Pauses task and notifies |
 | Critical loop detected | Kills agent, analyzes, escalates |
 
-The supervisor runs _alongside_ the worker — it does not consume an extra concurrency slot.
+The supervisor is modeled as a service, not a spawned agent, so these settings do not add another execution agent to the lane.
 
 ---
 

@@ -8,8 +8,7 @@ pub mod test_prompts;
 pub use sqlite_test_db::{SqliteStateFixture, SqliteTestDb};
 pub use test_prompts::{
     assert_marker, contains_marker, iteration_expected, iteration_test_prompt, ECHO_MARKER,
-    QA_PREP_TEST, QA_REFINER_TEST, QA_TESTER_TEST, REVIEWER_TEST, SUPERVISOR_TEST,
-    WORKER_SPAWN_TEST,
+    QA_PREP_TEST, QA_REFINER_TEST, QA_TESTER_TEST, REVIEWER_TEST, WORKER_SPAWN_TEST,
 };
 
 // Re-export merge validation helpers for integration testing

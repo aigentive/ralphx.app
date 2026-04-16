@@ -158,10 +158,10 @@ async fn test_seed_builtin_profiles() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5);
+    assert_eq!(all.len(), 4);
 
     let builtin = repo.get_builtin().await.unwrap();
-    assert_eq!(builtin.len(), 5);
+    assert_eq!(builtin.len(), 4);
 }
 
 #[tokio::test]
@@ -172,5 +172,5 @@ async fn test_seed_builtin_profiles_idempotent() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5);
+    assert_eq!(all.len(), 4);
 }

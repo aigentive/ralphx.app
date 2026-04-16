@@ -254,7 +254,7 @@ async fn test_mock_repository_seed_builtin_profiles() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5); // worker, reviewer, supervisor, orchestrator, deep_researcher
+    assert_eq!(all.len(), 4); // worker, reviewer, orchestrator, deep_researcher
 }
 
 #[tokio::test]
@@ -265,5 +265,5 @@ async fn test_mock_repository_seed_builtin_profiles_idempotent() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5); // Still 5, not duplicated
+    assert_eq!(all.len(), 4); // Still 4, not duplicated
 }

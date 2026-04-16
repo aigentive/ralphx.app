@@ -10,7 +10,7 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
     SHORT_PLAN_CRITIC_COMPLETENESS, SHORT_PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
     SHORT_PLAN_VERIFIER, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER,
-    SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER,
+    SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_WORKER,
     SHORT_WORKER_TEAM,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
@@ -88,7 +88,6 @@ fn test_all_agent_names_are_known() {
         SHORT_QA_PREP,
         SHORT_QA_EXECUTOR,
         SHORT_ORCHESTRATOR,
-        SHORT_SUPERVISOR,
         SHORT_DEEP_RESEARCHER,
         SHORT_PROJECT_ANALYZER,
         SHORT_MERGER,
@@ -659,7 +658,10 @@ fn test_embedded_config_omits_live_agent_runtime_mirrors_and_uses_canonical_meta
     assert_eq!(qa_executor.model.as_deref(), Some("sonnet"));
     assert_eq!(qa_executor.permission_mode.as_deref(), Some("acceptEdits"));
     assert!(qa_executor.resolved_cli_tools.contains(&"Write".to_string()));
-    assert!(qa_executor.allowed_mcp_tools.is_empty());
+    assert_eq!(
+        qa_executor.allowed_mcp_tools,
+        vec!["delegate_start", "delegate_wait", "delegate_cancel"]
+    );
 }
 
 #[test]
@@ -1728,7 +1730,15 @@ agents:
 
     assert_eq!(
         qa_prep.allowed_mcp_tools,
-        vec!["fs_read_file", "fs_list_dir", "fs_grep", "fs_glob"]
+        vec![
+            "fs_read_file",
+            "fs_list_dir",
+            "fs_grep",
+            "fs_glob",
+            "delegate_start",
+            "delegate_wait",
+            "delegate_cancel",
+        ]
     );
 }
 
@@ -1755,7 +1765,7 @@ agents:
 
     assert_eq!(
         qa_prep.preapproved_cli_tools,
-        vec!["Task(Explore)", "Task(Plan)"]
+        vec!["Task(Plan)"]
     );
 }
 

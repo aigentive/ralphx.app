@@ -208,36 +208,6 @@ export const REVIEWER_PROFILE: AgentProfile = {
 };
 
 /**
- * Built-in supervisor profile
- */
-export const SUPERVISOR_PROFILE: AgentProfile = {
-  id: 'supervisor',
-  name: 'Supervisor',
-  description: 'Monitors task execution and intervenes when problems occur',
-  role: 'supervisor',
-  claudeCode: {
-    agent: 'supervisor',
-    skills: [],
-    mcpServers: [],
-  },
-  execution: {
-    model: 'haiku',
-    maxIterations: 100,
-    timeoutMinutes: 60,
-    permissionMode: 'default',
-  },
-  io: {
-    inputArtifactTypes: [],
-    outputArtifactTypes: [],
-  },
-  behavior: {
-    canSpawnSubAgents: false,
-    autoCommit: false,
-    autonomyLevel: 'supervised',
-  },
-};
-
-/**
  * Built-in orchestrator profile
  */
 export const ORCHESTRATOR_PROFILE: AgentProfile = {
@@ -303,7 +273,6 @@ export const DEEP_RESEARCHER_PROFILE: AgentProfile = {
 export const BUILTIN_PROFILES: AgentProfile[] = [
   WORKER_PROFILE,
   REVIEWER_PROFILE,
-  SUPERVISOR_PROFILE,
   ORCHESTRATOR_PROFILE,
   DEEP_RESEARCHER_PROFILE,
 ];

@@ -6,6 +6,9 @@ capabilities:
     - search_memories
     - get_memory
     - get_memories_for_paths
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
 harnesses:
   claude:
     model: opus
@@ -18,7 +21,9 @@ harnesses:
       - Write
       - WebFetch
       - WebSearch
-      - Task(Explore)
       - Task(Plan)
     skills:
       - research-methodology
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

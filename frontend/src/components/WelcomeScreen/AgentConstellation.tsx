@@ -1,9 +1,9 @@
 /**
  * AgentConstellation - Main orchestrator for Agent Network visualization
  *
- * Displays all 13 RalphX agents orbiting around a central hub:
+ * Displays the live RalphX agent set orbiting around a central hub:
  * - Inner orbit (4): Orchestrator, Worker, Reviewer, QA
- * - Middle orbit (4): Supervisor, Researcher, Ideation, QA Prep
+ * - Middle orbit (3): Researcher, Ideation, QA Prep
  * - Outer orbit (5): Chat agents, Namer, Dependencies
  *
  * Features:

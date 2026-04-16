@@ -842,6 +842,7 @@ describe("VerificationResponseSchema", () => {
       status: "reviewing",
       in_progress: true,
       verification_generation: 1,
+      selected_generation: 1,
       current_round: 1,
       max_rounds: 3,
       gap_score: 60,
@@ -881,6 +882,7 @@ describe("VerificationResponseSchema", () => {
       status: "unverified",
       in_progress: false,
       verification_generation: 0,
+      selected_generation: 0,
     };
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([]);
@@ -894,6 +896,7 @@ describe("VerificationResponseSchema", () => {
       status: "needs_revision",
       in_progress: false,
       verification_generation: 3,
+      selected_generation: 3,
       current_gaps: [
         {
           severity: "critical",
@@ -972,6 +975,7 @@ describe("ideationApi.verification", () => {
     status: "reviewing",
     in_progress: true,
     verification_generation: 2,
+    selected_generation: 2,
     current_round: 1,
     max_rounds: 3,
     gap_score: 80,

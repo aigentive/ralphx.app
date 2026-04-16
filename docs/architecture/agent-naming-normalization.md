@@ -62,7 +62,6 @@ This removes the current mixed inventory (`orchestrator-ideation`, `chat-task`, 
 | `ralphx-review-history` | `ralphx-review-history` |
 | `ralphx-merger` | `ralphx-execution-merger` |
 | `ralphx-orchestrator` | `ralphx-execution-orchestrator` |
-| `ralphx-supervisor` | `ralphx-execution-supervisor` |
 | `ralphx-qa-prep` | `ralphx-qa-prep` |
 | `ralphx-qa-executor` | `ralphx-qa-executor` |
 | `ralphx-deep-researcher` | `ralphx-research-deep-researcher` |

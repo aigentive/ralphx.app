@@ -7,6 +7,9 @@ capabilities:
     - fs_list_dir
     - fs_grep
     - fs_glob
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
 harnesses:
   claude:
     model: sonnet
@@ -20,7 +23,6 @@ harnesses:
       - Bash
       - NotebookEdit
     preapproved_cli_tools:
-      - Task(Explore)
       - Task(Plan)
     skills:
       - acceptance-criteria-writing
@@ -28,3 +30,6 @@ harnesses:
   codex:
     runtime_features:
       shell_tool: false
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

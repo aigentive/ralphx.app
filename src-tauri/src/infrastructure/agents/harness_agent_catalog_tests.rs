@@ -19,12 +19,20 @@ const PILOT_AGENTS: &[(&str, &str, &str)] = &[
 
 const CODEX_PILOT_AGENTS: &[&str] = &["ralphx-ideation", "ralphx-utility-session-namer"];
 const CODEX_DELEGATION_GUIDE_AGENTS: &[&str] = &[
+    "ralphx-chat-task",
+    "ralphx-chat-project",
     "ralphx-ideation",
     "ralphx-ideation-readonly",
     "ralphx-plan-verifier",
+    "ralphx-review-chat",
+    "ralphx-review-history",
     "ralphx-execution-worker",
+    "ralphx-execution-coder",
     "ralphx-execution-reviewer",
     "ralphx-execution-merger",
+    "ralphx-qa-prep",
+    "ralphx-qa-executor",
+    "ralphx-research-deep-researcher",
 ];
 const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
     (
@@ -122,7 +130,6 @@ const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-general-worker", "general_worker", "ralphx-general-worker"),
     ("ralphx-research-deep-researcher", "researcher", "deep-researcher"),
     ("ralphx-execution-orchestrator", "orchestrator", "orchestrator"),
-    ("ralphx-execution-supervisor", "supervisor", "supervisor"),
     ("ralphx-qa-prep", "qa_prep", "qa-prep"),
     ("ralphx-qa-executor", "qa_executor", "qa-executor"),
 ];
@@ -153,7 +160,6 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-review-chat",
     "ralphx-review-history",
     "ralphx-execution-orchestrator",
-    "ralphx-execution-supervisor",
     "ralphx-project-analyzer",
     "ralphx-plan-verifier",
     "ralphx-plan-critic-completeness",
@@ -201,7 +207,6 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
             "Write",
             "Edit",
             "NotebookEdit",
-            "Task(Explore)",
             "Task(ralphx:*)",
         ],
     ),
@@ -211,7 +216,6 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
             "Write",
             "Edit",
             "NotebookEdit",
-            "Task(Explore)",
             "Task(ralphx:*)",
         ],
     ),
@@ -274,7 +278,6 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-review-chat",
     "ralphx-review-history",
     "ralphx-execution-orchestrator",
-    "ralphx-execution-supervisor",
     "ralphx-project-analyzer",
     "ralphx-execution-reviewer",
     "ralphx-execution-team-lead",
@@ -320,7 +323,6 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-review-chat", "sonnet"),
     ("ralphx-review-history", "sonnet"),
     ("ralphx-execution-orchestrator", "opus"),
-    ("ralphx-execution-supervisor", "sonnet"),
     ("ralphx-project-analyzer", "sonnet"),
     ("ralphx-execution-worker", "sonnet"),
     ("ralphx-execution-coder", "sonnet"),
@@ -366,7 +368,6 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
     ("ralphx-execution-orchestrator", "base_tools", &["Write", "Edit", "Task"], false),
-    ("ralphx-execution-supervisor", "base_tools", &["Task"], false),
     ("ralphx-project-analyzer", "base_tools", &[], false),
     ("ralphx-ideation", "base_tools", &["Task"], false),
     ("ralphx-ideation-readonly", "base_tools", &["Task"], false),
@@ -1227,10 +1228,23 @@ fn canonical_delegation_policy_appendix_is_injected_only_for_delegating_agents()
 }
 
 #[test]
-fn generated_delegation_appendix_describes_general_explorer_usage_for_reviewer_and_merger() {
+fn generated_delegation_appendix_describes_general_explorer_usage_for_general_explorer_callers() {
     let root = project_root();
 
-    for agent_name in ["ralphx-execution-reviewer", "ralphx-execution-merger"] {
+    for agent_name in [
+        "ralphx-chat-task",
+        "ralphx-chat-project",
+        "ralphx-ideation",
+        "ralphx-ideation-readonly",
+        "ralphx-review-chat",
+        "ralphx-review-history",
+        "ralphx-execution-coder",
+        "ralphx-execution-reviewer",
+        "ralphx-execution-merger",
+        "ralphx-qa-prep",
+        "ralphx-qa-executor",
+        "ralphx-research-deep-researcher",
+    ] {
         let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
             .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
         assert!(

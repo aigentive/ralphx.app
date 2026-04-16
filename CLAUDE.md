@@ -38,11 +38,11 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 
 | Rule | Detail |
 |------|--------|
-| **Never explore manually** | ❌ Reading file after file yourself. ✅ Spawn `Task(Explore)` or `Task(general-purpose)` subagents to search/read in parallel. |
+| **Never explore manually** | ❌ Reading file after file yourself. ✅ Delegate bounded exploration to a read-only specialist or managed teammate and have it summarize findings. |
 | **Leads only delegate** | Team leads coordinate and review. ❌ Leads doing research, running tests, or reading code directly. ✅ Spawn teammates/subagents for ALL work. |
 | **Parallel exploration** | Need info from 3+ files? Spawn 3 subagents in parallel. ❌ Sequential file reads bloating context. |
 | **Direct reads only for confirmation** | Read a specific file:line only when you already know exactly what you need to confirm. ❌ Browsing/scanning files to "understand." |
-| **Subagents for search** | Any `Grep`/`Glob` that might need >2 rounds → use `Task(Explore)` agent. It's designed for this. |
+| **Subagents for search** | Any `Grep`/`Glob` that might need >2 rounds → use a read-only delegate or managed teammate instead of doing it yourself. |
 | **Teammates are disposable, context is not** | Spawn cheap subagents liberally. Your context window is expensive — don't fill it with raw code. Have subagents summarize findings. |
 | **Research via agents, not yourself** | Before ANY implementation: spawn a research agent to gather context. Don't read the code yourself — get a summary back. |
 | **Memory files exist — use them** | Check your auto-memory `MEMORY.md` (at `~/.claude/projects/<project-slug>/memory/`) before exploring. Past findings are already there. |

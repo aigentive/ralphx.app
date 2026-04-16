@@ -31,7 +31,6 @@ Good subtasks are:
 | Implementation | worker |
 | Code review | reviewer |
 | Deep analysis | deep-researcher |
-| Monitoring | supervisor |
 
 ## Output Format
 

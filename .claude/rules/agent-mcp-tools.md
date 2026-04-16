@@ -193,7 +193,6 @@ After adding a tool, verify MCP server stderr shows:
 | `ralphx-execution-merger` | `report_conflict`, `report_incomplete`, `complete_merge`, `get_merge_target`, `get_task_context`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ralphx-execution-orchestrator` | `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ralphx-research-deep-researcher` | `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-execution-supervisor` | `[]` (empty — no MCP tools) |
 | `ralphx-qa-prep` | `[]` (empty — no MCP tools) |
 | `ralphx-qa-executor` | `[]` (empty — no MCP tools) |
 | `ralphx-project-analyzer` | `save_project_analysis`, `get_project_analysis` |

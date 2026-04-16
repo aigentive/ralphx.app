@@ -15,6 +15,9 @@ capabilities:
     - search_memories
     - get_memory
     - get_memories_for_paths
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
 harnesses:
   claude:
     model: sonnet
@@ -23,5 +26,7 @@ harnesses:
       include:
         - Task
     preapproved_cli_tools:
-      - Task(Explore)
       - Task(Plan)
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

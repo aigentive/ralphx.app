@@ -236,14 +236,14 @@ resolved_cli_tools = tool_sets[extends] ∪ include (deduplicated)
 get_preapproved_tools(agent_name) →
     MCP tools:       mcp__<server>__<tool> for each mcp_tools entry
   + CLI tools:       all resolved_cli_tools (unless mcp_only)
-  + Preapproved:     preapproved_cli_tools entries (e.g., Task(Explore))
+  + Preapproved:     preapproved_cli_tools entries (e.g., Task(Plan))
   + Memory skills:   Skill(ralphx:rule-manager) etc. (memory agents only)
 ```
 
 **Example:** `ralphx-execution-worker` generates ~35 preapproved tools:
 - `mcp__ralphx__start_step`, `mcp__ralphx__complete_step`, ...
 - `Read`, `Write`, `Edit`, `Bash`, `Task`, ...
-- `Task(Explore)`, `Task(Plan)`
+- `Task(Plan)`
 
 ### MCP-Only Agents
 

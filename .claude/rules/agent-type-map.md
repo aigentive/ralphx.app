@@ -55,7 +55,6 @@ Canonical authoring flow: `.claude/rules/agent-authoring.md`
 | `ralphx-execution-merger` | merge | sonnet | Merge conflict resolution |
 | `ralphx-research-deep-researcher` | — | opus | Deep research for ideation |
 | `ralphx-execution-orchestrator` | — | opus | Internal orchestration |
-| `ralphx-execution-supervisor` | — | sonnet | Supervision tasks |
 | `ralphx-qa-prep` | — | sonnet | QA preparation |
 | `ralphx-qa-executor` | — | sonnet | QA execution |
 | `ralphx-project-analyzer` | — | sonnet | Project analysis |

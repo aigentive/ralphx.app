@@ -286,10 +286,6 @@ fn test_role_from_string() {
         AgenticClientSpawner::role_from_string("reviewer"),
         AgentRole::Reviewer
     );
-    assert_eq!(
-        AgenticClientSpawner::role_from_string("supervisor"),
-        AgentRole::Supervisor
-    );
     // Custom role
     assert_eq!(
         AgenticClientSpawner::role_from_string("my-custom-agent"),
@@ -465,7 +461,7 @@ async fn test_multiple_spawns_emit_multiple_events() {
 
     spawner.spawn("worker", "task-1").await;
     spawner.spawn("reviewer", "task-2").await;
-    spawner.spawn("supervisor", "task-3").await;
+    spawner.spawn("custom-agent", "task-3").await;
 
     // Check all three events
     let event1 = subscriber.try_recv().unwrap();

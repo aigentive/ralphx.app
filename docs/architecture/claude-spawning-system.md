@@ -175,7 +175,7 @@ agents:
       extends: base_tools
       include: [Task]
     mcp_tools: [create_task_proposal, update_task_proposal, ...]
-    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+    preapproved_cli_tools: [Task(Plan)]
 ```
 
 **Config loading** (`agent_config/mod.rs:444-475`):
@@ -204,7 +204,7 @@ tools.mcp_only: true → empty CLI tools (agent uses only MCP)
 ```
 MCP tools → prefixed as mcp__ralphx__<name>
 CLI tools → passed as-is
-preapproved_cli_tools → appended (e.g., Task(Explore), Task(Plan))
+preapproved_cli_tools → appended (e.g., Task(Plan))
 Memory skills → only for ralphx-memory-maintainer and ralphx-memory-capture agents
 ```
 

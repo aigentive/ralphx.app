@@ -144,7 +144,6 @@ paths:
 | `ralphx-qa-prep` | sonnet | Generate acceptance criteria + test steps (background, on `ready`) |
 | `ralphx-qa-executor` | sonnet | Browser-based QA via agent-browser |
 | `ralphx-execution-orchestrator` | opus | Complex multi-step coordination |
-| `ralphx-execution-supervisor` | haiku | Monitor agents for loops/stalls |
 | `ralphx-research-deep-researcher` | opus | Thorough research |
 
 ---

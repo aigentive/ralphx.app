@@ -72,5 +72,4 @@ fn test_expected_markers_match_prompts() {
     assert!(QA_REFINER_TEST.contains(expected::QA_REFINER_OK));
     assert!(QA_TESTER_TEST.contains(expected::QA_TESTER_OK));
     assert!(REVIEWER_TEST.contains(expected::REVIEWER_OK));
-    assert!(SUPERVISOR_TEST.contains(expected::SUPERVISOR_OK));
 }

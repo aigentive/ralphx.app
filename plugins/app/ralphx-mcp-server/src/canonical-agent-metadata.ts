@@ -84,8 +84,6 @@ export function canonicalAgentName(agentType: string): string {
       return "ralphx-execution-merger";
     case "ralphx-orchestrator":
       return "ralphx-execution-orchestrator";
-    case "ralphx-supervisor":
-      return "ralphx-execution-supervisor";
     case "ralphx-deep-researcher":
       return "ralphx-research-deep-researcher";
     case "project-analyzer":
@@ -100,8 +98,6 @@ export function canonicalAgentName(agentType: string): string {
       return "ralphx-qa-prep";
     case "qa-tester":
       return "ralphx-qa-executor";
-    case "supervisor":
-      return "ralphx-execution-supervisor";
     default:
       return shortName;
   }
