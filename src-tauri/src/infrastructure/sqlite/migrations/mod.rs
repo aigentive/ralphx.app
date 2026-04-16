@@ -901,6 +901,31 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+#[cfg(test)]
+pub(super) fn run_migrations_through(conn: &Connection, target_version: i64) -> AppResult<()> {
+    create_migrations_table(conn)?;
+
+    let mut current_version = get_schema_version(conn)?;
+
+    for migration in MIGRATIONS {
+        if current_version < migration.version && migration.version <= target_version {
+            (migration.migrate)(conn)?;
+            set_schema_version(conn, migration.version)?;
+            current_version = migration.version;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+pub(super) fn latest_registered_migration_version() -> i64 {
+    MIGRATIONS
+        .last()
+        .map(|migration| migration.version)
+        .expect("migration registry should not be empty")
+}
+
 /// Create the migrations tracking table
 fn create_migrations_table(conn: &Connection) -> AppResult<()> {
     conn.execute(
