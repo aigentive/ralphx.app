@@ -74,6 +74,7 @@ export const IdeationSessionSchema = z.object({
   titleSource: z.enum(["auto", "user"]).nullable().optional(),
   status: IdeationSessionStatusSchema,
   planArtifactId: z.string().nullable(),
+  inheritedPlanArtifactId: z.string().nullable().optional(),
   seedTaskId: z.string().nullish(),
   parentSessionId: z.string().nullable(),
   createdAt: z.string().datetime(),

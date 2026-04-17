@@ -60,7 +60,10 @@ vi.mock("./useIdeation", () => ({
 
 // Mutable store state — tests configure these before renderHook()
 let mockActiveSessionId: string | null = null;
-let mockSessions: Record<string, { id: string; planArtifactId: string | null }> = {};
+let mockSessions: Record<
+  string,
+  { id: string; planArtifactId: string | null; inheritedPlanArtifactId?: string | null }
+> = {};
 const mockSetPlanArtifact = vi.fn();
 const mockUpdateSession = vi.fn();
 
@@ -376,6 +379,148 @@ describe("usePlanArtifactEvents", () => {
       });
 
       expect(mockSetPlanArtifact).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ==========================================================================
+  // Tier 2 — inheritedPlanArtifactId fallback (followup sessions)
+  // ==========================================================================
+
+  describe("tier 2 — inheritedPlanArtifactId fallback", () => {
+    it("followup session matches on inheritedPlanArtifactId === previousArtifactId → setPlanArtifact called", () => {
+      mockActiveSessionId = "session-followup";
+      mockSessions = {
+        "session-followup": {
+          id: "session-followup",
+          planArtifactId: null,
+          inheritedPlanArtifactId: "artifact-1",
+        },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 2),
+        });
+      });
+
+      expect(mockSetPlanArtifact).toHaveBeenCalledTimes(1);
+      expect(mockSetPlanArtifact).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "artifact-2" })
+      );
+    });
+
+    it("match on inheritedPlanArtifactId updates inheritedPlanArtifactId — not planArtifactId", () => {
+      mockActiveSessionId = "session-followup";
+      mockSessions = {
+        "session-followup": {
+          id: "session-followup",
+          planArtifactId: null,
+          inheritedPlanArtifactId: "artifact-1",
+        },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 2),
+        });
+      });
+
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-followup", {
+        inheritedPlanArtifactId: "artifact-2",
+      });
+      expect(mockUpdateSession).not.toHaveBeenCalledWith(
+        "session-followup",
+        expect.objectContaining({ planArtifactId: expect.anything() })
+      );
+    });
+
+    it("followup session matches on inheritedPlanArtifactId === artifactId (rapid event — already updated)", () => {
+      mockActiveSessionId = "session-followup";
+      mockSessions = {
+        "session-followup": {
+          id: "session-followup",
+          planArtifactId: null,
+          inheritedPlanArtifactId: "artifact-2",
+        },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 3),
+        });
+      });
+
+      expect(mockSetPlanArtifact).toHaveBeenCalledTimes(1);
+    });
+
+    it("session with own planArtifactId matched on own field — does not update inheritedPlanArtifactId", () => {
+      mockActiveSessionId = "session-1";
+      mockSessions = {
+        "session-1": {
+          id: "session-1",
+          planArtifactId: "artifact-1",
+          inheritedPlanArtifactId: null,
+        },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 2),
+        });
+      });
+
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-1", {
+        planArtifactId: "artifact-2",
+      });
+      expect(mockUpdateSession).not.toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({ inheritedPlanArtifactId: expect.anything() })
+      );
+    });
+
+    it("non-active followup session matched on inheritedPlanArtifactId → no setPlanArtifact, but updateSession and invalidateQueries fire", () => {
+      mockActiveSessionId = "session-active";
+      mockSessions = {
+        "session-followup": {
+          id: "session-followup",
+          planArtifactId: null,
+          inheritedPlanArtifactId: "artifact-1",
+        },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 2),
+        });
+      });
+
+      expect(mockSetPlanArtifact).not.toHaveBeenCalled();
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-followup", {
+        inheritedPlanArtifactId: "artifact-2",
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["ideation", "session", "session-followup", "with-data"],
+      });
     });
   });
 

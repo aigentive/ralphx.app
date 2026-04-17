@@ -149,6 +149,7 @@ impl SessionExportService {
                     verification_gap_score: Option<u32>,
                     verification_convergence_reason: Option<String>,
                     plan_artifact_id: Option<String>,
+                    inherited_plan_artifact_id: Option<String>,
                     project_name: Option<String>,
                 }
 
@@ -157,7 +158,8 @@ impl SessionExportService {
                         "SELECT s.title, s.status, COALESCE(s.team_mode, 'solo'), s.verification_status, \
                          s.verification_in_progress, s.verification_generation, s.verification_current_round, \
                          s.verification_max_rounds, s.verification_gap_count, s.verification_gap_score, \
-                         s.verification_convergence_reason, s.plan_artifact_id, p.name \
+                         s.verification_convergence_reason, s.plan_artifact_id, \
+                         s.inherited_plan_artifact_id, p.name \
                          FROM ideation_sessions s \
                          LEFT JOIN projects p ON p.id = s.project_id \
                          WHERE s.id = ?1 AND s.project_id = ?2",
@@ -176,7 +178,8 @@ impl SessionExportService {
                                 verification_gap_score: row.get(9)?,
                                 verification_convergence_reason: row.get(10)?,
                                 plan_artifact_id: row.get(11)?,
-                                project_name: row.get(12)?,
+                                inherited_plan_artifact_id: row.get(12)?,
+                                project_name: row.get(13)?,
                             })
                         },
                     )
@@ -206,12 +209,14 @@ impl SessionExportService {
                     }),
                 };
 
-                // Resolve version chain if plan exists
-                let plan_versions = match session_row.plan_artifact_id {
-                    Some(ref root_id) => {
-                        Self::walk_version_chain(conn, root_id, &session_id)?
-                    }
-                    None => vec![],
+                // Resolve version chain if plan exists — own plan_artifact_id takes precedence,
+                // inherited_plan_artifact_id used when own is NULL (followup sessions)
+                let plan_versions = if let Some(ref root_id) = session_row.plan_artifact_id {
+                    Self::walk_version_chain(conn, root_id, &session_id)?
+                } else if let Some(ref inherited_id) = session_row.inherited_plan_artifact_id {
+                    Self::walk_version_chain(conn, inherited_id, &session_id)?
+                } else {
+                    vec![]
                 };
 
                 // Load proposals

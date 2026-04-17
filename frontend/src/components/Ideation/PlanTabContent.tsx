@@ -1,10 +1,11 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
+import { PlanEditor } from "./PlanEditor";
 import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
 import { PendingAcceptanceBanner } from "./PendingAcceptanceBanner";
 import { PlanEmptyState } from "./PlanEmptyState";
@@ -50,9 +51,25 @@ export function PlanTabContent({
   onHistoricalVersionViewed,
 }: PlanTabContentProps) {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const isEditingRef = useRef(false);
+
+  // Keep ref in sync so the planArtifact effect can read latest value without stale closure
+  useEffect(() => {
+    isEditingRef.current = isEditing;
+  }, [isEditing]);
 
   // Read from store — efficient (Zustand only re-renders on actual changes)
   const planArtifact = useIdeationStore((state) => state.planArtifact);
+  const setPlanArtifact = useIdeationStore((state) => state.setPlanArtifact);
+
+  // Reset editing mode when plan changes externally
+  useEffect(() => {
+    if (isEditingRef.current) {
+      toast.info("Plan was updated externally. Exiting editor.");
+    }
+    setIsEditing(false);
+  }, [planArtifact?.id, planArtifact?.metadata?.version]);
 
   const handleCreateProposals = useCallback(async () => {
     try {
@@ -126,23 +143,37 @@ export function PlanTabContent({
         </Button>
       )}
 
-      {/* Plan display */}
+      {/* Plan display / editor */}
       {planArtifact && (
         <div className="mb-4">
-          <PlanDisplay
-            plan={planArtifact}
-            linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
-            onEdit={() => {}}
-            onExport={() => setExportDialogOpen(true)}
-            isExpanded={isPlanExpanded}
-            onExpandedChange={onExpandedChange}
-            {...(teamMetadata !== undefined && { teamMetadata })}
-            {...(requestedHistoricalVersion !== null && {
-              requestedVersion: requestedHistoricalVersion,
-              onVersionViewed: onHistoricalVersionViewed,
-            })}
-            onCreateProposals={handleCreateProposals}
-          />
+          {isEditing ? (
+            <PlanEditor
+              plan={planArtifact}
+              onSave={(updated) => {
+                setPlanArtifact(updated);
+                setIsEditing(false);
+              }}
+              onCancel={() => setIsEditing(false)}
+            />
+          ) : (
+            <PlanDisplay
+              plan={planArtifact}
+              linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
+              onEdit={() => {
+                onHistoricalVersionViewed?.();
+                setIsEditing(true);
+              }}
+              onExport={() => setExportDialogOpen(true)}
+              isExpanded={isPlanExpanded}
+              onExpandedChange={onExpandedChange}
+              {...(teamMetadata !== undefined && { teamMetadata })}
+              {...(requestedHistoricalVersion !== null && {
+                requestedVersion: requestedHistoricalVersion,
+                onVersionViewed: onHistoricalVersionViewed,
+              })}
+              onCreateProposals={handleCreateProposals}
+            />
+          )}
         </div>
       )}
 

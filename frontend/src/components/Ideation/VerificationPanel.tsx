@@ -315,7 +315,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   }, [lastVerificationChildId, childLastModel]);
 
   const sessionVerificationStatus = session.verificationStatus ?? "unverified";
-  const hasPlan = !!session.planArtifactId;
+  const hasPlan = !!(session.planArtifactId || session.inheritedPlanArtifactId);
   const isApproved = session.status === "accepted";
 
   // Fetch current verification data — always fires when a plan exists (not gated on verificationStatus)
@@ -404,7 +404,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           ? {
               ...old,
               session: {
-              ...old.session,
+                ...old.session,
                 verificationStatus: currentVerificationData.status as VerificationStatus,
                 verificationInProgress: currentVerificationData.inProgress,
               },

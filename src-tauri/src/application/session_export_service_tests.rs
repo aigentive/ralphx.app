@@ -63,6 +63,34 @@ async fn seed_session(
         .expect("seed_session failed");
 }
 
+/// Seed a followup session with NULL plan_artifact_id but a set inherited_plan_artifact_id.
+async fn seed_followup_session(
+    app_state: &AppState,
+    session_id: &str,
+    project_id: &str,
+    inherited_plan_artifact_id: &str,
+) {
+    let sid = session_id.to_string();
+    let pid = project_id.to_string();
+    let iaid = inherited_plan_artifact_id.to_string();
+    app_state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "INSERT INTO ideation_sessions \
+                 (id, project_id, title, title_source, status, plan_artifact_id, \
+                  inherited_plan_artifact_id, seed_task_id, parent_session_id, \
+                  created_at, updated_at, archived_at, converted_at, team_mode, team_config_json) \
+                 VALUES (?1, ?2, 'Followup Session', 'user', 'active', NULL, ?3, NULL, NULL, \
+                         datetime('now'), datetime('now'), NULL, NULL, 'solo', NULL)",
+                rusqlite::params![sid, pid, iaid],
+            )?;
+            Ok(())
+        })
+        .await
+        .expect("seed_followup_session failed");
+}
+
 /// Seed an artifact row. Returns the new artifact_id.
 async fn seed_artifact(
     app_state: &AppState,
@@ -395,6 +423,61 @@ async fn export_dependency_source_preserved() {
     let export = service.export("session-1", "project-1").await.unwrap();
 
     assert_eq!(export.dependencies[0].source, "manual");
+}
+
+#[tokio::test]
+async fn export_followup_session_uses_inherited_plan_artifact_id() {
+    let app_state = AppState::new_sqlite_test();
+    seed_project(&app_state, "project-1", "Project 1").await;
+    // Seed artifact chain belonging to a parent session
+    seed_artifact(&app_state, "artifact-1", 1, "Plan v1", "# Inherited Content", None).await;
+    seed_artifact(&app_state, "artifact-2", 2, "Plan v2", "# Inherited Content v2", Some("artifact-1")).await;
+    // Followup session has no own plan_artifact_id, only inherited_plan_artifact_id
+    seed_followup_session(&app_state, "followup-session", "project-1", "artifact-1").await;
+
+    let service = make_service(&app_state);
+    let export = service.export("followup-session", "project-1").await.unwrap();
+
+    // Export should include plan versions from the inherited artifact chain
+    assert_eq!(export.plan_versions.len(), 2);
+    assert_eq!(export.plan_versions[0].content.as_deref(), Some("# Inherited Content"));
+    assert_eq!(export.plan_versions[1].content.as_deref(), Some("# Inherited Content v2"));
+}
+
+#[tokio::test]
+async fn export_own_plan_takes_precedence_over_inherited() {
+    let app_state = AppState::new_sqlite_test();
+    seed_project(&app_state, "project-1", "Project 1").await;
+    // Own artifact
+    seed_artifact(&app_state, "own-artifact", 1, "Own Plan", "# Own Content", None).await;
+    // Inherited artifact (different chain)
+    seed_artifact(&app_state, "inherited-artifact", 1, "Inherited Plan", "# Inherited Content", None).await;
+
+    // Session with both plan_artifact_id and inherited_plan_artifact_id set
+    app_state
+        .db
+        .run(|conn| {
+            conn.execute(
+                "INSERT INTO ideation_sessions \
+                 (id, project_id, title, title_source, status, plan_artifact_id, \
+                  inherited_plan_artifact_id, seed_task_id, parent_session_id, \
+                  created_at, updated_at, archived_at, converted_at, team_mode, team_config_json) \
+                 VALUES ('session-both', 'project-1', 'Session', 'user', 'active', \
+                         'own-artifact', 'inherited-artifact', NULL, NULL, \
+                         datetime('now'), datetime('now'), NULL, NULL, 'solo', NULL)",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let service = make_service(&app_state);
+    let export = service.export("session-both", "project-1").await.unwrap();
+
+    // Own plan takes precedence — should only see own artifact content
+    assert_eq!(export.plan_versions.len(), 1);
+    assert_eq!(export.plan_versions[0].content.as_deref(), Some("# Own Content"));
 }
 
 // ─────────────────────────────────────────────────────────────
