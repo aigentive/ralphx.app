@@ -43,6 +43,7 @@ fn test_send_agent_message_response_from() {
     assert!(response.is_new_conversation);
     assert!(!response.was_queued);
     assert!(response.queued_message_id.is_none());
+    assert!(!response.queued_as_pending);
 }
 
 #[test]
@@ -62,6 +63,27 @@ fn test_send_agent_message_response_queued() {
     assert!(!response.is_new_conversation);
     assert!(response.was_queued);
     assert_eq!(response.queued_message_id.as_deref(), Some("queued-msg-123"));
+    assert!(!response.queued_as_pending);
+}
+
+#[test]
+fn test_send_agent_message_response_pending_capacity() {
+    let result = SendResult {
+        conversation_id: "conv-pending".to_string(),
+        agent_run_id: "run-pending".to_string(),
+        is_new_conversation: true,
+        was_queued: true,
+        queued_message_id: None,
+        queued_as_pending: true,
+    };
+
+    let response = SendAgentMessageResponse::from(result);
+    assert_eq!(response.conversation_id, "conv-pending");
+    assert_eq!(response.agent_run_id, "run-pending");
+    assert!(response.is_new_conversation);
+    assert!(response.was_queued);
+    assert!(response.queued_message_id.is_none());
+    assert!(response.queued_as_pending);
 }
 
 #[test]
@@ -82,12 +104,14 @@ fn test_response_serialization() {
         is_new_conversation: true,
         was_queued: false,
         queued_message_id: None,
+        queued_as_pending: false,
     };
 
     let json = serde_json::to_string(&response).unwrap();
     assert!(json.contains("conversation_id")); // snake_case (Rust default)
     assert!(json.contains("agent_run_id"));
     assert!(json.contains("is_new_conversation"));
+    assert!(json.contains("queued_as_pending"));
 }
 
 // ── AgentRunStatusResponse model field tests ──────────────────────────────────

@@ -380,6 +380,7 @@ describe("chat api", () => {
       conversation_id: "c1",
       agent_run_id: "r1",
       is_new_conversation: true,
+      queued_as_pending: true,
     });
 
     const result = await sendAgentMessage("project", "p1", "Hello");
@@ -387,7 +388,14 @@ describe("chat api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("send_agent_message", {
       input: { contextType: "project", contextId: "p1", content: "Hello" },
     });
-    expect(result).toEqual({ conversationId: "c1", agentRunId: "r1", isNewConversation: true, wasQueued: false, queuedMessageId: undefined });
+    expect(result).toEqual({
+      conversationId: "c1",
+      agentRunId: "r1",
+      isNewConversation: true,
+      wasQueued: false,
+      queuedAsPending: true,
+      queuedMessageId: undefined,
+    });
   });
 
   it("lists queued messages", async () => {
