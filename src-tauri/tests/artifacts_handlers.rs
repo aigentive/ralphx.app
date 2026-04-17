@@ -1260,6 +1260,22 @@ async fn test_reset_auto_verify_sync_clears_in_progress() {
         VerificationStatus::Unverified,
         "status must be Unverified after reset"
     );
+    let (effective_status, effective_in_progress) = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_status(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        effective_status,
+        VerificationStatus::Unverified,
+        "authoritative verification status must also reset to Unverified"
+    );
+    assert!(
+        !effective_in_progress,
+        "authoritative verification status must also clear in_progress"
+    );
 }
 
 /// create_plan_artifact skips trigger when verification_in_progress=1 (mutex held).
@@ -2392,10 +2408,17 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
     .await;
     assert!(result.is_ok(), "Should be Ok when verification child is not running");
 
-    // Mark parent as having verification in progress (as happens in production when
-    // verification starts). The early-out guard skips the freeze check when false.
-    let mut parent_verifying = parent.clone();
-    parent_verifying.verification_in_progress = true;
+    // Mark parent as having verification in progress in the repo — freeze truth is now
+    // authoritative and no longer comes from the caller-provided session struct.
+    session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+    let parent_verifying = session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Register child as generating
     running_registry
@@ -2600,6 +2623,43 @@ fn caller_session_header(session_id: &IdeationSessionId) -> axum::http::HeaderMa
     headers
 }
 
+async fn save_current_verification_snapshot(
+    state: &HttpServerState,
+    parent_id: &IdeationSessionId,
+    status: VerificationStatus,
+    in_progress: bool,
+    current_round: u32,
+    max_rounds: u32,
+) {
+    let generation = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(parent_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .verification_generation;
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            parent_id,
+            &VerificationRunSnapshot {
+                generation,
+                status,
+                in_progress,
+                current_round,
+                max_rounds,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+}
+
 /// 6D: update_plan_artifact returns 409 during freeze; 200 with caller_session_id bypass.
 #[tokio::test]
 async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
@@ -2623,12 +2683,15 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
 
     // Mark parent as having verification in progress (as happens in production when
     // verification starts). The early-out guard skips the freeze check when false.
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     // Register child as running (freeze active)
     registry
@@ -2673,12 +2736,15 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     );
 
     // Phase 3: set in_progress=false (verification complete) → freeze released
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Verified,
+        false,
+        0,
+        0,
+    )
+    .await;
 
     // update_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = update_plan_artifact(
@@ -2721,12 +2787,15 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
 
     // Mark parent as having verification in progress (as happens in production when
     // verification starts). The early-out guard skips the freeze check when false.
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     // Register child as running (freeze active)
     registry
@@ -2777,12 +2846,15 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     );
 
     // Phase 3: set in_progress=false (verification complete) → freeze released
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Verified,
+        false,
+        0,
+        0,
+    )
+    .await;
 
     // edit_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = edit_plan_artifact(
@@ -2825,25 +2897,15 @@ async fn test_6d_update_plan_artifact_uses_snapshot_truth_when_summary_is_stale(
         .await
         .unwrap();
 
-    state
-        .app_state
-        .ideation_session_repo
-        .save_verification_run_snapshot(
-            &parent_id,
-            &VerificationRunSnapshot {
-                generation: 0,
-                status: VerificationStatus::Reviewing,
-                in_progress: true,
-                current_round: 2,
-                max_rounds: 5,
-                best_round_index: None,
-                convergence_reason: None,
-                current_gaps: vec![],
-                rounds: vec![],
-            },
-        )
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        2,
+        5,
+    )
+    .await;
 
     state
         .app_state
@@ -2894,12 +2956,15 @@ async fn test_6d_double_prime_update_plan_artifact_header_bypasses_freeze() {
         .await
         .unwrap();
 
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     registry
         .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
@@ -2942,12 +3007,15 @@ async fn test_6d_triple_prime_edit_plan_artifact_header_bypasses_freeze() {
         .await
         .unwrap();
 
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     registry
         .set_running(RunningAgentKey::new("ideation", child_id.as_str()))

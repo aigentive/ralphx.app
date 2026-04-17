@@ -387,14 +387,40 @@ impl SqliteIdeationSessionRepository {
     #[doc(hidden)]
     pub fn reset_auto_verify_sync(conn: &Connection, id: &str) -> AppResult<()> {
         let now = Utc::now();
-        conn.execute(
+        let now_rfc3339 = now.to_rfc3339();
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE ideation_sessions SET \
              verification_in_progress = 0, \
              verification_status = 'unverified', \
+             verification_current_round = NULL, \
+             verification_max_rounds = NULL, \
+             verification_gap_count = 0, \
+             verification_gap_score = NULL, \
+             verification_convergence_reason = NULL, \
              updated_at = ?2 \
              WHERE id = ?1 AND verification_status != 'imported_verified'",
-            rusqlite::params![id, now.to_rfc3339()],
+            rusqlite::params![id, &now_rfc3339],
         )?;
+        tx.execute(
+            "UPDATE verification_runs
+             SET status = 'unverified',
+                 in_progress = 0,
+                 current_round = NULL,
+                 max_rounds = NULL,
+                 best_round_index = NULL,
+                 convergence_reason = NULL,
+                 updated_at = ?2,
+                 completed_at = ?2
+             WHERE session_id = ?1
+               AND generation = (
+                   SELECT verification_generation
+                   FROM ideation_sessions
+                   WHERE id = ?1
+               )",
+            rusqlite::params![id, &now_rfc3339],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 

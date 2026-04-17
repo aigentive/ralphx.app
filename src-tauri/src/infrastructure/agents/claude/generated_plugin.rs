@@ -7,7 +7,7 @@ use crate::infrastructure::agents::harness_agent_catalog::{
     resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
     CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -27,6 +27,41 @@ fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn generated_plugin_dir_cache() -> &'static Mutex<HashMap<PathBuf, PathBuf>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, PathBuf>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn generated_plugin_cache_key(base_plugin_dir: &Path) -> PathBuf {
+    base_plugin_dir
+        .canonicalize()
+        .unwrap_or_else(|_| base_plugin_dir.to_path_buf())
+}
+
+fn cached_generated_plugin_dir(base_plugin_dir: &Path) -> Result<Option<PathBuf>, String> {
+    let cache = generated_plugin_dir_cache()
+        .lock()
+        .map_err(|_| "Generated Claude plugin cache lock poisoned".to_string())?;
+    Ok(cache
+        .get(&generated_plugin_cache_key(base_plugin_dir))
+        .filter(|generated_dir| generated_dir.exists())
+        .cloned())
+}
+
+fn cache_generated_plugin_dir(
+    base_plugin_dir: &Path,
+    generated_plugin_dir: &Path,
+) -> Result<(), String> {
+    let mut cache = generated_plugin_dir_cache()
+        .lock()
+        .map_err(|_| "Generated Claude plugin cache lock poisoned".to_string())?;
+    cache.insert(
+        generated_plugin_cache_key(base_plugin_dir),
+        generated_plugin_dir.to_path_buf(),
+    );
+    Ok(())
+}
+
 pub(crate) fn materialize_generated_plugin_dir(base_plugin_dir: &Path) -> Result<PathBuf, String> {
     materialize_generated_plugin_dir_with_runtime_source(
         base_plugin_dir,
@@ -38,9 +73,20 @@ pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
     base_plugin_dir: &Path,
     fallback_runtime_plugin_dir: Option<&Path>,
 ) -> Result<PathBuf, String> {
+    // Generated Claude assets are process-local runtime bootstrap outputs.
+    // After the first successful materialization, keep reusing that directory
+    // so later agent launches do not rewrite prompts under already-starting children.
+    if let Some(cached_dir) = cached_generated_plugin_dir(base_plugin_dir)? {
+        return Ok(cached_dir);
+    }
+
     let _guard = generated_plugin_materialization_lock()
         .lock()
         .map_err(|_| "Generated Claude plugin materialization lock poisoned".to_string())?;
+    if let Some(cached_dir) = cached_generated_plugin_dir(base_plugin_dir)? {
+        return Ok(cached_dir);
+    }
+
     let project_root = resolve_project_root_from_plugin_dir(base_plugin_dir);
     let generated_plugin_dir = generated_plugin_dir_for_base(base_plugin_dir);
     let runtime_source_plugin_dir =
@@ -59,6 +105,7 @@ pub(crate) fn materialize_generated_plugin_dir_with_runtime_source(
         &generated_plugin_dir,
     )?;
     sync_generated_agent_prompts(base_plugin_dir, &generated_plugin_dir, &project_root)?;
+    cache_generated_plugin_dir(base_plugin_dir, &generated_plugin_dir)?;
 
     Ok(generated_plugin_dir)
 }

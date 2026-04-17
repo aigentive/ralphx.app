@@ -663,6 +663,60 @@ max_turns: 80
 }
 
 #[test]
+fn test_materialize_generated_plugin_dir_reuses_first_materialization_within_process() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let agent_root = root.join("agents/ralphx-utility-session-namer");
+    std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
+    std::fs::write(
+        agent_root.join("agent.yaml"),
+        r#"name: ralphx-utility-session-namer
+role: session_namer
+description: Generates concise ideation session titles from user or plan context.
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("shared/prompt.md"),
+        "Initial generated prompt",
+    )
+    .expect("write initial shared prompt");
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("first generated plugin dir");
+    let generated_prompt_path = generated_dir.join("agents/ralphx-utility-session-namer.md");
+    let first_prompt =
+        std::fs::read_to_string(&generated_prompt_path).expect("read initial generated prompt");
+    assert!(
+        first_prompt.contains("Initial generated prompt"),
+        "first materialization should render the initial prompt body, got: {first_prompt}"
+    );
+
+    std::fs::write(
+        agent_root.join("shared/prompt.md"),
+        "Updated prompt that should require an app restart",
+    )
+    .expect("write updated shared prompt");
+
+    let reused_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("reused generated plugin dir");
+    assert_eq!(
+        reused_dir, generated_dir,
+        "generated plugin path should be stable within the same process"
+    );
+
+    let reused_prompt =
+        std::fs::read_to_string(&generated_prompt_path).expect("read reused generated prompt");
+    assert!(
+        reused_prompt.contains("Initial generated prompt"),
+        "later materialize calls in the same process must reuse the first generated prompt, got: {reused_prompt}"
+    );
+    assert!(
+        !reused_prompt.contains("Updated prompt that should require an app restart"),
+        "later materialize calls must not rewrite generated prompts mid-process, got: {reused_prompt}"
+    );
+}
+
+#[test]
 fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowed_tools() {
     let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
     let generated_dir =

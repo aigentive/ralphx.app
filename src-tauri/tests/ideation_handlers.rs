@@ -2322,7 +2322,7 @@ async fn test_reverify_clears_all_stale_metadata() {
     assert_eq!(updated.verification_current_round, None);
     assert_eq!(updated.verification_max_rounds, None);
     assert_eq!(updated.verification_gap_count, 0);
-    assert_eq!(updated.verification_gap_score, Some(0));
+    assert_eq!(updated.verification_gap_score, None);
     assert_eq!(updated.verification_convergence_reason, None);
 
     // Confirm next valid call succeeds with new generation — do NOT call reviewing→reviewing (422)
@@ -2609,7 +2609,7 @@ async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
     assert_eq!(updated.verification_current_round, None);
     assert_eq!(updated.verification_max_rounds, None);
     assert_eq!(updated.verification_gap_count, 0);
-    assert_eq!(updated.verification_gap_score, Some(0));
+    assert_eq!(updated.verification_gap_score, None);
     assert_eq!(updated.verification_convergence_reason, None);
 }
 
