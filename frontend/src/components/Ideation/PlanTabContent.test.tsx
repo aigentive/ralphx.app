@@ -110,6 +110,19 @@ describe("PlanTabContent — PlanEmptyState integration", () => {
     expect(screen.getByTestId("import-plan-button")).toBeInTheDocument();
   });
 
+  it("shows a loading state when the session links to a plan artifact that is still being fetched", () => {
+    useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
+    render(
+      <PlanTabContent
+        {...defaultProps}
+        session={{ ...mockSession, planArtifactId: "art-1" }}
+      />
+    );
+    expect(screen.getByTestId("plan-loading-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-empty-state")).toBeNull();
+    expect(screen.queryByTestId("import-plan-button")).toBeNull();
+  });
+
   it("calls onImportPlan when the browse button inside PlanEmptyState is clicked", async () => {
     const onImportPlan = vi.fn();
     useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
