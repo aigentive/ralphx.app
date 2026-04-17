@@ -1,0 +1,9 @@
+---
+disallowed_tools:
+- Write
+- Edit
+- Bash
+- NotebookEdit
+skills:
+- acceptance-criteria-writing
+- qa-step-generation

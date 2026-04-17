@@ -1,15 +1,15 @@
 ---
 paths:
-  - "src/components/**"
-  - "src/hooks/**"
-  - "src/stores/**"
-  - "src/lib/chat-context-registry.ts"
-  - "src/types/chat-conversation.ts"
+  - "frontend/src/components/**"
+  - "frontend/src/hooks/**"
+  - "frontend/src/stores/**"
+  - "frontend/src/lib/chat-context-registry.ts"
+  - "frontend/src/types/chat-conversation.ts"
   - "src-tauri/src/commands/**"
   - "src-tauri/src/application/chat_service/**"
   - "src-tauri/src/application/task_transition_service.rs"
   - "src-tauri/src/http_server/**"
-  - "plugins/app/agents/**"
+  - "agents/**"
   - "plugins/app/ralphx-mcp-server/src/**"
 ---
 

@@ -7,6 +7,7 @@
 // The Claude CLI handles internal queuing: messages sent to stdin while the agent is
 // mid-turn are queued and processed after the current turn completes.
 
+use crate::domain::agents::AgentHarnessKind;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -38,6 +39,13 @@ impl InteractiveProcessKey {
 pub struct InteractiveProcess {
     pub stdin: ChildStdin,
     pub completion_signal: Arc<Notify>,
+    pub metadata: InteractiveProcessMetadata,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InteractiveProcessMetadata {
+    pub harness: Option<AgentHarnessKind>,
+    pub provider_session_id: Option<String>,
 }
 
 /// Registry for interactive CLI processes with open stdin handles.
@@ -68,6 +76,17 @@ impl InteractiveProcessRegistry {
     /// Returns the completion signal so callers can await it without holding the registry lock.
     /// If a process already exists for this key, the old one is dropped (closes the pipe).
     pub async fn register(&self, key: InteractiveProcessKey, stdin: ChildStdin) -> Arc<Notify> {
+        self.register_with_metadata(key, stdin, InteractiveProcessMetadata::default())
+            .await
+    }
+
+    /// Register a stdin handle plus optional provider metadata for an interactive process.
+    pub async fn register_with_metadata(
+        &self,
+        key: InteractiveProcessKey,
+        stdin: ChildStdin,
+        metadata: InteractiveProcessMetadata,
+    ) -> Arc<Notify> {
         let mut processes = self.processes.lock().await;
         if processes.contains_key(&key) {
             tracing::warn!(
@@ -80,6 +99,7 @@ impl InteractiveProcessRegistry {
         let entry = InteractiveProcess {
             stdin,
             completion_signal: Arc::clone(&completion_signal),
+            metadata,
         };
         processes.insert(key, entry);
         completion_signal
@@ -96,7 +116,11 @@ impl InteractiveProcessRegistry {
     /// Returns Ok(()) if the write succeeded, Err if no process found or write failed.
     /// The Claude CLI reads stdin line-by-line in interactive mode, so messages
     /// should end with a newline (this method appends one if missing).
-    pub async fn write_message(&self, key: &InteractiveProcessKey, message: &str) -> Result<(), String> {
+    pub async fn write_message(
+        &self,
+        key: &InteractiveProcessKey,
+        message: &str,
+    ) -> Result<(), String> {
         let mut processes = self.processes.lock().await;
         let entry = processes.get_mut(key).ok_or_else(|| {
             format!(
@@ -142,7 +166,18 @@ impl InteractiveProcessRegistry {
     /// signals completion. The Arc keeps the Notify alive even after the process is removed.
     pub async fn get_completion_signal(&self, key: &InteractiveProcessKey) -> Option<Arc<Notify>> {
         let processes = self.processes.lock().await;
-        processes.get(key).map(|entry| Arc::clone(&entry.completion_signal))
+        processes
+            .get(key)
+            .map(|entry| Arc::clone(&entry.completion_signal))
+    }
+
+    /// Return cloned provider metadata for a running process, if present.
+    pub async fn get_metadata(
+        &self,
+        key: &InteractiveProcessKey,
+    ) -> Option<InteractiveProcessMetadata> {
+        let processes = self.processes.lock().await;
+        processes.get(key).map(|entry| entry.metadata.clone())
     }
 
     /// Remove all registered processes.
@@ -218,6 +253,28 @@ mod tests {
         // Signal is live and shared with the entry
         let fetched = registry.get_completion_signal(&key).await.unwrap();
         assert!(Arc::ptr_eq(&signal, &fetched));
+    }
+
+    #[tokio::test]
+    async fn test_register_with_metadata_persists_harness_metadata() {
+        let (stdin, _child) = create_test_stdin().await;
+        let registry = InteractiveProcessRegistry::new();
+        let key = InteractiveProcessKey::new("ideation", "session-xyz");
+
+        registry
+            .register_with_metadata(
+                key.clone(),
+                stdin,
+                InteractiveProcessMetadata {
+                    harness: Some(AgentHarnessKind::Codex),
+                    provider_session_id: Some("thread-123".to_string()),
+                },
+            )
+            .await;
+
+        let metadata = registry.get_metadata(&key).await.unwrap();
+        assert_eq!(metadata.harness, Some(AgentHarnessKind::Codex));
+        assert_eq!(metadata.provider_session_id.as_deref(), Some("thread-123"));
     }
 
     #[tokio::test]

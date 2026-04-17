@@ -11,19 +11,28 @@ use axum::{
 };
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::agents::{
+    AgentHarnessKind, AgentLane, AgentLaneSettings, AgentRole, AgenticClient, LogicalEffort,
+};
 use ralphx_lib::domain::entities::{
     ideation::{ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, SessionOrigin, SessionPurpose, VerificationStatus},
     project::{GitMode, Project},
     task::Task,
     types::ProjectId,
     IdeationSessionId, InternalStatus, Priority, ProposalCategory, TaskProposal,
+    VerificationRunSnapshot,
 };
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
 use ralphx_lib::error::AppError;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::agents::mock::{MockAgenticClient, MockCallType};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
+use std::{fs, os::unix::fs::PermissionsExt};
+use tempfile::TempDir;
 
 // ============================================================================
 // Setup helpers
@@ -39,7 +48,107 @@ async fn setup_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
+}
+
+fn setup_test_state_with_app_state(app_state: Arc<AppState>) -> HttpServerState {
+    let execution_state = Arc::new(ExecutionState::new());
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+    HttpServerState {
+        app_state,
+        execution_state,
+        team_tracker: tracker,
+        team_service,
+        delegation_service: Default::default(),
+    }
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    original: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let original = std::env::var(key).ok();
+        std::env::set_var(key, value);
+        Self { key, original }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.original.as_ref() {
+            std::env::set_var(self.key, value);
+        } else {
+            std::env::remove_var(self.key);
+        }
+    }
+}
+
+fn install_fake_codex_cli() -> (TempDir, PathBuf) {
+    let tempdir = TempDir::new().expect("tempdir");
+    let script_path = tempdir.path().join("codex");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--help" ]; then
+cat <<'EOF'
+Codex CLI
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  mcp         Manage external MCP servers for Codex
+  resume      Resume a previous interactive session
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --search
+      --add-dir <DIR>
+EOF
+exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+echo "codex-cli 0.116.0"
+exit 0
+fi
+
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+cat <<'EOF'
+Run Codex non-interactively
+
+Usage: codex exec [OPTIONS] [PROMPT] [COMMAND]
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --add-dir <DIR>
+      --json
+  -C, --cd <DIR>
+      --skip-git-repo-check
+EOF
+exit 0
+fi
+
+if [ "$1" = "exec" ]; then
+printf '%s\n' '{"type":"thread.started","thread_id":"external-thread-1"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"MOCK_EXTERNAL_COMPLETION"}}'
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":2,"output_tokens":7}}'
+exit 0
+fi
+
+echo "unsupported invocation" >&2
+exit 2
+"#;
+    fs::write(&script_path, script).expect("write fake codex cli");
+    let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).expect("chmod fake codex cli");
+    (tempdir, script_path)
 }
 
 fn make_project(id: &str, name: &str) -> Project {
@@ -547,6 +656,148 @@ async fn test_start_ideation_with_title_preserved() {
         fetched.title.as_deref(),
         Some("My Custom Session Title"),
         "Session title should be persisted as provided"
+    );
+}
+
+#[tokio::test]
+async fn test_start_ideation_without_title_assigns_default_title() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-default-title";
+    let p = make_project(project_id, "Default Title Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Hello from external ideation".to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+
+    let session_id = IdeationSessionId::from_string(response.session_id.clone());
+    let fetched = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("Session should exist in repo");
+
+    let title = fetched.title.expect("External ideation should not leave title empty");
+    assert!(
+        !title.trim().is_empty(),
+        "External ideation default title must be non-empty"
+    );
+    assert_ne!(
+        title, "Untitled Plan",
+        "External ideation should assign a real default title instead of relying on UI fallback"
+    );
+}
+
+#[tokio::test]
+async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_client() {
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let default_mock_impl = Arc::new(MockAgenticClient::new());
+    let default_mock: Arc<dyn AgenticClient> = default_mock_impl.clone();
+    let codex_mock_impl = Arc::new(MockAgenticClient::new());
+    let codex_mock: Arc<dyn AgenticClient> = codex_mock_impl.clone();
+    let app_state = Arc::new(
+        AppState::new_test()
+            .with_agent_client(default_mock.clone())
+            .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock),
+    );
+    let state = setup_test_state_with_app_state(app_state.clone());
+
+    let project_id = "proj-fresh-codex-bootstrap";
+    let p = make_project(project_id, "Fresh Codex Bootstrap Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_for_project(project_id, AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("hello from fresh ideation".to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.agent_spawned, "mock clients should allow the ideation send path to spawn");
+
+    let default_calls = {
+        let mut calls = Vec::new();
+        for _ in 0..10 {
+            calls = default_mock_impl.get_spawn_calls().await;
+            if !calls.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        calls
+    };
+    let session_namer_prompt = default_calls
+        .iter()
+        .find_map(|call| match &call.call_type {
+            MockCallType::Spawn { role, prompt }
+                if *role == AgentRole::Custom("ralphx-utility-session-namer".to_string()) =>
+            {
+                Some(prompt.clone())
+            }
+            _ => None,
+        });
+    assert!(
+        session_namer_prompt.is_some(),
+        "session namer should stay on the default helper client instead of inheriting the Codex ideation lane; default roles: {:?}; codex roles: {:?}",
+        default_calls
+            .iter()
+            .filter_map(|call| match &call.call_type {
+                MockCallType::Spawn { role, .. } => Some(role.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        codex_mock_impl
+            .get_spawn_calls()
+            .await
+            .iter()
+            .filter_map(|call| match &call.call_type {
+                MockCallType::Spawn { role, .. } => Some(role.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        codex_mock_impl.get_spawn_calls().await.is_empty(),
+        "external ideation helper spawns should not be recorded on the Codex helper client"
     );
 }
 
@@ -2626,6 +2877,7 @@ async fn setup_sqlite_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -2698,8 +2950,7 @@ async fn test_trigger_verification_already_running() {
         .update_verification_state(
             &created.id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -2717,6 +2968,89 @@ async fn test_trigger_verification_already_running() {
     assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
     let response = result.unwrap().0;
     assert_eq!(response.status, "already_running");
+}
+
+#[tokio::test]
+async fn test_trigger_verification_uses_snapshot_truth_when_summary_is_stale() {
+    let state = setup_sqlite_test_state().await;
+
+    let pid = ProjectId::from_string("proj-verify-stale-snapshot".to_string());
+    let project = make_project("proj-verify-stale-snapshot", "Stale Snapshot Project");
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let session = IdeationSession::builder()
+        .project_id(pid)
+        .status(IdeationSessionStatus::Active)
+        .verification_generation(2)
+        .build();
+    let session_id = session.id.clone();
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_plan_artifact_id(&created.id, Some("artifact-x".to_string()))
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &session_id,
+            &VerificationRunSnapshot {
+                generation: 2,
+                status: VerificationStatus::Reviewing,
+                in_progress: true,
+                current_round: 1,
+                max_rounds: 5,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = trigger_verification_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(TriggerVerificationRequest {
+            session_id: session_id.as_str().to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(
+        response.status, "already_running",
+        "active-generation snapshot must block duplicate external verification starts"
+    );
+
+    let refreshed = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session should still exist");
+    assert_eq!(
+        refreshed.verification_generation, 2,
+        "stale summary must not trigger a new verification generation"
+    );
 }
 
 #[tokio::test]
@@ -2772,8 +3106,7 @@ async fn test_get_plan_verification_basic() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Verified,
-            false,
-            None,
+            false
         )
         .await
         .unwrap();
@@ -4010,8 +4343,7 @@ async fn test_get_plan_verification_external_verification_child_shape() {
         .update_verification_state(
             &parent_id,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();
@@ -4057,8 +4389,7 @@ async fn test_get_plan_verification_external_no_child_returns_null() {
         .update_verification_state(
             &session_id_obj,
             VerificationStatus::Reviewing,
-            true,
-            None,
+            true
         )
         .await
         .unwrap();

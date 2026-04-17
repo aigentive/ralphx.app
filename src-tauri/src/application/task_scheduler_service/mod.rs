@@ -25,9 +25,9 @@ use std::sync::{
 use tauri::{AppHandle, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 
-use crate::infrastructure::agents::claude::scheduler_config;
-
 use crate::commands::ExecutionState;
+use crate::application::harness_runtime_registry::default_scheduler_runtime_config;
+use crate::application::runtime_factory::{RuntimeFactoryDeps, build_transition_service_with_fallback};
 use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::domain::entities::{
@@ -38,15 +38,16 @@ use crate::domain::entities::{
     ChatContextType, IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
+    ExecutionSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 
-use super::{InteractiveProcessRegistry, TaskTransitionService};
+use super::{AgentClientBundle, InteractiveProcessRegistry, TaskTransitionService};
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 
@@ -74,10 +75,16 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     pub(super) plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    /// Optional execution plan repository for filtering out superseded plan tasks.
+    pub(super) execution_plan_repo: Option<Arc<dyn ExecutionPlanRepository>>,
     /// Optional shared AppState InteractiveProcessRegistry for stdin message delivery.
     pub(super) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     /// Optional per-project execution settings repository for project-aware admission checks.
     pub(super) execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    /// Optional lane settings repository so fallback transition services can resolve Codex lanes.
+    pub(super) agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    /// Optional provider-neutral client bundle for fallback transition construction.
+    pub(super) agent_clients: Option<AgentClientBundle>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     pub(super) self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -92,7 +99,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) scheduling_lock: TokioMutex<()>,
     /// Number of pending contention-retry spawns currently in flight.
     /// Wrapped in Arc so spawned retry closures can decrement it without downcasting.
-    /// Bounded by scheduler_config().max_contention_retries.
+    /// Bounded by the default scheduler runtime config's `max_contention_retries`.
     pub(super) contention_retry_pending: Arc<AtomicU32>,
 }
 
@@ -131,8 +138,11 @@ impl<R: Runtime> TaskSchedulerService<R> {
             memory_event_repo,
             app_handle,
             plan_branch_repo: None,
+            execution_plan_repo: None,
             interactive_process_registry: None,
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
+            agent_clients: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -143,6 +153,11 @@ impl<R: Runtime> TaskSchedulerService<R> {
     /// Set the plan branch repository for feature branch resolution (builder pattern).
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_execution_plan_repo(mut self, repo: Arc<dyn ExecutionPlanRepository>) -> Self {
+        self.execution_plan_repo = Some(repo);
         self
     }
 
@@ -160,6 +175,19 @@ impl<R: Runtime> TaskSchedulerService<R> {
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
         self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_clients(mut self, agent_clients: AgentClientBundle) -> Self {
+        self.agent_clients = Some(agent_clients);
         self
     }
 
@@ -246,6 +274,15 @@ impl<R: Runtime> TaskSchedulerService<R> {
                 continue;
             }
 
+            if self.is_execution_plan_inactive(&task).await {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    execution_plan_id = ?task.execution_plan_id.as_ref().map(|id| id.as_str()),
+                    "Skipping task: execution plan is no longer active"
+                );
+                continue;
+            }
+
             // Plan branch guard: skip tasks whose plan branch is no longer Active.
             // Tasks on Merged or Abandoned branches should not be scheduled.
             if self.is_plan_branch_inactive(&task).await {
@@ -316,7 +353,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
     where
         R: Runtime,
     {
-        let mut service = TaskTransitionService::new(
+        let deps = RuntimeFactoryDeps::from_core(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
@@ -328,19 +365,20 @@ impl<R: Runtime> TaskSchedulerService<R> {
             Arc::clone(&self.activity_event_repo),
             Arc::clone(&self.message_queue),
             Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.execution_state),
-            self.app_handle.clone(),
             Arc::clone(&self.memory_event_repo),
+        )
+        .with_agent_clients(self.agent_clients.clone())
+        .with_runtime_support(
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            self.plan_branch_repo.as_ref().map(Arc::clone),
+            self.interactive_process_registry.as_ref().map(Arc::clone),
         );
-        if let Some(ref repo) = self.execution_settings_repo {
-            service = service.with_execution_settings_repo(Arc::clone(repo));
-        }
-        if let Some(ref repo) = self.plan_branch_repo {
-            service = service.with_plan_branch_repo(Arc::clone(repo));
-        }
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service = service.with_interactive_process_registry(Arc::clone(ipr));
-        }
+        let mut service = build_transition_service_with_fallback(
+            &self.app_handle,
+            Arc::clone(&self.execution_state),
+            &deps,
+        );
         if let Some(ref sched) = *self.self_ref.lock().unwrap() {
             service = service.with_task_scheduler(Arc::clone(sched));
         }
@@ -366,7 +404,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             Ok(guard) => guard,
             Err(_) => {
                 // Limit concurrent retry spawns to avoid cascading if lock is persistently held.
-                let sched_cfg = scheduler_config();
+                let sched_cfg = default_scheduler_runtime_config();
                 let max_retries = sched_cfg.max_contention_retries as u32;
                 let retry_delay_ms = sched_cfg.contention_retry_delay_ms;
                 let pending = self.contention_retry_pending.load(Ordering::Relaxed);

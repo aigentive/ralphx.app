@@ -352,12 +352,12 @@ RalphX uses different specialized agents at each active phase of the lifecycle. 
 
 | State | Agent | Model | What It Does |
 |-------|-------|-------|-------------|
-| **Executing** | `ralphx-worker` | Sonnet | Reads the task proposal and plan, decomposes into sub-scopes, delegates to coder sub-agents (max 3 concurrent), steps through the implementation |
-| **ReExecuting** | `ralphx-worker` | Sonnet | Same as Executing, but first fetches review notes and open issues to incorporate reviewer feedback |
+| **Executing** | `ralphx-execution-worker` | Sonnet | Reads the task proposal and plan, decomposes into sub-scopes, delegates to coder sub-agents (max 3 concurrent), steps through the implementation |
+| **ReExecuting** | `ralphx-execution-worker` | Sonnet | Same as Executing, but first fetches review notes and open issues to incorporate reviewer feedback |
 | **QaRefining** | `ralphx-qa-refiner` | Sonnet | Generates acceptance criteria and a structured test plan (may have run in background during Ready) |
 | **QaTesting** | `ralphx-qa-executor` | Sonnet | Executes browser-based tests using agent-browser; reports pass/fail |
-| **Reviewing** | `ralphx-reviewer` | Sonnet | Reviews code quality, correctness, test coverage; calls `complete_review` with approved/needs_changes/escalate |
-| **Merging** | `ralphx-merger` | Opus | Resolves git conflicts in worktrees; reads conflict files, resolves markers, verifies no remaining conflicts |
+| **Reviewing** | `ralphx-execution-reviewer` | Sonnet | Reviews code quality, correctness, test coverage; calls `complete_review` with approved/needs_changes/escalate |
+| **Merging** | `ralphx-execution-merger` | Opus | Resolves git conflicts in worktrees; reads conflict files, resolves markers, verifies no remaining conflicts |
 
 ### Background Agent: QA Prep
 

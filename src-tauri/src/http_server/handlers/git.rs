@@ -16,7 +16,7 @@ use super::*;
 use crate::application::chat_service::freshness_routing::{
     freshness_return_route, FreshnessRouteResult,
 };
-use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
+use crate::application::{GitService, TaskTransitionService};
 use crate::domain::entities::{task_metadata::MergeFailureSource, InternalStatus, TaskId};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -241,7 +241,12 @@ pub async fn complete_merge(
 
         // Transition Merging → PendingMerge (via Retry event)
         transition_service
-            .transition_task(&task_id, InternalStatus::PendingMerge)
+            .transition_task_corrective_with_exit(
+                &task_id,
+                InternalStatus::PendingMerge,
+                None,
+                "complete_merge",
+            )
             .await
             .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
@@ -322,7 +327,12 @@ pub async fn complete_merge(
 
             // Transition Merging → PendingMerge
             transition_service
-                .transition_task(&task_id, InternalStatus::PendingMerge)
+                .transition_task_corrective_with_exit(
+                    &task_id,
+                    InternalStatus::PendingMerge,
+                    None,
+                    "complete_merge",
+                )
                 .await
                 .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
@@ -590,25 +600,9 @@ pub async fn report_conflict(
     }
 
     // 3. Transition to MergeConflict
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.app_state.task_repo),
-        Arc::clone(&state.app_state.task_dependency_repo),
-        Arc::clone(&state.app_state.project_repo),
-        Arc::clone(&state.app_state.chat_message_repo),
-        Arc::clone(&state.app_state.chat_attachment_repo),
-        Arc::clone(&state.app_state.chat_conversation_repo),
-        Arc::clone(&state.app_state.agent_run_repo),
-        Arc::clone(&state.app_state.ideation_session_repo),
-        Arc::clone(&state.app_state.activity_event_repo),
-        Arc::clone(&state.app_state.message_queue),
-        Arc::clone(&state.app_state.running_agent_registry),
-        Arc::clone(&state.execution_state),
-        state.app_state.app_handle.as_ref().cloned(),
-        Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+    let transition_service = state
+        .app_state
+        .build_transition_service_with_execution_state(Arc::clone(&state.execution_state));
 
     transition_service
         .transition_task(&task_id, InternalStatus::MergeConflict)
@@ -739,25 +733,9 @@ pub async fn report_incomplete(
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
     // 3. Transition to MergeIncomplete
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.app_state.task_repo),
-        Arc::clone(&state.app_state.task_dependency_repo),
-        Arc::clone(&state.app_state.project_repo),
-        Arc::clone(&state.app_state.chat_message_repo),
-        Arc::clone(&state.app_state.chat_attachment_repo),
-        Arc::clone(&state.app_state.chat_conversation_repo),
-        Arc::clone(&state.app_state.agent_run_repo),
-        Arc::clone(&state.app_state.ideation_session_repo),
-        Arc::clone(&state.app_state.activity_event_repo),
-        Arc::clone(&state.app_state.message_queue),
-        Arc::clone(&state.app_state.running_agent_registry),
-        Arc::clone(&state.execution_state),
-        state.app_state.app_handle.as_ref().cloned(),
-        Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+    let transition_service = state
+        .app_state
+        .build_transition_service_with_execution_state(Arc::clone(&state.execution_state));
 
     transition_service
         .transition_task(&task_id, InternalStatus::MergeIncomplete)
@@ -999,58 +977,19 @@ pub fn is_valid_git_sha(sha: &str) -> bool {
 /// use the same service instance, avoiding duplicate construction.
 fn build_transition_service(state: &HttpServerState) -> TaskTransitionService<tauri::Wry> {
     let scheduler_concrete = std::sync::Arc::new(
-        TaskSchedulerService::new(
+        state.app_state.build_task_scheduler_for_runtime(
             std::sync::Arc::clone(&state.execution_state),
-            std::sync::Arc::clone(&state.app_state.project_repo),
-            std::sync::Arc::clone(&state.app_state.task_repo),
-            std::sync::Arc::clone(&state.app_state.task_dependency_repo),
-            std::sync::Arc::clone(&state.app_state.chat_message_repo),
-            std::sync::Arc::clone(&state.app_state.chat_attachment_repo),
-            std::sync::Arc::clone(&state.app_state.chat_conversation_repo),
-            std::sync::Arc::clone(&state.app_state.agent_run_repo),
-            std::sync::Arc::clone(&state.app_state.ideation_session_repo),
-            std::sync::Arc::clone(&state.app_state.activity_event_repo),
-            std::sync::Arc::clone(&state.app_state.message_queue),
-            std::sync::Arc::clone(&state.app_state.running_agent_registry),
-            std::sync::Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
-        )
-        .with_execution_settings_repo(std::sync::Arc::clone(
-            &state.app_state.execution_settings_repo,
-        ))
-        .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
-        .with_interactive_process_registry(std::sync::Arc::clone(
-            &state.app_state.interactive_process_registry,
-        )),
+        ),
     );
     scheduler_concrete
         .set_self_ref(std::sync::Arc::clone(&scheduler_concrete) as std::sync::Arc<dyn TaskScheduler>);
     let task_scheduler: std::sync::Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    TaskTransitionService::new(
-        std::sync::Arc::clone(&state.app_state.task_repo),
-        std::sync::Arc::clone(&state.app_state.task_dependency_repo),
-        std::sync::Arc::clone(&state.app_state.project_repo),
-        std::sync::Arc::clone(&state.app_state.chat_message_repo),
-        std::sync::Arc::clone(&state.app_state.chat_attachment_repo),
-        std::sync::Arc::clone(&state.app_state.chat_conversation_repo),
-        std::sync::Arc::clone(&state.app_state.agent_run_repo),
-        std::sync::Arc::clone(&state.app_state.ideation_session_repo),
-        std::sync::Arc::clone(&state.app_state.activity_event_repo),
-        std::sync::Arc::clone(&state.app_state.message_queue),
-        std::sync::Arc::clone(&state.app_state.running_agent_registry),
-        std::sync::Arc::clone(&state.execution_state),
-        state.app_state.app_handle.as_ref().cloned(),
-        std::sync::Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(std::sync::Arc::clone(
-        &state.app_state.execution_settings_repo,
-    ))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(std::sync::Arc::clone(
-        &state.app_state.interactive_process_registry,
-    ))
+    state
+        .app_state
+        .build_transition_service_with_execution_state(std::sync::Arc::clone(&state.execution_state))
+        .with_task_scheduler(task_scheduler)
 }
 
 // ============================================================================

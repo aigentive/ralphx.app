@@ -1,0 +1,10 @@
+---
+disallowed_tools:
+- Write
+- Edit
+- NotebookEdit
+- Bash
+- mcp__ralphx__update_plan_artifact
+- mcp__ralphx__create_task_proposal
+- mcp__ralphx__accept_task_proposal
+max_turns: 10

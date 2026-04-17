@@ -8,7 +8,11 @@
 import { mockWorkflowsApi, mockProjectsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
-import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
+import {
+  mockGetConversation,
+  mockGetConversationStats,
+  mockListConversations,
+} from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
@@ -63,6 +67,9 @@ const commandHandlers: Record<
   clear_active_plan: async (args) => mockPlanApi.clearActivePlan(args.projectId as string),
   list_plan_selector_candidates: async (args) =>
     mockPlanApi.listCandidates(args.projectId as string, args.query as string | undefined),
+  get_active_execution_plan: async (args) =>
+    // In web-mode mocks, execution-plan filtering reuses the active plan id as the stable filter key.
+    mockPlanApi.getActivePlan(args.projectId as string),
 
   // Task commands
   list_tasks: async (args) => {
@@ -73,12 +80,20 @@ const commandHandlers: Record<
       offset?: number;
       limit?: number;
       includeArchived?: boolean;
+      ideationSessionId?: string | null;
+      executionPlanId?: string | null;
     } = { projectId: args.projectId as string };
 
     if (args.statuses !== undefined) params.statuses = args.statuses as string[];
     if (args.offset !== undefined) params.offset = args.offset as number;
     if (args.limit !== undefined) params.limit = args.limit as number;
     if (args.includeArchived !== undefined) params.includeArchived = args.includeArchived as boolean;
+    if (args.ideationSessionId !== undefined) {
+      params.ideationSessionId = args.ideationSessionId as string | null;
+    }
+    if (args.executionPlanId !== undefined) {
+      params.executionPlanId = args.executionPlanId as string | null;
+    }
 
     const response = await mockTasksApi.list(params);
     // Transform to snake_case as backend would return
@@ -131,6 +146,72 @@ const commandHandlers: Record<
     ),
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  get_agent_conversation_stats: async (args) => {
+    const stats = await mockGetConversationStats(args.conversationId as string);
+    if (!stats) {
+      return null;
+    }
+
+    const toSnakeUsage = (usage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
+      estimatedUsd: number | null;
+    }) => ({
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      cache_creation_tokens: usage.cacheCreationTokens,
+      cache_read_tokens: usage.cacheReadTokens,
+      estimated_usd: usage.estimatedUsd,
+    });
+
+    return {
+      conversation_id: stats.conversationId,
+      context_type: stats.contextType,
+      context_id: stats.contextId,
+      provider_harness: stats.providerHarness,
+      upstream_provider: stats.upstreamProvider,
+      provider_profile: stats.providerProfile,
+      message_usage_totals: toSnakeUsage(stats.messageUsageTotals),
+      run_usage_totals: toSnakeUsage(stats.runUsageTotals),
+      effective_usage_totals: toSnakeUsage(stats.effectiveUsageTotals),
+      usage_coverage: {
+        provider_message_count: stats.usageCoverage.providerMessageCount,
+        provider_messages_with_usage: stats.usageCoverage.providerMessagesWithUsage,
+        run_count: stats.usageCoverage.runCount,
+        runs_with_usage: stats.usageCoverage.runsWithUsage,
+        effective_totals_source: stats.usageCoverage.effectiveTotalsSource,
+      },
+      attribution_coverage: {
+        provider_message_count: stats.attributionCoverage.providerMessageCount,
+        provider_messages_with_attribution:
+          stats.attributionCoverage.providerMessagesWithAttribution,
+        run_count: stats.attributionCoverage.runCount,
+        runs_with_attribution: stats.attributionCoverage.runsWithAttribution,
+      },
+      by_harness: stats.byHarness.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_upstream_provider: stats.byUpstreamProvider.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_model: stats.byModel.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_effort: stats.byEffort.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+    };
+  },
 
   // Ideation commands
   list_ideation_sessions: async (args) => {
@@ -243,7 +324,7 @@ const commandHandlers: Record<
     mockTaskGraphApi.getDependencyGraph(
       args.projectId as string,
       args.includeArchived as boolean | undefined,
-      args.ideationSessionId as string | null | undefined ?? null
+      args.executionPlanId as string | null | undefined ?? args.ideationSessionId as string | null | undefined ?? null
     ),
   get_task_timeline_events: async (args) =>
     mockTaskGraphApi.getTimelineEvents(

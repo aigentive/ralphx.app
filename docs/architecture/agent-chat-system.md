@@ -1,6 +1,8 @@
 # Agent Chat System Architecture
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
+>
+> **Scope note:** The chat runtime is now provider-neutral at the app boundary (`AppChatService`) and can resolve Claude or Codex per lane. This document still uses Claude-flavored CLI examples where the lower-level transport is Claude-specific; treat those as implementation examples, not the universal runtime contract.
 
 ---
 
@@ -13,7 +15,7 @@ User message
       → ChatService.send_message()
         → resolve_agent(context_type, entity_status) → agent name
         → build_command(cli_path, plugin_dir, conversation, ...) → SpawnableCommand
-          → claude --agent ralphx:<name> --plugin-dir ./plugins/app -p "<prompt>"
+          → selected harness CLI (`claude ...` | `codex ...`)
             → MCP tools via HTTP :3847 → ralphx-mcp-server → Tauri backend
         → stream_response() → parse JSON-stream events
           → Tauri app_handle.emit("agent:*", payload)
@@ -28,7 +30,7 @@ User message
 |-----------|------|-------------|
 | ChatService | Orchestrates send/queue/stop/resume | `src-tauri/src/application/chat_service/mod.rs` |
 | Agent Resolution | Maps context_type + status → agent name | `chat_service_helpers.rs` → `resolve_agent()` |
-| Command Builder | Builds Claude CLI invocation with --agent flag | `chat_service_context.rs` → `build_command()` |
+| Command Builder | Builds harness-specific CLI invocation and resume settings | `chat_service_context.rs` → `build_command()` |
 | Streaming Parser | Parses JSON-stream output, emits events | `chat_service_streaming.rs` |
 | MCP Server | Tool proxy: agent → HTTP :3847 → Tauri backend | `plugins/app/ralphx-mcp-server/src/` |
 | Event System | Tauri emit → EventBus → React hooks | `src/lib/events.ts`, `src/hooks/useAgentEvents.ts` |
@@ -42,7 +44,7 @@ User message
 3. Create `ChatMessage` (user role) + persist
 4. Resolve agent name via `resolve_agent(context_type, entity_status)`
 5. Build `SpawnableCommand` with `--agent ralphx:<name>` + env vars
-6. Spawn Claude CLI process in background task
+6. Spawn the selected harness process in a background task
 7. Emit `agent:run_started` → return `SendResult { conversation_id, agent_run_id }`
 8. Stream stdout → parse events → emit `agent:chunk`, `agent:tool_call`, etc.
 9. On completion → persist assistant message → emit `agent:run_completed`
@@ -50,59 +52,55 @@ User message
 
 ### Data Flow: Resumed Conversation
 
-Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt is raw user text (no XML wrapper). Fresh review cycles (`reviewer` agent) always start new sessions to avoid stale context.
+Steps 1-3 same, but step 5 uses the harness-native continuation path when provider session lineage is preserved. Legacy `claude_session_id` may still appear as a compatibility alias, but canonical provider metadata is `provider_harness` + `provider_session_id`. Fresh review cycles (`reviewer` agent) always start new sessions to avoid stale context.
 
 ---
 
-## 2. Complete Agent Inventory (20 agents)
+## 2. Complete Agent Inventory (19 live agents)
 
 | # | Agent Name (frontmatter) | Short Const | Category | Model | Trigger | Session Lifecycle |
 |---|--------------------------|-------------|----------|-------|---------|-------------------|
-| 1 | `orchestrator-ideation` | `SHORT_ORCHESTRATOR_IDEATION` | ideation | sonnet | User sends ideation message | per-session |
-| 2 | `orchestrator-ideation-readonly` | `SHORT_ORCHESTRATOR_IDEATION_READONLY` | ideation | sonnet | Read-only mode (session status = "accepted") | per-session |
-| 3 | `session-namer` | `SHORT_SESSION_NAMER` | ideation | haiku | First message in ideation session | fire-and-forget |
-| 4 | `dependency-suggester` | `SHORT_DEPENDENCY_SUGGESTER` | ideation | haiku | After proposals created | fire-and-forget |
-| 5 | `chat-task` | `SHORT_CHAT_TASK` | task | default | User chats in task detail view | per-task |
-| 6 | `chat-project` | `SHORT_CHAT_PROJECT` | project | default | User chats in project view | per-project |
-| 7 | `ralphx-worker` | `SHORT_WORKER` | execution | default | Task enters "executing" / "re_executing"; decomposes graph + delegates parallel coder waves (max 3) | per-task-execution |
-| 8 | `ralphx-coder` | `SHORT_CODER` | execution | default | Delegated coding from `ralphx-worker` | per-subtask |
-| 9 | `ralphx-reviewer` | `SHORT_REVIEWER` | review | default | Task enters "reviewing" | per-review-cycle (fresh session each cycle) |
-| 10 | `ralphx-review-chat` | `SHORT_REVIEW_CHAT` | review | default | Task in "review_passed" (human decision) | per-review |
-| 11 | `ralphx-review-history` | `SHORT_REVIEW_HISTORY` | review | default | Task "approved" (read-only history) | per-review |
-| 12 | `ralphx-merger` | `SHORT_MERGER` | merge | default | Task enters "merging" | per-merge |
-| 13 | `ralphx-orchestrator` | `SHORT_ORCHESTRATOR` | orchestration | opus | Multi-task coordination | -- |
-| 14 | `ralphx-supervisor` | `SHORT_SUPERVISOR` | orchestration | haiku | Monitoring worker agents | -- |
-| 15 | `ralphx-qa-prep` | `SHORT_QA_PREP` | qa | sonnet | Task enters "ready" | fire-and-forget |
-| 16 | `ralphx-qa-executor` | `SHORT_QA_EXECUTOR` | qa | sonnet | QA execution phase | -- |
-| 17 | `ralphx-deep-researcher` | `SHORT_DEEP_RESEARCHER` | research | opus | Research tasks | -- |
-| 18 | `project-analyzer` | `SHORT_PROJECT_ANALYZER` | analysis | default | Project analysis (build/validation detection) | fire-and-forget |
-| 19 | `memory-capture` | `SHORT_MEMORY_CAPTURE` | memory | haiku | Post-session knowledge extraction | fire-and-forget |
-| 20 | `memory-maintainer` | `SHORT_MEMORY_MAINTAINER` | memory | default | Memory ingestion/dedup/index maintenance | -- |
+| 1 | `ralphx-ideation` | `SHORT_ORCHESTRATOR_IDEATION` | ideation | sonnet | User sends ideation message | per-session |
+| 2 | `ralphx-ideation-readonly` | `SHORT_ORCHESTRATOR_IDEATION_READONLY` | ideation | sonnet | Read-only mode (session status = "accepted") | per-session |
+| 3 | `ralphx-utility-session-namer` | `SHORT_SESSION_NAMER` | ideation | haiku | First message in ideation session | fire-and-forget |
+| 4 | `ralphx-chat-task` | `SHORT_CHAT_TASK` | task | default | User chats in task detail view | per-task |
+| 5 | `ralphx-chat-project` | `SHORT_CHAT_PROJECT` | project | default | User chats in project view | per-project |
+| 6 | `ralphx-execution-worker` | `SHORT_WORKER` | execution | default | Task enters "executing" / "re_executing"; decomposes graph + delegates parallel coder waves (max 3) | per-task-execution |
+| 7 | `ralphx-execution-coder` | `SHORT_CODER` | execution | default | Delegated coding from `ralphx-execution-worker` | per-subtask |
+| 8 | `ralphx-execution-reviewer` | `SHORT_REVIEWER` | review | default | Task enters "reviewing" | per-review-cycle (fresh session each cycle) |
+| 9 | `ralphx-review-chat` | `SHORT_REVIEW_CHAT` | review | default | Task in "review_passed" (human decision) | per-review |
+| 10 | `ralphx-review-history` | `SHORT_REVIEW_HISTORY` | review | default | Task "approved" (read-only history) | per-review |
+| 11 | `ralphx-execution-merger` | `SHORT_MERGER` | merge | default | Task enters "merging" | per-merge |
+| 12 | `ralphx-execution-orchestrator` | `SHORT_ORCHESTRATOR` | orchestration | opus | Multi-task coordination | -- |
+| 14 | `ralphx-qa-prep` | `SHORT_QA_PREP` | qa | sonnet | Task enters "ready" | fire-and-forget |
+| 15 | `ralphx-qa-executor` | `SHORT_QA_EXECUTOR` | qa | sonnet | QA execution phase | -- |
+| 16 | `ralphx-research-deep-researcher` | `SHORT_DEEP_RESEARCHER` | research | opus | Research tasks | -- |
+| 17 | `ralphx-project-analyzer` | `SHORT_PROJECT_ANALYZER` | analysis | default | Project analysis (build/validation detection) | fire-and-forget |
+| 18 | `ralphx-memory-capture` | `SHORT_MEMORY_CAPTURE` | memory | haiku | Post-session knowledge extraction | fire-and-forget |
+| 19 | `ralphx-memory-maintainer` | `SHORT_MEMORY_MAINTAINER` | memory | default | Memory ingestion/dedup/index maintenance | -- |
 
 ### Agent MCP Tool Summary
 
-| Agent | MCP Tools (from TOOL_ALLOWLIST) |
+| Agent | MCP Tools (from canonical `mcp_tools`) |
 |-------|-------------------------------|
-| orchestrator-ideation | create/update/delete_task_proposal, list_session_proposals, get_proposal, analyze_session_dependencies, create/update_plan_artifact, link_proposals_to_plan, get_session_plan, ask_user_question, create_child_session, get_parent_session_context, search/get/get_for_paths memories |
-| orchestrator-ideation-readonly | list_session_proposals, get_proposal, get_session_plan, get_parent_session_context, create_child_session, search/get/get_for_paths memories |
-| session-namer | update_session_title |
-| dependency-suggester | apply_proposal_dependencies |
-| chat-task | update_task, add_task_note, get_task_details, search/get/get_for_paths memories |
-| chat-project | suggest_task, list_tasks, search/get/get_for_paths memories, get_conversation_transcript |
-| ralphx-worker | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
-| ralphx-coder | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
-| ralphx-reviewer | complete_review, get_task_issues, get_step_progress, get_issue_progress, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
+| ralphx-ideation | create/update/delete_task_proposal, list_session_proposals, get_proposal, analyze_session_dependencies, create/update_plan_artifact, link_proposals_to_plan, get_session_plan, ask_user_question, create_child_session, get_parent_session_context, search/get/get_for_paths memories |
+| ralphx-ideation-readonly | list_session_proposals, get_proposal, get_session_plan, get_parent_session_context, create_child_session, search/get/get_for_paths memories |
+| ralphx-utility-session-namer | update_session_title |
+| ralphx-chat-task | update_task, add_task_note, get_task_details, search/get/get_for_paths memories |
+| ralphx-chat-project | suggest_task, list_tasks, search/get/get_for_paths memories, get_conversation_transcript |
+| ralphx-execution-worker | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
+| ralphx-execution-coder | start/complete/skip/fail/add_step, get_step_progress, get_task_issues, mark_issue_in_progress, mark_issue_addressed, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
+| ralphx-execution-reviewer | complete_review, get_task_issues, get_step_progress, get_issue_progress, get_project_analysis, get_task_context, get/get_version/get_related/search_project artifacts, get_review_notes, get_task_steps, search/get/get_for_paths memories |
 | ralphx-review-chat | approve_task, request_task_changes, get_review_notes, get_task_context, get/get_version/get_related/search_project artifacts, get_task_steps, search/get/get_for_paths memories |
 | ralphx-review-history | get_review_notes, get_task_context, get_task_issues, get_task_steps, get_step_progress, get_issue_progress, get/get_version/get_related/search_project artifacts, search/get/get_for_paths memories |
-| ralphx-merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_project_analysis, get_task_context, search/get/get_for_paths memories |
-| ralphx-orchestrator | search/get/get_for_paths memories |
-| ralphx-supervisor | (no MCP tools) |
-| ralphx-qa-prep | (no MCP tools) |
-| ralphx-qa-executor | (no MCP tools -- uses QA_TESTER allowlist which is also empty) |
-| ralphx-deep-researcher | search/get/get_for_paths memories |
-| project-analyzer | save_project_analysis, get_project_analysis |
-| memory-capture | upsert_memories, search/get/get_for_paths memories, get_conversation_transcript |
-| memory-maintainer | upsert_memories, mark_memory_obsolete, refresh_memory_rule_index, ingest_rule_file, rebuild_archive_snapshots, search/get/get_for_paths memories, get_conversation_transcript |
+| ralphx-execution-merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_project_analysis, get_task_context, search/get/get_for_paths memories |
+| ralphx-execution-orchestrator | search/get/get_for_paths memories |
+| ralphx-qa-prep | fs_read_file, fs_list_dir, fs_grep, fs_glob |
+| ralphx-qa-executor | (no MCP tools) |
+| ralphx-research-deep-researcher | search/get/get_for_paths memories |
+| ralphx-project-analyzer | save_project_analysis, get_project_analysis |
+| ralphx-memory-capture | upsert_memories, search/get/get_for_paths memories, get_conversation_transcript |
+| ralphx-memory-maintainer | upsert_memories, mark_memory_obsolete, refresh_memory_rule_index, ingest_rule_file, rebuild_archive_snapshots, search/get/get_for_paths memories, get_conversation_transcript |
 
 ---
 
@@ -112,12 +110,12 @@ Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt 
 
 | ContextType | Rust Enum Variant | TS String Literal | Default Agent | Store Key Pattern | CWD Resolution |
 |-------------|-------------------|-------------------|---------------|-------------------|----------------|
-| ideation | `ChatContextType::Ideation` | `"ideation"` | orchestrator-ideation | `session:{id}` | project.working_directory |
-| task | `ChatContextType::Task` | `"task"` | chat-task | `task:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
-| project | `ChatContextType::Project` | `"project"` | chat-project | `project:{id}` | project.working_directory |
-| task_execution | `ChatContextType::TaskExecution` | `"task_execution"` | ralphx-worker | `task_execution:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
-| review | `ChatContextType::Review` | `"review"` | ralphx-reviewer | `review:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
-| merge | `ChatContextType::Merge` | `"merge"` | ralphx-merger | `merge:{id}` | project.working_directory (Local) or merge worktree (Worktree, never task worktree) |
+| ideation | `ChatContextType::Ideation` | `"ideation"` | ralphx-ideation | `session:{id}` | project.working_directory |
+| task | `ChatContextType::Task` | `"task"` | ralphx-chat-task | `task:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
+| project | `ChatContextType::Project` | `"project"` | ralphx-chat-project | `project:{id}` | project.working_directory |
+| task_execution | `ChatContextType::TaskExecution` | `"task_execution"` | ralphx-execution-worker | `task_execution:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
+| review | `ChatContextType::Review` | `"review"` | ralphx-execution-reviewer | `review:{id}` | project.working_directory (Local) or task.worktree_path (Worktree) |
+| merge | `ChatContextType::Merge` | `"merge"` | ralphx-execution-merger | `merge:{id}` | project.working_directory (Local) or merge worktree (Worktree, never task worktree) |
 
 ### CWD Resolution Rules (Worktree Mode)
 
@@ -168,9 +166,9 @@ Defined in both backend (`chat_service_types.rs::events`) and frontend (`src/lib
 
 | Event | Key Payload Fields |
 |-------|-------------------|
-| `agent:run_started` | run_id, conversation_id, context_type, context_id, run_chain_id?, parent_run_id? |
+| `agent:run_started` | run_id, conversation_id, context_type, context_id, run_chain_id?, parent_run_id?, provider_harness?, provider_session_id? |
 | `agent:message_created` | message_id, conversation_id, context_type, context_id, role, content |
-| `agent:run_completed` | conversation_id, context_type, context_id, claude_session_id?, run_chain_id? |
+| `agent:run_completed` | conversation_id, context_type, context_id, provider_harness?, provider_session_id?, claude_session_id? (legacy alias), run_chain_id? |
 | `agent:chunk` | text, conversation_id, context_type, context_id |
 | `agent:tool_call` | tool_name, tool_id?, arguments, result?, conversation_id, context_type, context_id, diff_context?, parent_tool_use_id? |
 | `agent:error` | conversation_id?, context_type, context_id, error, stderr? |
@@ -206,8 +204,8 @@ Each agent's tool access is restricted at three independent layers. All three mu
 
 | Layer | Location | Mechanism | Granularity |
 |-------|----------|-----------|-------------|
-| 1. YAML Config | `plugins/app/agents/<agent>.md` frontmatter | `tools:` list (incl. `"mcp__ralphx__*"`) / `disallowedTools:` | Per-agent file |
-| 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[agentType]` → filters `listTools` response | Per-agent-type at runtime |
+| 1. Canonical prompt/config | `agents/<agent>/...` + generated Claude frontmatter | `tools:` / `disallowedTools:` plus harness prompt body | Per-agent |
+| 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` + `canonical-agent-metadata.ts` | canonical `agents/<agent>/agent.yaml` `capabilities.mcp_tools` (with env/CLI override precedence and legacy fallback only) → filters `listTools` response | Per-agent-type at runtime |
 | 3. Agent System Prompt | Agent `.md` body instructions | Natural language guidance on which tools to use | Behavioral (soft) |
 
 ### Enforcement Flow
@@ -215,8 +213,10 @@ Each agent's tool access is restricted at three independent layers. All three mu
 ```
 Claude CLI spawns agent → sets RALPHX_AGENT_TYPE env var
   → MCP server starts → reads RALPHX_AGENT_TYPE
-    → listTools request → getAllowedToolNames() → filter ALL_TOOLS by TOOL_ALLOWLIST[agentType]
-      → Only matching tools returned to Claude
+    → listTools request → getAllowedToolNames()
+      → env/CLI override | canonical `mcp_tools` | legacy fallback
+      → filter ALL_TOOLS by resolved tool names
+        → Only matching tools returned to Claude
 ```
 
 Layer 1 (YAML) controls which built-in Claude tools the agent can use (Read, Write, Edit, Bash, etc.).
@@ -241,7 +241,7 @@ Layer 3 (Prompt) provides behavioral guidance to reinforce tool boundaries.
 
 | Context Type | Entity Status | Resolved Agent | Why |
 |-------------|---------------|----------------|-----|
-| Ideation | `"accepted"` | `orchestrator-ideation-readonly` | No mutation tools for accepted plans |
+| Ideation | `"accepted"` | `ralphx-ideation-readonly` | No mutation tools for accepted plans |
 | Review | `"review_passed"` | `ralphx-review-chat` | Human discusses findings, can approve/reject |
 | Review | `"approved"` | `ralphx-review-history` | Read-only retrospective discussion |
 
@@ -249,17 +249,17 @@ Layer 3 (Prompt) provides behavioral guidance to reinforce tool boundaries.
 
 | Context Type | Default Agent | FQ Name |
 |-------------|---------------|---------|
-| Ideation | orchestrator-ideation | `ralphx:orchestrator-ideation` |
-| Task | chat-task | `ralphx:chat-task` |
-| Project | chat-project | `ralphx:chat-project` |
-| TaskExecution | ralphx-worker | `ralphx:ralphx-worker` |
-| Review | ralphx-reviewer | `ralphx:ralphx-reviewer` |
-| Merge | ralphx-merger | `ralphx:ralphx-merger` |
+| Ideation | ralphx-ideation | `ralphx:ralphx-ideation` |
+| Task | ralphx-chat-task | `ralphx:ralphx-chat-task` |
+| Project | ralphx-chat-project | `ralphx:ralphx-chat-project` |
+| TaskExecution | ralphx-execution-worker | `ralphx:ralphx-execution-worker` |
+| Review | ralphx-execution-reviewer | `ralphx:ralphx-execution-reviewer` |
+| Merge | ralphx-execution-merger | `ralphx:ralphx-execution-merger` |
 
 ### Delegated Execution Agent
 
-`ralphx-coder` is not selected directly by `resolve_agent()`. It is invoked by `ralphx-worker` for delegated coding scopes during task execution.
-`ralphx-worker` builds a dependency graph from task scope, schedules parallel waves, and dispatches up to 3 concurrent coder instances with non-overlapping file ownership.
+`ralphx-execution-coder` is not selected directly by `resolve_agent()`. It is invoked by `ralphx-execution-worker` for delegated coding scopes during task execution.
+`ralphx-execution-worker` builds a dependency graph from task scope, schedules parallel waves, and dispatches up to 3 concurrent coder instances with non-overlapping file ownership.
 
 ### Session Resumption Rules
 
@@ -279,9 +279,9 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 | `"qa-prep"` | `ralphx:ralphx-qa-prep` |
 | `"qa-refiner"` | `ralphx:qa-refiner` |
 | `"qa-tester"` | `ralphx:qa-tester` |
-| `"worker"` / `"ralphx-worker"` | `ralphx:ralphx-worker` |
-| `"reviewer"` / `"ralphx-reviewer"` | `ralphx:ralphx-reviewer` |
-| `"merger"` / `"ralphx-merger"` | `ralphx:ralphx-merger` |
+| `"worker"` / `"ralphx-execution-worker"` | `ralphx:ralphx-execution-worker` |
+| `"reviewer"` / `"ralphx-execution-reviewer"` | `ralphx:ralphx-execution-reviewer` |
+| `"merger"` / `"ralphx-execution-merger"` | `ralphx:ralphx-execution-merger` |
 
 ---
 
@@ -330,7 +330,8 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 
 | File | Purpose |
 |------|---------|
-| `plugins/app/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS definitions + TOOL_ALLOWLIST per agent |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS composition + MCP authorization facade |
+| `plugins/app/ralphx-mcp-server/src/tool-authorization.ts` | Canonical-vs-legacy MCP authorization resolution |
 | `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Agent name constants (TS mirror of Rust agent_names.rs) |
 | `plugins/app/ralphx-mcp-server/src/index.ts` | MCP server entry point, CLI arg parsing |
 
@@ -338,26 +339,24 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 
 | File | Agent |
 |------|-------|
-| `plugins/app/agents/orchestrator-ideation.md` | Ideation orchestrator |
-| `plugins/app/agents/orchestrator-ideation-readonly.md` | Read-only ideation |
-| `plugins/app/agents/session-namer.md` | Session title generator |
-| `plugins/app/agents/dependency-suggester.md` | Dependency auto-suggestor |
-| `plugins/app/agents/chat-task.md` | Task-scoped chat |
-| `plugins/app/agents/chat-project.md` | Project-scoped chat |
-| `plugins/app/agents/worker.md` | Task execution worker |
-| `plugins/app/agents/coder.md` | Delegated coding worker |
-| `plugins/app/agents/reviewer.md` | Code reviewer |
-| `plugins/app/agents/review-chat.md` | Post-review human discussion |
-| `plugins/app/agents/review-history.md` | Read-only review history |
-| `plugins/app/agents/merger.md` | Merge conflict resolver |
-| `plugins/app/agents/orchestrator.md` | Multi-task orchestrator |
-| `plugins/app/agents/supervisor.md` | Execution monitor |
-| `plugins/app/agents/qa-prep.md` | QA preparation |
-| `plugins/app/agents/qa-executor.md` | QA execution |
-| `plugins/app/agents/deep-researcher.md` | Research agent |
-| `plugins/app/agents/project-analyzer.md` | Build/validation detector |
-| `plugins/app/agents/memory-capture.md` | Post-session knowledge extraction |
-| `plugins/app/agents/memory-maintainer.md` | Memory ingestion/maintenance |
+| `agents/ralphx-ideation/` | Ideation orchestrator |
+| `agents/ralphx-ideation-readonly/` | Read-only ideation |
+| `agents/ralphx-utility-session-namer/` | Session title generator |
+| `agents/ralphx-chat-task/` | Task-scoped chat |
+| `agents/ralphx-chat-project/` | Project-scoped chat |
+| `agents/ralphx-execution-worker/` | Task execution worker |
+| `agents/ralphx-execution-coder/` | Delegated coding worker |
+| `agents/ralphx-execution-reviewer/` | Code reviewer |
+| `agents/ralphx-review-chat/` | Post-review human discussion |
+| `agents/ralphx-review-history/` | Read-only review history |
+| `agents/ralphx-execution-merger/` | Merge conflict resolver |
+| `agents/ralphx-execution-orchestrator/` | Multi-task orchestrator |
+| `agents/ralphx-qa-prep/` | QA preparation |
+| `agents/ralphx-qa-executor/` | QA execution |
+| `agents/ralphx-research-deep-researcher/` | Research agent |
+| `agents/ralphx-project-analyzer/` | Build/validation detector |
+| `agents/ralphx-memory-capture/` | Post-session knowledge extraction |
+| `agents/ralphx-memory-maintainer/` | Memory ingestion/maintenance |
 
 ---
 

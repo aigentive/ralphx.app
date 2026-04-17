@@ -78,7 +78,7 @@ describe("ProjectAnalysisSection", () => {
     it("renders section with title and description", () => {
       render(<ProjectAnalysisSection />);
 
-      expect(screen.getByText("Project Analysis")).toBeInTheDocument();
+      expect(screen.getByText("Setup & Validation")).toBeInTheDocument();
       expect(
         screen.getByText("Build system detection and validation commands")
       ).toBeInTheDocument();
@@ -90,10 +90,10 @@ describe("ProjectAnalysisSection", () => {
       expect(screen.getByText(/Last Analyzed:/)).toBeInTheDocument();
     });
 
-    it("shows Re-analyze button", () => {
+    it("shows Refresh Detected Commands button", () => {
       render(<ProjectAnalysisSection />);
 
-      const reanalyzeButton = screen.getByText("Re-analyze");
+      const reanalyzeButton = screen.getByText("Refresh Detected Commands");
       expect(reanalyzeButton).toBeInTheDocument();
     });
   });
@@ -103,7 +103,7 @@ describe("ProjectAnalysisSection", () => {
       render(<ProjectAnalysisSection />);
 
       // Section header and entry container should be present
-      expect(screen.getByText("Project Analysis")).toBeInTheDocument();
+      expect(screen.getByText("Setup & Validation")).toBeInTheDocument();
       // Check for an expandable entry button
       const buttons = screen.getAllByRole("button");
       expect(buttons.length).toBeGreaterThan(0);
@@ -128,7 +128,7 @@ describe("ProjectAnalysisSection", () => {
       render(<ProjectAnalysisSection />);
 
       expect(
-        screen.getByText(/Not yet analyzed. Click Re-analyze to detect build systems./)
+        screen.getByText(/Not yet analyzed. Click Refresh Detected Commands to detect build systems./)
       ).toBeInTheDocument();
     });
   });
@@ -210,15 +210,15 @@ describe("ProjectAnalysisSection", () => {
     });
   });
 
-  describe("re-analyze functionality", () => {
-    it("triggers re-analyze when button clicked", () => {
+  describe("refresh detected commands functionality", () => {
+    it("triggers refresh when button clicked", () => {
       render(<ProjectAnalysisSection />);
 
-      const reanalyzeButton = screen.getByText("Re-analyze");
+      const reanalyzeButton = screen.getByText("Refresh Detected Commands");
       expect(reanalyzeButton).toBeInTheDocument();
       fireEvent.click(reanalyzeButton);
       // Component should still be present after click
-      expect(screen.getByText("Re-analyze")).toBeInTheDocument();
+      expect(screen.getByText("Refresh Detected Commands")).toBeInTheDocument();
     });
 
 

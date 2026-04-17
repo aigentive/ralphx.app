@@ -199,7 +199,7 @@ function GlobalEffortSubsection() {
         <EffortRow
           id="global-primary-effort"
           label="Primary Ideation Effort"
-          description="Effort level for orchestrator-ideation and team-lead agents"
+          description="Effort level for ralphx-ideation and team-lead agents"
           value={settings.primaryEffort}
           disabled={false}
           onChange={handlePrimaryChange}
@@ -210,7 +210,7 @@ function GlobalEffortSubsection() {
         <EffortRow
           id="global-verifier-effort"
           label="Verification Effort"
-          description="Effort level for plan-verifier agent"
+          description="Effort level for ralphx-plan-verifier agent"
           value={settings.verifierEffort}
           disabled={false}
           onChange={handleVerifierChange}
@@ -292,7 +292,7 @@ function ProjectEffortSubsection({
         <EffortRow
           id="project-verifier-effort"
           label="Verification Effort"
-          description="Override for this project's plan-verifier agent"
+          description="Override for this project's ralphx-plan-verifier agent"
           value={settings.verifierEffort}
           disabled={isDisabled}
           onChange={handleVerifierChange}

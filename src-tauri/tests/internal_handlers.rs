@@ -40,6 +40,7 @@ async fn setup_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 

@@ -45,6 +45,14 @@ export const AGENT_RUN_STATUS_VALUES = [
 
 export const AgentRunStatusSchema = z.enum(AGENT_RUN_STATUS_VALUES);
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
+export const ProviderHarnessSchema = z.string().min(1);
+export type ProviderHarness = z.infer<typeof ProviderHarnessSchema>;
+
+export type ConversationProviderMetadata = {
+  claudeSessionId?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
+  providerHarness?: ProviderHarness | null | undefined;
+};
 
 // ============================================================================
 // Chat Conversation
@@ -57,7 +65,11 @@ export const ChatConversationSchema = z.object({
   id: z.string().min(1),
   contextType: ContextTypeSchema,
   contextId: z.string().min(1),
-  claudeSessionId: z.string().nullable(),
+  claudeSessionId: z.string().nullable().optional(),
+  providerSessionId: z.string().nullable(),
+  providerHarness: ProviderHarnessSchema.nullable(),
+  upstreamProvider: z.string().nullable().optional(),
+  providerProfile: z.string().nullable().optional(),
   title: z.string().nullable(),
   messageCount: z.number().int().min(0),
   lastMessageAt: z.string().datetime().nullable(),
@@ -66,6 +78,65 @@ export const ChatConversationSchema = z.object({
 });
 
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
+
+export function normalizeConversationProviderMetadata(
+  metadata: ConversationProviderMetadata
+): Pick<
+  ChatConversation,
+  "claudeSessionId" | "providerSessionId" | "providerHarness"
+> {
+  const providerSessionId =
+    metadata.providerSessionId ?? metadata.claudeSessionId ?? null;
+  const providerHarness =
+    metadata.providerHarness ?? (metadata.claudeSessionId ? "claude" : null);
+  const claudeSessionId =
+    metadata.claudeSessionId ??
+    (providerHarness === "claude" ? providerSessionId : null);
+
+  return {
+    claudeSessionId,
+    providerSessionId,
+    providerHarness,
+  };
+}
+
+export function mergeConversationProviderMetadata(
+  conversation: ChatConversation,
+  metadata: ConversationProviderMetadata
+): ChatConversation {
+  const providerHarness =
+    metadata.providerHarness !== undefined
+      ? metadata.providerHarness
+      : conversation.providerHarness;
+  const providerSessionId =
+    metadata.providerSessionId !== undefined
+      ? metadata.providerSessionId
+      : metadata.claudeSessionId !== undefined
+        ? metadata.claudeSessionId
+        : conversation.providerSessionId;
+
+  const claudeSessionId =
+    metadata.claudeSessionId !== undefined
+      ? metadata.claudeSessionId
+      : metadata.providerHarness !== undefined
+        ? metadata.providerHarness === "claude"
+          ? (providerSessionId ?? conversation.claudeSessionId ?? null)
+          : metadata.providerHarness === null
+            ? (conversation.claudeSessionId ?? null)
+            : null
+        : metadata.providerSessionId !== undefined && providerHarness === "claude"
+          ? metadata.providerSessionId
+          : conversation.claudeSessionId;
+
+  return {
+    ...conversation,
+    ...normalizeConversationProviderMetadata({
+      claudeSessionId,
+      providerSessionId,
+      providerHarness,
+    }),
+  };
+}
 
 // ============================================================================
 // Agent Run
@@ -187,7 +258,9 @@ export type ToolCallResponse = z.infer<typeof ToolCallResponseSchema>;
 export const SendContextMessageResponseSchema = z.object({
   response_text: z.string(),
   tool_calls: z.array(ToolCallResponseSchema),
-  claude_session_id: z.string().nullable(),
+  claude_session_id: z.string().nullable().optional(),
+  provider_session_id: z.string().nullable(),
+  provider_harness: ProviderHarnessSchema.nullable(),
   conversation_id: z.string().nullable(),
 });
 

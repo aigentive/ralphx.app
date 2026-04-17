@@ -7,6 +7,7 @@ pub mod api_key_commands;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
 pub mod chat_attachment_commands;
+pub mod conversation_stats_commands;
 pub mod chat_responses;
 pub mod diagnostic_commands;
 pub mod diff_commands;
@@ -28,6 +29,7 @@ pub mod project_commands;
 pub mod qa_commands;
 pub mod question_commands;
 pub mod research_commands;
+pub mod registry;
 pub mod review_commands;
 pub mod review_commands_types;
 pub mod review_helpers;
@@ -64,8 +66,17 @@ pub use chat_attachment_commands::{
     list_message_attachments, upload_chat_attachment, ChatAttachmentResponse, LinkAttachmentsInput,
     UploadChatAttachmentInput,
 };
+pub use conversation_stats_commands::{
+    build_conversation_stats_response, build_scope_stats_response, get_agent_conversation_stats,
+    get_project_chat_usage_stats, get_task_chat_usage_stats, ConversationAttributionCoverageResponse,
+    ConversationStatsResponse, ConversationUsageCoverageResponse, ScopeStatsResponse,
+    UsageBucketResponse, UsageTotalsResponse,
+};
 pub use chat_responses::ChatMessageResponse;
-pub use diagnostic_commands::{get_agent_health, AgentHealthReport, IprEntryResponse, RunningAgentResponse};
+pub use diagnostic_commands::{
+    get_agent_health, get_codex_cli_diagnostics, AgentHealthReport,
+    CodexCliDiagnosticsResponse, IprEntryResponse, RunningAgentResponse,
+};
 pub use diff_commands::{
     detect_merge_conflicts, get_conflict_file_diff, get_file_diff, get_task_file_changes,
 };
@@ -84,15 +95,20 @@ pub use ideation_commands::{
     archive_ideation_session, assess_all_priorities, assess_proposal_priority,
     count_session_messages, create_ideation_session, create_task_proposal, delete_chat_message,
     delete_ideation_session, delete_session_messages, delete_task_proposal, get_blocked_tasks,
-    get_ideation_session, get_ideation_session_with_data, get_project_messages,
+    get_agent_harness_availability, get_agent_lane_settings,
+    get_ideation_harness_availability, get_ideation_session, get_ideation_session_with_data,
+    get_project_messages,
     get_proposal_dependencies, get_proposal_dependents, get_recent_session_messages,
     get_session_messages, get_task_blockers, get_task_messages, get_task_proposal,
     is_orchestrator_available, list_ideation_sessions, list_session_proposals,
     remove_proposal_dependency, reorder_proposals, send_chat_message, send_orchestrator_message,
     set_proposal_selection, toggle_proposal_selection, update_task_proposal,
-    ApplyProposalsResultResponse, DependencyGraphResponse, IdeationSessionResponse,
-    OrchestratorMessageResponse, PriorityAssessmentResponse, SessionWithDataResponse,
-    TaskProposalResponse, ToolCallResultResponse,
+    update_agent_lane_settings, AgentLaneHarnessAvailabilityResponse,
+    ApplyProposalsResultResponse, DependencyGraphResponse,
+    IdeationLaneHarnessAvailabilityResponse, LaneHarnessAvailabilityResponse,
+    IdeationSessionResponse, OrchestratorMessageResponse,
+    PriorityAssessmentResponse, SessionWithDataResponse, TaskProposalResponse,
+    ToolCallResultResponse,
 };
 pub use merge_pipeline_commands::{
     get_merge_phase_list, get_merge_pipeline, get_merge_progress, MergePipelineResponse,

@@ -203,11 +203,11 @@ When **Require Human Review** is on, even after AI approval the task stays in Re
 
 **Location:** Settings → Supervisor
 
-The supervisor is a lightweight Haiku agent that monitors worker agents for loops, stuck behavior, and runaway token usage.
+The supervisor settings configure the backend watchdog service thresholds used for loop, stall, and runaway-token detection. There is no separate live supervisor agent in the current catalog.
 
 | Setting | Default | Range | Description |
 |---------|---------|-------|-------------|
-| **Enable Supervisor** | On | On/Off | Enable watchdog monitoring alongside worker agents |
+| **Enable Supervisor** | On | On/Off | Enable watchdog monitoring thresholds for execution runs |
 | **Loop Threshold** | 3 | 2–10 | Number of identical tool calls before loop detection triggers |
 | **Stuck Timeout** | 150 seconds (~2.5 minutes) | 60–1800 | Seconds without git diff progress before stuck detection triggers (5 checks at 30-second intervals) |
 
@@ -221,34 +221,64 @@ The supervisor is a lightweight Haiku agent that monitors worker agents for loop
 | Token usage over threshold with no progress | Pauses task and notifies |
 | Critical loop detected | Kills agent, analyzes, escalates |
 
-The supervisor runs _alongside_ the worker — it does not consume an extra concurrency slot.
+The supervisor is modeled as a service, not a spawned agent, so these settings do not add another execution agent to the lane.
 
 ---
 
-## Model Configuration
+## Agent Harness and Model Configuration
 
-**Location:** Settings → Model
+**Location:** Settings → General → Execution Agents and Settings → Ideation → Ideation Agents
 
-| Setting | Default | Options | Description |
-|---------|---------|---------|-------------|
-| **Default Model** | `sonnet` | haiku, sonnet, opus | Base Claude model used for task execution agents |
-| **Allow Opus Upgrade** | On | On/Off | Automatically upgrade to Opus for complex tasks identified by the system |
+RalphX supports lane-level harness selection across both the ideation surface and the execution pipeline. Each lane stores its own harness, model, effort, approval-policy, sandbox, and fallback settings.
 
-### Agent Model Mapping
+### Ideation Harness Settings
 
-Different agent roles use different models, configured in `ralphx.yaml`:
+| Setting | Meaning |
+|---------|---------|
+| **Harness** | Which runtime to use for the lane, for example `claude` or `codex` |
+| **Model** | Harness-native model id |
+| **Effort** | Logical reasoning effort for the selected harness |
+| **Approval policy** | Harness approval behavior for that lane |
+| **Sandbox mode** | Harness sandbox mode for that lane |
+| **Fallback harness** | Optional fallback if the preferred harness is unavailable |
 
-| Agent | Default model | Role |
-|-------|--------------|------|
-| orchestrator-ideation | Sonnet | Ideation planning |
-| ralphx-worker | Sonnet | Task execution |
-| ralphx-coder | Sonnet | File-level coding |
-| ralphx-reviewer | Sonnet | Code review |
-| ralphx-merger | Opus | Conflict resolution |
-| ralphx-supervisor | Haiku | Loop detection watchdog |
-| project-analyzer | Haiku | Build system detection |
+### Execution Pipeline Harness Settings
 
-Model overrides per agent are set in the `agents:` section of `ralphx.yaml`.
+The execution harness screen exposes the same controls for the runtime lanes that ship code:
+
+| Lane | Purpose |
+|------|---------|
+| **Execution Worker** | Primary task execution lane |
+| **Execution Reviewer** | Review lane after execution completes |
+| **Execution Re-executor** | Follow-up execution lane after review requests changes |
+| **Execution Merger** | Merge-conflict and merge completion lane |
+
+### Current product defaults
+
+| Lane family | Typical default today |
+|-------------|-----------------------|
+| Ideation lanes | Claude by default, Codex-capable where configured |
+| Execution/review/merge lanes | Claude by default, Codex-capable where configured |
+
+### Important limits
+
+| Topic | Current behavior |
+|-------|------------------|
+| Team mode | Claude-only |
+| Codex team sessions | Not supported; Codex is treated as solo-only |
+| Codex execution/review/merge | Supported when those lanes are configured to Codex |
+| Legacy session data | Still supported through provider-neutral compatibility fields |
+
+### Recommended rollout
+
+If you are enabling Codex for the first time, use this order:
+
+1. ideation primary
+2. ideation verifier
+3. execution worker
+4. execution reviewer / merger once you are comfortable with that project’s workflow
+
+See [Agent Harnesses](agent-harnesses.md) for the current support matrix and rollout guidance.
 
 ---
 
@@ -286,7 +316,7 @@ The Project Analysis section manages the commands RalphX uses to set up and vali
 
 ### Auto-Detection
 
-When you create a project (or click **Re-analyze**), a `project-analyzer` agent scans your repository and detects:
+When you create a project (or click **Re-analyze**), a `ralphx-project-analyzer` agent scans your repository and detects:
 - Build systems (npm, cargo, make, etc.)
 - Install commands (e.g., `npm install`, `pip install`)
 - Validation commands (e.g., `npm run typecheck`, `cargo test --lib`)

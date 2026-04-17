@@ -1,6 +1,8 @@
-# Claude CLI Spawning System — Architecture Reference
+# Claude CLI Spawning System — Claude-Specific Architecture Reference
 
 ## Overview
+
+This file is intentionally Claude-centric. RalphX now has a provider-neutral harness layer above this transport, so use this document for Claude-specific spawning/plugin/MCP details, not as the universal runtime contract for Codex or future harnesses.
 
 RalphX spawns Claude CLI processes as child OS processes via `tokio::process::Command`. Each agent type gets a dynamically-constructed CLI invocation with agent-specific tool restrictions, MCP configuration, model selection, settings profiles, and permission handling. A TypeScript MCP server (`ralphx-mcp-server`) acts as a stdio proxy between Claude and the Tauri backend HTTP server at `:3847`.
 
@@ -61,7 +63,7 @@ Two spawn modes:
 
 | Mode | Method | Use Case |
 |------|--------|----------|
-| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (session-namer, dependency-suggester) |
+| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (ralphx-utility-session-namer, ralphx-project-analyzer, memory capture/maintenance) |
 | Streaming | `spawn_agent_streaming()` → returns `Child` | Interactive sessions (ExecutionChatService handles stream) |
 
 **Process tracking:** Global `PROCESSES: Mutex<HashMap<String, (Child, Instant)>>` tracks all spawned processes by handle ID for stop/wait operations.
@@ -111,14 +113,14 @@ Built in `build_cli_args()` (`claude_code_client.rs:348-452`) and `spawn_agent()
 | `--agent` | `ralphx:<name>` | `AgentConfig.agent` (fully-qualified) |
 | `--mcp-config` | `<temp_path>` | Dynamic per-agent MCP config (see below) |
 | `--strict-mcp-config` | (flag) | Ignores user/global MCP servers |
-| `--tools` | CSV of CLI tools | `get_allowed_tools(agent_name)` from `ralphx.yaml` |
+| `--tools` | CSV of CLI tools | `get_allowed_tools(agent_name)` from `config/ralphx.yaml` |
 | `--allowedTools` | CSV of pre-approved | `get_preapproved_tools(agent_name)` — MCP + CLI, no prompts |
-| `--model` | `haiku`/`sonnet`/`opus` | Explicit override → per-agent default from `ralphx.yaml` |
+| `--model` | `haiku`/`sonnet`/`opus` | Explicit override → per-agent default from `config/ralphx.yaml` |
 | `--max-tokens` | number | Optional from `AgentConfig.max_tokens` |
-| `--permission-prompt-tool` | `mcp__ralphx__permission_request` | From `ralphx.yaml` `claude.permission_prompt_tool` |
-| `--permission-mode` | `default` | From `ralphx.yaml` `claude.permission_mode` |
+| `--permission-prompt-tool` | `mcp__ralphx__permission_request` | From `config/ralphx.yaml` `claude.permission_prompt_tool` |
+| `--permission-mode` | `default` | From `config/ralphx.yaml` `claude.permission_mode` |
 | `--settings` | JSON string | Agent-specific or global settings profile |
-| `--setting-sources` | CSV | Optional override from `ralphx.yaml` |
+| `--setting-sources` | CSV | Optional override from `config/ralphx.yaml` |
 
 ### Conditional Arguments
 
@@ -141,9 +143,9 @@ Built in `build_cli_args()` (`claude_code_client.rs:348-452`) and `spawn_agent()
 
 ## Configuration System
 
-### ralphx.yaml — Master Agent Config
+### config/ralphx.yaml — Shared Runtime Config
 
-**File:** `ralphx.yaml` (project root) — embedded at compile time via `include_str!`
+**File:** `config/ralphx.yaml` — embedded at compile time via `include_str!`
 **Parser:** `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs`
 
 ```yaml
@@ -166,19 +168,19 @@ claude:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 
 agents:
-  - name: orchestrator-ideation
+  - name: ralphx-ideation
     model: opus
-    system_prompt_file: plugins/app/agents/orchestrator-ideation.md
+    system_prompt_file: agents/ralphx-ideation/claude/prompt.md
     tools:
       extends: base_tools
       include: [Task]
     mcp_tools: [create_task_proposal, update_task_proposal, ...]
-    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+    preapproved_cli_tools: [Task(Plan)]
 ```
 
 **Config loading** (`agent_config/mod.rs:444-475`):
 1. Try `RALPHX_CONFIG_PATH` env var
-2. Try `<cargo_manifest>/../ralphx.yaml` from filesystem
+2. Try `<cargo_manifest>/../config/ralphx.yaml` from filesystem
 3. Fall back to embedded config (compile-time `include_str!`)
 
 **Resolved at startup via `OnceLock`** — loaded once, immutable after.
@@ -202,8 +204,8 @@ tools.mcp_only: true → empty CLI tools (agent uses only MCP)
 ```
 MCP tools → prefixed as mcp__ralphx__<name>
 CLI tools → passed as-is
-preapproved_cli_tools → appended (e.g., Task(Explore), Task(Plan))
-Memory skills → only for memory-maintainer and memory-capture agents
+preapproved_cli_tools → appended (e.g., Task(Plan))
+Memory skills → only for ralphx-memory-maintainer and ralphx-memory-capture agents
 ```
 
 ### Settings Profiles
@@ -246,7 +248,7 @@ Each agent spawn creates a temporary MCP config file that:
     "ralphx": {
       "type": "stdio",
       "command": "node",
-      "args": ["/path/to/ralphx-mcp-server/build/index.js", "--agent-type", "ralphx-worker"]
+      "args": ["/path/to/ralphx-mcp-server/build/index.js", "--agent-type", "ralphx-execution-worker"]
     }
   }
 }
@@ -317,19 +319,19 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 
 | Category | Routes | Agent(s) |
 |----------|--------|----------|
-| Ideation | `create/update/delete_task_proposal`, `list_session_proposals`, `analyze_dependencies` | orchestrator-ideation |
-| Plans | `create/update_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | orchestrator-ideation |
-| Tasks | `update_task`, `add_task_note`, `get_task_details` | chat-task |
-| Projects | `list_tasks`, `suggest_task` | chat-project |
+| Ideation | `create/update/delete_task_proposal`, `list_session_proposals`, `analyze_dependencies` | ralphx-ideation |
+| Plans | `create/update_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | ralphx-ideation |
+| Tasks | `update_task`, `add_task_note`, `get_task_details` | ralphx-chat-task |
+| Projects | `list_tasks`, `suggest_task` | ralphx-chat-project |
 | Reviews | `complete_review`, `get_review_notes`, `approve_task`, `request_task_changes` | reviewer, review-chat |
 | Issues | `task_issues/:id`, `mark_issue_*`, `issue_progress/:id` | worker, reviewer |
 | Context | `task_context/:id`, `artifact/:id`, `artifact/:id/version/:v`, `artifacts/search` | worker, coder, reviewer |
 | Steps | `task_steps/:id`, `start/complete/skip/fail/add_step`, `step_progress`, `step_context`, `sub_steps` | worker |
 | Permission | `permission/request`, `permission/await/:id`, `permission/resolve` | All agents (via MCP) |
-| Question | `question/request`, `question/await/:id`, `question/resolve` | orchestrator-ideation |
+| Question | `question/request`, `question/await/:id`, `question/resolve` | ralphx-ideation |
 | Git/Merge | `git/tasks/:id/complete-merge`, `report-conflict`, `report-incomplete`, `merge-target` | merger |
-| Memory | `search/get/upsert_memories`, `mark_memory_obsolete`, `ingest_rule_file` | memory-maintainer, memory-capture |
-| Analysis | `projects/:id/analysis` | project-analyzer |
+| Memory | `search/get/upsert_memories`, `mark_memory_obsolete`, `ingest_rule_file` | ralphx-memory-maintainer, ralphx-memory-capture |
+| Analysis | `projects/:id/analysis` | ralphx-project-analyzer |
 
 ## Agent Name System
 
@@ -337,14 +339,13 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 
 | Constant | Short Name | FQ Name | Usage |
 |----------|------------|---------|-------|
-| `AGENT_ORCHESTRATOR_IDEATION` | `orchestrator-ideation` | `ralphx:orchestrator-ideation` | ChatService (Ideation context) |
-| `AGENT_WORKER` | `ralphx-worker` | `ralphx:ralphx-worker` | ChatService (TaskExecution) |
-| `AGENT_CODER` | `ralphx-coder` | `ralphx:ralphx-coder` | Delegated by worker |
-| `AGENT_REVIEWER` | `ralphx-reviewer` | `ralphx:ralphx-reviewer` | ChatService (Review) |
-| `AGENT_MERGER` | `ralphx-merger` | `ralphx:ralphx-merger` | ChatService (Merge) |
-| `AGENT_SESSION_NAMER` | `session-namer` | `ralphx:session-namer` | Fire-and-forget (haiku) |
-| `AGENT_DEPENDENCY_SUGGESTER` | `dependency-suggester` | `ralphx:dependency-suggester` | Fire-and-forget (haiku) |
-| `AGENT_PROJECT_ANALYZER` | `project-analyzer` | `ralphx:project-analyzer` | Fire-and-forget (haiku) |
+| `AGENT_ORCHESTRATOR_IDEATION` | `ralphx-ideation` | `ralphx:ralphx-ideation` | ChatService (Ideation context) |
+| `AGENT_WORKER` | `ralphx-execution-worker` | `ralphx:ralphx-execution-worker` | ChatService (TaskExecution) |
+| `AGENT_CODER` | `ralphx-execution-coder` | `ralphx:ralphx-execution-coder` | Delegated by worker |
+| `AGENT_REVIEWER` | `ralphx-execution-reviewer` | `ralphx:ralphx-execution-reviewer` | ChatService (Review) |
+| `AGENT_MERGER` | `ralphx-execution-merger` | `ralphx:ralphx-execution-merger` | ChatService (Merge) |
+| `AGENT_SESSION_NAMER` | `ralphx-utility-session-namer` | `ralphx:ralphx-utility-session-namer` | Fire-and-forget (haiku) |
+| `AGENT_PROJECT_ANALYZER` | `ralphx-project-analyzer` | `ralphx:ralphx-project-analyzer` | Fire-and-forget (haiku) |
 | `AGENT_QA_PREP` | `ralphx-qa-prep` | `ralphx:ralphx-qa-prep` | State machine (Ready) |
 | `AGENT_QA_REFINER` | `qa-refiner` | `ralphx:qa-refiner` | State machine (QaRefining) |
 | `AGENT_QA_TESTER` | `qa-tester` | `ralphx:qa-tester` | State machine (QaTesting) |
@@ -500,9 +501,9 @@ Both environment variables must be set on the spawned process.
 ### Real Spawn Example
 
 ```bash
-cd /Users/lazabogdan/Code/ralphx && \
+cd /Users/example/Code/ralphx && \
 env CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
-/Users/lazabogdan/.local/share/claude/versions/2.1.42 \
+/Users/example/.local/share/claude/versions/2.1.42 \
   --agent-id wave-1@merge-hardening-tests \
   --agent-name wave-1 \
   --team-name merge-hardening-tests \
@@ -662,5 +663,5 @@ plugins/app/
     ├── permission-handler.ts    # Permission request two-phase protocol
     └── question-handler.ts      # User question two-phase protocol
 
-ralphx.yaml                      # Master agent config (embedded at compile time)
+config/ralphx.yaml               # Shared runtime config (embedded at compile time)
 ```

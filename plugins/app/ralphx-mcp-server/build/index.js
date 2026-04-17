@@ -15,11 +15,14 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
-import { safeError } from "./redact.js";
+import { getTraceLogPath, safeError, safeTrace } from "./redact.js";
 import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, formatToolErrorMessage, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
+import { FILESYSTEM_TOOL_NAMES, formatFilesystemToolError, handleFilesystemToolCall, } from "./filesystem-tools.js";
 import { permissionRequestTool, handlePermissionRequest, } from "./permission-handler.js";
 import { handleAskUserQuestion } from "./question-handler.js";
 import { handleRequestTeamPlan } from "./team-plan-handler.js";
+import { hydrateRalphxRuntimeEnvFromCli, parseCliOptionFromArgs, } from "./runtime-context.js";
+import { createVerificationRuntime } from "./verification-runtime.js";
 /**
  * Semantic keyword patterns for cross-project detection in plan text.
  * Exported for unit testing.
@@ -77,57 +80,35 @@ export function filterCrossProjectPaths(detectedPaths, projectWorkingDir) {
         return true;
     });
 }
-export function selectLatestArtifactsByPrefix(artifacts, prefixes, createdAfter) {
-    const createdAfterMs = typeof createdAfter === "string" && createdAfter.length > 0
-        ? Date.parse(createdAfter)
-        : Number.NaN;
-    const hasThreshold = Number.isFinite(createdAfterMs);
-    return prefixes.map((prefix) => {
-        const matches = artifacts
-            .filter((artifact) => artifact.name.startsWith(prefix))
-            .filter((artifact) => {
-            if (!hasThreshold)
-                return true;
-            const createdAtMs = Date.parse(artifact.created_at);
-            return Number.isFinite(createdAtMs) && createdAtMs >= createdAfterMs;
-        })
-            .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-        const latest = matches[0];
-        return latest
-            ? {
-                prefix,
-                found: true,
-                total_matches: matches.length,
-                artifact: latest,
-            }
-            : {
-                prefix,
-                found: false,
-                total_matches: 0,
-            };
-    });
-}
-/**
- * Parse command line arguments for --agent-type
- * Returns the agent type if found, undefined otherwise
- */
-function parseAgentTypeFromArgs() {
-    for (const arg of process.argv) {
-        if (arg.startsWith("--agent-type=")) {
-            return arg.substring("--agent-type=".length);
-        }
-        if (arg === "--agent-type") {
-            const idx = process.argv.indexOf(arg);
-            if (idx >= 0 && idx + 1 < process.argv.length) {
-                return process.argv[idx + 1];
-            }
-        }
+function summarizeResult(result) {
+    if (result === null) {
+        return { kind: "null" };
     }
-    return undefined;
+    if (result === undefined) {
+        return { kind: "undefined" };
+    }
+    if (typeof result === "string") {
+        return { kind: "string", length: result.length };
+    }
+    if (typeof result === "number" || typeof result === "boolean") {
+        return { kind: typeof result, value: result };
+    }
+    if (Array.isArray(result)) {
+        return { kind: "array", length: result.length };
+    }
+    if (typeof result === "object") {
+        return {
+            kind: "object",
+            keys: Object.keys(result).slice(0, 20),
+        };
+    }
+    return { kind: typeof result };
 }
-// Agent type: prefer CLI args over environment (Claude CLI doesn't pass env to MCP servers)
-const cliAgentType = parseAgentTypeFromArgs();
-const AGENT_TYPE = cliAgentType || process.env.RALPHX_AGENT_TYPE || "unknown";
+const runtimeContext = hydrateRalphxRuntimeEnvFromCli(process.argv, process.env);
+const cliAgentType = parseCliOptionFromArgs(process.argv, "agent-type");
+// Agent type: prefer CLI args over environment and hydrate process.env from CLI first
+// because Codex does not reliably propagate parent env vars into MCP child processes.
+const AGENT_TYPE = runtimeContext.agentType || "unknown";
 // Set the agent type in tools module for filtering
 setAgentType(AGENT_TYPE);
 // Log how agent type was determined
@@ -140,13 +121,27 @@ else if (process.env.RALPHX_AGENT_TYPE) {
 else {
     safeError(`[RalphX MCP] Agent type unknown (no CLI arg or env var)`);
 }
-// Task ID from environment (for task-level scoping enforcement)
-const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
-// Project ID from environment (for project-level scoping enforcement)
-const RALPHX_PROJECT_ID = process.env.RALPHX_PROJECT_ID;
-// Context type and ID from environment (set by chat_service_context for all agent spawns)
-const RALPHX_CONTEXT_TYPE = process.env.RALPHX_CONTEXT_TYPE;
-const RALPHX_CONTEXT_ID = process.env.RALPHX_CONTEXT_ID;
+// Runtime scope for task/project/context enforcement.
+const RALPHX_TASK_ID = runtimeContext.taskId;
+const RALPHX_PROJECT_ID = runtimeContext.projectId;
+const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
+const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
+const RALPHX_CONTEXT_ID = runtimeContext.contextId;
+function buildArtifactMutationTransportHeaders() {
+    if (RALPHX_CONTEXT_TYPE !== "ideation" || !RALPHX_CONTEXT_ID) {
+        return undefined;
+    }
+    return {
+        "X-RalphX-Caller-Session-Id": RALPHX_CONTEXT_ID,
+    };
+}
+const { getPlanVerificationForTool, reportVerificationRoundForTool, completePlanVerificationForTool, runVerificationEnrichment, runVerificationRound, resolveVerificationFindingSessionId, resolveContextSessionId, } = createVerificationRuntime({
+    callTauri,
+    callTauriGet,
+    agentType: AGENT_TYPE,
+    contextType: RALPHX_CONTEXT_TYPE,
+    contextId: RALPHX_CONTEXT_ID,
+});
 /**
  * Validate that a tool call's task_id parameter matches the assigned task
  * @param toolName - Name of the tool being called
@@ -254,6 +249,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     }
     const toolNames = tools.map((t) => t.name);
     safeError(`[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"} + permission_request`);
+    safeTrace("tools.list", {
+        agent_type: AGENT_TYPE,
+        tools: toolNames,
+        includes_permission_request: true,
+    });
     return { tools: allTools };
 });
 /**
@@ -261,16 +261,54 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    safeTrace("tool.request", { name, args });
     // Special handling for permission_request tool (always allowed, not scoped by agent type)
     if (name === "permission_request") {
         try {
-            return await handlePermissionRequest(args);
+            const result = await handlePermissionRequest(args);
+            safeTrace("tool.success", {
+                name,
+                result: summarizeResult(result),
+            });
+            return result;
         }
         catch (error) {
+            safeTrace("tool.error", {
+                name,
+                error: error instanceof Error ? error.message : String(error),
+            });
             const message = error instanceof Error ? error.message : String(error);
             return {
                 content: [{ type: "text", text: JSON.stringify({ behavior: "deny", message }) }],
             };
+        }
+    }
+    if (FILESYSTEM_TOOL_NAMES.includes(name)) {
+        if (!isToolAllowed(name)) {
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `ERROR: Tool "${name}" is not available for agent type "${AGENT_TYPE}".`,
+                    },
+                ],
+                isError: true,
+            };
+        }
+        try {
+            const result = await handleFilesystemToolCall(name, args);
+            safeTrace("tool.success", {
+                name,
+                result: summarizeResult(result),
+            });
+            return result;
+        }
+        catch (error) {
+            safeTrace("tool.error", {
+                name,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            return formatFilesystemToolError(error);
         }
     }
     // Special handling for ask_user_question (register + long-poll, like permission_request)
@@ -288,9 +326,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
         try {
-            return await handleAskUserQuestion(args);
+            const result = await handleAskUserQuestion(args);
+            safeTrace("tool.success", {
+                name,
+                result: summarizeResult(result),
+            });
+            return result;
         }
         catch (error) {
+            safeTrace("tool.error", {
+                name,
+                error: error instanceof Error ? error.message : String(error),
+            });
             const message = error instanceof Error ? error.message : String(error);
             return {
                 content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
@@ -314,9 +361,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const leadSessionId = globalThis.process.env.RALPHX_LEAD_SESSION_ID;
         try {
-            return await handleRequestTeamPlan(args, RALPHX_CONTEXT_TYPE ?? "ideation", RALPHX_CONTEXT_ID ?? "", leadSessionId);
+            const result = await handleRequestTeamPlan(args, RALPHX_CONTEXT_TYPE ?? "ideation", RALPHX_CONTEXT_ID ?? "", leadSessionId);
+            safeTrace("tool.success", {
+                name,
+                result: summarizeResult(result),
+            });
+            return result;
         }
         catch (error) {
+            safeTrace("tool.error", {
+                name,
+                error: error instanceof Error ? error.message : String(error),
+            });
             const message = error instanceof Error ? error.message : String(error);
             return {
                 content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
@@ -331,6 +387,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             ? `Tool "${name}" is not available for agent type "${AGENT_TYPE}". Allowed tools: ${allowedNames.join(", ")}`
             : `Agent type "${AGENT_TYPE}" has no MCP tools available. This agent should use filesystem tools (Read, Grep, Glob, Bash, Edit, Write) instead.`;
         safeError(`[RalphX MCP] Unauthorized tool call: ${name}`);
+        safeTrace("tool.denied", { name, reason: "unauthorized" });
         return {
             content: [
                 {
@@ -345,6 +402,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const scopeError = validateTaskScope(name, args || {});
     if (scopeError) {
         safeError(`[RalphX MCP] Task scope violation: ${name}`);
+        safeTrace("tool.denied", { name, reason: "task_scope_violation" });
         return {
             content: [
                 {
@@ -359,6 +417,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const projectScopeError = validateProjectScope(name, args || {});
     if (projectScopeError) {
         safeError(`[RalphX MCP] Project scope violation: ${name}`);
+        safeTrace("tool.denied", { name, reason: "project_scope_violation" });
         return {
             content: [
                 {
@@ -372,6 +431,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
         // Forward to Tauri backend
         safeError(`[RalphX MCP] Calling Tauri: ${name} with args:`, JSON.stringify(args));
+        safeTrace("tool.dispatch", { name });
         let result;
         // Special handling for GET endpoints with path parameters
         if (name === "get_task_context") {
@@ -400,32 +460,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id } = args;
             result = await callTauriGet(`get_session_plan/${session_id}`);
         }
+        else if (name === "update_plan_artifact" || name === "edit_plan_artifact") {
+            const artifactMutationArgs = { ...(args ?? {}) };
+            delete artifactMutationArgs.caller_session_id;
+            result = await callTauri(name, artifactMutationArgs, {
+                headers: buildArtifactMutationTransportHeaders(),
+            });
+        }
         else if (name === "get_plan_verification") {
-            // GET /api/ideation/sessions/:id/verification
-            const { session_id } = args;
-            result = await callTauriGet(`ideation/sessions/${session_id}/verification`);
+            result = await getPlanVerificationForTool(args);
         }
         else if (name === "report_verification_round") {
-            // POST /api/ideation/sessions/:id/verification (verifier-friendly alias)
-            const { session_id, ...body } = args;
-            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
-                ...body,
-                status: "reviewing",
-                in_progress: true,
-            });
+            result = await reportVerificationRoundForTool(args);
+        }
+        else if (name === "run_verification_enrichment") {
+            result = await runVerificationEnrichment(args);
+        }
+        else if (name === "run_verification_round") {
+            result = await runVerificationRound(args);
         }
         else if (name === "complete_plan_verification") {
-            // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
-            const { session_id, ...body } = args;
-            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
-                ...body,
-                in_progress: false,
-            });
-        }
-        else if (name === "update_plan_verification") {
-            // POST /api/ideation/sessions/:id/verification
-            const { session_id, ...body } = args;
-            result = await callTauri(`ideation/sessions/${session_id}/verification`, body);
+            result = await completePlanVerificationForTool(args);
         }
         else if (name === "revert_and_skip") {
             // POST /api/ideation/sessions/:id/revert-and-skip
@@ -559,6 +614,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id } = args;
             result = await callTauriGet(`parent_session_context/${session_id}`);
         }
+        else if (name === "delegate_start") {
+            result = await callTauri("coordination/delegate/start", {
+                ...args,
+                caller_agent_name: AGENT_TYPE,
+                caller_context_type: RALPHX_CONTEXT_TYPE,
+                caller_context_id: RALPHX_CONTEXT_ID,
+            });
+        }
+        else if (name === "delegate_wait") {
+            result = await callTauri("coordination/delegate/wait", args);
+        }
+        else if (name === "delegate_cancel") {
+            result = await callTauri("coordination/delegate/cancel", args);
+        }
         else if (name === "get_project_analysis") {
             // GET /api/projects/:project_id/analysis?task_id=
             const { project_id, task_id } = args;
@@ -586,37 +655,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 related_artifact_id,
             });
         }
+        else if (name === "publish_verification_finding") {
+            const { session_id, critic, round, status, coverage, summary, gaps, title_suffix, } = args;
+            result = await callTauri("team/verification_finding", {
+                session_id: await resolveVerificationFindingSessionId(session_id, "publish_verification_finding"),
+                critic,
+                round,
+                status,
+                coverage,
+                summary,
+                gaps,
+                title_suffix,
+            });
+        }
         else if (name === "get_team_artifacts") {
             // GET /api/team/artifacts/:session_id
             const { session_id } = args;
             result = await callTauriGet(`team/artifacts/${session_id}`);
-        }
-        else if (name === "get_verification_round_artifacts") {
-            const { session_id, prefixes, created_after, include_full_content = true, } = args;
-            const teamArtifacts = await callTauriGet(`team/artifacts/${session_id}`);
-            const matches = selectLatestArtifactsByPrefix(teamArtifacts.artifacts ?? [], prefixes, created_after);
-            const artifacts_by_prefix = await Promise.all(matches.map(async (match) => {
-                if (!match.artifact) {
-                    return match;
-                }
-                if (!include_full_content) {
-                    return match;
-                }
-                const fullArtifact = await callTauriGet(`artifact/${match.artifact.id}`);
-                return {
-                    ...match,
-                    artifact: {
-                        ...match.artifact,
-                        content: fullArtifact.content ?? "",
-                    },
-                };
-            }));
-            result = {
-                session_id,
-                created_after: created_after ?? null,
-                prefixes,
-                artifacts_by_prefix,
-            };
         }
         else if (name === "get_team_session_state") {
             // GET /api/team/session_state/:session_id
@@ -803,6 +858,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             result = await callTauri(name, args || {});
         }
         safeError(`[RalphX MCP] Success: ${name}`);
+        safeTrace("tool.success", {
+            name,
+            result: summarizeResult(result),
+        });
         // Return result as JSON text
         return {
             content: [
@@ -815,6 +874,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     catch (error) {
         safeError(`[RalphX MCP] Error calling ${name}:`, error);
+        safeTrace("tool.error", {
+            name,
+            error: error instanceof Error ? error.message : String(error),
+            details: error instanceof TauriClientError ? error.details : undefined,
+        });
         if (error instanceof TauriClientError) {
             return {
                 content: [
@@ -849,7 +913,15 @@ async function main() {
     if (RALPHX_PROJECT_ID) {
         safeError(`[RalphX MCP] Project scope: ${RALPHX_PROJECT_ID}`);
     }
+    if (RALPHX_WORKING_DIRECTORY) {
+        safeError(`[RalphX MCP] Working directory root: ${RALPHX_WORKING_DIRECTORY}`);
+    }
     safeError(`[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`);
+    safeError(`[RalphX MCP] Trace log: ${getTraceLogPath()}`);
+    safeTrace("server.start", {
+        argv: process.argv.slice(2),
+        tauri_api_url: process.env.TAURI_API_URL || "http://127.0.0.1:3847",
+    });
     // Log all tools if in debug mode or if RALPHX_DEBUG_TOOLS is set
     if (AGENT_TYPE === "debug" || process.env.RALPHX_DEBUG_TOOLS === "1") {
         logAllTools();
@@ -861,6 +933,7 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("[RalphX MCP] Server running on stdio");
+    safeTrace("server.ready");
 }
 // Global handler for unhandled promise rejections.
 // Prevents secrets in HTTP error bodies or rejected promises from leaking via Node's default stderr handler.

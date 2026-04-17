@@ -57,7 +57,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             event_type TEXT NOT NULL,
-            actor_type TEXT NOT NULL CHECK (actor_type IN ('system', 'memory-maintainer', 'memory-capture')),
+            actor_type TEXT NOT NULL CHECK (actor_type IN ('system', 'ralphx-memory-maintainer', 'ralphx-memory-capture')),
             details_json TEXT NOT NULL DEFAULT '{}',
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
         );

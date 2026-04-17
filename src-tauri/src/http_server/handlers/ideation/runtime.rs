@@ -7,7 +7,7 @@ use axum::{
 };
 use tracing::error;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::InteractiveProcessKey;
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{ChatContextType, IdeationSessionId};
@@ -100,7 +100,17 @@ pub async fn get_child_session_status_handler(
     Path(session_id): Path<String>,
     Query(params): Query<ChildSessionStatusParams>,
 ) -> Result<Json<ChildSessionStatusResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    Ok(Json(
+        build_child_session_status_response(&state, &session_id, &params).await?,
+    ))
+}
+
+pub(crate) async fn build_child_session_status_response(
+    state: &HttpServerState,
+    session_id: &str,
+    params: &ChildSessionStatusParams,
+) -> Result<ChildSessionStatusResponse, JsonError> {
+    use crate::domain::entities::ideation::VerificationStatus;
     use crate::domain::entities::IdeationSessionId;
     use crate::domain::services::RunningAgentKey;
     use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
@@ -109,7 +119,7 @@ pub async fn get_child_session_status_handler(
         VerificationInfo,
     };
 
-    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+    let session_id_obj = IdeationSessionId::from_string(session_id.to_string());
 
     // Step 1: Fetch session — 404 if not found
     let session = state
@@ -125,8 +135,8 @@ pub async fn get_child_session_status_handler(
 
     // Step 2: Check RunningAgentRegistry under both "session" and "ideation" keys.
     // Ideation sessions can be registered under either key depending on how they were spawned.
-    let session_key = RunningAgentKey::new("session", &session_id);
-    let ideation_key = RunningAgentKey::new("ideation", &session_id);
+    let session_key = RunningAgentKey::new("session", session_id);
+    let ideation_key = RunningAgentKey::new("ideation", session_id);
     let registry = &state.app_state.running_agent_registry;
 
     let agent_info = if let Some(info) = registry.get(&session_key).await {
@@ -199,35 +209,51 @@ pub async fn get_child_session_status_handler(
         None
     };
 
-    // Step 5: Build VerificationInfo from session entity if verification has been started.
-    // gap_score and current_round live in the verification_metadata JSON blob.
-    // Malformed JSON → return verification: None (no panic).
-    let verification = if session.verification_status != VerificationStatus::Unverified {
-        let (current_round, gap_score) = if let Some(meta_json) = &session.verification_metadata {
-            match serde_json::from_str::<VerificationMetadata>(meta_json) {
-                Ok(meta) => {
-                    let round = if meta.current_round > 0 {
-                        Some(meta.current_round)
-                    } else {
-                        None
-                    };
-                    let score = meta.rounds.last().map(|r| r.gap_score);
-                    (round, score)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to parse verification_metadata for session {}: {}",
-                        session_id,
-                        e
-                    );
-                    (None, None)
-                }
-            }
+    let (effective_verification_status, _) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for session {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get verification status",
+            )
+        })?;
+
+    // Step 5: Build VerificationInfo from the native verification snapshot when verification
+    // has started.
+    let verification = if effective_verification_status != VerificationStatus::Unverified {
+        let native_snapshot = state
+            .app_state
+            .ideation_session_repo
+            .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to get native verification snapshot for session {}: {}",
+                    session_id, e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to get verification snapshot",
+                )
+            })?;
+
+        let (status, current_round, gap_score) = if let Some(snapshot) = native_snapshot {
+            let round = (snapshot.current_round > 0).then_some(snapshot.current_round);
+            let score = snapshot.rounds.last().map(|r| r.gap_score);
+            (snapshot.status, round, score)
         } else {
-            (None, None)
+            (effective_verification_status, None, None)
         };
         Some(VerificationInfo {
-            status: session.verification_status.to_string(),
+            status: status.to_string(),
             generation: session.verification_generation,
             current_round,
             gap_score,
@@ -251,13 +277,13 @@ pub async fn get_child_session_status_handler(
         last_effective_model: session.last_effective_model.clone(),
     };
 
-    Ok(Json(ChildSessionStatusResponse {
+    Ok(ChildSessionStatusResponse {
         session: session_summary,
         agent_state,
         verification,
         recent_messages,
         pending_initial_prompt: session.pending_initial_prompt.clone(),
-    }))
+    })
 }
 
 /// POST /api/ideation/sessions/:id/message
@@ -367,36 +393,11 @@ pub async fn send_ideation_session_message_handler(
         }
     }
 
-    // Step 4: Agent not running — construct ClaudeChatService and spawn.
-    // Follows session_linking.rs:312-330 positional constructor pattern exactly.
+    // Step 4: Agent not running — construct the shared chat service and spawn.
     let is_team_mode = session_is_team_mode(&session);
     let app = &state.app_state;
-    let mut chat_service = ClaudeChatService::new(
-        Arc::clone(&app.chat_message_repo),
-        Arc::clone(&app.chat_attachment_repo),
-        Arc::clone(&app.artifact_repo),
-        Arc::clone(&app.chat_conversation_repo),
-        Arc::clone(&app.agent_run_repo),
-        Arc::clone(&app.project_repo),
-        Arc::clone(&app.task_repo),
-        Arc::clone(&app.task_dependency_repo),
-        Arc::clone(&app.ideation_session_repo),
-        Arc::clone(&app.activity_event_repo),
-        Arc::clone(&app.message_queue),
-        Arc::clone(&app.running_agent_registry),
-        Arc::clone(&app.memory_event_repo),
-    )
-    .with_execution_state(Arc::clone(&state.execution_state))
-    .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
-    .with_ideation_effort_settings_repo(Arc::clone(&app.ideation_effort_settings_repo))
-    .with_ideation_model_settings_repo(Arc::clone(&app.ideation_model_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
-    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
-    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
-
-    if let Some(ref handle) = app.app_handle {
-        chat_service = chat_service.with_app_handle(handle.clone());
-    }
+    let mut chat_service =
+        app.build_chat_service_with_execution_state(Arc::clone(&state.execution_state));
     chat_service = chat_service.with_team_mode(is_team_mode);
 
     match chat_service

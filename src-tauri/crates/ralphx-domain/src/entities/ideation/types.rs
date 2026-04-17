@@ -42,13 +42,13 @@ impl FromStr for SessionOrigin {
     }
 }
 
-/// Purpose of an ideation session — distinguishes general ideation from plan-verifier child sessions
+/// Purpose of an ideation session — distinguishes general ideation from ralphx-plan-verifier child sessions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionPurpose {
     /// Standard ideation session (default)
     General,
-    /// Child session spawned by the plan-verifier agent
+    /// Child session spawned by the ralphx-plan-verifier agent
     Verification,
 }
 
@@ -498,7 +498,7 @@ impl FromStr for VerificationStatus {
 }
 
 /// A single gap identified by the critic during a verification round
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationGap {
     /// Severity: "critical" | "high" | "medium" | "low"
     pub severity: String,
@@ -514,63 +514,51 @@ pub struct VerificationGap {
     pub source: Option<String>,
 }
 
-/// Summary of a single verification round
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationRound {
-    /// Normalized gap fingerprints (one per gap) from the 4-layer pipeline
+/// Native persisted snapshot of a single verification round.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VerificationRoundSnapshot {
+    /// 1-based round number
+    pub round: u32,
+    /// Aggregate gap score: critical*10 + high*3 + medium*1
+    pub gap_score: u32,
+    /// Normalized gap fingerprints (one per gap)
     #[serde(default)]
     pub fingerprints: Vec<String>,
-    /// Aggregate gap score: critical*10 + high*3 + medium*1
+    /// Full gap snapshot for the round
     #[serde(default)]
-    pub gap_score: u32,
+    pub gaps: Vec<VerificationGap>,
+    /// True when the critic output for this round could not be fully parsed
+    #[serde(default)]
+    pub parse_failed: bool,
 }
 
-/// Persisted metadata for the verification loop stored as JSON in the DB
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationMetadata {
-    /// Schema version — always 1
-    #[serde(default = "verification_metadata_schema_version")]
-    pub v: u32,
-    /// Current round number (1-based; 0 = not started)
+/// Native persisted snapshot of a verification run keyed by session + generation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VerificationRunSnapshot {
+    /// Verification generation on the parent ideation session
+    pub generation: i32,
+    /// Terminal or in-progress verification status for this generation
+    pub status: VerificationStatus,
+    /// Whether the run is still active
+    pub in_progress: bool,
+    /// Current round number (1-based)
     #[serde(default)]
     pub current_round: u32,
     /// Maximum allowed rounds before hard-cap exit
     #[serde(default)]
     pub max_rounds: u32,
-    /// Per-round summaries (most recent appended last)
-    #[serde(default)]
-    pub rounds: Vec<VerificationRound>,
-    /// Gaps from the most recent critic round
-    #[serde(default)]
-    pub current_gaps: Vec<VerificationGap>,
-    /// Why verification converged (set on terminal status)
-    #[serde(default)]
-    pub convergence_reason: Option<String>,
     /// Round index with the lowest gap_score (for best-version tracking)
     #[serde(default)]
     pub best_round_index: Option<u32>,
-    /// Parse failure count in the sliding window (last 5 rounds)
+    /// Why verification converged (set on terminal status)
     #[serde(default)]
-    pub parse_failures: Vec<u32>,
-}
-
-fn verification_metadata_schema_version() -> u32 {
-    1
-}
-
-impl Default for VerificationMetadata {
-    fn default() -> Self {
-        Self {
-            v: verification_metadata_schema_version(),
-            current_round: 0,
-            max_rounds: 0,
-            rounds: Vec::new(),
-            current_gaps: Vec::new(),
-            convergence_reason: None,
-            best_round_index: None,
-            parse_failures: Vec::new(),
-        }
-    }
+    pub convergence_reason: Option<String>,
+    /// Full current gap list for the run
+    #[serde(default)]
+    pub current_gaps: Vec<VerificationGap>,
+    /// Native per-round snapshots in chronological order
+    #[serde(default)]
+    pub rounds: Vec<VerificationRoundSnapshot>,
 }
 
 /// Typed errors for verification state machine violations (D17)
@@ -593,7 +581,7 @@ pub enum VerificationError {
 
     /// Gate for proposal mutations (create/update/delete).
     /// Distinct from `NotVerified` which gates acceptance.
-    #[error("Cannot create proposals: plan verification has not been run. Either run verification (update_plan_verification with status 'reviewing') or skip it (update_plan_verification with status 'skipped', convergence_reason 'user_skipped').")]
+    #[error("Cannot create proposals: plan verification has not been run. Start verification before mutating proposals.")]
     ProposalNotVerified,
 
     /// Gate for proposal mutations when verification is in progress.
@@ -613,12 +601,12 @@ pub enum VerificationError {
     /// Gate for proposal creation when verification was skipped.
     /// Skipping verification blocks NEW proposal creation for all sessions (internal and external).
     /// Existing proposals can still be updated/deleted; only Create is blocked.
-    #[error("Cannot create proposals: plan verification was skipped. Re-run verification (update_plan_verification with status 'reviewing') to create new proposals.")]
+    #[error("Cannot create proposals: plan verification was skipped. Re-run verification to create new proposals.")]
     ProposalSkippedNotAllowed,
 
     /// Gate for skip operations on external-origin sessions.
     /// External sessions cannot skip plan verification — they must run it to completion.
-    #[error("External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').")]
+    #[error("External sessions cannot skip plan verification. Run verification to completion.")]
     ExternalCannotSkip,
 }
 

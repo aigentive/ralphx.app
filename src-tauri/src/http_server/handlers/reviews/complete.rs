@@ -270,49 +270,18 @@ pub async fn complete_review(
     // 6. Trigger state transition via TaskTransitionService
     // Create scheduler for auto-scheduling next Ready task when this one exits Reviewing
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
+        state.app_state.build_task_scheduler_for_runtime(
             Arc::clone(&state.execution_state),
-            Arc::clone(&state.app_state.project_repo),
-            Arc::clone(&state.app_state.task_repo),
-            Arc::clone(&state.app_state.task_dependency_repo),
-            Arc::clone(&state.app_state.chat_message_repo),
-            Arc::clone(&state.app_state.chat_attachment_repo),
-            Arc::clone(&state.app_state.chat_conversation_repo),
-            Arc::clone(&state.app_state.agent_run_repo),
-            Arc::clone(&state.app_state.ideation_session_repo),
-            Arc::clone(&state.app_state.activity_event_repo),
-            Arc::clone(&state.app_state.message_queue),
-            Arc::clone(&state.app_state.running_agent_registry),
-            Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry)),
+        ),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let mut transition_service_builder = TaskTransitionService::new(
-        Arc::clone(&state.app_state.task_repo),
-        Arc::clone(&state.app_state.task_dependency_repo),
-        Arc::clone(&state.app_state.project_repo),
-        Arc::clone(&state.app_state.chat_message_repo),
-        Arc::clone(&state.app_state.chat_attachment_repo),
-        Arc::clone(&state.app_state.chat_conversation_repo),
-        Arc::clone(&state.app_state.agent_run_repo),
-        Arc::clone(&state.app_state.ideation_session_repo),
-        Arc::clone(&state.app_state.activity_event_repo),
-        Arc::clone(&state.app_state.message_queue),
-        Arc::clone(&state.app_state.running_agent_registry),
-        Arc::clone(&state.execution_state),
-        state.app_state.app_handle.as_ref().cloned(),
-        Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+    let mut transition_service_builder = state
+        .app_state
+        .build_transition_service_with_execution_state(Arc::clone(&state.execution_state))
+        .with_task_scheduler(task_scheduler);
 
     if let Some(ref pub_) = state.app_state.webhook_publisher {
         transition_service_builder = transition_service_builder

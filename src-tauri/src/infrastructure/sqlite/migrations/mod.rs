@@ -195,8 +195,6 @@ mod v51_repair_plan_branches_tests;
 #[cfg(test)]
 mod v56_api_keys_tests;
 #[cfg(test)]
-mod v57_plan_verification_tests;
-#[cfg(test)]
 mod v58_metrics_index_tests;
 #[cfg(test)]
 mod v59_project_metrics_config_tests;
@@ -249,9 +247,9 @@ mod v20260329080000_acceptance_status_tests;
 mod v20260330000000_verification_confirmation_status;
 #[cfg(test)]
 mod v20260330000000_verification_confirmation_status_tests;
-mod v20260330000000_ideation_effort_settings;
+mod v20260330000001_ideation_effort_settings;
 #[cfg(test)]
-mod v20260330000000_ideation_effort_settings_tests;
+mod v20260330000001_ideation_effort_settings_tests;
 mod v20260330000002_ideation_model_settings;
 mod v20260405045108_ideation_external_overrides;
 #[cfg(test)]
@@ -268,9 +266,48 @@ mod v20260406043153_add_model_to_running_agents_tests;
 mod v20260406120000_add_ideation_subagent_model;
 #[cfg(test)]
 mod v20260406120000_add_ideation_subagent_model_tests;
+mod v20260407073000_provider_harness_metadata;
+#[cfg(test)]
+mod v20260407073000_provider_harness_metadata_tests;
+mod v20260407103000_agent_lane_settings;
+#[cfg(test)]
+mod v20260407103000_agent_lane_settings_tests;
+mod v20260410093000_chat_attribution_backfill_state;
+#[cfg(test)]
+mod v20260410093000_chat_attribution_backfill_state_tests;
+mod v20260410101500_chat_message_attribution;
+#[cfg(test)]
+mod v20260410101500_chat_message_attribution_tests;
+mod v20260410113000_agent_run_usage;
+#[cfg(test)]
+mod v20260410113000_agent_run_usage_tests;
+mod v20260410143000_upstream_provider_metadata;
+#[cfg(test)]
+mod v20260410143000_upstream_provider_metadata_tests;
+mod v20260410153000_chat_conversation_provider_origin;
+#[cfg(test)]
+mod v20260410153000_chat_conversation_provider_origin_tests;
+mod v20260411190000_delegated_sessions;
+#[cfg(test)]
+mod v20260411190000_delegated_sessions_tests;
+mod v20260413043153_drop_agent_lane_settings_fallback_harness;
+#[cfg(test)]
+mod v20260413043153_drop_agent_lane_settings_fallback_harness_tests;
+mod v20260410124500_chat_message_usage;
+#[cfg(test)]
+mod v20260410124500_chat_message_usage_tests;
+mod v20260414060000_verification_run_store;
+#[cfg(test)]
+mod v20260414060000_verification_run_store_tests;
+mod v20260414123000_drop_verification_metadata_column;
+#[cfg(test)]
+mod v20260414123000_drop_verification_metadata_column_tests;
+mod v20260415164250_merge_validation_mode_off;
+#[cfg(test)]
+mod v20260415164250_merge_validation_mode_off_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260406120000;
+pub const SCHEMA_VERSION: i64 = 20260415164250;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -716,6 +753,11 @@ const MIGRATIONS: &[Migration] = &[
         migrate: v20260328210000_proposal_affected_paths::migrate,
     },
     Migration {
+        version: 20260329080000,
+        name: "acceptance_status",
+        migrate: v20260329080000_acceptance_status::migrate,
+    },
+    Migration {
         version: 20260329103000,
         name: "review_note_followup_session",
         migrate: v20260329103000_review_note_followup_session::migrate,
@@ -726,11 +768,6 @@ const MIGRATIONS: &[Migration] = &[
         migrate: v20260329113000_ideation_blocker_fingerprint::migrate,
     },
     Migration {
-        version: 20260329130000,
-        name: "acceptance_status",
-        migrate: v20260329080000_acceptance_status::migrate,
-    },
-    Migration {
         version: 20260330000000,
         name: "verification_confirmation_status",
         migrate: v20260330000000_verification_confirmation_status::migrate,
@@ -738,7 +775,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 20260330000001,
         name: "ideation_effort_settings",
-        migrate: v20260330000000_ideation_effort_settings::migrate,
+        migrate: v20260330000001_ideation_effort_settings::migrate,
     },
     Migration {
         version: 20260330000002,
@@ -770,6 +807,71 @@ const MIGRATIONS: &[Migration] = &[
         name: "add_ideation_subagent_model",
         migrate: v20260406120000_add_ideation_subagent_model::migrate,
     },
+    Migration {
+        version: 20260407073000,
+        name: "provider_harness_metadata",
+        migrate: v20260407073000_provider_harness_metadata::migrate,
+    },
+    Migration {
+        version: 20260407103000,
+        name: "agent_lane_settings",
+        migrate: v20260407103000_agent_lane_settings::migrate,
+    },
+    Migration {
+        version: 20260410093000,
+        name: "chat_attribution_backfill_state",
+        migrate: v20260410093000_chat_attribution_backfill_state::migrate,
+    },
+    Migration {
+        version: 20260410101500,
+        name: "chat_message_attribution",
+        migrate: v20260410101500_chat_message_attribution::migrate,
+    },
+    Migration {
+        version: 20260410113000,
+        name: "agent_run_usage",
+        migrate: v20260410113000_agent_run_usage::migrate,
+    },
+    Migration {
+        version: 20260410124500,
+        name: "chat_message_usage",
+        migrate: v20260410124500_chat_message_usage::migrate,
+    },
+    Migration {
+        version: 20260410143000,
+        name: "upstream_provider_metadata",
+        migrate: v20260410143000_upstream_provider_metadata::migrate,
+    },
+    Migration {
+        version: 20260410153000,
+        name: "chat_conversation_provider_origin",
+        migrate: v20260410153000_chat_conversation_provider_origin::migrate,
+    },
+    Migration {
+        version: 20260411190000,
+        name: "delegated_sessions",
+        migrate: v20260411190000_delegated_sessions::migrate,
+    },
+    Migration {
+        version: 20260413043153,
+        name: "drop_agent_lane_settings_fallback_harness",
+        migrate: v20260413043153_drop_agent_lane_settings_fallback_harness::migrate,
+    },
+    Migration {
+        version: 20260414060000,
+        name: "verification_run_store",
+        migrate: v20260414060000_verification_run_store::migrate,
+    },
+    Migration {
+        version: 20260414123000,
+        name: "drop_verification_metadata_column",
+        migrate: v20260414123000_drop_verification_metadata_column::migrate,
+    },
+    Migration {
+        version: 20260415164250,
+        name: "merge_validation_mode_off",
+        migrate: v20260415164250_merge_validation_mode_off::migrate,
+    },
 ];
 
 /// Run all pending migrations on the database
@@ -797,6 +899,31 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+pub(super) fn run_migrations_through(conn: &Connection, target_version: i64) -> AppResult<()> {
+    create_migrations_table(conn)?;
+
+    let mut current_version = get_schema_version(conn)?;
+
+    for migration in MIGRATIONS {
+        if current_version < migration.version && migration.version <= target_version {
+            (migration.migrate)(conn)?;
+            set_schema_version(conn, migration.version)?;
+            current_version = migration.version;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+pub(super) fn latest_registered_migration_version() -> i64 {
+    MIGRATIONS
+        .last()
+        .map(|migration| migration.version)
+        .expect("migration registry should not be empty")
 }
 
 /// Create the migrations tracking table

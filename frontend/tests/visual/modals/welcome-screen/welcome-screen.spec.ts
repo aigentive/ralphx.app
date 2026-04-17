@@ -4,7 +4,7 @@
 
 import { test, expect } from "@playwright/test";
 import { WelcomeScreenPage } from "../../../pages/modals/welcome-screen.page";
-import { openWelcomeScreen, closeWelcomeScreen } from "../../../helpers/welcome-screen.helpers";
+import { openWelcomeScreen } from "../../../helpers/welcome-screen.helpers";
 
 test.describe("WelcomeScreen Visual Tests", () => {
   let welcomeScreenPage: WelcomeScreenPage;
@@ -22,7 +22,7 @@ test.describe("WelcomeScreen Visual Tests", () => {
     // Verify all key elements are present
     await expect(welcomeScreenPage.container).toBeVisible();
     await expect(welcomeScreenPage.title).toContainText("RalphX");
-    await expect(welcomeScreenPage.tagline).toContainText("Watch AI Build Your Software");
+    await expect(welcomeScreenPage.tagline).toContainText("Describe it. Ship it.");
     await expect(welcomeScreenPage.createProjectButton).toBeVisible();
     await expect(welcomeScreenPage.keyboardHint).toBeVisible();
 

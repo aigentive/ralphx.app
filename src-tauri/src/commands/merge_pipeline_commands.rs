@@ -15,6 +15,20 @@ use crate::domain::state_machine::transition_handler::{
     has_main_merge_deferred_metadata, has_merge_deferred_metadata,
 };
 
+fn is_visible_merge_pipeline_status(status: InternalStatus) -> bool {
+    matches!(
+        status,
+        InternalStatus::Merging
+            | InternalStatus::PendingMerge
+            | InternalStatus::MergeConflict
+            | InternalStatus::MergeIncomplete
+    )
+}
+
+fn is_visible_merge_pipeline_task(task: &Task) -> bool {
+    task.archived_at.is_none() && is_visible_merge_pipeline_status(task.internal_status)
+}
+
 /// A task in the merge pipeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergePipelineTask {
@@ -93,7 +107,10 @@ fn resolve_merge_branches_from_cache(
             .iter()
             .find(|pb| pb.merge_task_id.as_ref() == Some(&task.id))
         {
-            return (pb.branch_name.clone(), pb.base_branch_override.clone().unwrap_or(base_branch));
+            return (
+                pb.branch_name.clone(),
+                pb.base_branch_override.clone().unwrap_or(base_branch),
+            );
         }
     }
 
@@ -128,14 +145,6 @@ pub async fn get_merge_pipeline(
     let mut waiting = Vec::new();
     let mut needs_attention = Vec::new();
 
-    // Merge-related statuses
-    let merge_statuses = [
-        InternalStatus::Merging,
-        InternalStatus::PendingMerge,
-        InternalStatus::MergeConflict,
-        InternalStatus::MergeIncomplete,
-    ];
-
     let projects = if let Some(pid) = &effective_project_id {
         match state
             .project_repo
@@ -169,8 +178,8 @@ pub async fn get_merge_pipeline(
             .unwrap_or_default();
 
         for task in tasks {
-            // Filter by merge-related statuses
-            if !merge_statuses.contains(&task.internal_status) {
+            // Merge pipeline should only show live merge work, never archived stale rows.
+            if !is_visible_merge_pipeline_task(&task) {
                 continue;
             }
 
@@ -386,5 +395,28 @@ mod tests {
         let (source, target) = resolve_merge_branches_from_cache(&task, &project, &[]);
         assert_eq!(source, "ralphx/task-merge-99");
         assert_eq!(target, "main");
+    }
+
+    #[test]
+    fn archived_pending_merge_task_is_hidden_from_merge_pipeline() {
+        let mut task = make_task("archived-pending", TaskCategory::Regular);
+        task.internal_status = InternalStatus::PendingMerge;
+        task.archived_at = Some(Utc::now());
+
+        assert!(
+            !is_visible_merge_pipeline_task(&task),
+            "archived pending-merge tasks must not appear in the merge pipeline"
+        );
+    }
+
+    #[test]
+    fn active_pending_merge_task_stays_visible_in_merge_pipeline() {
+        let mut task = make_task("live-pending", TaskCategory::Regular);
+        task.internal_status = InternalStatus::PendingMerge;
+
+        assert!(
+            is_visible_merge_pipeline_task(&task),
+            "active pending-merge tasks should remain visible in the merge pipeline"
+        );
     }
 }

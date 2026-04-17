@@ -2,7 +2,6 @@
 // Global project configuration with Zod schemas
 
 import { z } from "zod";
-import { ModelSchema } from "./agent-profile";
 
 // ============================================================================
 // Execution Settings
@@ -13,14 +12,12 @@ export const ExecutionSettingsSchema = z.object({
   max_concurrent_tasks: z.number().int().min(1).max(10).default(10),
   /** Maximum concurrent ideation or verification sessions for this project */
   project_ideation_max: z.number().int().min(0).max(10).default(5),
-  /** Auto-commit changes after task completion */
+  /** Auto-commit changes after task completion — fixed product behavior, not user-configurable */
   auto_commit: z.boolean().default(true),
   /** Commit message prefix (conventional commits) */
   commit_message_prefix: z.string().default("feat: "),
-  /** Pause queue when a task fails */
+  /** Pause queue when a task fails — persisted but no runtime enforcement */
   pause_on_failure: z.boolean().default(true),
-  /** Review before destructive operations */
-  review_before_destructive: z.boolean().default(true),
 });
 
 export type ExecutionSettings = z.infer<typeof ExecutionSettingsSchema>;
@@ -31,25 +28,6 @@ export const DEFAULT_EXECUTION_SETTINGS: ExecutionSettings = {
   auto_commit: true,
   commit_message_prefix: "feat: ",
   pause_on_failure: true,
-  review_before_destructive: true,
-};
-
-// ============================================================================
-// Model Settings
-// ============================================================================
-
-export const ModelSettingsSchema = z.object({
-  /** Default model for task execution */
-  model: ModelSchema.default("sonnet"),
-  /** Allow upgrading to Opus for complex tasks */
-  allow_opus_upgrade: z.boolean().default(true),
-});
-
-export type ModelSettings = z.infer<typeof ModelSettingsSchema>;
-
-export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  model: "sonnet",
-  allow_opus_upgrade: true,
 };
 
 // ============================================================================
@@ -80,44 +58,19 @@ export const DEFAULT_PROJECT_REVIEW_SETTINGS: ProjectReviewSettings = {
 };
 
 // ============================================================================
-// Supervisor Settings
-// ============================================================================
-
-export const SupervisorSettingsSchema = z.object({
-  /** Enable watchdog monitoring */
-  supervisor_enabled: z.boolean().default(true),
-  /** Number of identical tool calls before loop detection */
-  loop_threshold: z.number().int().min(2).max(10).default(3),
-  /** Seconds without progress before stuck detection */
-  stuck_timeout: z.number().int().min(60).max(1800).default(300),
-});
-
-export type SupervisorSettings = z.infer<typeof SupervisorSettingsSchema>;
-
-export const DEFAULT_SUPERVISOR_SETTINGS: SupervisorSettings = {
-  supervisor_enabled: true,
-  loop_threshold: 3,
-  stuck_timeout: 300,
-};
-
-// ============================================================================
 // Combined Project Settings
 // ============================================================================
 
 export const ProjectSettingsSchema = z.object({
   execution: ExecutionSettingsSchema.default(DEFAULT_EXECUTION_SETTINGS),
-  model: ModelSettingsSchema.default(DEFAULT_MODEL_SETTINGS),
   review: ProjectReviewSettingsSchema.default(DEFAULT_PROJECT_REVIEW_SETTINGS),
-  supervisor: SupervisorSettingsSchema.default(DEFAULT_SUPERVISOR_SETTINGS),
 });
 
 export type ProjectSettings = z.infer<typeof ProjectSettingsSchema>;
 
 export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
   execution: DEFAULT_EXECUTION_SETTINGS,
-  model: DEFAULT_MODEL_SETTINGS,
   review: DEFAULT_PROJECT_REVIEW_SETTINGS,
-  supervisor: DEFAULT_SUPERVISOR_SETTINGS,
 };
 
 // ============================================================================

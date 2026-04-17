@@ -222,11 +222,10 @@ async fn test_spawner_maps_roles_correctly() {
     spawner.spawn("qa-prep", "t3").await;
     spawner.spawn("qa-refiner", "t4").await;
     spawner.spawn("qa-tester", "t5").await;
-    spawner.spawn("supervisor", "t6").await;
-    spawner.spawn("custom-agent", "t7").await;
+    spawner.spawn("custom-agent", "t6").await;
 
     let calls = mock.get_spawn_calls().await;
-    assert_eq!(calls.len(), 7);
+    assert_eq!(calls.len(), 6);
 
     let roles: Vec<_> = calls
         .iter()
@@ -244,6 +243,5 @@ async fn test_spawner_maps_roles_correctly() {
     assert_eq!(roles[2], AgentRole::QaPrep);
     assert_eq!(roles[3], AgentRole::QaRefiner);
     assert_eq!(roles[4], AgentRole::QaTester);
-    assert_eq!(roles[5], AgentRole::Supervisor);
-    assert_eq!(roles[6], AgentRole::Custom("custom-agent".to_string()));
+    assert_eq!(roles[5], AgentRole::Custom("custom-agent".to_string()));
 }

@@ -5,6 +5,7 @@
 
 import { test, expect } from "@playwright/test";
 import { BlockReasonDialogPage } from "../../../pages/modals/block-reason-dialog.page";
+import { setupApp } from "../../../fixtures/setup.fixtures";
 import { openBlockDialogViaKanban } from "../../../helpers/block-reason-dialog.helpers";
 
 test.describe("BlockReasonDialog Visual Tests", () => {
@@ -12,8 +13,20 @@ test.describe("BlockReasonDialog Visual Tests", () => {
 
   test.beforeEach(async ({ page }) => {
     dialogPage = new BlockReasonDialogPage(page);
-    await page.goto("http://localhost:5173");
-    await page.waitForLoadState("networkidle");
+    await setupApp(page);
+    await page.evaluate(async () => {
+      const { useProjectStore } = await import("/src/stores/projectStore");
+      const { planApi } = await import("/src/api/plan");
+      const planStore = (window as Window & {
+        __planStore?: { getState(): { loadActivePlan(projectId: string): Promise<void> } };
+      }).__planStore;
+
+      useProjectStore.getState().selectProject("project-mock-1");
+      await planApi.setActivePlan("project-mock-1", "plan-mock-2", "kanban_inline");
+      await planStore?.getState().loadActivePlan("project-mock-1");
+    });
+    await page.click('[data-testid="nav-kanban"]');
+    await page.waitForSelector('[data-testid="task-board"]', { timeout: 10000 });
   });
 
   test("renders dialog with task title", async ({ page }) => {

@@ -120,29 +120,8 @@ pub async fn update_execution_settings(
     // DB is already persisted above so PendingSessionDrainService will see the new capacity.
     if updated.project_ideation_max > old_project_ideation_max {
         if let Some(ref pid) = project_id {
-            let mut svc = ClaudeChatService::new(
-                Arc::clone(&app_state.chat_message_repo),
-                Arc::clone(&app_state.chat_attachment_repo),
-                Arc::clone(&app_state.artifact_repo),
-                Arc::clone(&app_state.chat_conversation_repo),
-                Arc::clone(&app_state.agent_run_repo),
-                Arc::clone(&app_state.project_repo),
-                Arc::clone(&app_state.task_repo),
-                Arc::clone(&app_state.task_dependency_repo),
-                Arc::clone(&app_state.ideation_session_repo),
-                Arc::clone(&app_state.activity_event_repo),
-                Arc::clone(&app_state.message_queue),
-                Arc::clone(&app_state.running_agent_registry),
-                Arc::clone(&app_state.memory_event_repo),
-            )
-            .with_execution_state(Arc::clone(&execution_state))
-            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
-            svc = svc
-                .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo));
-            if let Some(ref ah) = app_state.app_handle {
-                svc = svc.with_app_handle(ah.clone());
-            }
+            let svc = app_state
+                .build_chat_service_with_execution_state(Arc::clone(&execution_state));
             let chat_svc: Arc<dyn ChatService> = Arc::new(svc);
 
             let drain = Arc::new(

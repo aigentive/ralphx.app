@@ -13,8 +13,21 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronRight, Loader2, Bot } from "lucide-react";
 import type { StreamingTask } from "@/types/streaming-task";
-import { ToolCallIndicator } from "./ToolCallIndicator";
-import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
+import { formatDuration } from "./tool-call-utils";
+import {
+  TaskCardKindBadge,
+  TaskCardModelBadge,
+  TaskCardProviderHarnessBadge,
+  TaskCardStatusBadge,
+  TaskCardSubagentTypeBadge,
+  TaskCardSummary,
+} from "./TaskCardShared";
+import {
+  TaskCardTranscriptView,
+} from "./TaskCardTranscript";
+import { buildTaskCardTranscriptEntryFromStreamingTask } from "./TaskCardTranscript.utils";
+import { TaskToolCallDelegatedTranscript } from "./TaskToolCallDelegatedTranscript";
+import { canonicalizeToolName } from "./tool-widgets/tool-name";
 
 // ============================================================================
 // Constants
@@ -58,24 +71,16 @@ function useElapsedTimer(startedAt: number, isRunning: boolean): string {
 
 /** Completed state summary line */
 function CompletedSummary({ task }: { task: StreamingTask }) {
-  const parts: string[] = [];
-
-  if (task.totalDurationMs != null) {
-    parts.push(formatDuration(task.totalDurationMs));
-  }
-  if (task.totalTokens != null) {
-    parts.push(`${task.totalTokens.toLocaleString()} tokens`);
-  }
-  if (task.totalToolUseCount != null) {
-    parts.push(`${task.totalToolUseCount} tool${task.totalToolUseCount !== 1 ? "s" : ""}`);
-  }
-
-  if (parts.length === 0) return null;
-
   return (
-    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-      {parts.join(" \u00B7 ")}
-    </span>
+    <TaskCardSummary
+      metrics={{
+        totalDurationMs: task.totalDurationMs,
+        totalTokens: task.totalTokens,
+        totalToolUseCount: task.totalToolUseCount,
+        estimatedUsd: task.estimatedUsd,
+      }}
+      className="text-xs"
+    />
   );
 }
 
@@ -88,6 +93,8 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
 }: TaskSubagentCardProps) {
   const isRunning = task.status === "running";
   const isCompleted = task.status === "completed";
+  const isFailed = task.status === "failed";
+  const isCancelled = task.status === "cancelled";
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -109,10 +116,9 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [isCompleted]);
 
-  // Check if there are any displayable child tool calls (excludes result markers)
-  const hasChildCalls = task.childToolCalls.some(
-    (tc) => !tc.name.startsWith("result:toolu")
-  );
+  const transcriptEntry = buildTaskCardTranscriptEntryFromStreamingTask(task);
+  const hasTranscriptBody = transcriptEntry.blocks.length > 0;
+  const hasChildCalls = transcriptEntry.blocks.some((block) => block.type === "tool_call");
 
   // Auto-scroll content when new tool calls arrive (only if user is near bottom)
   useEffect(() => {
@@ -121,9 +127,24 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [task.childToolCalls.length, isRunning]);
 
-  const isAgentCall = task.toolName.toLowerCase() === "agent";
-  const subagentColor = getSubagentTypeColor(task.subagentType);
-  const modelColor = getModelColor(task.model);
+  const isDelegateCall = canonicalizeToolName(task.toolName) === "delegate_start";
+  const delegatedConversationId = isDelegateCall ? task.delegatedConversationId ?? null : null;
+  const hasBody = hasTranscriptBody || delegatedConversationId != null;
+  const providerMetadata = {
+    providerHarness: task.providerHarness,
+    providerSessionId: task.providerSessionId,
+    upstreamProvider: task.upstreamProvider,
+    providerProfile: task.providerProfile,
+    logicalModel: task.logicalModel,
+    effectiveModelId: task.effectiveModelId,
+    logicalEffort: task.logicalEffort,
+    effectiveEffort: task.effectiveEffort,
+    inputTokens: task.inputTokens,
+    outputTokens: task.outputTokens,
+    cacheCreationTokens: task.cacheCreationTokens,
+    cacheReadTokens: task.cacheReadTokens,
+    estimatedUsd: task.estimatedUsd,
+  };
 
   return (
     <div
@@ -165,26 +186,10 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
         )}
 
         {/* Agent vs Task label */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-            backgroundColor: isAgentCall ? "hsla(14, 100%, 60%, 0.12)" : "hsla(220, 10%, 50%, 0.12)",
-            color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
-          }}
-        >
-          {isAgentCall ? "Agent" : "Task"}
-        </span>
+        <TaskCardKindBadge toolName={task.toolName} />
 
         {/* Subagent type badge */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-            backgroundColor: subagentColor.bg,
-            color: subagentColor.text,
-          }}
-        >
-          {task.subagentType}
-        </span>
+        {!isDelegateCall && <TaskCardSubagentTypeBadge subagentType={task.subagentType} />}
 
         {/* Description text */}
         <span
@@ -194,16 +199,22 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
           {task.description}
         </span>
 
+        <TaskCardProviderHarnessBadge
+          providerHarness={task.providerHarness}
+          providerMetadata={providerMetadata}
+        />
+
         {/* Model badge */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-          style={{
-            backgroundColor: modelColor.bg,
-            color: modelColor.text,
-          }}
-        >
-          {task.model}
-        </span>
+        <TaskCardModelBadge
+          label={task.effectiveModelId ?? task.logicalModel ?? task.model}
+          colorKey={task.effectiveModelId ?? task.logicalModel ?? task.model}
+          providerMetadata={providerMetadata}
+        />
+
+        <TaskCardStatusBadge
+          label={(isFailed || isCancelled) ? task.status : null}
+          tone="error"
+        />
 
         {/* Timer / Duration */}
         <span
@@ -217,48 +228,22 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
       {/* Body */}
       {isExpanded && (
         <div className="px-3 py-2">
-          {/* Child tool calls rendered as compact ToolCallIndicators */}
-          {(isRunning || (isCompleted && hasChildCalls)) && (
-            <>
-              {/* Scrollable tool call list */}
-              {hasChildCalls && (
-                <div
-                  ref={contentRef}
-                  onScroll={handleScroll}
-                  className="space-y-1 overflow-y-auto"
-                  style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
-                >
-                  {/* All child calls rendered with compact ToolCallIndicator */}
-                  {task.childToolCalls
-                    .filter((tc) => !tc.name.startsWith("result:toolu"))
-                    .map((tc) => (
-                      <ToolCallIndicator key={tc.id} toolCall={tc} compact />
-                    ))
-                  }
-
-                  {/* Active indicator */}
-                  {isRunning && (
-                    <div className="flex items-center gap-2 text-xs pt-1">
-                      <span className="w-4" />
-                      <div className="flex items-center gap-1">
-                        <div
-                          className="w-1.5 h-1.5 rounded-full animate-pulse"
-                          style={{ backgroundColor: "var(--accent-primary)" }}
-                        />
-                        <div
-                          className="w-1.5 h-1.5 rounded-full animate-pulse"
-                          style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.15s" }}
-                        />
-                        <div
-                          className="w-1.5 h-1.5 rounded-full animate-pulse"
-                          style={{ backgroundColor: "var(--accent-primary)", animationDelay: "0.3s" }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
+          {hasBody && (
+            <div
+              ref={contentRef}
+              onScroll={handleScroll}
+              className="overflow-y-auto"
+              style={{ maxHeight: `${MAX_CONTENT_HEIGHT}px`, overscrollBehavior: "contain" }}
+            >
+              {delegatedConversationId ? (
+                <TaskToolCallDelegatedTranscript
+                  conversationId={delegatedConversationId}
+                  fallbackText={task.textOutput}
+                />
+              ) : (
+                <TaskCardTranscriptView entries={[transcriptEntry]} />
               )}
-            </>
+            </div>
           )}
 
           {/* Completed state: summary */}

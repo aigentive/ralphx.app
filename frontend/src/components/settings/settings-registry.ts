@@ -1,15 +1,12 @@
 export type SettingsSectionId =
   | "execution"
+  | "execution-harnesses"
   | "global-execution"
-  | "model"
   | "review"
-  | "supervisor"
-  | "git"
-  | "github"
+  | "repository"
   | "project-analysis"
   | "ideation-workflow"
-  | "ideation-effort"
-  | "ideation-models"
+  | "ideation-harnesses"
   | "api-keys"
   | "external-mcp";
 
@@ -30,16 +27,13 @@ export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
 
 export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "execution", groupId: "general", label: "Execution" },
-  { id: "global-execution", groupId: "general", label: "Global Execution" },
-  { id: "model", groupId: "general", label: "Model" },
-  { id: "review", groupId: "general", label: "Review" },
-  { id: "supervisor", groupId: "general", label: "Supervisor" },
-  { id: "git", groupId: "workspace", label: "Git" },
-  { id: "github", groupId: "workspace", label: "GitHub" },
-  { id: "project-analysis", groupId: "workspace", label: "Project Analysis" },
-  { id: "ideation-workflow", groupId: "ideation", label: "Workflow" },
-  { id: "ideation-effort", groupId: "ideation", label: "Effort" },
-  { id: "ideation-models", groupId: "ideation", label: "Models" },
+  { id: "execution-harnesses", groupId: "general", label: "Execution Agents" },
+  { id: "global-execution", groupId: "general", label: "Global Capacity" },
+  { id: "review", groupId: "general", label: "Review Policy" },
+  { id: "repository", groupId: "workspace", label: "Repository" },
+  { id: "project-analysis", groupId: "workspace", label: "Setup & Validation" },
+  { id: "ideation-workflow", groupId: "ideation", label: "Planning & Verification" },
+  { id: "ideation-harnesses", groupId: "ideation", label: "Ideation Agents" },
   { id: "api-keys", groupId: "access", label: "API Keys" },
   { id: "external-mcp", groupId: "access", label: "External MCP" },
 ];

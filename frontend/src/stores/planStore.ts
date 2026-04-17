@@ -201,6 +201,10 @@ export const usePlanStore = create<PlanState & PlanActions>()(
   }))
 );
 
+if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+  window.__planStore = usePlanStore;
+}
+
 // ============================================================================
 // Selectors (defined outside store for memoization)
 // ============================================================================

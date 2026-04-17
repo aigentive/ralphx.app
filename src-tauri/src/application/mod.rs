@@ -1,7 +1,12 @@
 // Application layer - dependency injection and service orchestration
 // This layer bridges the domain and infrastructure layers
 
+pub mod agent_lane_settings_bootstrap;
+pub mod agent_lane_resolution;
+pub mod agent_client_bundle;
+pub mod app_setup;
 pub mod app_state;
+pub mod ideation_harness_availability;
 pub mod apply_service;
 pub mod chat_attachment_service;
 pub mod chat_resumption;
@@ -13,6 +18,7 @@ pub mod ideation_effort_bootstrap;
 pub mod ideation_model_bootstrap;
 pub mod diff_service;
 pub mod git_service;
+pub mod harness_runtime_registry;
 pub mod ideation_service;
 pub mod interactive_process_registry;
 pub mod memory_archive_service;
@@ -27,6 +33,9 @@ pub mod qa_service;
 pub mod question_state;
 pub mod reconciliation;
 pub mod recovery_queue;
+pub mod runtime_factory;
+pub mod runtime_wiring;
+pub mod server_boot;
 pub mod resume_validator;
 pub mod services;
 pub mod review_issue_service;
@@ -34,8 +43,17 @@ pub mod review_service;
 pub mod session_export_service;
 pub mod session_namer_prompt;
 pub mod session_reopen_service;
+pub mod setup_settings;
+pub mod shutdown;
 pub mod startup_jobs;
+pub mod startup_background;
+pub mod startup_bootstrap;
+pub mod startup_cleanup;
+pub mod startup_pipeline;
+pub mod startup_pipeline_launch;
+pub mod startup_runtime_builders;
 pub mod supervisor_service;
+pub mod startup_transition_factory;
 pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
@@ -49,6 +67,16 @@ pub mod webhook_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
+pub(crate) use agent_client_bundle::AgentClientBundle;
+pub(crate) use harness_runtime_registry::probe_supported_harnesses;
+pub use agent_lane_settings_bootstrap::{
+    load_or_seed_agent_lane_settings_defaults, AgentLaneSettingsBootstrapResult,
+};
+pub(crate) use ideation_harness_availability::{
+    build_lane_harness_availability, resolve_lane_harness_config,
+    resolve_primary_ideation_harness_availability, team_mode_supported_for_context,
+    validate_chat_runtime_for_context, AGENT_LANES, IDEATION_LANES,
+};
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
@@ -106,6 +134,10 @@ pub use webhook_service::WebhookService;
 #[cfg(test)]
 mod app_state_shared_state_tests;
 #[cfg(test)]
+mod agent_lane_resolution_tests;
+#[cfg(test)]
+mod ideation_harness_availability_tests;
+#[cfg(test)]
 mod recovery_queue_tests;
 #[cfg(test)]
 mod webhook_service_tests;
@@ -122,9 +154,10 @@ mod task_transition_service_tests;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
+    AppChatService,
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentMessageQueuedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
-    ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,
+    ChatConversationWithMessages, ChatService, ChatServiceError,
     MockChatResponse, MockChatService, SendResult, TeamCostUpdatePayload, TeamCreatedPayload,
     TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
     TeamTeammateSpawnedPayload, AGENT_MESSAGE_QUEUED,

@@ -17,6 +17,7 @@ fn test_task_started_emitted_verbose_mode() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     };
@@ -175,6 +176,7 @@ fn test_task_started_without_team_args_has_none() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });
@@ -210,6 +212,7 @@ fn test_task_completed_emitted_on_tool_result() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     };
@@ -268,6 +271,7 @@ fn test_non_task_tool_use_does_not_emit_task_started() {
                 input: serde_json::json!({"pattern": "test"}),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     };
@@ -294,6 +298,7 @@ fn test_task_completed_parses_usage_text_format() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });
@@ -350,6 +355,7 @@ fn test_task_completed_parses_content_blocks_format() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });
@@ -405,6 +411,7 @@ fn test_task_completed_no_stats_still_emits_event() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });

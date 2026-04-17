@@ -144,6 +144,71 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
+  it("keeps verification history visible when only roundDetails remain after current gaps are cleared", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [],
+      rounds: [],
+      roundDetails: [
+        {
+          round: 1,
+          gapScore: 8,
+          gapCount: 2,
+          gaps: [
+            { severity: "critical", category: "completeness", description: "Missing migration registration" },
+            { severity: "high", category: "testing", description: "Missing register-project coverage" },
+          ],
+        },
+      ],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+    expect(screen.getByTestId("verification-history")).toBeInTheDocument();
+  });
+
+  it("uses verification query status and gaps even when the session cache still says unverified", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [
+        {
+          severity: "medium",
+          category: "testing",
+          description: "Missing sqlite repo regression",
+        },
+      ],
+      rounds: [],
+      roundDetails: [],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+    expect(screen.getByTestId("address-gaps-button")).toBeInTheDocument();
+    expect(screen.getByTestId("re-verify-button")).toBeInTheDocument();
+  });
+
   it("shows empty state when query returns null (404 — no verification ever started)", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     // Both queries return null/empty
@@ -184,6 +249,40 @@ describe("VerificationPanel — page-load hydration", () => {
       expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
     });
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+  });
+
+  it("keeps verification history visible and does not replace the tab with the child transcript", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const childSession = {
+      id: "child-run-1",
+      sessionPurpose: "verification",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    const verificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      gaps: [],
+      rounds: [{ round: 1, gapScore: 8, gapCount: 2 }],
+      roundDetails: [{ round: 1, gapScore: 8, gapCount: 2, gaps: [] }],
+    };
+
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = {
+      ...mockStoreState,
+      lastVerificationChildId: { "session-1": "child-run-1" },
+    };
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-history")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("verification-child-transcript")).not.toBeInTheDocument();
   });
 
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {
@@ -229,40 +328,118 @@ describe("VerificationPanel — page-load hydration", () => {
     });
   });
 
-  it("handleRunSelect calls setLastVerificationChildId only — does NOT call setActiveVerificationChildId", async () => {
+  it("run selection is generation-based and does not mutate verification child store state", async () => {
     const { useQuery } = await import("@tanstack/react-query");
-    const childSession = {
-      id: "child-run-1",
-      sessionPurpose: "verification",
-      createdAt: "2026-01-01T00:00:00Z",
+    const verificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      generation: 20,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+      verificationChild: {
+        latestChildSessionId: "child-run-1",
+        agentState: "likely_generating",
+        lastAssistantMessage: "Bootstrapping the verifier context before round 1.",
+      },
+      runHistory: [
+        {
+          generation: 20,
+          status: "reviewing",
+          inProgress: true,
+          roundCount: 0,
+          gapCount: 0,
+        },
+        {
+          generation: 18,
+          status: "needs_revision",
+          inProgress: false,
+          roundCount: 2,
+          gapCount: 1,
+        },
+      ],
     };
     vi.mocked(useQuery)
-      .mockReturnValueOnce({ data: null } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
-
-    // activeVerificationChildId already set — should NOT be re-asserted by handleRunSelect.
-    // lastVerificationChildId is empty so the auto-update effect guard (latestId !== lastVerificationChildId)
-    // evaluates true, triggering setLastVerificationChildId while skipping setActiveVerificationChildId.
-    mockStoreState = {
-      ...mockStoreState,
-      activeVerificationChildId: { "session-1": "child-run-1" },
-      lastVerificationChildId: {},
-    };
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
 
     const { VerificationPanel } = await import("./VerificationPanel");
     const { userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     render(<VerificationPanel session={baseSession} />);
 
-    // Open the run picker (only shown when runs.length > 1, so use single-run label path)
-    // When only 1 run, picker is non-interactive — validate indirectly via store calls
-    // The auto-update effect should call setLastVerificationChildId but NOT setActiveVerificationChildId
-    // (since activeVerificationChildId is already non-null)
-    await waitFor(() => {
-      expect(mockSetLastVerificationChildId).toHaveBeenCalledWith("session-1", "child-run-1");
-    });
+    await user.click(await screen.findByTestId("verification-run-picker-trigger"));
+    await user.click(await screen.findByTestId("verification-run-option-1"));
+
     expect(mockSetActiveVerificationChildId).not.toHaveBeenCalled();
-    void user;
+    expect(mockSetLastVerificationChildId).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current generation selected while the live run is still bootstrapping", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const currentVerificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      generation: 21,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+      verificationChild: {
+        latestChildSessionId: "child-run-1",
+        agentState: "likely_generating",
+        lastAssistantMessage: "Bootstrapping the verifier context before round 1.",
+      },
+      runHistory: [
+        {
+          generation: 21,
+          status: "reviewing",
+          inProgress: true,
+          roundCount: 0,
+          gapCount: 0,
+        },
+        {
+          generation: 18,
+          status: "needs_revision",
+          inProgress: false,
+          roundCount: 2,
+          gapCount: 1,
+        },
+      ],
+    };
+    const historicalVerificationData = {
+      sessionId: "session-1",
+      status: "needs_revision",
+      inProgress: false,
+      generation: 18,
+      gaps: [
+        {
+          severity: "high",
+          category: "testing",
+          description: "Old historical gap that should not replace the live run",
+        },
+      ],
+      rounds: [{ round: 1, gapScore: 4, gapCount: 1 }],
+      roundDetails: [{ round: 1, gapScore: 4, gapCount: 1, gaps: [] }],
+    };
+
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: currentVerificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: historicalVerificationData } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current run");
+    });
+    expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Run 1");
+    expect(screen.getByTestId("verification-current-run-bootstrap")).toBeInTheDocument();
+    expect(screen.getByText("Verification is warming up")).toBeInTheDocument();
+    expect(screen.getByText("Bootstrapping the verifier context before round 1.")).toBeInTheDocument();
   });
 
   it("auto-update effect sets activeVerificationChildId only on first mount (both null)", async () => {
@@ -274,6 +451,7 @@ describe("VerificationPanel — page-load hydration", () => {
     };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: null } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // Both IDs null — first mount scenario
@@ -375,6 +553,7 @@ describe("VerificationPanel — page-load hydration", () => {
     const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // activeVerificationChildId=null, lastVerificationChildId="child-old" (terminated child)
@@ -400,6 +579,7 @@ describe("VerificationPanel — page-load hydration", () => {
     const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
     vi.mocked(useQuery)
       .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: undefined } as unknown as ReturnType<typeof useQuery>)
       .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
 
     // activeVerificationChildId=null (cleared by termination), lastVerificationChildId="child-terminated"

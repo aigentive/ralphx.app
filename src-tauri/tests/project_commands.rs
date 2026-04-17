@@ -4,7 +4,7 @@ use ralphx_lib::application::AppState;
 use ralphx_lib::commands::project_commands::*;
 use ralphx_lib::domain::entities::{
     ArtifactId, GitMode, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    ProjectId, TaskId,
+    ProjectId, TaskId, MergeValidationMode,
 };
 use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository};
 use ralphx_lib::infrastructure::memory::{
@@ -98,6 +98,19 @@ async fn test_create_project_with_defaults() {
     assert_eq!(created.name, "Test Project");
     assert_eq!(created.working_directory, "/test/path");
     assert_eq!(created.git_mode, GitMode::Worktree);
+    assert_eq!(created.merge_validation_mode, MergeValidationMode::Off);
+}
+
+#[test]
+fn parse_merge_validation_mode_or_default_invalid_value_defaults_to_off() {
+    assert_eq!(
+        parse_merge_validation_mode_or_default("strict"),
+        MergeValidationMode::Off
+    );
+    assert_eq!(
+        parse_merge_validation_mode_or_default("warn"),
+        MergeValidationMode::Warn
+    );
 }
 
 #[tokio::test]
@@ -449,7 +462,81 @@ mod ipc_contract {
         assert!(input.base_branch.is_none());
         assert!(input.merge_validation_mode.is_none());
         assert!(input.merge_strategy.is_none());
+        assert!(input.worktree_parent_directory.is_none());
     }
+
+    #[test]
+    fn update_project_input_worktree_parent_directory_with_value() {
+        let json = r#"{"worktreeParentDirectory":"/custom/worktrees"}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            input.worktree_parent_directory,
+            Some(Some("/custom/worktrees".to_string()))
+        );
+    }
+
+    #[test]
+    fn update_project_input_worktree_parent_directory_null_clears_field() {
+        let json = r#"{"worktreeParentDirectory":null}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.worktree_parent_directory, Some(None));
+    }
+
+    #[test]
+    fn update_project_input_worktree_parent_directory_absent_is_none() {
+        let json = r#"{"name":"Test"}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert!(input.worktree_parent_directory.is_none());
+    }
+}
+
+// ── worktree_parent_directory persistence tests ────────────────────────────
+
+#[tokio::test]
+async fn test_update_project_persists_worktree_parent_directory() {
+    let state = setup_test_state();
+
+    let project = Project::new("Test".to_string(), "/test/path".to_string());
+    assert!(project.worktree_parent_directory.is_none(), "default should be None");
+    let created = state.project_repo.create(project).await.unwrap();
+
+    let mut updated = created.clone();
+    updated.worktree_parent_directory = Some("/custom/worktrees".to_string());
+    updated.touch();
+    state.project_repo.update(&updated).await.unwrap();
+
+    let found = state
+        .project_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        found.worktree_parent_directory,
+        Some("/custom/worktrees".to_string())
+    );
+}
+
+#[tokio::test]
+async fn test_update_project_clears_worktree_parent_directory() {
+    let state = setup_test_state();
+
+    let mut project = Project::new("Test".to_string(), "/test/path".to_string());
+    project.worktree_parent_directory = Some("/original/worktrees".to_string());
+    let created = state.project_repo.create(project).await.unwrap();
+
+    let mut updated = created.clone();
+    updated.worktree_parent_directory = None;
+    updated.touch();
+    state.project_repo.update(&updated).await.unwrap();
+
+    let found = state
+        .project_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(found.worktree_parent_directory.is_none());
 }
 
 // ── handle_pr_mode_switch tests ──────────────────────────────────────────────

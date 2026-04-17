@@ -37,10 +37,10 @@ export class ReviewDetailModalPage extends BasePage {
     // Modal
     this.modal = page.getByTestId("review-detail-modal");
     this.modalTitle = page.getByTestId("review-detail-modal-title");
-    this.closeButton = page.getByTestId("review-detail-modal-close");
+    this.closeButton = page.locator('[data-testid="review-detail-modal"] [data-testid="dialog-close"]');
 
     // Left pane
-    this.taskTitle = page.getByTestId("modal-task-title");
+    this.taskTitle = this.modalTitle;
     this.taskDescription = page.getByTestId("modal-task-description");
     this.aiReviewSummary = page.getByTestId("ai-review-summary");
     this.reviewHistory = page.getByTestId("review-history");

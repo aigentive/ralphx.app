@@ -13,7 +13,8 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
 import { AutoVerificationCard } from "./AutoVerificationCard";
-import { AUTO_VERIFICATION_KEY } from "@/types/ideation";
+import { VerificationResultCard } from "./VerificationResultCard";
+import { AUTO_VERIFICATION_KEY, VERIFICATION_RESULT_KEY } from "@/types/ideation";
 import {
   TypingIndicator,
   FailedRunBanner,
@@ -36,6 +37,8 @@ import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESS
 import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
+import { isProviderRole } from "@/lib/chat/provider-role";
+import { normalizeStreamingVerificationContentBlocks } from "./verification-tool-calls";
 
 // ============================================================================
 // Constants
@@ -77,6 +80,19 @@ export interface ChatMessageData {
   attachments?: MessageAttachment[];
   sender?: string | null;
   metadata?: string | null;
+  providerHarness?: string | null;
+  providerSessionId?: string | null;
+  upstreamProvider?: string | null;
+  providerProfile?: string | null;
+  logicalModel?: string | null;
+  effectiveModelId?: string | null;
+  logicalEffort?: string | null;
+  effectiveEffort?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  cacheReadTokens?: number | null;
+  estimatedUsd?: number | null;
 }
 
 /** Discriminated union for timeline items when hook events are interleaved */
@@ -84,6 +100,59 @@ type TimelineItem =
   | { kind: "message"; data: ChatMessageData; sortTime: number }
   | { kind: "hook"; data: HookEvent | HookStartedEvent; sortTime: number }
   | { kind: "team_event"; data: TeamMessage; sortTime: number };
+
+function parseMessageMetadata(metadata: string | null | undefined): Record<string, unknown> | null {
+  if (!metadata) return null;
+  try {
+    return JSON.parse(metadata) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function renderSystemCard(
+  metadata: Record<string, unknown> | null,
+  content: string,
+  createdAt: string,
+) {
+  if (!metadata) return null;
+
+  if (metadata[AUTO_VERIFICATION_KEY]) {
+    return <AutoVerificationCard content={content} createdAt={createdAt} />;
+  }
+
+  if (metadata[VERIFICATION_RESULT_KEY]) {
+    const blockers = Array.isArray(metadata.top_blockers)
+      ? metadata.top_blockers
+          .filter((item): item is { severity?: unknown; description?: unknown } => (
+            item != null && typeof item === "object"
+          ))
+          .map((item) => ({
+            severity: typeof item.severity === "string" ? item.severity : "unknown",
+            description: typeof item.description === "string" ? item.description : "",
+          }))
+          .filter((item) => item.description.length > 0)
+      : [];
+
+    return (
+      <VerificationResultCard
+        summary={typeof metadata.summary === "string" ? metadata.summary : content}
+        convergenceReason={typeof metadata.convergence_reason === "string" ? metadata.convergence_reason : null}
+        currentRound={typeof metadata.current_round === "number" ? metadata.current_round : null}
+        maxRounds={typeof metadata.max_rounds === "number" ? metadata.max_rounds : null}
+        recommendedNextAction={
+          typeof metadata.recommended_next_action === "string"
+            ? metadata.recommended_next_action
+            : null
+        }
+        blockers={blockers}
+        actionableForParent={metadata.actionable_for_parent === true}
+      />
+    );
+  }
+
+  return null;
+}
 
 interface ChatMessageListProps {
   messages: ChatMessageData[];
@@ -114,6 +183,9 @@ interface ChatMessageListProps {
   teamFilter?: "lead" | string | undefined;
   /** Context key for team store lookup (team mode) */
   contextKey?: string | undefined;
+  /** Provider metadata for the active conversation */
+  providerHarness?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
 }
 
 // ============================================================================
@@ -138,6 +210,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isFinalizing = false,
       teamFilter,
       contextKey,
+      providerHarness,
+      providerSessionId,
     },
     ref
   ) {
@@ -175,6 +249,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
+    const normalizedStreamingContentBlocks = useMemo(
+      () => normalizeStreamingVerificationContentBlocks(streamingContentBlocks),
+      [streamingContentBlocks],
+    );
 
     // Footer content hash — drives the streaming auto-scroll useEffect below.
     // NOTE: Virtuoso's followOutput does NOT react to context/Footer changes,
@@ -197,21 +275,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Recompute cumulative text length whenever streaming blocks change.
     // Resets to 0 when streaming ends (no blocks) so the next stream starts fresh.
     useEffect(() => {
-      if (!streamingContentBlocks?.length) {
+      if (!normalizedStreamingContentBlocks.length) {
         setCumulativeTextLength(0);
         return;
       }
-      const total = streamingContentBlocks.reduce(
+      const total = normalizedStreamingContentBlocks.reduce(
         (sum, block) => block.type === "text" ? sum + block.text.length : sum, 0
       );
       setCumulativeTextLength(prev => Math.max(prev, total));
-    }, [streamingContentBlocks]);
+    }, [normalizedStreamingContentBlocks]);
 
     const hasFooterStreamingContent =
       streamingToolCalls.length > 0 ||
       totalChildCalls > 0 ||
       (streamingTasks?.size ?? 0) > 0 ||
-      (streamingContentBlocks?.length ?? 0) > 0;
+      normalizedStreamingContentBlocks.length > 0;
 
     useEffect(() => {
       hasFooterStreamingContentRef.current = hasFooterStreamingContent;
@@ -223,9 +301,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       toolResultCount: streamingToolCalls.filter(tc => tc.result != null || tc.error != null).length,
       childCallCount: totalChildCalls,
       taskCount: streamingTasks?.size ?? 0,
-      contentBlockCount: streamingContentBlocks?.length ?? 0,
+      contentBlockCount: normalizedStreamingContentBlocks.length,
       textLengthBucket: Math.floor(cumulativeTextLength / TEXT_LENGTH_BUCKET_SIZE),
-    }), [streamingToolCalls, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length, cumulativeTextLength]);
+    }), [streamingToolCalls, totalChildCalls, streamingTasks?.size, normalizedStreamingContentBlocks.length, cumulativeTextLength]);
 
     // Streaming auto-scroll — followOutput only fires on totalCount changes,
     // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
@@ -410,19 +488,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Additionally, when isAgentRunning but no streaming content exists yet (the window
     // between DB empty-message creation and the first streaming event), filter the last
     // assistant message if its content is empty/whitespace — prevents the empty "pill" flash.
-    const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
+    const hasActiveStreaming = normalizedStreamingContentBlocks.length > 0 ||
                               (streamingTasks && streamingTasks.size > 0);
-    const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
+    const shouldFilterLastProviderMessage = hasActiveStreaming || isFinalizing;
 
     // When filter clears (streaming/finalizing ends), scroll to bottom so the newly
     // revealed finalized assistant message is visible.
     useEffect(() => {
       if (scrollToTimestamp) return; // Don't auto-scroll in history mode
-      if (prevShouldFilterRef.current && !shouldFilterLastAssistant) {
+      if (prevShouldFilterRef.current && !shouldFilterLastProviderMessage) {
         scrollToBottom();
       }
-      prevShouldFilterRef.current = shouldFilterLastAssistant;
-    }, [shouldFilterLastAssistant, scrollToBottom, scrollToTimestamp]);
+      prevShouldFilterRef.current = shouldFilterLastProviderMessage;
+    }, [shouldFilterLastProviderMessage, scrollToBottom, scrollToTimestamp]);
 
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
@@ -434,22 +512,25 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       //
       // Use ID-based filtering: find the assistant message with the most recent createdAt
       // (with id as tiebreaker) so filtering is stable regardless of array order.
-      const filteredMessages = shouldFilterLastAssistant
+      const filteredMessages = shouldFilterLastProviderMessage
         ? (() => {
-            // Find the most recently created assistant message by timestamp (stable, not index)
-            let latestAssistantId: string | null = null;
-            let latestAssistantTime = -Infinity;
+            // Find the most recently created provider message by timestamp (stable, not index)
+            let latestProviderMessageId: string | null = null;
+            let latestProviderMessageTime = -Infinity;
             for (const msg of messages) {
-              if (msg.role === "assistant") {
+              if (isProviderRole(msg.role)) {
                 const t = new Date(msg.createdAt).getTime();
-                if (t > latestAssistantTime || (t === latestAssistantTime && msg.id > (latestAssistantId ?? ""))) {
-                  latestAssistantTime = t;
-                  latestAssistantId = msg.id;
+                if (
+                  t > latestProviderMessageTime ||
+                  (t === latestProviderMessageTime && msg.id > (latestProviderMessageId ?? ""))
+                ) {
+                  latestProviderMessageTime = t;
+                  latestProviderMessageId = msg.id;
                 }
               }
             }
-            if (latestAssistantId !== null) {
-              return messages.filter((msg) => msg.id !== latestAssistantId);
+            if (latestProviderMessageId !== null) {
+              return messages.filter((msg) => msg.id !== latestProviderMessageId);
             }
             return messages;
           })()
@@ -510,7 +591,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastProviderMessage, attachmentsMap, teamFilter, teamMessages]);
 
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
@@ -577,7 +658,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return (
           <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {normalizedStreamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -589,6 +670,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     createdAt={new Date().toISOString()}
                     toolCalls={null}
                     contentBlocks={null}
+                    providerHarness={providerHarness}
+                    providerSessionId={providerSessionId}
                   />
                 );
               }
@@ -625,17 +708,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Fallback when agent is running but no content blocks yet:
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              streamingToolCalls.length > 0
-                ? streamingToolCalls.map((tc, idx) => (
-                    <ToolCallIndicator
-                      key={`pending-tool-${idx}`}
-                      toolCall={tc}
-                      isStreaming={tc.result == null && !tc.error}
-                      className="mb-2"
-                    />
-                  ))
-                : <TypingIndicator />
+            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
+              <>
+                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                  <ToolCallIndicator
+                    key={`pending-tool-${idx}`}
+                    toolCall={tc}
+                    isStreaming={tc.result == null && !tc.error}
+                    className="mb-2"
+                  />
+                ))}
+                <TypingIndicator />
+              </>
             )}
 
           </div>
@@ -643,8 +727,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, streamingContentBlocks,
-      isSending, isAgentRunning, handleFooterRef,
+      streamingToolCalls, streamingTasks, normalizedStreamingContentBlocks,
+      isSending, isAgentRunning, handleFooterRef, providerHarness, providerSessionId,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -690,22 +774,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
       const msg = item.data;
 
-      // Render auto-verification messages as system cards, not user bubbles
-      if (msg.metadata) {
-        try {
-          const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
-          if (meta[AUTO_VERIFICATION_KEY]) {
-            return (
-              <div className="px-3 w-full" style={contentContainerStyle}>
-                <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
-              </div>
-            );
-          }
-        } catch { /* not JSON, render normally */ }
+      const systemCard = renderSystemCard(
+        parseMessageMetadata(msg.metadata),
+        msg.content,
+        msg.createdAt,
+      );
+      if (systemCard) {
+        return (
+          <div className="px-3 w-full" style={contentContainerStyle}>
+            {systemCard}
+          </div>
+        );
       }
 
       // Look up teammate info if sender is present and message is from assistant
-      const { teammateName, teammateColor } = msg.role === "assistant"
+      const { teammateName, teammateColor } = isProviderRole(msg.role)
         ? getTeammateInfo(msg.sender)
         : { teammateName: null, teammateColor: null };
 
@@ -720,10 +803,23 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {...(msg.attachments && { attachments: msg.attachments })}
             teammateName={teammateName}
             teammateColor={teammateColor}
+            providerHarness={msg.providerHarness ?? providerHarness}
+            providerSessionId={msg.providerSessionId ?? providerSessionId}
+            upstreamProvider={msg.upstreamProvider}
+            providerProfile={msg.providerProfile}
+            logicalModel={msg.logicalModel}
+            effectiveModelId={msg.effectiveModelId}
+            logicalEffort={msg.logicalEffort}
+            effectiveEffort={msg.effectiveEffort}
+            inputTokens={msg.inputTokens}
+            outputTokens={msg.outputTokens}
+            cacheCreationTokens={msg.cacheCreationTokens}
+            cacheReadTokens={msg.cacheReadTokens}
+            estimatedUsd={msg.estimatedUsd}
           />
         </div>
       );
-    }, [getTeammateInfo]);
+    }, [getTeammateInfo, providerHarness, providerSessionId]);
 
     if (isTestEnv) {
       return (
@@ -767,21 +863,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             }
             const msg = item.data;
 
-            // Render auto-verification messages as system cards, not user bubbles
-            if (msg.metadata) {
-              try {
-                const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
-                if (meta[AUTO_VERIFICATION_KEY]) {
-                  return (
-                    <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-                      <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
-                    </div>
-                  );
-                }
-              } catch { /* not JSON, render normally */ }
+            const systemCard = renderSystemCard(
+              parseMessageMetadata(msg.metadata),
+              msg.content,
+              msg.createdAt,
+            );
+            if (systemCard) {
+              return (
+                <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
+                  {systemCard}
+                </div>
+              );
             }
 
-            const { teammateName, teammateColor } = msg.role === "assistant"
+            const { teammateName, teammateColor } = isProviderRole(msg.role)
               ? getTeammateInfo(msg.sender)
               : { teammateName: null, teammateColor: null };
 
@@ -796,6 +891,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   {...(msg.attachments && { attachments: msg.attachments })}
                   teammateName={teammateName}
                   teammateColor={teammateColor}
+                  providerHarness={msg.providerHarness ?? providerHarness}
+                  providerSessionId={msg.providerSessionId ?? providerSessionId}
+                  upstreamProvider={msg.upstreamProvider}
+                  providerProfile={msg.providerProfile}
+                  logicalModel={msg.logicalModel}
+                  effectiveModelId={msg.effectiveModelId}
+                  logicalEffort={msg.logicalEffort}
+                  effectiveEffort={msg.effectiveEffort}
+                  inputTokens={msg.inputTokens}
+                  outputTokens={msg.outputTokens}
+                  cacheCreationTokens={msg.cacheCreationTokens}
+                  cacheReadTokens={msg.cacheReadTokens}
+                  estimatedUsd={msg.estimatedUsd}
                 />
               </div>
             );
@@ -803,7 +911,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {normalizedStreamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -815,6 +923,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     createdAt={new Date().toISOString()}
                     toolCalls={null}
                     contentBlocks={null}
+                    providerHarness={providerHarness}
+                    providerSessionId={providerSessionId}
                   />
                 );
               }
@@ -849,17 +959,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Fallback when agent is running but no content blocks yet:
                 - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
                 - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              streamingToolCalls.length > 0
-                ? streamingToolCalls.map((tc, idx) => (
-                    <ToolCallIndicator
-                      key={`pending-tool-${idx}`}
-                      toolCall={tc}
-                      isStreaming={tc.result == null && !tc.error}
-                      className="mb-2"
-                    />
-                  ))
-                : <TypingIndicator />
+            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
+              <>
+                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                  <ToolCallIndicator
+                    key={`pending-tool-${idx}`}
+                    toolCall={tc}
+                    isStreaming={tc.result == null && !tc.error}
+                    className="mb-2"
+                  />
+                ))}
+                <TypingIndicator />
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>

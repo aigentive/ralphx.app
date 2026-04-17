@@ -221,15 +221,6 @@ fn test_agent_profile_reviewer() {
 }
 
 #[test]
-fn test_agent_profile_supervisor() {
-    let profile = AgentProfile::supervisor();
-    assert_eq!(profile.id, "supervisor");
-    assert_eq!(profile.role, ProfileRole::Supervisor);
-    assert_eq!(profile.execution.model, Model::Haiku);
-    assert_eq!(profile.execution.max_iterations, 100);
-}
-
-#[test]
 fn test_agent_profile_orchestrator() {
     let profile = AgentProfile::orchestrator();
     assert_eq!(profile.id, "orchestrator");
@@ -251,12 +242,11 @@ fn test_agent_profile_deep_researcher() {
 #[test]
 fn test_builtin_profiles() {
     let profiles = AgentProfile::builtin_profiles();
-    assert_eq!(profiles.len(), 5);
+    assert_eq!(profiles.len(), 4);
     assert_eq!(profiles[0].id, "worker");
     assert_eq!(profiles[1].id, "reviewer");
-    assert_eq!(profiles[2].id, "supervisor");
-    assert_eq!(profiles[3].id, "orchestrator");
-    assert_eq!(profiles[4].id, "deep-researcher");
+    assert_eq!(profiles[2].id, "orchestrator");
+    assert_eq!(profiles[3].id, "deep-researcher");
 }
 
 #[test]

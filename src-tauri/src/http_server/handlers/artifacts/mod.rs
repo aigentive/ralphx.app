@@ -16,7 +16,6 @@ use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};
 use crate::domain::services::emit_verification_status_changed;
 use crate::error::AppError;
-use crate::infrastructure::agents::claude::verification_config;
 use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
@@ -38,4 +37,4 @@ pub use shared::{apply_edits, check_verification_freeze, EditError};
 pub use update::update_plan_artifact;
 
 use events::emit_plan_update_events;
-use shared::{finalize_plan_update, map_app_err};
+use shared::{finalize_plan_update, map_app_err, resolve_caller_session_id};

@@ -71,6 +71,40 @@ export const ApiRoundSummarySchema = z.object({
   gapCount: val.gap_count,
 }));
 
+export const ApiRoundDetailSchema = z.object({
+  round: z.number(),
+  gap_score: z.number(),
+  gap_count: z.number(),
+  gaps: z.array(ApiVerificationGapSchema).optional().default([]),
+}).transform((val) => ({
+  round: val.round,
+  gapScore: val.gap_score,
+  gapCount: val.gap_count,
+  gaps: val.gaps,
+}));
+
+export const ApiVerificationRunHistoryEntrySchema = z.object({
+  generation: z.number().int(),
+  status: z.string(),
+  in_progress: z.boolean(),
+  current_round: z.number().int().optional(),
+  max_rounds: z.number().int().optional(),
+  round_count: z.number().int(),
+  gap_count: z.number().int(),
+  gap_score: z.number().int().optional(),
+  convergence_reason: z.string().optional(),
+}).transform((val) => ({
+  generation: val.generation,
+  status: val.status,
+  inProgress: val.in_progress,
+  ...(val.current_round !== undefined && { currentRound: val.current_round }),
+  ...(val.max_rounds !== undefined && { maxRounds: val.max_rounds }),
+  roundCount: val.round_count,
+  gapCount: val.gap_count,
+  ...(val.gap_score !== undefined && { gapScore: val.gap_score }),
+  ...(val.convergence_reason !== undefined && { convergenceReason: val.convergence_reason }),
+}));
+
 /**
  * Verification status response schema (snake_case from HTTP server)
  */
@@ -85,8 +119,20 @@ export const VerificationResponseSchema = z.object({
   best_round_index: z.number().int().optional(),
   current_gaps: z.array(ApiVerificationGapSchema).optional().default([]),
   rounds: z.array(ApiRoundSummarySchema).optional().default([]),
+  round_details: z.array(ApiRoundDetailSchema).optional().default([]),
   plan_version: z.number().int().optional(),
   verification_generation: z.number().int(),
+  selected_generation: z.number().int(),
+  run_history: z.array(ApiVerificationRunHistoryEntrySchema).optional().default([]),
+  verification_child: z.object({
+    activeChildSessionId: z.string().optional(),
+    latestChildSessionId: z.string().optional(),
+    latestChildArchived: z.boolean().optional(),
+    latestChildUpdatedAt: z.string().optional(),
+    agentState: z.string().optional(),
+    lastAssistantMessage: z.string().nullable().optional(),
+    lastAssistantMessageAt: z.string().nullable().optional(),
+  }).optional(),
 });
 
 /**

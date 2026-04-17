@@ -53,7 +53,7 @@ const mockPlan: Artifact = {
   },
   metadata: {
     createdAt: "2026-01-26T10:00:00Z",
-    createdBy: "orchestrator-ideation",
+    createdBy: "ralphx-ideation",
     version: 1,
   },
   derivedFrom: [],

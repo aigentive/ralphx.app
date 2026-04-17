@@ -1,6 +1,14 @@
 // Frontend types for ideation API responses (camelCase)
 
-import type { IdeationSessionStatus, TeamMode, TeamConfig, VerificationStatus, VerificationGap, RoundSummary } from "../types/ideation";
+import type {
+  IdeationSessionStatus,
+  TeamMode,
+  TeamConfig,
+  VerificationStatus,
+  VerificationGap,
+  RoundSummary,
+  VerificationRoundDetail,
+} from "../types/ideation";
 
 export interface IdeationSessionResponse {
   id: string;
@@ -38,6 +46,7 @@ export interface VerificationStatusResponse {
   status: VerificationStatus;
   inProgress: boolean;
   generation?: number;
+  selectedGeneration?: number;
   currentRound?: number;
   maxRounds?: number;
   gapScore?: number;
@@ -45,7 +54,28 @@ export interface VerificationStatusResponse {
   bestRoundIndex?: number;
   gaps: VerificationGap[];
   rounds: RoundSummary[];
+  roundDetails: VerificationRoundDetail[];
+  runHistory: Array<{
+    generation: number;
+    status: VerificationStatus;
+    inProgress: boolean;
+    currentRound?: number;
+    maxRounds?: number;
+    roundCount: number;
+    gapCount: number;
+    gapScore?: number;
+    convergenceReason?: string;
+  }>;
   planVersion?: number;
+  verificationChild?: {
+    activeChildSessionId?: string | undefined;
+    latestChildSessionId?: string | undefined;
+    latestChildArchived?: boolean | undefined;
+    latestChildUpdatedAt?: string | undefined;
+    agentState?: string | undefined;
+    lastAssistantMessage?: string | null | undefined;
+    lastAssistantMessageAt?: string | null | undefined;
+  };
 }
 
 export interface TaskProposalResponse {

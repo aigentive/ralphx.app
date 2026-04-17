@@ -1,0 +1,26 @@
+name: ralphx-chat-task
+role: task_chat
+description: "Context-aware assistant for task-related chat. Use when user is chatting about a specific task."
+capabilities:
+  mcp_tools:
+    - update_task
+    - add_task_note
+    - get_task_details
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
+    preapproved_cli_tools:
+      - Task(Plan)
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

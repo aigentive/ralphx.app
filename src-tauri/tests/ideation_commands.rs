@@ -1,5 +1,6 @@
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ideation_commands::*;
+use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
     ProposalCategory, TaskProposal, TaskProposalId,
@@ -753,6 +754,69 @@ async fn test_analyze_dependencies_empty_session() {
     assert!(graph.nodes.is_empty());
     assert!(graph.edges.is_empty());
     assert!(!graph.has_cycles);
+}
+
+#[tokio::test]
+async fn test_analyze_dependencies_acknowledges_session_for_accept_gate() {
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    let session = IdeationSession::new(project_id);
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create ideation session in test");
+
+    let proposal1 = TaskProposal::new(
+        created_session.id.clone(),
+        "Proposal 1",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    let proposal2 = TaskProposal::new(
+        created_session.id.clone(),
+        "Proposal 2",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+
+    state
+        .task_proposal_repo
+        .create(proposal1)
+        .await
+        .expect("Failed to create first task proposal in test");
+    state
+        .task_proposal_repo
+        .create(proposal2)
+        .await
+        .expect("Failed to create second task proposal in test");
+
+    let before = state
+        .ideation_session_repo
+        .get_by_id(&created_session.id)
+        .await
+        .expect("Failed to load ideation session before analysis")
+        .expect("Expected ideation session to exist before analysis");
+    assert!(
+        !before.dependencies_acknowledged,
+        "precondition: session must start unacknowledged"
+    );
+
+    analyze_dependencies_for_session(&state, &created_session.id)
+        .await
+        .expect("analyze_dependencies_for_session should succeed");
+
+    let after = state
+        .ideation_session_repo
+        .get_by_id(&created_session.id)
+        .await
+        .expect("Failed to load ideation session after analysis")
+        .expect("Expected ideation session to exist after analysis");
+    assert!(
+        after.dependencies_acknowledged,
+        "dependency analysis must acknowledge the session for the accept gate"
+    );
 }
 
 #[tokio::test]
@@ -2166,6 +2230,56 @@ async fn test_create_ideation_session_emits_session_created_event() {
         result.id,
         "event payload sessionId should match created session id"
     );
+}
+
+#[tokio::test]
+async fn test_create_ideation_session_downgrades_team_mode_to_solo_for_codex() {
+    use ralphx_lib::testing::create_mock_app;
+
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let state = setup_apply_test_state();
+    let project_id = ProjectId::new();
+
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(
+            project_id.as_str(),
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings::new(AgentHarnessKind::Codex),
+        )
+        .await
+        .expect("configure codex ideation lane");
+
+    let input = CreateSessionInput {
+        project_id: project_id.to_string(),
+        title: Some("Codex Solo Session".to_string()),
+        seed_task_id: None,
+        team_mode: Some("research".to_string()),
+        team_config: Some(TeamConfigInput {
+            max_teammates: 3,
+            model_ceiling: "sonnet".to_string(),
+            budget_limit: None,
+            composition_mode: "balanced".to_string(),
+        }),
+    };
+
+    let result = create_ideation_session_impl(&handle, &state, input)
+        .await
+        .expect("create_ideation_session_impl should succeed");
+
+    assert_eq!(result.team_mode.as_deref(), Some("solo"));
+    assert!(result.team_config.is_none());
+
+    let stored = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(result.id.clone()))
+        .await
+        .expect("load stored ideation session")
+        .expect("stored ideation session should exist");
+
+    assert_eq!(stored.team_mode.as_deref(), Some("solo"));
+    assert!(stored.team_config_json.is_none());
 }
 
 // ============================================================================

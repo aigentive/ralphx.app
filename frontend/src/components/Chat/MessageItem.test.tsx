@@ -6,29 +6,29 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MessageItem } from "./MessageItem";
-import type { MessageAttachment } from "./MessageAttachments";
+import {
+  makeContentText,
+  makeContentToolUse,
+  makeMessageAttachment,
+  makeMessageItemProps,
+  makeToolCall,
+} from "./__tests__/chatRenderFixtures";
 
 describe("MessageItem - Attachment Integration", () => {
-  const baseProps = {
+  const baseProps = makeMessageItemProps({
     role: "user",
-    content: "Hello world",
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  const mockAttachments: MessageAttachment[] = [
-    {
-      id: "att-1",
-      fileName: "test.txt",
-      fileSize: 1024,
-      mimeType: "text/plain",
-    },
-    {
+  const mockAttachments = [
+    makeMessageAttachment({ id: "att-1", fileName: "test.txt" }),
+    makeMessageAttachment({
       id: "att-2",
       fileName: "image.png",
       fileSize: 2048,
       mimeType: "image/png",
-    },
+    }),
   ];
 
   it("renders MessageAttachments for user messages with attachments", () => {
@@ -108,10 +108,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("works with content blocks rendering", () => {
-    const contentBlocks = [
-      { type: "text" as const, text: "First block" },
-      { type: "text" as const, text: "Second block" },
-    ];
+    const contentBlocks = [makeContentText("First block"), makeContentText("Second block")];
 
     render(
       <MessageItem
@@ -133,12 +130,11 @@ describe("MessageItem - Attachment Integration", () => {
 
   it("works with legacy rendering (toolCalls + text)", () => {
     const toolCalls = [
-      {
+      makeToolCall("read_file", {
         id: "call-1",
-        name: "read_file",
         arguments: { path: "test.txt" },
         result: "file content",
-      },
+      }),
     ];
 
     render(
@@ -157,6 +153,34 @@ describe("MessageItem - Attachment Integration", () => {
     // Tool calls should render (we can check for tool call indicator presence)
     expect(screen.getByText("read_file")).toBeInTheDocument();
   });
+
+  it("renders provider metadata for assistant messages when available", () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        role="assistant"
+        providerHarness="codex"
+        providerSessionId="thread-codex-1234"
+        upstreamProvider="openai"
+        effectiveModelId="gpt-5.4"
+        effectiveEffort="high"
+        inputTokens={120}
+        outputTokens={40}
+        cacheCreationTokens={5}
+        cacheReadTokens={8}
+        estimatedUsd={0.42}
+      />
+    );
+
+    expect(screen.getByTestId("message-provider-meta")).toBeInTheDocument();
+    const badge = screen.getByTestId("message-provider-badge");
+    expect(badge).toHaveTextContent("Codex");
+    expect(screen.getByTestId("message-model-effort")).toHaveTextContent("gpt-5.4 · high");
+    expect(badge).toHaveAttribute(
+      "title",
+      "Harness: Codex • Upstream: openai • Session ref: thread-codex... • gpt-5.4 · high • Input: 120 • Output: 40 • Cache: 13 • Est. cost: $0.42",
+    );
+  });
 });
 
 describe("MessageItem - Child tool call suppression for Task/Agent spawns", () => {
@@ -166,23 +190,19 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     // A message with a Task tool call that has child tool calls in its result
     const childToolUseId = "child-toolu-001";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Task", {
         id: "task-toolu-001",
-        name: "Task",
         arguments: { description: "Explore files", subagent_type: "Explore" },
         result: [
           { type: "tool_use", id: childToolUseId, name: "Glob", input: { pattern: "**/*.ts" } },
           { type: "tool_result", tool_use_id: childToolUseId, content: ["file1.ts"] },
         ],
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("Glob", {
         id: childToolUseId,
-        name: "Glob",
         arguments: { pattern: "**/*.ts" },
         result: ["file1.ts"],
-      },
+      }),
     ];
 
     const { container } = render(
@@ -205,23 +225,19 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("suppresses child tool_use blocks that belong to an Agent result", () => {
     const childToolUseId = "child-toolu-agent-001";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-001",
-        name: "Agent",
         arguments: { description: "Research code", subagent_type: "general-purpose" },
         result: [
           { type: "tool_use", id: childToolUseId, name: "Grep", input: { pattern: "useState" } },
           { type: "tool_result", tool_use_id: childToolUseId, content: "found 5 matches" },
         ],
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("Grep", {
         id: childToolUseId,
-        name: "Grep",
         arguments: { pattern: "useState" },
         result: "found 5 matches",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -239,20 +255,16 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("does NOT suppress tool_use blocks that are not nested in Task/Agent results", () => {
     // Two independent tool calls: one Read, one Bash — neither is a Task/Agent spawn
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("read", {
         id: "read-001",
-        name: "read",
         arguments: { file_path: "/src/main.ts" },
         result: "file content",
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("custom_tool", {
         id: "bash-001",
-        name: "custom_tool",
         arguments: { command: "ls" },
         result: "file1\nfile2",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -268,24 +280,20 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     // Verify that both the tool_use ID and tool_result's tool_use_id are suppressed
     const childId = "child-abc";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-002",
-        name: "Agent",
         arguments: { description: "Plan work", subagent_type: "Plan" },
         result: [
           { type: "tool_use", id: childId, name: "Read", input: { file_path: "/foo.ts" } },
           { type: "tool_result", tool_use_id: childId, content: "file content" },
         ],
-      },
+      }),
       // The child tool_use appears again at top level (as emitted by stream)
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Read", {
         id: childId,
-        name: "Read",
         arguments: { file_path: "/foo.ts" },
         result: "file content",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -304,24 +312,20 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("renders non-suppressed tool calls alongside Agent card", () => {
     // A message with an Agent call AND an independent (non-child) tool call
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-003",
-        name: "Agent",
         arguments: { description: "Explore code", subagent_type: "Explore" },
         result: [
           { type: "tool_use", id: "child-nested", name: "Glob", input: { pattern: "**/*.ts" } },
           { type: "tool_result", tool_use_id: "child-nested", content: [] },
         ],
-      },
+      }),
       // Independent tool call (NOT a child of the Agent result)
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("custom_standalone_tool", {
         id: "independent-001",
-        name: "custom_standalone_tool",
         arguments: { key: "value" },
         result: "ok",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -332,6 +336,153 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
     // Independent tool renders as generic indicator
     expect(container.querySelector('[data-testid="tool-call-indicator"]')).toBeInTheDocument();
+  });
+});
+
+describe("MessageItem - persisted delegation replay", () => {
+  it("renders one delegated task card from delegate_start plus delegate_wait content blocks", async () => {
+    const user = userEvent.setup();
+    const createdAt = new Date().toISOString();
+    const contentBlocks = [
+      makeContentToolUse("delegate_start", {
+        id: "toolu-delegate-start",
+        arguments: {
+          agent_name: "ralphx-execution-reviewer",
+          prompt: "Review the patch",
+          harness: "codex",
+          model: "gpt-5.4",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "running",
+          }),
+        }],
+      }),
+      makeContentToolUse("delegate_wait", {
+        id: "toolu-delegate-wait",
+        arguments: {
+          job_id: "job-123",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "completed",
+            content: "Delegated review finished",
+            delegated_status: {
+              latest_run: {
+                harness: "codex",
+                effective_model_id: "gpt-5.4",
+                logical_effort: "high",
+                input_tokens: 120,
+                output_tokens: 45,
+              },
+            },
+          }),
+        }],
+      }),
+    ];
+
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content=""
+        createdAt={createdAt}
+        contentBlocks={contentBlocks}
+      />,
+    );
+
+    const taskCards = container.querySelectorAll('[data-testid="task-tool-call-card"]');
+    expect(taskCards).toHaveLength(1);
+    expect(screen.getByText("ralphx-execution-reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /delegated task: ralphx-execution-reviewer/i }),
+    );
+    expect(screen.getByText("Delegated review finished")).toBeInTheDocument();
+  });
+
+  it("renders one delegated task card from namespaced delegate_start plus delegate_wait content blocks", () => {
+    const createdAt = new Date().toISOString();
+    const contentBlocks = [
+      makeContentToolUse("ralphx::delegate_start", {
+        id: "toolu-delegate-start",
+        arguments: {
+          agent_name: "ralphx-plan-critic-completeness",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "running",
+          }),
+        }],
+      }),
+      makeContentToolUse("ralphx::delegate_wait", {
+        id: "toolu-delegate-wait",
+        arguments: {
+          job_id: "job-123",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "completed",
+            content: "Critic artifact published",
+          }),
+        }],
+      }),
+    ];
+
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content=""
+        createdAt={createdAt}
+        contentBlocks={contentBlocks}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-testid="task-tool-call-card"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="tool-call-indicator"]')).toHaveLength(0);
+    expect(screen.getByText("ralphx-plan-critic-completeness")).toBeInTheDocument();
+  });
+
+  it("renders a delegated task card for a standalone namespaced delegate_wait block", () => {
+    const createdAt = new Date().toISOString();
+    const contentBlocks = [
+      makeContentToolUse("ralphx::delegate_wait", {
+        id: "toolu-delegate-wait-only",
+        arguments: {
+          job_id: "job-789",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-789",
+            status: "completed",
+            agent_name: "ralphx-plan-critic-completeness",
+            content: "Critic artifact published",
+          }),
+        }],
+      }),
+    ];
+
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content=""
+        createdAt={createdAt}
+        contentBlocks={contentBlocks}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-testid="task-tool-call-card"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="tool-call-indicator"]')).toHaveLength(0);
+    expect(screen.getByText("ralphx-plan-critic-completeness")).toBeInTheDocument();
   });
 });
 
@@ -388,7 +539,11 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   it("renders tool calls alongside empty assistant content (no text bubble, but tool cards show)", () => {
     // Use a tool name not in the widget registry so generic ToolCallIndicator renders
     const toolCalls = [
-      { id: "tc-1", name: "read_file", arguments: { path: "/foo.ts" }, result: "content" },
+      makeToolCall("read_file", {
+        id: "tc-1",
+        arguments: { path: "/foo.ts" },
+        result: "content",
+      }),
     ];
     const { container } = render(
       <MessageItem role="assistant" content="" createdAt={createdAt} toolCalls={toolCalls} />

@@ -27,10 +27,6 @@ vi.mock("@/stores/uiStore", () => ({
 }));
 
 const defaultSettings: IdeationSettings = {
-  planMode: "optional",
-  requirePlanApproval: false,
-  suggestPlansForComplex: true,
-  autoLinkProposals: true,
   requireAcceptForFinalize: false,
   requireVerificationForAccept: false,
   requireVerificationForProposals: false,
@@ -60,143 +56,69 @@ describe("IdeationSettingsPanel", () => {
     vi.mocked(ideationApi.settings.get).mockResolvedValue(defaultSettings);
   });
 
-  it("renders section with Lightbulb icon and title", async () => {
+  it("renders section with ShieldCheck icon and Planning & Verification title", async () => {
     render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
 
-    expect(screen.getByText("Ideation")).toBeInTheDocument();
-    expect(screen.getByText("Configure implementation plan workflow")).toBeInTheDocument();
+    expect(screen.getByText("Planning & Verification")).toBeInTheDocument();
+    expect(screen.getByText("Configure acceptance and verification gates")).toBeInTheDocument();
   });
 
-  it("renders all plan mode options", async () => {
+  it("renders the three gate checkboxes", async () => {
     render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(screen.getByTestId("plan-mode-required")).toBeInTheDocument();
-      expect(screen.getByTestId("plan-mode-optional")).toBeInTheDocument();
-      expect(screen.getByTestId("plan-mode-parallel")).toBeInTheDocument();
-    });
-  });
-
-  it("renders all checkbox settings", async () => {
-    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("require-plan-approval")).toBeInTheDocument();
-      expect(screen.getByTestId("suggest-plans-for-complex")).toBeInTheDocument();
-      expect(screen.getByTestId("auto-link-proposals")).toBeInTheDocument();
       expect(screen.getByTestId("require-accept-for-finalize")).toBeInTheDocument();
       expect(screen.getByTestId("require-verification-for-accept")).toBeInTheDocument();
       expect(screen.getByTestId("require-verification-for-proposals")).toBeInTheDocument();
     });
   });
 
-  it("selects the correct plan mode based on settings", async () => {
-    vi.mocked(ideationApi.settings.get).mockResolvedValue({
-      ...defaultSettings,
-      planMode: "required",
-    });
-
+  it("renders the auto-accept finalization toggle", async () => {
     render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      const requiredRadio = screen.getByTestId("plan-mode-required");
-      expect(requiredRadio).toBeChecked();
+      expect(screen.getByTestId("auto-accept-plans")).toBeInTheDocument();
+      expect(screen.getByText("Skip finalization confirmation")).toBeInTheDocument();
     });
   });
 
-  it("disables 'require plan approval' when not in Required mode", async () => {
-    vi.mocked(ideationApi.settings.get).mockResolvedValue({
-      ...defaultSettings,
-      planMode: "optional",
-    });
-
-    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      const checkbox = screen.getByTestId("require-plan-approval");
-      expect(checkbox).toBeDisabled();
-    });
-  });
-
-  it("enables 'require plan approval' when in Required mode", async () => {
-    vi.mocked(ideationApi.settings.get).mockResolvedValue({
-      ...defaultSettings,
-      planMode: "required",
-    });
-
-    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      const checkbox = screen.getByTestId("require-plan-approval");
-      expect(checkbox).not.toBeDisabled();
-    });
-  });
-
-  it("calls update when plan mode changes", async () => {
+  it("calls update when require-accept-for-finalize is toggled", async () => {
     const user = userEvent.setup();
     vi.mocked(ideationApi.settings.update).mockResolvedValue({
       ...defaultSettings,
-      planMode: "required",
+      requireAcceptForFinalize: true,
     });
 
     render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(screen.getByTestId("plan-mode-required")).toBeInTheDocument();
+      expect(screen.getByTestId("require-accept-for-finalize")).toBeInTheDocument();
     });
 
-    const requiredRadio = screen.getByTestId("plan-mode-required");
-    await user.click(requiredRadio);
-
-    await waitFor(() => {
-      expect(ideationApi.settings.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          planMode: "required",
-        })
-      );
-    });
-  });
-
-  it("calls update when checkbox is toggled", async () => {
-    const user = userEvent.setup();
-    vi.mocked(ideationApi.settings.update).mockResolvedValue({
-      ...defaultSettings,
-      suggestPlansForComplex: false,
-    });
-
-    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("suggest-plans-for-complex")).toBeInTheDocument();
-    });
-
-    const checkbox = screen.getByTestId("suggest-plans-for-complex");
+    const checkbox = screen.getByTestId("require-accept-for-finalize");
     await user.click(checkbox);
 
     await waitFor(() => {
       expect(ideationApi.settings.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          suggestPlansForComplex: false,
+          requireAcceptForFinalize: true,
         })
       );
     });
   });
 
-  it("reflects checkbox state from settings", async () => {
-    vi.mocked(ideationApi.settings.get).mockResolvedValue({
-      ...defaultSettings,
-      suggestPlansForComplex: false,
-      autoLinkProposals: false,
-    });
-
+  it("does not render stale planMode, requirePlanApproval, suggestPlansForComplex, or autoLinkProposals controls", async () => {
     render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      const suggestCheckbox = screen.getByTestId("suggest-plans-for-complex");
-      const autoLinkCheckbox = screen.getByTestId("auto-link-proposals");
-      expect(suggestCheckbox).not.toBeChecked();
-      expect(autoLinkCheckbox).not.toBeChecked();
+      expect(screen.getByTestId("require-accept-for-finalize")).toBeInTheDocument();
     });
+
+    expect(screen.queryByTestId("plan-mode-required")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-mode-optional")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("require-plan-approval")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("suggest-plans-for-complex")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("auto-link-proposals")).not.toBeInTheDocument();
   });
 
   it("renders external overrides toggle button", async () => {

@@ -22,6 +22,7 @@ pub mod rule_parser;
 pub mod running_agent_registry;
 pub mod verification_events;
 pub mod verification_gate;
+pub mod verification_state;
 pub mod workflow_service;
 pub mod worktree_guard;
 
@@ -31,13 +32,17 @@ pub use artifact_service::ArtifactService;
 pub use bucket_classifier::BucketClassifier;
 pub use gap_fingerprint::{gap_fingerprint, gap_score, jaccard_similarity};
 pub use verification_events::{
-    build_verification_payload, build_verification_started_metadata,
+    build_verification_payload, build_verification_started_snapshot,
     emit_verification_pending_confirmation, emit_verification_started,
     emit_verification_status_changed,
 };
 pub use verification_gate::{
     check_proposal_verification_gate, check_verification_gate, EffectiveGatePolicy,
     ProposalOperation, resolve_effective_gate_policy,
+};
+pub use verification_state::{
+    build_blank_verification_snapshot, clear_verification_snapshot,
+    load_current_verification_snapshot_or_default, load_effective_verification_status,
 };
 pub use index_rewriter::{IndexRewriter, RewriteResult};
 // Unified message queue - keyed by (context_type, context_id)

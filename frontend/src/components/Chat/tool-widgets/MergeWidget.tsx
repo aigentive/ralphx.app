@@ -15,6 +15,7 @@ import { GitMerge, GitBranch, AlertTriangle, ArrowRight, X } from "lucide-react"
 import { WidgetCard, WidgetHeader, Badge, InlineIndicator, FilePath } from "./shared";
 import { colors, getString, getStringArray, getBool } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
+import { canonicalizeToolName } from "./tool-name";
 
 /** Shorten a commit SHA to 7 chars */
 function shortSha(sha: string): string {
@@ -26,6 +27,29 @@ import { formatBranchDisplay } from "@/lib/branch-utils";
 /** Extract branch short name using unified formatter */
 function shortBranch(branch: string): string {
   return formatBranchDisplay(branch).short;
+}
+
+function isContinuationStatus(status: string | undefined): boolean {
+  return status === "executing"
+    || status === "re_executing"
+    || status === "ready"
+    || status === "reviewing"
+    || status === "pending_review";
+}
+
+function continuationLabel(status: string | undefined): string | null {
+  switch (status) {
+    case "executing":
+    case "re_executing":
+      return "Task returned to execution after freshness resolution";
+    case "ready":
+      return "Task returned to ready state after freshness resolution";
+    case "reviewing":
+    case "pending_review":
+      return "Task returned to review after freshness resolution";
+    default:
+      return null;
+  }
 }
 
 // ============================================================================
@@ -40,6 +64,18 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
   const success = getBool(result, "success");
   const message = getString(result, "message");
   const newStatus = getString(result, "new_status");
+  const continuationStatus = isContinuationStatus(newStatus);
+  const title = success === false
+    ? "Merge failed"
+    : continuationStatus
+    ? "Branch update applied"
+    : newStatus === "already_merged"
+    ? "Merge already applied"
+    : "Merge completed";
+  const detail = continuationLabel(newStatus) ?? message;
+  const accentColor = continuationStatus ? colors.blue : colors.success;
+  const surfaceTint = continuationStatus ? colors.blueDim : colors.successDim;
+  const detailColor = continuationStatus ? "hsl(220 60% 72%)" : "hsl(145 30% 55%)";
 
   // If tool errored, show inline error
   if (toolCall.error) {
@@ -64,9 +100,9 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
   return (
     <div
       style={{
-        background: colors.successDim,
+        background: surfaceTint,
         borderRadius: 10,
-        border: `1px solid hsla(145 60% 45% / 0.20)`,
+        border: `1px solid color-mix(in srgb, ${accentColor} 20%, transparent)`,
         overflow: "hidden",
       }}
     >
@@ -79,18 +115,18 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
         }}
       >
         {/* Merge icon */}
-        <GitMerge size={14} style={{ color: colors.success, flexShrink: 0 }} />
+        <GitMerge size={14} style={{ color: accentColor, flexShrink: 0 }} />
 
         {/* Title */}
         <span
           style={{
             fontSize: compact ? 11 : 11.5,
             fontWeight: 500,
-            color: colors.success,
+            color: accentColor,
             flex: 1,
           }}
         >
-          {success === false ? "Merge failed" : "Merge completed"}
+          {title}
         </span>
 
         {/* Commit SHA badge */}
@@ -102,8 +138,8 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
               padding: "1px 6px",
               borderRadius: 6,
               fontWeight: 500,
-              background: "hsla(145 60% 45% / 0.15)",
-              color: colors.success,
+              background: continuationStatus ? colors.blueDim : "hsla(145 60% 45% / 0.15)",
+              color: accentColor,
               flexShrink: 0,
             }}
           >
@@ -113,21 +149,21 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
 
         {/* Status badge */}
         {newStatus && (
-          <Badge variant="success" compact>{newStatus}</Badge>
+          <Badge variant={continuationStatus ? "blue" : "success"} compact>{newStatus}</Badge>
         )}
       </div>
 
       {/* Message detail */}
-      {message && (
+      {detail && (
         <div
           style={{
             fontSize: 10,
-            color: "hsl(145 30% 55%)",
+            color: detailColor,
             padding: compact ? "0 10px 6px" : "0 12px 8px",
             paddingTop: 0,
           }}
         >
-          {message}
+          {detail}
         </div>
       )}
     </div>
@@ -348,31 +384,29 @@ function GetMergeTargetWidget({ toolCall, compact = false }: ToolCallWidgetProps
 // ============================================================================
 
 export const MergeWidget = React.memo(function MergeWidget(props: ToolCallWidgetProps) {
-  const toolName = props.toolCall.name.toLowerCase();
+  const toolName = canonicalizeToolName(props.toolCall.name);
 
   switch (toolName) {
-    case "mcp__ralphx__complete_merge":
     case "complete_merge":
-      return <CompleteMergeWidget {...props} />;
+      return <div data-testid="merge-widget-complete"><CompleteMergeWidget {...props} /></div>;
 
-    case "mcp__ralphx__report_conflict":
     case "report_conflict":
-      return <ReportConflictWidget {...props} />;
+      return <div data-testid="merge-widget-conflict"><ReportConflictWidget {...props} /></div>;
 
-    case "mcp__ralphx__report_incomplete":
     case "report_incomplete":
-      return <ReportIncompleteWidget {...props} />;
+      return <div data-testid="merge-widget-incomplete"><ReportIncompleteWidget {...props} /></div>;
 
-    case "mcp__ralphx__get_merge_target":
     case "get_merge_target":
-      return <GetMergeTargetWidget {...props} />;
+      return <div data-testid="merge-widget-target"><GetMergeTargetWidget {...props} /></div>;
 
     default:
       return (
+        <div data-testid="merge-widget-fallback">
         <InlineIndicator
           icon={<GitMerge size={12} style={{ color: colors.textMuted }} />}
           text={props.toolCall.name}
         />
+        </div>
       );
   }
 });

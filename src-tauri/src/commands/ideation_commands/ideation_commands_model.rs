@@ -4,7 +4,7 @@
 //   1. Per-project DB row (if project_id is Some and row exists and value != inherit)
 //   2. Global DB row (if row exists and value != inherit)
 //   3. YAML agent-specific model (if AgentConfig.model is Some)
-//   4. Hardcoded default ("sonnet")
+//   4. Shared Claude model resolver default ("sonnet")
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -13,14 +13,15 @@ use tauri::State;
 use crate::application::AppState;
 use crate::domain::ideation::ModelLevel;
 use crate::infrastructure::agents::claude::{
-    get_agent_config, resolve_ideation_subagent_model_with_source,
+    resolve_ideation_subagent_model_with_source,
+    resolve_model_with_source as resolve_claude_model_with_source,
     resolve_verifier_subagent_model_with_source,
 };
 
 // Representative agents for each bucket — used to resolve YAML model values.
-const PRIMARY_REPR_AGENT: &str = "orchestrator-ideation";
-const VERIFIER_REPR_AGENT: &str = "plan-verifier";
-// Same as plan-verifier, separate const for future flexibility.
+const PRIMARY_REPR_AGENT: &str = "ralphx-ideation";
+const VERIFIER_REPR_AGENT: &str = "ralphx-plan-verifier";
+// Same as ralphx-plan-verifier, separate const for future flexibility.
 const VERIFIER_SUBAGENT_REPR_AGENT: &str = VERIFIER_REPR_AGENT;
 
 // ============================================================================
@@ -91,7 +92,7 @@ pub struct UpdateIdeationModelInput {
 ///   2. global_value  (if Some and != inherit) → source "global"
 ///   3. YAML agent-specific model              → source "yaml"
 ///   4. Hardcoded default ("sonnet")            → source "yaml_default"
-fn resolve_model_with_source(
+fn resolve_bucket_model_with_source(
     project_value: Option<&ModelLevel>,
     global_value: Option<&ModelLevel>,
     repr_agent: &str,
@@ -110,15 +111,13 @@ fn resolve_model_with_source(
         }
     }
 
-    // Level 3 — YAML agent-specific model
-    if let Some(config) = get_agent_config(repr_agent) {
-        if let Some(model) = &config.model {
-            return (model.clone(), "yaml".to_string());
-        }
-    }
-
-    // Level 4 — hardcoded default
-    ("sonnet".to_string(), "yaml_default".to_string())
+    let (model, source) = resolve_claude_model_with_source(Some(repr_agent));
+    let source = if source == "default" {
+        "yaml_default".to_string()
+    } else {
+        source
+    };
+    (model, source)
 }
 
 // ============================================================================
@@ -199,9 +198,9 @@ pub async fn get_ideation_model_settings(
     let global_ideation_subagent = global_row.as_ref().map(|r| &r.ideation_subagent_model);
 
     let (effective_primary, primary_source) =
-        resolve_model_with_source(project_primary, global_primary, PRIMARY_REPR_AGENT);
+        resolve_bucket_model_with_source(project_primary, global_primary, PRIMARY_REPR_AGENT);
     let (effective_verifier, verifier_source) =
-        resolve_model_with_source(project_verifier, global_verifier, VERIFIER_REPR_AGENT);
+        resolve_bucket_model_with_source(project_verifier, global_verifier, VERIFIER_REPR_AGENT);
     let (effective_verifier_subagent, verifier_subagent_source) =
         resolve_verifier_subagent_model_with_source(
             project_verifier_subagent,
@@ -308,13 +307,24 @@ pub async fn update_ideation_model_settings(
     if let Some(ref pid) = input.project_id {
         app_state
             .ideation_model_settings_repo
-            .upsert_for_project(pid, new_primary, new_verifier, new_verifier_subagent, new_ideation_subagent)
+            .upsert_for_project(
+                pid,
+                new_primary,
+                new_verifier,
+                new_verifier_subagent,
+                new_ideation_subagent,
+            )
             .await
             .map_err(|e| format!("Failed to save model settings: {e}"))?;
     } else {
         app_state
             .ideation_model_settings_repo
-            .upsert_global(new_primary, new_verifier, new_verifier_subagent, new_ideation_subagent)
+            .upsert_global(
+                new_primary,
+                new_verifier,
+                new_verifier_subagent,
+                new_ideation_subagent,
+            )
             .await
             .map_err(|e| format!("Failed to save model settings: {e}"))?;
     }
@@ -350,7 +360,7 @@ mod tests {
         let project = make_settings(ModelLevel::Sonnet, ModelLevel::Opus);
         let global = make_settings(ModelLevel::Haiku, ModelLevel::Haiku);
 
-        let (eff, src) = resolve_model_with_source(
+        let (eff, src) = resolve_bucket_model_with_source(
             Some(&project.primary_model),
             Some(&global.primary_model),
             PRIMARY_REPR_AGENT,
@@ -364,7 +374,7 @@ mod tests {
         let project = make_settings(ModelLevel::Inherit, ModelLevel::Inherit);
         let global = make_settings(ModelLevel::Opus, ModelLevel::Sonnet);
 
-        let (eff, src) = resolve_model_with_source(
+        let (eff, src) = resolve_bucket_model_with_source(
             Some(&project.primary_model),
             Some(&global.primary_model),
             PRIMARY_REPR_AGENT,
@@ -376,7 +386,7 @@ mod tests {
     #[test]
     fn resolve_model_no_rows_uses_yaml_fallback() {
         // Both None → should reach yaml or yaml_default level.
-        let (_, src) = resolve_model_with_source(None, None, PRIMARY_REPR_AGENT);
+        let (_, src) = resolve_bucket_model_with_source(None, None, PRIMARY_REPR_AGENT);
         assert!(
             src == "yaml" || src == "yaml_default",
             "Expected yaml or yaml_default, got: {src}"
@@ -388,8 +398,11 @@ mod tests {
         let settings = make_settings(ModelLevel::Inherit, ModelLevel::Inherit);
 
         // Inherit-only project row, no global row → yaml fallback
-        let (_, src) =
-            resolve_model_with_source(Some(&settings.primary_model), None, PRIMARY_REPR_AGENT);
+        let (_, src) = resolve_bucket_model_with_source(
+            Some(&settings.primary_model),
+            None,
+            PRIMARY_REPR_AGENT,
+        );
         assert!(
             src == "yaml" || src == "yaml_default",
             "Expected yaml/yaml_default after inherit, got: {src}"
@@ -400,7 +413,7 @@ mod tests {
     fn model_bucket_for_primary_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
         assert_eq!(
-            model_bucket_for_agent("orchestrator-ideation"),
+            model_bucket_for_agent("ralphx-ideation"),
             Some(ModelBucket::Primary)
         );
     }
@@ -409,7 +422,7 @@ mod tests {
     fn model_bucket_for_verifier_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
         assert_eq!(
-            model_bucket_for_agent("plan-verifier"),
+            model_bucket_for_agent("ralphx-plan-verifier"),
             Some(ModelBucket::Verifier)
         );
     }
@@ -417,7 +430,7 @@ mod tests {
     #[test]
     fn model_bucket_for_non_ideation_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
-        assert_eq!(model_bucket_for_agent("ralphx-worker"), None);
+        assert_eq!(model_bucket_for_agent("ralphx-execution-worker"), None);
     }
 
     #[test]

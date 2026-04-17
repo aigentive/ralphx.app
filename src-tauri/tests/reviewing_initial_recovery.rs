@@ -89,16 +89,19 @@ async fn seed_reviewing_task(
 }
 
 // ============================================================================
-// Test 1: BranchFreshnessConflict in initial on_enter path → PendingReview
+// Test 1: BranchFreshnessConflict with conflict-marker evidence in initial
+// on_enter path → Merging
 //
 // Reproduces the startup-recovery bug: when execute_entry_actions is called
 // directly (not through transition_task), a BranchFreshnessConflict returned
 // from on_enter(Reviewing) previously had no handler and was silently dropped,
-// leaving the task stuck in Reviewing forever.
+// leaving the task stuck in Reviewing forever. Current semantics route review-
+// origin freshness conflicts with merge-conflict evidence into Merging so the
+// merger path resolves the conflict instead of looping back into Reviewing.
 // ============================================================================
 
 #[tokio::test]
-async fn test_branch_freshness_conflict_initial_on_enter_routes_to_pending_review() {
+async fn test_branch_freshness_conflict_initial_on_enter_routes_to_merging() {
     // Clean project git repo — freshness check (run_reviewing_freshness_check)
     // runs against this path and must pass without raising BranchFreshnessConflict.
     let project_temp = tempfile::TempDir::new().unwrap();
@@ -153,7 +156,8 @@ async fn test_branch_freshness_conflict_initial_on_enter_routes_to_pending_revie
         .execute_entry_actions(&task_id, &task, InternalStatus::Reviewing)
         .await;
 
-    // Assert: task must have been routed to PendingReview (reviewing-origin path).
+    // Assert: task must have been routed to Merging because the worktree
+    // contained actual conflict markers.
     let updated = app_state
         .task_repo
         .get_by_id(&task_id)
@@ -163,8 +167,8 @@ async fn test_branch_freshness_conflict_initial_on_enter_routes_to_pending_revie
 
     assert_eq!(
         updated.internal_status,
-        InternalStatus::PendingReview,
-        "BranchFreshnessConflict during initial on_enter(Reviewing) must route to PendingReview; got: {:?}",
+        InternalStatus::Merging,
+        "BranchFreshnessConflict with conflict-marker evidence during initial on_enter(Reviewing) must route to Merging; got: {:?}",
         updated.internal_status
     );
 }

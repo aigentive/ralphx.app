@@ -28,7 +28,10 @@ import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
-import type { AgentRunStartedPayload } from "@/types/events";
+import type {
+  AgentRunCompletedPayload,
+  AgentRunStartedPayload,
+} from "@/types/events";
 import { logger } from "@/lib/logger";
 
 export function useGlobalAgentLifecycle() {
@@ -131,8 +134,14 @@ export function useGlobalAgentLifecycle() {
         useChatStore.getState().setActiveConversation(eventContextKey, payload.conversation_id);
 
         // Populate effective model if both fields are present
-        if (payload.effectiveModelId && payload.effectiveModelLabel) {
-          const model: ModelDisplay = { id: payload.effectiveModelId, label: payload.effectiveModelLabel };
+        const effectiveModelId = payload.effective_model_id ?? payload.effectiveModelId;
+        const effectiveModelLabel =
+          payload.effective_model_label ?? payload.effectiveModelLabel;
+        if (effectiveModelId && effectiveModelLabel) {
+          const model: ModelDisplay = {
+            id: effectiveModelId,
+            label: effectiveModelLabel,
+          };
           useChatStore.getState().setEffectiveModel(eventContextKey, model);
         }
       })
@@ -141,13 +150,7 @@ export function useGlobalAgentLifecycle() {
     // agent:run_completed → guarded termination
     // Skip teammate events
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
@@ -164,13 +167,7 @@ export function useGlobalAgentLifecycle() {
     // agent:turn_completed → waiting_for_input (with verification child guard)
     // Skip teammate events
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:turn_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 

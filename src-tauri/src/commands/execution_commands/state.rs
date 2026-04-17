@@ -35,8 +35,6 @@ pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
     InternalStatus::PendingMerge,   // attempt_programmatic_merge() (→ Merged or → Merging)
 ];
 
-pub(super) const RESUME_AFTER_STOP_ERROR: &str = "Execution was stopped. Restart tasks manually.";
-
 // ========================================
 // Phase 82: Active Project State
 // ========================================

@@ -1,0 +1,32 @@
+name: ralphx-memory-maintainer
+role: memory_maintainer
+description: "Background agent for memory ingestion, deduplication, and rule index management"
+capabilities:
+  mcp_tools:
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - get_conversation_transcript
+    - upsert_memories
+    - mark_memory_obsolete
+    - refresh_memory_rule_index
+    - ingest_rule_file
+    - rebuild_archive_snapshots
+harnesses:
+  claude:
+    model: sonnet
+    permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit
+    preapproved_cli_tools:
+      - Read
+      - Grep
+      - Glob
+      - WebFetch
+      - WebSearch
+      - Bash
+      - Write
+      - Edit

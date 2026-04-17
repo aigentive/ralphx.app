@@ -1,5 +1,40 @@
 use super::*;
 
+fn cached_streaming_task(tool_use_id: &str) -> CachedStreamingTask {
+    CachedStreamingTask {
+        tool_use_id: tool_use_id.to_string(),
+        description: None,
+        subagent_type: None,
+        model: None,
+        status: "running".to_string(),
+        agent_id: None,
+        teammate_name: None,
+        delegated_job_id: None,
+        delegated_session_id: None,
+        delegated_conversation_id: None,
+        delegated_agent_run_id: None,
+        provider_harness: None,
+        provider_session_id: None,
+        upstream_provider: None,
+        provider_profile: None,
+        logical_model: None,
+        effective_model_id: None,
+        logical_effort: None,
+        effective_effort: None,
+        approval_policy: None,
+        sandbox_mode: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
+        input_tokens: None,
+        output_tokens: None,
+        cache_creation_tokens: None,
+        cache_read_tokens: None,
+        estimated_usd: None,
+        text_output: None,
+    }
+}
+
 #[tokio::test]
 async fn test_new_cache_is_empty() {
     let cache = StreamingStateCache::new();
@@ -63,15 +98,10 @@ async fn test_upsert_tool_call_updates_existing() {
 async fn test_add_task() {
     let cache = StreamingStateCache::new();
     let task = CachedStreamingTask {
-        tool_use_id: "toolu_002".to_string(),
         description: Some("Running tests".to_string()),
         subagent_type: Some("ralphx:coder".to_string()),
         model: Some("sonnet".to_string()),
-        status: "running".to_string(),
-        teammate_name: None,
-        total_tokens: None,
-        total_tool_uses: None,
-        duration_ms: None,
+        ..cached_streaming_task("toolu_002")
     };
 
     cache.add_task("conv-123", task).await;
@@ -85,15 +115,10 @@ async fn test_add_task() {
 async fn test_complete_task() {
     let cache = StreamingStateCache::new();
     let task = CachedStreamingTask {
-        tool_use_id: "toolu_002".to_string(),
         description: Some("Running tests".to_string()),
         subagent_type: Some("ralphx:coder".to_string()),
         model: Some("sonnet".to_string()),
-        status: "running".to_string(),
-        teammate_name: None,
-        total_tokens: None,
-        total_tool_uses: None,
-        duration_ms: None,
+        ..cached_streaming_task("toolu_002")
     };
     cache.add_task("conv-123", task).await;
 
@@ -206,15 +231,8 @@ async fn test_serialize_produces_expected_json() {
             parent_tool_use_id: None,
         }],
         streaming_tasks: vec![CachedStreamingTask {
-            tool_use_id: "toolu_002".to_string(),
             description: Some("Test task".to_string()),
-            subagent_type: None,
-            model: None,
-            status: "running".to_string(),
-            teammate_name: None,
-            total_tokens: None,
-            total_tool_uses: None,
-            duration_ms: None,
+            ..cached_streaming_task("toolu_002")
         }],
         partial_text: "Hello".to_string(),
         updated_at: Utc::now(),
@@ -250,15 +268,8 @@ async fn test_serialize_skips_none_fields() {
 async fn test_complete_task_with_stats() {
     let cache = StreamingStateCache::new();
     let task = CachedStreamingTask {
-        tool_use_id: "toolu_002".to_string(),
         description: Some("Running tests".to_string()),
-        subagent_type: None,
-        model: None,
-        status: "running".to_string(),
-        teammate_name: None,
-        total_tokens: None,
-        total_tool_uses: None,
-        duration_ms: None,
+        ..cached_streaming_task("toolu_002")
     };
     cache.add_task("conv-123", task).await;
 
@@ -281,17 +292,7 @@ async fn test_complete_task_with_stats() {
 #[tokio::test]
 async fn test_complete_task_with_none_stats_clears_nothing() {
     let cache = StreamingStateCache::new();
-    let task = CachedStreamingTask {
-        tool_use_id: "toolu_003".to_string(),
-        description: None,
-        subagent_type: None,
-        model: None,
-        status: "running".to_string(),
-        teammate_name: None,
-        total_tokens: None,
-        total_tool_uses: None,
-        duration_ms: None,
-    };
+    let task = cached_streaming_task("toolu_003");
     cache.add_task("conv-abc", task).await;
 
     cache.complete_task("conv-abc", "toolu_003", None).await;
@@ -301,4 +302,68 @@ async fn test_complete_task_with_none_stats_clears_nothing() {
     assert_eq!(state.streaming_tasks[0].total_tokens, None);
     assert_eq!(state.streaming_tasks[0].total_tool_uses, None);
     assert_eq!(state.streaming_tasks[0].duration_ms, None);
+}
+
+#[tokio::test]
+async fn test_add_task_replaces_existing_tool_use_id() {
+    let cache = StreamingStateCache::new();
+
+    cache
+        .add_task(
+            "conv-123",
+            CachedStreamingTask {
+                description: Some("Initial".to_string()),
+                subagent_type: Some("delegated".to_string()),
+                model: Some("sonnet".to_string()),
+                delegated_job_id: Some("job-1".to_string()),
+                ..cached_streaming_task("toolu_002")
+            },
+        )
+        .await;
+
+    cache
+        .add_task(
+            "conv-123",
+            CachedStreamingTask {
+                description: Some("Updated".to_string()),
+                subagent_type: Some("delegated".to_string()),
+                model: Some("gpt-5.4".to_string()),
+                status: "completed".to_string(),
+                agent_id: Some("run-1".to_string()),
+                delegated_job_id: Some("job-1".to_string()),
+                delegated_session_id: Some("delegated-session-1".to_string()),
+                delegated_conversation_id: Some("conv-child".to_string()),
+                delegated_agent_run_id: Some("run-1".to_string()),
+                provider_harness: Some("codex".to_string()),
+                provider_session_id: Some("provider-session-1".to_string()),
+                upstream_provider: Some("openai".to_string()),
+                provider_profile: Some("prod".to_string()),
+                logical_model: Some("gpt-5.4".to_string()),
+                effective_model_id: Some("gpt-5.4-2026-04-01".to_string()),
+                logical_effort: Some("high".to_string()),
+                effective_effort: Some("high".to_string()),
+                approval_policy: Some("never".to_string()),
+                sandbox_mode: Some("danger-full-access".to_string()),
+                total_tokens: Some(111),
+                total_tool_uses: Some(2),
+                duration_ms: Some(3000),
+                input_tokens: Some(11),
+                output_tokens: Some(22),
+                cache_creation_tokens: Some(33),
+                cache_read_tokens: Some(44),
+                estimated_usd: Some(0.55),
+                text_output: Some("done".to_string()),
+                ..cached_streaming_task("toolu_002")
+            },
+        )
+        .await;
+
+    let state = cache.get("conv-123").await.unwrap();
+    assert_eq!(state.streaming_tasks.len(), 1);
+    let task = &state.streaming_tasks[0];
+    assert_eq!(task.description.as_deref(), Some("Updated"));
+    assert_eq!(task.status, "completed");
+    assert_eq!(task.provider_harness.as_deref(), Some("codex"));
+    assert_eq!(task.input_tokens, Some(11));
+    assert_eq!(task.text_output.as_deref(), Some("done"));
 }

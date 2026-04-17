@@ -1,13 +1,13 @@
 /**
  * Agent Configuration for Welcome Screen Constellation
  *
- * Real agents from plugins/app/agents/ with orbital parameters
+ * Real canonical agents from `agents/` with orbital parameters
  * for the animated constellation.
  *
  * Agents are organized into three orbital tiers:
  * - Inner (4 agents): Core workflow - orchestrator, worker, reviewer, qa
- * - Middle (4 agents): Support - supervisor, researcher, ideation, qa-prep
- * - Outer (5 agents): Utilities - chat agents, session-namer, dependency
+ * - Middle (3 agents): Support - researcher, ideation, qa-prep
+ * - Outer (5 agents): Utilities - chat agents, ralphx-utility-session-namer, dependency
  *
  * Anti-AI-Slop: Warm colors only, no purple/blue
  */
@@ -17,7 +17,6 @@ import {
   Code2,
   Eye,
   ShieldCheck,
-  Activity,
   Search,
   Lightbulb,
   ClipboardList,
@@ -32,7 +31,6 @@ import {
   AGENT_WORKER,
   AGENT_REVIEWER,
   AGENT_QA_EXECUTOR,
-  AGENT_SUPERVISOR,
   AGENT_DEEP_RESEARCHER,
   AGENT_ORCHESTRATOR_IDEATION,
   AGENT_QA_PREP,
@@ -78,7 +76,7 @@ export const MIN_ORBITAL_RADIUS = 80;
 export const MAX_ORBITAL_RADIUS = 600;
 
 /**
- * All 13 agents from the RalphX plugin
+ * Curated live agents from the RalphX plugin
  * Colors use warm palette: orange, green, amber, rose, teal, lime, yellow
  */
 export const ORBITING_AGENTS: OrbitingAgent[] = [
@@ -128,18 +126,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     direction: 1,
   },
 
-  // Middle tier (4 agents) - Support
-  {
-    id: AGENT_SUPERVISOR,
-    name: "Supervisor",
-    role: "Monitors execution",
-    icon: Activity,
-    color: "#f43f5e", // Rose
-    tier: "middle",
-    startAngle: Math.PI / 4,
-    period: 60,
-    direction: -1,
-  },
+  // Middle tier (3 agents) - Support
   {
     id: AGENT_DEEP_RESEARCHER,
     name: "Researcher",
@@ -147,7 +134,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     icon: Search,
     color: "#a3e635", // Lime
     tier: "middle",
-    startAngle: (3 * Math.PI) / 4,
+    startAngle: Math.PI / 6,
     period: 60,
     direction: -1,
   },
@@ -158,7 +145,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     icon: Lightbulb,
     color: "#facc15", // Yellow
     tier: "middle",
-    startAngle: (5 * Math.PI) / 4,
+    startAngle: (5 * Math.PI) / 6,
     period: 60,
     direction: -1,
   },
@@ -169,7 +156,7 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     icon: ClipboardList,
     color: "#fb923c", // Orange-400
     tier: "middle",
-    startAngle: (7 * Math.PI) / 4,
+    startAngle: (3 * Math.PI) / 2,
     period: 60,
     direction: -1,
   },

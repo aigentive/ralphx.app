@@ -1,0 +1,18 @@
+# RalphX external MCP server configuration
+#
+# Canonical ownership:
+# - External MCP runtime defaults -> `external_mcp`
+# - Shared runtime core remains in `config/ralphx.yaml`
+#
+# Env overrides still win over file values.
+
+# ── External MCP server ────────────────────────────────────────────────────
+# Controls the optional external MCP server spawned by the backend.
+# Default: disabled (enabled: false). Set enabled: true for dev use.
+external_mcp:
+  enabled: true          # default: false (opt-in), set true for dev
+  port: 3848             # default: 3848
+  host: "127.0.0.1"      # default: 127.0.0.1
+  max_restart_attempts: 3 # default: 3
+  restart_delay_ms: 2000  # default: 2000
+  human_wait_timeout_secs: 285 # Env: RALPHX_EXTERNAL_MCP_HUMAN_WAIT_TIMEOUT_SECS

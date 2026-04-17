@@ -2,7 +2,7 @@ use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{
     IdeationSession, IdeationSessionStatus, Priority, ProjectId, ProposalCategory, Task,
-    TaskProposal, VerificationStatus,
+    TaskProposal, VerificationGap, VerificationRunSnapshot, VerificationStatus,
 };
 
 fn build_service(state: &AppState) -> SessionReopenService {
@@ -294,8 +294,10 @@ async fn test_reopen_resets_verification_state() {
     let mut session = IdeationSession::new(project_id.clone());
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
-    session.verification_metadata =
-        Some(r#"{"schema_version":1,"current_round":3,"rounds":[]}"#.to_string());
+    session.verification_current_round = Some(3);
+    session.verification_max_rounds = Some(5);
+    session.verification_gap_count = 2;
+    session.verification_gap_score = Some(13);
 
     let created = state.ideation_session_repo.create(session).await.unwrap();
     state
@@ -324,10 +326,62 @@ async fn test_reopen_resets_verification_state() {
         !reopened.verification_in_progress,
         "verification_in_progress must be cleared on reopen"
     );
-    assert!(
-        reopened.verification_metadata.is_none(),
-        "verification_metadata must be cleared on reopen"
-    );
+}
+
+#[tokio::test]
+async fn test_reopen_resets_active_generation_snapshot() {
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    let mut session = IdeationSession::new(project_id.clone());
+    session.verification_generation = 4;
+    let created = state.ideation_session_repo.create(session).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+    state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            &created.id,
+            &VerificationRunSnapshot {
+                generation: 4,
+                status: VerificationStatus::NeedsRevision,
+                in_progress: true,
+                current_round: 2,
+                max_rounds: 5,
+                best_round_index: Some(1),
+                convergence_reason: None,
+                current_gaps: vec![VerificationGap {
+                    severity: "high".to_string(),
+                    category: "testing".to_string(),
+                    description: "Missing regression".to_string(),
+                    why_it_matters: None,
+                    source: Some("completeness".to_string()),
+                }],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+    let service = build_service(&state);
+    service.reopen(&created.id, &state).await.unwrap();
+
+    let snapshot = state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&created.id, 4)
+        .await
+        .unwrap()
+        .expect("reopen should leave a reset authoritative snapshot for the active generation");
+    assert_eq!(snapshot.status, VerificationStatus::Unverified);
+    assert!(!snapshot.in_progress);
+    assert_eq!(snapshot.current_round, 0);
+    assert_eq!(snapshot.max_rounds, 0);
+    assert!(snapshot.current_gaps.is_empty());
+    assert!(snapshot.rounds.is_empty());
+    assert!(snapshot.convergence_reason.is_none());
 }
 
 #[tokio::test]
@@ -508,10 +562,9 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         id: &crate::domain::entities::IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        metadata_json: Option<String>,
     ) -> crate::error::AppResult<()> {
         self.inner
-            .update_verification_state(id, status, in_progress, metadata_json)
+            .update_verification_state(id, status, in_progress)
             .await
     }
 
@@ -525,8 +578,24 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn get_verification_status(
         &self,
         id: &crate::domain::entities::IdeationSessionId,
-    ) -> crate::error::AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> crate::error::AppResult<Option<(VerificationStatus, bool)>> {
         self.inner.get_verification_status(id).await
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        id: &crate::domain::entities::IdeationSessionId,
+        snapshot: &crate::domain::entities::VerificationRunSnapshot,
+    ) -> crate::error::AppResult<()> {
+        self.inner.save_verification_run_snapshot(id, snapshot).await
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        id: &crate::domain::entities::IdeationSessionId,
+        generation: i32,
+    ) -> crate::error::AppResult<Option<crate::domain::entities::VerificationRunSnapshot>> {
+        self.inner.get_verification_run_snapshot(id, generation).await
     }
 
     async fn revert_plan_and_skip_verification(
@@ -575,7 +644,7 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn reset_and_begin_reverify(
         &self,
         session_id: &str,
-    ) -> crate::error::AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> crate::error::AppResult<(i32, crate::domain::entities::VerificationRunSnapshot)> {
         self.inner.reset_and_begin_reverify(session_id).await
     }
 

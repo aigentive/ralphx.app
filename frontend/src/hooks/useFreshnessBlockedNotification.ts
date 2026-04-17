@@ -12,7 +12,9 @@ import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import { taskKeys } from "@/hooks/useTasks";
+import { executionKeys } from "@/hooks/useExecutionControl";
 import { FRESHNESS_BLOCKED_PREFIX, parseFreshnessBlockedReason } from "@/lib/freshness-blocked";
+import { resumeExecutionIfStopped } from "@/lib/task-actions/resume-execution-if-stopped";
 import type { Unsubscribe } from "@/lib/event-bus";
 
 // Minimum ms between toast notifications for the same task to avoid duplicates
@@ -68,11 +70,14 @@ export function useFreshnessBlockedNotification() {
               onClick: async () => {
                 try {
                   await api.tasks.move(taskId, "ready");
-                  queryClient.invalidateQueries({ queryKey: taskKeys.all });
+                  await resumeExecutionIfStopped(task.projectId);
                   // Allow re-notification after a manual reset
                   notifiedRef.current.delete(taskId);
                 } catch {
                   toast.error("Failed to reset task — please try again from the task detail view");
+                } finally {
+                  queryClient.invalidateQueries({ queryKey: taskKeys.all });
+                  queryClient.invalidateQueries({ queryKey: executionKeys.all });
                 }
               },
             },

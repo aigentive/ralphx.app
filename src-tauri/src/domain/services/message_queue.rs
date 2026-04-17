@@ -6,6 +6,7 @@
 // This is a consolidation of ExecutionMessageQueue to support
 // queueing messages for all context types, not just TaskExecution.
 
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{ChatContextType, TaskId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -60,6 +61,9 @@ pub struct QueuedMessage {
     /// Optional RFC3339 timestamp override (preserves trigger time through queue)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at_override: Option<String>,
+    /// Optional runtime harness override to preserve relaunch/recovery provider continuity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness_override: Option<AgentHarnessKind>,
 }
 
 impl QueuedMessage {
@@ -72,6 +76,7 @@ impl QueuedMessage {
             is_editing: false,
             metadata_override: None,
             created_at_override: None,
+            harness_override: None,
         }
     }
 
@@ -85,6 +90,7 @@ impl QueuedMessage {
             is_editing: false,
             metadata_override: None,
             created_at_override: None,
+            harness_override: None,
         }
     }
 }
@@ -178,7 +184,7 @@ impl MessageQueue {
         message
     }
 
-    /// Queue a message with metadata and timestamp overrides.
+    /// Queue a message with metadata, timestamp, and runtime harness overrides.
     ///
     /// Used by Gate 2 when auto-verification or other send_message callers
     /// pass SendMessageOptions — the overrides must survive the queue round-trip.
@@ -189,11 +195,13 @@ impl MessageQueue {
         content: String,
         metadata_override: Option<String>,
         created_at_override: Option<String>,
+        harness_override: Option<AgentHarnessKind>,
     ) -> QueuedMessage {
         let key = QueueKey::new(context_type, context_id);
         let mut message = QueuedMessage::new(content);
         message.metadata_override = metadata_override;
         message.created_at_override = created_at_override;
+        message.harness_override = harness_override;
         let mut queues = self.queues.lock().unwrap();
         queues.entry(key).or_default().push(message.clone());
         message
@@ -370,6 +378,7 @@ impl MessageQueue {
     pub fn count_for_context(&self, context_type: &str, context_id: &str) -> usize {
         let ctx_type = match context_type {
             "ideation" => ChatContextType::Ideation,
+            "delegation" => ChatContextType::Delegation,
             "task_execution" => ChatContextType::TaskExecution,
             "task" => ChatContextType::Task,
             "project" => ChatContextType::Project,

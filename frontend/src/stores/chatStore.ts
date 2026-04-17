@@ -567,3 +567,8 @@ export const selectEffectiveModel =
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = [];
 const EMPTY_TOOL_CALL_START_TIMES: Record<string, number> = Object.freeze({});
+
+// Expose chat store to window in web mode for Playwright testing
+if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+  window.__chatStore = useChatStore;
+}

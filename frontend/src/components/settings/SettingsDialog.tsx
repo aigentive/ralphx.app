@@ -5,6 +5,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { useUiStore } from "@/stores/uiStore";
 import type { ProjectSettings } from "@/types/settings";
@@ -16,17 +18,17 @@ import {
 } from "./settings-registry";
 import { ApiKeysSection } from "./ApiKeysSection";
 import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
-import { GitSettingsSection } from "./GitSettingsSection";
-import { GitHubSettingsSection } from "./GitHubSettingsSection";
-import { IdeationEffortSection } from "./IdeationEffortSection";
-import { IdeationModelSection } from "./IdeationModelSection";
+import { RepositorySettingsSection } from "./RepositorySettingsSection";
+
+import {
+  ExecutionHarnessSection,
+  IdeationHarnessSection,
+} from "./IdeationHarnessSection";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
 import ExecutionSection from "./sections/ExecutionSection";
 import GlobalExecutionSection from "./sections/GlobalExecutionSection";
-import ModelSection from "./sections/ModelSection";
-import ReviewSection from "./sections/ReviewSection";
-import SupervisorSection from "./sections/SupervisorSection";
+import ReviewPolicySection from "./sections/ReviewPolicySection";
 
 export interface SettingsDialogProps {
   executionSettings: ProjectSettings | null;
@@ -75,43 +77,13 @@ export default function SettingsDialog({
           disabled={disabled}
         />
       ) : null,
+    "execution-harnesses": () => <ExecutionHarnessSection />,
     "global-execution": () => <GlobalExecutionSection />,
-    model: () =>
-      executionSettings ? (
-        <ModelSection
-          settings={executionSettings.model}
-          onChange={(changes) =>
-            onSettingsChange({ ...executionSettings, model: { ...executionSettings.model, ...changes } })
-          }
-          disabled={disabled}
-        />
-      ) : null,
-    review: () =>
-      executionSettings ? (
-        <ReviewSection
-          settings={executionSettings.review}
-          onChange={(changes) =>
-            onSettingsChange({ ...executionSettings, review: { ...executionSettings.review, ...changes } })
-          }
-          disabled={disabled}
-        />
-      ) : null,
-    supervisor: () =>
-      executionSettings ? (
-        <SupervisorSection
-          settings={executionSettings.supervisor}
-          onChange={(changes) =>
-            onSettingsChange({ ...executionSettings, supervisor: { ...executionSettings.supervisor, ...changes } })
-          }
-          disabled={disabled}
-        />
-      ) : null,
-    git: () => <GitSettingsSection />,
-    github: () => <GitHubSettingsSection />,
+    review: () => <ReviewPolicySection />,
+    repository: () => <RepositorySettingsSection />,
     "project-analysis": () => <ProjectAnalysisSection />,
     "ideation-workflow": () => <IdeationSettingsPanel />,
-    "ideation-effort": () => <IdeationEffortSection />,
-    "ideation-models": () => <IdeationModelSection />,
+    "ideation-harnesses": () => <IdeationHarnessSection />,
     "api-keys": () => <ApiKeysSection />,
     "external-mcp": () => <ExternalMcpSettingsPanel />,
   };
@@ -127,6 +99,10 @@ export default function SettingsDialog({
           border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
+        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <DialogDescription className="sr-only">
+          Configure execution, ideation, workspace, and access settings.
+        </DialogDescription>
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
@@ -163,7 +139,7 @@ export default function SettingsDialog({
         <div className="flex flex-1 overflow-hidden">
           {/* Left rail — hidden below lg breakpoint */}
           <nav
-            className="hidden lg:flex w-[260px] flex-shrink-0 flex-col overflow-y-auto border-r py-3"
+            className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r py-3"
             style={{ borderColor: "rgba(255,255,255,0.06)" }}
           >
             {SETTINGS_GROUPS.map((group) => {
@@ -189,19 +165,21 @@ export default function SettingsDialog({
                             setActiveSection(section.id);
                           }
                         }}
-                        className="mx-2 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors"
+                        className="mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors"
                         style={
                           isActive
                             ? {
-                                background: "rgba(255,107,53,0.12)",
-                                color: "var(--accent)",
+                                background: "rgba(255,107,53,0.16)",
+                                color: "var(--text-primary)",
+                                boxShadow: "inset 2px 0 0 var(--accent-primary)",
+                                fontWeight: 600,
                               }
                             : {
                                 color: "var(--text-primary)",
                               }
                         }
                       >
-                        {section.label}
+                        <span className="block truncate">{section.label}</span>
                       </div>
                     );
                   })}

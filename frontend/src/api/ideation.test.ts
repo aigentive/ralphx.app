@@ -842,6 +842,7 @@ describe("VerificationResponseSchema", () => {
       status: "reviewing",
       in_progress: true,
       verification_generation: 1,
+      selected_generation: 1,
       current_round: 1,
       max_rounds: 3,
       gap_score: 60,
@@ -851,12 +852,28 @@ describe("VerificationResponseSchema", () => {
       rounds: [
         { round: 1, gap_score: 60, gap_count: 1 },
       ],
+      round_details: [
+        {
+          round: 1,
+          gap_score: 60,
+          gap_count: 1,
+          gaps: [{ severity: "high", category: "security", description: "Missing auth" }],
+        },
+      ],
     };
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([
       { severity: "high", category: "security", description: "Missing auth" },
     ]);
     expect(result.rounds).toEqual([{ round: 1, gapScore: 60, gapCount: 1 }]);
+    expect(result.round_details).toEqual([
+      {
+        round: 1,
+        gapScore: 60,
+        gapCount: 1,
+        gaps: [{ severity: "high", category: "security", description: "Missing auth" }],
+      },
+    ]);
   });
 
   it("defaults current_gaps and rounds to [] when omitted", () => {
@@ -865,10 +882,12 @@ describe("VerificationResponseSchema", () => {
       status: "unverified",
       in_progress: false,
       verification_generation: 0,
+      selected_generation: 0,
     };
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([]);
     expect(result.rounds).toEqual([]);
+    expect(result.round_details).toEqual([]);
   });
 
   it("transforms why_it_matters in nested gaps", () => {
@@ -877,6 +896,7 @@ describe("VerificationResponseSchema", () => {
       status: "needs_revision",
       in_progress: false,
       verification_generation: 3,
+      selected_generation: 3,
       current_gaps: [
         {
           severity: "critical",
@@ -955,6 +975,7 @@ describe("ideationApi.verification", () => {
     status: "reviewing",
     in_progress: true,
     verification_generation: 2,
+    selected_generation: 2,
     current_round: 1,
     max_rounds: 3,
     gap_score: 80,
@@ -963,6 +984,16 @@ describe("ideationApi.verification", () => {
     ],
     rounds: [
       { round: 1, gap_score: 80, gap_count: 1 },
+    ],
+    round_details: [
+      {
+        round: 1,
+        gap_score: 80,
+        gap_count: 1,
+        gaps: [
+          { severity: "high", category: "security", description: "Missing auth", why_it_matters: "Critical risk" },
+        ],
+      },
     ],
     ...overrides,
   });
@@ -988,6 +1019,14 @@ describe("ideationApi.verification", () => {
         { severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" },
       ]);
       expect(result.rounds).toEqual([{ round: 1, gapScore: 80, gapCount: 1 }]);
+      expect(result.roundDetails).toEqual([
+        {
+          round: 1,
+          gapScore: 80,
+          gapCount: 1,
+          gaps: [{ severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" }],
+        },
+      ]);
     });
 
     it("throws when response is not ok", async () => {

@@ -2,8 +2,8 @@ import { Page, Locator } from "@playwright/test";
 import { BasePage } from "../base.page";
 
 /**
- * Page object for TaskDetailModal component.
- * This is the premium modal dialog for task details.
+ * Page object for the task detail overlay visual surface.
+ * The suite name is kept for continuity with existing snapshots.
  */
 export class TaskDetailModalPage extends BasePage {
   readonly modal: Locator;
@@ -25,18 +25,18 @@ export class TaskDetailModalPage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    this.modal = page.locator('[data-testid="task-detail-modal"]');
+    this.modal = page.locator('[data-testid="task-detail-overlay"]');
     this.archivedBadge = page.locator('[data-testid="archived-badge"]');
-    this.title = page.locator('[data-testid="task-detail-title"]');
-    this.category = page.locator('[data-testid="task-detail-category"]');
-    this.editButton = page.locator('[data-testid="task-detail-edit-button"]');
-    this.archiveButton = page.locator('[data-testid="task-detail-archive-button"]');
-    this.restoreButton = page.locator('[data-testid="task-detail-restore-button"]');
-    this.deleteButton = page.locator('[data-testid="task-detail-delete-permanently-button"]');
-    this.closeButton = page.locator('[data-testid="task-detail-close"]');
+    this.title = page.locator('[data-testid="task-overlay-title"]');
+    this.category = page.locator('[data-testid="task-overlay-category"]');
+    this.editButton = page.locator('[data-testid="task-overlay-edit-button"]');
+    this.archiveButton = page.locator('[data-testid="task-overlay-archive-button"]');
+    this.restoreButton = page.locator('[data-testid="task-overlay-restore-button"]');
+    this.deleteButton = page.locator('[data-testid="task-overlay-delete-button"]');
+    this.closeButton = page.locator('[data-testid="task-overlay-close"]');
     this.viewContextButton = page.locator('[data-testid="view-context-button"]');
     this.description = page.locator('[data-testid="task-detail-description"]');
-    this.reviewsSection = page.locator('[data-testid="task-detail-reviews-section"]');
+    this.reviewsSection = page.locator('[data-testid="task-detail-panel"]');
     this.reviewsLoading = page.locator('[data-testid="reviews-loading"]');
     this.historySection = page.locator('[data-testid="task-detail-history-section"]');
     this.contextSection = page.locator('[data-testid="task-context-section"]');

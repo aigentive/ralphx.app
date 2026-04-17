@@ -45,12 +45,14 @@ interface VerificationPanelProps {
 }
 
 interface VerificationRunEntry {
-  id: string;
+  generation: number;
   runNumber: number;
-  createdAt: string;
-  /** Status derived from parent session for current run, or session title for others */
-  status?: VerificationStatus;
+  status: VerificationStatus;
+  roundCount: number;
+  gapCount: number;
 }
+
+const EMPTY_CHILD_SESSIONS: Array<{ id: string; createdAt: string }> = [];
 
 // ============================================================================
 // Helpers
@@ -72,16 +74,22 @@ function statusLabel(status: VerificationStatus | undefined): string {
   }
 }
 
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function verificationAgentLabel(agentState: string | undefined): string {
+  switch (agentState) {
+    case "running":
+    case "queued":
+    case "likely_generating":
+      return "Generating";
+    case "likely_waiting":
+      return "Waiting";
+    case "completed":
+      return "Completed";
+    case "failed":
+    case "cancelled":
+      return "Failed";
+    default:
+      return "Bootstrapping";
+  }
 }
 
 // ============================================================================
@@ -90,16 +98,18 @@ function formatRelativeTime(dateStr: string): string {
 
 interface VerificationRunPickerProps {
   runs: VerificationRunEntry[];
-  activeRunId: string | null;
+  activeGeneration: number | null;
+  currentGeneration: number | null;
   currentStatus: VerificationStatus;
   currentRound?: number;
   maxRounds?: number;
-  onSelect: (runId: string) => void;
+  onSelect: (generation: number) => void;
 }
 
 function VerificationRunPicker({
   runs,
-  activeRunId,
+  activeGeneration,
+  currentGeneration,
   currentStatus,
   currentRound,
   maxRounds,
@@ -130,9 +140,10 @@ function VerificationRunPicker({
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen]);
 
-  const activeRun = runs.find((r) => r.id === activeRunId) ?? runs[0];
-  const mostRecentRunId = runs[0]?.id;
-  const isCurrentRun = activeRunId === mostRecentRunId || !activeRunId;
+  const activeRun = runs.find((r) => r.generation === activeGeneration) ?? runs[0];
+  const isCurrentRun =
+    currentGeneration != null &&
+    (activeGeneration == null || activeGeneration === currentGeneration);
 
   // Build trigger label
   let triggerLabel: string;
@@ -206,19 +217,17 @@ function VerificationRunPicker({
           }}
         >
           {runs.map((run) => {
-            const isActive = run.id === activeRunId || (!activeRunId && run.id === mostRecentRunId);
-            const isNewest = run.id === mostRecentRunId;
-            const label = isNewest
-              ? statusLabel(currentStatus)
-              : statusLabel(run.status);
+            const isActive = run.generation === activeGeneration || (!activeGeneration && run.generation === currentGeneration);
+            const isNewest = currentGeneration != null && run.generation === currentGeneration;
+            const label = isNewest ? statusLabel(currentStatus) : statusLabel(run.status);
 
             return (
               <button
-                key={run.id}
+                key={run.generation}
                 role="option"
                 aria-selected={isActive}
                 onClick={() => {
-                  onSelect(run.id);
+                  onSelect(run.generation);
                   setIsOpen(false);
                 }}
                 className="w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors duration-100"
@@ -245,12 +254,15 @@ function VerificationRunPicker({
                     Run {run.runNumber}
                     <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(220 10% 45%)" }}>— {label}</span>
                   </span>
+                  <span className="text-[10px]" style={{ color: "hsl(220 10% 45%)" }}>
+                    Gen {run.generation}
+                  </span>
                 </div>
                 <span
                   className="text-[10px] shrink-0"
                   style={{ color: "hsl(220 10% 40%)" }}
                 >
-                  {formatRelativeTime(run.createdAt)}
+                  {run.roundCount}r / {run.gapCount}g
                 </span>
               </button>
             );
@@ -268,6 +280,7 @@ function VerificationRunPicker({
 export function VerificationPanel({ session }: VerificationPanelProps) {
   const queryClient = useQueryClient();
   const [selectedGaps, setSelectedGaps] = useState<Set<number>>(new Set());
+  const [selectedGeneration, setSelectedGeneration] = useState<number | null>(null);
   // Stable time reference for stale detection — refreshes every 30s while in-progress
   const [nowMs, setNowMs] = useState(Date.now);
 
@@ -301,15 +314,14 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     });
   }, [lastVerificationChildId, childLastModel]);
 
-  const verificationStatus = session.verificationStatus ?? "unverified";
+  const sessionVerificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!(session.planArtifactId || session.inheritedPlanArtifactId);
   const isApproved = session.status === "accepted";
-  const isInProgress = (session.verificationInProgress ?? false) || !!activeVerificationChildId;
 
-  // Fetch full verification data — always fires when a plan exists (not gated on verificationStatus)
+  // Fetch current verification data — always fires when a plan exists (not gated on verificationStatus)
   // so that page-load hydration works even when the session cache still shows "unverified".
-  const { data: verificationData } = useQuery({
-    queryKey: ["verification", session.id],
+  const { data: currentVerificationData } = useQuery({
+    queryKey: ["verification", session.id, "current"],
     queryFn: async () => {
       try {
         return await ideationApi.verification.getStatus(session.id);
@@ -329,24 +341,62 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
+  const currentGeneration = currentVerificationData?.generation ?? null;
+  const autoDisplayGeneration =
+    selectedGeneration ??
+    currentGeneration ??
+    currentVerificationData?.runHistory?.find(
+      (run) => run.roundCount > 0 || run.gapCount > 0
+    )?.generation ??
+    null;
+  const shouldLoadHistoricalGeneration =
+    autoDisplayGeneration != null &&
+    currentGeneration != null &&
+    autoDisplayGeneration !== currentGeneration;
+  const { data: historicalVerificationData } = useQuery({
+    queryKey: ["verification", session.id, autoDisplayGeneration],
+    queryFn: () => ideationApi.verification.getStatus(session.id, autoDisplayGeneration ?? undefined),
+    enabled:
+      hasPlan &&
+      session.sessionPurpose !== "verification" &&
+      shouldLoadHistoricalGeneration,
+    staleTime: 30_000,
+    retry: (failureCount: number, err: unknown) => {
+      if (err instanceof Error && err.message.includes("404")) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+  });
+
+  const verificationData =
+    shouldLoadHistoricalGeneration && historicalVerificationData
+      ? historicalVerificationData
+      : currentVerificationData;
+
+  const verificationStatus = currentVerificationData?.status ?? sessionVerificationStatus;
+  const baseVerificationInProgress =
+    currentVerificationData?.inProgress ?? (session.verificationInProgress ?? false);
+  const isInProgress = baseVerificationInProgress || !!activeVerificationChildId;
+
   // Fetch all verification child sessions for the history picker
-  const { data: childSessions = [] } = useQuery({
+  const { data: rawChildSessions } = useQuery({
     queryKey: ["childSessions", session.id, "verification"],
     queryFn: () => ideationApi.sessions.getChildren(session.id, "verification"),
     enabled: hasPlan && session.sessionPurpose !== "verification",
     staleTime: 4_000,
     refetchInterval: 10_000,
   });
+  const childSessions = Array.isArray(rawChildSessions) ? rawChildSessions : EMPTY_CHILD_SESSIONS;
 
   // Hydrate session query cache from verification API response on page load.
   // The session schema defaults verificationStatus to "unverified", so if the server
   // omits it the query gate would have blocked loading — this effect bootstraps the UI.
   useEffect(() => {
-    if (!verificationData) return;
-    if (verificationData.status === "unverified") return;
+    if (!currentVerificationData) return;
+    if (currentVerificationData.status === "unverified") return;
     // Only update if the session still shows the default (unverified); avoids overwriting
     // live event-driven updates that may have already set the correct status.
-    if (verificationStatus !== "unverified") return;
+    if (sessionVerificationStatus !== "unverified") return;
     queryClient.setQueryData<SessionWithDataResponse | null>(
       ideationKeys.sessionWithData(session.id),
       (old) =>
@@ -355,21 +405,33 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
               ...old,
               session: {
                 ...old.session,
-                verificationStatus: verificationData.status as VerificationStatus,
-                verificationInProgress: verificationData.inProgress,
+                verificationStatus: currentVerificationData.status as VerificationStatus,
+                verificationInProgress: currentVerificationData.inProgress,
               },
             }
           : old
     );
-  }, [verificationData, verificationStatus, session.id, queryClient]);
+  }, [currentVerificationData, sessionVerificationStatus, session.id, queryClient]);
 
   // Stable boolean extracted from verificationData to prevent object-identity re-fires in the effect below.
-  const apiInProgress = verificationData?.inProgress ?? false;
+  const apiInProgress = currentVerificationData?.inProgress ?? false;
 
   // Auto-update verification child IDs when a new verification run appears.
   // lastVerificationChildId tracks the display reference (persists after agent terminates).
   // activeVerificationChildId is only set on first mount (when both are null) to avoid
   // fighting the termination null-clear from guardedTermination/watchdog guards.
+  useEffect(() => {
+    setSelectedGeneration(null);
+  }, [session.id]);
+
+  useEffect(() => {
+    if (selectedGeneration == null) return;
+    if ((currentVerificationData?.runHistory ?? []).some((run) => run.generation === selectedGeneration)) {
+      return;
+    }
+    setSelectedGeneration(null);
+  }, [currentVerificationData?.runHistory, selectedGeneration]);
+
   useEffect(() => {
     if (childSessions.length === 0) return;
     const sorted = [...childSessions].sort(
@@ -398,21 +460,21 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     return () => { clearInterval(id); };
   }, [isInProgress]);
 
-  // Build sorted run entries (newest first for display, oldest = Run 1)
-  const runEntries: VerificationRunEntry[] = [...childSessions]
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((child, index) => ({
-      id: child.id,
+  // Build sorted run entries from native verification lineage (newest first for display).
+  const runEntries: VerificationRunEntry[] = [...(currentVerificationData?.runHistory ?? [])]
+    .sort((a, b) => a.generation - b.generation)
+    .map((run, index) => ({
+      generation: run.generation,
       runNumber: index + 1,
-      createdAt: child.createdAt,
+      status: run.status,
+      roundCount: run.roundCount,
+      gapCount: run.gapCount,
     }))
     .reverse(); // newest first in dropdown
 
-  const handleRunSelect = useCallback((runId: string) => {
-    // Only update display reference — do NOT set activeVerificationChildId for historical runs
-    // (prevents mount-then-unmount flicker from reverse-link cleanup)
-    setLastVerificationChildId(session.id, runId);
-  }, [session.id, setLastVerificationChildId]);
+  const handleRunSelect = useCallback((generation: number) => {
+    setSelectedGeneration(generation);
+  }, []);
 
   // ── Action handlers ──────────────────────────────────────────────────────
 
@@ -463,9 +525,18 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   const gaps = verificationData?.gaps ?? [];
   const rounds = verificationData?.rounds ?? [];
+  const roundDetails = verificationData?.roundDetails ?? [];
   const gapScore = verificationData?.gapScore ?? (session.gapScore != null ? session.gapScore : undefined);
   const hasGaps = gaps.length > 0;
-  const hasRounds = rounds.length > 0;
+  const hasRounds = rounds.length > 0 || roundDetails.length > 0;
+  const currentRunSelected =
+    currentGeneration != null && autoDisplayGeneration === currentGeneration;
+  const verificationChild = currentVerificationData?.verificationChild;
+  const showCurrentRunBootstrap =
+    currentRunSelected &&
+    isInProgress &&
+    !hasGaps &&
+    !hasRounds;
   const hasVerificationRunEvidence =
     childSessions.length > 0 ||
     activeVerificationChildId != null ||
@@ -486,7 +557,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   // Component re-renders at least every 10s (refetchInterval) so no extra timer needed.
   const maxRoundsForStale = verificationData?.maxRounds ?? 5;
   const staleThresholdMs = maxRoundsForStale * 5 * 60 * 1000;
-  const newestChildCreatedAt = runEntries[0]?.createdAt;
+  const newestChildCreatedAt = childSessions
+    .map((child) => child.createdAt)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
   const isStaleVerification =
     isInProgress &&
     newestChildCreatedAt != null &&
@@ -494,7 +567,12 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   // ── Empty state ──────────────────────────────────────────────────────────
 
-  if (verificationStatus === "unverified" && !hasRounds && !hasVerificationRunEvidence) {
+  if (
+    verificationStatus === "unverified" &&
+    !hasGaps &&
+    !hasRounds &&
+    !hasVerificationRunEvidence
+  ) {
     return (
       <div
         data-testid="verification-empty-state"
@@ -597,13 +675,14 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
         <div className="flex items-center justify-between gap-3">
           <VerificationRunPicker
             runs={runEntries}
-            activeRunId={lastVerificationChildId ?? activeVerificationChildId}
+            activeGeneration={autoDisplayGeneration ?? null}
+            currentGeneration={currentGeneration}
             currentStatus={verificationStatus}
-            {...(verificationData?.currentRound !== undefined && {
-              currentRound: verificationData.currentRound,
+            {...(currentVerificationData?.currentRound !== undefined && {
+              currentRound: currentVerificationData.currentRound,
             })}
-            {...(verificationData?.maxRounds !== undefined && {
-              maxRounds: verificationData.maxRounds,
+            {...(currentVerificationData?.maxRounds !== undefined && {
+              maxRounds: currentVerificationData.maxRounds,
             })}
             onSelect={handleRunSelect}
           />
@@ -662,14 +741,14 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
         <VerificationBadge
           status={verificationStatus}
           inProgress={isInProgress}
-          {...(verificationData?.currentRound !== undefined && {
-            currentRound: verificationData.currentRound,
+          {...(currentVerificationData?.currentRound !== undefined && {
+            currentRound: currentVerificationData.currentRound,
           })}
-          {...(verificationData?.maxRounds !== undefined && {
-            maxRounds: verificationData.maxRounds,
+          {...(currentVerificationData?.maxRounds !== undefined && {
+            maxRounds: currentVerificationData.maxRounds,
           })}
-          {...(verificationData?.convergenceReason !== undefined && {
-            convergenceReason: verificationData.convergenceReason,
+          {...(currentVerificationData?.convergenceReason !== undefined && {
+            convergenceReason: currentVerificationData.convergenceReason,
           })}
           onRetry={handleTriggerVerification}
         />
@@ -703,6 +782,114 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           )}
         </div>
       </div>
+
+      {showCurrentRunBootstrap && (
+        <div
+          data-testid="verification-current-run-bootstrap"
+          className="relative overflow-hidden rounded-xl p-4"
+          style={{
+            background:
+              "radial-gradient(circle at top right, hsla(14 100% 60% / 0.12), transparent 42%), hsla(220 10% 100% / 0.02)",
+            border: "1px solid hsla(220 10% 100% / 0.08)",
+          }}
+        >
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "hsl(220 10% 48%)" }}
+              >
+                Current Run
+              </div>
+              <div
+                className="mt-1 text-[15px] font-semibold"
+                style={{ color: "hsl(220 10% 88%)" }}
+              >
+                Verification is warming up
+              </div>
+              <p
+                className="mt-2 text-[12px] leading-relaxed"
+                style={{ color: "hsl(220 10% 58%)" }}
+              >
+                {verificationChild?.lastAssistantMessage
+                  ? verificationChild.lastAssistantMessage
+                  : "The verifier is loading parent context, enrichment, and the first critic round before the lineage view fills in."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ background: "hsl(14 100% 62%)" }}
+              />
+              <div
+                className="px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+                style={{
+                  color: "hsl(14 100% 68%)",
+                  background: "hsla(14 100% 60% / 0.1)",
+                  border: "1px solid hsla(14 100% 60% / 0.18)",
+                }}
+              >
+                {verificationAgentLabel(verificationChild?.agentState)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "72%",
+                background: "linear-gradient(90deg, hsla(14 100% 60% / 0.16), hsla(14 100% 60% / 0.04))",
+              }}
+            />
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "58%",
+                animationDelay: "120ms",
+                background: "linear-gradient(90deg, hsla(220 10% 100% / 0.12), hsla(220 10% 100% / 0.03))",
+              }}
+            />
+            <div
+              className="h-2 rounded-full animate-pulse"
+              style={{
+                width: "40%",
+                animationDelay: "240ms",
+                background: "linear-gradient(90deg, hsla(220 10% 100% / 0.1), hsla(220 10% 100% / 0.02))",
+              }}
+            />
+          </div>
+
+          <div
+            className="mt-4 flex flex-wrap items-center gap-2 text-[11px]"
+            style={{ color: "hsl(220 10% 52%)" }}
+          >
+            {currentVerificationData?.currentRound != null && currentVerificationData?.maxRounds != null && (
+              <span
+                className="px-2 py-1 rounded-md"
+                style={{
+                  background: "hsla(220 10% 100% / 0.04)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                Round {currentVerificationData.currentRound}/{currentVerificationData.maxRounds}
+              </span>
+            )}
+            {verificationChild?.latestChildSessionId && (
+              <span
+                className="px-2 py-1 rounded-md font-mono"
+                style={{
+                  background: "hsla(220 10% 100% / 0.04)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                {verificationChild.latestChildSessionId.slice(0, 8)}…
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Gap list */}
       {hasGaps && (
@@ -808,6 +995,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           </div>
           <VerificationHistory
             rounds={rounds}
+            roundDetails={roundDetails}
             {...(hasGaps && { currentGaps: gaps })}
             {...(gapScore !== undefined && { gapScore })}
             status={verificationStatus}

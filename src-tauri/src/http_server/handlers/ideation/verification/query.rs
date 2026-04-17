@@ -10,10 +10,15 @@ pub async fn get_plan_verification(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(session_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<
+        crate::http_server::types::VerificationQueryParams,
+    >,
 ) -> Result<Json<VerificationResponse>, JsonError> {
-    use crate::domain::entities::ideation::VerificationMetadata;
     use crate::domain::services::gap_score;
-    use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
+    use crate::http_server::types::{
+        VerificationGapResponse, VerificationRoundDetailResponse, VerificationRoundSummary,
+        VerificationRunHistoryEntryResponse,
+    };
 
     let requested_session_id = session_id;
     let requested_session_id_obj =
@@ -64,49 +69,99 @@ pub async fn get_plan_verification(
         )
     };
 
-    let (status, in_progress, metadata_json) = state
+    let summary_status = resolved_session.verification_status;
+    let summary_in_progress = resolved_session.verification_in_progress;
+
+    let active_generation = resolved_session.verification_generation;
+    let selected_generation = params.generation.unwrap_or(active_generation);
+
+    let snapshot = match state
         .app_state
         .ideation_session_repo
-        .get_verification_status(&session_id_obj)
+        .get_verification_run_snapshot(&session_id_obj, selected_generation)
         .await
-        .map_err(|e| {
+    {
+        Ok(Some(snapshot)) => Some(snapshot),
+        Ok(None) => None,
+        Err(error) => {
             error!(
-                "Failed to get verification status for {}: {}",
-                session_id, e
+                "Failed to load native verification snapshot for {}: {}",
+                session_id, error
             );
-            json_error(
+            return Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to get verification status",
+                "Failed to load verification snapshot",
+            ));
+        }
+    };
+
+    if params.generation.is_some() && snapshot.is_none() {
+        return Err(json_error(
+            StatusCode::NOT_FOUND,
+            format!(
+                "Verification generation {} not found for session {}",
+                selected_generation, session_id
+            ),
+        ));
+    }
+
+    let child_state = match load_verification_child_state(
+        &state.app_state.ideation_session_repo,
+        &session_id_obj,
+    )
+    .await
+    {
+        Ok(child_state) => Some(child_state),
+        Err(error) => {
+            error!(
+                "Failed to load verification child state for {}: {}",
+                session_id, error
+            );
+            None
+        }
+    };
+
+    let stale_blank_active_generation = child_state.as_ref().is_some_and(|child_state| {
+        selected_generation == active_generation
+            && is_blank_orphaned_active_generation(
+                summary_in_progress,
+                snapshot.as_ref(),
+                child_state,
             )
-        })?
-        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+    });
+    let effective_snapshot = if stale_blank_active_generation {
+        None
+    } else {
+        snapshot.as_ref()
+    };
 
-    let metadata: Option<VerificationMetadata> = metadata_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let (status, in_progress) = if let Some(run) = effective_snapshot {
+        (run.status, run.in_progress)
+    } else {
+        (summary_status, summary_in_progress)
+    };
 
-    let current_round = metadata.as_ref().and_then(|m| {
-        if m.current_round > 0 {
-            Some(m.current_round)
+    let current_round = effective_snapshot.and_then(|run| {
+        if run.current_round > 0 {
+            Some(run.current_round)
         } else {
             None
         }
     });
-    let max_rounds = metadata.as_ref().and_then(|m| {
-        if m.max_rounds > 0 {
-            Some(m.max_rounds)
+    let max_rounds = effective_snapshot.and_then(|run| {
+        if run.max_rounds > 0 {
+            Some(run.max_rounds)
         } else {
             None
         }
     });
-    let gap_sc = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
-    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
-    let best_round_index = metadata.as_ref().and_then(|m| m.best_round_index);
+    let gap_sc = effective_snapshot.map(|run| gap_score(&run.current_gaps));
+    let convergence_reason = effective_snapshot.and_then(|run| run.convergence_reason.clone());
+    let best_round_index = effective_snapshot.and_then(|run| run.best_round_index);
 
-    let current_gaps = metadata
-        .as_ref()
-        .map(|m| {
-            m.current_gaps
+    let current_gaps = effective_snapshot
+        .map(|run| {
+            run.current_gaps
                 .iter()
                 .map(|g| VerificationGapResponse {
                     severity: g.severity.clone(),
@@ -119,27 +174,100 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let rounds = metadata
-        .as_ref()
-        .map(|m| {
-            m.rounds
+    let rounds = effective_snapshot
+        .map(|run| {
+            run.rounds
                 .iter()
-                .enumerate()
                 .rev()
                 .take(10)
-                .collect::<Vec<_>>()
-                .into_iter()
                 .rev()
-                .map(|(i, r)| VerificationRoundSummary {
-                    round: (i + 1) as u32,
+                .map(|r| VerificationRoundSummary {
+                    round: r.round,
                     gap_score: r.gap_score,
-                    gap_count: r.fingerprints.len() as u32,
+                    gap_count: if !r.gaps.is_empty() {
+                        r.gaps.len() as u32
+                    } else {
+                        r.fingerprints.len() as u32
+                    },
                 })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
-    let verification_generation = resolved_session.verification_generation;
+    let round_details = effective_snapshot
+        .map(|run| {
+            run.rounds
+                .iter()
+                .rev()
+                .take(10)
+                .rev()
+                .map(|r| VerificationRoundDetailResponse {
+                    round: r.round,
+                    gap_score: r.gap_score,
+                    gap_count: if !r.gaps.is_empty() {
+                        r.gaps.len() as u32
+                    } else {
+                        r.fingerprints.len() as u32
+                    },
+                    gaps: r
+                        .gaps
+                        .iter()
+                        .map(|g| VerificationGapResponse {
+                            severity: g.severity.clone(),
+                            category: g.category.clone(),
+                            description: g.description.clone(),
+                            why_it_matters: g.why_it_matters.clone(),
+                            source: g.source.clone(),
+                        })
+                        .collect::<Vec<_>>(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let run_history = collect_verification_run_history(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session_id_obj,
+        active_generation,
+        10,
+    )
+    .await
+    .map_err(|error| {
+        error!(
+            "Failed to load verification run history for {}: {}",
+            session_id, error
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification run history",
+        )
+    })?
+    .into_iter()
+    .filter(|run| {
+        if !is_blank_in_progress_snapshot(run) {
+            return true;
+        }
+
+        if run.generation != active_generation {
+            return false;
+        }
+
+        !stale_blank_active_generation
+    })
+    .map(|run| VerificationRunHistoryEntryResponse {
+        generation: run.generation,
+        status: run.status.to_string(),
+        in_progress: run.in_progress,
+        current_round: (run.current_round > 0).then_some(run.current_round),
+        max_rounds: (run.max_rounds > 0).then_some(run.max_rounds),
+        round_count: run.rounds.len() as u32,
+        gap_count: run.current_gaps.len() as u32,
+        gap_score: Some(gap_score(&run.current_gaps)),
+        convergence_reason: run.convergence_reason,
+    })
+    .collect::<Vec<_>>();
+
+    let verification_generation = active_generation;
     let plan_version = if let Some(ref artifact_id) = resolved_session.plan_artifact_id {
         state
             .app_state
@@ -158,13 +286,8 @@ pub async fn get_plan_verification(
         use crate::http_server::types::VerificationChildInfo;
         use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
 
-        match state
-            .app_state
-            .ideation_session_repo
-            .get_latest_verification_child(&session_id_obj)
-            .await
-        {
-            Ok(Some(child)) => {
+        match child_state.and_then(|state| state.latest_child) {
+            Some(child) => {
                 let child_id_str = child.id.as_str().to_string();
                 let child_session_id = IdeationSessionId::from_string(child_id_str.clone());
 
@@ -216,12 +339,11 @@ pub async fn get_plan_verification(
 
                 // active_child_session_id: Some only when in_progress=true and child not archived
                 let latest_child_archived = child.status == IdeationSessionStatus::Archived;
-                let active_child_session_id =
-                    if in_progress && !latest_child_archived {
-                        Some(child_id_str.clone())
-                    } else {
-                        None
-                    };
+                let active_child_session_id = if in_progress && !latest_child_archived {
+                    Some(child_id_str.clone())
+                } else {
+                    None
+                };
 
                 Some(VerificationChildInfo {
                     active_child_session_id,
@@ -234,14 +356,7 @@ pub async fn get_plan_verification(
                     last_assistant_message_at,
                 })
             }
-            Ok(None) => None,
-            Err(e) => {
-                error!(
-                    "Failed to fetch verification child for {}: {}",
-                    session_id, e
-                );
-                None
-            }
+            None => None,
         }
     };
 
@@ -256,8 +371,32 @@ pub async fn get_plan_verification(
         best_round_index,
         current_gaps,
         rounds,
+        round_details,
         plan_version,
         verification_generation,
+        selected_generation,
+        run_history,
         verification_child,
     }))
+}
+
+async fn collect_verification_run_history(
+    repo: &dyn crate::domain::repositories::IdeationSessionRepository,
+    session_id: &IdeationSessionId,
+    active_generation: i32,
+    limit: usize,
+) -> crate::error::AppResult<Vec<crate::domain::entities::VerificationRunSnapshot>> {
+    let mut runs = Vec::new();
+    for generation in (0..=active_generation).rev() {
+        if let Some(snapshot) = repo
+            .get_verification_run_snapshot(session_id, generation)
+            .await?
+        {
+            runs.push(snapshot);
+            if runs.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(runs)
 }

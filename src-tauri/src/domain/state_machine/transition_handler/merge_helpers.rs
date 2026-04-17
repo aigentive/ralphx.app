@@ -10,7 +10,9 @@ use std::time::Duration;
 use crate::application::GitService;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{IdeationSessionId, PlanBranchStatus, Project, Task, TaskCategory, TaskId};
+use crate::domain::entities::{
+    IdeationSessionId, PlanBranch, PlanBranchStatus, Project, Task, TaskCategory, TaskId,
+};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::domain::services::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
@@ -38,11 +40,7 @@ pub(crate) async fn clean_stale_git_state(wt_path: &Path, task_id_str: &str) {
 // ===== Worktree pre-deletion =====
 
 /// Pre-delete stale worktree(s) using `run_cleanup_step` for uniform timeout and logging.
-pub(crate) async fn pre_delete_worktree(
-    repo_path: &Path,
-    worktree: &Path,
-    task_id: &str,
-) {
+pub(crate) async fn pre_delete_worktree(repo_path: &Path, worktree: &Path, task_id: &str) {
     // Skip silently if the path was never created — avoids spurious WARN-level
     // "git worktree remove: not a working tree" logs on paths that don't exist.
     if !worktree.exists() {
@@ -238,7 +236,10 @@ pub(crate) async fn validate_plan_merge_preconditions(
 
     // Check 3: Feature branch must exist in git
     let repo_path = Path::new(&project.working_directory);
-    if !GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
+    if !GitService::branch_exists(repo_path, &pb.branch_name)
+        .await
+        .unwrap_or(false)
+    {
         return Err(PreMergeValidationError::FeatureBranchMissing {
             branch_name: pb.branch_name.clone(),
         });
@@ -256,7 +257,6 @@ pub(super) fn slugify(name: &str) -> String {
         .trim_matches('-')
         .to_string()
 }
-
 
 /// Expand `~/` prefix to the user's home directory
 pub(super) fn expand_home(path: &str) -> String {
@@ -751,15 +751,19 @@ pub(super) async fn resolve_task_base_branch(
     let Some(ref plan_branch_repo) = plan_branch_repo else {
         return default;
     };
-    let Some(ref session_id) = task.ideation_session_id else {
+
+    let Some(pb) = resolve_task_plan_branch_record(task, plan_branch_repo).await else {
         return default;
     };
 
-    match plan_branch_repo.get_by_session_id(session_id).await {
-        Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
+    match pb.status {
+        PlanBranchStatus::Active => {
             let repo_path = Path::new(&project.working_directory);
             // Lazily create git branch on first task execution
-            if !GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
+            if !GitService::branch_exists(repo_path, &pb.branch_name)
+                .await
+                .unwrap_or(false)
+            {
                 match GitService::create_feature_branch(
                     repo_path,
                     &pb.branch_name,
@@ -776,7 +780,10 @@ pub(super) async fn resolve_task_base_branch(
                     }
                     Err(e) => {
                         // Race condition: another task may have created it concurrently
-                        if GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
+                        if GitService::branch_exists(repo_path, &pb.branch_name)
+                            .await
+                            .unwrap_or(false)
+                        {
                             tracing::info!(
                                 branch = %pb.branch_name,
                                 "Deferred plan branch created by concurrent task"
@@ -799,7 +806,12 @@ pub(super) async fn resolve_task_base_branch(
                     (pr_creation_guard.as_ref(), github_service.as_ref())
                 {
                     create_draft_pr_if_needed(
-                        task, project, &pb, guard, gh_svc, &Arc::clone(plan_branch_repo),
+                        task,
+                        project,
+                        &pb,
+                        guard,
+                        gh_svc,
+                        &Arc::clone(plan_branch_repo),
                     )
                     .await;
                 }
@@ -814,20 +826,13 @@ pub(super) async fn resolve_task_base_branch(
             // Note: plan_branch_repo is already &Arc<dyn PlanBranchRepository> (destructured above)
             if pb.pr_eligible {
                 if let (Some(ref guard), Some(ref github)) = (pr_creation_guard, github_service) {
-                    create_draft_pr_if_needed(
-                        task,
-                        project,
-                        &pb,
-                        guard,
-                        github,
-                        plan_branch_repo,
-                    )
-                    .await;
+                    create_draft_pr_if_needed(task, project, &pb, guard, github, plan_branch_repo)
+                        .await;
                 }
             }
             pb.branch_name
         }
-        Ok(Some(pb)) if pb.status == PlanBranchStatus::Merged => {
+        PlanBranchStatus::Merged => {
             // Plan branch is already merged — do NOT resurrect it.
             // Recreating a merged branch would undo the completed plan merge,
             // allowing tasks to execute against a stale branch.
@@ -839,7 +844,50 @@ pub(super) async fn resolve_task_base_branch(
             );
             default
         }
-        _ => default,
+        PlanBranchStatus::Abandoned => default,
+    }
+}
+
+pub(crate) async fn resolve_task_plan_branch_record(
+    task: &Task,
+    plan_branch_repo: &Arc<dyn PlanBranchRepository>,
+) -> Option<PlanBranch> {
+    if let Some(exec_plan_id) = task.execution_plan_id.as_ref() {
+        if let Ok(Some(pb)) = plan_branch_repo
+            .get_by_execution_plan_id(exec_plan_id)
+            .await
+        {
+            return Some(pb);
+        }
+    }
+
+    let session_id = task.ideation_session_id.as_ref()?;
+    plan_branch_repo
+        .get_by_session_id(session_id)
+        .await
+        .ok()
+        .flatten()
+}
+
+pub(crate) async fn resolve_effective_base_branch(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    merge_target_branch: Option<&str>,
+) -> String {
+    let default = project.base_branch.as_deref().unwrap_or("main").to_string();
+
+    let Some(plan_branch_repo) = plan_branch_repo.as_ref() else {
+        return default;
+    };
+    let Some(pb) = resolve_task_plan_branch_record(task, plan_branch_repo).await else {
+        return default;
+    };
+
+    match merge_target_branch {
+        Some(target_branch) if target_branch == pb.branch_name => pb.source_branch,
+        Some(_) => pb.base_branch_override.unwrap_or(default),
+        None => pb.source_branch,
     }
 }
 
@@ -1101,51 +1149,44 @@ pub async fn resolve_merge_branches(
             base_branch = %base_branch,
             "Merge task: merging feature branch into base"
         );
-        return (pb.branch_name, pb.base_branch_override.clone().unwrap_or(base_branch));
+        return (
+            pb.branch_name,
+            pb.base_branch_override.clone().unwrap_or(base_branch),
+        );
     }
 
     // Check if this task belongs to a plan with a feature branch
-    if let Some(ref session_id) = task.ideation_session_id {
-        match plan_branch_repo.get_by_session_id(session_id).await {
-            Ok(Some(pb)) => {
-                if pb.status == PlanBranchStatus::Active {
-                    tracing::debug!(
-                        task_id = task.id.as_str(),
-                        task_branch = %task_branch,
-                        feature_branch = %pb.branch_name,
-                        "Plan task: merging task branch into feature branch"
-                    );
-                    return (task_branch, pb.branch_name);
-                }
-                // Plan branch exists but isn't Active — still use it as the target.
-                // Falling through to base_branch would merge task→main instead of task→plan,
-                // which is incorrect for tasks that belong to a plan.
-                tracing::warn!(
+    if task.ideation_session_id.is_some() || task.execution_plan_id.is_some() {
+        if let Some(pb) = resolve_task_plan_branch_record(task, plan_branch_repo).await {
+            if pb.status == PlanBranchStatus::Active {
+                tracing::debug!(
                     task_id = task.id.as_str(),
                     task_branch = %task_branch,
                     feature_branch = %pb.branch_name,
-                    plan_branch_status = ?pb.status,
-                    "Plan task: plan branch is not Active, but still using it as merge target \
-                     to avoid incorrect task→main merge"
+                    "Plan task: merging task branch into feature branch"
                 );
                 return (task_branch, pb.branch_name);
             }
-            Ok(None) => {
-                tracing::warn!(
-                    task_id = task.id.as_str(),
-                    session_id = session_id.as_str(),
-                    "Plan task: no plan branch found for session_id — falling back to base branch"
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    task_id = task.id.as_str(),
-                    session_id = session_id.as_str(),
-                    error = %e,
-                    "Plan task: failed to look up plan branch — falling back to base branch"
-                );
-            }
+            // Plan branch exists but isn't Active — still use it as the target.
+            // Falling through to base_branch would merge task→main instead of task→plan,
+            // which is incorrect for tasks that belong to a plan.
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                task_branch = %task_branch,
+                feature_branch = %pb.branch_name,
+                plan_branch_status = ?pb.status,
+                "Plan task: plan branch is not Active, but still using it as merge target \
+                 to avoid incorrect task→main merge"
+            );
+            return (task_branch, pb.branch_name);
         }
+
+        tracing::warn!(
+            task_id = task.id.as_str(),
+            ideation_session_id = ?task.ideation_session_id.as_ref().map(|id| id.as_str()),
+            execution_plan_id = ?task.execution_plan_id.as_ref().map(|id| id.as_str()),
+            "Plan task: no plan branch found for task — falling back to base branch"
+        );
     }
 
     (task_branch, base_branch)
@@ -1183,7 +1224,10 @@ pub(super) async fn discover_and_attach_task_branch(
 
     // Check if branch exists in the repository
     let repo_path = Path::new(&project.working_directory);
-    if !GitService::branch_exists(repo_path, &branch_name).await.unwrap_or(false) {
+    if !GitService::branch_exists(repo_path, &branch_name)
+        .await
+        .unwrap_or(false)
+    {
         return Ok(false);
     }
 
@@ -1270,8 +1314,7 @@ pub(crate) async fn restore_task_worktree(
                 worktree_path = %task_wt_path.display(),
                 "restore_task_worktree: recreating task worktree from existing branch"
             );
-            GitService::checkout_existing_branch_worktree(repo_path, &task_wt_path, branch)
-                .await?;
+            GitService::checkout_existing_branch_worktree(repo_path, &task_wt_path, branch).await?;
             task.worktree_path = Some(task_wt_str);
             return Ok(task_wt_path);
         }

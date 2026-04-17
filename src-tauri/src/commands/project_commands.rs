@@ -1,7 +1,7 @@
 // Tauri commands for Project CRUD operations
 // Thin layer that delegates to ProjectRepository
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
@@ -17,6 +17,16 @@ use crate::domain::entities::{
     ProjectId,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
+
+/// Deserializes a JSON field as `None` when absent, `Some(None)` when `null`, and `Some(Some(v))` when present.
+/// Used for nullable patch fields where absent means "don't change" and null means "clear".
+fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::deserialize(deserializer)?))
+}
 
 /// Input for creating a new project
 #[derive(Debug, Deserialize)]
@@ -38,6 +48,8 @@ pub struct UpdateProjectInput {
     pub base_branch: Option<String>,
     pub merge_validation_mode: Option<String>,
     pub merge_strategy: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub worktree_parent_directory: Option<Option<String>>,
 }
 
 /// Response wrapper for project operations
@@ -80,6 +92,11 @@ impl From<Project> for ProjectResponse {
             updated_at: project.updated_at.to_rfc3339(),
         }
     }
+}
+
+#[doc(hidden)]
+pub fn parse_merge_validation_mode_or_default(value: &str) -> MergeValidationMode {
+    value.parse().unwrap_or_default()
 }
 
 /// List all projects
@@ -252,12 +269,8 @@ pub async fn create_project(
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: spawn project analyzer to detect build systems
-    spawn_project_analyzer(
-        created.id.as_str(),
-        &created.working_directory,
-        Arc::clone(&state.agent_client),
-        state.app_handle.clone(),
-    );
+    spawn_project_analyzer(&state, created.id.as_str(), &created.working_directory, state.app_handle.clone())
+        .await;
 
     Ok(ProjectResponse::from(created))
 }
@@ -295,10 +308,13 @@ pub async fn update_project(
         project.base_branch = Some(base_branch);
     }
     if let Some(mode_str) = input.merge_validation_mode {
-        project.merge_validation_mode = mode_str.parse().unwrap_or(MergeValidationMode::Block);
+        project.merge_validation_mode = parse_merge_validation_mode_or_default(&mode_str);
     }
     if let Some(strategy_str) = input.merge_strategy {
         project.merge_strategy = strategy_str.parse().unwrap_or(MergeStrategy::RebaseSquash);
+    }
+    if let Some(dir) = input.worktree_parent_directory {
+        project.worktree_parent_directory = dir;
     }
 
     project.touch();
@@ -511,21 +527,22 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
     Ok(sorted)
 }
 
-/// Spawn the project-analyzer agent to auto-detect build systems and validation commands.
+/// Spawn the ralphx-project-analyzer agent to auto-detect build systems and validation commands.
 ///
 /// This is a fire-and-forget operation that spawns a background agent.
 /// The agent scans the project directory for build files (package.json, Cargo.toml, etc.)
 /// and calls save_project_analysis with the detected entries.
 ///
 /// Used by: create_project (auto), get_project_analysis HTTP handler (lazy), reanalyze_project (manual).
-pub fn spawn_project_analyzer(
+pub async fn spawn_project_analyzer(
+    state: &AppState,
     project_id: &str,
     working_directory: &str,
-    agent_client: Arc<dyn crate::domain::agents::AgenticClient>,
     app_handle: Option<tauri::AppHandle>,
 ) {
-    use crate::domain::agents::{AgentConfig, AgentRole};
-    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+    use crate::application::harness_runtime_registry::resolve_harness_agent_bootstrap;
+    use crate::domain::agents::{AgentConfig, AgentRole, DEFAULT_AGENT_HARNESS};
+    use crate::infrastructure::agents::claude::agent_names;
 
     let prompt = format!(
         "<instructions>\n\
@@ -538,33 +555,12 @@ pub fn spawn_project_analyzer(
          </data>",
         project_id
     );
-
-    let working_directory = PathBuf::from(working_directory);
-    // Resolve plugin dir robustly for both dev and release runs.
-    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
-
-    let mut env = std::collections::HashMap::new();
-    env.insert(
-        "RALPHX_AGENT_TYPE".to_string(),
-        mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string(),
-    );
     let pid = project_id.to_string();
-    env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
-    let config = AgentConfig {
-        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string()),
-        prompt,
-        working_directory,
-        plugin_dir: Some(plugin_dir),
-        agent: Some(agent_names::AGENT_PROJECT_ANALYZER.to_string()),
-        model: None, // Agent file specifies haiku
-        max_tokens: None,
-        timeout_secs: Some(120),
-        env,
-    };
-
-    tokio::spawn(async move {
-        let emit_failure = |error: &str| {
+    let emit_failure = {
+        let app_handle = app_handle.clone();
+        let pid = pid.clone();
+        move |error: &str| {
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "project:analysis_failed",
@@ -574,8 +570,53 @@ pub fn spawn_project_analyzer(
                     }),
                 );
             }
-        };
+        }
+    };
 
+    let runtime = match state
+        .resolve_ideation_background_agent_runtime(Some(project_id))
+        .await
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::warn!(
+                project_id,
+                error = %error,
+                "Project analyzer harness resolution failed"
+            );
+            emit_failure(&error.to_string());
+            return;
+        }
+    };
+    let working_directory = PathBuf::from(working_directory);
+    let bootstrap = resolve_harness_agent_bootstrap(
+        runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
+        agent_names::AGENT_PROJECT_ANALYZER,
+        working_directory.clone(),
+    );
+
+    let mut env = bootstrap.env;
+    env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
+
+    let agent_client = Arc::clone(&runtime.client);
+
+    let config = AgentConfig {
+        role: AgentRole::Custom(bootstrap.agent_role.clone()),
+        prompt,
+        working_directory,
+        plugin_dir: Some(bootstrap.plugin_dir),
+        agent: Some(bootstrap.agent_name),
+        model: runtime.model,
+        harness: runtime.harness,
+        logical_effort: runtime.logical_effort,
+        approval_policy: runtime.approval_policy,
+        sandbox_mode: runtime.sandbox_mode,
+        max_tokens: None,
+        timeout_secs: Some(120),
+        env,
+    };
+
+    tokio::spawn(async move {
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {
@@ -593,7 +634,7 @@ pub fn spawn_project_analyzer(
 
 /// Re-analyze a project's build systems and validation commands.
 ///
-/// Triggers the project-analyzer agent for manual re-analysis from Settings UI.
+/// Triggers the ralphx-project-analyzer agent for manual re-analysis from Settings UI.
 #[tauri::command]
 pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let project_id = ProjectId::from_string(id.clone());
@@ -614,12 +655,7 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
         .await
         .map_err(|e| e.to_string())?;
 
-    spawn_project_analyzer(
-        &id,
-        &project.working_directory,
-        Arc::clone(&state.agent_client),
-        state.app_handle.clone(),
-    );
+    spawn_project_analyzer(&state, &id, &project.working_directory, state.app_handle.clone()).await;
 
     Ok(())
 }
@@ -913,27 +949,9 @@ async fn handle_pr_mode_switch(
 fn build_mode_switch_transition_service(
     state: &AppState,
     execution_state: &Arc<ExecutionState>,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
 ) -> TaskTransitionService {
-    let mut svc = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(execution_state),
-        Some(app_handle),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let mut svc = state.build_transition_service_with_execution_state(Arc::clone(execution_state));
 
     if let Some(github_svc) = &state.github_service {
         svc = svc.with_github_service(Arc::clone(github_svc));

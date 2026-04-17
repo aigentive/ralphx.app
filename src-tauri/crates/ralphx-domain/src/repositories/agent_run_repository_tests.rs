@@ -1,5 +1,6 @@
 use super::*;
-use crate::domain::entities::{AgentRun, ChatConversationId};
+use crate::agents::{AgentHarnessKind, LogicalEffort};
+use crate::domain::entities::{AgentRun, AgentRunAttribution, AgentRunUsage, ChatConversationId};
 use std::sync::Arc;
 
 // Mock implementation for testing trait object usage
@@ -66,6 +67,18 @@ impl AgentRunRepository for MockAgentRunRepository {
         Ok(())
     }
 
+    async fn update_usage(&self, _id: &AgentRunId, _usage: &AgentRunUsage) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        _id: &AgentRunId,
+        _attribution: &AgentRunAttribution,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn complete(&self, _id: &AgentRunId) -> AppResult<()> {
         Ok(())
     }
@@ -118,9 +131,12 @@ fn test_trait_object_safety() {
 #[test]
 fn test_mock_with_runs() {
     let conversation_id = ChatConversationId::new();
-    let run = AgentRun::new(conversation_id);
+    let mut run = AgentRun::new(conversation_id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.logical_effort = Some(LogicalEffort::Medium);
     let repo = MockAgentRunRepository::with_runs(vec![run.clone()]);
 
     assert_eq!(repo.runs.len(), 1);
     assert_eq!(repo.runs[0].id, run.id);
+    assert_eq!(repo.runs[0].harness, Some(AgentHarnessKind::Codex));
 }

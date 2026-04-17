@@ -1,0 +1,5 @@
+---
+disallowed_tools:
+- Write
+- Edit
+- NotebookEdit

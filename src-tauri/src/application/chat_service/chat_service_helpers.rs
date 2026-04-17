@@ -2,6 +2,10 @@
 //
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
+use crate::domain::agents::{
+    standard_harness_behavior, AgentHarnessKind, HarnessEffortStrategy, HarnessModelLabelStrategy,
+    LogicalEffort,
+};
 use crate::domain::entities::{ChatContextType, MessageRole};
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
@@ -19,14 +23,14 @@ use crate::infrastructure::agents::claude::agent_names::{
 ///
 /// ## Examples
 ///
-/// - Review context + "reviewing" status → `ralphx-reviewer` (AI performs review)
+/// - Review context + "reviewing" status → `ralphx-execution-reviewer` (AI performs review)
 /// - Review context + "review_passed" status → `ralphx-review-chat` (user discusses with AI)
 /// - Ideation context + team_mode=true → team-lead variant (if configured)
 ///
 /// ## Adding New Rules
 ///
 /// 1. Add a pattern to `resolve_agent()` for status-specific behavior
-/// 2. Create the agent definition in `plugins/app/agents/`
+/// 2. Create the canonical agent definition under `agents/<agent>/`
 /// 3. Add tools to MCP allowlist in `ralphx-mcp-server/src/tools.ts`
 ///
 /// Priority: Status-specific rules are checked first, then team_mode, then defaults.
@@ -53,7 +57,7 @@ pub fn resolve_agent_with_team_mode(
             // Review: approved tasks use read-only history agent for retrospective discussion
             (ChatContextType::Review, "approved") => return AGENT_REVIEW_HISTORY,
 
-            // Ideation: verification child sessions route to the dedicated plan-verifier agent
+            // Ideation: verification child sessions route to the dedicated ralphx-plan-verifier agent
             (ChatContextType::Ideation, "verification") => return AGENT_PLAN_VERIFIER,
 
             // Ideation: accepted plans use read-only agent (no mutation tools)
@@ -80,6 +84,7 @@ pub fn resolve_agent_with_team_mode(
     // Default rules (context-only, backward compatible)
     match context_type {
         ChatContextType::Ideation => AGENT_ORCHESTRATOR_IDEATION,
+        ChatContextType::Delegation => AGENT_CHAT_PROJECT,
         ChatContextType::Task => AGENT_CHAT_TASK,
         ChatContextType::Project => AGENT_CHAT_PROJECT,
         ChatContextType::TaskExecution => AGENT_WORKER,
@@ -88,10 +93,107 @@ pub fn resolve_agent_with_team_mode(
     }
 }
 
+/// Codex phase 1 runs in solo mode even if the session metadata still carries
+/// a team-mode value. Claude remains the only harness that honors team mode.
+pub fn effective_team_mode_for_harness(
+    requested_team_mode: bool,
+    harness: AgentHarnessKind,
+) -> bool {
+    requested_team_mode && harness_supports_team_mode(harness)
+}
+
+pub fn harness_supports_team_mode(harness: AgentHarnessKind) -> bool {
+    standard_harness_behavior(harness).honors_team_mode
+}
+
+pub fn effective_effort_for_harness(
+    harness: AgentHarnessKind,
+    claude_effort: Option<&str>,
+    logical_effort: Option<LogicalEffort>,
+) -> String {
+    match standard_harness_behavior(harness).effort_strategy {
+        HarnessEffortStrategy::ClaudeEffortFirst => claude_effort
+            .map(str::to_string)
+            .or_else(|| logical_effort.map(|effort| effort.to_string()))
+            .unwrap_or_else(|| "medium".to_string()),
+        HarnessEffortStrategy::LogicalOnly => logical_effort
+            .map(|effort| effort.to_string())
+            .unwrap_or_else(|| "medium".to_string()),
+    }
+}
+
+pub fn effective_model_label_for_harness(
+    harness: AgentHarnessKind,
+    effective_model_id: &str,
+) -> String {
+    match standard_harness_behavior(harness).model_label_strategy {
+        HarnessModelLabelStrategy::ClaudeMapped => {
+            crate::infrastructure::agents::claude::model_labels::model_id_to_label(
+                effective_model_id,
+            )
+        }
+        HarnessModelLabelStrategy::RawModelId => effective_model_id.to_string(),
+    }
+}
+
+pub fn provider_origin_for_harness(
+    harness: AgentHarnessKind,
+    agent_name: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    match harness {
+        AgentHarnessKind::Codex => (Some("openai".to_string()), None),
+        AgentHarnessKind::Claude => {
+            let profile = crate::infrastructure::agents::claude::get_effective_settings_profile(
+                agent_name,
+            )
+            .map(str::to_string);
+            let upstream_provider = profile
+                .as_deref()
+                .and_then(classify_claude_profile_provider)
+                .map(str::to_string)
+                .or_else(|| infer_claude_provider_from_settings(agent_name).map(str::to_string))
+                .or(Some("anthropic".to_string()));
+            (upstream_provider, profile)
+        }
+    }
+}
+
+fn infer_claude_provider_from_settings(agent_name: Option<&str>) -> Option<&'static str> {
+    let settings = crate::infrastructure::agents::claude::get_effective_settings(agent_name)?;
+    let base_url = settings
+        .get("env")
+        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
+        .and_then(|value| value.as_str());
+
+    match base_url {
+        Some(url) if url.contains("z.ai") => Some("z_ai"),
+        Some(url) if url.contains("openrouter.ai") => Some("openrouter"),
+        Some(_) => Some("anthropic"),
+        None => None,
+    }
+}
+
+fn classify_claude_profile_provider(profile: &str) -> Option<&'static str> {
+    if profile.contains("z_ai") {
+        Some("z_ai")
+    } else if profile.contains("openrouter") {
+        Some("openrouter")
+    } else if profile == "default" {
+        Some("anthropic")
+    } else {
+        None
+    }
+}
+
+pub fn harness_supports_merge_completion_watcher(harness: AgentHarnessKind) -> bool {
+    standard_harness_behavior(harness).supports_merge_completion_watcher
+}
+
 /// Map ChatContextType to process name for team config lookup
 pub fn context_type_to_process(context_type: &ChatContextType) -> &'static str {
     match context_type {
         ChatContextType::Ideation => "ideation",
+        ChatContextType::Delegation => "delegation",
         ChatContextType::Task => "task",
         ChatContextType::Project => "project",
         ChatContextType::TaskExecution => "execution",

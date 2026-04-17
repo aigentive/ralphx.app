@@ -2,7 +2,9 @@
 
 use tauri::State;
 
-use crate::application::AppState;
+use crate::application::{
+    resolve_primary_ideation_harness_availability, validate_chat_runtime_for_context, AppState,
+};
 use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus};
 use crate::domain::ideation::IdeationSettings;
 
@@ -12,12 +14,12 @@ use super::ideation_commands_types::{OrchestratorMessageResponse, SendOrchestrat
 // Orchestrator Integration Commands
 // ============================================================================
 
-/// Send a message to the orchestrator agent and get a response
-/// This invokes the Claude CLI with the orchestrator-ideation agent
+/// Send a message to the orchestrator agent and get a response.
+/// This delegates to the configured harness for the ideation lane.
 ///
 /// The service now:
-/// - Automatically manages conversations (creates/resumes based on claude_session_id)
-/// - Uses --resume flag for follow-up messages (Claude manages conversation context)
+/// - Automatically manages conversations using the persisted provider session metadata
+/// - Uses the harness-specific resume flow for follow-up messages
 /// - Delegates tool execution to MCP server
 /// - Emits Tauri events for real-time UI updates
 ///
@@ -27,9 +29,9 @@ use super::ideation_commands_types::{OrchestratorMessageResponse, SendOrchestrat
 pub async fn send_orchestrator_message(
     input: SendOrchestratorMessageInput,
     state: State<'_, AppState>,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
 ) -> Result<OrchestratorMessageResponse, String> {
-    use crate::application::{ChatService, ClaudeChatService};
+    use crate::application::{AppChatService, ChatService};
     use crate::domain::entities::ChatContextType;
 
     // First verify the session exists and is active
@@ -46,33 +48,15 @@ pub async fn send_orchestrator_message(
     }
 
     // Create unified chat service
-    let chat_service: ClaudeChatService<tauri::Wry> = ClaudeChatService::new(
-        state.chat_message_repo.clone(),
-        state.chat_attachment_repo.clone(),
-        state.artifact_repo.clone(),
-        state.chat_conversation_repo.clone(),
-        state.agent_run_repo.clone(),
-        state.project_repo.clone(),
-        state.task_repo.clone(),
-        state.task_dependency_repo.clone(),
-        state.ideation_session_repo.clone(),
-        state.activity_event_repo.clone(),
-        state.message_queue.clone(),
-        state.running_agent_registry.clone(),
-        state.memory_event_repo.clone(),
-    )
-    .with_app_handle(app)
-    .with_execution_settings_repo(state.execution_settings_repo.clone())
-    .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
-    .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
-    .with_plan_branch_repo(state.plan_branch_repo.clone())
-    .with_task_proposal_repo(state.task_proposal_repo.clone())
-    .with_interactive_process_registry(state.interactive_process_registry.clone());
+    let chat_service: AppChatService<tauri::Wry> = state.build_chat_service();
 
-    // Check if service is available
-    if !chat_service.is_available().await {
-        return Err("Claude CLI is not available".to_string());
-    }
+    validate_chat_runtime_for_context(
+        &state,
+        ChatContextType::Ideation,
+        &input.session_id,
+        "the deprecated orchestrator path",
+    )
+    .await?;
 
     // Send message via unified service (returns immediately, response via events)
     let _result = chat_service
@@ -95,30 +79,9 @@ pub async fn send_orchestrator_message(
 /// DEPRECATED: Use the unified ChatService availability check instead.
 #[tauri::command]
 pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<bool, String> {
-    use crate::application::{ChatService, ClaudeChatService};
-
-    let chat_service: ClaudeChatService<tauri::Wry> = ClaudeChatService::new(
-        state.chat_message_repo.clone(),
-        state.chat_attachment_repo.clone(),
-        state.artifact_repo.clone(),
-        state.chat_conversation_repo.clone(),
-        state.agent_run_repo.clone(),
-        state.project_repo.clone(),
-        state.task_repo.clone(),
-        state.task_dependency_repo.clone(),
-        state.ideation_session_repo.clone(),
-        state.activity_event_repo.clone(),
-        state.message_queue.clone(),
-        state.running_agent_registry.clone(),
-        state.memory_event_repo.clone(),
-    )
-    .with_execution_settings_repo(state.execution_settings_repo.clone())
-    .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
-    .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
-    .with_task_proposal_repo(state.task_proposal_repo.clone())
-    .with_interactive_process_registry(state.interactive_process_registry.clone());
-
-    Ok(chat_service.is_available().await)
+    let lane_availability =
+        resolve_primary_ideation_harness_availability(&state.agent_lane_settings_repo, None).await;
+    Ok(lane_availability.available)
 }
 
 // ============================================================================

@@ -5,6 +5,7 @@ mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
 pub mod effort_resolver;
+mod generated_plugin;
 pub mod model_labels;
 pub mod model_resolver;
 pub mod node_utils;
@@ -15,16 +16,17 @@ pub use agent_config::team_config::{
     env_variant_override, get_team_constraints, validate_child_team_config, validate_team_plan,
     ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
     TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    resolve_process_agent,
 };
 pub use agent_config::{
-    agent_configs, claude_runtime_config, config_path, defer_merge_enabled,
-    execution_defaults_config, external_mcp_config, file_logging_enabled, get_agent_config,
-    get_allowed_tools, get_effective_settings, get_preapproved_tools, git_runtime_config,
+    agent_configs, agent_harness_defaults_config, claude_runtime_config, config_path, defer_merge_enabled,
+    execution_defaults_config, external_mcp_config, external_mcp_config_path, file_logging_enabled, get_agent_config,
+    get_allowed_tools, get_effective_settings, get_effective_settings_profile, get_preapproved_tools, git_runtime_config,
     ideation_activity_threshold_secs, limits_config, process_mapping, reconciliation_config,
     resolve_file_logging_early, scheduler_config, stream_timeouts,
     supervisor_runtime_config, team_constraints_config, ui_feature_flags_config,
     validate_external_mcp_config, verification_config, AgentConfig, AllRuntimeConfig,
-    ExecutionDefaultsConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig,
+    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig,
     ReconciliationConfig, SchedulerConfig, SpecialistEntry, StreamTimeoutsConfig,
     SupervisorRuntimeConfig, UiFeatureFlagsConfig, VerificationConfig,
 };
@@ -42,14 +44,17 @@ pub use stream_processor::{
 };
 
 // Re-export effort resolver helpers for use by services
-pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
+pub use effort_resolver::{effort_bucket_for_agent, resolve_effort_with_source, resolve_ideation_effort};
 
 // Re-export model resolver helpers for use by services
 pub use model_resolver::{
-    resolve_ideation_model, resolve_ideation_subagent_model_with_source,
+    resolve_ideation_model, resolve_ideation_subagent_model_with_source, resolve_model_with_source,
     resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
-
+#[allow(unused_imports)]
+pub(crate) use generated_plugin::{
+    materialize_generated_plugin_dir, materialize_generated_plugin_dir_with_runtime_source,
+};
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -75,6 +80,59 @@ fn first_existing_plugin_dir(candidates: impl IntoIterator<Item = PathBuf>) -> O
     candidates.into_iter().find(|candidate| candidate.exists())
 }
 
+pub(crate) fn find_base_plugin_dir() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("RALPHX_PLUGIN_DIR") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    // In development, prefer plugins/app and keep ralphx-plugin as a legacy fallback.
+    if let Ok(current_dir) = std::env::current_dir() {
+        if let Some(candidate) = first_existing_plugin_dir([
+            current_dir.join(PRIMARY_PLUGIN_DIR_REL),
+            current_dir.join(LEGACY_PLUGIN_DIR_REL),
+        ]) {
+            return Some(candidate);
+        }
+    }
+
+    // Try relative to executable
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let candidates = [
+                parent.join(PRIMARY_PLUGIN_DIR_REL),
+                parent.join(LEGACY_PLUGIN_DIR_REL),
+                parent.join(format!("../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../{LEGACY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../{LEGACY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../../{LEGACY_PLUGIN_DIR_REL}")),
+            ];
+
+            if let Some(candidate) = first_existing_plugin_dir(candidates) {
+                return Some(candidate);
+            }
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        if let Some(candidate) = first_existing_plugin_dir([
+            PathBuf::from(&home).join(format!(
+                "Library/Application Support/com.ralphx.app/{PRIMARY_PLUGIN_DIR_REL}"
+            )),
+            PathBuf::from(home)
+                .join("Library/Application Support/com.ralphx.app/ralphx-plugin"),
+        ]) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
 /// Apply common Claude CLI environment flags for RalphX-managed spawns.
 pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
@@ -82,13 +140,55 @@ pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("DEBUG", "true");
 }
 
+/// Normalize legacy short agent ids to the current canonical ids.
+pub fn canonical_short_agent_name(name: &str) -> &str {
+    let short_name = name.strip_prefix("ralphx:").unwrap_or(name);
+    match short_name {
+        "orchestrator-ideation" => "ralphx-ideation",
+        "orchestrator-ideation-readonly" => "ralphx-ideation-readonly",
+        "ideation-team-lead" => "ralphx-ideation-team-lead",
+        "ideation-advocate" => "ralphx-ideation-advocate",
+        "ideation-critic" => "ralphx-ideation-critic",
+        "ideation-specialist-backend" => "ralphx-ideation-specialist-backend",
+        "ideation-specialist-code-quality" => "ralphx-ideation-specialist-code-quality",
+        "ideation-specialist-frontend" => "ralphx-ideation-specialist-frontend",
+        "ideation-specialist-infra" => "ralphx-ideation-specialist-infra",
+        "ideation-specialist-intent" => "ralphx-ideation-specialist-intent",
+        "ideation-specialist-pipeline-safety" => "ralphx-ideation-specialist-pipeline-safety",
+        "ideation-specialist-prompt-quality" => "ralphx-ideation-specialist-prompt-quality",
+        "ideation-specialist-state-machine" => "ralphx-ideation-specialist-state-machine",
+        "ideation-specialist-ux" => "ralphx-ideation-specialist-ux",
+        "plan-verifier" => "ralphx-plan-verifier",
+        "plan-critic-completeness" => "ralphx-plan-critic-completeness",
+        "plan-critic-implementation-feasibility" => {
+            "ralphx-plan-critic-implementation-feasibility"
+        }
+        "chat-task" => "ralphx-chat-task",
+        "chat-project" => "ralphx-chat-project",
+        "ralphx-worker-team" => "ralphx-execution-team-lead",
+        "ralphx-worker" => "ralphx-execution-worker",
+        "ralphx-coder" => "ralphx-execution-coder",
+        "ralphx-reviewer" => "ralphx-execution-reviewer",
+        "ralphx-merger" => "ralphx-execution-merger",
+        "ralphx-orchestrator" => "ralphx-execution-orchestrator",
+        "ralphx-deep-researcher" => "ralphx-research-deep-researcher",
+        "project-analyzer" => "ralphx-project-analyzer",
+        "memory-capture" => "ralphx-memory-capture",
+        "memory-maintainer" => "ralphx-memory-maintainer",
+        "session-namer" => "ralphx-utility-session-namer",
+        _ => short_name,
+    }
+}
+
 /// Qualify a short agent name with the `ralphx:` plugin prefix.
 /// If the name already contains `:`, it's assumed to be fully qualified.
 pub fn qualify_agent_name(name: &str) -> String {
-    if name.contains(':') {
+    if let Some(short_name) = name.strip_prefix("ralphx:") {
+        format!("ralphx:{}", canonical_short_agent_name(short_name))
+    } else if name.contains(':') {
         name.to_string()
     } else {
-        format!("ralphx:{}", name)
+        format!("ralphx:{}", canonical_short_agent_name(name))
     }
 }
 
@@ -96,7 +196,7 @@ pub fn qualify_agent_name(name: &str) -> String {
 /// Used when passing agent type to the MCP server or looking up agent configs
 /// (both use short/unprefixed names).
 pub fn mcp_agent_type(name: &str) -> &str {
-    name.strip_prefix("ralphx:").unwrap_or(name)
+    canonical_short_agent_name(name)
 }
 
 /// Build base CLI arguments for Claude Code
@@ -122,6 +222,12 @@ fn is_test_environment() -> bool {
 }
 
 pub fn ensure_claude_spawn_allowed() -> Result<(), String> {
+    if let Ok(value) = std::env::var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS") {
+        if value == "1" || value.eq_ignore_ascii_case("true") {
+            return Ok(());
+        }
+    }
+
     if is_test_environment() {
         return Err("Claude spawn disabled in tests".to_string());
     }
@@ -182,7 +288,29 @@ pub fn build_base_cli_command(
     effort_override: Option<&str>,
     model_override: Option<&str>,
 ) -> Result<Command, String> {
-    ensure_claude_spawn_allowed()?;
+    build_base_cli_command_inner(
+        cli_path,
+        plugin_dir,
+        agent_type,
+        is_external_mcp,
+        effort_override,
+        model_override,
+        true,
+    )
+}
+
+fn build_base_cli_command_inner(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_type: Option<&str>,
+    is_external_mcp: bool,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+    enforce_spawn_guard: bool,
+) -> Result<Command, String> {
+    if enforce_spawn_guard {
+        ensure_claude_spawn_allowed()?;
+    }
     sanitize_claude_user_state();
     let mut cmd = Command::new(cli_path);
 
@@ -195,7 +323,7 @@ pub fn build_base_cli_command(
         cmd.env("RALPHX_IS_EXTERNAL_TRIGGER", "1");
     }
 
-    // Optional setting-sources override from ralphx.yaml.
+    // Optional setting-sources override from config/ralphx.yaml.
     if let Some(sources) = &claude_runtime_config().setting_sources {
         if !sources.is_empty() {
             cmd.args(["--setting-sources", &sources.join(",")]);
@@ -230,7 +358,7 @@ pub fn build_base_cli_command(
         tracing::debug!(path = %debug_path.display(), "Enabled Claude debug file");
     }
 
-    // Configure permission handling from ralphx.yaml.
+    // Configure permission handling from config/ralphx.yaml.
     let runtime = claude_runtime_config();
     cmd.args(["--permission-prompt-tool", &runtime.permission_prompt_tool]);
     let permission_mode = resolve_permission_mode(agent_type);
@@ -296,7 +424,10 @@ pub fn build_base_cli_command(
     Ok(cmd)
 }
 
-fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_agent_system_prompt_path(
+    plugin_dir: &Path,
+    agent_name: &str,
+) -> Option<PathBuf> {
     let short = mcp_agent_type(agent_name);
     let project_root = plugin_repo_root(plugin_dir);
     let agents_dir = plugin_dir.join("agents");
@@ -320,7 +451,7 @@ fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Opti
         .or_else(|| fallback.filter(|p| p.exists()))
 }
 
-fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
+pub(crate) fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
     let path = resolve_agent_system_prompt_path(plugin_dir, agent_name)?;
     let raw = std::fs::read_to_string(path).ok()?;
     if let Some(after_first) = raw.strip_prefix("---") {
@@ -604,7 +735,8 @@ pub fn create_mcp_config(
         }
 
         // Inject --allowed-tools from agent's mcp_tools config (Wave 3).
-        // - Agent not in config (None) → skip arg entirely (MCP server falls back to TOOL_ALLOWLIST)
+        // - Agent not in config (None) → skip arg entirely (MCP server resolves canonical metadata,
+        //   then only true legacy fallback entries if any remain)
         // - Agent found, empty mcp_tools → inject __NONE__ sentinel (intentional zero tools)
         // - Agent found, non-empty mcp_tools → validate names, join with commas, inject arg
         // When is_external_mcp=true, strip interactive-only tools (e.g. ask_user_question) to
@@ -689,6 +821,60 @@ pub fn create_mcp_config(
 pub struct SpawnableCommand {
     cmd: Command,
     stdin_prompt: Option<String>,
+    prompt_arg_debug_redaction: Option<PromptArgDebugRedaction>,
+}
+
+#[derive(Debug, Clone)]
+struct PromptArgDebugRedaction {
+    arg_index: usize,
+    artifact_path: PathBuf,
+}
+
+struct DebugCommandView<'a> {
+    cmd: &'a Command,
+    prompt_arg_debug_redaction: Option<&'a PromptArgDebugRedaction>,
+}
+
+impl std::fmt::Debug for DebugCommandView<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let std_cmd = self.cmd.as_std();
+        let mut args = std_cmd
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        if let Some(redaction) = self.prompt_arg_debug_redaction {
+            if let Some(arg) = args.get_mut(redaction.arg_index) {
+                *arg = format!(
+                    "<prompt logged at {}>",
+                    redaction.artifact_path.display()
+                );
+            }
+        }
+
+        let envs = std_cmd
+            .get_envs()
+            .filter_map(|(key, value)| {
+                value.map(|val| {
+                    (
+                        key.to_string_lossy().into_owned(),
+                        val.to_string_lossy().into_owned(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        f.debug_struct("Command")
+            .field("program", &std_cmd.get_program().to_string_lossy().into_owned())
+            .field(
+                "current_dir",
+                &std_cmd
+                    .get_current_dir()
+                    .map(|path| path.to_string_lossy().into_owned()),
+            )
+            .field("args", &args)
+            .field("envs", &envs)
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for SpawnableCommand {
@@ -702,7 +888,13 @@ impl std::fmt::Debug for SpawnableCommand {
             out.replace('\n', "\\n")
         });
         f.debug_struct("SpawnableCommand")
-            .field("cmd", &self.cmd)
+            .field(
+                "cmd",
+                &DebugCommandView {
+                    cmd: &self.cmd,
+                    prompt_arg_debug_redaction: self.prompt_arg_debug_redaction.as_ref(),
+                },
+            )
             .field("uses_stdin", &self.stdin_prompt.is_some())
             .field("stdin_prompt_len", &prompt_len)
             .field("stdin_prompt_preview", &prompt_preview)
@@ -711,6 +903,26 @@ impl std::fmt::Debug for SpawnableCommand {
 }
 
 impl SpawnableCommand {
+    pub(crate) fn new(cmd: Command, stdin_prompt: Option<String>) -> Self {
+        Self {
+            cmd,
+            stdin_prompt,
+            prompt_arg_debug_redaction: None,
+        }
+    }
+
+    pub(crate) fn with_prompt_arg_debug_redaction(
+        mut self,
+        arg_index: usize,
+        artifact_path: PathBuf,
+    ) -> Self {
+        self.prompt_arg_debug_redaction = Some(PromptArgDebugRedaction {
+            arg_index,
+            artifact_path,
+        });
+        self
+    }
+
     /// Set an environment variable on the underlying command.
     pub fn env(&mut self, key: &str, val: &str) -> &mut Self {
         self.cmd.env(key, val);
@@ -733,6 +945,22 @@ impl SpawnableCommand {
             .get_envs()
             .filter_map(|(k, v)| v.map(|val| (k.to_os_string(), val.to_os_string())))
             .collect()
+    }
+
+    /// Returns CLI arguments currently configured on this command.
+    #[doc(hidden)]
+    pub fn get_args_for_test(&self) -> Vec<String> {
+        self.cmd
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Returns the stored stdin prompt for test assertions.
+    #[doc(hidden)]
+    pub fn get_stdin_prompt_for_test(&self) -> Option<&str> {
+        self.stdin_prompt.as_deref()
     }
 
     /// Spawn in interactive mode: writes the stored prompt to stdin, then returns
@@ -976,7 +1204,25 @@ pub fn build_spawnable_command(
         build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override, model_override)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
-    Ok(SpawnableCommand { cmd, stdin_prompt })
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
+}
+
+#[cfg(test)]
+pub fn build_spawnable_command_for_test(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd =
+        build_base_cli_command_inner(cli_path, plugin_dir, agent, false, effort_override, model_override, false)?;
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
+    configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
 }
 
 /// Build a ready-to-spawn interactive CLI command (no `-p` flag).
@@ -1009,7 +1255,33 @@ pub fn build_spawnable_interactive_command(
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
-    Ok(SpawnableCommand { cmd, stdin_prompt })
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
+}
+
+#[cfg(test)]
+pub fn build_spawnable_interactive_command_for_test(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    is_external_mcp: bool,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd = build_base_cli_command_inner(
+        cli_path,
+        plugin_dir,
+        agent,
+        is_external_mcp,
+        effort_override,
+        model_override,
+        false,
+    )?;
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
+    configure_spawn(&mut cmd, working_directory, true);
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
 }
 
 /// Register the configured MCP server with Claude Code CLI.
@@ -1119,60 +1391,18 @@ pub fn find_claude_cli() -> Option<PathBuf> {
 
 /// Find the plugin directory relative to the app
 pub fn find_plugin_dir() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("RALPHX_PLUGIN_DIR") {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
-            return Some(candidate);
+    let base_plugin_dir = find_base_plugin_dir()?;
+    match generated_plugin::materialize_generated_plugin_dir(&base_plugin_dir) {
+        Ok(generated_dir) => Some(generated_dir),
+        Err(error) => {
+            warn!(
+                base_plugin_dir = %base_plugin_dir.display(),
+                error = %error,
+                "Failed to materialize generated Claude plugin dir; falling back to base plugin dir"
+            );
+            Some(base_plugin_dir)
         }
     }
-
-    // In development, prefer plugins/app and keep ralphx-plugin as a legacy fallback.
-    if let Ok(current_dir) = std::env::current_dir() {
-        if let Some(candidate) = first_existing_plugin_dir([
-            current_dir.join(PRIMARY_PLUGIN_DIR_REL),
-            current_dir.join(LEGACY_PLUGIN_DIR_REL),
-        ]) {
-            return Some(candidate);
-        }
-    }
-
-    // Try relative to executable
-    if let Ok(exe_path) = std::env::current_exe() {
-        // Go up from the executable to find the plugin dir
-        // In dev: target/debug/ralphx -> ../../../plugins/app (preferred)
-        if let Some(parent) = exe_path.parent() {
-            let candidates = [
-                parent.join(PRIMARY_PLUGIN_DIR_REL),
-                parent.join(LEGACY_PLUGIN_DIR_REL),
-                parent.join(format!("../{PRIMARY_PLUGIN_DIR_REL}")),
-                parent.join(format!("../{LEGACY_PLUGIN_DIR_REL}")),
-                parent.join(format!("../../{PRIMARY_PLUGIN_DIR_REL}")),
-                parent.join(format!("../../{LEGACY_PLUGIN_DIR_REL}")),
-                parent.join(format!("../../../{PRIMARY_PLUGIN_DIR_REL}")),
-                parent.join(format!("../../../{LEGACY_PLUGIN_DIR_REL}")),
-            ];
-
-            if let Some(candidate) = first_existing_plugin_dir(candidates) {
-                return Some(candidate);
-            }
-        }
-    }
-
-    // Production fallback: app data location where local release provisioning
-    // installs plugin runtime assets.
-    if let Ok(home) = std::env::var("HOME") {
-        if let Some(candidate) = first_existing_plugin_dir([
-            PathBuf::from(&home).join(format!(
-                "Library/Application Support/com.ralphx.app/{PRIMARY_PLUGIN_DIR_REL}"
-            )),
-            PathBuf::from(home)
-                .join("Library/Application Support/com.ralphx.app/ralphx-plugin"),
-        ]) {
-            return Some(candidate);
-        }
-    }
-
-    None
 }
 
 /// Resolve plugin directory for a specific working directory context.
@@ -1184,7 +1414,7 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
 /// 4) `<working_dir>/../ralphx-plugin`
 /// 5) global discovery via `find_plugin_dir()`
 /// 6) fallback to `<working_dir>/plugins/app` (even if missing)
-pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
+pub fn resolve_base_plugin_dir(working_dir: &Path) -> PathBuf {
     if let Some(candidate) = first_existing_plugin_dir([
         working_dir.join(PRIMARY_PLUGIN_DIR_REL),
         working_dir.join(LEGACY_PLUGIN_DIR_REL),
@@ -1201,7 +1431,26 @@ pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
         }
     }
 
-    find_plugin_dir().unwrap_or_else(|| working_dir.join(PRIMARY_PLUGIN_DIR_REL))
+    find_base_plugin_dir().unwrap_or_else(|| working_dir.join(PRIMARY_PLUGIN_DIR_REL))
+}
+
+pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
+    let base_plugin_dir = resolve_base_plugin_dir(working_dir);
+    if !base_plugin_dir.exists() {
+        return base_plugin_dir;
+    }
+
+    match generated_plugin::materialize_generated_plugin_dir(&base_plugin_dir) {
+        Ok(generated_dir) => generated_dir,
+        Err(error) => {
+            warn!(
+                base_plugin_dir = %base_plugin_dir.display(),
+                error = %error,
+                "Failed to materialize generated Claude plugin dir for working directory; falling back to base plugin dir"
+            );
+            base_plugin_dir
+        }
+    }
 }
 
 // ============================================================================
@@ -1226,7 +1475,7 @@ pub fn validate_mcp_tool_name(name: &str) -> bool {
 
 /// Format the `--allowed-tools` arg value from an optional tool list.
 /// - `None` → `None` (agent has no mcp_tools config → no arg injected)
-/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to TOOL_ALLOWLIST)
+/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to legacy fallback)
 /// - `Some([t1, t2, ...])` → `Some("t1,t2,...")`
 pub fn format_allowed_tools_arg_value(tools: Option<&[String]>) -> Option<String> {
     match tools {
@@ -1342,11 +1591,30 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let working_dir = temp_dir.path().join("repo");
         std::fs::create_dir_all(working_dir.join(PRIMARY_PLUGIN_DIR_REL)).unwrap();
+        std::fs::create_dir_all(working_dir.join(PRIMARY_PLUGIN_DIR_REL).join("agents")).unwrap();
+        std::fs::create_dir_all(
+            working_dir.join(PRIMARY_PLUGIN_DIR_REL).join("ralphx-mcp-server/build"),
+        )
+        .unwrap();
+        std::fs::write(
+            working_dir.join(PRIMARY_PLUGIN_DIR_REL).join(".mcp.json"),
+            r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"]}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            working_dir.join(PRIMARY_PLUGIN_DIR_REL).join("agents/worker.md"),
+            "---\nname: worker\n---\nLegacy Worker Prompt",
+        )
+        .unwrap();
         std::fs::create_dir_all(working_dir.join(LEGACY_PLUGIN_DIR_REL)).unwrap();
 
         assert_eq!(
-            resolve_plugin_dir(&working_dir),
+            resolve_base_plugin_dir(&working_dir),
             working_dir.join(PRIMARY_PLUGIN_DIR_REL)
+        );
+        assert_eq!(
+            resolve_plugin_dir(&working_dir),
+            working_dir.join(".artifacts/generated/claude-plugin")
         );
     }
 
@@ -1357,7 +1625,7 @@ mod tests {
         std::fs::create_dir_all(working_dir.join(LEGACY_PLUGIN_DIR_REL)).unwrap();
 
         assert_eq!(
-            resolve_plugin_dir(&working_dir),
+            resolve_base_plugin_dir(&working_dir),
             working_dir.join(LEGACY_PLUGIN_DIR_REL)
         );
     }
@@ -1372,8 +1640,71 @@ mod tests {
         std::fs::create_dir_all(&working_dir).unwrap();
 
         assert_eq!(
-            resolve_plugin_dir(&working_dir),
+            resolve_base_plugin_dir(&working_dir),
             repo_root.join(PRIMARY_PLUGIN_DIR_REL)
+        );
+    }
+
+    #[test]
+    fn test_materialize_generated_plugin_dir_generates_canonical_agents_and_preserves_runtime_assets() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let repo_root = temp_dir.path().join("repo");
+        let plugin_dir = repo_root.join(PRIMARY_PLUGIN_DIR_REL);
+        std::fs::create_dir_all(plugin_dir.join("agents")).unwrap();
+        std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
+        std::fs::write(plugin_dir.join("ralphx-mcp-server/build/index.js"), "// fake").unwrap();
+        std::fs::write(
+            plugin_dir.join(".mcp.json"),
+            r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"]}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            plugin_dir.join("agents/ralphx-utility-session-namer.md"),
+            "---\nname: ralphx-utility-session-namer\n---\nLegacy Session Namer Prompt",
+        )
+        .unwrap();
+        std::fs::write(
+            plugin_dir.join("agents/worker.md"),
+            "---\nname: worker\n---\nLegacy Worker Prompt",
+        )
+        .unwrap();
+
+        std::fs::create_dir_all(repo_root.join("agents/ralphx-utility-session-namer/shared")).unwrap();
+        std::fs::write(
+            repo_root.join("agents/ralphx-utility-session-namer/agent.yaml"),
+            "name: ralphx-utility-session-namer\nrole: session_namer\n",
+        )
+        .unwrap();
+        std::fs::write(
+            repo_root.join("agents/ralphx-utility-session-namer/shared/prompt.md"),
+            "Canonical Session Namer Prompt",
+        )
+        .unwrap();
+
+        let generated_dir =
+            materialize_generated_plugin_dir(&plugin_dir).expect("generated plugin dir");
+        let generated_session_namer = std::fs::read_to_string(
+            generated_dir.join("agents/ralphx-utility-session-namer.md"),
+        )
+        .expect("generated session namer");
+        assert!(
+            generated_session_namer.contains("Canonical Session Namer Prompt"),
+            "generated session namer should use canonical prompt body"
+        );
+        assert!(
+            generated_session_namer.contains("name: ralphx-utility-session-namer"),
+            "generated session namer should preserve legacy frontmatter"
+        );
+
+        let worker_metadata = std::fs::symlink_metadata(generated_dir.join("agents/worker.md"))
+            .expect("worker metadata");
+        assert!(
+            worker_metadata.file_type().is_symlink(),
+            "non-canonical agent prompts should remain linked from the base plugin dir"
+        );
+        assert!(
+            generated_dir.join("ralphx-mcp-server/build/index.js").exists(),
+            "generated plugin dir should keep MCP runtime assets available"
         );
     }
 }

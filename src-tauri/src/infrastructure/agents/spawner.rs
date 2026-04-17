@@ -10,13 +10,19 @@ use tracing::{info, warn};
 
 use tauri::{AppHandle, Emitter, Wry};
 
+use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::application::chat_service::uses_execution_slot;
+use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
+use crate::domain::agents::{
+    AgentConfig, AgentHandle, AgentHarnessKind, AgentRole, AgenticClient, ClientType,
+    LogicalEffort, DEFAULT_AGENT_HARNESS,
+};
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use crate::domain::repositories::{
-    ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
+    AgentLaneSettingsRepository, ExecutionSettingsRepository, IdeationSessionRepository,
+    ProjectRepository, TaskRepository,
 };
 use crate::domain::services::RunningAgentRegistry;
 use crate::domain::state_machine::AgentSpawner;
@@ -29,7 +35,11 @@ use crate::infrastructure::supervisor::EventBus;
 /// the implementation details of the agentic client.
 pub struct AgenticClientSpawner {
     /// The underlying agentic client
-    client: Arc<dyn AgenticClient>,
+    default_client: Arc<dyn AgenticClient>,
+    /// The harness represented by the default client
+    default_harness: AgentHarnessKind,
+    /// Harness-specific clients for multi-harness execution lanes
+    harness_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     /// Working directory for spawned agents (fallback when task/project lookup fails)
     working_directory: PathBuf,
     /// Task repository for per-task CWD resolution
@@ -38,6 +48,8 @@ pub struct AgenticClientSpawner {
     project_repo: Option<Arc<dyn ProjectRepository>>,
     /// Execution settings repo for project-aware spawn gating
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    /// Provider-neutral lane settings for harness selection
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     /// Ideation session repo for ideation-aware project slot counting
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
     /// Running registry for project-aware slot counting
@@ -60,11 +72,14 @@ impl AgenticClientSpawner {
         let working_directory = cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd);
 
         Self {
-            client,
+            default_client: client,
+            default_harness: DEFAULT_AGENT_HARNESS,
+            harness_clients: HashMap::new(),
             working_directory,
             task_repo: None,
             project_repo: None,
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             ideation_session_repo: None,
             running_agent_registry: None,
             event_bus: None,
@@ -72,6 +87,11 @@ impl AgenticClientSpawner {
             execution_state: None,
             app_handle: None,
         }
+    }
+
+    pub fn with_default_harness(mut self, harness: AgentHarnessKind) -> Self {
+        self.default_harness = harness;
+        self
     }
 
     /// Create with a specific working directory
@@ -95,10 +115,12 @@ impl AgenticClientSpawner {
     pub fn with_runtime_admission_context(
         mut self,
         execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
+        agent_lane_settings_repo: Arc<dyn AgentLaneSettingsRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Self {
         self.execution_settings_repo = Some(execution_settings_repo);
+        self.agent_lane_settings_repo = Some(agent_lane_settings_repo);
         self.ideation_session_repo = Some(ideation_session_repo);
         self.running_agent_registry = Some(running_agent_registry);
         self
@@ -122,16 +144,34 @@ impl AgenticClientSpawner {
         self
     }
 
+    /// Override the client used for a specific harness.
+    pub fn with_harness_client(
+        mut self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.harness_clients.insert(harness, client);
+        self
+    }
+
+    pub fn with_harness_clients<I>(mut self, clients: I) -> Self
+    where
+        I: IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)>,
+    {
+        self.harness_clients.extend(clients);
+        self
+    }
+
     /// Map agent type string to AgentRole
     fn role_from_string(agent_type: &str) -> AgentRole {
         match agent_type {
-            "worker" => AgentRole::Worker,
-            "coder" | "ralphx-coder" => AgentRole::Worker,
+            "worker" | "ralphx-worker" | "ralphx-execution-worker" => AgentRole::Worker,
+            "coder" | "ralphx-coder" | "ralphx-execution-coder" => AgentRole::Worker,
             "qa-prep" => AgentRole::QaPrep,
             "qa-refiner" => AgentRole::QaRefiner,
             "qa-tester" => AgentRole::QaTester,
-            "reviewer" => AgentRole::Reviewer,
-            "supervisor" => AgentRole::Supervisor,
+            "reviewer" | "ralphx-reviewer" | "ralphx-execution-reviewer" => AgentRole::Reviewer,
+            "merger" | "ralphx-merger" | "ralphx-execution-merger" => AgentRole::Reviewer,
             other => AgentRole::Custom(other.to_string()),
         }
     }
@@ -177,6 +217,13 @@ impl AgenticClientSpawner {
         None
     }
 
+    async fn resolve_task_status(&self, task_id: &str) -> Option<String> {
+        let task_repo = self.task_repo.as_ref()?;
+        let task_id_typed = TaskId(task_id.to_string());
+        let task = task_repo.get_by_id(&task_id_typed).await.ok()??;
+        Some(task.internal_status.as_str().to_string())
+    }
+
     async fn project_has_execution_capacity(
         &self,
         task_id: &str,
@@ -195,7 +242,10 @@ impl AgenticClientSpawner {
             return None;
         };
 
-        let Ok(settings) = execution_settings_repo.get_settings(Some(&task.project_id)).await else {
+        let Ok(settings) = execution_settings_repo
+            .get_settings(Some(&task.project_id))
+            .await
+        else {
             return None;
         };
 
@@ -242,7 +292,10 @@ impl AgenticClientSpawner {
             };
 
             if related_task.project_id != task.project_id
-                || !context_matches_running_status_for_gc(context_type, related_task.internal_status)
+                || !context_matches_running_status_for_gc(
+                    context_type,
+                    related_task.internal_status,
+                )
             {
                 continue;
             }
@@ -282,6 +335,170 @@ impl AgenticClientSpawner {
         }
         // Fallback to the spawner's default working directory
         self.working_directory.clone()
+    }
+
+    fn process_name(agent_type: &str) -> Option<&'static str> {
+        match agent_type {
+            "worker" | "coder" | "ralphx-execution-worker" | "ralphx-execution-coder" => Some("execution"),
+            "reviewer" | "ralphx-execution-reviewer" => Some("review"),
+            "merger" | "ralphx-execution-merger" => Some("merge"),
+            "qa-prep" => Some("qa_prep"),
+            "qa-refiner" => Some("qa_refine"),
+            "qa-tester" => Some("qa_test"),
+            _ => None,
+        }
+    }
+
+    fn context_type_for_agent(agent_type: &str) -> Option<ChatContextType> {
+        match agent_type {
+            "worker" | "coder" | "ralphx-execution-worker" | "ralphx-execution-coder" | "qa-prep" => {
+                Some(ChatContextType::TaskExecution)
+            }
+            "qa-refiner" | "qa-tester" => Some(ChatContextType::TaskExecution),
+            "reviewer" | "ralphx-execution-reviewer" => Some(ChatContextType::Review),
+            "merger" | "ralphx-execution-merger" => Some(ChatContextType::Merge),
+            _ => None,
+        }
+    }
+
+    fn resolve_process_agent_name(agent_type: &str) -> Option<String> {
+        let process = Self::process_name(agent_type)?;
+        crate::infrastructure::agents::claude::resolve_process_agent(
+            crate::infrastructure::agents::claude::process_mapping(),
+            process,
+            "default",
+        )
+        .map(|name| crate::infrastructure::agents::claude::qualify_agent_name(&name))
+    }
+
+    async fn resolve_spawn_harness(
+        &self,
+        agent_type: &str,
+        task_id: &str,
+        project_id: Option<&str>,
+    ) -> Result<
+        (
+        AgentHarnessKind,
+        Option<String>,
+        Option<LogicalEffort>,
+        Option<String>,
+        Option<String>,
+        ),
+        String,
+    > {
+        let Some(context_type) = Self::context_type_for_agent(agent_type) else {
+            return Ok((self.default_harness, None, None, None, None));
+        };
+        let Some(agent_name) = Self::resolve_process_agent_name(agent_type) else {
+            return Ok((self.default_harness, None, None, None, None));
+        };
+        let entity_status = self.resolve_task_status(task_id).await;
+
+        let resolved = resolve_agent_spawn_settings(
+            &agent_name,
+            project_id,
+            context_type,
+            entity_status.as_deref(),
+            None,
+            None,
+            self.agent_lane_settings_repo.as_ref(),
+        )
+        .await;
+
+        let harness = resolved.effective_harness;
+        let client = self.resolve_client_for_harness(harness).ok_or_else(|| {
+            format!("Configured execution harness {} is not registered in the runtime", harness)
+        })?;
+        let harness_available = client.is_available().await.unwrap_or(false);
+        if !harness_available {
+            return Err(format!(
+                "Configured execution harness {} is unavailable for {}",
+                harness, agent_type
+            ));
+        }
+
+        Ok((
+            harness,
+            Some(resolved.model),
+            resolved.logical_effort,
+            resolved.approval_policy,
+            resolved.sandbox_mode,
+        ))
+    }
+
+    fn build_agent_config(
+        &self,
+        harness: AgentHarnessKind,
+        client_type: ClientType,
+        role: AgentRole,
+        agent_type: &str,
+        task_id: &str,
+        working_dir: PathBuf,
+        project_id: Option<String>,
+        model: Option<String>,
+        logical_effort: Option<LogicalEffort>,
+        approval_policy: Option<String>,
+        sandbox_mode: Option<String>,
+    ) -> AgentConfig {
+        let mut env = std::collections::HashMap::new();
+        if let Some(pid) = project_id {
+            env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
+        }
+        env.insert("RALPHX_TASK_ID".to_string(), task_id.to_string());
+
+        let mut config = AgentConfig {
+            role,
+            prompt: format!("Execute task {}", task_id),
+            working_directory: working_dir.clone(),
+            plugin_dir: None,
+            agent: None,
+            model,
+            harness: Some(harness),
+            logical_effort,
+            approval_policy,
+            sandbox_mode,
+            max_tokens: None,
+            timeout_secs: None,
+            env,
+        };
+
+        if matches!(client_type, ClientType::ClaudeCode | ClientType::Codex) {
+            let plugin_dir = resolve_harness_plugin_dir(harness, &working_dir);
+            config.plugin_dir = Some(plugin_dir);
+            config.agent = Self::resolve_process_agent_name(agent_type).or_else(|| {
+                Some(
+                    crate::infrastructure::agents::claude::agent_names::spawner_agent_name(
+                        agent_type,
+                    )
+                    .to_string(),
+                )
+            });
+        }
+
+        config
+    }
+
+    fn resolve_client_for_harness(&self, harness: AgentHarnessKind) -> Option<Arc<dyn AgenticClient>> {
+        if harness == self.default_harness {
+            Some(Arc::clone(&self.default_client))
+        } else {
+            self.harness_clients.get(&harness).cloned()
+        }
+    }
+
+    fn resolve_client_for_handle(&self, handle: &AgentHandle) -> Option<Arc<dyn AgenticClient>> {
+        AgentHarnessKind::try_from(handle.client_type.clone())
+            .ok()
+            .and_then(|harness| self.resolve_client_for_harness(harness))
+    }
+
+    fn rollback_spawn_failure(&self) {
+        if let Some(ref exec) = self.execution_state {
+            exec.decrement_running();
+            if let Some(ref handle) = self.app_handle {
+                exec.emit_status_changed(handle, "task_spawn_failed");
+            }
+        }
     }
 }
 
@@ -361,38 +578,52 @@ impl AgentSpawner for AgenticClientSpawner {
 
         // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
-
-        // Resolve plugin dir robustly for both dev and release runs.
-        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
-
-        let mut env = std::collections::HashMap::new();
-        if let Some(pid) = project_id {
-            env.insert("RALPHX_PROJECT_ID".to_string(), pid);
-        }
-
-        let config = AgentConfig {
-            role,
-            prompt: format!("Execute task {}", task_id),
-            working_directory: working_dir,
-            plugin_dir: Some(plugin_dir),
-            agent: Some(
-                crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type)
-                    .to_string(),
-            ),
-            model: None,
-            max_tokens: None,
-            timeout_secs: None,
-            env,
+        let (harness, model, logical_effort, approval_policy, sandbox_mode) = match self
+            .resolve_spawn_harness(agent_type, task_id, project_id.as_deref())
+            .await
+        {
+            Ok(values) => values,
+            Err(error) => {
+                self.rollback_spawn_failure();
+                self.emit_error(task_id, ErrorInfo::new(error, "resolve_spawn_harness"));
+                return;
+            }
         };
+        let Some(client) = self.resolve_client_for_harness(harness) else {
+            self.rollback_spawn_failure();
+            self.emit_error(
+                task_id,
+                ErrorInfo::new(
+                    format!("Configured execution harness {} is not registered in the runtime", harness),
+                    "resolve_client_for_harness",
+                ),
+            );
+            return;
+        };
+        let client_type = client.capabilities().client_type.clone();
+        let config = self.build_agent_config(
+            harness,
+            client_type,
+            role,
+            agent_type,
+            task_id,
+            working_dir,
+            project_id,
+            model,
+            logical_effort,
+            approval_policy,
+            sandbox_mode,
+        );
 
         // Spawn and handle errors
-        match self.client.spawn_agent(config).await {
+        match client.spawn_agent(config).await {
             Ok(handle) => {
                 // Store handle for wait/stop operations
                 let mut handles = self.handles.lock().await;
                 handles.insert(handle_key, handle);
             }
             Err(e) => {
+                self.rollback_spawn_failure();
                 // Emit error event
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "spawn_agent"));
             }
@@ -414,7 +645,17 @@ impl AgentSpawner for AgenticClientSpawner {
 
         if let Some(handle) = handle {
             // Wait for agent to complete
-            if let Err(e) = self.client.wait_for_completion(&handle).await {
+            let Some(client) = self.resolve_client_for_handle(&handle) else {
+                self.emit_error(
+                    task_id,
+                    ErrorInfo::new(
+                        format!("No client registered for handle {:?}", handle.client_type),
+                        "resolve_client_for_handle",
+                    ),
+                );
+                return;
+            };
+            if let Err(e) = client.wait_for_completion(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "wait_for"));
             }
         }
@@ -428,7 +669,17 @@ impl AgentSpawner for AgenticClientSpawner {
         };
 
         if let Some(handle) = handle {
-            if let Err(e) = self.client.stop_agent(&handle).await {
+            let Some(client) = self.resolve_client_for_handle(&handle) else {
+                self.emit_error(
+                    task_id,
+                    ErrorInfo::new(
+                        format!("No client registered for handle {:?}", handle.client_type),
+                        "resolve_client_for_handle",
+                    ),
+                );
+                return;
+            };
+            if let Err(e) = client.stop_agent(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "stop_agent"));
             }
         }

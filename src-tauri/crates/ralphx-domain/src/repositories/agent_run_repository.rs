@@ -1,12 +1,13 @@
 // Agent run repository trait - domain layer abstraction
 //
 // This trait defines the contract for agent run persistence.
-// Agent runs track the execution status of Claude agents for conversations.
+// Agent runs track the execution status of provider-backed agents for conversations.
 
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation,
+    AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage, ChatConversationId,
+    InterruptedConversation,
 };
 use crate::error::AppResult;
 
@@ -41,6 +42,16 @@ pub trait AgentRunRepository: Send + Sync {
     /// Update run status
     async fn update_status(&self, id: &AgentRunId, status: AgentRunStatus) -> AppResult<()>;
 
+    /// Persist usage/cost metadata for a run without changing its lifecycle status.
+    async fn update_usage(&self, id: &AgentRunId, usage: &AgentRunUsage) -> AppResult<()>;
+
+    /// Persist provider/harness/model attribution for a run without changing lifecycle status.
+    async fn update_attribution(
+        &self,
+        id: &AgentRunId,
+        attribution: &AgentRunAttribution,
+    ) -> AppResult<()>;
+
     /// Complete a run (set status to Completed and completed_at timestamp)
     async fn complete(&self, id: &AgentRunId) -> AppResult<()>;
 
@@ -73,7 +84,7 @@ pub trait AgentRunRepository: Send + Sync {
     /// Get conversations that were interrupted during app shutdown
     ///
     /// Returns conversations where:
-    /// - claude_session_id is NOT NULL (can use --resume)
+    /// - a provider session ID is present (can use provider-specific resume)
     /// - latest agent_run status is 'cancelled'
     /// - latest agent_run error_message is 'Orphaned on app restart'
     ///

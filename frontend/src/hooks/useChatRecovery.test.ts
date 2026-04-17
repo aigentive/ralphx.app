@@ -41,6 +41,7 @@ vi.mock("@/types/status", () => ({
 vi.mock("@/api/chat", () => ({
   chatApi: {
     isAgentRunning: vi.fn(),
+    getConversationActiveState: vi.fn(),
   },
 }));
 
@@ -53,6 +54,7 @@ import type { ContextType } from "@/types/chat-conversation";
 import { chatApi } from "@/api/chat";
 
 const mockIsAgentRunning = vi.mocked(chatApi.isAgentRunning);
+const mockGetConversationActiveState = vi.mocked(chatApi.getConversationActiveState);
 
 // ============================================================================
 // Helpers
@@ -69,6 +71,7 @@ interface DefaultProps {
   isConversationInCurrentContext: boolean;
   agentRunStatus: string | undefined;
   setAgentRunning: ReturnType<typeof vi.fn>;
+  setStreamingTasks?: ReturnType<typeof vi.fn>;
   selectedTaskId: string | undefined;
   ideationSessionId: string | undefined;
   projectId: string;
@@ -87,6 +90,7 @@ function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
     isConversationInCurrentContext: true,
     agentRunStatus: undefined,
     setAgentRunning: vi.fn(),
+    setStreamingTasks: undefined,
     selectedTaskId: "task-1",
     ideationSessionId: undefined,
     projectId: "project-1",
@@ -106,6 +110,12 @@ describe("useChatRecovery", () => {
     // Default: process not running. Effect 2 calls chatApi.isAgentRunning()
     // which must return a Promise (not undefined) to avoid TypeError on .then().
     mockIsAgentRunning.mockResolvedValue(false);
+    mockGetConversationActiveState.mockResolvedValue({
+      is_active: false,
+      tool_calls: [],
+      streaming_tasks: [],
+      partial_text: "",
+    });
   });
 
   afterEach(() => {
@@ -129,6 +139,81 @@ describe("useChatRecovery", () => {
         (call: [string, boolean]) => call[1] === true
       );
       expect(trueCalls).toHaveLength(0);
+    });
+  });
+
+  describe("active-state hydration", () => {
+    it("hydrates delegated streaming task metadata from active-state", async () => {
+      const setStreamingTasks = vi.fn();
+      mockGetConversationActiveState.mockResolvedValueOnce({
+        is_active: true,
+        tool_calls: [],
+        streaming_tasks: [
+          {
+            tool_use_id: "toolu_delegate",
+            description: "execution-reviewer",
+            subagent_type: "delegated",
+            model: "gpt-5.4",
+            status: "completed",
+            delegated_job_id: "job-123",
+            delegated_session_id: "delegated-session-123",
+            delegated_conversation_id: "conv-child-123",
+            delegated_agent_run_id: "run-child-123",
+            provider_harness: "codex",
+            provider_session_id: "provider-session-123",
+            upstream_provider: "openai",
+            provider_profile: "prod",
+            logical_model: "gpt-5.4",
+            effective_model_id: "gpt-5.4-2026-04-01",
+            logical_effort: "high",
+            effective_effort: "high",
+            approval_policy: "never",
+            sandbox_mode: "danger-full-access",
+            total_tokens: 120,
+            total_tool_uses: 3,
+            duration_ms: 4500,
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_creation_tokens: 30,
+            cache_read_tokens: 40,
+            estimated_usd: 0.12,
+            text_output: "delegate done",
+          },
+        ],
+        partial_text: "",
+      });
+
+      const props = makeProps({ setStreamingTasks });
+      renderHook(() => useChatRecovery(props));
+
+      await act(async () => {});
+
+      expect(mockGetConversationActiveState).toHaveBeenCalledWith("conv-abc");
+      expect(setStreamingTasks).toHaveBeenCalledTimes(1);
+      const updater = setStreamingTasks.mock.calls[0][0] as (
+        prev: Map<string, import("@/types/streaming-task").StreamingTask>
+      ) => Map<string, import("@/types/streaming-task").StreamingTask>;
+      const next = updater(new Map());
+      const task = next.get("toolu_delegate");
+      expect(task?.toolName).toBe("delegate_start");
+      expect(task?.delegatedSessionId).toBe("delegated-session-123");
+      expect(task?.providerHarness).toBe("codex");
+      expect(task?.upstreamProvider).toBe("openai");
+      expect(task?.effectiveModelId).toBe("gpt-5.4-2026-04-01");
+      expect(task?.inputTokens).toBe(10);
+      expect(task?.estimatedUsd).toBe(0.12);
+      expect(task?.textOutput).toBe("delegate done");
+    });
+
+    it("skips active-state hydration in history mode", () => {
+      const props = makeProps({
+        isHistoryMode: true,
+        setStreamingTasks: vi.fn(),
+      });
+
+      renderHook(() => useChatRecovery(props));
+
+      expect(mockGetConversationActiveState).not.toHaveBeenCalled();
     });
   });
 

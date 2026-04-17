@@ -89,6 +89,7 @@ vi.mock("@/lib/chat-context-registry", () => ({
 // ============================================================================
 
 import { useChatEvents } from "./useChatEvents";
+import { useChatStore } from "@/stores/chatStore";
 
 // ============================================================================
 // Helpers
@@ -105,6 +106,7 @@ interface DefaultProps {
   setStreamingContentBlocks: ReturnType<typeof vi.fn>;
   setStreamingTasks: ReturnType<typeof vi.fn>;
   setIsFinalizing: ReturnType<typeof vi.fn>;
+  storeKey?: string;
 }
 
 function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
@@ -116,6 +118,7 @@ function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
     setStreamingContentBlocks: vi.fn(),
     setStreamingTasks: vi.fn(),
     setIsFinalizing: vi.fn(),
+    storeKey: undefined,
     ...overrides,
   };
 }
@@ -160,6 +163,12 @@ describe("useChatEvents", () => {
     mockGetQueryData.mockClear();
     mockQueryData = undefined;
     cacheSubscribers.length = 0;
+    useChatStore.setState({
+      toolCallStartTimes: {},
+      lastToolCallCompletionTimestamp: {},
+      toolCallCompletionTimestamps: {},
+      lastAgentEventTimestamp: {},
+    });
     // Default: full feature flags (task_execution context)
     mockContextConfig = {
       supportsStreamingText: true,
@@ -238,6 +247,40 @@ describe("useChatEvents", () => {
       const result = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, existing, 1);
       expect(result).toHaveLength(1);
       expect(result[0]!.result).toBe("file content here");
+    });
+
+    it("clears active tool timing when a direct tool call completes on the same id", () => {
+      const props = makeProps({ storeKey: "task_execution:ctx-123" });
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "bash",
+          tool_id: "toolu_codex_001",
+          arguments: { command: "/bin/zsh -lc pwd" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const startedAt = useChatStore.getState().toolCallStartTimes["task_execution:ctx-123"]?.toolu_codex_001;
+      expect(typeof startedAt).toBe("number");
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "bash",
+          tool_id: "toolu_codex_001",
+          arguments: { command: "/bin/zsh -lc pwd" },
+          result: { text: "/Users/example/Code/ralphx\n", exit_code: 0, status: "completed" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const store = useChatStore.getState();
+      expect(store.toolCallStartTimes["task_execution:ctx-123"]?.toolu_codex_001).toBeUndefined();
+      expect(store.toolCallCompletionTimestamps["task_execution:ctx-123"]?.toolu_codex_001).toEqual(expect.any(Number));
+      expect(store.lastToolCallCompletionTimestamp["task_execution:ctx-123"]).toEqual(expect.any(Number));
     });
 
     it("should update existing tool calls with result payload when result:toolu events arrive", () => {
@@ -435,7 +478,7 @@ describe("useChatEvents", () => {
   // 3. Streaming text (via content blocks)
   // --------------------------------------------------------------------------
   describe("streaming text", () => {
-    it("should append text chunks via setStreamingContentBlocks when supportsStreamingText", () => {
+    it("should append text chunks when the backend marks them as continuations", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -444,6 +487,7 @@ describe("useChatEvents", () => {
           text: "Hello ",
           conversation_id: CONV_ID,
           context_id: CTX_ID,
+          append_to_previous: true,
         });
       });
 
@@ -456,6 +500,29 @@ describe("useChatEvents", () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({ type: "text", text: "Previous: Hello " });
+    });
+
+    it("should start a new text block when the backend marks a chunk as a new block", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "Second block",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          append_to_previous: false,
+        });
+      });
+
+      const result = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [{ type: "text", text: "First block" }],
+      );
+      expect(result).toEqual([
+        { type: "text", text: "First block" },
+        { type: "text", text: "Second block" },
+      ]);
     });
   });
 
@@ -512,6 +579,25 @@ describe("useChatEvents", () => {
       });
 
       // setIsFinalizing(true) should be called once immediately
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+    });
+
+    it("should set isFinalizing=true on orchestrator message_created (same batch as clearing state)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "orchestrator",
+        });
+      });
+
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
       expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
       expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
     });
@@ -719,8 +805,9 @@ describe("useChatEvents", () => {
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
       expect(props.setStreamingTasks).not.toHaveBeenCalled();
       expect(props.setIsFinalizing).not.toHaveBeenCalled();
-      // But invalidateQueries should still be called
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
 
     it("should NOT clear streaming state on user message", () => {
@@ -739,8 +826,27 @@ describe("useChatEvents", () => {
       expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
       expect(props.setStreamingTasks).not.toHaveBeenCalled();
-      // But invalidateQueries should still be called
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
+    });
+
+    it("should invalidate conversation stats on assistant message", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-123",
+        });
+      });
+
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
   });
 
@@ -769,8 +875,9 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      // Query invalidation is now owned by useAgentEvents — not called here
-      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
   });
 
@@ -799,8 +906,30 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      // Query invalidation is now owned by useAgentEvents — not called here
-      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
+    });
+  });
+
+  describe("agent:usage_updated", () => {
+    it("invalidates both conversation stats and the conversation transcript during a live turn", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:usage_updated", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversations", CONV_ID],
+      });
     });
   });
 
@@ -918,6 +1047,7 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
 
       const nextMap = executeUpdater<Map<string, StreamingTask>>(
         props.setStreamingTasks,
@@ -931,6 +1061,72 @@ describe("useChatEvents", () => {
       expect(task!.model).toBe("sonnet");
       expect(task!.status).toBe("running");
       expect(task!.childToolCalls).toEqual([]);
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_task_001" }]);
+    });
+
+    it("should enrich delegated streaming tasks from backend-native agent:task_started payloads", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:task_started", {
+          tool_use_id: "toolu_delegate_live_001",
+          tool_name: "delegate_start",
+          description: "ralphx-execution-reviewer",
+          subagent_type: "delegated",
+          model: "gpt-5.4",
+          delegated_job_id: "job-live-123",
+          delegated_session_id: "delegated-session-123",
+          delegated_conversation_id: "delegated-conv-123",
+          delegated_agent_run_id: "run-123",
+          provider_harness: "codex",
+          logical_model: "gpt-5.4",
+          logical_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      const prevMap = new Map<string, StreamingTask>([
+        ["toolu_delegate_live_001", {
+          toolUseId: "toolu_delegate_live_001",
+          toolName: "delegate_start",
+          description: "Delegated specialist",
+          subagentType: "delegated",
+          model: "unknown",
+          status: "running",
+          startedAt: 12345,
+          delegatedJobId: "job-live-123",
+          childToolCalls: [],
+        }],
+      ]);
+      const nextMap = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        prevMap,
+      );
+
+      const delegated = nextMap.get("toolu_delegate_live_001");
+      expect(delegated).toBeDefined();
+      expect(delegated!.startedAt).toBe(12345);
+      expect(delegated!.description).toBe("ralphx-execution-reviewer");
+      expect(delegated!.model).toBe("gpt-5.4");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.logicalModel).toBe("gpt-5.4");
+      expect(delegated!.logicalEffort).toBe("high");
+      expect(delegated!.approvalPolicy).toBe("never");
+      expect(delegated!.sandboxMode).toBe("danger-full-access");
+      expect(delegated!.delegatedSessionId).toBe("delegated-session-123");
+      expect(delegated!.delegatedConversationId).toBe("delegated-conv-123");
+      expect(delegated!.delegatedAgentRunId).toBe("run-123");
     });
 
     it("should mark a streaming task as completed on agent:task_completed", () => {
@@ -981,6 +1177,91 @@ describe("useChatEvents", () => {
       expect(completed.childToolCalls).toHaveLength(1);
     });
 
+    it("should fold delegated terminal metadata from backend-native agent:task_completed payloads", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:task_completed", {
+          tool_use_id: "toolu_delegate_live_002",
+          agent_id: "run-xyz",
+          status: "failed",
+          delegated_job_id: "job-live-456",
+          delegated_session_id: "delegated-session-456",
+          delegated_conversation_id: "delegated-conv-456",
+          delegated_agent_run_id: "run-xyz",
+          provider_harness: "codex",
+          provider_session_id: "provider-thread-1",
+          upstream_provider: "openai",
+          provider_profile: "openai",
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4",
+          logical_effort: "high",
+          effective_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          total_duration_ms: 5000,
+          total_tokens: 148,
+          input_tokens: 100,
+          output_tokens: 40,
+          cache_creation_tokens: 6,
+          cache_read_tokens: 2,
+          estimated_usd: 0.12,
+          text_output: "Delegated reviewer found a blocking issue",
+          error: "Delegated reviewer failed validation",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      const prevMap = new Map<string, StreamingTask>([
+        ["toolu_delegate_live_002", {
+          toolUseId: "toolu_delegate_live_002",
+          toolName: "delegate_start",
+          description: "ralphx-execution-reviewer",
+          subagentType: "delegated",
+          model: "gpt-5.4",
+          status: "running",
+          startedAt: Date.now() - 5000,
+          delegatedJobId: "job-live-456",
+          childToolCalls: [],
+        }],
+      ]);
+      const nextMap = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        prevMap,
+      );
+
+      const delegated = nextMap.get("toolu_delegate_live_002");
+      expect(delegated).toBeDefined();
+      expect(delegated!.status).toBe("failed");
+      expect(delegated!.agentId).toBe("run-xyz");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.providerSessionId).toBe("provider-thread-1");
+      expect(delegated!.upstreamProvider).toBe("openai");
+      expect(delegated!.providerProfile).toBe("openai");
+      expect(delegated!.logicalModel).toBe("gpt-5.4");
+      expect(delegated!.effectiveModelId).toBe("gpt-5.4");
+      expect(delegated!.logicalEffort).toBe("high");
+      expect(delegated!.effectiveEffort).toBe("high");
+      expect(delegated!.approvalPolicy).toBe("never");
+      expect(delegated!.sandboxMode).toBe("danger-full-access");
+      expect(delegated!.totalDurationMs).toBe(5000);
+      expect(delegated!.totalTokens).toBe(148);
+      expect(delegated!.inputTokens).toBe(100);
+      expect(delegated!.outputTokens).toBe(40);
+      expect(delegated!.cacheCreationTokens).toBe(6);
+      expect(delegated!.cacheReadTokens).toBe(2);
+      expect(delegated!.estimatedUsd).toBe(0.12);
+      expect(delegated!.textOutput).toBe("Delegated reviewer found a blocking issue");
+      expect(delegated!.delegatedSessionId).toBe("delegated-session-456");
+      expect(delegated!.delegatedConversationId).toBe("delegated-conv-456");
+      expect(delegated!.delegatedAgentRunId).toBe("run-xyz");
+      expect(delegated!.completedAt).toBeDefined();
+    });
+
     it("should NOT subscribe to task events when supportsSubagentTasks is false", () => {
       mockContextConfig = {
         supportsStreamingText: false,
@@ -995,6 +1276,173 @@ describe("useChatEvents", () => {
       const completedHandlers = subscriptions.get("agent:task_completed") ?? [];
       expect(startedHandlers).toHaveLength(0);
       expect(completedHandlers).toHaveLength(0);
+    });
+
+    it("should create a delegated placeholder task immediately on delegate_start tool calls", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_start",
+          tool_id: "toolu_delegate_001",
+          arguments: {
+            agent_name: "ralphx-execution-reviewer",
+            prompt: "Review the patch",
+            harness: "codex",
+            model: "gpt-5.4",
+          },
+          result: [{ type: "text", text: JSON.stringify({ job_id: "job-123", status: "running" }) }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_001" }]);
+
+      const tasks = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map(),
+      );
+      expect(tasks.get("toolu_delegate_001")).toMatchObject({
+        toolUseId: "toolu_delegate_001",
+        toolName: "delegate_start",
+        description: "Review the patch",
+        subagentType: "delegated",
+        logicalModel: "gpt-5.4",
+      });
+    });
+
+    it("should create a delegated placeholder task for namespaced delegate_start tool calls", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "ralphx::delegate_start",
+          tool_id: "toolu_delegate_002",
+          arguments: {
+            agent_name: "ralphx-plan-critic-completeness",
+            prompt: "Review the plan",
+          },
+          result: [{ type: "text", text: JSON.stringify({ job_id: "job-456", status: "running" }) }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_002" }]);
+
+      const tasks = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map(),
+      );
+      expect(tasks.get("toolu_delegate_002")).toMatchObject({
+        toolUseId: "toolu_delegate_002",
+        toolName: "ralphx::delegate_start",
+        subagentType: "delegated",
+      });
+    });
+
+    it("should mark delegated placeholder tasks as failed when delegate_start returns an error result", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_start",
+          tool_id: "toolu_delegate_fail_001",
+          arguments: {
+            agent_name: "ralphx-ideation-specialist-backend",
+            prompt: "Investigate merge validation defaults",
+          },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "result:toolu_delegate_fail_001",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          arguments: {},
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+              },
+            ],
+          },
+        });
+      });
+
+      let tasks = new Map<string, StreamingTask>();
+      for (const call of props.setStreamingTasks.mock.calls) {
+        const updater = call[0];
+        tasks = typeof updater === "function" ? updater(tasks) : updater;
+      }
+
+      expect(tasks.get("toolu_delegate_fail_001")).toMatchObject({
+        toolUseId: "toolu_delegate_fail_001",
+        status: "failed",
+        textOutput: "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+      });
+    });
+
+    it("should ignore delegate_wait tool calls for delegated task state", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_wait",
+          tool_id: "toolu_wait_001",
+          arguments: { job_id: "job-123" },
+          result: [{
+            type: "text",
+            text: JSON.stringify({
+              job_id: "job-123",
+              status: "completed",
+              content: "Delegated review finished",
+              delegated_status: {
+                latest_run: {
+                  harness: "codex",
+                  upstream_provider: "openai",
+                  provider_profile: "openai",
+                  logical_model: "gpt-5.4",
+                  effective_model_id: "gpt-5.4",
+                  logical_effort: "high",
+                  input_tokens: 100,
+                  output_tokens: 40,
+                  estimated_usd: 0.12,
+                  started_at: "2026-04-12T10:00:00Z",
+                  completed_at: "2026-04-12T10:00:05Z",
+                },
+              },
+            }),
+          }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
     });
   });
 

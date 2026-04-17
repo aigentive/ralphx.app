@@ -54,10 +54,12 @@ import { useVerificationBootstrap } from "./useVerificationBootstrap";
 // Helpers
 // ============================================================================
 
-const PENDING_ITEMS = [
-  { session_id: "session-1", title: "Test Session 1", plan_artifact_id: "plan-1" },
-  { session_id: "session-2", title: "Test Session 2", plan_artifact_id: "plan-2" },
-];
+const PENDING_ITEMS = {
+  sessions: [
+    { session_id: "session-1", session_title: "Test Session 1", plan_artifact_id: "plan-1", available_specialists: [] },
+    { session_id: "session-2", session_title: "Test Session 2", plan_artifact_id: "plan-2", available_specialists: [] },
+  ],
+};
 
 // ============================================================================
 // Tests

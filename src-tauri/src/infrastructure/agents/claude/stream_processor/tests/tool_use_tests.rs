@@ -56,6 +56,7 @@ fn test_processor_tool_result() {
                 input: serde_json::json!({"command": "pwd"}),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     };
@@ -177,6 +178,7 @@ fn test_assistant_session_id_ignored_when_parent_tool_use_id_set() {
                     text: "teammate response".to_string(),
                 }],
                 stop_reason: Some("end_turn".to_string()),
+                usage: None,
             },
             session_id: Some("teammate-assistant-session".to_string()),
         },
@@ -206,6 +208,7 @@ fn test_assistant_session_id_ignored_when_parent_tool_use_id_set() {
                     text: "lead response".to_string(),
                 }],
                 stop_reason: Some("end_turn".to_string()),
+                usage: None,
             },
             session_id: Some("lead-assistant-session".to_string()),
         },
@@ -326,6 +329,7 @@ fn test_parent_tool_use_id_propagates_to_tool_result() {
                 input: serde_json::json!({"pattern": "foo"}),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });

@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::ideation_service::build_default_ideation_session_title;
 
 #[derive(Debug, Deserialize)]
 pub struct StartIdeationRequest {
@@ -137,8 +138,7 @@ pub async fn start_ideation_http(
         );
         let candidate_tokens = tokenize_for_similarity(&candidate_text);
         let similarity_threshold =
-            crate::infrastructure::agents::claude::external_mcp_config()
-                .external_session_similarity_threshold;
+            crate::application::harness_runtime_registry::default_external_session_similarity_threshold();
 
         let mut best_match: Option<(f64, &crate::domain::entities::ideation::IdeationSession)> =
             None;
@@ -191,7 +191,10 @@ pub async fn start_ideation_http(
     }
 
     let mut session_builder = match req.title.clone() {
-        None => IdeationSession::new(project_id.clone()),
+        None => IdeationSession::new_with_title(
+            project_id.clone(),
+            build_default_ideation_session_title(),
+        ),
         Some(t) => IdeationSession::new_with_title(project_id.clone(), t),
     };
     session_builder.origin = SessionOrigin::External;
@@ -355,10 +358,12 @@ pub async fn start_ideation_http(
             Ok(_) => {
                 agent_spawned = true;
                 spawn_session_namer(
-                    Arc::clone(&state.app_state.agent_client),
+                    &state.app_state,
+                    project_id.as_str(),
                     session_id_str.clone(),
                     prompt_str.clone(),
-                );
+                )
+                .await;
             }
             Err(e) => {
                 error!(

@@ -87,7 +87,8 @@ pub fn check_verification_gate(
     }
     // Check in_progress first — reconciler may have reset status but process still running
     if session.verification_in_progress {
-        let (round, max_rounds) = parse_round_info(&session.verification_metadata);
+        let (round, max_rounds) =
+            (session.verification_current_round.unwrap_or(0), session.verification_max_rounds.unwrap_or(0));
         return Err(VerificationError::InProgress { round, max_rounds });
     }
     // External sessions cannot accept with Skipped status — they must run verification to completion
@@ -101,11 +102,12 @@ pub fn check_verification_gate(
         VerificationStatus::Verified | VerificationStatus::Skipped | VerificationStatus::ImportedVerified => Ok(()),
         // Defense-in-depth: Reviewing arm still present in case in_progress flag is inconsistent
         VerificationStatus::Reviewing => {
-            let (round, max_rounds) = parse_round_info(&session.verification_metadata);
+            let (round, max_rounds) =
+                (session.verification_current_round.unwrap_or(0), session.verification_max_rounds.unwrap_or(0));
             Err(VerificationError::InProgress { round, max_rounds })
         }
         VerificationStatus::NeedsRevision => {
-            let count = count_unresolved_gaps(&session.verification_metadata);
+            let count = session.verification_gap_count;
             Err(VerificationError::HasUnresolvedGaps { count })
         }
         VerificationStatus::Unverified => Err(VerificationError::NotVerified),
@@ -187,7 +189,8 @@ pub fn check_proposal_verification_gate(
 
         // All operations block Reviewing
         (_, VerificationStatus::Reviewing) => {
-            let (round, max_rounds) = parse_round_info(&session.verification_metadata);
+            let (round, max_rounds) =
+                (session.verification_current_round.unwrap_or(0), session.verification_max_rounds.unwrap_or(0));
             Err(VerificationError::ProposalReviewInProgress {
                 operation: op_str,
                 round,
@@ -197,36 +200,13 @@ pub fn check_proposal_verification_gate(
 
         // All operations block NeedsRevision
         (_, VerificationStatus::NeedsRevision) => {
-            let gap_count = count_unresolved_gaps(&session.verification_metadata) as usize;
+            let gap_count = session.verification_gap_count as usize;
             Err(VerificationError::ProposalHasUnresolvedGaps {
                 operation: op_str,
                 gap_count,
             })
         }
     }
-}
-
-fn parse_verification_metadata(
-    metadata_json: &Option<String>,
-) -> Option<crate::domain::entities::ideation::VerificationMetadata> {
-    metadata_json
-        .as_deref()
-        .and_then(|s| {
-            serde_json::from_str::<crate::domain::entities::ideation::VerificationMetadata>(s)
-                .ok()
-        })
-}
-
-fn parse_round_info(metadata_json: &Option<String>) -> (u32, u32) {
-    parse_verification_metadata(metadata_json)
-        .map(|m| (m.current_round, m.max_rounds))
-        .unwrap_or((0, 0))
-}
-
-fn count_unresolved_gaps(metadata_json: &Option<String>) -> u32 {
-    parse_verification_metadata(metadata_json)
-        .map(|m| m.current_gaps.len() as u32)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

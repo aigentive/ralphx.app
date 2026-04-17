@@ -24,6 +24,8 @@ import { getPendingPlans } from "@/api/team";
 import type { ContextType } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import type {
+  AgentRunCompletedPayload,
+  AgentRunStartedPayload,
   TeamArtifactCreatedPayload,
   TeamCreatedPayload,
   TeamDisbandedPayload,
@@ -245,12 +247,7 @@ export function useTeamEvents(contextKey: string | null) {
     // agent:run_started — route to teammate status when teammate_name present
     // Also capture conversation_id if present (may arrive before team:teammate_spawned)
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name?: string | null;
-        conversation_id?: string | null;
-      }>("agent:run_started", (payload) => {
+      bus.subscribe<AgentRunStartedPayload>("agent:run_started", (payload) => {
         if (payload.teammate_name && matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "running");
           if (payload.conversation_id) {
@@ -262,11 +259,7 @@ export function useTeamEvents(contextKey: string | null) {
 
     // agent:run_completed — teammate idle
     unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name?: string | null;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (payload.teammate_name && matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "idle");
         }

@@ -12,7 +12,6 @@ import {
   UpdateAgentProfileSchema,
   WORKER_PROFILE,
   REVIEWER_PROFILE,
-  SUPERVISOR_PROFILE,
   ORCHESTRATOR_PROFILE,
   DEEP_RESEARCHER_PROFILE,
   BUILTIN_PROFILES,
@@ -264,13 +263,6 @@ describe('Built-in profiles', () => {
     expect(REVIEWER_PROFILE.execution.maxIterations).toBe(10);
   });
 
-  it('SUPERVISOR_PROFILE should be valid', () => {
-    expect(AgentProfileSchema.parse(SUPERVISOR_PROFILE)).toEqual(SUPERVISOR_PROFILE);
-    expect(SUPERVISOR_PROFILE.role).toBe('supervisor');
-    expect(SUPERVISOR_PROFILE.execution.model).toBe('haiku');
-    expect(SUPERVISOR_PROFILE.execution.maxIterations).toBe(100);
-  });
-
   it('ORCHESTRATOR_PROFILE should be valid', () => {
     expect(AgentProfileSchema.parse(ORCHESTRATOR_PROFILE)).toEqual(ORCHESTRATOR_PROFILE);
     expect(ORCHESTRATOR_PROFILE.role).toBe('orchestrator');
@@ -286,12 +278,11 @@ describe('Built-in profiles', () => {
     expect(DEEP_RESEARCHER_PROFILE.execution.maxIterations).toBe(200);
   });
 
-  it('BUILTIN_PROFILES should contain all 5 profiles', () => {
-    expect(BUILTIN_PROFILES).toHaveLength(5);
+  it('BUILTIN_PROFILES should contain the 4 live built-in agent profiles', () => {
+    expect(BUILTIN_PROFILES).toHaveLength(4);
     expect(BUILTIN_PROFILES.map((p) => p.id)).toEqual([
       'worker',
       'reviewer',
-      'supervisor',
       'orchestrator',
       'deep-researcher',
     ]);
@@ -301,7 +292,7 @@ describe('Built-in profiles', () => {
 describe('getBuiltinProfile', () => {
   it('should return profile by id', () => {
     expect(getBuiltinProfile('worker')).toEqual(WORKER_PROFILE);
-    expect(getBuiltinProfile('supervisor')).toEqual(SUPERVISOR_PROFILE);
+    expect(getBuiltinProfile('supervisor')).toBeUndefined();
   });
 
   it('should return undefined for unknown id', () => {
@@ -316,11 +307,11 @@ describe('getBuiltinProfileByRole', () => {
   });
 
   it('should return undefined for unmatched role', () => {
-    // All roles have profiles, so this tests the function works
-    const profiles: ProfileRole[] = ['worker', 'reviewer', 'supervisor', 'orchestrator', 'researcher'];
+    const profiles: ProfileRole[] = ['worker', 'reviewer', 'orchestrator', 'researcher'];
     for (const role of profiles) {
       expect(getBuiltinProfileByRole(role)).toBeDefined();
     }
+    expect(getBuiltinProfileByRole('supervisor')).toBeUndefined();
   });
 });
 

@@ -17,8 +17,15 @@ use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
+use crate::application::agent_client_bundle::{
+    AgentClientBundle, AgentClientFactoryBundle,
+};
+use crate::application::runtime_factory::{
+    ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
+};
+use crate::application::{AppChatService, AppState, ChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
+use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
@@ -26,7 +33,8 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
+    ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
     PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
@@ -47,7 +55,42 @@ use crate::domain::state_machine::transition_handler::metadata_builder::{
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
-use crate::infrastructure::ClaudeCodeClient;
+
+#[allow(clippy::too_many_arguments)]
+fn build_transition_chat_service_fallback<R: Runtime>(
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dep_repo: Arc<dyn TaskDependencyRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_state: Arc<ExecutionState>,
+    app_handle: Option<AppHandle<R>>,
+) -> AppChatService<R> {
+    let deps = ChatRuntimeFactoryDeps::from_core(
+        chat_message_repo,
+        chat_attachment_repo,
+        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+        conversation_repo,
+        agent_run_repo,
+        project_repo,
+        task_repo,
+        task_dep_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+    );
+
+    build_chat_service_with_fallback(&app_handle, Some(execution_state), &deps)
+}
 
 // ============================================================================
 // No-op service implementations (for services not yet fully implemented)
@@ -643,13 +686,21 @@ pub(crate) struct CorrectionResult {
 /// the appropriate side effects are triggered (e.g., spawning worker agents).
 pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
+    agent_client_factories: AgentClientFactoryBundle,
     event_emitter: Arc<dyn EventEmitter>,
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
     review_starter: Arc<dyn ReviewStarter>,
     chat_service: Arc<dyn ChatService>,
+    message_queue: Arc<MessageQueue>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     _app_handle: Option<AppHandle<R>>,
     /// Task scheduler for auto-scheduling Ready tasks when slots are available.
@@ -668,9 +719,10 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
 
     /// Activity event repository for emitting merge pipeline audit events.
-    /// Cloned before being passed to ClaudeChatService so the transition handler also has access.
+    /// Cloned before being passed to the app chat service so the transition handler also has access.
     activity_event_repo: Arc<dyn ActivityEventRepository>,
 
     /// Per-task team mode override. When `Some(true)`, the chat service uses
@@ -737,6 +789,59 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
+    fn default_agent_client_factories() -> AgentClientFactoryBundle {
+        AgentClientFactoryBundle::standard_production_runtime_factories()
+    }
+
+    fn rebuild_agent_spawner(&mut self) {
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factories,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
+    }
+
+    fn build_agent_spawner(
+        agent_client_factories: &AgentClientFactoryBundle,
+        task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        execution_state: Arc<ExecutionState>,
+        execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+        agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    ) -> Arc<dyn AgentSpawner> {
+        let agent_clients = agent_client_factories.instantiate();
+        let agent_client = Arc::clone(&agent_clients.default_client);
+        let spawner = AgenticClientSpawner::new(agent_client)
+            .with_default_harness(agent_clients.default_harness)
+            .with_harness_clients(agent_clients.iter_explicit_harness_clients())
+            .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
+            .with_execution_state(Arc::clone(&execution_state));
+        let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
+            (execution_settings_repo, agent_lane_settings_repo)
+        {
+            spawner.with_runtime_admission_context(
+                execution_repo,
+                agent_lane_repo,
+                ideation_session_repo,
+                running_agent_registry,
+            )
+        } else {
+            spawner
+        };
+        Arc::new(spawner)
+    }
+
     fn validate_status_transition(
         &self,
         task_id: &TaskId,
@@ -764,6 +869,65 @@ impl<R: Runtime> TaskTransitionService<R> {
         })
     }
 
+    fn rebuild_chat_service(&mut self) {
+        if let Some(handle) = self._app_handle.as_ref() {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                self.chat_service = Arc::new(app_state.build_chat_service_for_runtime(
+                    Some(Arc::clone(&self.execution_state)),
+                    self._app_handle.clone(),
+                ));
+                return;
+            }
+        }
+
+        let mut service = build_transition_chat_service_fallback(
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+            Arc::clone(&self.execution_state),
+            self._app_handle.clone(),
+        );
+
+        if let Some(repo) = self.execution_settings_repo.as_ref() {
+            service = service.with_execution_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.agent_lane_settings_repo.as_ref() {
+            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.plan_branch_repo.as_ref() {
+            service = service.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(ipr) = self.interactive_process_registry.as_ref() {
+            service = service.with_interactive_process_registry(Arc::clone(ipr));
+        }
+        match self.team_mode {
+            Some(explicit) => {
+                service = service.with_team_mode(explicit);
+            }
+            None => {
+                use crate::infrastructure::agents::claude::env_variant_override;
+                if env_variant_override("execution").as_deref() == Some("team") {
+                    service = service.with_team_mode(true);
+                }
+            }
+        }
+
+        self.chat_service = Arc::new(service);
+    }
+
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
@@ -781,15 +945,16 @@ impl<R: Runtime> TaskTransitionService<R> {
         app_handle: Option<AppHandle<R>>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
-        // Create the agent client for spawning
-        let agent_client = Arc::new(ClaudeCodeClient::new());
-
-        // Create the agent spawner with execution state for spawn gating
-        // and task/project repos for per-task CWD resolution (worktree-aware)
-        let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(
-            AgenticClientSpawner::new(agent_client)
-                .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
-                .with_execution_state(Arc::clone(&execution_state)),
+        let agent_client_factories = Self::default_agent_client_factories();
+        let agent_spawner = Self::build_agent_spawner(
+            &agent_client_factories,
+            Arc::clone(&task_repo),
+            Arc::clone(&project_repo),
+            Arc::clone(&execution_state),
+            None,
+            None,
+            Arc::clone(&ideation_session_repo),
+            Arc::clone(&running_agent_registry),
         );
 
         // Clone activity_event_repo before consuming it in the chat service
@@ -798,25 +963,48 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Create the unified chat service for worker spawning
         let chat_service: Arc<dyn ChatService> = {
-            let mut service = ClaudeChatService::new(
-                Arc::clone(&chat_message_repo),
-                Arc::clone(&chat_attachment_repo),
-                Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
-                Arc::clone(&conversation_repo),
-                Arc::clone(&agent_run_repo),
-                Arc::clone(&project_repo),
-                Arc::clone(&task_repo),
-                Arc::clone(&task_dep_repo),
-                Arc::clone(&ideation_session_repo),
-                activity_event_repo,
-                message_queue,
-                Arc::clone(&running_agent_registry),
-                memory_event_repo,
-            )
-            .with_execution_state(Arc::clone(&execution_state));
-            if let Some(ref handle) = app_handle {
-                service = service.with_app_handle(handle.clone());
-            }
+            let mut service = if let Some(ref handle) = app_handle {
+                if let Some(app_state) = handle.try_state::<AppState>() {
+                    app_state.build_chat_service_for_runtime(
+                        Some(Arc::clone(&execution_state)),
+                        app_handle.clone(),
+                    )
+                } else {
+                    build_transition_chat_service_fallback(
+                        Arc::clone(&chat_message_repo),
+                        Arc::clone(&chat_attachment_repo),
+                        Arc::clone(&conversation_repo),
+                        Arc::clone(&agent_run_repo),
+                        Arc::clone(&project_repo),
+                        Arc::clone(&task_repo),
+                        Arc::clone(&task_dep_repo),
+                        Arc::clone(&ideation_session_repo),
+                        Arc::clone(&activity_event_repo),
+                        Arc::clone(&message_queue),
+                        Arc::clone(&running_agent_registry),
+                        Arc::clone(&memory_event_repo),
+                        Arc::clone(&execution_state),
+                        Some(handle.clone()),
+                    )
+                }
+            } else {
+                build_transition_chat_service_fallback(
+                    Arc::clone(&chat_message_repo),
+                    Arc::clone(&chat_attachment_repo),
+                    Arc::clone(&conversation_repo),
+                    Arc::clone(&agent_run_repo),
+                    Arc::clone(&project_repo),
+                    Arc::clone(&task_repo),
+                    Arc::clone(&task_dep_repo),
+                    Arc::clone(&ideation_session_repo),
+                    Arc::clone(&activity_event_repo),
+                    Arc::clone(&message_queue),
+                    Arc::clone(&running_agent_registry),
+                    Arc::clone(&memory_event_repo),
+                    Arc::clone(&execution_state),
+                    None,
+                )
+            };
             // Global env var override: RALPHX_PROCESS_VARIANT_EXECUTION=team
             use crate::infrastructure::agents::claude::env_variant_override;
             if env_variant_override("execution").as_deref() == Some("team") {
@@ -832,7 +1020,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Use real dependency manager for automatic blocking/unblocking based on dependency graph
         let dependency_manager: Arc<dyn DependencyManager> =
             Arc::new(RepoBackedDependencyManager::new(
-                task_dep_repo,
+                Arc::clone(&task_dep_repo),
                 Arc::clone(&task_repo),
                 app_handle.clone(),
             ));
@@ -840,13 +1028,21 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         Self {
             task_repo,
+            task_dependency_repo: task_dep_repo,
             project_repo,
+            chat_message_repo,
+            chat_attachment_repo,
+            conversation_repo,
+            agent_run_repo,
             agent_spawner,
+            agent_client_factories,
             event_emitter,
             notifier,
             dependency_manager,
             review_starter,
             chat_service,
+            message_queue,
+            memory_event_repo,
             execution_state,
             _app_handle: app_handle,
             task_scheduler: None,
@@ -854,6 +1050,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             step_repo: None,
             ideation_session_repo: Some(ideation_session_repo),
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
             interactive_process_registry: None,
@@ -912,22 +1109,87 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
-        let agent_client = Arc::new(ClaudeCodeClient::new());
-        let spawner = AgenticClientSpawner::new(agent_client)
-            .with_repos(Arc::clone(&self.task_repo), Arc::clone(&self.project_repo))
-            .with_execution_state(Arc::clone(&self.execution_state))
-            .with_runtime_admission_context(
-                Arc::clone(&repo),
-                Arc::clone(
-                    self.ideation_session_repo
-                        .as_ref()
-                        .expect("ideation_session_repo set in new"),
-                ),
-                Arc::clone(&self.running_agent_registry),
-            );
-        self.agent_spawner = Arc::new(spawner);
-        self.execution_settings_repo = Some(repo);
+        let app_agent_lane_settings_repo = self
+            ._app_handle
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo));
+        if let Some(agent_lane_settings_repo) = app_agent_lane_settings_repo.as_ref() {
+            self.agent_lane_settings_repo = Some(Arc::clone(agent_lane_settings_repo));
+        }
+
+        self.execution_settings_repo = Some(Arc::clone(&repo));
+        self.rebuild_chat_service();
+        self.rebuild_agent_spawner();
         self
+    }
+
+    /// Inject provider-neutral lane settings so the transition chat/spawn paths can
+    /// resolve Codex-vs-Claude behavior even when no AppState is available.
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(Arc::clone(&repo));
+        self.rebuild_chat_service();
+        self.rebuild_agent_spawner();
+        self
+    }
+
+    /// Override the agentic client factory used by the state-machine spawner.
+    ///
+    /// Defaults to `ClaudeCodeClient`; tests and future harness integrations can inject
+    /// another provider without changing the transition-service callsites.
+    pub fn with_agentic_client_factory<F>(mut self, factory: F) -> Self
+    where
+        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
+    {
+        self.agent_client_factories = self
+            .agent_client_factories
+            .clone()
+            .with_default_factory(Arc::new(factory));
+        self.rebuild_agent_spawner();
+        self
+    }
+
+    /// Override the state-machine spawner with a concrete agentic client instance.
+    ///
+    /// This is a convenience wrapper for callers that already hold the client in AppState.
+    pub fn with_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
+        self.with_agentic_client_factory(move || Arc::clone(&client))
+    }
+
+    /// Override the full harness client bundle used by the state-machine spawner.
+    pub fn with_agent_clients(mut self, clients: AgentClientBundle) -> Self {
+        self.agent_client_factories = AgentClientFactoryBundle::from_client_bundle(&clients);
+        self.rebuild_agent_spawner();
+        self
+    }
+
+    /// Override the agentic client factory used for a specific harness.
+    pub fn with_harness_agentic_client_factory<F>(
+        mut self,
+        harness: AgentHarnessKind,
+        factory: F,
+    ) -> Self
+    where
+        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
+    {
+        self.agent_client_factories = self
+            .agent_client_factories
+            .clone()
+            .with_harness_factory(harness, Arc::new(factory));
+        self.rebuild_agent_spawner();
+        self
+    }
+
+    /// Override the state-machine spawner client with a concrete harness-specific instance.
+    pub fn with_harness_agentic_client(
+        self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.with_harness_agentic_client_factory(harness, move || Arc::clone(&client))
     }
 
     /// Enable team mode for agent spawning (builder pattern).
@@ -1100,6 +1362,13 @@ impl<R: Runtime> TaskTransitionService<R> {
             self.task_repo.get_by_id(task_id).await?.ok_or_else(|| {
                 AppError::NotFound(format!("Task not found: {}", task_id.as_str()))
             })?;
+
+        if task.archived_at.is_some() {
+            return Err(AppError::Validation(format!(
+                "Cannot transition archived task: {}",
+                task_id.as_str()
+            )));
+        }
 
         let old_status = task.internal_status;
         tracing::debug!(
@@ -1445,6 +1714,87 @@ impl<R: Runtime> TaskTransitionService<R> {
                     .persist_status_change(task_id, from_status, target_status, history_actor)
                     .await;
                 Some(CorrectionResult { task, from_status })
+            }
+        }
+    }
+
+    /// Apply a corrective transition while still honoring exit actions and status-change emission.
+    ///
+    /// Use this for repair flows that must bypass the normal legality guard but still need
+    /// side effects tied to leaving the current state, such as decrementing `running_count`
+    /// when a task exits an agent-active state.
+    #[track_caller]
+    pub fn transition_task_corrective_with_exit<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        target_status: InternalStatus,
+        blocked_reason: Option<String>,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            let existing = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            if existing.internal_status == target_status {
+                return Ok(existing);
+            }
+
+            self.execute_exit_actions(task_id, &existing, existing.internal_status, target_status)
+                .await;
+
+            match self
+                .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
+                .await
+            {
+                Some(result) => {
+                    if let Some(ref handle) = self._app_handle {
+                        let _ = handle.emit(
+                            "task:event",
+                            serde_json::json!({
+                                "type": "status_changed",
+                                "taskId": task_id.as_str(),
+                                "from": result.from_status.as_str(),
+                                "to": target_status.as_str(),
+                                "changedBy": history_actor,
+                            }),
+                        );
+                    }
+                    self.event_emitter
+                        .emit_status_change(
+                            task_id.as_str(),
+                            result.from_status.as_str(),
+                            target_status.as_str(),
+                        )
+                        .await;
+                    Ok(result.task)
+                }
+                None => {
+                    let current = self
+                        .task_repo
+                        .get_by_id(task_id)
+                        .await?
+                        .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        target_status = target_status.as_str(),
+                        current_status = current.internal_status.as_str(),
+                        caller_file = caller.file(),
+                        caller_line = caller.line(),
+                        caller_column = caller.column(),
+                        "Corrective transition with exit actions did not persist"
+                    );
+
+                    Err(AppError::Conflict(format!(
+                        "Corrective transition to {} did not persist; current status is {}",
+                        target_status.as_str(),
+                        current.internal_status.as_str(),
+                    )))
+                }
             }
         }
     }

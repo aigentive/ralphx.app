@@ -1,5 +1,9 @@
 use super::*;
 use crate::commands::ExecutionState;
+use crate::domain::agents::{
+    AgentConfig, AgentHandle, AgentHarnessKind, AgentLane, AgentLaneSettings, AgentOutput,
+    AgentResponse, AgentResult, AgenticClient, ClientCapabilities, ClientType, ResponseChunk,
+};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::entities::{GitMode, Project, ProjectId, Task, TaskId};
 use crate::domain::repositories::{
@@ -8,12 +12,26 @@ use crate::domain::repositories::{
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegistry, RunningAgentKey};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryExecutionSettingsRepository, MemoryIdeationSessionRepository, MemoryProjectRepository,
-    MemoryTaskRepository,
+    MemoryAgentLaneSettingsRepository, MemoryExecutionSettingsRepository,
+    MemoryIdeationSessionRepository, MemoryProjectRepository, MemoryTaskRepository,
 };
 use crate::infrastructure::MockAgenticClient;
+use async_trait::async_trait;
+use futures::Stream;
+use std::fs;
+use std::pin::Pin;
+use tokio::sync::RwLock;
 
 // ==================== Mock Repos for CWD Tests ====================
+
+fn make_local_plugin_task_workdir(task_name: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("create temp repo");
+    let repo_root = dir.path().join("repo");
+    fs::create_dir_all(repo_root.join("plugins/app")).expect("create plugin dir");
+    let task_workdir = repo_root.join(task_name);
+    fs::create_dir_all(&task_workdir).expect("create task workdir");
+    (dir, task_workdir)
+}
 
 /// Minimal mock TaskRepository that returns a configurable task
 struct MockTaskRepoForSpawner {
@@ -177,6 +195,74 @@ impl ProjectRepository for MockProjectRepoForSpawner {
     }
 }
 
+struct TestAgentClient {
+    client_type: ClientType,
+    available: bool,
+    spawns: Arc<RwLock<Vec<AgentConfig>>>,
+    capabilities: ClientCapabilities,
+}
+
+impl TestAgentClient {
+    fn new(client_type: ClientType, available: bool) -> Self {
+        let capabilities = match client_type {
+            ClientType::Codex => ClientCapabilities::codex(),
+            ClientType::ClaudeCode => ClientCapabilities::claude_code(),
+            ClientType::Mock => ClientCapabilities::mock(),
+            _ => ClientCapabilities::mock(),
+        };
+        Self {
+            client_type,
+            available,
+            spawns: Arc::new(RwLock::new(Vec::new())),
+            capabilities,
+        }
+    }
+
+    async fn spawn_count(&self) -> usize {
+        self.spawns.read().await.len()
+    }
+
+    async fn last_spawn(&self) -> Option<AgentConfig> {
+        self.spawns.read().await.last().cloned()
+    }
+}
+
+#[async_trait]
+impl AgenticClient for TestAgentClient {
+    async fn spawn_agent(&self, config: AgentConfig) -> AgentResult<AgentHandle> {
+        self.spawns.write().await.push(config.clone());
+        Ok(AgentHandle::new(self.client_type.clone(), config.role))
+    }
+
+    async fn stop_agent(&self, _handle: &AgentHandle) -> AgentResult<()> {
+        Ok(())
+    }
+
+    async fn wait_for_completion(&self, _handle: &AgentHandle) -> AgentResult<AgentOutput> {
+        Ok(AgentOutput::success("ok"))
+    }
+
+    async fn send_prompt(&self, _handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
+        Ok(AgentResponse::new(prompt))
+    }
+
+    fn stream_response(
+        &self,
+        _handle: &AgentHandle,
+        _prompt: &str,
+    ) -> Pin<Box<dyn Stream<Item = AgentResult<ResponseChunk>> + Send>> {
+        Box::pin(futures::stream::empty())
+    }
+
+    fn capabilities(&self) -> &ClientCapabilities {
+        &self.capabilities
+    }
+
+    async fn is_available(&self) -> AgentResult<bool> {
+        Ok(self.available)
+    }
+}
+
 #[test]
 fn test_role_from_string() {
     // Standard roles
@@ -199,10 +285,6 @@ fn test_role_from_string() {
     assert_eq!(
         AgenticClientSpawner::role_from_string("reviewer"),
         AgentRole::Reviewer
-    );
-    assert_eq!(
-        AgenticClientSpawner::role_from_string("supervisor"),
-        AgentRole::Supervisor
     );
     // Custom role
     assert_eq!(
@@ -379,7 +461,7 @@ async fn test_multiple_spawns_emit_multiple_events() {
 
     spawner.spawn("worker", "task-1").await;
     spawner.spawn("reviewer", "task-2").await;
-    spawner.spawn("supervisor", "task-3").await;
+    spawner.spawn("custom-agent", "task-3").await;
 
     // Check all three events
     let event1 = subscriber.try_recv().unwrap();
@@ -454,6 +536,7 @@ async fn test_spawn_blocked_when_same_project_capacity_reached() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
 
     let project_id = ProjectId::from_string("project-a".to_string());
@@ -499,6 +582,7 @@ async fn test_spawn_blocked_when_same_project_capacity_reached() {
         .with_execution_state(exec_state)
         .with_runtime_admission_context(
             settings_repo,
+            agent_lane_settings_repo,
             ideation_session_repo,
             running_agent_registry,
         )
@@ -518,6 +602,7 @@ async fn test_spawn_ignores_other_project_capacity_usage() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
 
     let project_a_id = ProjectId::from_string("project-a".to_string());
@@ -578,6 +663,7 @@ async fn test_spawn_ignores_other_project_capacity_usage() {
         .with_execution_state(exec_state)
         .with_runtime_admission_context(
             settings_repo,
+            agent_lane_settings_repo,
             ideation_session_repo,
             running_agent_registry,
         )
@@ -754,4 +840,388 @@ async fn test_resolve_working_directory_fallback_task_not_found() {
 
     let resolved = spawner.resolve_working_directory("nonexistent-task").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
+}
+
+#[test]
+fn test_build_agent_config_for_mock_client_omits_claude_plugin_wiring() {
+    let mock = Arc::new(MockAgenticClient::new());
+    let spawner = AgenticClientSpawner::new(mock);
+
+    let config = spawner.build_agent_config(
+        AgentHarnessKind::Claude,
+        ClientType::Mock,
+        AgentRole::Worker,
+        "worker",
+        "task-123",
+        PathBuf::from("/tmp/task-123"),
+        Some("project-123".to_string()),
+        None,
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(config.role, AgentRole::Worker);
+    assert_eq!(config.prompt, "Execute task task-123");
+    assert_eq!(config.working_directory, PathBuf::from("/tmp/task-123"));
+    assert!(config.plugin_dir.is_none());
+    assert!(config.agent.is_none());
+    assert_eq!(
+        config.env.get("RALPHX_PROJECT_ID").map(String::as_str),
+        Some("project-123")
+    );
+}
+
+#[test]
+fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
+    let client = Arc::new(crate::infrastructure::ClaudeCodeClient::new());
+    let spawner = AgenticClientSpawner::new(client);
+
+    let config = spawner.build_agent_config(
+        AgentHarnessKind::Claude,
+        ClientType::ClaudeCode,
+        AgentRole::QaRefiner,
+        "qa-refiner",
+        "task-456",
+        PathBuf::from("/tmp/task-456"),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    assert_eq!(config.role, AgentRole::QaRefiner);
+    assert_eq!(config.prompt, "Execute task task-456");
+    assert_eq!(
+        config.agent.as_deref(),
+        Some("ralphx:ralphx-qa-executor")
+    );
+    assert!(config.plugin_dir.is_some());
+}
+
+#[test]
+fn test_build_agent_config_for_codex_client_uses_process_mapping() {
+    let default_client = Arc::new(MockAgenticClient::new());
+    let spawner = AgenticClientSpawner::new(default_client);
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-789");
+
+    let config = spawner.build_agent_config(
+        AgentHarnessKind::Codex,
+        ClientType::Codex,
+        AgentRole::QaRefiner,
+        "qa-refiner",
+        "task-789",
+        task_workdir.clone(),
+        None,
+        Some("gpt-5.4".to_string()),
+        Some(crate::domain::agents::LogicalEffort::XHigh),
+        Some("on-request".to_string()),
+        Some("workspace-write".to_string()),
+    );
+
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-qa-executor"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &task_workdir,
+            )
+        )
+    );
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.logical_effort,
+        Some(crate::domain::agents::LogicalEffort::XHigh)
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-codex".to_string());
+    let mut project = Project::new("Project Codex".to_string(), "/tmp/project-codex".to_string());
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex lane task".to_string());
+    task.id = TaskId::from_string("task-codex".to_string());
+    task.worktree_path = Some("/tmp/task-codex".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::XHigh);
+    lane_settings.approval_policy = Some("on-request".to_string());
+    lane_settings.sandbox_mode = Some("workspace-write".to_string());
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionWorker, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-worker"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+}
+
+#[tokio::test]
+async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-reexecute".to_string());
+    let mut project = Project::new(
+        "Project Reexecute".to_string(),
+        "/tmp/project-reexecute".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Reexecution task".to_string());
+    task.id = TaskId::from_string("task-reexecute".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::ReExecuting;
+    task.worktree_path = Some("/tmp/task-reexecute".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4-mini".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
+    lane_settings.approval_policy = Some("never".to_string());
+    lane_settings.sandbox_mode = Some("read-only".to_string());
+    agent_lane_settings_repo
+        .upsert_for_project(
+            project_id.as_str(),
+            AgentLane::ExecutionReexecutor,
+            &lane_settings,
+        )
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-reexecute").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-worker"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(
+        config.logical_effort,
+        Some(crate::domain::agents::LogicalEffort::Medium)
+    );
+    assert_eq!(config.approval_policy.as_deref(), Some("never"));
+    assert_eq!(config.sandbox_mode.as_deref(), Some("read-only"));
+}
+
+#[tokio::test]
+async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-review-codex");
+
+    let project_id = ProjectId::from_string("project-review-codex".to_string());
+    let mut project = Project::new(
+        "Project Review Codex".to_string(),
+        "/tmp/project-review-codex".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex reviewer task".to_string());
+    task.id = TaskId::from_string("task-review-codex".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::Reviewing;
+    task.worktree_path = Some(task_workdir.to_string_lossy().into_owned());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::High);
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionReviewer, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("reviewer", "task-review-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex review spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-reviewer"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &task_workdir,
+            )
+        )
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let (_dir, task_workdir) = make_local_plugin_task_workdir("task-merge-codex");
+
+    let project_id = ProjectId::from_string("project-merge-codex".to_string());
+    let mut project = Project::new(
+        "Project Merge Codex".to_string(),
+        "/tmp/project-merge-codex".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex merger task".to_string());
+    task.id = TaskId::from_string("task-merge-codex".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::Merging;
+    task.worktree_path = Some(task_workdir.to_string_lossy().into_owned());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionMerger, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("merger", "task-merge-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex merge spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-merger"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &task_workdir,
+            )
+        )
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_does_not_fall_back_when_requested_harness_is_unavailable() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let unavailable_claude_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, false));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("project-default-harness".to_string());
+    let mut project = Project::new(
+        "Project Default Harness".to_string(),
+        "/tmp/project-default-harness".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "Default harness fallback task".to_string());
+    task.id = TaskId::from_string("task-default-harness".to_string());
+    task.worktree_path = Some("/tmp/task-default-harness".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_default_harness(AgentHarnessKind::Codex)
+        .with_harness_client(AgentHarnessKind::Claude, unavailable_claude_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-default-harness").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(unavailable_claude_client.spawn_count().await, 0);
 }

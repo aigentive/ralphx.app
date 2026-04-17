@@ -19,17 +19,24 @@ use crate::application::interactive_process_registry::{
 };
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
+use crate::application::runtime_factory::{
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
+};
 use crate::commands::ExecutionState;
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{
-    AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
+    AgentRunId, ChatContextType, ChatConversationId, ChatMessageAttribution, InternalStatus,
+    TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    DelegatedSessionRepository, ExecutionSettingsRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -45,7 +52,9 @@ pub(super) struct BackgroundRunRepos {
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    pub delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     pub ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     pub task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
@@ -61,6 +70,7 @@ pub(super) struct BackgroundRunRepos {
 pub(super) struct BackgroundRunContext<R: Runtime> {
     // Process
     pub child: Child,
+    pub harness: AgentHarnessKind,
     // Context identification
     pub context_type: ChatContextType,
     pub context_id: String,
@@ -87,6 +97,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub conversation: Option<ChatConversation>,
     pub agent_name: Option<String>,
     pub team_mode: bool,
+    pub assistant_message_attribution: ChatMessageAttribution,
     // Cancellation
     pub cancellation_token: CancellationToken,
     // Team state
@@ -145,6 +156,37 @@ pub(super) async fn finalize_assistant_message<R: Runtime>(
     }
 }
 
+#[doc(hidden)]
+pub async fn finalize_assistant_message_for_test<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    conversation_id: &str,
+    context_type: &str,
+    context_id: &str,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls_json: Option<&str>,
+    content_blocks_json: Option<&str>,
+) {
+    let event_ctx = EventContextPayload {
+        conversation_id: conversation_id.to_string(),
+        context_type: context_type.to_string(),
+        context_id: context_id.to_string(),
+    };
+    finalize_assistant_message(
+        chat_message_repo,
+        app_handle,
+        &event_ctx,
+        message_id,
+        role,
+        content,
+        tool_calls_json,
+        content_blocks_json,
+    )
+    .await;
+}
+
 /// Spawn background task to process agent run, handle stream, transitions, and queue.
 ///
 /// This function encapsulates the entire tokio::spawn background logic from send_message.
@@ -163,6 +205,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
     tokio::spawn(async move {
         let BackgroundRunContext {
             child,
+            harness,
             context_type,
             context_id,
             conversation_id,
@@ -182,6 +225,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             conversation,
             agent_name,
             team_mode,
+            assistant_message_attribution,
             cancellation_token,
             team_service,
             streaming_state_cache,
@@ -198,7 +242,9 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             task_dependency_repo,
             project_repo,
             ideation_session_repo,
+            delegated_session_repo,
             execution_settings_repo,
+            agent_lane_settings_repo,
             ideation_effort_settings_repo,
             ideation_model_settings_repo,
             task_proposal_repo,
@@ -243,6 +289,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             &context_id,
             Arc::clone(&task_repo),
             Arc::clone(&ideation_session_repo),
+            Arc::clone(&delegated_session_repo),
         )
         .await;
         let resolved_project_id_typed = resolved_project_id.as_ref().map(|s| crate::domain::entities::ProjectId::from_string(s.clone()));
@@ -253,7 +300,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         // Create empty assistant message BEFORE streaming starts (crash recovery)
         let pre_assistant_msg = chat_service_context::create_assistant_message(
             context_type, &context_id, "", conversation_id, &[], &[],
-        );
+        )
+        .with_attribution(assistant_message_attribution.clone());
         let pre_assistant_msg_id = pre_assistant_msg.id.as_str().to_string();
         let _ = chat_message_repo.create(pre_assistant_msg).await;
 
@@ -263,6 +311,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         );
         let result = process_stream_background(
             child,
+            harness,
             context_type,
             &context_id,
             &conversation_id,
@@ -352,7 +401,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let response_text = outcome.response_text;
                 let tool_calls = outcome.tool_calls;
                 let content_blocks = outcome.content_blocks;
-                let claude_session_id = outcome.session_id;
+                let provider_session_id = outcome.session_id;
                 let stderr_text = crate::utils::secret_redactor::redact(&outcome.stderr_text);
                 let turns_finalized = outcome.turns_finalized;
                 // Debug: Log what we got from stream processing
@@ -362,25 +411,43 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     context_id,
                     response_text.len(),
                     tool_calls.len(),
-                    claude_session_id
+                    provider_session_id
                 );
 
-                // Update conversation with claude_session_id
-                if let Some(ref sess_id) = claude_session_id {
+                // Update conversation with provider session id
+                if let Some(ref sess_id) = provider_session_id {
                     tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
                     if let Err(e) = conversation_repo
-                        .update_claude_session_id(&conversation_id, sess_id)
+                        .update_provider_session_ref(
+                            &conversation_id,
+                            &ProviderSessionRef {
+                                harness,
+                                provider_session_id: sess_id.clone(),
+                            },
+                        )
                         .await
                     {
                         tracing::error!(
                             error = %e,
                             conversation_id = conversation_id.as_str(),
                             session_id = %sess_id,
-                            "[CHAT_SERVICE] Failed to persist claude_session_id — next resume attempt will use stale session ID"
+                            "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
                         );
                     }
+
+                    let _ = chat_message_repo
+                        .update_provider_session_ref(
+                            &crate::domain::entities::ChatMessageId::from_string(
+                                pre_assistant_msg_id.clone(),
+                            ),
+                            &ProviderSessionRef {
+                                harness,
+                                provider_session_id: sess_id.clone(),
+                            },
+                        )
+                        .await;
                 } else {
-                    tracing::warn!("[CHAT_SERVICE] No claude_session_id captured from stream - queue processing will be skipped!");
+                    tracing::warn!("[CHAT_SERVICE] No provider session_id captured from stream - queue processing will be skipped!");
                 }
 
                 // Detect resume failure: if --resume was used but Claude returned a different session ID,
@@ -389,12 +456,12 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // enqueue it as a priority message so Claude gets context before any pending user messages.
                 if session_changed_after_resume(
                     stored_session_id.as_deref(),
-                    claude_session_id.as_deref(),
+                    provider_session_id.as_deref(),
                 ) && !outcome.silent_interactive_exit
                 {
                     tracing::warn!(
                         stored_session_id = %stored_session_id.as_deref().unwrap_or(""),
-                        new_session_id = %claude_session_id.as_deref().unwrap_or(""),
+                        new_session_id = %provider_session_id.as_deref().unwrap_or(""),
                         context_type = %context_type,
                         context_id = %context_id,
                         "[RESUME] Session ID changed after --resume — triggering context recovery"
@@ -606,7 +673,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Guard: skip auto-archival for verification child sessions.
                 // The run_completed hook (Fix 1) handles archival after confirming parent state
                 // is reconciled. Auto-archiving here creates a race with the agent's final MCP
-                // call (update_plan_verification). The periodic reconciler is the fallback for
+                // call (post_verification_status). The periodic reconciler is the fallback for
                 // orphaned children if Fix 1's hook fails for any reason.
                 if context_type == ChatContextType::Ideation {
                     let session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.clone());
@@ -637,7 +704,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         execution_state.as_ref().cloned(),
                         execution_settings_repo.as_ref().cloned(),
                     ) {
-                        let mut svc = super::ClaudeChatService::new(
+                        let deps = ChatRuntimeFactoryDeps::from_core(
                             Arc::clone(&chat_message_repo),
                             Arc::clone(&chat_attachment_repo),
                             Arc::clone(&artifact_repo),
@@ -652,18 +719,24 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                             Arc::clone(&running_agent_registry),
                             Arc::clone(&memory_event_repo),
                         )
-                        .with_execution_state(Arc::clone(&exec_state))
-                        .with_execution_settings_repo(Arc::clone(&exec_settings));
-                        if let Some(ref effort_repo) = ideation_effort_settings_repo {
-                            svc = svc.with_ideation_effort_settings_repo(Arc::clone(effort_repo));
-                        }
-                        if let Some(ref model_repo) = ideation_model_settings_repo {
-                            svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
-                        }
-                        if let Some(ref ah) = app_handle {
-                            svc = svc.with_app_handle(ah.clone());
-                        }
-                        let chat_svc: Arc<dyn super::ChatService> = Arc::new(svc);
+                        .with_runtime_support(
+                            Some(exec_settings.clone()),
+                            agent_lane_settings_repo.as_ref().map(Arc::clone),
+                            None,
+                            None,
+                        )
+                        .with_ideation_runtime_support(
+                            ideation_effort_settings_repo.as_ref().map(Arc::clone),
+                            ideation_model_settings_repo.as_ref().map(Arc::clone),
+                        );
+
+                        let chat_svc: Arc<dyn super::ChatService> = Arc::new(
+                            build_chat_service_with_fallback(
+                                &app_handle,
+                                Some(Arc::clone(&exec_state)),
+                                &deps,
+                            ),
+                        );
 
                         let drain = Arc::new(
                             crate::application::pending_session_drain::PendingSessionDrainService::new(
@@ -719,7 +792,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Check if there are queued messages to process
                 // If yes, DON'T emit run_completed yet - emit it after queue processing
                 // Use the stream's session_id if available, otherwise fall back to stored session_id
-                let effective_session_id = claude_session_id.clone().or(stored_session_id.clone());
+                let effective_session_id =
+                    provider_session_id.clone().or(stored_session_id.clone());
                 let initial_queue_count = message_queue.get_queued(context_type, &context_id).len();
                 let has_session_for_queue = effective_session_id.is_some();
                 let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
@@ -736,7 +810,10 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     "[LIFECYCLE] will_process_queue decision"
                 );
 
-                if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id.is_some() {
+                if initial_queue_count > 0
+                    && provider_session_id.is_none()
+                    && stored_session_id.is_some()
+                {
                     tracing::info!(
                         "[QUEUE] Stream had no session_id, using stored session_id from conversation for queue processing"
                     );
@@ -797,13 +874,14 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",
-                                AgentRunCompletedPayload {
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                    claude_session_id: effective_session_id.clone(),
-                                    run_chain_id: run_chain_id.clone(),
-                                },
+                                AgentRunCompletedPayload::with_provider_session(
+                                    conversation_id.as_str().to_string(),
+                                    context_type.to_string(),
+                                    context_id.clone(),
+                                    Some(harness),
+                                    effective_session_id.clone(),
+                                    run_chain_id.clone(),
+                                ),
                             );
                         }
                     }
@@ -833,6 +911,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 if let Some(ref sess_id) = effective_session_id {
                     let total_processed = super::chat_service_queue::process_queued_messages(
                         context_type,
+                        harness,
                         &context_id,
                         conversation_id,
                         sess_id,
@@ -889,13 +968,14 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "agent:run_completed",
-                            AgentRunCompletedPayload {
-                                conversation_id: conversation_id.as_str().to_string(),
-                                context_type: context_type.to_string(),
-                                context_id: context_id.clone(),
-                                claude_session_id: Some(sess_id.clone()),
-                                run_chain_id: run_chain_id.clone(),
-                            },
+                            AgentRunCompletedPayload::with_provider_session(
+                                conversation_id.as_str().to_string(),
+                                context_type.to_string(),
+                                context_id.clone(),
+                                Some(harness),
+                                Some(sess_id.clone()),
+                                run_chain_id.clone(),
+                            ),
                         );
                     }
 
@@ -942,7 +1022,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Returns true if recovery spawned a retry (no further action needed here
                 // since the Err arm is the last statement in the async block).
                 let error_string = e.to_string();
-                let _recovery_spawned = super::chat_service_handlers::handle_stream_error(
+                let recovery_spawned = super::chat_service_handlers::handle_stream_error(
                     &error_string,
                     Some(&e),
                     context_type,
@@ -952,6 +1032,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &pre_assistant_msg_id,
                     &event_ctx,
                     stored_session_id.as_deref(),
+                    harness,
                     is_retry_attempt,
                     user_message_content.as_deref(),
                     conversation.as_ref(),
@@ -987,6 +1068,90 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &verification_child_registry,
                 )
                 .await;
+
+                if !recovery_spawned {
+                    let queued_resume_in_place = message_queue
+                        .get_queued(context_type, &context_id)
+                        .iter()
+                        .any(|queued_msg| {
+                            super::chat_service_queue::queued_message_resume_in_place(
+                                queued_msg.metadata_override.as_deref(),
+                            )
+                        });
+
+                    if queued_resume_in_place {
+                        let queue_session_id = stored_session_id.clone().or_else(|| {
+                            conversation
+                                .as_ref()
+                                .and_then(|conv| conv.provider_session_ref())
+                                .map(|session_ref| session_ref.provider_session_id.clone())
+                        });
+
+                        if let Some(ref session_id) = queue_session_id {
+                            tracing::info!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                session_id,
+                                "[QUEUE] Processing resume-in-place verification continuation after handled stream error"
+                            );
+
+                            let total_processed = super::chat_service_queue::process_queued_messages(
+                                context_type,
+                                harness,
+                                &context_id,
+                                conversation_id,
+                                session_id,
+                                &message_queue,
+                                &chat_message_repo,
+                                &chat_attachment_repo,
+                                &artifact_repo,
+                                &activity_event_repo,
+                                &task_repo,
+                                &ideation_session_repo,
+                                &cli_path,
+                                &plugin_dir,
+                                &working_directory,
+                                question_state.clone(),
+                                execution_state.clone(),
+                                app_handle.clone(),
+                                resolved_project_id.as_deref(),
+                                team_mode,
+                                cancellation_token.clone(),
+                                run_chain_id.as_deref(),
+                                Some(&agent_run_id),
+                                streaming_state_cache.clone(),
+                            )
+                            .await;
+
+                            tracing::info!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                total_processed,
+                                "[QUEUE] Resume-in-place verification continuation processing finished"
+                            );
+
+                            if let Some(ref handle) = app_handle {
+                                let _ = handle.emit(
+                                    "agent:run_completed",
+                                    AgentRunCompletedPayload::with_provider_session(
+                                        conversation_id.as_str().to_string(),
+                                        context_type.to_string(),
+                                        context_id.clone(),
+                                        Some(harness),
+                                        Some(session_id.clone()),
+                                        run_chain_id.clone(),
+                                    ),
+                                );
+                            }
+                        } else {
+                            tracing::warn!(
+                                context_type = %context_type,
+                                context_id = %context_id,
+                                "[QUEUE] Resume-in-place verification continuation queued but no session_id was available"
+                            );
+                        }
+                    }
+                }
             }
         }
     }.instrument(span));

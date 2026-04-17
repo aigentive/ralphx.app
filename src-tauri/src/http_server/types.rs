@@ -6,10 +6,12 @@ use std::sync::Arc;
 
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::{
     Artifact, ArtifactContent, AuditLogEntry, MemoryEntry, StepProgressSummary, TaskProposal,
     TaskStep,
 };
+use crate::http_server::delegation::DelegationService;
 use crate::http_server::handlers::artifacts::EditError;
 
 // ============================================================================
@@ -24,6 +26,7 @@ pub struct HttpServerState {
     pub execution_state: Arc<ExecutionState>,
     pub team_tracker: TeamStateTracker,
     pub team_service: Arc<TeamService>,
+    pub delegation_service: Arc<DelegationService>,
 }
 
 // ============================================================================
@@ -89,6 +92,54 @@ pub struct ChildSessionStatusResponse {
     pub verification: Option<VerificationInfo>,
     pub recent_messages: Option<Vec<ChatMessageSummary>>,
     pub pending_initial_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedSessionSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub parent_context_type: String,
+    pub parent_context_id: String,
+    pub agent_name: String,
+    pub harness: String,
+    pub provider_session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedRunSummary {
+    pub agent_run_id: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub error_message: Option<String>,
+    pub harness: Option<String>,
+    pub provider_session_id: Option<String>,
+    pub upstream_provider: Option<String>,
+    pub provider_profile: Option<String>,
+    pub logical_model: Option<String>,
+    pub effective_model_id: Option<String>,
+    pub logical_effort: Option<String>,
+    pub effective_effort: Option<String>,
+    pub approval_policy: Option<String>,
+    pub sandbox_mode: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DelegatedSessionStatusResponse {
+    pub session: DelegatedSessionSummary,
+    pub agent_state: AgentStateInfo,
+    pub conversation_id: Option<String>,
+    pub latest_run: Option<DelegatedRunSummary>,
+    pub recent_messages: Option<Vec<ChatMessageSummary>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1031,6 +1082,45 @@ pub struct TeamConfigInput {
     pub composition_mode: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DelegateStartRequest {
+    pub caller_agent_name: Option<String>,
+    pub caller_context_type: Option<String>,
+    pub caller_context_id: Option<String>,
+    pub parent_session_id: Option<String>,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
+    pub parent_conversation_id: Option<String>,
+    pub parent_tool_use_id: Option<String>,
+    pub delegated_session_id: Option<String>,
+    pub child_session_id: Option<String>,
+    pub agent_name: String,
+    #[serde(alias = "message")]
+    pub prompt: String,
+    pub title: Option<String>,
+    #[serde(default = "default_inherit_context")]
+    pub inherit_context: bool,
+    pub harness: Option<AgentHarnessKind>,
+    pub model: Option<String>,
+    pub logical_effort: Option<LogicalEffort>,
+    pub approval_policy: Option<String>,
+    pub sandbox_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DelegateWaitRequest {
+    pub job_id: String,
+    pub include_delegated_status: Option<bool>,
+    pub include_child_status: Option<bool>,
+    pub include_messages: Option<bool>,
+    pub message_limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DelegateCancelRequest {
+    pub job_id: String,
+}
+
 fn default_inherit_context() -> bool {
     true
 }
@@ -1282,6 +1372,35 @@ pub struct CreateTeamArtifactResponse {
     pub artifact_id: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VerificationFindingGapPayload {
+    pub severity: String,
+    pub category: String,
+    pub description: String,
+    pub why_it_matters: Option<String>,
+    pub source: Option<String>,
+    pub lens: Option<String>,
+}
+
+/// POST /api/team/verification_finding — publish a typed verification finding
+#[derive(Debug, Deserialize)]
+pub struct PublishVerificationFindingRequest {
+    pub session_id: String,
+    pub critic: String,
+    pub round: u32,
+    pub status: String,
+    pub coverage: Option<String>,
+    pub summary: String,
+    #[serde(default)]
+    pub gaps: Vec<VerificationFindingGapPayload>,
+    pub title_suffix: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublishVerificationFindingResponse {
+    pub artifact_id: String,
+}
+
 /// GET /api/team/artifacts/:session_id response
 #[derive(Debug, Serialize)]
 pub struct TeamArtifactSummary {
@@ -1297,6 +1416,33 @@ pub struct TeamArtifactSummary {
 #[derive(Debug, Serialize)]
 pub struct GetTeamArtifactsResponse {
     pub artifacts: Vec<TeamArtifactSummary>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerificationFindingQuery {
+    pub critic: Option<String>,
+    pub round: Option<u32>,
+    pub created_after: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationFindingSummary {
+    pub artifact_id: String,
+    pub title: String,
+    pub created_at: String,
+    pub author_teammate: Option<String>,
+    pub critic: String,
+    pub round: u32,
+    pub status: String,
+    pub coverage: Option<String>,
+    pub summary: String,
+    pub gaps: Vec<VerificationFindingGapPayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetVerificationFindingsResponse {
+    pub findings: Vec<VerificationFindingSummary>,
     pub count: usize,
 }
 
@@ -1409,9 +1555,40 @@ pub struct ActiveStreamingTask {
     pub model: Option<String>,
     /// Current status: "running" or "completed"
     pub status: String,
+    /// Agent ID if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     /// Teammate name if this is a team member task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     /// Total tokens used by this task (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
@@ -1421,6 +1598,18 @@ pub struct ActiveStreamingTask {
     /// Duration in milliseconds (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_output: Option<String>,
 }
 
 impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStreamingTask {
@@ -1431,10 +1620,31 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
             subagent_type: cached.subagent_type,
             model: cached.model,
             status: cached.status,
+            agent_id: cached.agent_id,
             teammate_name: cached.teammate_name,
+            delegated_job_id: cached.delegated_job_id,
+            delegated_session_id: cached.delegated_session_id,
+            delegated_conversation_id: cached.delegated_conversation_id,
+            delegated_agent_run_id: cached.delegated_agent_run_id,
+            provider_harness: cached.provider_harness,
+            provider_session_id: cached.provider_session_id,
+            upstream_provider: cached.upstream_provider,
+            provider_profile: cached.provider_profile,
+            logical_model: cached.logical_model,
+            effective_model_id: cached.effective_model_id,
+            logical_effort: cached.logical_effort,
+            effective_effort: cached.effective_effort,
+            approval_policy: cached.approval_policy,
+            sandbox_mode: cached.sandbox_mode,
             total_tokens: cached.total_tokens,
             total_tool_uses: cached.total_tool_uses,
             duration_ms: cached.duration_ms,
+            input_tokens: cached.input_tokens,
+            output_tokens: cached.output_tokens,
+            cache_creation_tokens: cached.cache_creation_tokens,
+            cache_read_tokens: cached.cache_read_tokens,
+            estimated_usd: cached.estimated_usd,
+            text_output: cached.text_output,
         }
     }
 }
@@ -1654,6 +1864,27 @@ pub struct UpdateVerificationRequest {
     pub generation: Option<i32>,
 }
 
+/// Request to terminate verification as an infrastructure/runtime failure.
+///
+/// Unlike `UpdateVerificationRequest`, this path does not record a content verdict.
+/// It resets the parent session to `unverified`, clears authoritative current gaps,
+/// preserves round/debug metadata where available, and ends the active verification run.
+#[derive(Debug, Deserialize)]
+pub struct VerificationInfraFailureRequest {
+    /// Generation counter for zombie protection — must match the session's current generation.
+    #[serde(default)]
+    pub generation: Option<i32>,
+    /// Why verification failed to complete cleanly. Defaults to `agent_error`.
+    #[serde(default)]
+    pub convergence_reason: Option<String>,
+    /// Optional current round for debugging continuity.
+    #[serde(default)]
+    pub round: Option<u32>,
+    /// Optional max-rounds value for debugging continuity.
+    #[serde(default)]
+    pub max_rounds: Option<u32>,
+}
+
 /// A single verification gap in the API response (mirrors domain VerificationGap)
 #[derive(Debug, Serialize)]
 pub struct VerificationGapResponse {
@@ -1674,6 +1905,17 @@ pub struct VerificationRoundSummary {
     pub gap_score: u32,
     /// Deduplicated unique gap count (fingerprints.len() for historical rounds)
     pub gap_count: u32,
+}
+
+/// Per-round detail in the API response with full gap snapshots when available.
+#[derive(Debug, Serialize)]
+pub struct VerificationRoundDetailResponse {
+    /// 1-based round number (derived from array index)
+    pub round: u32,
+    pub gap_score: u32,
+    pub gap_count: u32,
+    #[serde(default)]
+    pub gaps: Vec<VerificationGapResponse>,
 }
 
 /// Continuity context for the most recent verification child session.
@@ -1703,6 +1945,28 @@ pub struct VerificationChildInfo {
     pub last_assistant_message_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationRunHistoryEntryResponse {
+    pub generation: i32,
+    pub status: String,
+    pub in_progress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_round: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_rounds: Option<u32>,
+    pub round_count: u32,
+    pub gap_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap_score: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub convergence_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct VerificationQueryParams {
+    pub generation: Option<i32>,
+}
+
 /// Response for GET/POST verification status
 #[derive(Debug, Serialize)]
 pub struct VerificationResponse {
@@ -1719,17 +1983,25 @@ pub struct VerificationResponse {
     pub convergence_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_round_index: Option<u32>,
-    /// Full gap objects for the latest round (empty if no metadata)
+    /// Full gap objects for the latest round (empty if no native run snapshot exists)
     #[serde(default)]
     pub current_gaps: Vec<VerificationGapResponse>,
-    /// Round history summaries — last 10 rounds in chronological order (empty if no metadata)
+    /// Round history summaries — last 10 rounds in chronological order (empty if no native run snapshot exists)
     #[serde(default)]
     pub rounds: Vec<VerificationRoundSummary>,
+    /// Full round history details — last 10 rounds in chronological order (empty if no native run snapshot exists)
+    #[serde(default)]
+    pub round_details: Vec<VerificationRoundDetailResponse>,
     /// Plan artifact version when verification ran — null if session has no linked plan
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_version: Option<u32>,
     /// Current verification generation counter
     pub verification_generation: i32,
+    /// The generation represented by current_gaps / rounds / round_details in this response.
+    pub selected_generation: i32,
+    /// Cross-generation native verification lineage (newest first).
+    #[serde(default)]
+    pub run_history: Vec<VerificationRunHistoryEntryResponse>,
     /// Continuity context for the most recent verification child session, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_child: Option<VerificationChildInfo>,
@@ -1750,7 +2022,7 @@ pub struct RevertAndSkipRequest {
 #[derive(Debug, Deserialize)]
 pub struct ConfirmVerificationRequest {
     pub session_id: String,
-    /// Agent names to exclude from this verification run (e.g. ["ideation-specialist-ux"]).
+    /// Agent names to exclude from this verification run (e.g. ["ralphx-ideation-specialist-ux"]).
     /// Empty list = all specialists enabled.
     #[serde(default)]
     pub disabled_specialists: Vec<String>,

@@ -5,9 +5,9 @@
 Configuration is read from two sources, in priority order:
 
 1. **Environment variables** (highest priority — override everything)
-2. **ralphx.yaml** `external_mcp` section (base configuration)
+2. **`config/external-mcp.yaml`** `external_mcp` section (base configuration)
 
-## ralphx.yaml Schema
+## `config/external-mcp.yaml` Schema
 
 ```yaml
 external_mcp:
@@ -60,9 +60,9 @@ external_mcp:
 
 ## Environment Variable Overrides
 
-Environment variables take precedence over ralphx.yaml values. They are read at startup and cannot be changed without a restart.
+Environment variables take precedence over `config/external-mcp.yaml` values. They are read at startup and cannot be changed without a restart.
 
-| Variable | ralphx.yaml equivalent | Description |
+| Variable | `config/external-mcp.yaml` equivalent | Description |
 |----------|------------------------|-------------|
 | `EXTERNAL_MCP_PORT` | `external_mcp.port` | TCP port to bind |
 | `EXTERNAL_MCP_HOST` | `external_mcp.host` | IP address to bind |
@@ -70,7 +70,7 @@ Environment variables take precedence over ralphx.yaml values. They are read at 
 | `EXTERNAL_MCP_TLS_CERT` | `external_mcp.tls.cert_path` | Path to TLS certificate (PEM) |
 | `EXTERNAL_MCP_TLS_KEY` | `external_mcp.tls.key_path` | Path to TLS private key (PEM) |
 
-Rate limiting options are only configurable via ralphx.yaml (not environment variables).
+Rate limiting options are only configurable via `config/external-mcp.yaml` (not environment variables).
 
 ## Configuration Validation Rules
 
@@ -96,7 +96,7 @@ external_mcp:
   backend_url: "http://127.0.0.1:3847"
 ```
 
-Or equivalently, use environment variables only (no ralphx.yaml section needed):
+Or equivalently, use environment variables only (no `config/external-mcp.yaml` section needed):
 
 ```bash
 node build/index.js

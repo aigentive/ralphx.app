@@ -1,0 +1,30 @@
+name: ralphx-qa-executor
+role: qa_executor
+description: "Executes QA tests via agent-browser and evaluates results"
+capabilities:
+  mcp_tools:
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+harnesses:
+  claude:
+    model: sonnet
+    permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit
+        - Task
+    disallowed_tools:
+      - NotebookEdit
+    preapproved_cli_tools:
+      - Write
+      - Edit
+      - Bash
+      - Task(Plan)
+    skills:
+      - qa-evaluation
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

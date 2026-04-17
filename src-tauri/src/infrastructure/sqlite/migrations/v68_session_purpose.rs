@@ -1,7 +1,7 @@
 // Migration v68: Add session_purpose column to ideation_sessions
 //
 // Supports purpose-based routing: distinguishes between "general" ideation sessions
-// and "verification" child sessions spawned by the plan-verifier agent.
+// and "verification" child sessions spawned by the ralphx-plan-verifier agent.
 
 use rusqlite::Connection;
 

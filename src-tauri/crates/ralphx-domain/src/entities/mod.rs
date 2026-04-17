@@ -7,6 +7,7 @@ pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_attachment;
 pub mod chat_conversation;
+pub mod delegated_session;
 pub mod execution_plan;
 pub mod ideation;
 pub mod memory_archive;
@@ -35,7 +36,10 @@ pub use activity_event::{
     ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,
     ParseActivityEventRoleError, ParseActivityEventTypeError,
 };
-pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
+pub use agent_run::{
+    AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage,
+    InterruptedConversation,
+};
 pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{
     ApiKey, AuditLogEntry, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX,
@@ -46,6 +50,7 @@ pub use artifact::{
     Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata,
     ArtifactRelation, ArtifactRelationId, ArtifactRelationType, ArtifactType,
     ParseArtifactRelationTypeError, ParseArtifactTypeError, ProcessId, TeamArtifactMetadata,
+    VerificationFindingGap, VerificationFindingMetadata,
 };
 pub use artifact_flow::{
     create_plan_updated_sync_flow, create_research_to_dev_flow, ArtifactFlow, ArtifactFlowContext,
@@ -53,11 +58,16 @@ pub use artifact_flow::{
     ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger, ParseArtifactFlowEventError,
 };
 pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
-pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
+pub use chat_conversation::{
+    legacy_claude_session_alias, normalize_provider_session_compatibility,
+    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
+};
+pub use delegated_session::{DelegatedSession, DelegatedSessionId};
 pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError};
 pub use ideation::{
     build_child_session, matching_blocker_followup_session, AcceptanceStatus, BusinessValueFactor,
-    ChatMessage, ChildSessionDraftInput, Complexity, ComplexityFactor, CriticalPathFactor,
+    ChatMessage, ChatMessageAttribution, ChatMessageUsage, ChildSessionDraftInput, Complexity, ComplexityFactor, CriticalPathFactor,
     DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
     IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
@@ -65,7 +75,7 @@ pub use ideation::{
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
     ProposalStatus, SessionLink, SessionOrigin, SessionPurpose, SessionRelationship, TaskProposal,
     UserHintFactor, VerificationConfirmationStatus, VerificationError, VerificationGap,
-    VerificationMetadata, VerificationRound, VerificationStatus,
+    VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,

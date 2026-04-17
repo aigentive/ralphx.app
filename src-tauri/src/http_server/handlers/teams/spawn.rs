@@ -1,5 +1,4 @@
 use super::*;
-use crate::infrastructure::agents::claude::resolve_plugin_dir;
 
 pub async fn request_teammate_spawn(
     State(state): State<HttpServerState>,
@@ -42,6 +41,7 @@ pub async fn request_teammate_spawn(
         error!(error = %e, "No active team found for teammate spawn");
         (StatusCode::CONFLICT, e)
     })?;
+    ensure_team_mode_supported_for_context(&state, &context_type, &context_id).await?;
 
     // Resolve working directory (worktree-aware for task contexts)
     let working_dir = resolve_teammate_working_dir(&state, &context_type, &context_id).await;
@@ -137,7 +137,7 @@ pub async fn request_teammate_spawn(
             .with_mcp_agent_type(mcp_type)
             .with_effort(resolve_effort(Some(mcp_type)))
             .with_working_dir(working_dir.clone())
-            .with_plugin_dir(resolve_plugin_dir(&working_dir));
+            .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {

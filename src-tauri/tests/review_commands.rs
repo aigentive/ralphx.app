@@ -4,6 +4,7 @@ use ralphx_lib::domain::entities::{
     InternalStatus, Project, ProjectId, Review, ReviewId, ReviewNote, ReviewOutcome, ReviewStatus,
     ReviewerType, Task, TaskCategory, TaskId,
 };
+use ralphx_lib::domain::review::ReviewSettings;
 
 async fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -697,4 +698,100 @@ async fn test_request_task_changes_from_reviewing_creates_review_note() {
         Some(feedback),
         "Feedback text must be stored in the review note"
     );
+}
+
+// ============================================================================
+// Review Settings command tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_review_settings_returns_defaults() {
+    let state = setup_test_state().await;
+
+    let settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .expect("get_settings must succeed");
+
+    // Defaults from ReviewSettings::default()
+    assert!(!settings.require_human_review);
+    assert_eq!(settings.max_fix_attempts, 3);
+    assert_eq!(settings.max_revision_cycles, 5);
+    assert!(settings.ai_review_enabled);
+}
+
+#[tokio::test]
+async fn test_update_review_settings_primary_fields() {
+    let state = setup_test_state().await;
+
+    // Read current defaults
+    let current = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .expect("get_settings must succeed");
+
+    // Apply partial update to primary fields only
+    let updated_settings = ReviewSettings {
+        require_human_review: true,
+        max_fix_attempts: 7,
+        max_revision_cycles: 3,
+        ..current.clone()
+    };
+
+    let saved = state
+        .review_settings_repo
+        .update_settings(&updated_settings)
+        .await
+        .expect("update_settings must succeed");
+
+    assert!(saved.require_human_review);
+    assert_eq!(saved.max_fix_attempts, 7);
+    assert_eq!(saved.max_revision_cycles, 3);
+    // Ballast fields preserved from current
+    assert_eq!(saved.ai_review_enabled, current.ai_review_enabled);
+    assert_eq!(saved.ai_review_auto_fix, current.ai_review_auto_fix);
+    assert_eq!(saved.require_fix_approval, current.require_fix_approval);
+}
+
+#[tokio::test]
+async fn test_update_review_settings_preserves_ballast() {
+    let state = setup_test_state().await;
+
+    // Set specific ballast values
+    let with_ballast = ReviewSettings {
+        ai_review_enabled: false,
+        ai_review_auto_fix: false,
+        require_fix_approval: true,
+        ..ReviewSettings::default()
+    };
+    state
+        .review_settings_repo
+        .update_settings(&with_ballast)
+        .await
+        .expect("first update must succeed");
+
+    // Now update only a primary field; ballast must stay
+    let current = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .expect("get_settings must succeed");
+
+    let primary_update = ReviewSettings {
+        require_human_review: true,
+        ..current
+    };
+    let saved = state
+        .review_settings_repo
+        .update_settings(&primary_update)
+        .await
+        .expect("second update must succeed");
+
+    assert!(saved.require_human_review);
+    // Ballast values must be preserved
+    assert!(!saved.ai_review_enabled);
+    assert!(!saved.ai_review_auto_fix);
+    assert!(saved.require_fix_approval);
 }

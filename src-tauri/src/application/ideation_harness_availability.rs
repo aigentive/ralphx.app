@@ -1,0 +1,308 @@
+use crate::application::chat_service::harness_supports_team_mode;
+use crate::application::harness_runtime_registry::{
+    probe_default_harness, probe_supported_harnesses, HarnessRuntimeProbe,
+};
+use crate::application::AppState;
+use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::domain::agents::{
+    AgentHarnessKind, AgentLane, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
+};
+use crate::domain::repositories::AgentLaneSettingsRepository;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedLaneHarnessConfig {
+    pub lane: AgentLane,
+    pub configured_harness: Option<AgentHarnessKind>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LaneHarnessAvailability {
+    pub lane: AgentLane,
+    pub configured_harness: Option<AgentHarnessKind>,
+    pub effective_harness: AgentHarnessKind,
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub available: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub error: Option<String>,
+}
+
+pub(crate) const IDEATION_LANES: [AgentLane; 4] = [
+    AgentLane::IdeationPrimary,
+    AgentLane::IdeationSubagent,
+    AgentLane::IdeationVerifier,
+    AgentLane::IdeationVerifierSubagent,
+];
+
+pub(crate) const AGENT_LANES: [AgentLane; 8] = [
+    AgentLane::IdeationPrimary,
+    AgentLane::IdeationSubagent,
+    AgentLane::IdeationVerifier,
+    AgentLane::IdeationVerifierSubagent,
+    AgentLane::ExecutionWorker,
+    AgentLane::ExecutionReviewer,
+    AgentLane::ExecutionReexecutor,
+    AgentLane::ExecutionMerger,
+];
+
+pub(crate) async fn resolve_lane_harness_availability(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+    lane: AgentLane,
+) -> LaneHarnessAvailability {
+    let config = resolve_lane_harness_config(repo, project_id, lane).await;
+    let probes = probe_supported_harnesses();
+    build_lane_harness_availability(config, &probes)
+}
+
+pub(crate) async fn resolve_primary_ideation_harness_availability(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+) -> LaneHarnessAvailability {
+    resolve_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
+}
+
+pub(crate) async fn ideation_team_mode_supported_for_project(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+) -> bool {
+    harness_supports_team_mode(
+        resolve_primary_ideation_harness_availability(repo, project_id)
+            .await
+            .effective_harness,
+    )
+}
+
+fn format_harness_runtime_unavailable(surface_name: &str, harness: AgentHarnessKind) -> String {
+    format!(
+        "{surface_name} requires the {} harness runtime but it is not available",
+        harness
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn validate_claude_runtime_path(
+    availability: &LaneHarnessAvailability,
+    surface_name: &str,
+) -> Result<(), String> {
+    if !availability.available {
+        return Err(availability
+            .error
+            .clone()
+            .unwrap_or_else(|| "Configured ideation harness is not available".to_string()));
+    }
+
+    if availability.effective_harness != AgentHarnessKind::Claude {
+        return Err(format!(
+            "Ideation primary lane resolves to {} but {} still routes through the Claude runtime",
+            availability.effective_harness, surface_name
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn validate_chat_runtime_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+    surface_name: &str,
+) -> Result<(), String> {
+    let availability = resolve_context_runtime_availability(state, context_type, context_id).await;
+
+    if availability.available {
+        Ok(())
+    } else {
+        Err(availability.error.clone().unwrap_or_else(|| {
+            format_harness_runtime_unavailable(surface_name, availability.effective_harness)
+        }))
+    }
+}
+
+pub(crate) async fn team_mode_supported_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+) -> bool {
+    let availability = resolve_context_runtime_availability(state, context_type, context_id).await;
+    harness_supports_team_mode(availability.effective_harness)
+}
+
+async fn resolve_context_runtime_availability(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+) -> LaneHarnessAvailability {
+    let Some(lane) = runtime_lane_for_context(context_type) else {
+        return build_default_harness_availability();
+    };
+
+    let project_id = project_id_for_context(state, context_type, context_id).await;
+    resolve_lane_harness_availability(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
+        .await
+}
+
+fn build_default_harness_availability() -> LaneHarnessAvailability {
+    let probe = probe_default_harness();
+    LaneHarnessAvailability {
+        lane: AgentLane::IdeationPrimary,
+        configured_harness: None,
+        effective_harness: DEFAULT_AGENT_HARNESS,
+        binary_path: probe.binary_path.clone(),
+        binary_found: probe.binary_found,
+        probe_succeeded: probe.probe_succeeded,
+        available: probe.available,
+        missing_core_exec_features: probe.missing_core_exec_features.clone(),
+        error: probe.error.clone(),
+    }
+}
+
+fn runtime_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {
+    match context_type {
+        ChatContextType::Ideation => Some(AgentLane::IdeationPrimary),
+        ChatContextType::TaskExecution => Some(AgentLane::ExecutionWorker),
+        ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
+        ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
+        ChatContextType::Delegation | ChatContextType::Task | ChatContextType::Project => None,
+    }
+}
+
+async fn project_id_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+) -> Option<String> {
+    match context_type {
+        ChatContextType::Ideation => state
+            .ideation_session_repo
+            .get_by_id(&IdeationSessionId::from_string(context_id))
+            .await
+            .ok()
+            .flatten()
+            .map(|session| session.project_id.as_str().to_string()),
+        ChatContextType::Delegation => state
+            .delegated_session_repo
+            .get_by_id(&crate::domain::entities::DelegatedSessionId::from_string(context_id))
+            .await
+            .ok()
+            .flatten()
+            .map(|session| session.project_id.as_str().to_string()),
+        ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => state
+            .task_repo
+            .get_by_id(&TaskId::from_string(context_id.to_string()))
+            .await
+            .ok()
+            .flatten()
+            .map(|task| task.project_id.as_str().to_string()),
+        ChatContextType::Task | ChatContextType::Project => None,
+    }
+}
+
+pub(crate) async fn resolve_lane_harness_config(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+    lane: AgentLane,
+) -> ResolvedLaneHarnessConfig {
+    let project_row = if let Some(project_id) = project_id {
+        repo.get_for_project(project_id, lane)
+            .await
+            .inspect_err(|error| {
+                tracing::warn!(
+                    %project_id,
+                    lane = %lane,
+                    %error,
+                    "Failed to fetch project-scoped agent lane settings for harness availability"
+                );
+            })
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
+    let global_row = repo
+        .get_global(lane)
+        .await
+        .inspect_err(|error| {
+            tracing::warn!(
+                lane = %lane,
+                %error,
+                "Failed to fetch global agent lane settings for harness availability"
+            );
+        })
+        .ok()
+        .flatten();
+
+    ResolvedLaneHarnessConfig {
+        lane,
+        configured_harness: lane_harness(project_row.as_ref(), global_row.as_ref()),
+    }
+}
+
+fn missing_harness_probe(harness: AgentHarnessKind) -> HarnessRuntimeProbe {
+    HarnessRuntimeProbe {
+        binary_path: None,
+        binary_found: false,
+        probe_succeeded: false,
+        available: false,
+        missing_core_exec_features: Vec::new(),
+        error: Some(format!("No harness probe registered for {}", harness)),
+    }
+}
+
+fn probe_for_harness(
+    probes: &HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
+    harness: AgentHarnessKind,
+) -> HarnessRuntimeProbe {
+    probes
+        .get(&harness)
+        .cloned()
+        .unwrap_or_else(|| missing_harness_probe(harness))
+}
+
+pub(crate) fn build_lane_harness_availability(
+    config: ResolvedLaneHarnessConfig,
+    probes: &HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
+) -> LaneHarnessAvailability {
+    let configured_harness = config.configured_harness.unwrap_or(DEFAULT_AGENT_HARNESS);
+    let configured_probe = probe_for_harness(probes, configured_harness);
+
+    if configured_probe.available {
+        return LaneHarnessAvailability {
+            lane: config.lane,
+            configured_harness: config.configured_harness,
+            effective_harness: configured_harness,
+            binary_path: configured_probe.binary_path.clone(),
+            binary_found: configured_probe.binary_found,
+            probe_succeeded: configured_probe.probe_succeeded,
+            available: true,
+            missing_core_exec_features: configured_probe.missing_core_exec_features.clone(),
+            error: configured_probe.error.clone(),
+        };
+    }
+
+    LaneHarnessAvailability {
+        lane: config.lane,
+        configured_harness: config.configured_harness,
+        effective_harness: configured_harness,
+        binary_path: configured_probe.binary_path.clone(),
+        binary_found: configured_probe.binary_found,
+        probe_succeeded: configured_probe.probe_succeeded,
+        available: false,
+        missing_core_exec_features: configured_probe.missing_core_exec_features.clone(),
+        error: configured_probe.error.clone(),
+    }
+}
+
+fn lane_harness(
+    project_row: Option<&StoredAgentLaneSettings>,
+    global_row: Option<&StoredAgentLaneSettings>,
+) -> Option<AgentHarnessKind> {
+    project_row
+        .map(|row| row.settings.harness)
+        .or_else(|| global_row.map(|row| row.settings.harness))
+}

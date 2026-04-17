@@ -2,6 +2,8 @@
 
 use serde::Serialize;
 
+use crate::application::harness_runtime_registry::default_ui_feature_flags;
+
 /// Response struct for UI feature flags.
 /// Fields use camelCase for frontend consumption via Tauri invoke.
 #[derive(Debug, Clone, Serialize)]
@@ -16,7 +18,7 @@ pub struct UiFeatureFlagsResponse {
 /// Reads from the OnceLock-cached runtime config; safe to call repeatedly.
 #[tauri::command]
 pub fn get_ui_feature_flags() -> UiFeatureFlagsResponse {
-    let flags = crate::infrastructure::agents::claude::ui_feature_flags_config();
+    let flags = default_ui_feature_flags();
     UiFeatureFlagsResponse {
         activity_page: flags.activity_page,
         extensibility_page: flags.extensibility_page,

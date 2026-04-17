@@ -26,7 +26,7 @@ async fn test_seed_and_list_builtin_profiles() {
         .unwrap();
 
     let profiles = state.agent_profile_repo.get_all().await.unwrap();
-    assert_eq!(profiles.len(), 5);
+    assert_eq!(profiles.len(), 4);
 }
 
 #[tokio::test]
@@ -79,7 +79,7 @@ async fn test_get_builtin_profiles() {
         .unwrap();
 
     let builtin = state.agent_profile_repo.get_builtin().await.unwrap();
-    assert_eq!(builtin.len(), 5);
+    assert_eq!(builtin.len(), 4);
 }
 
 #[tokio::test]

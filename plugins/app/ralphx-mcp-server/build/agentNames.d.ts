@@ -1,42 +1,42 @@
 /**
- * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the `name:` field in each agent's frontmatter (plugins/app/agents/*.md).
+ * Agent short names used by MCP authorization resolution.
+ * Most match canonical ids under `agents/<agent>/agent.yaml` directly; a few
+ * legacy teammate aliases are resolved to canonical ids by the metadata loader.
  */
-export declare const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
-export declare const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";
-export declare const CHAT_TASK = "chat-task";
-export declare const CHAT_PROJECT = "chat-project";
-export declare const REVIEWER = "ralphx-reviewer";
+export declare const ORCHESTRATOR_IDEATION = "ralphx-ideation";
+export declare const ORCHESTRATOR_IDEATION_READONLY = "ralphx-ideation-readonly";
+export declare const CHAT_TASK = "ralphx-chat-task";
+export declare const CHAT_PROJECT = "ralphx-chat-project";
+export declare const REVIEWER = "ralphx-execution-reviewer";
 export declare const REVIEW_CHAT = "ralphx-review-chat";
 export declare const REVIEW_HISTORY = "ralphx-review-history";
-export declare const WORKER = "ralphx-worker";
-export declare const CODER = "ralphx-coder";
-export declare const SESSION_NAMER = "session-namer";
-export declare const MERGER = "ralphx-merger";
-export declare const PROJECT_ANALYZER = "project-analyzer";
-export declare const SUPERVISOR = "supervisor";
+export declare const WORKER = "ralphx-execution-worker";
+export declare const CODER = "ralphx-execution-coder";
+export declare const SESSION_NAMER = "ralphx-utility-session-namer";
+export declare const MERGER = "ralphx-execution-merger";
+export declare const PROJECT_ANALYZER = "ralphx-project-analyzer";
 export declare const QA_PREP = "qa-prep";
 export declare const QA_TESTER = "qa-tester";
-export declare const ORCHESTRATOR = "ralphx-orchestrator";
-export declare const DEEP_RESEARCHER = "ralphx-deep-researcher";
-export declare const MEMORY_MAINTAINER = "memory-maintainer";
-export declare const MEMORY_CAPTURE = "memory-capture";
-export declare const PLAN_CRITIC_COMPLETENESS = "plan-critic-completeness";
-export declare const PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY = "plan-critic-implementation-feasibility";
-export declare const PLAN_VERIFIER = "plan-verifier";
-export declare const IDEATION_TEAM_LEAD = "ideation-team-lead";
+export declare const ORCHESTRATOR = "ralphx-execution-orchestrator";
+export declare const DEEP_RESEARCHER = "ralphx-research-deep-researcher";
+export declare const MEMORY_MAINTAINER = "ralphx-memory-maintainer";
+export declare const MEMORY_CAPTURE = "ralphx-memory-capture";
+export declare const PLAN_CRITIC_COMPLETENESS = "ralphx-plan-critic-completeness";
+export declare const PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY = "ralphx-plan-critic-implementation-feasibility";
+export declare const PLAN_VERIFIER = "ralphx-plan-verifier";
+export declare const IDEATION_TEAM_LEAD = "ralphx-ideation-team-lead";
 export declare const IDEATION_TEAM_MEMBER = "ideation-team-member";
-export declare const IDEATION_SPECIALIST_BACKEND = "ideation-specialist-backend";
-export declare const IDEATION_SPECIALIST_FRONTEND = "ideation-specialist-frontend";
-export declare const IDEATION_SPECIALIST_INFRA = "ideation-specialist-infra";
-export declare const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
-export declare const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-quality";
-export declare const IDEATION_SPECIALIST_PROMPT_QUALITY = "ideation-specialist-prompt-quality";
-export declare const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
-export declare const IDEATION_SPECIALIST_PIPELINE_SAFETY = "ideation-specialist-pipeline-safety";
-export declare const IDEATION_SPECIALIST_STATE_MACHINE = "ideation-specialist-state-machine";
-export declare const IDEATION_CRITIC = "ideation-critic";
-export declare const IDEATION_ADVOCATE = "ideation-advocate";
-export declare const WORKER_TEAM_LEAD = "ralphx-worker-team";
+export declare const IDEATION_SPECIALIST_BACKEND = "ralphx-ideation-specialist-backend";
+export declare const IDEATION_SPECIALIST_FRONTEND = "ralphx-ideation-specialist-frontend";
+export declare const IDEATION_SPECIALIST_INFRA = "ralphx-ideation-specialist-infra";
+export declare const IDEATION_SPECIALIST_UX = "ralphx-ideation-specialist-ux";
+export declare const IDEATION_SPECIALIST_CODE_QUALITY = "ralphx-ideation-specialist-code-quality";
+export declare const IDEATION_SPECIALIST_PROMPT_QUALITY = "ralphx-ideation-specialist-prompt-quality";
+export declare const IDEATION_SPECIALIST_INTENT = "ralphx-ideation-specialist-intent";
+export declare const IDEATION_SPECIALIST_PIPELINE_SAFETY = "ralphx-ideation-specialist-pipeline-safety";
+export declare const IDEATION_SPECIALIST_STATE_MACHINE = "ralphx-ideation-specialist-state-machine";
+export declare const IDEATION_CRITIC = "ralphx-ideation-critic";
+export declare const IDEATION_ADVOCATE = "ralphx-ideation-advocate";
+export declare const WORKER_TEAM_LEAD = "ralphx-execution-team-lead";
 export declare const WORKER_TEAM_MEMBER = "worker-team-member";
 //# sourceMappingURL=agentNames.d.ts.map

@@ -20,6 +20,34 @@ pub async fn confirm_verification(
         .await
         .map_err(map_app_err_local)?;
 
+    if let Some(session) = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_for_status)
+        .await
+        .map_err(map_app_err_local)?
+    {
+        crate::http_server::handlers::ideation::repair_blank_orphaned_verification_generation(
+            &state.app_state,
+            &session,
+        )
+        .await
+        .map_err(map_app_err_local)?;
+
+        let (_, effective_in_progress) =
+            crate::domain::services::load_effective_verification_status(
+                state.app_state.ideation_session_repo.as_ref(),
+                &session,
+            )
+            .await
+            .map_err(map_app_err_local)?;
+        if effective_in_progress {
+            return Ok(Json(VerificationActionResponse {
+                status: "ok".to_string(),
+            }));
+        }
+    }
+
     // Run transaction: verify session exists + trigger auto-verify
     let sid_clone = session_id_str.clone();
     let (session_id, maybe_generation) = state
@@ -51,7 +79,7 @@ pub async fn confirm_verification(
                 .get_verification_status(&session_id)
                 .await
                 .map_err(map_app_err_local)?;
-            if matches!(vs, Some((_, true, _))) {
+            if matches!(vs, Some((_, true))) {
                 // Verification already running — idempotent success.
                 return Ok(Json(VerificationActionResponse {
                     status: "ok".to_string(),

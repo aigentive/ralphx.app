@@ -2,7 +2,7 @@
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a Claude CLI instance spawned by the Rust backend with specific model, tools, MCP tool scopes, and system prompts.
+Complete catalog of the 19 live agent definitions in `config/ralphx.yaml`. Canonical prompt/config source lives under `agents/`; `config/ralphx.yaml` remains the shared runtime/tool wiring layer for the fields that have not been extracted yet, even though execution may resolve to Claude or Codex depending on lane settings and harness availability.
 
 ---
 
@@ -10,41 +10,39 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 | # | Agent Name | Model | Category | Purpose | Can Write Files? |
 |---|-----------|-------|----------|---------|-----------------|
-| 1 | orchestrator-ideation | opus | Ideation | Facilitates ideation sessions → task proposals | No |
-| 2 | orchestrator-ideation-readonly | sonnet | Ideation | Read-only assistant for accepted sessions | No |
-| 3 | session-namer | haiku | Ideation (utility) | Generates 2-word session titles | No (MCP only) |
-| 4 | dependency-suggester | haiku | Ideation (utility) | Auto-suggests proposal dependencies | No (MCP only) |
-| 5 | chat-task | sonnet | Chat | Task-scoped conversational assistant | No |
-| 6 | chat-project | sonnet | Chat | Project-level conversational assistant | No |
-| 7 | ralphx-review-chat | sonnet | Review | Interactive review discussion with user | No |
-| 8 | ralphx-review-history | sonnet | Review | Read-only historical review discussion | No |
-| 9 | ralphx-worker | sonnet | Execution | Orchestrates task implementation, delegates to coders | Yes |
-| 10 | ralphx-coder | sonnet | Execution | Focused code implementation (worker's sub-agent) | Yes |
-| 11 | ralphx-reviewer | sonnet | Review | Automated code review with structured issues | No |
-| 12 | ralphx-qa-prep | sonnet | QA | Generates acceptance criteria + test steps | No |
-| 13 | ralphx-qa-executor | sonnet | QA | Executes browser-based QA tests | Yes |
-| 14 | ralphx-orchestrator | opus | Orchestration | Plans and coordinates complex multi-step tasks | Yes |
-| 15 | ralphx-supervisor | haiku | Monitoring | Monitors worker agents for loops/stalls | No |
-| 16 | ralphx-deep-researcher | opus | Research | Conducts thorough multi-source research | Yes (Write only) |
-| 17 | project-analyzer | haiku | Infrastructure | Scans project for build systems, generates validation commands | No |
-| 18 | ralphx-merger | opus | Git | Resolves merge conflicts that programmatic merge couldn't handle | Yes (Edit only) |
-| 19 | memory-maintainer | haiku | Memory | Ingests rule files, deduplicates, maintains memory DB | Yes |
-| 20 | memory-capture | haiku | Memory | Extracts high-value knowledge from conversations | No |
+| 1 | ralphx-ideation | opus | Ideation | Facilitates ideation sessions → task proposals | No |
+| 2 | ralphx-ideation-readonly | sonnet | Ideation | Read-only assistant for accepted sessions | No |
+| 3 | ralphx-utility-session-namer | haiku | Ideation (utility) | Generates 2-word session titles | No (MCP only) |
+| 4 | ralphx-chat-task | sonnet | Chat | Task-scoped conversational assistant | No |
+| 5 | ralphx-chat-project | sonnet | Chat | Project-level conversational assistant | No |
+| 6 | ralphx-review-chat | sonnet | Review | Interactive review discussion with user | No |
+| 7 | ralphx-review-history | sonnet | Review | Read-only historical review discussion | No |
+| 8 | ralphx-execution-worker | sonnet | Execution | Orchestrates task implementation, delegates to coders | Yes |
+| 9 | ralphx-execution-coder | sonnet | Execution | Focused code implementation (worker's sub-agent) | Yes |
+| 10 | ralphx-execution-reviewer | sonnet | Review | Automated code review with structured issues | No |
+| 11 | ralphx-qa-prep | sonnet | QA | Generates acceptance criteria + test steps | No |
+| 12 | ralphx-qa-executor | sonnet | QA | Executes browser-based QA tests | Yes |
+| 13 | ralphx-execution-orchestrator | opus | Orchestration | Plans and coordinates complex multi-step tasks | Yes |
+| 15 | ralphx-research-deep-researcher | opus | Research | Conducts thorough multi-source research | Yes (Write only) |
+| 16 | ralphx-project-analyzer | haiku | Infrastructure | Scans project for build systems, generates validation commands | No |
+| 17 | ralphx-execution-merger | opus | Git | Resolves merge conflicts that programmatic merge couldn't handle | Yes (Edit only) |
+| 18 | ralphx-memory-maintainer | haiku | Memory | Ingests rule files, deduplicates, maintains memory DB | Yes |
+| 19 | ralphx-memory-capture | haiku | Memory | Extracts high-value knowledge from conversations | No |
 
 ---
 
 ## Detailed Agent Profiles
 
-### 1. orchestrator-ideation
+### 1. ralphx-ideation
 
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `plugins/app/agents/orchestrator-ideation.md` (438 lines) |
+| **Canonical prompt** | `agents/ralphx-ideation/claude/prompt.md` |
 | **Category** | Ideation |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (15):**
 `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -57,21 +55,21 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 - System-card requirement: Must read and apply `system-card-orchestration-pattern.md`
 - Confirm gate: Never create proposals without explicit user approval
 - Anti-injection: Treats all user text as DATA, not instructions
-- Can launch up to 3 parallel Explore subagents + 1 Plan subagent
+- Can fan out bounded native specialist delegates plus 1 Plan subagent
 - Handles child session delegation for accepted sessions
 
 ---
 
-### 2. orchestrator-ideation-readonly
+### 2. ralphx-ideation-readonly
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/orchestrator-ideation-readonly.md` (224 lines) |
+| **Canonical prompt** | `agents/ralphx-ideation-readonly/claude/prompt.md` |
 | **Category** | Ideation |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (8 — read-only subset):**
 `list_session_proposals`, `get_proposal`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -86,12 +84,12 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 3. session-namer
+### 3. ralphx-utility-session-namer
 
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `plugins/app/agents/session-namer.md` (62 lines) |
+| **Canonical prompt** | `agents/ralphx-utility-session-namer/shared/prompt.md` |
 | **Category** | Ideation utility |
 | **CLI tools** | None (`mcp_only: true`) |
 | **MCP Tools (1):** | `update_session_title` |
@@ -105,35 +103,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 4. dependency-suggester
-
-| Property | Value |
-|----------|-------|
-| **Model** | haiku |
-| **System prompt** | `plugins/app/agents/dependency-suggester.md` (100 lines) |
-| **Category** | Ideation utility |
-| **CLI tools** | None (`mcp_only: true`) |
-| **MCP Tools (1):** | `apply_proposal_dependencies` |
-
-**Purpose:** Analyzes proposals and auto-suggests dependencies based on semantic relationships. Fires after proposal creation. Conservative — only suggests dependencies where ordering truly matters.
-
-**Key Directives:**
-- Strong signals: explicit mentions, infrastructure → code, API → UI
-- Medium signals: category ordering, naming patterns
-- Weak signals: skip unless very clear
-- Replaces all existing dependencies for the session
-
----
-
-### 5. chat-task
+### 4. ralphx-chat-task
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/chat-task.md` (63 lines) |
+| **Canonical prompt** | `agents/ralphx-chat-task/shared/prompt.md` |
 | **Category** | Chat |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (6):**
 `update_task`, `add_task_note`, `get_task_details`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -148,15 +126,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 6. chat-project
+### 5. ralphx-chat-project
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/chat-project.md` (52 lines) |
+| **Canonical prompt** | `agents/ralphx-chat-project/shared/prompt.md` |
 | **Category** | Chat |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (6):**
 `suggest_task`, `list_tasks`, `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`
@@ -165,15 +143,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 7. ralphx-review-chat
+### 6. ralphx-review-chat
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/review-chat.md` (117 lines) |
+| **Canonical prompt** | `agents/ralphx-review-chat/claude/prompt.md` |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (12):**
 `approve_task`, `request_task_changes`, `get_review_notes`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_task_steps`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -188,15 +166,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 8. ralphx-review-history
+### 7. ralphx-review-history
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/review-history.md` (93 lines) |
+| **Canonical prompt** | `agents/ralphx-review-history/shared/prompt.md` |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Task |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 
 **MCP Tools (14):**
 `get_review_notes`, `get_task_context`, `get_task_issues`, `get_task_steps`, `get_step_progress`, `get_issue_progress`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -205,20 +183,20 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 9. ralphx-worker
+### 8. ralphx-execution-worker
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/worker.md` (468 lines) |
+| **Canonical prompt** | `agents/ralphx-execution-worker/claude/prompt.md` |
 | **Category** | Execution |
 | **CLI tools** | Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, Skill, Task |
-| **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Explore), Task(Plan) |
+| **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Plan) |
 
 **MCP Tools (20):**
 `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_sub_steps`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths`
 
-**Purpose:** The primary task execution agent. Orchestrates implementation by reading the system-card, decomposing work into sub-scopes, and delegating to parallel `ralphx-coder` instances. Handles step/issue tracking, wave-gated validation, and re-execution after review feedback.
+**Purpose:** The primary task execution agent. Orchestrates implementation by reading the system-card, decomposing work into sub-scopes, and delegating to parallel `ralphx-execution-coder` instances. Handles step/issue tracking, wave-gated validation, and re-execution after review feedback.
 
 **Key Directives:**
 - CRITICAL: Task-scoped — only execute YOUR task, not the whole plan
@@ -231,20 +209,20 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 10. ralphx-coder
+### 9. ralphx-execution-coder
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/coder.md` (419 lines) |
+| **Canonical prompt** | `agents/ralphx-execution-coder/claude/prompt.md` |
 | **Category** | Execution |
 | **CLI tools** | Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, Skill, Task |
-| **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Explore), Task(Plan) |
+| **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Plan) |
 
 **MCP Tools (18):**
 `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths`
 
-**Purpose:** Focused developer agent dispatched by `ralphx-worker`. Executes a single task or scoped sub-task. When dispatched with a sub-step ID, calls `get_step_context` first to get strict scope boundaries.
+**Purpose:** Focused developer agent dispatched by `ralphx-execution-worker`. Executes a single task or scoped sub-task. When dispatched with a sub-step ID, calls `get_step_context` first to get strict scope boundaries.
 
 **Key Directives:**
 - Task-scoped: Execute ONLY work within assigned scope
@@ -258,15 +236,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 11. ralphx-reviewer
+### 10. ralphx-execution-reviewer
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/reviewer.md` (341 lines) |
+| **Canonical prompt** | `agents/ralphx-execution-reviewer/claude/prompt.md` |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Bash, Task(Explore), Task(Plan) |
+| **Preapproved** | Bash |
 
 **MCP Tools (14):**
 `complete_review`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `get_step_progress`, `get_issue_progress`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -282,43 +260,43 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 12. ralphx-qa-prep
+### 11. ralphx-qa-prep
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/qa-prep.md` (132 lines) |
+| **Canonical prompt** | `agents/ralphx-qa-prep/shared/prompt.md` |
 | **Category** | QA |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, Bash, NotebookEdit |
-| **Preapproved** | Task(Explore), Task(Plan) |
+| **Preapproved** | Task(Plan) |
 | **MCP Tools** | None |
 
 **Purpose:** Read-only QA preparation agent. Analyzes task specs and generates testable acceptance criteria with agent-browser test commands. Outputs structured JSON with criteria types (visual, behavior, data, accessibility).
 
 ---
 
-### 13. ralphx-qa-executor
+### 12. ralphx-qa-executor
 
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `plugins/app/agents/qa-executor.md` (198 lines) |
+| **Canonical prompt** | `agents/ralphx-qa-executor/shared/prompt.md` |
 | **Category** | QA |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Write, Edit, Bash, Task(Explore), Task(Plan) |
+| **Preapproved** | Write, Edit, Bash, Task(Plan) |
 | **MCP Tools** | None |
 
 **Purpose:** Executes browser-based QA tests using `agent-browser`. Two phases: (2A) Refinement — analyzes git diff to update test steps; (2B) Testing — executes tests, captures screenshots, reports pass/fail results.
 
 ---
 
-### 14. ralphx-orchestrator
+### 13. ralphx-execution-orchestrator
 
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `plugins/app/agents/orchestrator.md` (71 lines) |
+| **Canonical prompt** | `agents/ralphx-execution-orchestrator/shared/prompt.md` |
 | **Category** | Orchestration |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Write, Edit, Bash, Task |
@@ -326,40 +304,19 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 **MCP Tools (3):**
 `search_memories`, `get_memory`, `get_memories_for_paths`
 
-**Purpose:** General-purpose orchestrator for complex multi-step tasks. Decomposes work into atomic subtasks, orders by dependencies, and delegates to specialized agents (worker, reviewer, deep-researcher, supervisor).
+**Purpose:** General-purpose orchestrator for complex multi-step tasks. Decomposes work into atomic subtasks, orders by dependencies, and delegates to specialized agents (worker, reviewer, deep-researcher).
 
 ---
 
-### 15. ralphx-supervisor
-
-| Property | Value |
-|----------|-------|
-| **Model** | haiku |
-| **System prompt** | `plugins/app/agents/supervisor.md` (63 lines) |
-| **Category** | Monitoring |
-| **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Bash, Task(Explore), Task(Plan) |
-| **MCP Tools** | None |
-
-**Purpose:** Lightweight monitoring agent. Detects infinite loops, stuck agents, threshold breaches, and poor task definitions. Severity-based response: Low → log, Medium → inject guidance, High → pause + notify, Critical → kill + analyze.
-
-**Detection Patterns:**
-- Same tool called 3+ times with similar args
-- No git diff changes for 5+ minutes
-- Same error repeating without resolution
-- High token usage with no progress
-
----
-
-### 16. ralphx-deep-researcher
+### 15. ralphx-research-deep-researcher
 
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `plugins/app/agents/deep-researcher.md` (79 lines) |
+| **Canonical prompt** | `agents/ralphx-research-deep-researcher/shared/prompt.md` |
 | **Category** | Research |
 | **CLI tools** | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Write, WebFetch, WebSearch, Task(Explore), Task(Plan) |
+| **Preapproved** | Write, WebFetch, WebSearch, Task(Plan) |
 
 **MCP Tools (3):**
 `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -368,12 +325,12 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 17. project-analyzer
+### 16. ralphx-project-analyzer
 
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `plugins/app/agents/project-analyzer.md` (104 lines) |
+| **Canonical prompt** | `agents/ralphx-project-analyzer/shared/prompt.md` |
 | **Category** | Infrastructure |
 | **CLI tools** | Read, Glob, Bash, Grep |
 | **Preapproved** | Read, Glob, Bash, Grep |
@@ -387,15 +344,15 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 18. ralphx-merger
+### 17. ralphx-execution-merger
 
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `plugins/app/agents/merger.md` (258 lines) |
+| **Canonical prompt** | `agents/ralphx-execution-merger/claude/prompt.md` |
 | **Category** | Git |
 | **CLI tools** | Read, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
-| **Preapproved** | Read, Edit, Bash, Task(Explore), Task(Plan) |
+| **Preapproved** | Read, Edit, Bash |
 
 **MCP Tools (8):**
 `complete_merge`, `report_conflict`, `report_incomplete`, `get_merge_target`, `get_task_context`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths`
@@ -412,12 +369,12 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 19. memory-maintainer
+### 18. ralphx-memory-maintainer
 
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `plugins/app/agents/memory-maintainer.md` (163 lines) |
+| **Canonical prompt** | `agents/ralphx-memory-maintainer/shared/prompt.md` |
 | **Category** | Memory |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit |
@@ -431,12 +388,12 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 
 ---
 
-### 20. memory-capture
+### 19. ralphx-memory-capture
 
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `plugins/app/agents/memory-capture.md` (205 lines) |
+| **Canonical prompt** | `agents/ralphx-memory-capture/shared/prompt.md` |
 | **Category** | Memory |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit |
@@ -460,11 +417,11 @@ Every MCP tool must be registered in three places (see `agent-mcp-tools.md`):
 |-------|------|----------|
 | 1. Rust spawn config | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | `--allowedTools` flag at spawn |
 | 2. MCP server filter | `plugins/app/ralphx-mcp-server/src/tools.ts` | Server-side tool filtering |
-| 3. Agent frontmatter | `plugins/app/agents/<name>.md` | Subagent spawning + docs |
+| 3. Canonical prompt contract | `agents/<name>/...` + generated Claude frontmatter | Subagent spawning + docs |
 
 ### Shared Tool Sets
 
-Defined in `ralphx.yaml`:
+Defined in `config/ralphx.yaml`:
 ```yaml
 tool_sets:
   base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
@@ -486,22 +443,21 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
 | `approve_task` / `request_task_changes` | review-chat only |
 | `complete_merge` / `report_conflict` / `report_incomplete` | merger only |
 | `get_merge_target` | merger only |
-| `create_task_proposal` / `update_task_proposal` / `delete_task_proposal` | orchestrator-ideation only |
-| `create_plan_artifact` / `update_plan_artifact` | orchestrator-ideation only |
-| `list_session_proposals` / `get_proposal` | orchestrator-ideation, orchestrator-ideation-readonly |
-| `get_session_plan` | orchestrator-ideation, orchestrator-ideation-readonly |
-| `create_child_session` | orchestrator-ideation, orchestrator-ideation-readonly |
-| `analyze_session_dependencies` | orchestrator-ideation only |
-| `update_session_title` | session-namer only |
-| `apply_proposal_dependencies` | dependency-suggester only |
-| `update_task` / `add_task_note` / `get_task_details` | chat-task only |
-| `suggest_task` / `list_tasks` | chat-project only |
-| `save_project_analysis` | project-analyzer only |
-| `get_project_analysis` | worker, coder, reviewer, merger, project-analyzer |
-| `upsert_memories` | memory-maintainer, memory-capture |
-| `mark_memory_obsolete` | memory-maintainer, memory-capture |
-| `search_memories` / `get_memory` / `get_memories_for_paths` | 13 agents (all except session-namer, dependency-suggester, qa-prep, qa-executor, supervisor, project-analyzer) |
-| `get_conversation_transcript` | memory-maintainer, memory-capture, chat-project |
+| `create_task_proposal` / `update_task_proposal` / `delete_task_proposal` | ralphx-ideation only |
+| `create_plan_artifact` / `update_plan_artifact` | ralphx-ideation only |
+| `list_session_proposals` / `get_proposal` | ralphx-ideation, ralphx-ideation-readonly |
+| `get_session_plan` | ralphx-ideation, ralphx-ideation-readonly |
+| `create_child_session` | ralphx-ideation, ralphx-ideation-readonly |
+| `analyze_session_dependencies` | ralphx-ideation only |
+| `update_session_title` | ralphx-utility-session-namer only |
+| `update_task` / `add_task_note` / `get_task_details` | ralphx-chat-task only |
+| `suggest_task` / `list_tasks` | ralphx-chat-project only |
+| `save_project_analysis` | ralphx-project-analyzer only |
+| `get_project_analysis` | worker, coder, reviewer, merger, ralphx-project-analyzer |
+| `upsert_memories` | ralphx-memory-maintainer, ralphx-memory-capture |
+| `mark_memory_obsolete` | ralphx-memory-maintainer, ralphx-memory-capture |
+| `search_memories` / `get_memory` / `get_memories_for_paths` | 12 agents (all except ralphx-utility-session-namer, qa-prep, qa-executor, ralphx-project-analyzer) |
+| `get_conversation_transcript` | ralphx-memory-maintainer, ralphx-memory-capture, ralphx-chat-project |
 
 ---
 
@@ -518,11 +474,10 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
             ┌─────────────────────────────────┐
             │    IDEATION PHASE               │
             │                                 │
-            │  orchestrator-ideation (opus)   │
-            │    ├── session-namer (haiku)    │  ← auto-fires on session create
-            │    ├── Task(Explore) × 3       │  ← parallel codebase research
+            │  ralphx-ideation (opus)   │
+            │    ├── ralphx-utility-session-namer (haiku)    │  ← auto-fires on session create
+            │    ├── delegate_start × 3      │  ← bounded specialist research
             │    ├── Task(Plan) × 1          │  ← architectural design
-            │    └── dependency-suggester     │  ← auto-fires after proposals
             │         (haiku)                │
             │                                 │
             │  Outputs: Plan artifact +      │
@@ -533,15 +488,13 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
             ┌─────────────────────────────────┐
             │    EXECUTION PHASE              │
             │                                 │
-            │  project-analyzer (haiku)       │  ← scans build systems first
+            │  ralphx-project-analyzer (haiku)       │  ← scans build systems first
             │         │                       │
             │         ▼                       │
-            │  ralphx-worker (sonnet)         │  ← orchestrates implementation
-            │    ├── ralphx-coder (sonnet)    │
-            │    ├── ralphx-coder (sonnet)    │  ← up to 3 parallel coders
-            │    └── ralphx-coder (sonnet)    │
-            │                                 │
-            │  ralphx-supervisor (haiku)      │  ← monitors for loops/stalls
+            │  ralphx-execution-worker (sonnet)         │  ← orchestrates implementation
+            │    ├── ralphx-execution-coder (sonnet)    │
+            │    ├── ralphx-execution-coder (sonnet)    │  ← up to 3 parallel coders
+            │    └── ralphx-execution-coder (sonnet)    │
             │                                 │
             └────────────┬────────────────────┘
                          │ execution complete
@@ -549,7 +502,7 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
             ┌─────────────────────────────────┐
             │    REVIEW PHASE                 │
             │                                 │
-            │  ralphx-reviewer (sonnet)       │  ← automated code review
+            │  ralphx-execution-reviewer (sonnet)       │  ← automated code review
             │    │                            │
             │    ├── approved ──────────────┐ │
             │    │                          │ │
@@ -590,7 +543,7 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
             │    ├── success → DONE           │
             │    │                            │
             │    └── conflict ──►             │
-            │       ralphx-merger (opus)      │  ← resolves conflicts
+            │       ralphx-execution-merger (opus)      │  ← resolves conflicts
             │         │                       │
             │         ├── resolved → DONE     │
             │         └── report_conflict     │
@@ -603,16 +556,16 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
 ```
 USER in RalphX UI
     │
-    ├── Viewing specific task ──► chat-task (sonnet)
+    ├── Viewing specific task ──► ralphx-chat-task (sonnet)
     │     Can: update_task, add_task_note, get_task_details
     │
-    ├── Project-level chat ──► chat-project (sonnet)
+    ├── Project-level chat ──► ralphx-chat-project (sonnet)
     │     Can: suggest_task, list_tasks
     │
-    ├── Active ideation session ──► orchestrator-ideation (opus)
+    ├── Active ideation session ──► ralphx-ideation (opus)
     │     Can: full CRUD on proposals/plans
     │
-    └── Accepted ideation session ──► orchestrator-ideation-readonly (sonnet)
+    └── Accepted ideation session ──► ralphx-ideation-readonly (sonnet)
           Can: read-only + create_child_session
 ```
 
@@ -622,10 +575,10 @@ USER in RalphX UI
 Any agent conversation ends
     │
     ▼
-memory-capture (haiku)         ← extracts high-value knowledge
+ralphx-memory-capture (haiku)         ← extracts high-value knowledge
     │
     ▼
-memory-maintainer (haiku)      ← ingests rules, deduplicates, archives
+ralphx-memory-maintainer (haiku)      ← ingests rules, deduplicates, archives
     │
     ▼
 Memory DB (SQLite)
@@ -637,10 +590,9 @@ search_memories / get_memory   ← consumed by 13 agents at runtime
 ### Supporting Agents (On-Demand)
 
 ```
-ralphx-orchestrator (opus)     ← general complex task coordination
-ralphx-deep-researcher (opus)  ← thorough multi-source research
-ralphx-supervisor (haiku)      ← monitors agent health
-project-analyzer (haiku)       ← scans build systems for validation commands
+ralphx-execution-orchestrator (opus)     ← general complex task coordination
+ralphx-research-deep-researcher (opus)  ← thorough multi-source research
+ralphx-project-analyzer (haiku)       ← scans build systems for validation commands
 ```
 
 ---
@@ -649,9 +601,9 @@ project-analyzer (haiku)       ← scans build systems for validation commands
 
 | Model | Count | Agents |
 |-------|-------|--------|
-| **opus** | 5 | orchestrator-ideation, ralphx-orchestrator, ralphx-deep-researcher, ralphx-merger, (orchestrator-ideation uses opus but readonly variant uses sonnet) |
-| **sonnet** | 10 | orchestrator-ideation-readonly, chat-task, chat-project, ralphx-review-chat, ralphx-review-history, ralphx-worker, ralphx-coder, ralphx-reviewer, ralphx-qa-prep, ralphx-qa-executor |
-| **haiku** | 5 | session-namer, dependency-suggester, ralphx-supervisor, project-analyzer, memory-maintainer, memory-capture |
+| **opus** | 4 | ralphx-ideation, ralphx-execution-orchestrator, ralphx-research-deep-researcher, ralphx-execution-merger |
+| **sonnet** | 10 | ralphx-ideation-readonly, ralphx-chat-task, ralphx-chat-project, ralphx-review-chat, ralphx-review-history, ralphx-execution-worker, ralphx-execution-coder, ralphx-execution-reviewer, ralphx-qa-prep, ralphx-qa-executor |
+| **haiku** | 4 | ralphx-utility-session-namer, ralphx-project-analyzer, ralphx-memory-maintainer, ralphx-memory-capture |
 
 **Pattern:** opus for high-stakes decisions (ideation, orchestration, merge, research), sonnet for implementation/review, haiku for lightweight utilities.
 
@@ -666,6 +618,6 @@ Claude Agent → --model <model> --append-system-prompt-file <prompt.md>
              → --mcp-config <ralphx-mcp-server> --permission-mode default
 ```
 
-Configuration source: `ralphx.yaml` → parsed at compile time → `agent_config/mod.rs`
+Configuration source: `config/ralphx.yaml` → parsed at compile time → `agent_config/mod.rs`
 
 MCP Architecture: `Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Tauri Backend`

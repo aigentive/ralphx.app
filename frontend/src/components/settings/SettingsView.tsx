@@ -9,16 +9,12 @@ import { useState, useCallback, useEffect } from "react";
 import type {
   ProjectSettings,
   ExecutionSettings,
-  ModelSettings,
-  ProjectReviewSettings,
-  SupervisorSettings,
 } from "@/types/settings";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { IdeationEffortSection } from "./IdeationEffortSection";
 import { IdeationModelSection } from "./IdeationModelSection";
-import { GitSettingsSection } from "./GitSettingsSection";
-import { GitHubSettingsSection } from "./GitHubSettingsSection";
+import { RepositorySettingsSection } from "./RepositorySettingsSection";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
 import { ApiKeysSection } from "./ApiKeysSection";
 import {
@@ -26,9 +22,7 @@ import {
   ErrorBanner,
 } from "./SettingsView.shared";
 import ExecutionSection from "./sections/ExecutionSection";
-import ModelSection from "./sections/ModelSection";
-import ReviewSection from "./sections/ReviewSection";
-import SupervisorSection from "./sections/SupervisorSection";
+import ReviewPolicySection from "./sections/ReviewPolicySection";
 import GlobalExecutionSection from "./sections/GlobalExecutionSection";
 
 // ============================================================================
@@ -81,48 +75,6 @@ export function SettingsView({
     [onSettingsChange]
   );
 
-  const handleModelChange = useCallback(
-    (changes: Partial<ModelSettings>) => {
-      setSettings((prev) => {
-        const updated = {
-          ...prev,
-          model: { ...prev.model, ...changes },
-        };
-        onSettingsChange?.(updated);
-        return updated;
-      });
-    },
-    [onSettingsChange]
-  );
-
-  const handleReviewChange = useCallback(
-    (changes: Partial<ProjectReviewSettings>) => {
-      setSettings((prev) => {
-        const updated = {
-          ...prev,
-          review: { ...prev.review, ...changes },
-        };
-        onSettingsChange?.(updated);
-        return updated;
-      });
-    },
-    [onSettingsChange]
-  );
-
-  const handleSupervisorChange = useCallback(
-    (changes: Partial<SupervisorSettings>) => {
-      setSettings((prev) => {
-        const updated = {
-          ...prev,
-          supervisor: { ...prev.supervisor, ...changes },
-        };
-        onSettingsChange?.(updated);
-        return updated;
-      });
-    },
-    [onSettingsChange]
-  );
-
   const handleDismissError = useCallback(() => {
     setDismissedError(true);
   }, []);
@@ -147,24 +99,9 @@ export function SettingsView({
         onChange={handleExecutionChange}
         disabled={isSaving}
       />
-      <ModelSection
-        settings={settings.model}
-        onChange={handleModelChange}
-        disabled={isSaving}
-      />
-      <ReviewSection
-        settings={settings.review}
-        onChange={handleReviewChange}
-        disabled={isSaving}
-      />
-      <SupervisorSection
-        settings={settings.supervisor}
-        onChange={handleSupervisorChange}
-        disabled={isSaving}
-      />
+      <ReviewPolicySection />
       <GlobalExecutionSection />
-      <GitSettingsSection />
-      <GitHubSettingsSection />
+      <RepositorySettingsSection />
       <ProjectAnalysisSection />
       <IdeationSettingsPanel />
       <IdeationEffortSection />

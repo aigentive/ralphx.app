@@ -98,7 +98,7 @@ async fn test_trigger_memory_pipelines_no_project_id() {
 
 #[tokio::test]
 async fn test_trigger_memory_pipelines_recursion_guard_maintainer() {
-    // Should return early when agent is memory-maintainer
+    // Should return early when agent is ralphx-memory-maintainer
     let project_id = ProjectId::from_string("proj-123".to_string());
     let conv_id = ChatConversationId::from_string("conv-123".to_string());
     let cli_path = PathBuf::from("/usr/bin/claude");
@@ -110,7 +110,7 @@ async fn test_trigger_memory_pipelines_recursion_guard_maintainer() {
         "task-123",
         &conv_id,
         Some(&project_id),
-        Some("memory-maintainer"), // Recursion guard
+        Some("ralphx-memory-maintainer"), // Recursion guard
         &cli_path,
         &plugin_dir,
         &wd,
@@ -123,7 +123,7 @@ async fn test_trigger_memory_pipelines_recursion_guard_maintainer() {
 
 #[tokio::test]
 async fn test_trigger_memory_pipelines_recursion_guard_capture() {
-    // Should return early when agent is memory-capture
+    // Should return early when agent is ralphx-memory-capture
     let project_id = ProjectId::from_string("proj-123".to_string());
     let conv_id = ChatConversationId::from_string("conv-123".to_string());
     let cli_path = PathBuf::from("/usr/bin/claude");
@@ -135,7 +135,7 @@ async fn test_trigger_memory_pipelines_recursion_guard_capture() {
         "task-123",
         &conv_id,
         Some(&project_id),
-        Some("memory-capture"), // Recursion guard
+        Some("ralphx-memory-capture"), // Recursion guard
         &cli_path,
         &plugin_dir,
         &wd,
@@ -204,7 +204,7 @@ fn test_resolve_pipelines_parallel_spawn_both_enabled() {
     let result = resolve_pipelines(
         ChatContextType::TaskExecution,
         Some(&project_id),
-        Some("ralphx:ralphx-worker"),
+        Some("ralphx:ralphx-execution-worker"),
         &settings,
     );
 
@@ -231,7 +231,7 @@ fn test_resolve_pipelines_disabled_project_skips_spawn() {
     let result = resolve_pipelines(
         ChatContextType::TaskExecution,
         Some(&project_id),
-        Some("ralphx:ralphx-worker"),
+        Some("ralphx:ralphx-execution-worker"),
         &settings,
     );
 

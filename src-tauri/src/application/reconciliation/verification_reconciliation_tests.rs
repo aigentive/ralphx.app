@@ -6,7 +6,7 @@ use chrono::{Duration, Utc};
 
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, SessionOrigin,
-    VerificationStatus,
+    VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::infrastructure::memory::MemoryIdeationSessionRepository;
@@ -50,15 +50,44 @@ async fn setup_stuck_session(
     id
 }
 
-/// Helper: assert that a metadata JSON string contains the expected `convergence_reason`.
-fn assert_metadata_has_convergence_reason(metadata: Option<&str>, expected_reason: &str) {
-    let meta: serde_json::Value =
-        serde_json::from_str(metadata.expect("metadata must be Some")).unwrap();
+fn assert_convergence_reason(session: &IdeationSession, expected_reason: &str) {
     assert_eq!(
-        meta["convergence_reason"].as_str().unwrap(),
-        expected_reason,
-        "expected convergence_reason={expected_reason} in metadata"
+        session.verification_convergence_reason.as_deref(),
+        Some(expected_reason),
+        "expected native convergence_reason={expected_reason}"
     );
+}
+
+fn make_snapshot(
+    generation: i32,
+    status: VerificationStatus,
+    in_progress: bool,
+    current_round: u32,
+    max_rounds: u32,
+    convergence_reason: Option<&str>,
+    round_scores: &[u32],
+) -> VerificationRunSnapshot {
+    VerificationRunSnapshot {
+        generation,
+        status,
+        in_progress,
+        current_round,
+        max_rounds,
+        best_round_index: None,
+        convergence_reason: convergence_reason.map(ToString::to_string),
+        current_gaps: Vec::<VerificationGap>::new(),
+        rounds: round_scores
+            .iter()
+            .enumerate()
+            .map(|(idx, gap_score)| VerificationRoundSnapshot {
+                round: (idx + 1) as u32,
+                gap_score: *gap_score,
+                fingerprints: vec![],
+                gaps: vec![],
+                parse_failed: false,
+            })
+            .collect(),
+    }
 }
 
 #[tokio::test]
@@ -84,10 +113,6 @@ async fn test_reconciliation_resets_stuck_session_after_timeout() {
     assert!(
         !after.verification_in_progress,
         "verification_in_progress must be cleared"
-    );
-    assert!(
-        after.verification_metadata.is_none(),
-        "verification_metadata must be cleared"
     );
 }
 
@@ -196,19 +221,34 @@ async fn test_reconciliation_empty_repo_returns_zero() {
 }
 
 #[tokio::test]
-async fn test_reconciler_preserves_metadata() {
+async fn test_reconciler_clears_legacy_metadata_on_reset() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // Session stuck in verification for 2 hours with metadata
+    // Session stuck in verification for 2 hours with stale pre-native verification state
     let mut session = IdeationSession::new(project_id);
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
-    session.verification_metadata = Some(r#"{"current_round":2,"max_rounds":5,"current_gaps":[],"rounds":[],"best_round_index":null,"parse_failures":[],"convergence_reason":null}"#.to_string());
     session.updated_at = Utc::now() - Duration::hours(2);
 
     let session_id = session.id.clone();
     repo.create(session).await.unwrap();
+    repo.save_verification_run_snapshot(
+        &session_id,
+        &VerificationRunSnapshot {
+            generation: 0,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![],
+            rounds: vec![],
+        },
+    )
+    .await
+    .unwrap();
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(false).await;
@@ -218,11 +258,11 @@ async fn test_reconciler_preserves_metadata() {
     let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(after.verification_status, VerificationStatus::Unverified);
     assert!(!after.verification_in_progress);
-    // Metadata should be preserved (not cleared) so frontend can show what happened
-    assert!(
-        after.verification_metadata.is_some(),
-        "verification_metadata must be preserved after reconciliation reset"
-    );
+    assert_eq!(after.verification_current_round, None);
+    assert_eq!(after.verification_max_rounds, None);
+    assert_eq!(after.verification_gap_count, 0);
+    assert_eq!(after.verification_gap_score, None);
+    assert_eq!(after.verification_convergence_reason, None);
 }
 
 #[tokio::test]
@@ -403,7 +443,7 @@ async fn test_reconciler_manual_session_reset_after_long_threshold() {
 /// Parent has verification_in_progress=true; child has session_purpose=Verification.
 async fn make_parent_child_pair(
     repo: &Arc<crate::infrastructure::memory::MemoryIdeationSessionRepository>,
-    parent_metadata: Option<String>,
+    parent_snapshot: Option<VerificationRunSnapshot>,
 ) -> (
     crate::domain::entities::IdeationSessionId,
     crate::domain::entities::IdeationSessionId,
@@ -413,9 +453,13 @@ async fn make_parent_child_pair(
     let mut parent = IdeationSession::new(project_id.clone());
     parent.verification_status = VerificationStatus::Reviewing;
     parent.verification_in_progress = true;
-    parent.verification_metadata = parent_metadata;
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
+    if let Some(snapshot) = parent_snapshot {
+        repo.save_verification_run_snapshot(&parent_id, &snapshot)
+            .await
+            .unwrap();
+    }
 
     let mut child = IdeationSession::new(project_id);
     child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
@@ -432,9 +476,20 @@ async fn test_reconcile_child_complete_convergence_zero_blocking() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[{"fingerprints":[],"gap_score":0}],"current_gaps":[],"convergence_reason":"zero_blocking","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                Some("zero_blocking"),
+                &[0],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -464,14 +519,83 @@ async fn test_reconcile_child_complete_convergence_zero_blocking() {
 }
 
 #[tokio::test]
+async fn test_reconcile_child_complete_uses_native_verification_snapshot_when_metadata_missing() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) = make_parent_child_pair(&repo, None).await;
+    let parent = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+
+    repo.save_verification_run_snapshot(
+        &parent_id,
+        &crate::domain::entities::VerificationRunSnapshot {
+            generation: parent.verification_generation,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: Some(2),
+            convergence_reason: Some("zero_blocking".to_string()),
+            current_gaps: vec![],
+            rounds: vec![
+                crate::domain::entities::VerificationRoundSnapshot {
+                    round: 1,
+                    gap_score: 7,
+                    fingerprints: vec!["gap-1".to_string()],
+                    gaps: vec![],
+                    parse_failed: false,
+                },
+                crate::domain::entities::VerificationRoundSnapshot {
+                    round: 2,
+                    gap_score: 0,
+                    fingerprints: vec!["gap-2".to_string()],
+                    gaps: vec![],
+                    parse_failed: false,
+                },
+            ],
+        },
+    )
+    .await
+    .unwrap();
+
+    reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Verified,
+        "native zero_blocking convergence should map to Verified even without any older seed fixture"
+    );
+    assert!(!parent_after.verification_in_progress);
+}
+
+#[tokio::test]
 async fn test_reconcile_child_complete_convergence_jaccard_converged() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":3,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"jaccard_converged","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                3,
+                5,
+                Some("jaccard_converged"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -492,9 +616,20 @@ async fn test_reconcile_child_complete_max_rounds_needs_revision() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":5,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"max_rounds","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                5,
+                5,
+                Some("max_rounds"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -520,15 +655,150 @@ async fn test_reconcile_child_complete_max_rounds_needs_revision() {
 }
 
 #[tokio::test]
+async fn test_reconcile_child_complete_actionable_needs_revision_requests_auto_continue() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) =
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::NeedsRevision,
+                true,
+                1,
+                5,
+                None,
+                &[4],
+            )),
+        )
+        .await;
+    repo.update_verification_state(&parent_id, VerificationStatus::NeedsRevision, true)
+        .await
+        .unwrap();
+
+    let result = reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    match result {
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            assert_eq!(request.snapshot.status, VerificationStatus::NeedsRevision);
+            assert!(request.snapshot.in_progress);
+            assert!(
+                request
+                    .continuation_message
+                    .contains("Continue the active verification loop in this same session")
+            );
+        }
+        other => panic!("expected auto-continue outcome, got {:?}", other.map(|_| ())),
+    }
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::NeedsRevision);
+    assert!(
+        parent_after.verification_in_progress,
+        "auto-continue must keep parent verification marked in progress"
+    );
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must stay active for same-session auto-continue"
+    );
+}
+
+#[tokio::test]
+async fn test_reconcile_child_complete_pending_review_round_requests_auto_continue() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) = make_parent_child_pair(
+        &repo,
+        Some(VerificationRunSnapshot {
+            generation: 0,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 1,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![],
+            rounds: vec![],
+        }),
+    )
+    .await;
+    repo.update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+    repo.update_verification_state(&parent_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    match result {
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            assert_eq!(request.snapshot.status, VerificationStatus::Reviewing);
+            assert!(request.snapshot.in_progress);
+            assert_eq!(request.snapshot.current_round, 1);
+            assert!(
+                request
+                    .continuation_message
+                    .contains("required verification critics may still be settling")
+            );
+        }
+        other => panic!("expected auto-continue outcome, got {:?}", other.map(|_| ())),
+    }
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::Reviewing);
+    assert!(
+        parent_after.verification_in_progress,
+        "pending round must keep parent verification in progress"
+    );
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must stay active while the pending round is being resumed"
+    );
+}
+
+#[tokio::test]
 async fn test_reconcile_child_complete_crashed_mid_round() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    // Has rounds but no convergence_reason — agent crashed mid-round
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[{"fingerprints":[],"gap_score":5}],"current_gaps":[],"convergence_reason":null,"best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                None,
+                &[5],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -547,10 +817,7 @@ async fn test_reconcile_child_complete_crashed_mid_round() {
     assert!(!parent_after.verification_in_progress);
 
     // Verify convergence_reason was set to agent_crashed_mid_round in metadata
-    assert_metadata_has_convergence_reason(
-        parent_after.verification_metadata.as_deref(),
-        "agent_crashed_mid_round",
-    );
+    assert_convergence_reason(&parent_after, "agent_crashed_mid_round");
 
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
@@ -560,12 +827,12 @@ async fn test_reconcile_child_complete_crashed_mid_round() {
 }
 
 #[tokio::test]
-async fn test_reconcile_child_complete_no_metadata() {
+async fn test_reconcile_child_complete_no_snapshot() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    // No metadata at all — agent completed without any updates
+    // No native snapshot at all — agent completed without any updates
     let (parent_id, child_id) = make_parent_child_pair(&repo, None).await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
@@ -580,7 +847,7 @@ async fn test_reconcile_child_complete_no_metadata() {
     assert_eq!(
         parent_after.verification_status,
         VerificationStatus::Unverified,
-        "no metadata should result in Unverified"
+        "no snapshot should result in Unverified"
     );
     assert!(!parent_after.verification_in_progress);
 
@@ -589,33 +856,6 @@ async fn test_reconcile_child_complete_no_metadata() {
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived
     );
-}
-
-#[tokio::test]
-async fn test_reconcile_child_complete_malformed_metadata() {
-    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
-    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
-        repo.clone();
-
-    // Malformed JSON — parse fails, treated as None → Unverified
-    let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some("{invalid json".to_string())).await;
-
-    reconcile_verification_on_child_complete::<tauri::Wry>(
-        &parent_id,
-        &child_id,
-        &dyn_repo,
-        None,
-    )
-    .await;
-
-    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
-    assert_eq!(
-        parent_after.verification_status,
-        VerificationStatus::Unverified,
-        "malformed metadata should be treated as None → Unverified"
-    );
-    assert!(!parent_after.verification_in_progress);
 }
 
 #[tokio::test]
@@ -755,11 +995,7 @@ async fn test_scan_and_reset_cold_boot_ignores_ttl() {
             "{} in_progress must be cleared",
             label
         );
-        // Metadata must contain app_restart convergence_reason
-        assert_metadata_has_convergence_reason(
-            after.verification_metadata.as_deref(),
-            "app_restart",
-        );
+        assert_eq!(after.verification_convergence_reason, None);
     }
 }
 
@@ -830,14 +1066,11 @@ async fn test_scan_and_reset_cold_boot_archives_orphaned_children() {
 
     assert_eq!(count, 1, "parent session should be reset");
 
-    // Parent must be reset with app_restart metadata
+    // Parent must be reset and stale summary fields cleared.
     let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert_eq!(parent_after.verification_status, VerificationStatus::Unverified);
     assert!(!parent_after.verification_in_progress);
-    assert_metadata_has_convergence_reason(
-        parent_after.verification_metadata.as_deref(),
-        "app_restart",
-    );
+    assert_eq!(parent_after.verification_convergence_reason, None);
 
     // Child must be archived
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
@@ -857,20 +1090,35 @@ async fn test_scan_and_reset_cold_boot_empty_repo_is_noop() {
     assert_eq!(count, 0);
 }
 
-/// Cold boot injects app_restart metadata even when existing metadata is present.
+/// Cold boot clears stale pre-native verification state instead of carrying it forward.
 #[tokio::test]
-async fn test_scan_and_reset_cold_boot_injects_app_restart_metadata() {
+async fn test_scan_and_reset_cold_boot_clears_legacy_metadata() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // Session with existing metadata — cold boot should overwrite with app_restart
+    // Session with existing metadata — cold boot should clear it
     let mut session = IdeationSession::new(project_id);
     session.verification_status = VerificationStatus::Reviewing;
     session.verification_in_progress = true;
-    session.verification_metadata = Some(r#"{"current_round":2,"max_rounds":5,"current_gaps":[],"rounds":[],"best_round_index":null,"parse_failures":[],"convergence_reason":null}"#.to_string());
     session.updated_at = Utc::now() - Duration::minutes(5);
     let session_id = session.id.clone();
     repo.create(session).await.unwrap();
+    repo.save_verification_run_snapshot(
+        &session_id,
+        &VerificationRunSnapshot {
+            generation: 0,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![],
+            rounds: vec![],
+        },
+    )
+    .await
+    .unwrap();
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(true).await;
@@ -880,7 +1128,24 @@ async fn test_scan_and_reset_cold_boot_injects_app_restart_metadata() {
     let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(after.verification_status, VerificationStatus::Unverified);
     assert!(!after.verification_in_progress);
-    assert_metadata_has_convergence_reason(after.verification_metadata.as_deref(), "app_restart");
+    assert_eq!(after.verification_current_round, None);
+    assert_eq!(after.verification_max_rounds, None);
+    assert_eq!(after.verification_gap_count, 0);
+    assert_eq!(after.verification_gap_score, None);
+    assert_eq!(after.verification_convergence_reason, None);
+
+    let snapshot = repo
+        .get_verification_run_snapshot(&session_id, 0)
+        .await
+        .unwrap()
+        .expect("active-generation snapshot should be reset alongside the summary");
+    assert_eq!(snapshot.status, VerificationStatus::Unverified);
+    assert!(!snapshot.in_progress);
+    assert_eq!(snapshot.current_round, 0);
+    assert_eq!(snapshot.max_rounds, 0);
+    assert!(snapshot.current_gaps.is_empty());
+    assert!(snapshot.rounds.is_empty());
+    assert!(snapshot.convergence_reason.is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -909,17 +1174,138 @@ async fn test_reset_verification_on_child_error_agent_error() {
         "in_progress must be cleared after error reset"
     );
 
-    // Metadata should contain the agent_error convergence_reason
-    assert_metadata_has_convergence_reason(
-        parent_after.verification_metadata.as_deref(),
-        "agent_error",
-    );
+    assert_eq!(parent_after.verification_convergence_reason, None);
 
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived,
         "child must be archived after error reset"
+    );
+}
+
+#[tokio::test]
+async fn test_reset_verification_on_child_error_actionable_needs_revision_requests_auto_continue() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) =
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::NeedsRevision,
+                true,
+                2,
+                5,
+                None,
+                &[3],
+            )),
+        )
+        .await;
+    repo.update_verification_state(&parent_id, VerificationStatus::NeedsRevision, true)
+        .await
+        .unwrap();
+
+    let result = reset_verification_on_child_error::<tauri::Wry>(
+        &child_id,
+        &dyn_repo,
+        None,
+        "agent_error",
+    )
+    .await;
+
+    match result {
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            assert_eq!(request.snapshot.status, VerificationStatus::NeedsRevision);
+            assert!(request.snapshot.in_progress);
+            assert!(
+                request
+                    .continuation_message
+                    .contains("Continue the active verification loop in this same session")
+            );
+        }
+        other => panic!("expected auto-continue outcome, got {:?}", other.map(|_| ())),
+    }
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::NeedsRevision);
+    assert!(
+        parent_after.verification_in_progress,
+        "auto-continue must keep parent verification marked in progress"
+    );
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must stay active for same-session auto-continue"
+    );
+}
+
+#[tokio::test]
+async fn test_reset_verification_on_child_error_pending_review_round_requests_auto_continue() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let (parent_id, child_id) = make_parent_child_pair(
+        &repo,
+        Some(VerificationRunSnapshot {
+            generation: 0,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![],
+            rounds: vec![],
+        }),
+    )
+    .await;
+    repo.update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+    repo.update_verification_state(&parent_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let result = reset_verification_on_child_error::<tauri::Wry>(
+        &child_id,
+        &dyn_repo,
+        None,
+        "agent_error",
+    )
+    .await;
+
+    match result {
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            assert_eq!(request.snapshot.status, VerificationStatus::Reviewing);
+            assert!(request.snapshot.in_progress);
+            assert_eq!(request.snapshot.current_round, 2);
+            assert!(
+                request
+                    .continuation_message
+                    .contains("required verification critics may still be settling")
+            );
+        }
+        other => panic!("expected auto-continue outcome, got {:?}", other.map(|_| ())),
+    }
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::Reviewing);
+    assert!(
+        parent_after.verification_in_progress,
+        "pending round must keep parent verification in progress"
+    );
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must stay active while the pending round is being resumed"
     );
 }
 
@@ -942,10 +1328,7 @@ async fn test_reset_verification_on_child_error_user_stopped() {
     );
     assert!(!parent_after.verification_in_progress);
 
-    assert_metadata_has_convergence_reason(
-        parent_after.verification_metadata.as_deref(),
-        "user_stopped",
-    );
+    assert_eq!(parent_after.verification_convergence_reason, None);
 }
 
 #[tokio::test]
@@ -1015,9 +1398,20 @@ async fn test_escalated_to_parent_maps_to_needs_revision() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":3,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"escalated_to_parent","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                3,
+                5,
+                Some("escalated_to_parent"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -1045,9 +1439,20 @@ async fn test_user_stopped_maps_to_skipped() {
     let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
         repo.clone();
 
-    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"user_stopped","best_round_index":null,"parse_failures":[]}"#;
     let (parent_id, child_id) =
-        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+        make_parent_child_pair(
+            &repo,
+            Some(make_snapshot(
+                0,
+                VerificationStatus::Reviewing,
+                true,
+                2,
+                5,
+                Some("user_stopped"),
+                &[],
+            )),
+        )
+        .await;
 
     reconcile_verification_on_child_complete::<tauri::Wry>(
         &parent_id,
@@ -2043,22 +2448,16 @@ async fn make_service_with_tracking(
     (svc, registry, processor, chat_service)
 }
 
-/// Build verification_metadata JSON with `n` rounds (so rounds.len() == n → current_round == n).
-fn make_verification_metadata_json(n_rounds: usize) -> String {
-    let rounds: Vec<serde_json::Value> = (0..n_rounds)
-        .map(|_| serde_json::json!({"fingerprints": [], "gap_score": 0}))
-        .collect();
-    serde_json::json!({
-        "v": 1,
-        "current_round": n_rounds,
-        "max_rounds": 5,
-        "rounds": rounds,
-        "current_gaps": [],
-        "convergence_reason": null,
-        "best_round_index": null,
-        "parse_failures": []
-    })
-    .to_string()
+fn make_recovery_snapshot(generation: i32, n_rounds: usize) -> VerificationRunSnapshot {
+    make_snapshot(
+        generation,
+        VerificationStatus::Reviewing,
+        true,
+        n_rounds as u32,
+        5,
+        None,
+        &vec![0; n_rounds],
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2070,13 +2469,15 @@ async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // Parent in-progress with verification_metadata containing 3 rounds (current_round == 3)
+    // Parent in-progress with a native snapshot equivalent to 3 rounds (current_round == 3)
     // and verification_generation == 2.
     let mut parent = make_parent_in_progress(project_id.clone());
     parent.verification_generation = 2;
-    parent.verification_metadata = Some(make_verification_metadata_json(3));
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(2, 3))
+        .await
+        .unwrap();
 
     // Verification child linked to parent
     let child = make_verification_child(project_id, &parent_id);
@@ -2115,7 +2516,7 @@ async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
     assert_eq!(messages.len(), 1, "exactly one message must have been sent");
     assert!(
         messages[0].contains("Current round: 3"),
-        "recovery prompt must include current_round=3 derived from verification_metadata.rounds.len(); \
+         "recovery prompt must include current_round=3 derived from the native verification snapshot; \
          got: {:?}",
         messages[0]
     );
@@ -2127,7 +2528,7 @@ async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
     );
     assert!(
         messages[0].contains("<recovery_note>"),
-        "recovery prompt must contain <recovery_note> tag for plan-verifier Phase 0 RECOVER; \
+        "recovery prompt must contain <recovery_note> tag for ralphx-plan-verifier Phase 0 RECOVER; \
          got: {:?}",
         messages[0]
     );
@@ -2164,9 +2565,11 @@ async fn test_recovery_fallback_on_send_message_failure() {
 
     let mut parent = make_parent_in_progress(project_id.clone());
     parent.verification_generation = 1;
-    parent.verification_metadata = Some(make_verification_metadata_json(2));
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(1, 2))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
@@ -2224,10 +2627,12 @@ async fn test_double_spawn_prevention_processor_cleans_stale_entry() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    let mut parent = make_parent_in_progress(project_id.clone());
-    parent.verification_metadata = Some(make_verification_metadata_json(1));
+    let parent = make_parent_in_progress(project_id.clone());
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(0, 1))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
@@ -2359,10 +2764,12 @@ async fn test_mixed_recovery_verification_agent_spawned_after_ideation_placehold
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    let mut parent = make_parent_in_progress(project_id.clone());
-    parent.verification_metadata = Some(make_verification_metadata_json(2));
+    let parent = make_parent_in_progress(project_id.clone());
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
+    repo.save_verification_run_snapshot(&parent_id, &make_recovery_snapshot(0, 2))
+        .await
+        .unwrap();
 
     let child = make_verification_child(project_id, &parent_id);
     let child_id = child.id.clone();
@@ -2503,6 +2910,53 @@ async fn test_archive_resolved_parent_orphans_skips_when_parent_active() {
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived,
         "child must NOT be archived when parent's verification_in_progress=true"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_prefers_native_active_round_over_stale_parent_summary() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Unverified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+    repo.save_verification_run_snapshot(
+        &parent_id,
+        &VerificationRunSnapshot {
+            generation: 0,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 1,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![],
+            rounds: vec![],
+        },
+    )
+    .await
+    .unwrap();
+    repo.update_verification_state(&parent_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "native in-progress round state must prevent orphan archival even when the parent summary is stale"
     );
 }
 

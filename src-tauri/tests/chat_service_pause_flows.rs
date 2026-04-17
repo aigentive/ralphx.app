@@ -1,4 +1,4 @@
-use ralphx_lib::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use ralphx_lib::application::chat_service::{AppChatService, ChatService, SendMessageOptions};
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::ideation::IdeationSessionBuilder;
@@ -16,12 +16,13 @@ async fn setup_test_state() -> HttpServerState {
         team_service: Arc::new(ralphx_lib::application::TeamService::new_without_events(
             Arc::new(ralphx_lib::application::TeamStateTracker::new()),
         )),
+        delegation_service: Default::default(),
     }
 }
 
-fn build_chat_service(state: &HttpServerState) -> ClaudeChatService<tauri::Wry> {
+fn build_chat_service(state: &HttpServerState) -> AppChatService<tauri::Wry> {
     let app = &state.app_state;
-    ClaudeChatService::new(
+    AppChatService::new(
         Arc::clone(&app.chat_message_repo),
         Arc::clone(&app.chat_attachment_repo),
         Arc::clone(&app.artifact_repo),
@@ -31,6 +32,7 @@ fn build_chat_service(state: &HttpServerState) -> ClaudeChatService<tauri::Wry> 
         Arc::clone(&app.task_repo),
         Arc::clone(&app.task_dependency_repo),
         Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.delegated_session_repo),
         Arc::clone(&app.activity_event_repo),
         Arc::clone(&app.message_queue),
         Arc::clone(&app.running_agent_registry),

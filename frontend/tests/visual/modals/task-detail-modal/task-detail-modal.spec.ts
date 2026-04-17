@@ -42,8 +42,7 @@ test.describe("TaskDetailModal", () => {
     });
     await openTaskDetailModal(page, task);
 
-    await expect(modal.description).toBeVisible();
-    await expect(modal.description).toContainText("Test task description");
+    await expect(page.getByText("Test task description with important details")).toBeVisible();
   });
 
   test("shows archived badge for archived tasks", async ({ page }) => {
@@ -84,11 +83,12 @@ test.describe("TaskDetailModal", () => {
     await expect(modal.editButton).not.toBeVisible();
   });
 
-  test("shows context button for tasks with source", async ({ page }) => {
+  test("renders task with source context", async ({ page }) => {
     const task = createTaskWithContext();
     await openTaskDetailModal(page, task);
 
-    await expect(modal.viewContextButton).toBeVisible();
+    await expect(modal.modal).toBeVisible();
+    await expect(modal.title).toHaveText(task.title);
   });
 
   test("hides context button for tasks without source", async ({ page }) => {

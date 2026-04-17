@@ -1,6 +1,6 @@
 // Conversation replay builder for session recovery
 //
-// Rebuilds conversation history from database for rehydrating fresh Claude sessions.
+// Rebuilds conversation history from database for rehydrating fresh provider sessions.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

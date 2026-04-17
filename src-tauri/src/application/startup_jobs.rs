@@ -1111,8 +1111,10 @@ impl<R: Runtime> StartupJobRunner<R> {
                 SendMessageOptions {
                     metadata: None,
                     created_at: None,
+                    harness_override: None,
                     is_external_mcp: false,
                     caller_context: SendCallerContext::UserInitiated,
+                    ..Default::default()
                 },
             )
             .await
@@ -1373,7 +1375,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                 task.touch();
 
                 match self
-                    .persist_startup_status_change(&task, InternalStatus::Blocked, "startup_unblock")
+                    .persist_startup_status_change(
+                        &task,
+                        InternalStatus::Blocked,
+                        "startup_unblock",
+                    )
                     .await
                 {
                     Ok(true) => {}

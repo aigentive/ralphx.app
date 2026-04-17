@@ -7,8 +7,19 @@ export async function setupApp(page: Page) {
 
 export async function setupKanban(page: Page) {
   await setupApp(page);
-  // Wait for kanban-specific elements
-  await page.waitForSelector('[data-testid^="task-card-"]');
+  await page.evaluate(async () => {
+    const { useProjectStore } = await import("/src/stores/projectStore");
+    const { planApi } = await import("/src/api/plan");
+    const planStore = (window as Window & {
+      __planStore?: { getState(): { loadActivePlan(projectId: string): Promise<void> } };
+    }).__planStore;
+
+    useProjectStore.getState().selectProject("project-mock-1");
+    await planApi.setActivePlan("project-mock-1", "plan-mock-2", "kanban_inline");
+    await planStore?.getState().loadActivePlan("project-mock-1");
+  });
+  await page.click('[data-testid="nav-kanban"]');
+  await page.waitForSelector('[data-testid^="task-card-"]', { timeout: 10000 });
 }
 
 export async function setupIdeation(page: Page) {
@@ -69,8 +80,15 @@ export async function setupEmptyKanban(page: Page) {
   await setupApp(page);
   // Clear all tasks from the mock store to create an empty state
   await page.evaluate(() => {
-    const mockStore = (window as any).__mockStore;
-    const queryClient = (window as any).__queryClient;
+    const testWindow = window as Window & {
+      __mockStore?: {
+        tasks: Map<string, unknown>;
+        taskSteps: Map<string, unknown>;
+      };
+      __queryClient?: { invalidateQueries(): Promise<unknown> | unknown };
+    };
+    const mockStore = testWindow.__mockStore;
+    const queryClient = testWindow.__queryClient;
 
     if (mockStore) {
       // Clear only tasks, keep the project
@@ -80,7 +98,7 @@ export async function setupEmptyKanban(page: Page) {
 
     // Invalidate React Query cache to trigger refetch with empty data
     if (queryClient) {
-      queryClient.invalidateQueries();
+      void queryClient.invalidateQueries();
     }
   });
   // Wait for queries to refetch and render empty state

@@ -498,13 +498,10 @@ function AppContent() {
 
   // Phase 82: Pass currentProjectId to execution API calls for per-project scoping
   const handlePauseToggle = async () => {
-    if (executionStatus.haltMode === "stopped") {
-      toast.error("Execution was stopped. Restart tasks manually.");
-      return;
-    }
+    const isStopped = executionStatus.haltMode === "stopped";
     setIsExecutionLoading(true);
     try {
-      const response = executionStatus.isPaused
+      const response = executionStatus.isPaused || isStopped
         ? await api.execution.resume(currentProjectId || undefined)
         : await api.execution.pause(currentProjectId || undefined);
       setExecutionStatus(response.status);
@@ -512,6 +509,8 @@ function AppContent() {
       toast.error(
         executionStatus.isPaused
           ? "Failed to resume execution"
+          : isStopped
+          ? "Failed to start execution"
           : "Failed to pause execution"
       );
     } finally {

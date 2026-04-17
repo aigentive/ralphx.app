@@ -500,6 +500,7 @@ export function IntegratedChatPanel({
     isGenerating: agentStatus === "generating",
     isConversationInCurrentContext,
     agentRunStatus: agentRunQuery.data?.status ?? undefined,
+    setStreamingTasks,
     setAgentRunning,
     selectedTaskId: selectedTaskId ?? undefined,
     ideationSessionId,
@@ -542,6 +543,27 @@ export function IntegratedChatPanel({
 
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
+  const activeConversationMeta = useMemo(() => {
+    const queriedConversation = isTeammateTab
+      ? teammateConversation.data?.conversation
+      : activeConversation.data?.conversation;
+
+    if (queriedConversation) {
+      return queriedConversation;
+    }
+
+    return (
+      conversationsData?.find(
+        (conversation) => conversation.id === effectiveConversationId,
+      ) ?? null
+    );
+  }, [
+    isTeammateTab,
+    teammateConversation.data?.conversation,
+    activeConversation.data?.conversation,
+    conversationsData,
+    effectiveConversationId,
+  ]);
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
@@ -854,6 +876,13 @@ export function IntegratedChatPanel({
             contextId={ideationSessionId || selectedTaskId || null}
             agentStatus={isHistoryMode ? "idle" : agentStatus}
             storeKey={storeContextKey}
+            conversationId={effectiveConversationId}
+            providerHarness={activeConversationMeta?.providerHarness ?? null}
+            providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+            upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+            providerProfile={activeConversationMeta?.providerProfile ?? null}
+            fallbackConversation={activeConversationMeta}
+            fallbackMessages={sortedMessages}
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />
@@ -910,6 +939,8 @@ export function IntegratedChatPanel({
               isFinalizing={isFinalizing}
               teamFilter={activeTeam ? teamFilter : undefined}
               contextKey={activeTeam ? storeContextKey : undefined}
+              providerHarness={activeConversationMeta?.providerHarness ?? null}
+              providerSessionId={activeConversationMeta?.providerSessionId ?? null}
             />
           )}
 

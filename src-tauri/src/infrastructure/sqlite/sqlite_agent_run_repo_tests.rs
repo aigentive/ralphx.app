@@ -1,5 +1,6 @@
 use super::*;
-use crate::domain::entities::IdeationSessionId;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
+use crate::domain::entities::{AgentRunAttribution, AgentRunUsage, IdeationSessionId};
 use crate::testing::SqliteTestDb;
 
 fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
@@ -11,6 +12,15 @@ fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
 fn seed_ideation_conversation(db: &SqliteTestDb, claude_session_id: Option<&str>) -> ChatConversation {
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
     conversation.claude_session_id = claude_session_id.map(str::to_string);
+    db.insert_conversation(conversation)
+}
+
+fn seed_codex_ideation_conversation(db: &SqliteTestDb, provider_session_id: &str) -> ChatConversation {
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: provider_session_id.to_string(),
+    });
     db.insert_conversation(conversation)
 }
 
@@ -48,6 +58,36 @@ async fn test_get_interrupted_conversations_returns_orphaned_conversation() {
         result[0].last_run.error_message,
         Some("Orphaned on app restart".to_string())
     );
+}
+
+#[tokio::test]
+async fn test_get_interrupted_conversations_returns_orphaned_codex_conversation() {
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_codex_ideation_conversation(&db, "codex-thread-1");
+
+    let mut run = AgentRun::new(conversation.id);
+    let run_id = run.id;
+    run.status = AgentRunStatus::Cancelled;
+    run.completed_at = Some(Utc::now());
+    run.error_message = Some("Orphaned on app restart".to_string());
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("codex-thread-1".to_string());
+    agent_run_repo.create(run).await.unwrap();
+
+    let result = agent_run_repo
+        .get_interrupted_conversations()
+        .await
+        .unwrap();
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].conversation.id, conversation.id);
+    assert_eq!(result[0].conversation.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        result[0].conversation.provider_session_id.as_deref(),
+        Some("codex-thread-1")
+    );
+    assert_eq!(result[0].last_run.id, run_id);
+    assert_eq!(result[0].last_run.harness, Some(AgentHarnessKind::Codex));
 }
 
 #[tokio::test]
@@ -144,7 +184,20 @@ async fn test_create_and_get_by_id() {
     let (db, repo) = setup_repo();
     let conv = db.seed_ideation_conversation();
 
-    let run = AgentRun::new(conv.id);
+    let mut run = AgentRun::new(conv.id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("session-123".to_string());
+    run.logical_model = Some("gpt-5.4".to_string());
+    run.effective_model_id = Some("gpt-5.4".to_string());
+    run.logical_effort = Some(LogicalEffort::XHigh);
+    run.effective_effort = Some("high".to_string());
+    run.input_tokens = Some(1200);
+    run.output_tokens = Some(450);
+    run.cache_creation_tokens = Some(80);
+    run.cache_read_tokens = Some(320);
+    run.estimated_usd = Some(0.0215);
+    run.approval_policy = Some("on-request".to_string());
+    run.sandbox_mode = Some("workspace-write".to_string());
     let run_id = run.id;
     repo.create(run).await.unwrap();
 
@@ -154,6 +207,58 @@ async fn test_create_and_get_by_id() {
     assert_eq!(r.id, run_id);
     assert_eq!(r.conversation_id, conv.id);
     assert_eq!(r.status, AgentRunStatus::Running);
+    assert_eq!(r.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(r.provider_session_id, Some("session-123".to_string()));
+    assert_eq!(r.logical_model, Some("gpt-5.4".to_string()));
+    assert_eq!(r.effective_model_id, Some("gpt-5.4".to_string()));
+    assert_eq!(r.logical_effort, Some(LogicalEffort::XHigh));
+    assert_eq!(r.effective_effort, Some("high".to_string()));
+    assert_eq!(r.input_tokens, Some(1200));
+    assert_eq!(r.output_tokens, Some(450));
+    assert_eq!(r.cache_creation_tokens, Some(80));
+    assert_eq!(r.cache_read_tokens, Some(320));
+    assert_eq!(r.estimated_usd, Some(0.0215));
+    assert_eq!(r.approval_policy, Some("on-request".to_string()));
+    assert_eq!(r.sandbox_mode, Some("workspace-write".to_string()));
+}
+
+#[tokio::test]
+async fn test_update_attribution_updates_agent_run_metadata_fields() {
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.update_attribution(
+        &run_id,
+        &AgentRunAttribution {
+            harness: Some(AgentHarnessKind::Claude),
+            provider_session_id: Some("claude-session-321".to_string()),
+            upstream_provider: Some("z_ai".to_string()),
+            provider_profile: Some("z_ai".to_string()),
+            logical_model: Some("glm-4.7".to_string()),
+            effective_model_id: Some("glm-4.7".to_string()),
+            logical_effort: Some(LogicalEffort::High),
+            effective_effort: Some("high".to_string()),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
+        retrieved.provider_session_id.as_deref(),
+        Some("claude-session-321")
+    );
+    assert_eq!(retrieved.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(retrieved.provider_profile.as_deref(), Some("z_ai"));
+    assert_eq!(retrieved.logical_model.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.effective_model_id.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(retrieved.effective_effort.as_deref(), Some("high"));
 }
 
 #[tokio::test]
@@ -162,6 +267,36 @@ async fn test_get_by_id_not_found() {
 
     let fake_id = AgentRunId::from_string("nonexistent-id".to_string());
     assert!(repo.get_by_id(&fake_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_update_usage_persists_fields() {
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.update_usage(
+        &run_id,
+        &AgentRunUsage {
+            input_tokens: Some(77),
+            output_tokens: Some(31),
+            cache_creation_tokens: Some(9),
+            cache_read_tokens: Some(18),
+            estimated_usd: Some(0.0042),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.input_tokens, Some(77));
+    assert_eq!(retrieved.output_tokens, Some(31));
+    assert_eq!(retrieved.cache_creation_tokens, Some(9));
+    assert_eq!(retrieved.cache_read_tokens, Some(18));
+    assert_eq!(retrieved.estimated_usd, Some(0.0042));
 }
 
 // ─── get_latest / get_active ─────────────────────────────────────────────────

@@ -9,7 +9,7 @@
 //   IdeationPlanCreated     — via create_plan_artifact handler
 //   IdeationProposalsReady  — via finalize_proposals handler
 //   IdeationSessionAccepted — via finalize_proposals handler (when session converts)
-//   IdeationVerified        — via update_plan_verification handler (status=verified)
+//   IdeationVerified        — via post_verification_status handler (status=verified)
 //   IdeationAutoProposeSent — via auto_propose_with_retry (success path)
 //   IdeationAutoProposeFailed — via auto_propose_with_retry (all retries exhausted)
 //
@@ -34,7 +34,7 @@ use ralphx_lib::domain::repositories::ExternalEventsRepository;
 use ralphx_lib::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
 use ralphx_lib::http_server::handlers::{
     auto_propose_with_retry, create_plan_artifact, finalize_proposals, start_ideation_http,
-    update_plan_verification, StartIdeationRequest,
+    post_verification_status, StartIdeationRequest,
 };
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::{
@@ -116,6 +116,7 @@ fn make_http_state(
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -146,7 +147,10 @@ fn make_project(id: &str) -> Project {
 }
 
 fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
-    TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
+    let mut proposal =
+        TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium);
+    proposal.affected_paths = Some(r#"["src/ideation/test_scope.rs"]"#.to_string());
+    proposal
 }
 
 // ============================================================================
@@ -173,7 +177,11 @@ async fn get_events(
 async fn test_session_created_emits_event() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-session-created";
     state
@@ -287,7 +295,11 @@ async fn test_plan_created_emits_event() {
 async fn test_proposals_ready_and_session_accepted_emit_events() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-proposals-ready";
     let session_id = IdeationSessionId::new();
@@ -380,7 +392,11 @@ async fn test_proposals_ready_and_session_accepted_emit_events() {
 async fn test_session_accepted_emits_event_when_proposals_applied() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-session-accepted";
     let session_id = IdeationSessionId::new();
@@ -479,7 +495,7 @@ async fn test_verified_emits_event() {
         .unwrap();
 
     // Transition Unverified → Reviewing first (required before → Verified)
-    let review_result = update_plan_verification(
+    let review_result = post_verification_status(
         State(state.clone()),
         Path(session_id.as_str().to_string()),
         Json(UpdateVerificationRequest {
@@ -496,12 +512,12 @@ async fn test_verified_emits_event() {
     .await;
     assert!(
         review_result.is_ok(),
-        "update_plan_verification(reviewing) failed: {:?}",
+        "post_verification_status(reviewing) failed: {:?}",
         review_result.err()
     );
 
     // Now transition Reviewing → Verified
-    let result = update_plan_verification(
+    let result = post_verification_status(
         State(state),
         Path(session_id.as_str().to_string()),
         Json(UpdateVerificationRequest {
@@ -519,7 +535,7 @@ async fn test_verified_emits_event() {
 
     assert!(
         result.is_ok(),
-        "update_plan_verification(verified) failed: {:?}",
+        "post_verification_status(verified) failed: {:?}",
         result.err()
     );
 

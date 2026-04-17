@@ -96,12 +96,22 @@ pub fn start_teammate_stream<R: Runtime>(
                     context_type: context_type.parse::<ChatContextType>().unwrap_or(ChatContextType::Ideation),
                     context_id: teammate_ctx_id,
                     claude_session_id: None,
+                    provider_session_id: None,
+                    provider_harness: None,
+                    upstream_provider: None,
+                    provider_profile: None,
                     title: Some(format!("Teammate: {}", teammate_name)),
                     message_count: 0,
                     last_message_at: None,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                     parent_conversation_id: None,
+                    attribution_backfill_status: None,
+                    attribution_backfill_source: None,
+                    attribution_backfill_source_path: None,
+                    attribution_backfill_last_attempted_at: None,
+                    attribution_backfill_completed_at: None,
+                    attribution_backfill_error_summary: None,
                 };
                 let conv_id = conv.id;
                 match conv_repo.create(conv).await {
@@ -177,6 +187,20 @@ pub fn start_teammate_stream<R: Runtime>(
                     parent_message_id: None,
                     tool_calls: None,
                     content_blocks: None,
+                    attribution_source: None,
+                    provider_harness: None,
+                    provider_session_id: None,
+                    upstream_provider: None,
+                    provider_profile: None,
+                    logical_model: None,
+                    effective_model_id: None,
+                    logical_effort: None,
+                    effective_effort: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    cache_creation_tokens: None,
+                    cache_read_tokens: None,
+                    estimated_usd: None,
                     created_at: chrono::Utc::now(),
                 };
                 let msg_id = msg.id.as_str().to_string();
@@ -332,6 +356,20 @@ pub fn start_teammate_stream<R: Runtime>(
                                             parent_message_id: None,
                                             tool_calls: None,
                                             content_blocks: None,
+                                            attribution_source: None,
+                                            provider_harness: None,
+                                            provider_session_id: None,
+                                            upstream_provider: None,
+                                            provider_profile: None,
+                                            logical_model: None,
+                                            effective_model_id: None,
+                                            logical_effort: None,
+                                            effective_effort: None,
+                                            input_tokens: None,
+                                            output_tokens: None,
+                                            cache_creation_tokens: None,
+                                            cache_read_tokens: None,
+                                            estimated_usd: None,
                                             created_at: chrono::Utc::now(),
                                         };
                                         let new_id = msg.id.as_str().to_string();
@@ -407,6 +445,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "conversation_id": conversation_id_str,
+                                            "append_to_previous": true,
                                         }),
                                     );
                                     if let Err(ref e) = emit_result {
@@ -443,6 +482,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "conversation_id": conversation_id_str,
+                                            "append_to_previous": true,
                                         }),
                                     );
                                 }

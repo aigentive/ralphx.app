@@ -62,6 +62,22 @@ impl ClientCapabilities {
         }
     }
 
+    /// Create capabilities for Codex CLI client.
+    pub fn codex() -> Self {
+        Self {
+            client_type: ClientType::Codex,
+            supports_shell: true,
+            supports_filesystem: true,
+            supports_streaming: true,
+            supports_mcp: true,
+            max_context_tokens: 200_000,
+            models: vec![
+                ModelInfo::new("gpt-5.4", "GPT-5.4", 128_000),
+                ModelInfo::new("gpt-5.4-mini", "GPT-5.4 Mini", 128_000),
+            ],
+        }
+    }
+
     /// Create capabilities for mock client
     pub fn mock() -> Self {
         Self {

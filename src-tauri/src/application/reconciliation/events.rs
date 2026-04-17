@@ -9,7 +9,7 @@ use crate::domain::entities::{
     MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
-use crate::infrastructure::agents::claude::reconciliation_config;
+use crate::application::harness_runtime_registry::default_reconciliation_merger_timeout_secs;
 
 use super::policy::{RecoveryContext, RecoveryEvidence, RecoveryPromptAction, RecoveryPromptEvent};
 use super::ReconciliationRunner;
@@ -292,7 +292,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Use configured timeout, not effective_age, because effective_age accumulates
         // across retries (ExecuteEntryActions doesn't create new status_history entries,
         // so latest_status_transition_age returns the original Merging timestamp).
-        let timeout_secs = reconciliation_config().merger_timeout_secs as i64;
+        let timeout_secs = default_reconciliation_merger_timeout_secs() as i64;
 
         let failed_event = MergeRecoveryEvent::new(
             MergeRecoveryEventKind::AttemptFailed,

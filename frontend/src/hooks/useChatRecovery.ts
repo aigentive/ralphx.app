@@ -10,13 +10,15 @@
  * - Merge watchdog polling
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatKeys } from "@/hooks/useChat";
 import { taskKeys } from "@/hooks/useTasks";
 import type { ContextType } from "@/types/chat-conversation";
+import type { StreamingTask } from "@/types/streaming-task";
 import { MERGE_STATUSES } from "@/types/status";
 import { chatApi } from "@/api/chat";
+import { mergeActiveStreamingTasks } from "./chat-active-state";
 
 // ============================================================================
 // Types
@@ -37,6 +39,9 @@ interface UseChatRecoveryProps {
   isConversationInCurrentContext: boolean;
   /** Backend agent run status */
   agentRunStatus: string | undefined;
+  setStreamingTasks?: (
+    updater: (prev: Map<string, StreamingTask>) => Map<string, StreamingTask>,
+  ) => void;
   setAgentRunning: (contextKey: string, isRunning: boolean) => void;
   selectedTaskId: string | undefined;
   ideationSessionId: string | undefined;
@@ -60,6 +65,7 @@ export function useChatRecovery({
   isGenerating,
   isConversationInCurrentContext,
   agentRunStatus,
+  setStreamingTasks,
   setAgentRunning,
   selectedTaskId,
   ideationSessionId,
@@ -67,6 +73,43 @@ export function useChatRecovery({
   effectiveStatus,
 }: UseChatRecoveryProps) {
   const queryClient = useQueryClient();
+  const hydratedConversationIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      hydratedConversationIdRef.current = null;
+      return;
+    }
+    if (isHistoryMode || !isAgentContext || !isConversationInCurrentContext || !setStreamingTasks) {
+      return;
+    }
+    if (hydratedConversationIdRef.current === activeConversationId) {
+      return;
+    }
+
+    hydratedConversationIdRef.current = activeConversationId;
+    let cancelled = false;
+
+    void chatApi
+      .getConversationActiveState(activeConversationId)
+      .then((activeState) => {
+        if (cancelled || activeState.streaming_tasks.length === 0) return;
+        setStreamingTasks((prev) => mergeActiveStreamingTasks(prev, activeState.streaming_tasks));
+      })
+      .catch(() => {
+        // Best-effort recovery only. Live events remain authoritative.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeConversationId,
+    isHistoryMode,
+    isAgentContext,
+    isConversationInCurrentContext,
+    setStreamingTasks,
+  ]);
 
   // Recovery fallback: if agent is running but events were missed, reflect it in UI
   useEffect(() => {

@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::AppState;
 use super::chat_service_context;
-use super::chat_service_helpers::get_assistant_role;
+use super::chat_service_helpers::{effective_team_mode_for_harness, get_assistant_role};
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
     AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunStartedPayload,
@@ -17,6 +17,7 @@ use super::chat_service_types::{
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, ArtifactRepository, ChatMessageRepository,
@@ -33,7 +34,7 @@ pub(super) fn queue_processing_blocked_by_pause(
     super::uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
-fn queued_message_resume_in_place(metadata_override: Option<&str>) -> bool {
+pub(super) fn queued_message_resume_in_place(metadata_override: Option<&str>) -> bool {
     metadata_override
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
         .and_then(|value| value.get("resume_in_place").and_then(|v| v.as_bool()))
@@ -60,6 +61,7 @@ fn with_resume_in_place_metadata(metadata_override: Option<String>) -> Option<St
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     context_type: ChatContextType,
+    harness: AgentHarnessKind,
     context_id: &str,
     conversation_id: ChatConversationId,
     session_id: &str,
@@ -221,16 +223,18 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:run_started",
-                    AgentRunStartedPayload {
-                        run_id: queued_run_id.clone(),
-                        conversation_id: conversation_id.as_str().to_string(),
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        run_chain_id: run_chain_id.map(|s| s.to_string()),
-                        parent_run_id: parent_run_id.map(|s| s.to_string()),
-                        effective_model_id: None,
-                        effective_model_label: None,
-                    },
+                    AgentRunStartedPayload::with_provider_session(
+                        queued_run_id.clone(),
+                        conversation_id.as_str().to_string(),
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        run_chain_id.map(|s| s.to_string()),
+                        parent_run_id.map(|s| s.to_string()),
+                        None,
+                        None,
+                        Some(harness),
+                        Some(session_id.to_string()),
+                    ),
                 );
             }
 
@@ -316,9 +320,22 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 let app_state = handle.state::<AppState>();
                 Arc::clone(&app_state.ideation_model_settings_repo)
             });
+            let agent_lane_settings_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.agent_lane_settings_repo)
+            });
+            let ideation_effort_settings_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.ideation_effort_settings_repo)
+            });
+            let delegated_session_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.delegated_session_repo)
+            });
 
             // Build and spawn resume command
-            let spawnable = match chat_service_context::build_resume_command(
+            let provider_spawnable = match chat_service_context::build_resume_command_for_harness(
+                harness,
                 cli_path,
                 plugin_dir,
                 context_type,
@@ -330,27 +347,36 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 team_mode,
                 Arc::clone(chat_attachment_repo),
                 Arc::clone(artifact_repo),
+                agent_lane_settings_repo,
+                ideation_effort_settings_repo,
                 ideation_model_settings_repo,
                 Arc::clone(ideation_session_repo),
+                Arc::clone(
+                    delegated_session_repo
+                        .as_ref()
+                        .expect("delegated session repo available"),
+                ),
                 Arc::clone(task_repo),
-                &[], // queue resume path — session history not injected here
-                0,   // total_available: not needed here — session_messages is empty
-                None, // effort_override: queue resume uses default
-                None, // model_override: queue resume uses resolved ideation settings when available
+                &[],
+                0,
+                None,
+                None,
+                false,
             )
-            .await
-            {
-                Ok(cmd) => cmd,
+            .await {
+                Ok(spawnable) => spawnable,
                 Err(err) => {
                     tracing::warn!(
                         error = %err,
                         %context_type,
                         context_id,
+                        harness = %harness,
                         "queue spawn blocked"
                     );
                     return total_processed;
                 }
             };
+            let spawnable = provider_spawnable.spawnable;
 
             tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
             match spawnable.spawn().await {
@@ -363,12 +389,24 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         conversation_id,
                         &[],
                         &[],
-                    );
+                    )
+                    .with_attribution(crate::domain::entities::ChatMessageAttribution {
+                        attribution_source: Some("native_runtime".to_string()),
+                        provider_harness: Some(harness),
+                        provider_session_id: Some(session_id.to_string()),
+                        upstream_provider: None,
+                        provider_profile: None,
+                        logical_model: None,
+                        effective_model_id: None,
+                        logical_effort: None,
+                        effective_effort: None,
+                    });
                     let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
                     let _ = chat_message_repo.create(queue_assistant_msg).await;
 
                     match process_stream_background(
                         child,
+                        harness,
                         context_type,
                         context_id,
                         &conversation_id,
@@ -380,7 +418,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         question_state.clone(),
                         cancellation_token.clone(),
                         None, // Queue processing doesn't need team events
-                        team_mode,
+                        effective_team_mode_for_harness(team_mode, harness),
                         streaming_state_cache.clone(),
                         None, // Queue processing doesn't have registry in scope
                         None, // Queue processing doesn't complete agent_run
@@ -394,7 +432,21 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             let response = outcome.response_text;
                             let tools = outcome.tool_calls;
                             let blocks = outcome.content_blocks;
+                            let provider_session_id = outcome.session_id;
                             let queue_stderr = outcome.stderr_text;
+                            if let Some(ref provider_session_id) = provider_session_id {
+                                let _ = chat_message_repo
+                                    .update_provider_session_ref(
+                                        &crate::domain::entities::ChatMessageId::from_string(
+                                            queue_assistant_msg_id.clone(),
+                                        ),
+                                        &crate::domain::agents::ProviderSessionRef {
+                                            harness,
+                                            provider_session_id: provider_session_id.clone(),
+                                        },
+                                    )
+                                    .await;
+                            }
                             if has_meaningful_output(&response, tools.len(), &queue_stderr) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
                                 let content_blocks_json = serde_json::to_string(&blocks).ok();

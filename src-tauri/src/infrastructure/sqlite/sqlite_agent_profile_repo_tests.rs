@@ -173,10 +173,10 @@ async fn test_seed_builtin_profiles() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5); // worker, reviewer, supervisor, orchestrator, deep_researcher
+    assert_eq!(all.len(), 4); // worker, reviewer, orchestrator, deep_researcher
 
     let builtin = repo.get_builtin().await.unwrap();
-    assert_eq!(builtin.len(), 5);
+    assert_eq!(builtin.len(), 4);
 }
 
 #[tokio::test]
@@ -187,7 +187,7 @@ async fn test_seed_builtin_profiles_idempotent() {
     repo.seed_builtin_profiles().await.unwrap();
 
     let all = repo.get_all().await.unwrap();
-    assert_eq!(all.len(), 5); // Still 5, not duplicated
+    assert_eq!(all.len(), 4); // Still 4, not duplicated
 }
 
 // Note: ProfileRole Display/FromStr trait implementations are tested in
@@ -196,8 +196,8 @@ async fn test_seed_builtin_profiles_idempotent() {
 #[tokio::test]
 async fn test_profile_json_serialization() {
     let (_db, repo) = create_test_repo();
-    let profile = AgentProfile::supervisor();
-    let id = AgentProfileId::from_string("supervisor-1");
+    let profile = AgentProfile::orchestrator();
+    let id = AgentProfileId::from_string("orchestrator-1");
 
     repo.create(&id, &profile, true).await.unwrap();
 

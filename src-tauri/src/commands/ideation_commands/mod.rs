@@ -17,9 +17,11 @@ pub(crate) fn is_local_proposal(proposal: &TaskProposal, project_dir: &Path) -> 
 }
 
 mod ideation_commands_apply;
+mod ideation_commands_agent_lanes;
 mod ideation_commands_chat;
 mod ideation_commands_cross_project;
 mod ideation_commands_dependencies;
+mod ideation_commands_harness_availability;
 pub mod ideation_commands_effort;
 pub mod ideation_commands_export;
 pub mod ideation_commands_model;
@@ -33,11 +35,13 @@ pub use ideation_commands_types::*;
 
 // Re-export all commands
 pub use ideation_commands_apply::*;
+pub use ideation_commands_agent_lanes::*;
 #[doc(hidden)]
 pub use ideation_commands_apply::apply_proposals_core;
 pub use ideation_commands_chat::*;
 pub use ideation_commands_cross_project::*;
 pub use ideation_commands_dependencies::*;
+pub use ideation_commands_harness_availability::*;
 pub use ideation_commands_effort::*;
 pub use ideation_commands_export::*;
 pub use ideation_commands_model::*;
@@ -49,3 +53,8 @@ pub use ideation_commands_session::create_ideation_session_impl;
 
 // Re-export helper function for tests
 pub use ideation_commands_dependencies::build_dependency_graph;
+#[doc(hidden)]
+pub use ideation_commands_dependencies::analyze_dependencies_for_session;
+
+#[cfg(test)]
+mod ideation_commands_orchestrator_tests;

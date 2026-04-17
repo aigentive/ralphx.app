@@ -2,13 +2,13 @@
 
 ## Overview
 
-RalphX automatically recovers from expired Claude sessions, eliminating interruptions when your conversation history expires. If your session becomes stale (e.g., after Claude Code cleanup, reinstallation, or file deletion), RalphX seamlessly restores your conversation history and continues where you left off.
+RalphX automatically recovers from stale agent-harness sessions so expired conversations do not force you to restart from scratch. The current recovery path grew out of the original Claude-only implementation, but the runtime now stores provider-neutral session metadata so newer multi-harness sessions can follow the same recovery flow where supported.
 
 ## How It Works
 
 ### Before Session Recovery
 
-When a Claude session expired, you would see:
+When a harness session expired, you would see:
 ```
 [Agent error: No conversation found with session ID abc123]
 ```
@@ -23,7 +23,7 @@ You would need to:
 When a session expires now:
 1. RalphX detects the expired session automatically
 2. Rebuilds your conversation history from the local database
-3. Creates a fresh Claude session with restored context
+3. Creates a fresh harness session with restored context
 4. Retries your message transparently
 5. Shows a brief notification: "Session restored from local history"
 
@@ -45,7 +45,7 @@ You: "Let's continue implementing the login feature"
 [Session expired in background]
 [RalphX automatically recovers - 2 seconds]
 [Brief banner: "Session restored from local history"]
-Claude: "Continuing with the login feature implementation..."
+Agent: "Continuing with the login feature implementation..."
 ```
 
 **What you see:** A small banner notification, then your response appears normally.
@@ -61,9 +61,9 @@ If recovery fails (e.g., no history available, network issue):
 ## When Recovery Happens
 
 Session recovery activates when:
-- Claude CLI session files are deleted from `~/.claude/projects/`
+- The selected harness session files/state are deleted or become invalid
 - Session expires after long inactivity
-- Claude Code is reinstalled
+- The harness CLI is reinstalled
 - Session storage is cleared manually
 
 It does **not** run for:
@@ -115,7 +115,7 @@ For developers and curious users:
 1. **Detection**: RalphX detects error message: "No conversation found with session ID"
 2. **History Extraction**: Queries local database for message history
 3. **Context Rebuild**: Generates a bootstrap prompt with conversation turns
-4. **Fresh Session**: Spawns new Claude CLI session with restored context
+4. **Fresh Session**: Spawns a new harness session with restored context
 5. **Retry**: Re-sends your original message with new session
 6. **Update**: Stores new session ID for future messages
 
@@ -151,9 +151,9 @@ grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" .ar
 ## Troubleshooting
 
 ### I see the recovery banner frequently
-This indicates Claude sessions are expiring often. Possible causes:
-- Claude Code cleanup running too frequently
-- Manual deletion of `~/.claude/projects/` directory
+This indicates harness sessions are expiring often. Possible causes:
+- Harness-specific cleanup running too frequently
+- Manual deletion of local harness session state (for Claude-backed sessions this is usually `~/.claude/projects/`)
 - System storage cleanup tools
 
 **Solution:** Normal behavior. Recovery handles it automatically.
@@ -176,7 +176,7 @@ If you see `[Agent error: No conversation found...]` even with recovery:
 ## FAQ
 
 **Q: Does recovery affect my conversation quality?**
-A: No. Claude receives the full conversation history, same as if the session never expired.
+A: No. The selected harness receives the reconstructed recent conversation history, same as if the session never expired.
 
 **Q: Will I be charged more for recovery?**
 A: No. Recovery uses the same API calls as normal conversation. The bootstrap prompt is transparent.
@@ -203,9 +203,10 @@ Manually trigger recovery for testing:
 ```bash
 # 1. Start conversation in RalphX
 # 2. Find session ID
-sqlite3 src-tauri/ralphx.db "SELECT claude_session_id FROM chat_conversations WHERE claude_session_id IS NOT NULL LIMIT 1;"
+sqlite3 src-tauri/ralphx.db "SELECT provider_session_id FROM chat_conversations WHERE provider_session_id IS NOT NULL LIMIT 1;"
 
 # 3. Delete session directory
+# Claude-backed sessions
 rm -rf ~/.claude/projects/<session-id>
 
 # 4. Send new message in RalphX

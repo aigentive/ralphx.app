@@ -6,12 +6,17 @@
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::time::Duration;
 
+use crate::application::AppState;
 use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::git_service::checkout_free::update_branch_ref;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
+use crate::application::runtime_factory::{
+    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
+    build_transition_service_with_fallback,
+};
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
@@ -27,8 +32,11 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::infrastructure::agents::claude::scheduler_config;
-use crate::infrastructure::agents::claude::reconciliation_config;
+use crate::application::harness_runtime_registry::{
+    default_reconciliation_merge_watcher_grace_secs,
+    default_reconciliation_merge_watcher_poll_secs,
+    default_scheduler_merge_settle_ms,
+};
 use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, merge_metadata_into, parse_metadata,
     run_validation_commands, set_source_conflict_resolved,
@@ -84,8 +92,8 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
 }
 
 impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
-    fn build_transition_service(&self) -> TaskTransitionService<R> {
-        let service = TaskTransitionService::new(
+    fn build_runtime_factory_deps(&self) -> RuntimeFactoryDeps {
+        RuntimeFactoryDeps::from_core(
             Arc::clone(self.task_repo),
             Arc::clone(self.task_dependency_repo),
             Arc::clone(self.project_repo),
@@ -97,59 +105,36 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             Arc::clone(self.activity_event_repo),
             Arc::clone(self.message_queue),
             Arc::clone(self.running_agent_registry),
-            Arc::clone(self.execution_state),
-            self.app_handle.cloned(),
             Arc::clone(self.memory_event_repo),
-        );
-        let service = if let Some(repo) = self.execution_settings_repo {
-            service.with_execution_settings_repo(Arc::clone(repo))
-        } else {
-            service
-        };
-        let service = if let Some(ref repo) = self.plan_branch_repo {
-            service.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            service
-        };
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service.with_interactive_process_registry(Arc::clone(ipr))
-        } else {
-            service
-        }
+        )
+        .with_runtime_support(
+            self.execution_settings_repo.map(Arc::clone),
+            self.app_handle.and_then(|handle| {
+                handle
+                    .try_state::<AppState>()
+                    .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+            }),
+            self.plan_branch_repo.clone(),
+            self.interactive_process_registry.clone(),
+        )
+    }
+
+    fn build_transition_service(&self) -> TaskTransitionService<R> {
+        let deps = self.build_runtime_factory_deps();
+        build_transition_service_with_fallback(
+            &self.app_handle.cloned(),
+            Arc::clone(self.execution_state),
+            &deps,
+        )
     }
 
     fn build_scheduler_service(&self) -> TaskSchedulerService<R> {
-        let scheduler = TaskSchedulerService::new(
+        let deps = self.build_runtime_factory_deps();
+        build_task_scheduler_with_fallback(
+            &self.app_handle.cloned(),
             Arc::clone(self.execution_state),
-            Arc::clone(self.project_repo),
-            Arc::clone(self.task_repo),
-            Arc::clone(self.task_dependency_repo),
-            Arc::clone(self.chat_message_repo),
-            Arc::clone(self.chat_attachment_repo),
-            Arc::clone(self.conversation_repo),
-            Arc::clone(self.agent_run_repo),
-            Arc::clone(self.ideation_session_repo),
-            Arc::clone(self.activity_event_repo),
-            Arc::clone(self.message_queue),
-            Arc::clone(self.running_agent_registry),
-            Arc::clone(self.memory_event_repo),
-            self.app_handle.cloned(),
-        );
-        let scheduler = if let Some(repo) = self.execution_settings_repo {
-            scheduler.with_execution_settings_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
-        let scheduler = if let Some(ref repo) = self.plan_branch_repo {
-            scheduler.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
-        if let Some(ref ipr) = self.interactive_process_registry {
-            scheduler.with_interactive_process_registry(Arc::clone(ipr))
-        } else {
-            scheduler
-        }
+            &deps,
+        )
     }
 
     async fn transition_incomplete(&self, reason: &str) {
@@ -1081,7 +1066,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
         let scheduler = Arc::new(scheduler);
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         // Auto-complete path is internal — no UI settle needed → merge_settle_ms
-        let merge_settle_ms = scheduler_config().merge_settle_ms;
+        let merge_settle_ms = default_scheduler_merge_settle_ms();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
             scheduler.try_schedule_ready_tasks().await;
@@ -1284,9 +1269,8 @@ pub(crate) fn spawn_merge_completion_watcher(
     project_repo: Arc<dyn ProjectRepository>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
 ) {
-    let cfg = reconciliation_config();
-    let initial_grace = Duration::from_secs(cfg.merge_watcher_grace_secs);
-    let poll_interval = Duration::from_secs(cfg.merge_watcher_poll_secs);
+    let initial_grace = Duration::from_secs(default_reconciliation_merge_watcher_grace_secs());
+    let poll_interval = Duration::from_secs(default_reconciliation_merge_watcher_poll_secs());
     tokio::spawn(async move {
         merge_completion_watcher_loop(
             task_id,

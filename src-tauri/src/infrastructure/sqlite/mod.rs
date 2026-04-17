@@ -7,6 +7,7 @@ pub mod migrations;
 pub mod sqlite_api_key_repo;
 pub mod sqlite_active_plan_repo;
 pub mod sqlite_activity_event_repo;
+pub mod sqlite_agent_lane_settings_repo;
 pub mod sqlite_agent_profile_repo;
 pub mod sqlite_agent_run_repo;
 pub mod sqlite_app_state_repo;
@@ -22,6 +23,9 @@ mod sqlite_chat_conversation_repo_tests;
 pub mod sqlite_chat_message_repo;
 #[cfg(test)]
 mod sqlite_chat_message_repo_tests;
+pub mod sqlite_delegated_session_repo;
+#[cfg(test)]
+mod sqlite_delegated_session_repo_tests;
 pub mod sqlite_execution_plan_repo;
 pub mod sqlite_external_events_repo;
 #[cfg(test)]
@@ -76,6 +80,7 @@ pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_api_key_repo::SqliteApiKeyRepository;
 pub use sqlite_active_plan_repo::SqliteActivePlanRepository;
 pub use sqlite_activity_event_repo::SqliteActivityEventRepository;
+pub use sqlite_agent_lane_settings_repo::SqliteAgentLaneSettingsRepository;
 pub use sqlite_agent_profile_repo::SqliteAgentProfileRepository;
 pub use sqlite_agent_run_repo::SqliteAgentRunRepository;
 pub use sqlite_app_state_repo::SqliteAppStateRepository;
@@ -85,6 +90,7 @@ pub use sqlite_artifact_repo::SqliteArtifactRepository;
 pub use sqlite_chat_attachment_repo::SqliteChatAttachmentRepository;
 pub use sqlite_chat_conversation_repo::SqliteChatConversationRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
+pub use sqlite_delegated_session_repo::SqliteDelegatedSessionRepository;
 pub use sqlite_execution_plan_repo::SqliteExecutionPlanRepository;
 pub use sqlite_external_events_repo::SqliteExternalEventsRepository;
 pub use sqlite_execution_settings_repo::{

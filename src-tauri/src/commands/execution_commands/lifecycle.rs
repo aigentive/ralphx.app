@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 
 /// Pause execution (stops picking up new tasks and transitions running tasks to Paused)
 /// This transitions all agent-active tasks to Paused status via TransitionHandler.
@@ -48,25 +49,8 @@ pub async fn pause_execution(
     app_state.interactive_process_registry.clear().await;
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -160,7 +144,9 @@ pub async fn pause_execution(
 /// Resume execution (restores Paused tasks and allows picking up new tasks)
 /// This restores only Paused tasks (NOT Stopped) to their previous agent-active state.
 /// Uses status history to find the pre-pause state and re-runs entry actions.
-/// After restoring, triggers the scheduler to pick up waiting Ready tasks.
+/// If execution was previously Stopped, this simply reopens the scheduler gate so
+/// manually restarted Ready tasks can run again. After restoring, triggers the
+/// scheduler to pick up waiting Ready tasks.
 /// Phase 82: Optional project_id for per-project scoping.
 ///
 /// ## Resume contract
@@ -172,8 +158,8 @@ pub async fn pause_execution(
 ///
 /// ## Stopped vs Paused
 /// `Stopped` tasks are intentionally excluded. `Stopped` is terminal — requires the user
-/// to manually trigger `Retry` (→ `ready`) before the task can re-execute. Only `Paused`
-/// (non-terminal) is auto-restored by resume.
+/// to manually trigger `Retry` (→ `ready`) before the task can re-execute. `resume_execution`
+/// may still clear the global halt gate after a stop, but it never auto-restores stopped tasks.
 #[tauri::command]
 pub async fn resume_execution(
     project_id: Option<String>,
@@ -181,7 +167,7 @@ pub async fn resume_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
-    ensure_resume_allowed(&app_state).await?;
+    let previous_halt_mode = load_execution_halt_mode(&app_state).await?;
 
     // Sync runtime quota with persisted project settings before can_start_task() loops
     let project_id = project_id.map(|id| ProjectId::from_string(id));
@@ -195,25 +181,8 @@ pub async fn resume_execution(
     persist_execution_halt_mode(&app_state, ExecutionHaltMode::Running).await?;
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
@@ -306,12 +275,7 @@ pub async fn resume_execution(
             // Re-run entry actions to respawn the agent
             // Fetch fresh task after transition
             if let Ok(Some(mut restored_task)) = app_state.task_repo.get_by_id(&task.id).await {
-                // Clear pause_reason metadata on successful resume
-                restored_task.metadata = Some(
-                    crate::application::chat_service::PauseReason::clear_from_task_metadata(
-                        restored_task.metadata.as_deref(),
-                    ),
-                );
+                prepare_resumed_task_for_entry_actions(&mut restored_task);
                 restored_task.touch();
                 let _ = app_state.task_repo.update(&restored_task).await;
 
@@ -344,7 +308,7 @@ pub async fn resume_execution(
                 "haltMode": "running",
                 "runningCount": execution_state.running_count(),
                 "maxConcurrent": execution_state.max_concurrent(),
-                "reason": "resumed",
+                "reason": if previous_halt_mode == ExecutionHaltMode::Stopped { "started" } else { "resumed" },
                 "projectId": effective_project_id.as_ref().map(|p| p.as_str()),
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }),
@@ -353,25 +317,10 @@ pub async fn resume_execution(
 
     // Trigger scheduler to pick up waiting Ready tasks
     let scheduler = Arc::new(
-        TaskSchedulerService::new(
+        app_state.build_task_scheduler_for_runtime(
             Arc::clone(&execution_state),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_attachment_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&app_state.memory_event_repo),
             app_state.app_handle.clone(),
-        )
-        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
+        ),
     );
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     // Set active project scope before scheduling to prevent cross-project scheduling
@@ -394,35 +343,9 @@ pub async fn resume_execution(
             &execution_state_arc,
             || {
                 Arc::new(
-                    ClaudeChatService::new(
-                        Arc::clone(&app_state.chat_message_repo),
-                        Arc::clone(&app_state.chat_attachment_repo),
-                        Arc::clone(&app_state.artifact_repo),
-                        Arc::clone(&app_state.chat_conversation_repo),
-                        Arc::clone(&app_state.agent_run_repo),
-                        Arc::clone(&app_state.project_repo),
-                        Arc::clone(&app_state.task_repo),
-                        Arc::clone(&app_state.task_dependency_repo),
-                        Arc::clone(&app_state.ideation_session_repo),
-                        Arc::clone(&app_state.activity_event_repo),
-                        Arc::clone(&app_state.message_queue),
-                        Arc::clone(&app_state.running_agent_registry),
-                        Arc::clone(&app_state.memory_event_repo),
-                    )
-                    .with_app_handle(handle.clone())
-                    .with_execution_state(Arc::clone(&execution_state_arc))
-                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                    .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                    .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                    .with_interactive_process_registry(Arc::clone(
-                        &app_state.interactive_process_registry,
-                    ))
-                    .with_review_repo(Arc::clone(&app_state.review_repo))
-                    .with_team_service(Arc::clone(&team_service)),
+                    app_state
+                        .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                        .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
         )
@@ -439,35 +362,9 @@ pub async fn resume_execution(
             &app_state,
             &execution_state_arc,
             |is_team_mode| {
-                let mut service = ClaudeChatService::new(
-                    Arc::clone(&app_state.chat_message_repo),
-                    Arc::clone(&app_state.chat_attachment_repo),
-                    Arc::clone(&app_state.artifact_repo),
-                    Arc::clone(&app_state.chat_conversation_repo),
-                    Arc::clone(&app_state.agent_run_repo),
-                    Arc::clone(&app_state.project_repo),
-                    Arc::clone(&app_state.task_repo),
-                    Arc::clone(&app_state.task_dependency_repo),
-                    Arc::clone(&app_state.ideation_session_repo),
-                    Arc::clone(&app_state.activity_event_repo),
-                    Arc::clone(&app_state.message_queue),
-                    Arc::clone(&app_state.running_agent_registry),
-                    Arc::clone(&app_state.memory_event_repo),
-                )
-                .with_app_handle(handle.clone())
-                .with_execution_state(Arc::clone(&execution_state_arc))
-                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                .with_interactive_process_registry(Arc::clone(
-                    &app_state.interactive_process_registry,
-                ))
-                .with_review_repo(Arc::clone(&app_state.review_repo))
-                .with_team_service(Arc::clone(&team_service));
+                let mut service = app_state
+                    .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                    .with_team_service(Arc::clone(&team_service));
                 if is_team_mode {
                     service = service.with_team_mode(true);
                 }
@@ -484,35 +381,9 @@ pub async fn resume_execution(
             &app_state,
             || {
                 Arc::new(
-                    ClaudeChatService::new(
-                        Arc::clone(&app_state.chat_message_repo),
-                        Arc::clone(&app_state.chat_attachment_repo),
-                        Arc::clone(&app_state.artifact_repo),
-                        Arc::clone(&app_state.chat_conversation_repo),
-                        Arc::clone(&app_state.agent_run_repo),
-                        Arc::clone(&app_state.project_repo),
-                        Arc::clone(&app_state.task_repo),
-                        Arc::clone(&app_state.task_dependency_repo),
-                        Arc::clone(&app_state.ideation_session_repo),
-                        Arc::clone(&app_state.activity_event_repo),
-                        Arc::clone(&app_state.message_queue),
-                        Arc::clone(&app_state.running_agent_registry),
-                        Arc::clone(&app_state.memory_event_repo),
-                    )
-                    .with_app_handle(handle.clone())
-                    .with_execution_state(Arc::clone(&execution_state_arc))
-                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                    .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                    .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                    .with_interactive_process_registry(Arc::clone(
-                        &app_state.interactive_process_registry,
-                    ))
-                    .with_review_repo(Arc::clone(&app_state.review_repo))
-                    .with_team_service(Arc::clone(&team_service)),
+                    app_state
+                        .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                        .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
         )
@@ -538,6 +409,14 @@ pub async fn resume_execution(
         success: true,
         status,
     })
+}
+
+#[doc(hidden)]
+pub(crate) fn prepare_resumed_task_for_entry_actions(task: &mut Task) {
+    task.metadata = Some(crate::application::chat_service::PauseReason::clear_from_task_metadata(
+        task.metadata.as_deref(),
+    ));
+    set_trigger_origin(task, "resume");
 }
 
 #[doc(hidden)]
@@ -587,10 +466,10 @@ pub(crate) async fn determine_paused_restore_status(
 /// | | `stop_execution` | `pause_execution` |
 /// |---|---|---|
 /// | Result state | `Stopped` (terminal) | `Paused` (non-terminal) |
-/// | Auto-resume | ❌ No — user must retry | ✅ Yes — via `resume_execution` |
+/// | Auto-resume | ❌ No — user must retry individual tasks | ✅ Yes — via `resume_execution` |
 /// | Metadata written | None | `PauseReason::UserInitiated` |
 /// | `running_count` | Decremented by `on_exit` | Decremented by `on_exit` |
-/// | Restart path | `Retry` → `ready` → re-execute | `resume_execution` → previous state |
+/// | Global restart path | `resume_execution` reopens scheduling, but stopped tasks still need manual retry | `resume_execution` → previous state |
 #[tauri::command]
 pub async fn stop_execution(
     project_id: Option<String>,
@@ -622,25 +501,8 @@ pub async fn stop_execution(
     }
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {

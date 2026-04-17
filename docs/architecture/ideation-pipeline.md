@@ -48,7 +48,7 @@ Four independent creation paths, all emitting the same 3-layer event.
 | Tauri command | `create_ideation_session_impl()` | `ideation_commands_session.rs:31` | Standard UI path |
 | Cross-project | `create_cross_project_session_impl()` | `ideation_commands_cross_project.rs:40` | Inherits verified plan from source; validates no circular imports |
 | Import | `import_ideation_session()` | `ideation_commands_export.rs:43` | Also emits `ideation:session_imported` (Tauri only) |
-| External HTTP | `start_ideation_http()` | `external.rs:750` | POST `/api/external/ideation/start_ideation`; optionally spawns orchestrator-ideation agent |
+| External HTTP | `start_ideation_http()` | `external.rs:750` | POST `/api/external/ideation/start_ideation`; optionally spawns ralphx-ideation agent |
 
 **Event emitted:** `IdeationSessionCreated` — 3-layer (Tauri + external_events + webhook)
 
@@ -57,7 +57,7 @@ Four independent creation paths, all emitting the same 3-layer event.
 { "sessionId": "string", "projectId": "string" }
 ```
 
-**Agent involved:** None (creation is direct). Optional: `orchestrator-ideation` spawned by external path.
+**Agent involved:** None (creation is direct). Optional: `ralphx-ideation` spawned by external path.
 
 **Autonomous:** Yes — all paths are fire-and-forget.
 
@@ -66,7 +66,7 @@ Four independent creation paths, all emitting the same 3-layer event.
 ## Stage 2: Session Naming (Optional)
 
 - **Trigger:** Explicit call from frontend or orchestrator via `spawn_session_namer()` — `ideation_commands_session.rs:515`
-- **Agent:** `session-namer` (Haiku, 60s timeout)
+- **Agent:** `ralphx-utility-session-namer` (Haiku, 60s timeout)
 - **Mechanism:** `tokio::spawn` + `update_session_title` MCP tool call on completion
 - **Event:** `ideation:session_title_updated` — Layer 1 (Tauri) only; not wired to external_events/webhooks
 - **Autonomous:** Background agent, optional, no system cascade on failure
@@ -77,7 +77,7 @@ Four independent creation paths, all emitting the same 3-layer event.
 
 - **Handler:** `create_plan_artifact()` — `artifacts.rs:200`
 - **HTTP:** POST `/api/ideation/artifacts` (MCP tool: `create_plan_artifact`)
-- **Agent:** `orchestrator-ideation` (calls MCP tool; plan-verifier if auto-verify triggered)
+- **Agent:** `ralphx-ideation` (calls MCP tool; ralphx-plan-verifier if auto-verify triggered)
 
 **Events emitted:**
 1. `plan_artifact:created` — Layer 1 (Tauri) only; carries full artifact object for frontend UI
@@ -95,7 +95,7 @@ Four independent creation paths, all emitting the same 3-layer event.
 ```
 
 **Auto-verify cascade:** If `auto_verify=true`, creates a child verification session and spawns
-plan-verifier agent. Failure emits `ideation:verification_status_changed` with `reason: "spawn_failed"`.
+ralphx-plan-verifier agent. Failure emits `ideation:verification_status_changed` with `reason: "spawn_failed"`.
 
 **Autonomous:** Yes.
 
@@ -103,9 +103,9 @@ plan-verifier agent. Failure emits `ideation:verification_status_changed` with `
 
 ## Stage 4: Plan Verification
 
-- **Handler:** `update_plan_verification()` — `ideation.rs:1164`
-- **HTTP:** POST `/api/ideation/sessions/{id}/verification` (MCP tool: `update_plan_verification`)
-- **Agent:** `plan-verifier` (multi-round adversarial loop using Layer 1 and Layer 2 critics)
+- **Handler family:** verification round/report/finalize endpoints under `src-tauri/src/http_server/handlers/ideation/verification/`
+- **HTTP:** backend-owned verification APIs (`/api/ideation/sessions/{id}/verification`, `/infra-failure`, plus verifier helper surfaces in the MCP server)
+- **Agent:** `ralphx-plan-verifier` (multi-round adversarial loop using Layer 1 and Layer 2 critics)
 
 **State machine:**
 ```
@@ -168,7 +168,7 @@ triggers Stage 5 (Auto-Propose) automatically.
 - **Handler:** `finalize_proposals()` — `ideation.rs:134`
 - **Implementation:** `finalize_proposals_impl()` — `helpers.rs:753`
 - **HTTP:** POST `/api/ideation/proposals/finalize` (MCP tool: `finalize_proposals`)
-- **Agent:** `orchestrator-ideation` calls this tool explicitly (breakpoint requiring agent action)
+- **Agent:** `ralphx-ideation` calls this tool explicitly (breakpoint requiring agent action)
 
 **Logic:**
 1. Validate session is Active
@@ -241,29 +241,29 @@ Once `finalize_proposals` completes and session transitions to Accepted:
 
 ```
                     ┌─────────────────────────┐
-                    │   orchestrator-ideation  │
-                    │   (or ideation-team-lead │
+                    │   ralphx-ideation  │
+                    │   (or ralphx-ideation-team-lead │
                     │    in team mode)         │
                     └───────────┬─────────────┘
                                 │ creates session, proposes plan
                                 ▼
                     ┌─────────────────────────┐
-                    │      plan-verifier       │  ← spawned as child session
+                    │      ralphx-plan-verifier       │  ← spawned as child session
                     │  (adversarial loop)      │
                     │  Layer 1 + Layer 2       │
                     │  critics per round       │
                     └───────────┬─────────────┘
-                                │ update_plan_verification(Verified)
+                                │ complete_plan_verification(Verified)
                                 ▼
                     ┌─────────────────────────┐
-                    │   orchestrator-ideation  │
+                    │   ralphx-ideation  │
                     │   (resumes after verify) │
                     └───────────┬─────────────┘
                                 │ finalize_proposals() [BREAKPOINT]
                                 ▼
                     ┌─────────────────────────┐
-                    │    ralphx-worker /       │
-                    │    ralphx-coder          │  ← tasks now executing
+                    │    ralphx-execution-worker /       │
+                    │    ralphx-execution-coder          │  ← tasks now executing
                     └─────────────────────────┘
 ```
 
@@ -271,12 +271,12 @@ Once `finalize_proposals` completes and session transitions to Accepted:
 
 | Agent | Context Type | Role in Pipeline |
 |-------|-------------|-----------------|
-| `orchestrator-ideation` | `ideation` | Creates session, drives plan creation, calls finalize_proposals |
-| `ideation-team-lead` | `ideation` | Team mode variant of orchestrator |
-| `session-namer` | `ideation` | Names session title via `update_session_title` MCP tool |
-| `plan-verifier` | child session | Owns adversarial verification loop; spawns critics |
-| `plan-critic-completeness` | — | Completeness critic (JSON gap analysis) |
-| `plan-critic-implementation-feasibility` | — | Dual-lens implementation critic |
+| `ralphx-ideation` | `ideation` | Creates session, drives plan creation, calls finalize_proposals |
+| `ralphx-ideation-team-lead` | `ideation` | Team mode variant of orchestrator |
+| `ralphx-utility-session-namer` | `ideation` | Names session title via `update_session_title` MCP tool |
+| `ralphx-plan-verifier` | child session | Owns adversarial verification loop; spawns critics |
+| `ralphx-plan-critic-completeness` | — | Completeness critic (JSON gap analysis) |
+| `ralphx-plan-critic-implementation-feasibility` | — | Dual-lens implementation critic |
 
 ---
 

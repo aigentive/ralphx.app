@@ -3,6 +3,7 @@
 
 pub mod active_plan_repository;
 pub mod activity_event_repository;
+pub mod agent_lane_settings_repository;
 pub mod agent_profile_repository;
 pub mod agent_run_repository;
 pub mod api_key_repository;
@@ -13,6 +14,7 @@ pub mod artifact_repository;
 pub mod chat_attachment_repository;
 pub mod chat_conversation_repository;
 pub mod chat_message_repository;
+pub mod delegated_session_repository;
 pub mod execution_plan_repository;
 pub mod external_events_repository;
 pub mod execution_settings_repository;
@@ -48,6 +50,7 @@ pub use active_plan_repository::ActivePlanRepository;
 pub use activity_event_repository::{
     ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
 };
+pub use agent_lane_settings_repository::AgentLaneSettingsRepository;
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
 pub use api_key_repository::{ApiKeyRepository, CreateKeyParams, RotateKeyParams};
@@ -58,6 +61,7 @@ pub use artifact_repository::{ArtifactRepository, ArtifactVersionSummary};
 pub use chat_attachment_repository::ChatAttachmentRepository;
 pub use chat_conversation_repository::ChatConversationRepository;
 pub use chat_message_repository::ChatMessageRepository;
+pub use delegated_session_repository::DelegatedSessionRepository;
 pub use execution_plan_repository::ExecutionPlanRepository;
 pub use execution_settings_repository::{
     ExecutionSettingsRepository, GlobalExecutionSettingsRepository,

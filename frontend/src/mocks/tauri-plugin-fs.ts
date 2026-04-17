@@ -50,6 +50,32 @@ export async function exists(_path: string): Promise<boolean> {
 }
 
 /**
+ * Mock stat - returns a minimal zero-sized file descriptor
+ */
+export async function stat(_path: string): Promise<{
+  size: number;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  mtimeMs: number | null;
+  atimeMs: number | null;
+  birthtimeMs: number | null;
+  readonly: boolean;
+}> {
+  console.debug("[mock] fs.stat called - returning empty metadata");
+  return {
+    size: 0,
+    isFile: false,
+    isDirectory: false,
+    isSymlink: false,
+    mtimeMs: null,
+    atimeMs: null,
+    birthtimeMs: null,
+    readonly: false,
+  };
+}
+
+/**
  * Mock mkdir - no-op
  */
 export async function mkdir(

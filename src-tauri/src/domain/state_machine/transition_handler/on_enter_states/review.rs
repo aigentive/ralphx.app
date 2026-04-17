@@ -1,6 +1,6 @@
 use super::*;
-use crate::domain::state_machine::TransitionHandler;
 use crate::domain::state_machine::services::ReviewStartResult;
+use crate::domain::state_machine::TransitionHandler;
 
 impl<'a> TransitionHandler<'a> {
     pub(super) async fn enter_pending_review_state(&self) {
@@ -102,13 +102,19 @@ impl<'a> TransitionHandler<'a> {
                 .await;
                 let config = reconciliation_config();
                 let app_handle = self.machine.context.services.app_handle.as_ref();
-                let activity_event_repo = self.machine.context.services.activity_event_repo.as_ref();
+                let activity_event_repo =
+                    self.machine.context.services.activity_event_repo.as_ref();
                 let freshness_result = freshness::ensure_branches_fresh(
                     repo_path,
                     &task,
                     &project,
                     task_id_str,
-                    plan_branch.as_deref(),
+                    plan_branch
+                        .as_ref()
+                        .map(|branch| branch.branch_name.as_str()),
+                    plan_branch
+                        .as_ref()
+                        .map(|branch| branch.source_branch.as_str()),
                     app_handle,
                     activity_event_repo,
                     "reviewing",
@@ -181,7 +187,11 @@ impl<'a> TransitionHandler<'a> {
                 if let Some(ref wt_path_str) = task.worktree_path {
                     let wt_path = std::path::Path::new(wt_path_str);
                     if wt_path.exists() {
-                        match crate::application::git_service::GitService::has_conflict_markers(wt_path).await {
+                        match crate::application::git_service::GitService::has_conflict_markers(
+                            wt_path,
+                        )
+                        .await
+                        {
                             Ok(true) => {
                                 tracing::warn!(
                                     task_id = task_id_str,
@@ -193,8 +203,10 @@ impl<'a> TransitionHandler<'a> {
                                     .as_deref()
                                     .and_then(|s| serde_json::from_str(s).ok())
                                     .unwrap_or_else(|| serde_json::json!({}));
-                                task_metadata["conflict_markers_detected"] = serde_json::json!(true);
-                                task_metadata["branch_freshness_conflict"] = serde_json::json!(true);
+                                task_metadata["conflict_markers_detected"] =
+                                    serde_json::json!(true);
+                                task_metadata["branch_freshness_conflict"] =
+                                    serde_json::json!(true);
                                 task_metadata["freshness_origin_state"] =
                                     serde_json::json!("reviewing");
                                 if let Err(e) = task_repo

@@ -29,21 +29,27 @@ mod streaming_state_cache;
 pub(crate) mod verification_child_process_registry;
 
 use crate::application::interactive_process_registry::{
-    InteractiveProcessKey, InteractiveProcessRegistry,
+    InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
+};
+use crate::application::harness_runtime_registry::{
+    default_harness_runtime_available, resolve_default_chat_service_bootstrap,
+    resolve_harness_plugin_dir, resolve_chat_service_bootstrap,
 };
 use crate::application::question_state::QuestionState;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, InternalStatus, ProjectId, TaskId,
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
-    TaskStepRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
+    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, DelegatedSessionRepository, ExecutionSettingsRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,
+    TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
@@ -53,7 +59,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
-use which::which;
 
 /// Prefix used when formatting agent errors into chat messages.
 /// Both the write site (chat_service_handlers) and read site (chat_service_replay)
@@ -67,10 +72,14 @@ pub use chat_service_errors::{
     truncate_error_message,
 };
 pub use chat_service_context::{
-    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    build_command, build_initial_prompt, build_resume_command,
+    build_resume_command_for_harness, build_resume_initial_prompt,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
-    is_text_file, resolve_working_directory,
+    is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
+    ProviderResumeMode,
 };
+#[doc(hidden)]
+pub use chat_service_context::create_assistant_message;
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
 };
@@ -86,6 +95,7 @@ pub use chat_service_streaming::{
     is_completion_tool_name, should_kill_on_timeout, ActiveTaskTracker,
     CompletionSignalTracker, StreamOutcome, StreamTimeoutConfig,
 };
+pub use chat_service_helpers::harness_supports_team_mode;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentConversationCreatedPayload, AgentErrorPayload, AgentHookPayload,
     AgentMessageCreatedPayload, AgentMessageQueuedPayload, AgentQueueSentPayload,
@@ -99,6 +109,8 @@ pub use chat_service_types::events::AGENT_MESSAGE_QUEUED;
 pub use streaming_state_cache::{
     CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
 };
+#[doc(hidden)]
+pub use chat_service_send_background::finalize_assistant_message_for_test;
 
 // Types and errors are now in chat_service_types.rs
 
@@ -197,6 +209,116 @@ pub(crate) fn event_context(
     }
 }
 
+fn interactive_run_started_provider_session(
+    conversation: &ChatConversation,
+    process_metadata: Option<&InteractiveProcessMetadata>,
+) -> (AgentHarnessKind, Option<String>) {
+    let conversation_session_ref = conversation.provider_session_ref();
+    let harness = process_metadata
+        .and_then(|metadata| metadata.harness)
+        .or_else(|| conversation_session_ref.as_ref().map(|session_ref| session_ref.harness))
+        .unwrap_or(DEFAULT_AGENT_HARNESS);
+    let provider_session_id = process_metadata
+        .and_then(|metadata| metadata.provider_session_id.clone())
+        .or_else(|| {
+            conversation_session_ref
+                .as_ref()
+                .map(|session_ref| session_ref.provider_session_id.clone())
+        });
+
+    (harness, provider_session_id)
+}
+
+fn continuation_metadata_requests_lineage(task_metadata: Option<&str>) -> bool {
+    let metadata = task_metadata
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let trigger_origin = metadata
+        .get("trigger_origin")
+        .and_then(|value| value.as_str());
+
+    matches!(trigger_origin, Some("recovery" | "resume"))
+        || metadata
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+            > 0
+}
+
+fn should_inherit_parent_harness_for_fresh_spawn(
+    context_type: ChatContextType,
+    task_metadata: Option<&str>,
+) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) && continuation_metadata_requests_lineage(task_metadata)
+}
+
+fn spawn_settings_require_task_metadata(context_type: ChatContextType) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+    )
+}
+
+fn conversation_spawn_harness_override(
+    agent_name: &str,
+    context_type: ChatContextType,
+    task_metadata: Option<&str>,
+    conversation: &ChatConversation,
+    parent_conversation: Option<&ChatConversation>,
+) -> Option<AgentHarnessKind> {
+    let review_reviewer_agent = context_type == ChatContextType::Review
+        && agent_name == get_agent_name(&ChatContextType::Review);
+
+    conversation.provider_session_ref().and_then(|session_ref| {
+        if review_reviewer_agent && !continuation_metadata_requests_lineage(task_metadata) {
+            None
+        } else {
+            Some(session_ref.harness)
+        }
+    }).or_else(|| {
+            if should_inherit_parent_harness_for_fresh_spawn(context_type, task_metadata) {
+                parent_conversation.and_then(|parent| {
+                    parent
+                        .provider_session_ref()
+                        .map(|session_ref| session_ref.harness)
+                })
+            } else {
+                None
+            }
+        })
+}
+
+fn apply_send_message_overrides(
+    resolved: &mut crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
+    options: &SendMessageOptions,
+) {
+    if let Some(model_override) = options.model_override.as_ref() {
+        resolved.configured_model = Some(model_override.clone());
+        resolved.model = model_override.clone();
+    }
+
+    if let Some(logical_effort_override) = options.logical_effort_override {
+        resolved.configured_logical_effort = Some(logical_effort_override);
+        resolved.logical_effort = Some(logical_effort_override);
+        resolved.claude_effort =
+            Some(logical_effort_override.to_legacy_claude_effort().to_string());
+    }
+
+    if let Some(approval_policy_override) = options.approval_policy_override.as_ref() {
+        resolved.configured_approval_policy = Some(approval_policy_override.clone());
+        resolved.approval_policy = Some(approval_policy_override.clone());
+    }
+
+    if let Some(sandbox_mode_override) = options.sandbox_mode_override.as_ref() {
+        resolved.configured_sandbox_mode = Some(sandbox_mode_override.clone());
+        resolved.sandbox_mode = Some(sandbox_mode_override.clone());
+    }
+}
+
 // ============================================================================
 // ChatService trait
 // ============================================================================
@@ -208,6 +330,19 @@ pub struct SendMessageOptions {
     pub metadata: Option<String>,
     /// Optional timestamp override for the user message. If None, uses Utc::now().
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Optional provider harness override for relaunch/recovery flows that must preserve an
+    /// existing provider session's runtime instead of re-resolving only from current lane config.
+    pub harness_override: Option<AgentHarnessKind>,
+    /// Optional explicit canonical agent override for this send.
+    pub agent_name_override: Option<String>,
+    /// Optional explicit model override for this send.
+    pub model_override: Option<String>,
+    /// Optional explicit logical-effort override for this send.
+    pub logical_effort_override: Option<LogicalEffort>,
+    /// Optional explicit approval-policy override for this send.
+    pub approval_policy_override: Option<String>,
+    /// Optional explicit sandbox-mode override for this send.
+    pub sandbox_mode_override: Option<String>,
     /// When true, the agent was spawned from an external MCP request (e.g. ReefBot).
     /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
     /// to prevent deadlocks where the agent waits for human input that will never arrive.
@@ -304,7 +439,7 @@ pub trait ChatService: Send + Sync {
         conversation_id: &ChatConversationId,
     ) -> Result<Option<AgentRun>, ChatServiceError>;
 
-    /// Check if the chat service (Claude CLI) is available
+    /// Check if the chat service runtime is available
     async fn is_available(&self) -> bool;
 
     /// Stop a running agent for a context
@@ -321,26 +456,26 @@ pub trait ChatService: Send + Sync {
     async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool;
 
     /// Override team mode at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses AtomicBool.
+    /// Default is a no-op; AppChatService uses AtomicBool.
     fn set_team_mode(&self, _mode: bool) {}
 
     /// Override plan branch repo at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    /// Default is a no-op; AppChatService uses std::sync::Mutex.
     fn set_plan_branch_repo(&self, _repo: Arc<dyn PlanBranchRepository>) {}
 
     /// Override the InteractiveProcessRegistry at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    /// Default is a no-op; AppChatService uses std::sync::Mutex.
     fn set_interactive_process_registry(&self, _registry: Arc<InteractiveProcessRegistry>) {}
 }
 
 // ============================================================================
-// ClaudeChatService - Production implementation
+// AppChatService - Production implementation
 // ============================================================================
 
 // Helper functions are now in chat_service_helpers.rs
 
-/// Production implementation using Claude CLI
-pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
+/// Preferred app-layer surface for the unified multi-harness chat runtime.
+pub struct AppChatService<R: Runtime = tauri::Wry> {
     cli_path: PathBuf,
     plugin_dir: PathBuf,
     default_working_directory: PathBuf,
@@ -352,7 +487,9 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
@@ -385,7 +522,10 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     verification_child_registry: Arc<verification_child_process_registry::VerificationChildProcessRegistry>,
 }
 
-impl<R: Runtime> ClaudeChatService<R> {
+/// Compatibility alias for older callsites/tests that still use the legacy concrete name.
+pub type ClaudeChatService<R = tauri::Wry> = AppChatService<R>;
+
+impl<R: Runtime> AppChatService<R> {
     pub fn new(
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -396,26 +536,18 @@ impl<R: Runtime> ClaudeChatService<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
-        let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
-            .unwrap_or_else(|| PathBuf::from("claude"));
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let default_working_directory = if cwd.file_name().is_some_and(|name| name == "src-tauri") {
-            cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
-        } else {
-            cwd
-        };
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&default_working_directory);
+        let bootstrap = resolve_default_chat_service_bootstrap();
 
         Self {
-            cli_path,
-            plugin_dir,
-            default_working_directory,
+            cli_path: bootstrap.cli_path,
+            plugin_dir: bootstrap.plugin_dir,
+            default_working_directory: bootstrap.default_working_directory,
             chat_message_repo,
             chat_attachment_repo,
             artifact_repo,
@@ -424,7 +556,9 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_repo,
             task_repo,
             task_dependency_repo,
+            delegated_session_repo,
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             ideation_effort_settings_repo: None,
             ideation_model_settings_repo: None,
             ideation_session_repo,
@@ -461,6 +595,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
+        self
+    }
+
     pub fn with_ideation_effort_settings_repo(
         mut self,
         repo: Arc<dyn IdeationEffortSettingsRepository>,
@@ -490,6 +632,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             message.to_string(),
             options.metadata.clone(),
             options.created_at.map(|ts| ts.to_rfc3339()),
+            options.harness_override,
         );
         self.emit_event(
             "agent:message_queued",
@@ -804,6 +947,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             Arc::clone(&self.project_repo),
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
             &self.default_working_directory,
         )
         .await
@@ -833,6 +977,8 @@ impl<R: Runtime> ClaudeChatService<R> {
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
+            self.agent_lane_settings_repo.clone(),
+            self.ideation_effort_settings_repo.clone(),
             self.ideation_model_settings_repo.clone(),
             session_messages,
             total_available,
@@ -843,41 +989,106 @@ impl<R: Runtime> ClaudeChatService<R> {
         .map_err(ChatServiceError::SpawnFailed)
     }
 
-    /// Create a spawnable interactive CLI command (no `-p`, stdin kept open).
-    async fn build_interactive_command(
+    #[allow(clippy::too_many_arguments)]
+    async fn spawn_process_for_harness(
         &self,
         conversation: &ChatConversation,
-        user_message: &str,
+        message: &str,
+        agent_name_override: Option<&str>,
+        context_type: ChatContextType,
+        context_id: &str,
         working_directory: &Path,
         entity_status: Option<&str>,
         project_id: Option<&str>,
         session_messages: &[crate::domain::entities::ChatMessage],
-        total_available: usize,
+        session_total: usize,
         is_external_mcp: bool,
-        effort_override: Option<&str>,
-        model_override: Option<&str>,
-        subagent_cap_override: Option<&str>,
-    ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
-        chat_service_context::build_interactive_command(
-            &self.cli_path,
-            &self.plugin_dir,
+        runtime_team_mode: bool,
+        stored_session_id: Option<&str>,
+        resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
+    ) -> Result<(PathBuf, tokio::process::Child, Option<Arc<InteractiveProcessRegistry>>), ChatServiceError> {
+        let effective_harness = resolved_spawn_settings.effective_harness;
+        let cli_path = if effective_harness == DEFAULT_AGENT_HARNESS {
+            self.cli_path.clone()
+        } else {
+            resolve_chat_service_bootstrap(effective_harness).cli_path
+        };
+        let plugin_dir = if effective_harness == DEFAULT_AGENT_HARNESS {
+            self.plugin_dir.clone()
+        } else {
+            resolve_harness_plugin_dir(effective_harness, working_directory)
+        };
+
+        let launch_plan = chat_service_context::build_launch_plan_for_harness(
+            effective_harness,
+            &cli_path,
+            &plugin_dir,
             conversation,
-            user_message,
+            message,
+            agent_name_override,
+            context_type,
+            context_id,
             working_directory,
             entity_status,
             project_id,
-            self.team_mode.load(Ordering::Relaxed),
+            runtime_team_mode,
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
+            Arc::clone(&self.task_repo),
             session_messages,
-            total_available,
+            session_total,
             is_external_mcp,
-            effort_override,
-            model_override,
-            subagent_cap_override,
+            stored_session_id.clone(),
+            resolved_spawn_settings,
         )
         .await
-        .map_err(ChatServiceError::SpawnFailed)
+        .map_err(|error| {
+            tracing::warn!(
+                harness = %effective_harness,
+                cli_path = %cli_path.display(),
+                %error,
+                "chat_service.send_message missing harness runtime"
+            );
+            ChatServiceError::SpawnFailed(error)
+        })?;
+
+        let launch_mode = launch_plan.launch_mode();
+        tracing::info!(mode = ?launch_mode, plan = ?launch_plan, "Spawning chat harness agent");
+        let launched = launch_plan.spawn().await.map_err(|error| {
+            tracing::error!(mode = ?launch_mode, error = %error, "chat_service.send_message harness spawn failed");
+            ChatServiceError::SpawnFailed(error.to_string())
+        })?;
+        tracing::debug!(
+            mode = ?launch_mode,
+            pid = ?launched.child.id(),
+            "chat_service.send_message harness spawn ok"
+        );
+
+        if let Some(child_stdin) = launched.child_stdin {
+            let interactive_key_for_register =
+                InteractiveProcessKey::new(context_type.to_string(), context_id);
+            tracing::info!(
+                context_type = %context_type,
+                context_id,
+                "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
+            );
+            self.ipr()
+                .register_with_metadata(
+                    interactive_key_for_register,
+                    child_stdin,
+                    InteractiveProcessMetadata {
+                        harness: Some(resolved_spawn_settings.effective_harness),
+                        provider_session_id: stored_session_id.map(str::to_string),
+                    },
+                )
+                .await;
+
+            Ok((launched.cli_path, launched.child, Some(self.ipr())))
+        } else {
+            Ok((launched.cli_path, launched.child, None))
+        }
     }
 
     /// Fetch entity status for context types that support it
@@ -900,7 +1111,7 @@ impl<R: Runtime> ClaudeChatService<R> {
                     None
                 }
             }
-            // Ideation context: check purpose first (Verification sessions → plan-verifier agent)
+            // Ideation context: check purpose first (Verification sessions → ralphx-plan-verifier agent)
             // then fall back to status for accepted/readonly routing
             ChatContextType::Ideation => {
                 let session_id = IdeationSessionId::from_string(context_id);
@@ -914,6 +1125,14 @@ impl<R: Runtime> ClaudeChatService<R> {
                     None
                 }
             }
+            ChatContextType::Delegation => {
+                let session_id = crate::domain::entities::DelegatedSessionId::from_string(context_id);
+                if let Ok(Some(session)) = self.delegated_session_repo.get_by_id(&session_id).await {
+                    Some(session.status)
+                } else {
+                    None
+                }
+            }
             // Other contexts don't have status-based agent resolution yet
             ChatContextType::Project => None,
         }
@@ -921,7 +1140,7 @@ impl<R: Runtime> ClaudeChatService<R> {
 }
 
 #[async_trait]
-impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
+impl<R: Runtime + 'static> ChatService for AppChatService<R> {
     async fn send_message(
         &self,
         context_type: ChatContextType,
@@ -1094,18 +1313,26 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Emit run_started so frontend shows activity spinner
                     let interactive_run_id = uuid::Uuid::new_v4().to_string();
+                    let process_metadata = ipr_ref.get_metadata(&interactive_key).await;
+                    let (provider_harness, provider_session_id) =
+                        interactive_run_started_provider_session(
+                            &conversation,
+                            process_metadata.as_ref(),
+                        );
                     self.emit_event(
                         "agent:run_started",
-                        AgentRunStartedPayload {
-                            run_id: interactive_run_id,
-                            conversation_id: conversation.id.as_str().to_string(),
-                            context_type: context_type.to_string(),
-                            context_id: context_id.to_string(),
-                            run_chain_id: None,
-                            parent_run_id: None,
-                            effective_model_id: None,
-                            effective_model_label: None,
-                        },
+                        AgentRunStartedPayload::with_provider_session(
+                            interactive_run_id,
+                            conversation.id.as_str().to_string(),
+                            context_type.to_string(),
+                            context_id.to_string(),
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(provider_harness),
+                            provider_session_id,
+                        ),
                     );
 
                     return Ok(SendResult {
@@ -1133,19 +1360,72 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 2. Get or create conversation (only reached when Gate 1 misses or fails).
         //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
         //    which is correct for new spawns.
-        let (conversation, _) = self
+        let (mut conversation, _) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
+        let provider_session_ref = conversation.provider_session_ref();
+        let task_metadata = if spawn_settings_require_task_metadata(context_type) {
+            self.task_repo
+                .get_by_id(&TaskId::from_string(context_id.to_string()))
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+                .and_then(|task| task.metadata)
+        } else {
+            None
+        };
+        let parent_conversation = if provider_session_ref.is_none() {
+            if let Some(parent_id) = conversation.parent_conversation_id.as_deref() {
+                self.conversation_repo
+                    .get_by_id(&ChatConversationId::from_string(parent_id.to_string()))
+                    .await
+                    .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let entity_status = self.get_entity_status(context_type, context_id).await;
+        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+        let resolved_context_agent = chat_service_helpers::resolve_agent_with_team_mode(
+            &context_type,
+            entity_status.as_deref(),
+            team_mode_val,
+        );
+        let agent_name = options
+            .agent_name_override
+            .as_deref()
+            .unwrap_or(resolved_context_agent);
+        let spawn_harness_override =
+            options
+                .harness_override
+                .or_else(|| {
+                    conversation_spawn_harness_override(
+                        agent_name,
+                        context_type,
+                        task_metadata.as_deref(),
+                        &conversation,
+                        parent_conversation.as_ref(),
+                    )
+                });
         tracing::debug!(
             conversation_id = conversation.id.as_str(),
-            session_id = ?conversation.claude_session_id,
+            provider_harness = ?provider_session_ref.as_ref().map(|session_ref| session_ref.harness),
+            provider_session_id = ?provider_session_ref.as_ref().map(|session_ref| session_ref.provider_session_id.as_str()),
+            trigger_origin = ?task_metadata
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                .and_then(|metadata| metadata.get("trigger_origin").and_then(|value| value.as_str().map(str::to_string))),
+            parent_provider_harness = ?parent_conversation
+                .as_ref()
+                .and_then(|parent| parent.provider_session_ref().map(|session_ref| session_ref.harness)),
             "chat_service.send_message conversation (new spawn path)"
         );
 
         // 2b. Atomic guard: claim the agent slot to prevent TOCTOU race.
         //     If an agent is already registered for this context, queue the message.
         //     Create the AgentRun early so its ID can be stored in the slot for ownership tracking.
-        let agent_run = AgentRun::new(conversation.id);
+        let mut agent_run = AgentRun::new(conversation.id);
         let agent_run_id = agent_run.id.as_str().to_string();
         let run_chain_id = agent_run.run_chain_id.clone();
 
@@ -1439,17 +1719,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         let conversation_id = conversation.id;
-        let is_new_conversation = conversation.claude_session_id.is_none();
-        let stored_session_id = conversation.claude_session_id.clone();
-
-        // 2. Persist agent run record (created earlier before try_register for ownership tracking)
-        if let Err(e) = self.agent_run_repo.create(agent_run).await {
-            cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
-        }
-        tracing::debug!(
-            run_id = %agent_run_id,
-            "chat_service.send_message agent_run created"
-        );
 
         // 2a. Update state history metadata for task-related contexts
         // This links the conversation_id and agent_run_id to the state history entry,
@@ -1574,17 +1843,36 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message working_directory resolved"
         );
 
-        // 6a. Fetch entity status for dynamic agent resolution
-        let entity_status = self.get_entity_status(context_type, context_id).await;
-
-        // 6b. Resolve project ID for RALPHX_PROJECT_ID env var
+        // 6a. Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = chat_service_context::resolve_project_id(
             context_type,
             context_id,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
         )
         .await;
+
+        if context_type == ChatContextType::Ideation {
+            let lane_repo = self.agent_lane_settings_repo.as_ref().ok_or_else(|| {
+                ChatServiceError::SpawnFailed(
+                    "Unified ideation chat service requires agent lane settings repo".to_string(),
+                )
+            })?;
+            let lane_availability =
+                crate::application::resolve_primary_ideation_harness_availability(
+                    lane_repo,
+                    project_id.as_deref(),
+                )
+                .await;
+            if !lane_availability.available {
+                let error = lane_availability
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Configured ideation harness is not available".to_string());
+                cleanup_and_err!(ChatServiceError::SpawnFailed(error));
+            }
+        }
 
         // 7. Increment running count for task execution contexts BEFORE spawning
         // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
@@ -1602,140 +1890,116 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 7a. Build and spawn command
-        if !self.cli_path.exists() && which(&self.cli_path).is_err() {
-            tracing::warn!(
-                cli_path = %self.cli_path.display(),
-                "chat_service.send_message missing Claude CLI"
+        let mut resolved_spawn_settings =
+            crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                agent_name,
+                project_id.as_deref(),
+                context_type,
+                entity_status.as_deref(),
+                spawn_harness_override,
+                options.model_override.as_deref(),
+                self.agent_lane_settings_repo.as_ref(),
+            )
+            .await;
+        apply_send_message_overrides(&mut resolved_spawn_settings, &options);
+        let runtime_team_mode = chat_service_helpers::effective_team_mode_for_harness(
+            team_mode_val,
+            resolved_spawn_settings.effective_harness,
+        );
+        if team_mode_val && !runtime_team_mode {
+            tracing::info!(
+                %context_type,
+                context_id,
+                harness = %resolved_spawn_settings.effective_harness,
+                "Disabling team mode because the selected harness does not support it"
             );
-            cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
-                "Claude CLI not found at {}",
-                self.cli_path.display()
-            )));
+        }
+        let stored_provider_session = conversation
+            .provider_session_ref()
+            .filter(|session_ref| session_ref.harness == resolved_spawn_settings.effective_harness);
+        let stored_session_id = stored_provider_session
+            .as_ref()
+            .map(|session_ref| session_ref.provider_session_id.clone());
+        let is_new_conversation = stored_session_id.is_none();
+        let resolved_agent_name = options
+            .agent_name_override
+            .clone()
+            .unwrap_or_else(|| {
+                chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    runtime_team_mode,
+                )
+                .to_string()
+            });
+        let (upstream_provider, provider_profile) =
+            chat_service_helpers::provider_origin_for_harness(
+                resolved_spawn_settings.effective_harness,
+                Some(&resolved_agent_name),
+            );
+
+        if conversation.upstream_provider != upstream_provider
+            || conversation.provider_profile != provider_profile
+        {
+            if let Err(error) = self
+                .conversation_repo
+                .update_provider_origin(
+                    &conversation.id,
+                    upstream_provider.as_deref(),
+                    provider_profile.as_deref(),
+                )
+                .await
+            {
+                cleanup_and_err!(ChatServiceError::RepositoryError(error.to_string()));
+            }
+            conversation.set_provider_origin(upstream_provider.clone(), provider_profile.clone());
         }
 
+        agent_run.harness = Some(resolved_spawn_settings.effective_harness);
+        agent_run.provider_session_id = stored_session_id.clone();
+        agent_run.upstream_provider = upstream_provider.clone();
+        agent_run.provider_profile = provider_profile.clone();
+        agent_run.logical_model = resolved_spawn_settings.configured_model.clone();
+        agent_run.effective_model_id = Some(resolved_spawn_settings.model.clone());
+        agent_run.logical_effort = resolved_spawn_settings.configured_logical_effort;
+        agent_run.effective_effort = Some(chat_service_helpers::effective_effort_for_harness(
+            resolved_spawn_settings.effective_harness,
+            resolved_spawn_settings.claude_effort.as_deref(),
+            resolved_spawn_settings.logical_effort,
+        ));
+        agent_run.approval_policy = resolved_spawn_settings.approval_policy.clone();
+        agent_run.sandbox_mode = resolved_spawn_settings.sandbox_mode.clone();
+
+        // Persist agent run record after the effective harness/model metadata is populated.
+        if let Err(e) = self.agent_run_repo.create(agent_run).await {
+            cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+        }
         tracing::debug!(
-            cli_path = %self.cli_path.display(),
-            "chat_service.send_message building interactive command"
+            run_id = %agent_run_id,
+            "chat_service.send_message agent_run created"
         );
-        // 7b-pre. Pre-resolve effort for ideation contexts from DB settings.
-        // For non-ideation contexts (or when ideation_effort_settings_repo is not set),
-        // pass None to let the YAML-based resolver handle it.
-        let resolved_effort: Option<String> = if context_type == ChatContextType::Ideation {
-            if let Some(ref repo) = self.ideation_effort_settings_repo {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                let effort = crate::infrastructure::agents::claude::resolve_ideation_effort(
-                    agent_name,
-                    project_id.as_deref(),
-                    repo.as_ref(),
-                )
-                .await;
-                Some(effort)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
 
-        // 7b-pre2. Pre-resolve model for ideation contexts from DB settings.
-        // For non-ideation contexts (or when ideation_model_settings_repo is not set),
-        // pass None to let the YAML-based resolver handle it.
-        let resolved_model: Option<String> = if context_type == ChatContextType::Ideation {
-            if let Some(ref repo) = self.ideation_model_settings_repo {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                let resolved = crate::infrastructure::agents::claude::resolve_ideation_model(
-                    agent_name,
-                    project_id.as_deref(),
-                    repo.as_ref(),
-                )
-                .await;
-                Some(resolved.model)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // 7b-pre3. For plan-verifier sessions, pre-resolve the subagent cap from the
-        // separate verifier_subagent_model field so critics/specialists run on the
-        // configured cheaper model rather than the verifier's own model.
-        let resolved_verifier_subagent_cap: Option<String> =
-            if context_type == ChatContextType::Ideation {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                if agent_name
-                    == crate::infrastructure::agents::claude::agent_names::AGENT_PLAN_VERIFIER
-                {
-                    if let Some(ref repo) = self.ideation_model_settings_repo {
-                        let project_row = if let Some(pid) = project_id.as_deref() {
-                            repo.get_for_project(pid).await.ok().flatten()
-                        } else {
-                            None
-                        };
-                        let global_row = repo.get_global().await.ok().flatten();
-                        let (cap, _) = crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
-                            project_row.as_ref().map(|r| &r.verifier_subagent_model),
-                            global_row.as_ref().map(|r| &r.verifier_subagent_model),
-                        );
-                        Some(cap)
-                    } else {
-                        Some("haiku".to_string())
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-        // 7b-pre4. Resolve effective model for run_started event and registry.
-        // For ideation, resolved_model was already computed above. For other contexts, call
-        // resolve_model_config() once using the entity_status we have now.
-        let (effective_model_id, _) = chat_service_context::resolve_model_config(
-            chat_service_helpers::resolve_agent_with_team_mode(
-                &context_type,
-                entity_status.as_deref(),
-                self.team_mode.load(Ordering::Relaxed),
-            ),
-            project_id.as_deref(),
-            context_type,
-            resolved_model.as_deref(),
-            self.ideation_model_settings_repo.as_ref(),
-        )
-        .await;
-        let effective_model_label =
-            crate::infrastructure::agents::claude::model_labels::model_id_to_label(
-                &effective_model_id,
-            );
+        let effective_model_id = resolved_spawn_settings.model.clone();
+        let effective_model_label = Some(chat_service_helpers::effective_model_label_for_harness(
+            resolved_spawn_settings.effective_harness,
+            &effective_model_id,
+        ));
 
         // 3. Emit run started event (deferred from step 3 to include effective model info)
         self.emit_event(
             "agent:run_started",
-            AgentRunStartedPayload {
-                run_id: agent_run_id.clone(),
-                conversation_id: conversation_id.as_str().to_string(),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                run_chain_id: run_chain_id.clone(),
-                parent_run_id: None,
-                effective_model_id: Some(effective_model_id.clone()),
-                effective_model_label: Some(effective_model_label),
-            },
+            AgentRunStartedPayload::with_provider_session(
+                agent_run_id.clone(),
+                conversation_id.as_str().to_string(),
+                context_type.to_string(),
+                context_id.to_string(),
+                run_chain_id.clone(),
+                None,
+                Some(effective_model_id.clone()),
+                effective_model_label,
+                Some(resolved_spawn_settings.effective_harness),
+                stored_session_id.clone(),
+            ),
         );
 
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
@@ -1764,36 +2028,28 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         } else {
             (vec![], 0usize)
         };
-        let spawnable = match self
-            .build_interactive_command(
+        let (selected_cli_path, child, interactive_process_registry) = match self
+            .spawn_process_for_harness(
                 &conversation,
                 message,
+                Some(resolved_agent_name.as_str()),
+                context_type,
+                context_id,
                 &working_directory,
                 entity_status.as_deref(),
                 project_id.as_deref(),
                 &session_messages,
                 session_total,
                 options.is_external_mcp,
-                resolved_effort.as_deref(),
-                resolved_model.as_deref(),
-                resolved_verifier_subagent_cap.as_deref(),
+                runtime_team_mode,
+                stored_session_id.as_deref(),
+                &resolved_spawn_settings,
             )
             .await
         {
-            Ok(s) => s,
-            Err(e) => {
-                cleanup_and_err!(e);
-            }
+            Ok(result) => result,
+            Err(error) => cleanup_and_err!(error),
         };
-        tracing::info!(cmd = ?spawnable, "Spawning CLI agent (interactive)");
-        let (child, child_stdin) = match spawnable.spawn_interactive().await {
-            Ok(pair) => pair,
-            Err(e) => {
-                tracing::error!(error = %e, "chat_service.send_message interactive spawn failed");
-                cleanup_and_err!(ChatServiceError::SpawnFailed(e.to_string()));
-            }
-        };
-        tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
 
         // Register verification child PID for explicit cleanup after reconciliation (Fix A).
         // Only for Ideation sessions with SessionPurpose::Verification.
@@ -1814,20 +2070,12 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             }
         }
 
-        // Register stdin in the interactive process registry for future message delivery
-        let interactive_key_for_register =
-            InteractiveProcessKey::new(context_type.to_string(), context_id);
-        tracing::info!(
-            context_type = %context_type,
-            context_id,
-            "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
-        );
-        self.ipr()
-            .register(interactive_key_for_register, child_stdin)
-            .await;
-
         // Spawn merge completion watcher for Merge context
-        if context_type == ChatContextType::Merge {
+        if context_type == ChatContextType::Merge
+            && chat_service_helpers::harness_supports_merge_completion_watcher(
+                resolved_spawn_settings.effective_harness,
+            )
+        {
             chat_service_merge::spawn_merge_completion_watcher(
                 context_id.to_string(),
                 working_directory.clone(),
@@ -1881,23 +2129,16 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // 8. Build background context and spawn
-        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-        let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-            &context_type,
-            entity_status.as_deref(),
-            team_mode_val,
-        )
-        .to_string();
-
         let bg_ctx = chat_service_send_background::BackgroundRunContext {
             child,
+            harness: resolved_spawn_settings.effective_harness,
             context_type,
             context_id: context_id.to_string(),
             conversation_id,
             agent_run_id: agent_run_id.clone(),
-            stored_session_id,
+            stored_session_id: stored_session_id.clone(),
             working_directory,
-            cli_path: self.cli_path.clone(),
+            cli_path: selected_cli_path,
             plugin_dir: self.plugin_dir.clone(),
             repos: chat_service_send_background::BackgroundRunRepos {
                 chat_message_repo: Arc::clone(&self.chat_message_repo),
@@ -1909,7 +2150,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 task_dependency_repo: Arc::clone(&self.task_dependency_repo),
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+                delegated_session_repo: Arc::clone(&self.delegated_session_repo),
                 execution_settings_repo: self.execution_settings_repo.clone(),
+                agent_lane_settings_repo: self.agent_lane_settings_repo.clone(),
                 ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),
                 ideation_model_settings_repo: self.ideation_model_settings_repo.clone(),
                 activity_event_repo: Arc::clone(&self.activity_event_repo),
@@ -1929,11 +2172,26 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             user_message_content: Some(message.to_string()),
             conversation: Some(conversation.clone()),
             agent_name: Some(resolved_agent_name),
-            team_mode: team_mode_val,
+            team_mode: runtime_team_mode,
+            assistant_message_attribution: crate::domain::entities::ChatMessageAttribution {
+                attribution_source: Some("native_runtime".to_string()),
+                provider_harness: Some(resolved_spawn_settings.effective_harness),
+                provider_session_id: stored_session_id.clone(),
+                upstream_provider,
+                provider_profile,
+                logical_model: resolved_spawn_settings.configured_model.clone(),
+                effective_model_id: Some(effective_model_id.clone()),
+                logical_effort: resolved_spawn_settings.configured_logical_effort,
+                effective_effort: Some(chat_service_helpers::effective_effort_for_harness(
+                    resolved_spawn_settings.effective_harness,
+                    resolved_spawn_settings.claude_effort.as_deref(),
+                    resolved_spawn_settings.logical_effort,
+                )),
+            },
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
-            interactive_process_registry: Some(self.ipr()),
+            interactive_process_registry,
             verification_child_registry: Some(Arc::clone(&self.verification_child_registry)),
         };
 
@@ -2183,10 +2441,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
     }
 
     async fn is_available(&self) -> bool {
-        if self.cli_path.exists() {
-            return true;
-        }
-        which::which(&self.cli_path).is_ok()
+        default_harness_runtime_available()
     }
 
     async fn stop_agent(
@@ -2226,13 +2481,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 // Also emit run_completed so frontend knows agent is no longer running
                 self.emit_event(
                     "agent:run_completed",
-                    AgentRunCompletedPayload {
-                        conversation_id: info.conversation_id,
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        claude_session_id: None,
-                        run_chain_id: None,
-                    },
+                    AgentRunCompletedPayload::with_provider_session(
+                        info.conversation_id,
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        None,
+                        None,
+                        None,
+                    ),
                 );
 
                 Ok(true)
@@ -2271,3 +2527,5 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 mod chat_service_redaction_tests;
 #[cfg(test)]
 mod freshness_routing_tests;
+#[cfg(test)]
+mod interactive_runtime_tests;

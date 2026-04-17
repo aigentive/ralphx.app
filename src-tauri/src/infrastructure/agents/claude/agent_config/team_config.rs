@@ -12,6 +12,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+const EMBEDDED_PROCESS_CONFIG: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../config/processes.yaml"));
 
 // ── Default value helpers ───────────────────────────────────────────────
 
@@ -34,10 +38,10 @@ fn default_timeout() -> u32 {
 ///
 /// ```yaml
 /// execution:
-///   default: ralphx-worker
-///   team: ralphx-worker-team
+///   default: ralphx-execution-worker
+///   team: ralphx-execution-team-lead
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProcessSlot {
     pub default: String,
     #[serde(flatten)]
@@ -49,16 +53,59 @@ pub struct ProcessSlot {
 /// ```yaml
 /// process_mapping:
 ///   ideation:
-///     default: orchestrator-ideation
-///     team: ideation-team-lead
+///     default: ralphx-ideation
+///     team: ralphx-ideation-team-lead
 ///   execution:
-///     default: ralphx-worker
-///     team: ralphx-worker-team
+///     default: ralphx-execution-worker
+///     team: ralphx-execution-team-lead
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
 pub struct ProcessMapping {
     #[serde(flatten)]
     pub slots: HashMap<String, ProcessSlot>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct EmbeddedProcessConfig {
+    process_mapping: ProcessMapping,
+    team_constraints: TeamConstraintsConfig,
+}
+
+static CANONICAL_PROCESS_CONFIG: OnceLock<EmbeddedProcessConfig> = OnceLock::new();
+
+fn embedded_process_config() -> &'static EmbeddedProcessConfig {
+    CANONICAL_PROCESS_CONFIG.get_or_init(|| {
+        serde_yaml::from_str(EMBEDDED_PROCESS_CONFIG)
+            .expect("embedded config/processes.yaml should parse")
+    })
+}
+
+pub fn canonical_process_mapping() -> ProcessMapping {
+    embedded_process_config().process_mapping.clone()
+}
+
+pub fn resolve_canonical_process_mapping(raw: &ProcessMapping) -> ProcessMapping {
+    let mut resolved = canonical_process_mapping();
+
+    for (process, yaml_slot) in &raw.slots {
+        match resolved.slots.get(process) {
+            Some(canonical_slot) => {
+                if canonical_slot != yaml_slot {
+                    tracing::warn!(
+                        process = %process,
+                        yaml_slot = ?yaml_slot,
+                        canonical_slot = ?canonical_slot,
+                        "Canonical process mapping overrides divergent runtime YAML slot"
+                    );
+                }
+            }
+            None => {
+                resolved.slots.insert(process.clone(), yaml_slot.clone());
+            }
+        }
+    }
+
+    resolved
 }
 
 /// Dynamic vs Constrained team mode.
@@ -76,7 +123,7 @@ impl Default for TeamMode {
 }
 
 /// Per-process guardrails for team composition.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct TeamConstraints {
     #[serde(default = "default_max_teammates")]
     pub max_teammates: u8,
@@ -125,12 +172,52 @@ impl Default for TeamConstraints {
 ///     max_teammates: 5
 ///     allowed_tools: [Read, Write, Edit, Bash]
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 pub struct TeamConstraintsConfig {
     #[serde(rename = "_defaults", default)]
     pub defaults: Option<TeamConstraints>,
     #[serde(flatten)]
     pub processes: HashMap<String, TeamConstraints>,
+}
+
+pub fn canonical_team_constraints_config() -> TeamConstraintsConfig {
+    embedded_process_config().team_constraints.clone()
+}
+
+pub fn resolve_canonical_team_constraints_config(raw: &TeamConstraintsConfig) -> TeamConstraintsConfig {
+    let mut resolved = canonical_team_constraints_config();
+
+    if let Some(yaml_defaults) = &raw.defaults {
+        if resolved.defaults.as_ref() != Some(yaml_defaults) {
+            tracing::warn!(
+                yaml_defaults = ?yaml_defaults,
+                canonical_defaults = ?resolved.defaults,
+                "Canonical team constraints defaults override divergent runtime YAML defaults"
+            );
+        }
+    }
+
+    for (process, yaml_constraints) in &raw.processes {
+        match resolved.processes.get(process) {
+            Some(canonical_constraints) => {
+                if canonical_constraints != yaml_constraints {
+                    tracing::warn!(
+                        process = %process,
+                        yaml_constraints = ?yaml_constraints,
+                        canonical_constraints = ?canonical_constraints,
+                        "Canonical team constraints override divergent runtime YAML process constraints"
+                    );
+                }
+            }
+            None => {
+                resolved
+                    .processes
+                    .insert(process.clone(), yaml_constraints.clone());
+            }
+        }
+    }
+
+    resolved
 }
 
 /// A single teammate in a spawn request from a team lead.

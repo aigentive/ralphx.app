@@ -3,8 +3,8 @@ use chrono::{Duration, Utc};
 use ralphx_lib::application::{AppState, ReadyWatchdog, TaskSchedulerService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, ExecutionPlanId, GitMode, IdeationSession, IdeationSessionId, InternalStatus,
-    PlanBranch, PlanBranchStatus, Project, ProjectId, Task,
+    ArtifactId, ExecutionPlan, ExecutionPlanId, GitMode, IdeationSession, IdeationSessionId,
+    InternalStatus, PlanBranch, PlanBranchStatus, Project, ProjectId, Task,
 };
 use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::services::RunningAgentKey;
@@ -46,6 +46,7 @@ fn build_scheduler(
         None,
     )
     .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+    .with_execution_plan_repo(Arc::clone(&app_state.execution_plan_repo))
 }
 
 #[tokio::test]
@@ -412,6 +413,57 @@ async fn test_scheduler_skips_project_at_capacity_and_picks_other_project() {
     assert_ne!(found.id, blocked_ready.id);
 }
 
+#[tokio::test]
+async fn test_scheduler_skips_ready_task_from_superseded_execution_plan() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_global_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session = app_state
+        .ideation_session_repo
+        .create(IdeationSession::new(project.id.clone()))
+        .await
+        .unwrap();
+
+    let mut old_plan = ExecutionPlan::new(session.id.clone());
+    old_plan.status = ralphx_lib::domain::entities::ExecutionPlanStatus::Superseded;
+    let old_plan = app_state.execution_plan_repo.create(old_plan).await.unwrap();
+
+    let active_plan = app_state
+        .execution_plan_repo
+        .create(ExecutionPlan::new(session.id.clone()))
+        .await
+        .unwrap();
+
+    let mut stale_ready = Task::new(project.id.clone(), "Superseded Plan Task".to_string());
+    stale_ready.internal_status = InternalStatus::Ready;
+    stale_ready.ideation_session_id = Some(session.id.clone());
+    stale_ready.execution_plan_id = Some(old_plan.id.clone());
+    let stale_ready = app_state.task_repo.create(stale_ready).await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    let mut current_ready = Task::new(project.id.clone(), "Active Plan Task".to_string());
+    current_ready.internal_status = InternalStatus::Ready;
+    current_ready.ideation_session_id = Some(session.id.clone());
+    current_ready.execution_plan_id = Some(active_plan.id.clone());
+    let current_ready = app_state.task_repo.create(current_ready).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    let found = scheduler
+        .find_oldest_schedulable_task_for_test()
+        .await
+        .expect("scheduler should choose the active-plan task");
+
+    assert_eq!(
+        found.id, current_ready.id,
+        "ready tasks from superseded execution plans must be ignored even when they are older"
+    );
+    assert_ne!(found.id, stale_ready.id);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Multi-Task Scheduling Tests (Phase 77)
 // ═══════════════════════════════════════════════════════════════════════
@@ -658,6 +710,12 @@ async fn test_retry_deferred_merges_clears_flag_on_deferred_task() {
                 .contains("merge_deferred"),
         "merge_deferred flag should be cleared"
     );
+    let metadata = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_default();
+    assert_eq!(metadata["trigger_origin"], "recovery");
 }
 
 #[tokio::test]
@@ -1020,6 +1078,12 @@ async fn test_retry_main_merges_clears_flag_on_deferred_task() {
                 .contains("main_merge_deferred"),
         "main_merge_deferred flag should be cleared"
     );
+    let metadata = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_default();
+    assert_eq!(metadata["trigger_origin"], "recovery");
 }
 
 #[tokio::test]

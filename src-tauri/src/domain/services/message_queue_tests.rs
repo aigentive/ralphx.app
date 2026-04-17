@@ -77,7 +77,11 @@ fn test_list_keys_only_returns_non_empty_queues() {
     let queue = MessageQueue::new();
 
     queue.queue(ChatContextType::Ideation, "sess-1", "First".to_string());
-    queue.queue(ChatContextType::TaskExecution, "task-1", "Second".to_string());
+    queue.queue(
+        ChatContextType::TaskExecution,
+        "task-1",
+        "Second".to_string(),
+    );
     queue.clear(ChatContextType::TaskExecution, "task-1");
 
     let mut keys = queue.list_keys();
@@ -388,6 +392,7 @@ fn test_remove_stale_drops_old_messages() {
             is_editing: false,
             metadata_override: None,
             created_at_override: None,
+            harness_override: None,
         });
         q.push(QueuedMessage {
             id: "fresh-1".to_string(),
@@ -396,6 +401,7 @@ fn test_remove_stale_drops_old_messages() {
             is_editing: false,
             metadata_override: None,
             created_at_override: None,
+            harness_override: None,
         });
     }
 
@@ -459,6 +465,7 @@ fn test_queue_with_overrides_preserves_metadata_and_timestamp() {
     let queue = MessageQueue::new();
     let metadata = r#"{"auto_verification":true}"#.to_string();
     let timestamp = "2026-03-11T10:00:00Z".to_string();
+    let harness_override = crate::domain::agents::AgentHarnessKind::Codex;
 
     let queued = queue.queue_with_overrides(
         ChatContextType::Ideation,
@@ -466,10 +473,12 @@ fn test_queue_with_overrides_preserves_metadata_and_timestamp() {
         "AUTO-VERIFICATION MODE".to_string(),
         Some(metadata.clone()),
         Some(timestamp.clone()),
+        Some(harness_override),
     );
 
     assert_eq!(queued.metadata_override, Some(metadata));
     assert_eq!(queued.created_at_override, Some(timestamp));
+    assert_eq!(queued.harness_override, Some(harness_override));
 
     let popped = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
     assert_eq!(
@@ -480,6 +489,7 @@ fn test_queue_with_overrides_preserves_metadata_and_timestamp() {
         popped.created_at_override.as_deref(),
         Some("2026-03-11T10:00:00Z")
     );
+    assert_eq!(popped.harness_override, Some(harness_override));
 }
 
 #[test]
@@ -492,6 +502,7 @@ fn test_queue_standard_has_no_overrides() {
     );
     assert_eq!(queued.metadata_override, None);
     assert_eq!(queued.created_at_override, None);
+    assert_eq!(queued.harness_override, None);
 }
 
 #[test]
@@ -509,12 +520,16 @@ fn test_remove_stale_unparseable_timestamp_retained() {
             is_editing: false,
             metadata_override: None,
             created_at_override: None,
+            harness_override: None,
         });
     }
 
     // Messages with unparseable timestamps should be retained (safe default)
     let dropped = queue.remove_stale(ChatContextType::Task, "task-bad-ts", 300);
-    assert!(dropped.is_empty(), "Unparseable timestamp should be retained");
+    assert!(
+        dropped.is_empty(),
+        "Unparseable timestamp should be retained"
+    );
 
     let remaining = queue.get_queued(ChatContextType::Task, "task-bad-ts");
     assert_eq!(remaining.len(), 1);

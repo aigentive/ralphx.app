@@ -61,7 +61,7 @@ Response 3: Task(prompt="Coder C: implement cache types")
 
 **Background subagents (`run_in_background: true`) CANNOT use MCP tools.** This means:
 
-- `ralphx-coder` agents need MCP tools (`start_step`, `complete_step`, `get_task_context`, etc.)
+- `ralphx-execution-coder` agents need MCP tools (`start_step`, `complete_step`, `get_task_context`, etc.)
 - Therefore coders **MUST** run in foreground mode
 - Parallel execution of coders is achieved by putting multiple foreground `Task` calls in a single response — NOT by using `run_in_background`
 
@@ -111,7 +111,7 @@ Background mode (`run_in_background: true`) is appropriate for:
 - Tasks that only use file system tools (Read, Grep, Glob)
 
 **Never use background mode for**:
-- `ralphx-coder` agents (need MCP tools)
+- `ralphx-execution-coder` agents (need MCP tools)
 - Any agent that must call `start_step`, `complete_step`, or other MCP endpoints
 
 ---

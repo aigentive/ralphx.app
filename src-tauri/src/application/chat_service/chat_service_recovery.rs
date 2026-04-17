@@ -1,4 +1,4 @@
-// Session recovery logic for stale Claude sessions.
+// Session recovery logic for stale provider sessions.
 //
 // Extracted from chat_service_send_background.rs to reduce file size.
 // Handles rebuilding conversation history and spawning fresh sessions.
@@ -12,6 +12,7 @@ use super::chat_service_replay::{
 };
 use super::chat_service_streaming::process_stream_background;
 use super::streaming_state_cache::StreamingStateCache;
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
@@ -19,11 +20,14 @@ use crate::domain::repositories::{
 };
 use crate::application::AppState;
 use crate::domain::entities::VerificationStatus;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    clear_verification_snapshot, emit_verification_status_changed,
+    load_current_verification_snapshot_or_default,
+};
 use crate::error::{AppError, AppResult};
 use tauri::{Manager, Runtime};
 
-/// Attempt to recover from a stale Claude session by rebuilding conversation history
+/// Attempt to recover from a stale provider session by rebuilding conversation history
 /// and spawning a fresh session.
 ///
 /// # Arguments
@@ -48,6 +52,7 @@ use tauri::{Manager, Runtime};
 pub(super) async fn attempt_session_recovery<R: Runtime>(
     conversation_id: &ChatConversationId,
     conversation: &ChatConversation,
+    harness: AgentHarnessKind,
     context_type: ChatContextType,
     context_id: &str,
     new_message: &str,
@@ -125,34 +130,73 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         let app_state = handle.state::<AppState>();
         Arc::clone(&app_state.ideation_model_settings_repo)
     });
+    let agent_lane_settings_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.agent_lane_settings_repo)
+    });
+    let ideation_effort_settings_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.ideation_effort_settings_repo)
+    });
+    let task_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.task_repo)
+    });
+    let delegated_session_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.delegated_session_repo)
+    });
+    let entity_status = if let (Some(ideation_repo), Some(delegated_repo), Some(task_repo)) = (
+        ideation_session_repo.as_ref(),
+        delegated_session_repo.as_ref(),
+        task_repo.as_ref(),
+    )
+    {
+        chat_service_context::get_entity_status_for_resume(
+            conversation.context_type,
+            conversation.context_id.as_str(),
+            Arc::clone(ideation_repo),
+            Arc::clone(delegated_repo),
+            Arc::clone(task_repo),
+        )
+        .await
+    } else {
+        None
+    };
 
-    // 4. Spawn fresh Claude session with history
-    let spawnable = match chat_service_context::build_command(
+    // 4. Spawn fresh provider session with history
+    let provider_spawnable = match chat_service_context::build_command_for_harness(
+        harness,
         cli_path,
         plugin_dir,
         conversation,
         &bootstrap_prompt,
         working_directory,
-        None, // entity_status
+        entity_status.as_deref(),
         _resolved_project_id.as_deref(),
         team_mode,
         chat_attachment_repo,
         artifact_repo,
+        agent_lane_settings_repo,
+        ideation_effort_settings_repo,
         ideation_model_settings_repo,
-        &[], // recovery path already builds its own bootstrap_prompt with history
-        0,   // total_available: not needed here — session_messages is empty
-        None, // effort_override: recovery uses default
-        None, // model_override: recovery uses resolved ideation settings when available
+        &[],
+        0,
+        None,
+        None,
+        false,
     )
     .await
     {
-        Ok(s) => s,
-        Err(e) => {
-            let err = AppError::Infrastructure(format!("Failed to build recovery command: {}", e));
+        Ok(spawnable) => spawnable,
+        Err(error) => {
+            let err =
+                AppError::Infrastructure(format!("Failed to build recovery command: {error}"));
             log_failure(&err);
             return Err(err);
         }
     };
+    let spawnable = provider_spawnable.spawnable;
 
     let child = match spawnable.spawn().await {
         Ok(c) => c,
@@ -166,6 +210,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     // 5. Process stream to capture new session ID
     let outcome = match process_stream_background::<tauri::Wry>(
         child,
+        harness,
         context_type,
         context_id,
         conversation_id,
@@ -204,9 +249,15 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         }
     };
 
-    // 6. Update conversation with new session ID
+    // 6. Update conversation with new provider session ID
     if let Err(e) = conversation_repo
-        .update_claude_session_id(conversation_id, &new_session_id)
+        .update_provider_session_ref(
+            conversation_id,
+            &ProviderSessionRef {
+                harness,
+                provider_session_id: new_session_id.clone(),
+            },
+        )
         .await
     {
         let err = AppError::Database(format!("Failed to update session ID: {}", e));
@@ -218,6 +269,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     tracing::info!(
         event = "rehydrate_success",
         conversation_id = conversation_id.as_str(),
+        harness = %harness,
         old_session_id = old_session_id,
         new_session_id = %new_session_id,
         replay_turns = replay.turns.len(),
@@ -282,27 +334,29 @@ async fn build_ideation_recovery_metadata<R: Runtime>(
     let verification_was_in_progress = session.verification_in_progress;
     let verification_status_str = session.verification_status.to_string();
     let current_round = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-        .and_then(|v| v.get("current_round").and_then(|r| r.as_u64()))
-        .map(|r| r as u32)
+        .verification_current_round
         .unwrap_or(0);
 
     // If verification was in-progress when the session crashed, force-reset it.
     // A stuck `verification_in_progress=1` would block reconciliation and confuse the recovered agent.
-    // Use update_verification_state (unconditional) because reset_verification() guards on
-    // in_progress=false (it is only for conditional resets on plan artifact updates).
+    // Reset the authoritative snapshot so the session summary and current-generation state stay aligned.
     if verification_was_in_progress {
-        if let Err(e) = session_repo
-            .update_verification_state(
-                &session_id,
+        let reset_result = async {
+            let mut snapshot = load_current_verification_snapshot_or_default(
+                session_repo.as_ref(),
+                &session,
                 VerificationStatus::Unverified,
                 false,
-                None,
             )
-            .await
-        {
+            .await?;
+            clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+            session_repo
+                .save_verification_run_snapshot(&session_id, &snapshot)
+                .await
+        }
+        .await;
+
+        if let Err(e) = reset_result {
             tracing::warn!(
                 session_id = session_id.as_str(),
                 error = %e,

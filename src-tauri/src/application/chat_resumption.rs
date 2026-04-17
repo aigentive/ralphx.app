@@ -7,45 +7,37 @@
 //
 // Usage:
 // - Called once during app initialization after StartupJobRunner completes
-// - Queries for interrupted conversations (orphaned agent runs with claude_session_id)
+// - Queries for interrupted conversations that still carry a resumable provider session
 // - Prioritizes by context type: TaskExecution > Review > Task > Ideation > Project
 // - Skips TaskExecution/Review if task is in AGENT_ACTIVE_STATUSES (handled by StartupJobRunner)
-// - Sends "Continue where you left off." message to resume Claude session
+// - Sends "Continue where you left off." message to resume the stored provider session
 
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 use tracing::{info, warn};
 
-use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
+use crate::application::runtime_factory::{
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
+};
+use crate::application::{AppChatService, ChatService, InteractiveProcessRegistry};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    AgentLaneSettingsRepository, AgentRunRepository, ExecutionSettingsRepository,
+    PlanBranchRepository, TaskRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
 /// Runs chat resumption on startup.
 ///
 /// Finds all conversations that were interrupted when the app shut down
-/// and resumes them by sending a message with --resume to continue the Claude session.
+/// and resumes them by sending a message with `--resume` to continue the provider session.
 pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
-    conversation_repo: Arc<dyn ChatConversationRepository>,
+    chat_runtime_deps: ChatRuntimeFactoryDeps,
     task_repo: Arc<dyn TaskRepository>,
-    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-    chat_message_repo: Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
-    artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
-    project_repo: Arc<dyn ProjectRepository>,
-    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: Arc<dyn ActivityEventRepository>,
-    message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     app_handle: Option<AppHandle<R>>,
@@ -53,38 +45,19 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
 
 impl<R: Runtime> ChatResumptionRunner<R> {
     /// Create a new ChatResumptionRunner with all required dependencies.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         agent_run_repo: Arc<dyn AgentRunRepository>,
-        conversation_repo: Arc<dyn ChatConversationRepository>,
         task_repo: Arc<dyn TaskRepository>,
-        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-        chat_message_repo: Arc<dyn ChatMessageRepository>,
-        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
-        artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
-        project_repo: Arc<dyn ProjectRepository>,
-        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-        activity_event_repo: Arc<dyn ActivityEventRepository>,
-        message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<dyn RunningAgentRegistry>,
-        memory_event_repo: Arc<dyn MemoryEventRepository>,
         execution_state: Arc<ExecutionState>,
+        chat_runtime_deps: ChatRuntimeFactoryDeps,
     ) -> Self {
         Self {
             agent_run_repo,
-            conversation_repo,
+            chat_runtime_deps,
             task_repo,
-            task_dependency_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            artifact_repo,
-            project_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
             execution_state,
+            execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
             app_handle: None,
@@ -96,8 +69,27 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         self
     }
 
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
+        self
+    }
+
     /// Set the shared InteractiveProcessRegistry (builder pattern).
-    pub fn with_interactive_process_registry(mut self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+    pub fn with_interactive_process_registry(
+        mut self,
+        ipr: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
         self.interactive_process_registry = Some(ipr);
         self
     }
@@ -259,40 +251,23 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             // ChatResumptionRunner must unconditionally skip ideation to prevent double-spawn.
             ChatContextType::Ideation => true,
             // Other context types are not handled by StartupJobRunner
-            ChatContextType::Task | ChatContextType::Project => false,
+            ChatContextType::Delegation | ChatContextType::Task | ChatContextType::Project => false,
         }
     }
 
     /// Create a ChatService instance for resumption.
-    fn create_chat_service(&self) -> ClaudeChatService<R> {
-        let mut service = ClaudeChatService::new(
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            Arc::clone(&self.conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
+    fn create_chat_service(&self) -> AppChatService<R> {
+        let deps = self.chat_runtime_deps.clone().with_runtime_support(
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            self.plan_branch_repo.as_ref().map(Arc::clone),
+            self.interactive_process_registry.as_ref().map(Arc::clone),
+        );
+        build_chat_service_with_fallback(
+            &self.app_handle,
+            Some(Arc::clone(&self.execution_state)),
+            &deps,
         )
-        .with_execution_state(Arc::clone(&self.execution_state));
-
-        if let Some(ref handle) = self.app_handle {
-            service = service.with_app_handle(handle.clone());
-        }
-        if let Some(ref repo) = self.plan_branch_repo {
-            service = service.with_plan_branch_repo(Arc::clone(repo));
-        }
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service = service.with_interactive_process_registry(Arc::clone(ipr));
-        }
-
-        service
     }
 }
 
@@ -304,7 +279,8 @@ fn context_type_priority(context_type: ChatContextType) -> u8 {
         ChatContextType::Merge => 2, // Same priority as review (agent-active)
         ChatContextType::Task => 3,
         ChatContextType::Ideation => 4,
-        ChatContextType::Project => 5, // Lowest priority
+        ChatContextType::Delegation => 5,
+        ChatContextType::Project => 6, // Lowest priority
     }
 }
 

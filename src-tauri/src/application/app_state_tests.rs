@@ -1,9 +1,13 @@
 use super::*;
-use crate::domain::agents::ClientType;
-use crate::domain::entities::{
-    ChatMessage, IdeationSession, Priority, Project, ProjectId, ProposalCategory, Task,
-    TaskProposal,
+use crate::commands::ExecutionState;
+use crate::domain::agents::{
+    AgentHarnessKind, AgentLane, AgentLaneSettings, AgenticClient, ClientType, LogicalEffort,
 };
+use crate::domain::entities::{
+    ChatMessage, IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory,
+    Task, TaskProposal,
+};
+use crate::infrastructure::{MockAgenticClient, MockCallType};
 
 #[tokio::test]
 async fn test_new_test_creates_empty_repositories() {
@@ -95,12 +99,22 @@ async fn test_repositories_are_thread_safe() {
 async fn test_new_test_creates_mock_agent_client() {
     let state = AppState::new_test();
 
+    assert_eq!(
+        state.agent_clients.default_harness,
+        AgentHarnessKind::Claude
+    );
+
     // Agent client should be mock and available
-    let available = state.agent_client.is_available().await.unwrap();
+    let available = state
+        .agent_clients
+        .default_client
+        .is_available()
+        .await
+        .unwrap();
     assert!(available);
 
     // Check capabilities indicate mock
-    let caps = state.agent_client.capabilities();
+    let caps = state.agent_clients.default_client.capabilities();
     assert_eq!(caps.client_type, ClientType::Mock);
 }
 
@@ -110,7 +124,11 @@ async fn test_with_agent_client_swaps_client() {
 
     // Default is mock
     assert_eq!(
-        state.agent_client.capabilities().client_type,
+        state
+            .agent_clients
+            .default_client
+            .capabilities()
+            .client_type,
         ClientType::Mock
     );
 
@@ -120,6 +138,262 @@ async fn test_with_agent_client_swaps_client() {
     let _state = state.with_agent_client(custom_mock);
 
     // If it compiled and ran, the swap worked
+}
+
+#[tokio::test]
+async fn test_with_harness_agent_client_registers_specific_client() {
+    let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let state =
+        AppState::new_test().with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
+
+    let resolved = state.resolve_harness_agent_client(AgentHarnessKind::Codex);
+
+    assert_eq!(resolved.capabilities().client_type, ClientType::Mock);
+    assert!(Arc::ptr_eq(&resolved, &codex_mock));
+}
+
+#[tokio::test]
+async fn test_build_transition_service_with_execution_state_uses_app_agent_client() {
+    let mock = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test().with_agent_client(mock.clone());
+    let service =
+        state.build_transition_service_with_execution_state(Arc::new(ExecutionState::new()));
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git name");
+    std::fs::write(repo_dir.path().join("README.md"), "# test").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git commit");
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().into_owned(),
+    );
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Test Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(repo_dir.path().to_string_lossy().into_owned());
+    state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated_task = service
+        .transition_task(&task.id, InternalStatus::QaRefining)
+        .await
+        .unwrap();
+
+    assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
+
+    let calls = mock.get_spawn_calls().await;
+    assert_eq!(calls.len(), 1);
+    match &calls[0].call_type {
+        MockCallType::Spawn { role, prompt } => {
+            assert_eq!(*role, crate::domain::agents::AgentRole::QaRefiner);
+            assert!(prompt.contains(task.id.as_str()));
+        }
+        other => panic!("expected spawn call, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_build_transition_service_with_execution_state_uses_app_codex_client_for_codex_lane() {
+    let default_mock = Arc::new(MockAgenticClient::new());
+    let codex_mock = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test()
+        .with_agent_client(default_mock.clone())
+        .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
+    let service =
+        state.build_transition_service_with_execution_state(Arc::new(ExecutionState::new()));
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git name");
+    std::fs::write(repo_dir.path().join("README.md"), "# test").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git commit");
+
+    let project = Project::new(
+        "Codex Project".to_string(),
+        repo_dir.path().to_string_lossy().into_owned(),
+    );
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::ExecutionWorker, &codex_lane)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Codex Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(repo_dir.path().to_string_lossy().into_owned());
+    state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated_task = service
+        .transition_task(&task.id, InternalStatus::QaRefining)
+        .await
+        .unwrap();
+
+    assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
+    assert!(
+        default_mock.get_spawn_calls().await.is_empty(),
+        "default client should not receive spawn calls when execution lane resolves to Codex"
+    );
+
+    let calls = codex_mock.get_spawn_calls().await;
+    assert_eq!(calls.len(), 1);
+    match &calls[0].call_type {
+        MockCallType::Spawn { role, prompt } => {
+            assert_eq!(*role, crate::domain::agents::AgentRole::QaRefiner);
+            assert!(prompt.contains(task.id.as_str()));
+        }
+        other => panic!("expected spawn call, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_resolve_ideation_background_agent_runtime_uses_registered_harness_client() {
+    let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test()
+        .with_agent_client(default_mock)
+        .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
+
+    let project = Project::new("Codex Ideation Project".to_string(), "/tmp".to_string());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
+        .await
+        .expect("codex runtime should resolve");
+
+    assert!(Arc::ptr_eq(&runtime.client, &codex_mock));
+    assert_eq!(runtime.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(runtime.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(runtime.logical_effort, Some(LogicalEffort::XHigh));
+}
+
+#[tokio::test]
+async fn test_resolve_ideation_background_agent_runtime_errors_without_registered_harness_client()
+{
+    let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let mut state = AppState::new_test().with_agent_client(default_mock.clone());
+    state.agent_clients.harness_clients.clear();
+
+    let project = Project::new("Fallback Ideation Project".to_string(), "/tmp".to_string());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let error = match state
+        .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
+        .await
+    {
+        Ok(_) => panic!("missing codex runtime should fail instead of falling back"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("Configured ideation sidecar harness unavailable"),
+        "unexpected error: {error}"
+    );
+}
+
+#[tokio::test]
+async fn test_resolve_session_namer_runtime_uses_default_client_even_when_ideation_lane_is_codex()
+{
+    let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test()
+        .with_agent_client(default_mock.clone())
+        .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock);
+
+    let project = Project::new("Codex Ideation Project".to_string(), "/tmp".to_string());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let runtime = state.resolve_session_namer_runtime().await;
+
+    assert!(
+        Arc::ptr_eq(&runtime.client, &default_mock),
+        "session namer should stay on the default helper client instead of inheriting the main ideation lane"
+    );
+    assert_eq!(
+        runtime.harness, None,
+        "default helper client should not advertise an explicit non-default harness"
+    );
+    assert_eq!(runtime.model, None);
+    assert_eq!(runtime.logical_effort, None);
 }
 
 #[tokio::test]

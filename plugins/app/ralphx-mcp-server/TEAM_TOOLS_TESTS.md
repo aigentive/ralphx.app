@@ -3,16 +3,16 @@
 ## Overview
 
 This document specifies test cases for the new team coordination tools and agent types. Tests verify:
-- Tool allowlist enforcement for 3 new agent types (ideation-team-lead, ideation-team-member, worker-team-member)
+- Tool allowlist enforcement for 3 new agent types (ralphx-ideation-team-lead, ideation-team-member, worker-team-member)
 - RALPHX_ALLOWED_MCP_TOOLS env var override functionality
 - Input schema validation for 6 new team tools
 
 ## Agent Type Authorization Tests
 
-### Test 1: ideation-team-lead has access to team coordination tools
+### Test 1: ralphx-ideation-team-lead has access to team coordination tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ideation-team-lead`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation-team-lead`
 - Start MCP server
 
 **Test:**
@@ -24,7 +24,7 @@ This document specifies test cases for the new team coordination tools and agent
   - `get_team_artifacts`
   - `get_team_session_state`
   - `save_team_session_state`
-  - All existing orchestrator-ideation tools (create_task_proposal, create_plan_artifact, etc.)
+  - All existing ralphx-ideation tools (create_task_proposal, create_plan_artifact, etc.)
 
 ### Test 2: ideation-team-member has limited read-only access
 
@@ -77,7 +77,7 @@ This document specifies test cases for the new team coordination tools and agent
 ### Test 4: Regular worker agent is denied team coordination tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ralphx-worker`
+- Set `RALPHX_AGENT_TYPE=ralphx-execution-worker`
 - Start MCP server
 
 **Test:**
@@ -91,23 +91,23 @@ This document specifies test cases for the new team coordination tools and agent
 - Attempt to call `request_team_plan` tool
 - **Expected:** Error response:
   ```
-  Tool "request_team_plan" is not available for agent type "ralphx-worker"
+  Tool "request_team_plan" is not available for agent type "ralphx-execution-worker"
   ```
 
-### Test 5: orchestrator-ideation agent is denied team coordination tools
+### Test 5: ralphx-ideation agent is denied team coordination tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=orchestrator-ideation`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation`
 - Start MCP server
 
 **Test:**
 - Call `list_tools` MCP method
-- **Expected:** Tools list does NOT include team coordination tools (team tools are for ideation-team-lead only)
+- **Expected:** Tools list does NOT include team coordination tools (team tools are for ralphx-ideation-team-lead only)
 
 - Attempt to call `request_teammate_spawn` tool
 - **Expected:** Error response:
   ```
-  Tool "request_teammate_spawn" is not available for agent type "orchestrator-ideation"
+  Tool "request_teammate_spawn" is not available for agent type "ralphx-ideation"
   ```
 
 ## Env Var Override Tests
@@ -174,7 +174,7 @@ This document specifies test cases for the new team coordination tools and agent
 ### Test 9: request_team_plan requires valid process and teammates
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ideation-team-lead`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation-team-lead`
 - Start MCP server
 
 **Test:**
@@ -236,7 +236,7 @@ This document specifies test cases for the new team coordination tools and agent
 ### Test 11: request_teammate_spawn requires model within enum
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ideation-team-lead`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation-team-lead`
 - Start MCP server
 
 **Test:**
@@ -285,7 +285,7 @@ This document specifies test cases for the new team coordination tools and agent
 ### Test 13: save_team_session_state requires all core fields
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ideation-team-lead`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation-team-lead`
 - Start MCP server
 
 **Test:**
@@ -330,7 +330,7 @@ This document specifies test cases for the new team coordination tools and agent
 ### Test 14: All 6 new tools route to correct endpoints
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ideation-team-lead`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation-team-lead`
 - Start MCP server
 - Mock Tauri backend to log incoming requests
 
@@ -344,10 +344,10 @@ This document specifies test cases for the new team coordination tools and agent
 
 ## Manual Test Instructions
 
-### Test ideation-team-lead access:
+### Test ralphx-ideation-team-lead access:
 ```bash
 cd plugins/app/ralphx-mcp-server
-RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-team-lead
+RALPHX_AGENT_TYPE=ralphx-ideation-team-lead node build/index.js --agent-type=ralphx-ideation-team-lead
 # Send list_tools request via stdio
 # Verify all 6 team coordination tools are present
 ```
@@ -374,7 +374,7 @@ node build/index.js --agent-type=ideation-team-member
 ### Test input schema validation:
 ```bash
 cd plugins/app/ralphx-mcp-server
-RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-team-lead
+RALPHX_AGENT_TYPE=ralphx-ideation-team-lead node build/index.js --agent-type=ralphx-ideation-team-lead
 # Send request_team_plan with missing process field
 # Verify schema validation error
 # Send request_team_plan with valid data
@@ -387,7 +387,7 @@ Authorization is enforced at THREE layers (defense in depth):
 
 1. **MCP Server TOOL_ALLOWLIST** (plugins/app/ralphx-mcp-server/src/tools.ts)
    - Hard-coded mapping of agent types to allowed tool names
-   - Added 3 new agent types: ideation-team-lead, ideation-team-member, worker-team-member
+   - Added 3 new agent types: ralphx-ideation-team-lead, ideation-team-member, worker-team-member
    - RALPHX_ALLOWED_MCP_TOOLS env var overrides hardcoded allowlist if set
 
 2. **MCP Server Request Handler** (plugins/app/ralphx-mcp-server/src/index.ts)
@@ -412,6 +412,6 @@ All three layers MUST agree for a tool call to succeed.
 - `plugins/app/ralphx-mcp-server/src/tools.ts` - TOOL_ALLOWLIST + new tool definitions
 - `plugins/app/ralphx-mcp-server/src/index.ts` - Request handler with new tool routing
 - `plugins/app/ralphx-mcp-server/src/agentNames.ts` - New agent type constants
-- `plugins/app/agents/ideation-team-lead.md` - Team lead system prompt
+- `plugins/app/agents/ralphx-ideation-team-lead.md` - Team lead system prompt
 - `plugins/app/agents/worker-team.md` - Worker team system prompt
 - `plugins/app/agents/ideation-specialist-*.md` - Optional specialist templates

@@ -5,26 +5,9 @@ pub(super) fn build_transition_service_for_recovery(
     execution_state: Arc<ExecutionState>,
 ) -> Arc<TaskTransitionService> {
     Arc::new(
-        TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_attachment_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            execution_state,
-            app_state.app_handle.clone(),
-            Arc::clone(&app_state.memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-        .with_step_repo(Arc::clone(&app_state.task_step_repo))
-        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
+        app_state
+            .build_transition_service_with_execution_state(execution_state)
+            .with_step_repo(Arc::clone(&app_state.task_step_repo)),
     )
 }
 

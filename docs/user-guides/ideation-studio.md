@@ -107,6 +107,10 @@ When you select Research Team or Debate Team, additional options appear:
 
 **Constrained mode**: The lead can only spawn teammates from the predefined templates in `ralphx.yaml`. When this mode is selected, the session creation UI shows the available preset roles (frontend-specialist, backend-specialist, infra-specialist, advocate, critic) so you know exactly what the lead can work with. Use this for security-sensitive workflows.
 
+**Current harness note:** Team mode is currently a Claude-only capability. If the ideation lane is configured to use Codex, RalphX treats the session as solo mode even if older metadata or defaults referenced team behavior. This is expected and not treated as a degraded fallback.
+
+**Recommended Codex usage today:** Codex is best introduced on solo ideation and ideation verification first. Keep team ideation on Claude unless you explicitly want solo-only behavior for that lane.
+
 ---
 
 ## The Orchestrator Workflow
@@ -126,7 +130,7 @@ The orchestrator parses your intent and determines complexity. In Team mode, thi
 The orchestrator (or team lead) launches parallel research agents to explore your codebase:
 
 - **Solo mode**: Up to 3 parallel Explore subagents (read-only), each investigating a different aspect of the codebase
-- **Team mode**: Dynamic specialist teammates that share their findings with each other via the Claude Code native messaging system — enabling cross-domain insights that sequential subagents cannot produce
+- **Team mode**: Dynamic specialist teammates that share their findings with each other via the Claude-native messaging system — enabling cross-domain insights that sequential subagents cannot produce. This is currently available only when the effective harness is Claude.
 
 Research agents have read-only access (no file writes). They use Read, Grep, Glob, Bash, WebFetch, and WebSearch.
 
@@ -278,8 +282,7 @@ Before accepting the session you can:
 - **Delete** proposals you don't want to implement
 - **Add** proposals manually if you want work items the orchestrator missed
 - **Reorder** proposals (affects the suggested execution sequence)
-
-Dependency edges between proposals are auto-suggested by the `dependency-suggester` agent. You can add or remove edges in the dependency graph view.
+- **Review and edit proposal dependencies** in the dependency graph view
 
 ### The CONFIRM Guarantee
 
@@ -337,8 +340,8 @@ Once tasks are created from the accepted plan, they flow automatically through R
 Pending
    │
    v
-Executing  ←── Worker agent (ralphx-worker) orchestrates implementation
-   │             └── Delegates to coder agents (ralphx-coder) in parallel waves
+Executing  ←── Worker agent (ralphx-execution-worker) orchestrates implementation
+   │             └── Delegates to coder agents (ralphx-execution-coder) in parallel waves
    v
 QA          ←── QA prep agent generates acceptance criteria;
    │              QA executor runs browser tests
@@ -352,7 +355,7 @@ Review      ←── Reviewer agent runs automated code review
 
 ### Review Cycle
 
-When a task reaches **Review**, the `ralphx-reviewer` agent performs a structured code review and produces a list of findings. You see the review in the task detail view.
+When a task reaches **Review**, the `ralphx-execution-reviewer` agent performs a structured code review and produces a list of findings. You see the review in the task detail view.
 
 | Review outcome | What happens |
 |----------------|--------------|
@@ -371,7 +374,7 @@ Once a task is **Approved**, it enters the merge pipeline automatically. The pip
 4. **Validation** — Runs your project's test/lint/typecheck commands (default mode: Block — reverts on failure)
 5. **Finalization** — Commits the merge, deletes the task branch and worktree
 
-If a conflict arises, a **merger agent** (`ralphx-merger`) is spawned to resolve it. If validation fails in AutoFix mode, a **fixer agent** is spawned to repair the code.
+If a conflict arises, a **merger agent** (`ralphx-execution-merger`) is spawned to resolve it. If validation fails in AutoFix mode, a **fixer agent** is spawned to repair the code.
 
 > For complete details on the merge pipeline — states, strategies, recovery, and UI — see the **[Merge Pipeline User Guide](./merge.md)**.
 

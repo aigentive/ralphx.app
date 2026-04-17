@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
-use super::{IdeationSessionId, ProjectId, TaskId};
+use crate::agents::{AgentHarnessKind, ProviderSessionRef};
+
+use super::{DelegatedSessionId, IdeationSessionId, ProjectId, TaskId};
 
 /// Unique identifier for a chat conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -71,6 +73,8 @@ impl std::str::FromStr for ChatConversationId {
 pub enum ChatContextType {
     /// Ideation session context
     Ideation,
+    /// Delegated specialist session context
+    Delegation,
     /// Task-specific context
     Task,
     /// Project-level context
@@ -88,6 +92,7 @@ impl fmt::Display for ChatContextType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChatContextType::Ideation => write!(f, "ideation"),
+            ChatContextType::Delegation => write!(f, "delegation"),
             ChatContextType::Task => write!(f, "task"),
             ChatContextType::Project => write!(f, "project"),
             ChatContextType::TaskExecution => write!(f, "task_execution"),
@@ -103,6 +108,7 @@ impl std::str::FromStr for ChatContextType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "ideation" => Ok(ChatContextType::Ideation),
+            "delegation" => Ok(ChatContextType::Delegation),
             "task" => Ok(ChatContextType::Task),
             "project" => Ok(ChatContextType::Project),
             "task_execution" => Ok(ChatContextType::TaskExecution),
@@ -113,10 +119,91 @@ impl std::str::FromStr for ChatContextType {
     }
 }
 
+/// Status of historical attribution backfill for a conversation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionBackfillStatus {
+    Pending,
+    Running,
+    Completed,
+    Partial,
+    SessionNotFound,
+    ParseFailed,
+}
+
+impl fmt::Display for AttributionBackfillStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AttributionBackfillStatus::Pending => write!(f, "pending"),
+            AttributionBackfillStatus::Running => write!(f, "running"),
+            AttributionBackfillStatus::Completed => write!(f, "completed"),
+            AttributionBackfillStatus::Partial => write!(f, "partial"),
+            AttributionBackfillStatus::SessionNotFound => write!(f, "session_not_found"),
+            AttributionBackfillStatus::ParseFailed => write!(f, "parse_failed"),
+        }
+    }
+}
+
+impl std::str::FromStr for AttributionBackfillStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(AttributionBackfillStatus::Pending),
+            "running" => Ok(AttributionBackfillStatus::Running),
+            "completed" => Ok(AttributionBackfillStatus::Completed),
+            "partial" => Ok(AttributionBackfillStatus::Partial),
+            "session_not_found" => Ok(AttributionBackfillStatus::SessionNotFound),
+            "parse_failed" => Ok(AttributionBackfillStatus::ParseFailed),
+            _ => Err(format!("Invalid attribution backfill status: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConversationAttributionBackfillState {
+    pub status: Option<AttributionBackfillStatus>,
+    pub source: Option<String>,
+    pub source_path: Option<String>,
+    pub last_attempted_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub error_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationAttributionBackfillSummary {
+    pub eligible_conversation_count: u64,
+    pub pending_count: u64,
+    pub running_count: u64,
+    pub completed_count: u64,
+    pub partial_count: u64,
+    pub session_not_found_count: u64,
+    pub parse_failed_count: u64,
+}
+
+impl ConversationAttributionBackfillSummary {
+    pub fn remaining_count(&self) -> u64 {
+        self.pending_count + self.running_count
+    }
+
+    pub fn attention_count(&self) -> u64 {
+        self.partial_count + self.session_not_found_count + self.parse_failed_count
+    }
+
+    pub fn terminal_count(&self) -> u64 {
+        self.completed_count + self.attention_count()
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.running_count == 0
+    }
+}
+
 /// A chat conversation linked to a context (ideation session, task, or project)
 ///
 /// Multiple conversations can exist per context to support conversation history.
-/// Each conversation tracks its own Claude CLI session ID for --resume support.
+/// Each conversation tracks provider-neutral session metadata plus a temporary
+/// Claude compatibility field during the migration window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatConversation {
     /// Unique identifier for this conversation
@@ -128,6 +215,14 @@ pub struct ChatConversation {
     /// Claude CLI session UUID for --resume flag
     /// This is captured from Claude's response and enables conversation continuity
     pub claude_session_id: Option<String>,
+    /// Provider-neutral session identifier used for both Claude and Codex.
+    pub provider_session_id: Option<String>,
+    /// Harness that owns the provider session.
+    pub provider_harness: Option<AgentHarnessKind>,
+    /// Upstream provider behind the selected harness.
+    pub upstream_provider: Option<String>,
+    /// Optional runtime/profile selector for the upstream provider.
+    pub provider_profile: Option<String>,
     /// Auto-generated or user-set title for this conversation
     pub title: Option<String>,
     /// Number of messages in this conversation
@@ -141,6 +236,13 @@ pub struct ChatConversation {
     /// ID of the prior execution's conversation (for TaskExecution re-runs only).
     /// Enables UI navigation between execution generations.
     pub parent_conversation_id: Option<String>,
+    /// Historical attribution backfill state for compatibility imports.
+    pub attribution_backfill_status: Option<AttributionBackfillStatus>,
+    pub attribution_backfill_source: Option<String>,
+    pub attribution_backfill_source_path: Option<String>,
+    pub attribution_backfill_last_attempted_at: Option<DateTime<Utc>>,
+    pub attribution_backfill_completed_at: Option<DateTime<Utc>>,
+    pub attribution_backfill_error_summary: Option<String>,
 }
 
 impl ChatConversation {
@@ -152,12 +254,22 @@ impl ChatConversation {
             context_type: ChatContextType::Ideation,
             context_id: session_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -169,12 +281,49 @@ impl ChatConversation {
             context_type: ChatContextType::Task,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
+        }
+    }
+
+    /// Create a new conversation for a delegated specialist session
+    pub fn new_delegation(session_id: DelegatedSessionId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: ChatConversationId::new(),
+            context_type: ChatContextType::Delegation,
+            context_id: session_id.as_str().to_string(),
+            claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
+            title: None,
+            message_count: 0,
+            last_message_at: None,
+            created_at: now,
+            updated_at: now,
+            parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -186,12 +335,22 @@ impl ChatConversation {
             context_type: ChatContextType::Project,
             context_id: project_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -204,12 +363,22 @@ impl ChatConversation {
             context_type: ChatContextType::TaskExecution,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -221,12 +390,22 @@ impl ChatConversation {
             context_type: ChatContextType::Review,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -238,18 +417,78 @@ impl ChatConversation {
             context_type: ChatContextType::Merge,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
+    }
+
+    pub fn update_attribution_backfill_state(
+        &mut self,
+        state: ConversationAttributionBackfillState,
+    ) {
+        self.attribution_backfill_status = state.status;
+        self.attribution_backfill_source = state.source;
+        self.attribution_backfill_source_path = state.source_path;
+        self.attribution_backfill_last_attempted_at = state.last_attempted_at;
+        self.attribution_backfill_completed_at = state.completed_at;
+        self.attribution_backfill_error_summary = state.error_summary;
+        self.updated_at = Utc::now();
+    }
+
+    /// Update the canonical provider session reference.
+    pub fn set_provider_session_ref(&mut self, session_ref: ProviderSessionRef) {
+        let ProviderSessionRef {
+            harness,
+            provider_session_id,
+        } = session_ref;
+        let (claude_session_id, provider_session_id, provider_harness) =
+            compatible_provider_session_fields_from_provider_ref(
+                Some(harness),
+                Some(provider_session_id),
+            );
+        self.claude_session_id = claude_session_id;
+        self.provider_session_id = provider_session_id;
+        self.provider_harness = provider_harness;
+        self.updated_at = Utc::now();
     }
 
     /// Update the Claude session ID (after first message in conversation)
     pub fn set_claude_session_id(&mut self, session_id: impl Into<String>) {
-        self.claude_session_id = Some(session_id.into());
+        self.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Claude,
+            provider_session_id: session_id.into(),
+        });
+    }
+
+    /// Clear any provider session reference.
+    pub fn clear_provider_session_ref(&mut self) {
+        self.claude_session_id = None;
+        self.provider_session_id = None;
+        self.provider_harness = None;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn set_provider_origin(
+        &mut self,
+        upstream_provider: Option<String>,
+        provider_profile: Option<String>,
+    ) {
+        self.upstream_provider = upstream_provider;
+        self.provider_profile = provider_profile;
         self.updated_at = Utc::now();
     }
 
@@ -262,6 +501,47 @@ impl ChatConversation {
     /// Check if this conversation has a Claude session (can use --resume)
     pub fn has_claude_session(&self) -> bool {
         self.claude_session_id.is_some()
+            || matches!(self.provider_harness, Some(AgentHarnessKind::Claude))
+                && self.provider_session_id.is_some()
+    }
+
+    /// Get the effective provider session reference for this conversation.
+    pub fn provider_session_ref(&self) -> Option<ProviderSessionRef> {
+        if let (Some(harness), Some(provider_session_id)) =
+            (self.provider_harness, self.provider_session_id.clone())
+        {
+            return Some(ProviderSessionRef {
+                harness,
+                provider_session_id,
+            });
+        }
+
+        self.claude_session_id
+            .clone()
+            .map(|provider_session_id| ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id,
+            })
+    }
+
+    /// Get response-safe provider metadata with legacy compatibility restored.
+    pub fn compatible_provider_session_fields(
+        &self,
+    ) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+        normalize_provider_session_compatibility(
+            self.claude_session_id.clone(),
+            self.provider_session_id.clone(),
+            self.provider_harness,
+        )
+    }
+
+    /// Normalize stored provider metadata back into the canonical compatibility shape.
+    pub fn normalize_provider_session_fields(&mut self) {
+        let (claude_session_id, provider_session_id, provider_harness) =
+            self.compatible_provider_session_fields();
+        self.claude_session_id = claude_session_id;
+        self.provider_session_id = provider_session_id;
+        self.provider_harness = provider_harness;
     }
 
     /// Get a display title for this conversation
@@ -270,6 +550,52 @@ impl ChatConversation {
             .clone()
             .unwrap_or_else(|| "Untitled conversation".to_string())
     }
+}
+
+pub fn legacy_claude_session_alias(
+    harness: Option<AgentHarnessKind>,
+    provider_session_id: Option<&str>,
+) -> Option<String> {
+    matches!(harness, Some(AgentHarnessKind::Claude))
+        .then(|| provider_session_id.map(str::to_string))
+        .flatten()
+}
+
+pub fn compatible_provider_session_fields_from_provider_ref(
+    provider_harness: Option<AgentHarnessKind>,
+    provider_session_id: Option<String>,
+) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+    let claude_session_id =
+        legacy_claude_session_alias(provider_harness, provider_session_id.as_deref());
+    (claude_session_id, provider_session_id, provider_harness)
+}
+
+pub fn normalize_provider_session_compatibility(
+    claude_session_id: Option<String>,
+    provider_session_id: Option<String>,
+    provider_harness: Option<AgentHarnessKind>,
+) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+    let mut normalized_claude_session_id = claude_session_id;
+    let mut normalized_provider_session_id = provider_session_id;
+    let mut normalized_provider_harness = provider_harness;
+
+    if normalized_provider_session_id.is_none() && normalized_claude_session_id.is_some() {
+        normalized_provider_session_id = normalized_claude_session_id.clone();
+        normalized_provider_harness = Some(AgentHarnessKind::Claude);
+    }
+
+    if normalized_claude_session_id.is_none() {
+        normalized_claude_session_id = legacy_claude_session_alias(
+            normalized_provider_harness,
+            normalized_provider_session_id.as_deref(),
+        );
+    }
+
+    (
+        normalized_claude_session_id,
+        normalized_provider_session_id,
+        normalized_provider_harness,
+    )
 }
 
 #[cfg(test)]

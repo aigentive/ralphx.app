@@ -14,6 +14,7 @@ import { DurationDisplay } from "./shared/DurationDisplay";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
+import { executionKeys } from "@/hooks/useExecutionControl";
 import { api } from "@/lib/tauri";
 import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert, X, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import {
   parseFreshnessBlockedReason,
   type FreshnessBlockedInfo,
 } from "@/lib/freshness-blocked";
+import { resumeExecutionIfStopped } from "@/lib/task-actions/resume-execution-if-stopped";
 
 // ============================================================================
 // Helper Functions
@@ -339,20 +341,26 @@ function ActionButtonsCard({ task }: { task: Task }) {
             `Validation failed: ${result.warnings.map((w) => w.message).join(", ")}`
           );
         }
+        await resumeExecutionIfStopped(task.projectId);
         return result;
       } else {
         // Fallback to move-to-ready for other restartable statuses
-        return await api.tasks.move(
+        const result = await api.tasks.move(
           taskId,
           "ready",
           executionMode === "team" ? "team" : undefined,
           note
         );
+        await resumeExecutionIfStopped(task.projectId);
+        return result;
       }
     },
     onSuccess: () => {
       setRestartNote("");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
     },
   });
 
@@ -363,13 +371,15 @@ function ActionButtonsCard({ task }: { task: Task }) {
     try {
       const note = restartNote.trim() || undefined;
       await api.tasks.move(taskId, stopMetadata.stoppedFromStatus, undefined, note);
+      await resumeExecutionIfStopped(task.projectId);
       setRestartNote("");
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
       setIsResuming(false);
     }
-  }, [taskId, queryClient, stopMetadata, restartNote]);
+  }, [queryClient, restartNote, stopMetadata, task.projectId, taskId]);
 
   // Handle go to ready from validation dialog
   const handleGoToReady = useCallback(async () => {
@@ -377,13 +387,15 @@ function ActionButtonsCard({ task }: { task: Task }) {
     try {
       const note = restartNote.trim() || undefined;
       await api.tasks.move(taskId, "ready", undefined, note);
+      await resumeExecutionIfStopped(task.projectId);
       setRestartNote("");
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
       setIsResuming(false);
     }
-  }, [taskId, queryClient, restartNote]);
+  }, [queryClient, restartNote, task.projectId, taskId]);
 
   const handleAction = useCallback(async () => {
     // If task was stopped from a validated state, show validation dialog
@@ -611,9 +623,14 @@ function FreshnessBlockedCard({
   const queryClient = useQueryClient();
 
   const resetMutation = useMutation({
-    mutationFn: () => api.tasks.move(task.id, "ready"),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const result = await api.tasks.move(task.id, "ready");
+      await resumeExecutionIfStopped(task.projectId);
+      return result;
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
     },
   });
 

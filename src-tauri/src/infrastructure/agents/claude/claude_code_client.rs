@@ -389,7 +389,7 @@ impl AgenticClient for ClaudeCodeClient {
             }
         }
 
-        // Add model: explicit config override first, then per-agent default from ralphx.yaml
+        // Add model: explicit config override first, then per-agent default from config/ralphx.yaml
         if let Some(model) = &config.model {
             args.extend(["--model".to_string(), model.clone()]);
         } else if let Some(agent_name) = &config.agent {
@@ -406,7 +406,7 @@ impl AgenticClient for ClaudeCodeClient {
             args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
         }
 
-        // Permission handling from ralphx.yaml
+        // Permission handling from config/ralphx.yaml
         let runtime = claude_runtime_config();
         args.extend([
             "--permission-prompt-tool".to_string(),
@@ -633,7 +633,7 @@ impl ClaudeCodeClient {
             }
         }
 
-        // Model override: explicit config first, then per-agent default from ralphx.yaml
+        // Model override: explicit config first, then per-agent default from config/ralphx.yaml
         if let Some(model) = &config.model {
             args.extend(["--model".to_string(), model.clone()]);
         } else if let Some(agent_name) = &config.agent {
@@ -650,7 +650,7 @@ impl ClaudeCodeClient {
             args.extend(["--max-tokens".to_string(), max_tokens.to_string()]);
         }
 
-        // Permission handling from ralphx.yaml
+        // Permission handling from config/ralphx.yaml
         let runtime = claude_runtime_config();
         args.extend([
             "--permission-prompt-tool".to_string(),
@@ -691,7 +691,7 @@ impl ClaudeCodeClient {
     /// The caller is responsible for:
     /// 1. Processing stdout for stream-json events
     /// 2. Waiting for the process to complete
-    /// 3. Capturing the claude_session_id from the Result event
+    /// 3. Capturing the provider session id from the Result event
     ///
     /// This is used by ExecutionChatService to persist stream events to the database
     /// while emitting Tauri events for real-time UI updates.

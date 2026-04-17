@@ -137,6 +137,10 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
   }))
 );
 
+if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+  window.__proposalStore = useProposalStore;
+}
+
 // ============================================================================
 // Selectors (defined outside store for memoization)
 // ============================================================================

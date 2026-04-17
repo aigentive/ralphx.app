@@ -137,7 +137,7 @@ fn test_build_cli_args_applies_tools_restriction() {
 
     let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
-    // session-namer has allowed_tools = Some("") meaning no CLI tools
+    // ralphx-utility-session-namer has allowed_tools = Some("") meaning no CLI tools
     // get_allowed_tools strips the ralphx: prefix for AGENT_CONFIGS lookup
     let tools_idx = args
         .iter()
@@ -146,7 +146,7 @@ fn test_build_cli_args_applies_tools_restriction() {
     assert_eq!(
         args[tools_idx + 1],
         "",
-        "session-namer should have empty tools (MCP only)"
+        "ralphx-utility-session-namer should have empty tools (MCP only)"
     );
 }
 
@@ -181,7 +181,7 @@ fn test_build_cli_args_restricted_agent_tools() {
     assert_eq!(
         args[tools_idx + 1],
         "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,TaskCreate,TaskUpdate,TaskGet,TaskList,TaskOutput,KillShell,MCPSearch,Task",
-        "orchestrator-ideation should have base tools + Task"
+        "ralphx-ideation should have base tools + Task"
     );
 }
 
@@ -789,7 +789,7 @@ fn test_build_teammate_cli_args_full_integration() {
 #[test]
 fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
     // Verifies that --settings is passed when get_effective_settings returns a value.
-    // The embedded ralphx.yaml configures a global `settings_profile: default`,
+    // The embedded config/ralphx.yaml configures a global `settings_profile: default`,
     // so any agent_type not registered in agents[] falls through to the global profile.
     // "unregistered-agent-type" triggers the global fallback path.
     let client = ClaudeCodeClient::new();
@@ -1029,7 +1029,7 @@ fn test_create_mcp_config_injects_agent_type() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    let config_path = create_mcp_config(plugin_dir, "orchestrator-ideation", false)
+    let config_path = create_mcp_config(plugin_dir, "ralphx-ideation", false)
         .expect("create_mcp_config should succeed");
 
     let json_str = std::fs::read_to_string(&config_path).unwrap();
@@ -1050,8 +1050,8 @@ fn test_create_mcp_config_injects_agent_type() {
         agent_type_idx + 1 < arg_strs.len(),
         "--agent-type must be followed by a value"
     );
-    // short name for "orchestrator-ideation" drops the "ralphx:" prefix if present
-    assert_eq!(arg_strs[agent_type_idx + 1], "orchestrator-ideation");
+    // short name for "ralphx-ideation" drops the "ralphx:" prefix if present
+    assert_eq!(arg_strs[agent_type_idx + 1], "ralphx-ideation");
 
     let _ = std::fs::remove_file(&config_path);
 }

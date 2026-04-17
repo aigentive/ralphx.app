@@ -41,6 +41,10 @@ pub(super) fn validate_resolved_team_config(
         None => return (None, None),
     };
 
+    if team_mode == "solo" {
+        return (Some(team_mode), None);
+    }
+
     let resolved_constraints = parse_team_config_json(resolved_team_config_json);
     let config = team_constraints_config();
     let yaml_constraints = get_team_constraints(config, "ideation");
@@ -130,34 +134,10 @@ pub fn session_is_team_mode(session: &IdeationSession) -> bool {
 pub(super) fn build_ideation_chat_service(
     state: &HttpServerState,
     session: &IdeationSession,
-) -> ClaudeChatService {
+) -> crate::application::AppChatService {
     let app = &state.app_state;
-    let mut chat_service = ClaudeChatService::new(
-        Arc::clone(&app.chat_message_repo),
-        Arc::clone(&app.chat_attachment_repo),
-        Arc::clone(&app.artifact_repo),
-        Arc::clone(&app.chat_conversation_repo),
-        Arc::clone(&app.agent_run_repo),
-        Arc::clone(&app.project_repo),
-        Arc::clone(&app.task_repo),
-        Arc::clone(&app.task_dependency_repo),
-        Arc::clone(&app.ideation_session_repo),
-        Arc::clone(&app.activity_event_repo),
-        Arc::clone(&app.message_queue),
-        Arc::clone(&app.running_agent_registry),
-        Arc::clone(&app.memory_event_repo),
-    )
-    .with_execution_state(Arc::clone(&state.execution_state))
-    .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
-    .with_ideation_effort_settings_repo(Arc::clone(&app.ideation_effort_settings_repo))
-    .with_ideation_model_settings_repo(Arc::clone(&app.ideation_model_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
-    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
-    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
-
-    if let Some(ref handle) = app.app_handle {
-        chat_service = chat_service.with_app_handle(handle.clone());
-    }
+    let mut chat_service =
+        app.build_chat_service_with_execution_state(Arc::clone(&state.execution_state));
     if session_is_team_mode(session) {
         chat_service = chat_service.with_team_mode(true);
     }
@@ -165,7 +145,7 @@ pub(super) fn build_ideation_chat_service(
     chat_service
 }
 
-pub(super) fn rollback_verification_state(
+pub(super) async fn rollback_verification_state(
     state: &HttpServerState,
     parent_id: &IdeationSessionId,
     current_generation: i32,
@@ -176,25 +156,23 @@ pub(super) fn rollback_verification_state(
     let db = state.app_state.db.clone();
     let app_handle = state.app_state.app_handle.clone();
 
-    tauri::async_runtime::spawn(async move {
-        if let Err(re) = db
-            .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
-            .await
-        {
-            error!(
-                "Failed to rollback verification state after {}: {}",
-                failure_context, re
-            );
-        } else if let Some(handle) = app_handle {
-            emit_verification_status_changed(
-                &handle,
-                &parent_id_str,
-                VerificationStatus::Unverified,
-                false,
-                None,
-                Some("spawn_failed"),
-                Some(current_generation),
-            );
-        }
-    });
+    if let Err(re) = db
+        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+        .await
+    {
+        error!(
+            "Failed to rollback verification state after {}: {}",
+            failure_context, re
+        );
+    } else if let Some(handle) = app_handle {
+        emit_verification_status_changed(
+            &handle,
+            &parent_id_str,
+            VerificationStatus::Unverified,
+            false,
+            None,
+            Some("spawn_failed"),
+            Some(current_generation),
+        );
+    }
 }

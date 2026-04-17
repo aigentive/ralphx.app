@@ -92,30 +92,30 @@ describe("CROSS_PROJECT_KEYWORDS — regression: existing keywords still detecte
 });
 
 describe("filterCrossProjectPaths", () => {
-  const root = "/Users/lazabogdan/Code/ralphx";
+  const root = "/Users/example/Code/ralphx";
 
   it("returns empty array when all paths are within the project", () => {
     const paths = [
-      "/Users/lazabogdan/Code/ralphx/src/index.ts",
-      "/Users/lazabogdan/Code/ralphx/src-tauri/main.rs",
+      "/Users/example/Code/ralphx/src/index.ts",
+      "/Users/example/Code/ralphx/src-tauri/main.rs",
     ];
     expect(filterCrossProjectPaths(paths, root)).toEqual([]);
   });
 
   it("returns only out-of-project paths when mixed", () => {
     const paths = [
-      "/Users/lazabogdan/Code/ralphx/src/index.ts",
-      "/Users/lazabogdan/Code/other-project/src/main.ts",
+      "/Users/example/Code/ralphx/src/index.ts",
+      "/Users/example/Code/other-project/src/main.ts",
     ];
     expect(filterCrossProjectPaths(paths, root)).toEqual([
-      "/Users/lazabogdan/Code/other-project/src/main.ts",
+      "/Users/example/Code/other-project/src/main.ts",
     ]);
   });
 
   it("returns all paths when projectWorkingDir is null", () => {
     const paths = [
-      "/Users/lazabogdan/Code/ralphx/src/index.ts",
-      "/Users/lazabogdan/Code/other/main.ts",
+      "/Users/example/Code/ralphx/src/index.ts",
+      "/Users/example/Code/other/main.ts",
     ];
     expect(filterCrossProjectPaths(paths, null)).toEqual(paths);
   });
@@ -129,7 +129,7 @@ describe("filterCrossProjectPaths", () => {
   });
 
   it("does not filter similar-prefix directory (e.g. ralphx-other)", () => {
-    const paths = ["/Users/lazabogdan/Code/ralphx-other/src/main.ts"];
+    const paths = ["/Users/example/Code/ralphx-other/src/main.ts"];
     expect(filterCrossProjectPaths(paths, root)).toEqual(paths);
   });
 
@@ -140,11 +140,11 @@ describe("filterCrossProjectPaths", () => {
 
   it("handles project root with trailing slash correctly", () => {
     const paths = [
-      "/Users/lazabogdan/Code/ralphx/src/index.ts",
-      "/Users/lazabogdan/Code/other/main.ts",
+      "/Users/example/Code/ralphx/src/index.ts",
+      "/Users/example/Code/other/main.ts",
     ];
     expect(filterCrossProjectPaths(paths, root + "/")).toEqual([
-      "/Users/lazabogdan/Code/other/main.ts",
+      "/Users/example/Code/other/main.ts",
     ]);
   });
 });

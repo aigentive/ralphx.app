@@ -1,5 +1,4 @@
 use super::*;
-use crate::infrastructure::agents::claude::resolve_plugin_dir;
 
 /// Result returned by `execute_team_spawn` — consumed by approve callers to
 /// build their HTTP responses.
@@ -28,6 +27,8 @@ pub(super) async fn execute_team_spawn(
     plan: PendingTeamPlan,
     plan_id: &str,
 ) -> Result<TeamSpawnResult, (StatusCode, String)> {
+    ensure_team_mode_supported_for_context(state, &plan.context_type, &plan.context_id).await?;
+
     // 1. Create team (or find existing) — via TeamService for DB persistence + events
     // team_name comes from the lead agent's TeamCreate call (required field).
     let team_name = plan.team_name.clone();
@@ -84,7 +85,7 @@ pub(super) async fn execute_team_spawn(
         // Derive MCP agent type from process: worker-* processes use worker-team-member,
         // all others use ideation-team-member (the default in TeammateSpawnConfig::new).
         // Prefer the preset field when available — it carries the specific agent name from
-        // the team lead's spawn request (e.g. "ideation-specialist-backend").
+        // the team lead's spawn request (e.g. "ralphx-ideation-specialist-backend").
         let mcp_type = if plan.process.starts_with("worker") {
             pending.preset.as_deref().unwrap_or("worker-team-member")
         } else {
@@ -144,7 +145,7 @@ pub(super) async fn execute_team_spawn(
                 .with_mcp_agent_type(mcp_type)
                 .with_effort(resolve_effort(Some(mcp_type)))
                 .with_working_dir(working_dir.clone())
-                .with_plugin_dir(resolve_plugin_dir(&working_dir));
+                .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
 
         let client = ClaudeCodeClient::new();
         match client.spawn_teammate_interactive(spawn_config).await {

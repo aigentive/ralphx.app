@@ -12,7 +12,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
-import type { ChatConversation, ContextType } from "@/types/chat-conversation";
+import {
+  mergeConversationProviderMetadata,
+  type ChatConversation,
+  type ContextType,
+} from "@/types/chat-conversation";
+import type {
+  AgentRunCompletedPayload,
+  AgentRunStartedPayload,
+} from "@/types/events";
+import { extractConversationProviderMetadataFromRunPayload } from "@/types/events";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -21,6 +30,7 @@ import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import { chatKeys } from "./useChat";
 import { ideationKeys } from "./useIdeation";
+import { conversationStatsKey } from "./useConversationStats";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 
@@ -57,6 +67,54 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
 
+    function updateConversationProviderMetadata(args: {
+      conversationId: string;
+      contextType: ContextType;
+      contextId: string;
+      providerHarness?: string | null | undefined;
+      providerSessionId?: string | null | undefined;
+      claudeSessionId?: string | null | undefined;
+    }) {
+      const {
+        conversationId,
+        contextType,
+        contextId,
+        providerHarness,
+        providerSessionId,
+        claudeSessionId,
+      } = args;
+
+      const mergeConversation = (conversation: ChatConversation): ChatConversation =>
+        mergeConversationProviderMetadata(conversation, {
+          providerHarness,
+          providerSessionId,
+          claudeSessionId,
+        });
+
+      queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+        chatKeys.conversation(conversationId),
+        (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            conversation: mergeConversation(oldData.conversation),
+          };
+        }
+      );
+
+      queryClient.setQueryData<ChatConversation[]>(
+        chatKeys.conversationList(contextType, contextId),
+        (oldData) => {
+          if (!oldData) return oldData;
+          return oldData.map((conversation) =>
+            conversation.id === conversationId
+              ? mergeConversation(conversation)
+              : conversation
+          );
+        }
+      );
+    }
+
     // Shared cleanup for agent termination (run_completed, stopped, error).
     // Handler-specific logic (updateLastAgentEvent, toast) stays in each caller.
     function handleAgentTermination(storeKey: string, eventContextId: string, conversationId: string) {
@@ -65,6 +123,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       clearPendingPlan(storeKey);
       queryClient.invalidateQueries({ queryKey: chatKeys.agentRun(conversationId) });
       queryClient.invalidateQueries({ queryKey: chatKeys.conversation(conversationId) });
+      queryClient.invalidateQueries({ queryKey: conversationStatsKey(conversationId) });
     }
 
     // Reverse lookup: when a child verification session terminates, find any parent that has
@@ -131,13 +190,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // Listen for run started - set agent running state to true and update conversation cache
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        run_id: string;
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        teammate_name?: string | null;
-      }>("agent:run_started", (payload) => {
+      bus.subscribe<AgentRunStartedPayload>("agent:run_started", (payload) => {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
@@ -155,11 +208,21 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // Set agent as generating for this context
         setAgentStatus(eventContextKey, "generating");
 
+        updateConversationProviderMetadata({
+          conversationId: conversation_id,
+          contextType: context_type as ContextType,
+          contextId: eventContextId,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
+        });
+
         // Invalidate conversations list to pick up newly created conversation
         // This fixes the race condition where the list query runs before the backend
         // creates the conversation (e.g., when task enters "reviewing" state)
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversationList(context_type as ContextType, eventContextId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
         });
 
         // Invalidate ideation session list so hasPendingPrompt badge clears
@@ -239,6 +302,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             queryKey: chatKeys.conversation(conversation_id), // use payload ID, not stale closure
           });
         }
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
+        });
       })
     );
 
@@ -246,13 +312,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // Unified event: agent:run_completed (replaces chat:run_completed)
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
@@ -261,6 +321,13 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // Final heartbeat — clears the "stuck" condition before transitioning to idle.
         updateLastAgentEvent(eventContextKey);
+
+        updateConversationProviderMetadata({
+          conversationId: conversation_id,
+          contextType: context_type as ContextType,
+          contextId: eventContextId,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
+        });
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
@@ -276,13 +343,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // (not "generating"), while the process remains alive.
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:turn_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
@@ -291,6 +352,13 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // Heartbeat: agent is alive between turns, reset watchdog timer.
         updateLastAgentEvent(eventContextKey);
+
+        updateConversationProviderMetadata({
+          conversationId: conversation_id,
+          contextType: context_type as ContextType,
+          contextId: eventContextId,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
+        });
 
         // Guard: if parent ideation session has active verification child, maintain
         // generating instead of transitioning to waiting_for_input. Child's generating
@@ -320,6 +388,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
+        });
       })
     );
 

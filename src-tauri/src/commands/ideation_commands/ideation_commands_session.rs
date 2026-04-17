@@ -36,6 +36,30 @@ pub async fn create_ideation_session_impl<R: tauri::Runtime>(
 ) -> Result<IdeationSessionResponse, String> {
     let project_id = ProjectId::from_string(input.project_id);
     let seed_task_id = input.seed_task_id.map(TaskId::from_string);
+    let team_mode_requested = input.team_mode.as_deref().is_some_and(|mode| mode != "solo");
+    let team_mode_supported = crate::application::ideation_harness_availability::ideation_team_mode_supported_for_project(
+        &state.agent_lane_settings_repo,
+        Some(project_id.as_str()),
+    )
+    .await;
+    let normalized_team_mode = if team_mode_requested && !team_mode_supported {
+        tracing::info!(
+            project_id = %project_id,
+            "Downgrading ideation session team mode to solo because the primary harness does not support team mode"
+        );
+        Some("solo".to_string())
+    } else {
+        input.team_mode.clone()
+    };
+    let normalized_team_config_json = if team_mode_requested && !team_mode_supported {
+        None
+    } else {
+        input.team_config
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| e.to_string())?
+    };
 
     let mut builder = IdeationSession::builder().project_id(project_id);
 
@@ -47,12 +71,11 @@ pub async fn create_ideation_session_impl<R: tauri::Runtime>(
         builder = builder.seed_task_id(task_id);
     }
 
-    if let Some(ref team_mode) = input.team_mode {
+    if let Some(ref team_mode) = normalized_team_mode {
         builder = builder.team_mode(team_mode.clone());
     }
 
-    if let Some(ref team_config) = input.team_config {
-        let config_json = serde_json::to_string(team_config).map_err(|e| e.to_string())?;
+    if let Some(config_json) = normalized_team_config_json {
         builder = builder.team_config_json(config_json);
     }
 
@@ -469,7 +492,7 @@ pub async fn reopen_ideation_session(
 /// Update the title of an ideation session
 ///
 /// Sets or clears the session title and emits a real-time event for UI updates.
-/// This is used by the session-namer agent for auto-generated titles and
+/// This is used by the ralphx-utility-session-namer agent for auto-generated titles and
 /// by the frontend for manual renames.
 #[tauri::command]
 pub async fn update_ideation_session_title(
@@ -507,7 +530,7 @@ pub async fn update_ideation_session_title(
     Ok(IdeationSessionResponse::from(session))
 }
 
-/// Spawn the session-namer agent to auto-generate a title for the session
+/// Spawn the ralphx-utility-session-namer agent to auto-generate a title for the session
 ///
 /// This is a fire-and-forget operation that spawns a background agent.
 /// The agent will call the update_session_title MCP tool when complete,
@@ -518,8 +541,12 @@ pub async fn spawn_session_namer(
     first_message: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    use crate::domain::agents::{AgentConfig, AgentRole};
-    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+    use crate::application::harness_runtime_registry::{
+        default_repo_root_working_directory, resolve_harness_agent_bootstrap,
+    };
+    use crate::domain::agents::{AgentConfig, AgentRole, DEFAULT_AGENT_HARNESS};
+    use crate::domain::entities::IdeationSessionId;
+    use crate::infrastructure::agents::claude::agent_names;
 
     // Build the prompt with session context (XML-delineated to prevent injection)
     let prompt = build_session_namer_prompt(&format!(
@@ -527,37 +554,51 @@ pub async fn spawn_session_namer(
         session_id, first_message
     ));
 
+    let project_id = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(session_id.clone()))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|session| session.project_id.as_str().to_string());
+    let runtime = state.resolve_session_namer_runtime().await;
+    let helper_harness = runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS);
+
     // Get the working directory (project root)
-    let working_directory = std::env::current_dir()
-        .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-        .unwrap_or_else(|_| PathBuf::from("."));
-
-    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
-
-    // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
-    let mut env = std::collections::HashMap::new();
-    env.insert(
-        "RALPHX_AGENT_TYPE".to_string(),
-        mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+    let working_directory = default_repo_root_working_directory();
+    let bootstrap = resolve_harness_agent_bootstrap(
+        helper_harness,
+        agent_names::AGENT_SESSION_NAMER,
+        working_directory,
     );
 
+    let harness_for_log = runtime.harness;
     let config = AgentConfig {
-        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string()),
+        role: AgentRole::Custom(bootstrap.agent_role.clone()),
         prompt,
-        working_directory,
-        plugin_dir: Some(plugin_dir),
-        agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-        model: None, // Agent file specifies haiku
+        working_directory: bootstrap.working_directory,
+        plugin_dir: Some(bootstrap.plugin_dir),
+        agent: Some(bootstrap.agent_name),
+        model: runtime.model,
+        harness: runtime.harness,
+        logical_effort: runtime.logical_effort,
+        approval_policy: runtime.approval_policy,
+        sandbox_mode: runtime.sandbox_mode,
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
-        env,
+        env: bootstrap.env,
     };
 
     // Clone the agent client for the background task
-    let agent_client = Arc::clone(&state.agent_client);
+    let agent_client = Arc::clone(&runtime.client);
 
     // Spawn in background (fire-and-forget)
     tokio::spawn(async move {
+        tracing::info!(
+            session_id = %session_id,
+            project_id = project_id.as_deref().unwrap_or(""),
+            harness = ?harness_for_log,
+            "Spawning session namer agent"
+        );
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 // Wait for completion in the background

@@ -4,6 +4,8 @@
 
 use serde::Serialize;
 
+use crate::domain::agents::AgentHarnessKind;
+use crate::domain::entities::chat_conversation::compatible_provider_session_fields_from_provider_ref;
 use crate::domain::entities::{ChatConversation, ChatMessage};
 
 // ============================================================================
@@ -24,6 +26,8 @@ pub mod events {
     pub const AGENT_RUN_COMPLETED: &str = "agent:run_completed";
     /// Agent turn completed event (interactive mode: turn done but process still alive)
     pub const AGENT_TURN_COMPLETED: &str = "agent:turn_completed";
+    /// Agent usage updated event (live mid-turn usage persisted)
+    pub const AGENT_USAGE_UPDATED: &str = "agent:usage_updated";
     /// Agent message created event
     pub const AGENT_MESSAGE_CREATED: &str = "agent:message_created";
     /// Agent error event
@@ -115,7 +119,6 @@ pub struct ChatConversationWithMessages {
 
 /// Payload for agent:run_started event
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentRunStartedPayload {
     pub run_id: String,
     pub conversation_id: String,
@@ -131,6 +134,39 @@ pub struct AgentRunStartedPayload {
     /// Human-readable label for the effective model (e.g. "Sonnet 4.6").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_model_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+}
+
+impl AgentRunStartedPayload {
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_provider_session(
+        run_id: impl Into<String>,
+        conversation_id: impl Into<String>,
+        context_type: impl Into<String>,
+        context_id: impl Into<String>,
+        run_chain_id: Option<String>,
+        parent_run_id: Option<String>,
+        effective_model_id: Option<String>,
+        effective_model_label: Option<String>,
+        harness: Option<AgentHarnessKind>,
+        provider_session_id: Option<String>,
+    ) -> Self {
+        Self {
+            run_id: run_id.into(),
+            conversation_id: conversation_id.into(),
+            context_type: context_type.into(),
+            context_id: context_id.into(),
+            run_chain_id,
+            parent_run_id,
+            effective_model_id,
+            effective_model_label,
+            provider_harness: harness.map(|value| value.to_string()),
+            provider_session_id,
+        }
+    }
 }
 
 /// Payload for agent:chunk event
@@ -141,6 +177,16 @@ pub struct AgentChunkPayload {
     pub context_type: String,
     pub context_id: String,
     pub seq: u64,
+    #[serde(default)]
+    pub append_to_previous: bool,
+}
+
+/// Payload for agent:usage_updated event
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentUsageUpdatedPayload {
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for agent:tool_call event
@@ -185,7 +231,35 @@ pub struct AgentRunCompletedPayload {
     pub context_id: String,
     pub claude_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub run_chain_id: Option<String>,
+}
+
+impl AgentRunCompletedPayload {
+    pub fn with_provider_session(
+        conversation_id: impl Into<String>,
+        context_type: impl Into<String>,
+        context_id: impl Into<String>,
+        harness: Option<AgentHarnessKind>,
+        provider_session_id: Option<String>,
+        run_chain_id: Option<String>,
+    ) -> Self {
+        let (claude_session_id, provider_session_id, provider_harness) =
+            compatible_provider_session_fields_from_provider_ref(harness, provider_session_id);
+
+        Self {
+            conversation_id: conversation_id.into(),
+            context_type: context_type.into(),
+            context_id: context_id.into(),
+            claude_session_id,
+            provider_harness: provider_harness.map(|value| value.to_string()),
+            provider_session_id,
+            run_chain_id,
+        }
+    }
 }
 
 /// Payload for agent:error event
@@ -212,6 +286,34 @@ pub struct AgentTaskStartedPayload {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
@@ -225,6 +327,8 @@ pub struct AgentTaskCompletedPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
@@ -232,6 +336,48 @@ pub struct AgentTaskCompletedPayload {
     pub total_tool_use_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,

@@ -1,0 +1,36 @@
+name: ralphx-execution-reviewer
+role: reviewer
+description: "Reviews code changes for quality and correctness"
+capabilities:
+  mcp_tools:
+    - complete_review
+    - get_task_context
+    - get_artifact
+    - get_artifact_version
+    - get_related_artifacts
+    - search_project_artifacts
+    - get_review_notes
+    - get_task_steps
+    - get_task_issues
+    - get_step_progress
+    - get_issue_progress
+    - get_project_analysis
+    - create_followup_session
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+    preapproved_cli_tools:
+      - Bash
+    skills:
+      - code-review-checklist
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -61,7 +61,6 @@ export function PlanTabContent({
 
   // Read from store — efficient (Zustand only re-renders on actual changes)
   const planArtifact = useIdeationStore((state) => state.planArtifact);
-  const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const setPlanArtifact = useIdeationStore((state) => state.setPlanArtifact);
 
   // Reset editing mode when plan changes externally
@@ -159,7 +158,6 @@ export function PlanTabContent({
           ) : (
             <PlanDisplay
               plan={planArtifact}
-              showApprove={ideationSettings?.requirePlanApproval ?? false}
               linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
               onEdit={() => {
                 onHistoricalVersionViewed?.();
@@ -189,28 +187,9 @@ export function PlanTabContent({
         projectId={session.projectId}
       />
 
-      {/* Empty state — shown when no plan, plan not required (null settings treated as non-required), and no proposals */}
-      {!planArtifact && ideationSettings?.planMode !== "required" && proposals.length === 0 && (
+      {/* Empty state — shown when no plan and no proposals */}
+      {!planArtifact && proposals.length === 0 && (
         <PlanEmptyState onBrowse={onImportPlan} />
-      )}
-
-      {/* Waiting for plan — shown when plan is required but not yet created */}
-      {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-full p-8">
-          <div className="relative">
-            <div
-              className="relative p-8 rounded-2xl text-center"
-              style={{
-                background: "hsla(220 10% 14% / 0.6)",
-                border: "1px solid hsla(220 10% 100% / 0.06)",
-              }}
-            >
-              <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
-              <p className="font-medium" style={{ color: "hsl(220 10% 70%)" }}>Waiting for implementation plan...</p>
-              <p className="text-sm mt-1" style={{ color: "hsl(220 10% 50%)" }}>The orchestrator will create a plan first</p>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

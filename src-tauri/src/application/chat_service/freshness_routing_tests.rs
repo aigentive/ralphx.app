@@ -705,15 +705,19 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
         app_state.task_repo.update(&stored).await.unwrap();
     }
 
-    // --- Phase 3: State machine fires BranchFreshnessConflict → task transitions to Merging ---
-    let transition_result = ts
-        .transition_task(&task_id, InternalStatus::Merging)
-        .await;
-    assert!(
-        transition_result.is_ok(),
-        "Reviewing → Merging transition must succeed: {:?}",
-        transition_result.err()
-    );
+    // --- Phase 3: Simulate the post-state-machine result of BranchFreshnessConflict → Merging ---
+    // The validated transition_task() surface no longer models this internal state-machine path.
+    {
+        let mut stored = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .expect("Task must exist for merge transition");
+        stored.internal_status = InternalStatus::Merging;
+        stored.touch();
+        app_state.task_repo.update(&stored).await.unwrap();
+    }
 
     // Verify task is now in Merging
     let merging_task = app_state

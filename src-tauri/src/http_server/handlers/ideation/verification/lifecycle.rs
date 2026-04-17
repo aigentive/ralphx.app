@@ -1,5 +1,70 @@
 use super::*;
 
+async fn resolve_verification_parent_session(
+    state: &HttpServerState,
+    requested_session_id: String,
+) -> Result<
+    (
+        String,
+        crate::domain::entities::IdeationSessionId,
+        crate::domain::entities::IdeationSession,
+    ),
+    JsonError,
+> {
+    let requested_session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(requested_session_id.clone());
+
+    let requested_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&requested_session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", requested_session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    if requested_session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
+        let parent_id = requested_session.parent_session_id.clone().ok_or_else(|| {
+            json_error(
+                StatusCode::BAD_REQUEST,
+                "Cannot resolve verification parent for a verification child session without a parent session.",
+            )
+        })?;
+        let parent_session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to load parent session {} for verification child {}: {}",
+                    parent_id.as_str(),
+                    requested_session_id,
+                    e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to get parent session",
+                )
+            })?
+            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
+        tracing::info!(
+            requested_session_id = %requested_session_id,
+            parent_session_id = %parent_id.as_str(),
+            "Auto-remapping verification lifecycle operation from child session to parent session"
+        );
+        Ok((parent_id.as_str().to_string(), parent_id, parent_session))
+    } else {
+        Ok((
+            requested_session_id,
+            requested_session_id_obj,
+            requested_session,
+        ))
+    }
+}
+
 /// Validate that a session is eligible for verification operations (stop, revert-and-skip).
 ///
 /// Fetches the session by ID and enforces:
@@ -112,13 +177,14 @@ pub(crate) async fn stop_and_archive_children(
                     app_handle
                         .emit(
                             "agent:run_completed",
-                            AgentRunCompletedPayload {
-                                conversation_id: info.conversation_id.clone(),
-                                context_type: "ideation".to_string(),
-                                context_id: child.id.as_str().to_string(),
-                                claude_session_id: None,
-                                run_chain_id: None,
-                            },
+                            AgentRunCompletedPayload::with_provider_session(
+                                info.conversation_id.clone(),
+                                "ideation".to_string(),
+                                child.id.as_str().to_string(),
+                                None,
+                                None,
+                                None,
+                            ),
                         )
                         .ok();
                 }
@@ -167,7 +233,7 @@ pub async fn stop_verification(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<SuccessResponse>, JsonError> {
-    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    use crate::domain::entities::ideation::VerificationStatus;
 
     let session_id_obj =
         crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
@@ -208,8 +274,25 @@ pub async fn stop_verification(
         ));
     }
 
+    let (effective_status, effective_in_progress) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for {} before stop: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification status",
+            )
+        })?;
+
     // Idempotent: if no verification is running, return 200 without doing anything
-    if !session.verification_in_progress {
+    if !effective_in_progress {
         return Ok(Json(SuccessResponse {
             success: true,
             message: "Verification is not in progress".to_string(),
@@ -219,29 +302,41 @@ pub async fn stop_verification(
     // Kill any running verification child agents (best-effort)
     stop_verification_children(&session_id, &state.app_state).await.ok();
 
-    // Update metadata: preserve existing metadata and set convergence_reason = "user_stopped"
-    let mut metadata: VerificationMetadata = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
-    metadata.convergence_reason = Some("user_stopped".to_string());
-    let metadata_json = serde_json::to_string(&metadata).ok();
+    // Update native verification snapshot state for the current generation.
+    let mut snapshot = crate::domain::services::load_current_verification_snapshot_or_default(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+        effective_status,
+        effective_in_progress,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load verification snapshot for {} before stop: {}",
+            session_id, e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification snapshot",
+        )
+    })?;
+    snapshot.status = VerificationStatus::Skipped;
+    snapshot.in_progress = false;
+    snapshot.convergence_reason = Some("user_stopped".to_string());
 
-    // Persist: verification_status = skipped, verification_in_progress = false
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false, metadata_json)
+        .save_verification_run_snapshot(&session_id_obj, &snapshot)
         .await
         .map_err(|e| {
             error!(
-                "Failed to update verification state for {}: {}",
+                "Failed to persist verification snapshot for {} after stop: {}",
                 session_id, e
             );
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to stop verification",
+                "Failed to persist verification snapshot",
             )
         })?;
 
@@ -265,7 +360,7 @@ pub async fn stop_verification(
             &session_id,
             VerificationStatus::Skipped,
             false,
-            Some(&metadata),
+            Some(&snapshot),
             Some("user_stopped"),
             Some(session.verification_generation),
         );
@@ -275,6 +370,166 @@ pub async fn stop_verification(
         success: true,
         message: "Verification stopped".to_string(),
     }))
+}
+
+/// POST /api/ideation/sessions/:id/verification/infra-failure
+///
+/// End an in-progress verification run as a runtime/infrastructure failure without
+/// converting the parent session into a content verdict. This resets the canonical
+/// parent session to `unverified`, clears authoritative current gaps, preserves round
+/// history/debug metadata where available, increments generation, and asynchronously
+/// stops any verification children so the caller is not forced to self-orchestrate
+/// verifier shutdown from the prompt.
+pub async fn mark_verification_infra_failure(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<VerificationInfraFailureRequest>,
+) -> Result<Json<VerificationResponse>, JsonError> {
+    use crate::domain::entities::ideation::VerificationStatus;
+
+    let (session_id, session_id_obj, session) =
+        resolve_verification_parent_session(&state, session_id).await?;
+
+    if !session.is_active() {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session is not active",
+        ));
+    }
+
+    if let Some(req_gen) = req.generation {
+        if req_gen != session.verification_generation {
+            return Err(json_error(
+                StatusCode::CONFLICT,
+                format!(
+                    "Generation mismatch: request generation {} != current generation {}. \
+                     Verification was reset — zombie agent detected. \
+                     Call get_plan_verification on the parent session, read verification_generation, \
+                     and retry only if in_progress is still true.",
+                    req_gen, session.verification_generation
+                ),
+            ));
+        }
+    }
+
+    let (effective_status, effective_in_progress) =
+        crate::domain::services::load_effective_verification_status(
+            state.app_state.ideation_session_repo.as_ref(),
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load effective verification status for {} before infra failure: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load verification status",
+            )
+        })?;
+
+    if !effective_in_progress && effective_status != VerificationStatus::Reviewing
+    {
+        return Err(json_error(
+            StatusCode::CONFLICT,
+            "Verification is not in progress on the parent session.",
+        ));
+    }
+
+    let mut snapshot = crate::domain::services::load_current_verification_snapshot_or_default(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+        effective_status,
+        effective_in_progress,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load verification snapshot for {} before infra failure: {}",
+            session_id, e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load verification snapshot",
+        )
+    })?;
+    if let Some(round) = req.round {
+        snapshot.current_round = round;
+    }
+    if let Some(max_rounds) = req.max_rounds {
+        snapshot.max_rounds = max_rounds;
+    }
+    snapshot.status = VerificationStatus::Unverified;
+    snapshot.in_progress = false;
+    snapshot.current_gaps.clear();
+    snapshot.convergence_reason =
+        Some(req.convergence_reason.unwrap_or_else(|| "agent_error".to_string()));
+    let convergence_reason = snapshot.convergence_reason.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(&session_id_obj, &snapshot)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to persist verification snapshot for infra failure on {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to persist verification snapshot",
+            )
+        })?;
+
+    state
+        .app_state
+        .ideation_session_repo
+        .increment_verification_generation(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to increment verification generation for {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to finalize verification runtime failure",
+            )
+        })?;
+    let next_generation = session.verification_generation + 1;
+
+    if let Some(app_handle) = &state.app_state.app_handle {
+        emit_verification_status_changed(
+            app_handle,
+            &session_id,
+            VerificationStatus::Unverified,
+            false,
+            Some(&snapshot),
+            convergence_reason.as_deref(),
+            Some(next_generation),
+        );
+    }
+
+    let app_state = state.app_state.clone();
+    let session_id_for_stop = session_id.clone();
+    tauri::async_runtime::spawn(async move {
+        stop_verification_children(&session_id_for_stop, &app_state)
+            .await
+            .ok();
+    });
+
+    let mut response =
+        get_plan_verification(
+            State(state),
+            ProjectScope(None),
+            Path(session_id),
+            axum::extract::Query(crate::http_server::types::VerificationQueryParams::default()),
+        )
+        .await?;
+    response.0.verification_generation = next_generation;
+    response.0.convergence_reason = convergence_reason;
+    Ok(response)
 }
 /// POST /api/ideation/sessions/:id/revert-and-skip
 ///
@@ -301,7 +556,7 @@ pub async fn revert_and_skip(
                 if e.0 == StatusCode::FORBIDDEN {
                     json_error(
                         StatusCode::FORBIDDEN,
-                        "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+                        "External sessions cannot skip plan verification. Run verification to completion.",
                     )
                 } else {
                     e

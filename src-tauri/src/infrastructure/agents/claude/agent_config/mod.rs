@@ -1,18 +1,32 @@
 pub mod runtime_config;
 pub mod team_config;
+mod tool_sets;
 mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
+use crate::domain::agents::{
+    standard_agent_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings,
+    LogicalEffort,
+};
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
+use crate::infrastructure::agents::harness_agent_catalog::{
+    list_canonical_prompt_backed_agents, load_canonical_agent_definition,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
+    try_load_canonical_claude_metadata, AgentPromptHarness, CanonicalClaudeToolSpec,
+};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use tool_sets::canonical_claude_tool_sets;
 
 #[allow(unused_imports)]
 pub use team_config::{
-    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
-    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    canonical_process_mapping, resolve_canonical_process_mapping, ApprovedTeamPlan,
+    ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError, TeamConstraints,
+    TeamConstraintsConfig, TeamMode, TeammateSpawnRequest, canonical_team_constraints_config,
+    resolve_canonical_team_constraints_config,
 };
 
 pub use runtime_config::{
@@ -37,16 +51,6 @@ const MEMORY_SKILLS: &[&str] = &[
     "Skill(ralphx:knowledge-capture)",
 ];
 
-const DEFAULT_BASE_CLI_TOOLS: &[&str] = &[
-    "Read",
-    "Grep",
-    "Glob",
-    "Bash",
-    "WebFetch",
-    "WebSearch",
-    "Skill",
-];
-
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
     pub name: String,
@@ -56,6 +60,8 @@ pub struct AgentConfig {
     pub preapproved_cli_tools: Vec<String>,
     pub system_prompt_file: String,
     pub model: Option<String>,
+    /// Effective claude settings profile selection for this agent (if any).
+    pub settings_profile: Option<String>,
     /// Effective settings JSON for this agent (if any), resolved from settings_profile.
     pub settings: Option<serde_json::Value>,
     /// Optional per-agent effort level override (e.g. "max"). Validated at parse time.
@@ -95,7 +101,58 @@ impl Default for ExecutionDefaultsConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+pub type AgentHarnessDefaultsConfig = HashMap<AgentLane, AgentLaneSettings>;
+type AgentHarnessDefaultsConfigRaw = HashMap<AgentLane, AgentLaneSettingsConfigRaw>;
+
+#[derive(Debug, Clone, Deserialize)]
+struct AgentLaneSettingsConfigRaw {
+    harness: AgentHarnessKind,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    effort: Option<LogicalEffort>,
+    #[serde(default)]
+    approval_policy: Option<String>,
+    #[serde(default)]
+    sandbox_mode: Option<String>,
+}
+
+impl From<AgentLaneSettingsConfigRaw> for AgentLaneSettings {
+    fn from(value: AgentLaneSettingsConfigRaw) -> Self {
+        Self {
+            harness: value.harness,
+            model: value.model,
+            effort: value.effort,
+            approval_policy: value.approval_policy,
+            sandbox_mode: value.sandbox_mode,
+        }
+    }
+}
+
+impl From<AgentLaneSettings> for AgentLaneSettingsConfigRaw {
+    fn from(value: AgentLaneSettings) -> Self {
+        Self {
+            harness: value.harness,
+            model: value.model,
+            effort: value.effort,
+            approval_policy: value.approval_policy,
+            sandbox_mode: value.sandbox_mode,
+        }
+    }
+}
+
+fn default_agent_harness_defaults() -> AgentHarnessDefaultsConfig {
+    standard_agent_lane_defaults()
+}
+
+fn default_agent_harness_defaults_raw() -> AgentHarnessDefaultsConfigRaw {
+    default_agent_harness_defaults()
+        .into_iter()
+        .map(|(lane, settings)| (lane, settings.into()))
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 struct AgentToolsSpec {
     #[serde(default)]
     mcp_only: bool,
@@ -206,9 +263,72 @@ struct RalphxConfig {
     ui: Option<UiConfig>,
     #[serde(default)]
     execution_defaults: ExecutionDefaultsConfig,
+    #[serde(default = "default_agent_harness_defaults_raw")]
+    agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
 }
 
-const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
+#[derive(Debug, Deserialize, Default)]
+struct ClaudeRuntimeConfigOverlay {
+    mcp_server_name: Option<String>,
+    setting_sources: Option<Vec<String>>,
+    permission_mode: Option<String>,
+    dangerously_skip_permissions: Option<bool>,
+    permission_prompt_tool: Option<String>,
+    append_system_prompt_file: Option<bool>,
+    settings_profile: Option<String>,
+    settings_profile_defaults: Option<serde_json::Value>,
+    settings_profiles: Option<HashMap<String, serde_json::Value>>,
+    settings: Option<serde_json::Value>,
+    default_effort: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ClaudeConfigOverlay {
+    #[serde(default)]
+    tool_sets: HashMap<String, Vec<String>>,
+    claude: Option<ClaudeRuntimeConfigOverlay>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CodexConfigOverlay {
+    #[serde(default)]
+    agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ProcessConfigOverlay {
+    #[serde(default)]
+    process_mapping: Option<ProcessMapping>,
+    #[serde(default)]
+    team_constraints: Option<TeamConstraintsConfig>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct ExternalMcpConfigRawOverlay {
+    enabled: Option<bool>,
+    port: Option<u16>,
+    host: Option<String>,
+    max_restart_attempts: Option<u32>,
+    restart_delay_ms: Option<u64>,
+    human_wait_timeout_secs: Option<u64>,
+    auth_token: Option<String>,
+    node_path: Option<String>,
+    max_external_ideation_sessions: Option<u32>,
+    external_session_stale_secs: Option<u64>,
+    external_message_queue_cap: Option<u32>,
+    external_session_similarity_threshold: Option<f64>,
+    external_session_startup_grace_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ExternalMcpConfigOverlay {
+    #[serde(default)]
+    external_mcp: Option<ExternalMcpConfigRawOverlay>,
+}
+
+const EMBEDDED_CONFIG: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../config/ralphx.yaml"));
 
 fn default_defer_merge_enabled() -> bool {
     true
@@ -227,6 +347,7 @@ struct LoadedConfig {
     file_logging: bool,
     runtime: AllRuntimeConfig,
     execution_defaults: ExecutionDefaultsConfig,
+    agent_harness_defaults: AgentHarnessDefaultsConfig,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -246,12 +367,245 @@ pub fn config_path() -> PathBuf {
         }
     }
 
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    root.join("ralphx.yaml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("ralphx.yaml")
+}
+
+fn config_dir_path() -> PathBuf {
+    config_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("config")
+        })
+}
+
+pub fn process_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_PROCESS_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    config_dir_path().join("processes.yaml")
+}
+
+pub fn claude_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_CLAUDE_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    config_dir_path().join("harnesses").join("claude.yaml")
+}
+
+pub fn codex_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_CODEX_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    config_dir_path().join("harnesses").join("codex.yaml")
+}
+
+pub fn external_mcp_config_path() -> PathBuf {
+    if let Ok(path) = std::env::var("RALPHX_EXTERNAL_MCP_CONFIG_PATH") {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+
+    config_dir_path().join("external-mcp.yaml")
+}
+
+fn parse_raw_config(yaml: &str) -> Option<RalphxConfig> {
+    match serde_yaml::from_str(yaml) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse RalphX config file");
+            None
+        }
+    }
+}
+
+fn apply_claude_runtime_config_overlay(
+    cfg: &mut ClaudeRuntimeConfigRaw,
+    overlay: ClaudeRuntimeConfigOverlay,
+) {
+    if let Some(mcp_server_name) = overlay.mcp_server_name {
+        cfg.mcp_server_name = mcp_server_name;
+    }
+    if let Some(setting_sources) = overlay.setting_sources {
+        cfg.setting_sources = Some(setting_sources);
+    }
+    if let Some(permission_mode) = overlay.permission_mode {
+        cfg.permission_mode = permission_mode;
+    }
+    if let Some(dangerously_skip_permissions) = overlay.dangerously_skip_permissions {
+        cfg.dangerously_skip_permissions = dangerously_skip_permissions;
+    }
+    if let Some(permission_prompt_tool) = overlay.permission_prompt_tool {
+        cfg.permission_prompt_tool = permission_prompt_tool;
+    }
+    if let Some(append_system_prompt_file) = overlay.append_system_prompt_file {
+        cfg.append_system_prompt_file = append_system_prompt_file;
+    }
+    if let Some(settings_profile) = overlay.settings_profile {
+        cfg.settings_profile = Some(settings_profile);
+    }
+    if let Some(settings_profile_defaults) = overlay.settings_profile_defaults {
+        cfg.settings_profile_defaults = Some(settings_profile_defaults);
+    }
+    if let Some(settings_profiles) = overlay.settings_profiles {
+        cfg.settings_profiles = settings_profiles;
+    }
+    if let Some(settings) = overlay.settings {
+        cfg.settings = Some(settings);
+    }
+    if let Some(default_effort) = overlay.default_effort {
+        cfg.default_effort = Some(default_effort);
+    }
+}
+
+fn apply_claude_config_overlay(cfg: &mut RalphxConfig, overlay: ClaudeConfigOverlay) {
+    cfg.tool_sets.extend(overlay.tool_sets);
+    if let Some(claude) = overlay.claude {
+        apply_claude_runtime_config_overlay(&mut cfg.claude, claude);
+    }
+}
+
+fn parse_claude_config_overlay(yaml: &str) -> Option<ClaudeConfigOverlay> {
+    serde_yaml::from_str::<ClaudeConfigOverlay>(yaml)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Failed to parse Claude harness config overlay");
+            e
+        })
+        .ok()
+}
+
+fn load_claude_config_overlay() -> Option<(PathBuf, ClaudeConfigOverlay)> {
+    let path = claude_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_claude_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
+fn apply_codex_config_overlay(cfg: &mut RalphxConfig, overlay: CodexConfigOverlay) {
+    cfg.agent_harness_defaults.extend(overlay.agent_harness_defaults);
+}
+
+fn parse_codex_config_overlay(yaml: &str) -> Option<CodexConfigOverlay> {
+    serde_yaml::from_str::<CodexConfigOverlay>(yaml)
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Failed to parse Codex harness config overlay");
+            e
+        })
+        .ok()
+}
+
+fn load_codex_config_overlay() -> Option<(PathBuf, CodexConfigOverlay)> {
+    let path = codex_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_codex_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
+fn parse_process_config_overlay(yaml: &str) -> Option<ProcessConfigOverlay> {
+    serde_yaml::from_str::<ProcessConfigOverlay>(yaml).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to parse process config overlay");
+        e
+    }).ok()
+}
+
+fn apply_process_config_overlay(cfg: &mut LoadedConfig, overlay: ProcessConfigOverlay) {
+    if let Some(process_mapping) = overlay.process_mapping {
+        cfg.process_mapping = resolve_canonical_process_mapping(&process_mapping);
+    }
+    if let Some(team_constraints) = overlay.team_constraints {
+        cfg.team_constraints = resolve_canonical_team_constraints_config(&team_constraints);
+    }
+}
+
+fn load_process_config_overlay() -> Option<(PathBuf, ProcessConfigOverlay)> {
+    let path = process_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_process_config_overlay(&raw)?;
+    Some((path, overlay))
+}
+
+fn apply_external_mcp_config_overlay(
+    cfg: &mut RalphxConfig,
+    overlay: ExternalMcpConfigOverlay,
+) {
+    let Some(overlay) = overlay.external_mcp else {
+        return;
+    };
+
+    if let Some(enabled) = overlay.enabled {
+        cfg.external_mcp.enabled = enabled;
+    }
+    if let Some(port) = overlay.port {
+        cfg.external_mcp.port = port;
+    }
+    if let Some(host) = overlay.host {
+        cfg.external_mcp.host = host;
+    }
+    if let Some(max_restart_attempts) = overlay.max_restart_attempts {
+        cfg.external_mcp.max_restart_attempts = max_restart_attempts;
+    }
+    if let Some(restart_delay_ms) = overlay.restart_delay_ms {
+        cfg.external_mcp.restart_delay_ms = restart_delay_ms;
+    }
+    if let Some(human_wait_timeout_secs) = overlay.human_wait_timeout_secs {
+        cfg.external_mcp.human_wait_timeout_secs = human_wait_timeout_secs;
+    }
+    if let Some(auth_token) = overlay.auth_token {
+        cfg.external_mcp.auth_token = Some(auth_token);
+    }
+    if let Some(node_path) = overlay.node_path {
+        cfg.external_mcp.node_path = Some(node_path);
+    }
+    if let Some(max_external_ideation_sessions) = overlay.max_external_ideation_sessions {
+        cfg.external_mcp.max_external_ideation_sessions = max_external_ideation_sessions;
+    }
+    if let Some(external_session_stale_secs) = overlay.external_session_stale_secs {
+        cfg.external_mcp.external_session_stale_secs = external_session_stale_secs;
+    }
+    if let Some(external_message_queue_cap) = overlay.external_message_queue_cap {
+        cfg.external_mcp.external_message_queue_cap = external_message_queue_cap;
+    }
+    if let Some(external_session_similarity_threshold) = overlay.external_session_similarity_threshold {
+        cfg.external_mcp.external_session_similarity_threshold =
+            external_session_similarity_threshold;
+    }
+    if let Some(external_session_startup_grace_secs) = overlay.external_session_startup_grace_secs {
+        cfg.external_mcp.external_session_startup_grace_secs =
+            Some(external_session_startup_grace_secs);
+    }
+}
+
+fn parse_external_mcp_config_overlay(yaml: &str) -> Option<ExternalMcpConfigOverlay> {
+    serde_yaml::from_str::<ExternalMcpConfigOverlay>(yaml).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to parse external MCP config overlay");
+        e
+    }).ok()
+}
+
+fn load_external_mcp_config_overlay() -> Option<(PathBuf, ExternalMcpConfigOverlay)> {
+    let path = external_mcp_config_path();
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let overlay = parse_external_mcp_config_overlay(&raw)?;
+    Some((path, overlay))
 }
 
 /// Resolve file_logging setting for early use (before tracing subscriber init).
-/// Priority: RALPHX_FILE_LOGGING env > ralphx.yaml `file_logging` field > default (true).
+/// Priority: RALPHX_FILE_LOGGING env > config/ralphx.yaml `file_logging` field > default (true).
 ///
 /// This does a lightweight YAML parse — the full config is loaded lazily later.
 pub fn resolve_file_logging_early() -> bool {
@@ -278,29 +632,223 @@ pub fn resolve_file_logging_early() -> bool {
     true
 }
 
-fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>) -> Vec<String> {
-    if raw.tools.mcp_only {
+fn resolve_tools_from_spec(
+    agent_name: &str,
+    tools: &AgentToolsSpec,
+    tool_sets: &HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    if tools.mcp_only {
         return Vec::new();
     }
 
     let mut out = Vec::<String>::new();
 
-    let extends = raw.tools.extends.as_deref().unwrap_or("base_tools");
+    let extends = tools.extends.as_deref().unwrap_or("base_tools");
 
     if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
-    } else if extends == "base_tools" {
-        out.extend(DEFAULT_BASE_CLI_TOOLS.iter().map(|t| (*t).to_string()));
+    } else if let Some(base) = canonical_claude_tool_sets().get(extends) {
+        out.extend(base.iter().cloned());
     } else {
-        tracing::warn!(agent = %raw.name, tool_set = %extends, "Unknown tools.extends set; using include only");
+        tracing::warn!(agent = %agent_name, tool_set = %extends, "Unknown tools.extends set; using include only");
     }
 
-    out.extend(raw.tools.include.iter().cloned());
+    out.extend(tools.include.iter().cloned());
 
     // Stable de-dup while preserving first-seen order
     let mut seen = HashSet::new();
     out.retain(|t| seen.insert(t.clone()));
     out
+}
+
+fn runtime_tools_spec_from_canonical(spec: &CanonicalClaudeToolSpec) -> AgentToolsSpec {
+    AgentToolsSpec {
+        mcp_only: spec.mcp_only,
+        extends: spec.extends.clone(),
+        include: spec.include.clone(),
+    }
+}
+
+fn resolve_tool_spec(project_root: &Path, raw: &AgentConfigRaw) -> AgentToolsSpec {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.tools.clone();
+    };
+
+    let Some(spec) = metadata.tools else {
+        return raw.tools.clone();
+    };
+
+    let canonical_spec = runtime_tools_spec_from_canonical(&spec);
+    if raw.tools != canonical_spec {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_tools = ?raw.tools,
+            canonical_tools = ?canonical_spec,
+            "Canonical Claude metadata overrides divergent runtime tools spec"
+        );
+    }
+
+    canonical_spec
+}
+
+fn canonical_agent_project_root() -> PathBuf {
+    let config_dir = config_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."));
+    resolve_project_root_from_plugin_dir(&config_dir)
+}
+
+fn resolve_system_prompt_file(project_root: &Path, raw: &AgentConfigRaw) -> String {
+    let canonical_prompt = resolve_harness_agent_prompt_path(
+        project_root,
+        &raw.name,
+        AgentPromptHarness::Claude,
+    )
+    .and_then(|path| {
+        path.strip_prefix(project_root)
+            .ok()
+            .map(|relative| relative.to_string_lossy().to_string())
+    });
+
+    if let Some(canonical_prompt) = canonical_prompt {
+        if raw.system_prompt_file.as_deref().is_some()
+            && raw.system_prompt_file.as_deref() != Some(canonical_prompt.as_str())
+        {
+            tracing::warn!(
+                agent = %raw.name,
+                runtime_system_prompt_file = ?raw.system_prompt_file,
+                canonical_system_prompt_file = %canonical_prompt,
+                "Canonical prompt path overrides divergent runtime system_prompt_file"
+            );
+        }
+        return canonical_prompt;
+    }
+
+    match &raw.system_prompt_file {
+        Some(path) => path.clone(),
+        None => {
+            tracing::warn!(
+                agent = %raw.name,
+                "Agent has no system_prompt_file and no canonical Claude prompt path"
+            );
+            String::new()
+        }
+    }
+}
+
+fn resolve_allowed_mcp_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<String> {
+    let Some(definition) = load_canonical_agent_definition(project_root, &raw.name) else {
+        return raw.mcp_tools.clone();
+    };
+
+    if definition.capabilities.mcp_tools.is_empty() {
+        return raw.mcp_tools.clone();
+    }
+
+    if !raw.mcp_tools.is_empty() && raw.mcp_tools != definition.capabilities.mcp_tools {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_tools = ?raw.mcp_tools,
+            canonical_tools = ?definition.capabilities.mcp_tools,
+            "Canonical agent metadata overrides divergent runtime mcp_tools"
+        );
+    }
+
+    definition.capabilities.mcp_tools
+}
+
+fn resolve_preapproved_cli_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.preapproved_cli_tools.clone();
+    };
+
+    if metadata.preapproved_cli_tools.is_empty() {
+        return raw.preapproved_cli_tools.clone();
+    }
+
+    if !raw.preapproved_cli_tools.is_empty()
+        && raw.preapproved_cli_tools != metadata.preapproved_cli_tools
+    {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_preapproved_cli_tools = ?raw.preapproved_cli_tools,
+            canonical_preapproved_cli_tools = ?metadata.preapproved_cli_tools,
+            "Canonical Claude metadata overrides divergent runtime preapproved_cli_tools"
+        );
+    }
+
+    metadata.preapproved_cli_tools
+}
+
+fn resolve_model(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.model.clone();
+    };
+
+    let Some(model) = metadata.model else {
+        return raw.model.clone();
+    };
+
+    if raw.model.as_deref().is_some() && raw.model.as_deref() != Some(model.as_str()) {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_model = ?raw.model,
+            canonical_model = %model,
+            "Canonical Claude metadata overrides divergent runtime model"
+        );
+    }
+
+    Some(model)
+}
+
+fn resolve_effort(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let runtime_effort = raw.effort.clone().filter(|v| validate_effort(v, &raw.name));
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return runtime_effort;
+    };
+
+    let Some(effort) = metadata.effort else {
+        return runtime_effort;
+    };
+
+    if !validate_effort(&effort, &raw.name) {
+        return runtime_effort;
+    }
+
+    if runtime_effort.as_deref().is_some() && runtime_effort.as_deref() != Some(effort.as_str()) {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_effort = ?runtime_effort,
+            canonical_effort = %effort,
+            "Canonical Claude metadata overrides divergent runtime effort"
+        );
+    }
+
+    Some(effort)
+}
+
+fn resolve_permission_mode(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.permission_mode.clone();
+    };
+
+    let Some(permission_mode) = metadata.permission_mode else {
+        return raw.permission_mode.clone();
+    };
+
+    if raw.permission_mode.as_deref().is_some()
+        && raw.permission_mode.as_deref() != Some(permission_mode.as_str())
+    {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_permission_mode = ?raw.permission_mode,
+            canonical_permission_mode = %permission_mode,
+            "Canonical Claude metadata overrides divergent runtime permission_mode"
+        );
+    }
+
+    Some(permission_mode)
 }
 
 // ── Agent config inheritance (extends) ──────────────────────────────────
@@ -381,36 +929,71 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
             .clone()
             .or_else(|| parent.settings_profile.clone()),
         effort: child.effort.clone().or_else(|| parent.effort.clone()),
-        permission_mode: child.permission_mode.clone().or_else(|| parent.permission_mode.clone()),
+        permission_mode: child
+            .permission_mode
+            .clone()
+            .or_else(|| parent.permission_mode.clone()),
     }
 }
 
-fn parse_config_with_lookup(
-    yaml: &str,
+fn canonical_runtime_agent_stub(name: String) -> AgentConfigRaw {
+    AgentConfigRaw {
+        name,
+        extends: None,
+        tools: AgentToolsSpec::default(),
+        mcp_tools: Vec::new(),
+        preapproved_cli_tools: Vec::new(),
+        system_prompt_file: None,
+        model: None,
+        settings_profile: None,
+        effort: None,
+        permission_mode: None,
+    }
+}
+
+fn resolve_loaded_config_with_lookup(
+    parsed: RalphxConfig,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Option<LoadedConfig> {
-    let parsed: RalphxConfig = match serde_yaml::from_str(yaml) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse ralphx.yaml");
-            return None;
-        }
-    };
+    let canonical_project_root = canonical_agent_project_root();
+    let canonical_runtime_agents =
+        list_canonical_prompt_backed_agents(&canonical_project_root, AgentPromptHarness::Claude);
+    let canonical_runtime_agent_names = canonical_runtime_agents
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let raw_agents = canonical_runtime_agents
+        .into_iter()
+        .map(|name| {
+            parsed
+                .agents
+                .iter()
+                .find(|raw| raw.name == name)
+                .cloned()
+                .unwrap_or_else(|| canonical_runtime_agent_stub(name))
+        })
+        .chain(
+            parsed
+                .agents
+                .iter()
+                .filter(|raw| !canonical_runtime_agent_names.contains(&raw.name))
+                .cloned(),
+        )
+        .collect::<Vec<_>>();
 
     // Phase 1: resolve extends inheritance for all agents
-    let resolved_raw_agents: Vec<AgentConfigRaw> = parsed
-        .agents
+    let resolved_raw_agents: Vec<AgentConfigRaw> = raw_agents
         .iter()
         .map(|raw| {
             let mut stack = Vec::new();
-            resolve_agent_extends(raw, &parsed.agents, &mut stack)
+            resolve_agent_extends(raw, &raw_agents, &mut stack)
         })
         .collect();
 
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(resolved_raw_agents.len());
-    let global_profile_selection =
-        runtime_settings_profile_override_with(lookup).or_else(|| parsed.claude.settings_profile.clone());
+    let global_profile_selection = runtime_settings_profile_override_with(lookup)
+        .or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
 
@@ -420,18 +1003,10 @@ fn parse_config_with_lookup(
             return None;
         }
 
-        let system_prompt = match &raw.system_prompt_file {
-            Some(path) => path.clone(),
-            None => {
-                tracing::warn!(
-                    agent = %raw.name,
-                    "Agent has no system_prompt_file (even after extends resolution)"
-                );
-                String::new()
-            }
-        };
+        let system_prompt = resolve_system_prompt_file(&canonical_project_root, raw);
 
-        let cli_tools = resolve_tools(raw, &parsed.tool_sets);
+        let tool_spec = resolve_tool_spec(&canonical_project_root, raw);
+        let cli_tools = resolve_tools_from_spec(raw.name.as_str(), &tool_spec, &parsed.tool_sets);
         let agent_profile_selection =
             runtime_settings_profile_override_for_agent_with(&raw.name, lookup)
                 .or_else(|| raw.settings_profile.clone());
@@ -449,17 +1024,23 @@ fn parse_config_with_lookup(
         } else {
             resolved_settings.clone()
         };
+        let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
+        let preapproved_cli_tools = resolve_preapproved_cli_tools(&canonical_project_root, raw);
+        let model = resolve_model(&canonical_project_root, raw);
+        let effort = resolve_effort(&canonical_project_root, raw);
+        let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
-            mcp_only: raw.tools.mcp_only,
+            mcp_only: tool_spec.mcp_only,
             resolved_cli_tools: cli_tools,
-            allowed_mcp_tools: raw.mcp_tools.clone(),
-            preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
+            allowed_mcp_tools,
+            preapproved_cli_tools,
             system_prompt_file: system_prompt,
-            model: raw.model.clone(),
+            model,
+            settings_profile: agent_profile_selection.clone(),
             settings: agent_settings,
-            effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
-            permission_mode: raw.permission_mode.clone(),
+            effort,
+            permission_mode,
         });
     }
 
@@ -498,30 +1079,53 @@ fn parse_config_with_lookup(
         limits: parsed.limits,
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
-        child_session_activity_threshold_secs: parsed.ideation.child_session_activity_threshold_secs,
+        child_session_activity_threshold_secs: parsed
+            .ideation
+            .child_session_activity_threshold_secs,
         ui_feature_flags,
     };
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
         tracing::warn!(
             value = runtime.external_mcp.max_external_ideation_sessions,
-            "ralphx.yaml: external_mcp.max_external_ideation_sessions is deprecated and has no \
-             effect. The session gate was removed; sessions are always created. Remove this field."
+            "config/external-mcp.yaml: external_mcp.max_external_ideation_sessions is deprecated and \
+             has no effect. The session gate was removed; sessions are always created. Remove \
+             this field."
         );
     }
     runtime_config::apply_env_overrides(&mut runtime);
+    let mut agent_harness_defaults = parsed
+        .agent_harness_defaults
+        .into_iter()
+        .map(|(lane, settings)| (lane, settings.into()))
+        .collect::<AgentHarnessDefaultsConfig>();
+    apply_agent_harness_env_overrides_with(&mut agent_harness_defaults, lookup);
+
+    let process_mapping = resolve_canonical_process_mapping(&parsed.process_mapping);
+    let team_constraints = resolve_canonical_team_constraints_config(&parsed.team_constraints);
 
     Some(LoadedConfig {
         agents: resolved,
         claude,
-        process_mapping: parsed.process_mapping,
-        team_constraints: parsed.team_constraints,
+        process_mapping,
+        team_constraints,
         defer_merge_enabled: parsed.defer_merge_enabled,
         file_logging: parsed.file_logging,
         runtime,
         execution_defaults: parsed.execution_defaults,
+        agent_harness_defaults,
     })
 }
 
+#[cfg(test)]
+fn parse_config_with_lookup(
+    yaml: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<LoadedConfig> {
+    let parsed = parse_raw_config(yaml)?;
+    resolve_loaded_config_with_lookup(parsed, lookup)
+}
+
+#[cfg(test)]
 fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     parse_config_with_lookup(yaml, &|name| std::env::var(name).ok())
 }
@@ -558,6 +1162,106 @@ fn runtime_settings_profile_override_for_agent_with(
             Some(trimmed.to_string())
         }
     })
+}
+
+fn normalize_lane_name_for_env(lane: AgentLane) -> String {
+    lane.to_string()
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' => ch.to_ascii_uppercase(),
+            'A'..='Z' | '0'..='9' => ch,
+            _ => '_',
+        })
+        .collect()
+}
+
+fn normalize_override_value(raw: Option<String>) -> Option<String> {
+    raw.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn all_agent_lanes() -> [AgentLane; 8] {
+    [
+        AgentLane::IdeationPrimary,
+        AgentLane::IdeationVerifier,
+        AgentLane::IdeationSubagent,
+        AgentLane::IdeationVerifierSubagent,
+        AgentLane::ExecutionWorker,
+        AgentLane::ExecutionReviewer,
+        AgentLane::ExecutionReexecutor,
+        AgentLane::ExecutionMerger,
+    ]
+}
+
+fn apply_agent_harness_env_overrides_with(
+    defaults: &mut AgentHarnessDefaultsConfig,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) {
+    for lane in all_agent_lanes() {
+        let lane_key = normalize_lane_name_for_env(lane);
+        let harness_key = format!("RALPHX_AGENT_HARNESS_{lane_key}");
+        let model_key = format!("RALPHX_AGENT_MODEL_{lane_key}");
+        let effort_key = format!("RALPHX_AGENT_EFFORT_{lane_key}");
+        let approval_key = format!("RALPHX_AGENT_APPROVAL_POLICY_{lane_key}");
+        let sandbox_key = format!("RALPHX_AGENT_SANDBOX_MODE_{lane_key}");
+
+        let existing = defaults.get(&lane).cloned();
+        let mut settings = existing
+            .clone()
+            .unwrap_or_else(|| AgentLaneSettings::new(AgentHarnessKind::Claude));
+        let mut changed = false;
+
+        if let Some(raw) = normalize_override_value(lookup(&harness_key)) {
+            match raw.parse::<AgentHarnessKind>() {
+                Ok(value) => {
+                    settings.harness = value;
+                    changed = true;
+                }
+                Err(error) => {
+                    tracing::warn!(lane = %lane, env = %harness_key, value = %raw, %error, "Ignoring invalid agent harness env override");
+                }
+            }
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&model_key)) {
+            settings.model = Some(raw);
+            changed = true;
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&effort_key)) {
+            match raw.parse::<LogicalEffort>() {
+                Ok(value) => {
+                    settings.effort = Some(value);
+                    changed = true;
+                }
+                Err(error) => {
+                    tracing::warn!(lane = %lane, env = %effort_key, value = %raw, %error, "Ignoring invalid agent effort env override");
+                }
+            }
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&approval_key)) {
+            settings.approval_policy = Some(raw);
+            changed = true;
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&sandbox_key)) {
+            settings.sandbox_mode = Some(raw);
+            changed = true;
+        }
+
+        if !changed {
+            continue;
+        }
+
+        defaults.insert(lane, settings);
+    }
 }
 
 fn normalize_agent_name_for_env(agent_name: &str) -> String {
@@ -722,10 +1426,7 @@ fn merge_settings(base: serde_json::Value, overlay: serde_json::Value) -> serde_
     }
 }
 
-fn apply_prefixed_env_overrides(
-    settings: &mut serde_json::Value,
-    profile_name: Option<&str>,
-) {
+fn apply_prefixed_env_overrides(settings: &mut serde_json::Value, profile_name: Option<&str>) {
     apply_prefixed_env_overrides_with(settings, profile_name, &|name| std::env::var(name).ok());
 }
 
@@ -740,8 +1441,9 @@ fn apply_prefixed_env_overrides_with(
 
     let normalized_profile = profile_name.map(normalize_profile_name_for_env);
     for (target_key, target_value) in env_settings.iter_mut() {
-        let profile_source_key =
-            normalized_profile.as_ref().map(|profile| format!("RALPHX_{profile}_{target_key}"));
+        let profile_source_key = normalized_profile
+            .as_ref()
+            .map(|profile| format!("RALPHX_{profile}_{target_key}"));
         let generic_source_key = format!("RALPHX_{target_key}");
 
         let value = profile_source_key
@@ -758,56 +1460,124 @@ fn apply_prefixed_env_overrides_with(
 fn load_config() -> LoadedConfig {
     let path = config_path();
     if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Some(cfg) = parse_config(&raw) {
-            tracing::info!(
-                path = %path.display(),
-                agents = cfg.agents.len(),
-                permission_mode = %cfg.claude.permission_mode,
-                dangerously_skip_permissions = cfg.claude.dangerously_skip_permissions,
-                append_system_prompt_file = cfg.claude.use_append_system_prompt_file,
-                "Loaded agent config from ralphx.yaml"
-            );
-            return cfg;
+        if let Some(mut parsed) = parse_raw_config(&raw) {
+            if let Some((claude_path, overlay)) = load_claude_config_overlay() {
+                apply_claude_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %claude_path.display(),
+                    "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
+                );
+            }
+            if let Some((codex_path, overlay)) = load_codex_config_overlay() {
+                apply_codex_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %codex_path.display(),
+                    "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
+                );
+            }
+            if let Some((external_mcp_path, overlay)) = load_external_mcp_config_overlay() {
+                apply_external_mcp_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %external_mcp_path.display(),
+                    "Loaded external MCP config overlay from config/external-mcp.yaml"
+                );
+            }
+            if let Some(mut cfg) =
+                resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
+            {
+                if let Some((process_path, overlay)) = load_process_config_overlay() {
+                    apply_process_config_overlay(&mut cfg, overlay);
+                    tracing::info!(
+                        path = %process_path.display(),
+                        "Loaded process config overlay from config/processes.yaml"
+                    );
+                }
+                tracing::info!(
+                    path = %path.display(),
+                    agents = cfg.agents.len(),
+                    permission_mode = %cfg.claude.permission_mode,
+                    dangerously_skip_permissions = cfg.claude.dangerously_skip_permissions,
+                    append_system_prompt_file = cfg.claude.use_append_system_prompt_file,
+                    "Loaded agent config from RalphX config file"
+                );
+                return cfg;
+            }
         }
         tracing::warn!(path = %path.display(), "Falling back to embedded config due to parse error");
     } else {
-        tracing::warn!(path = %path.display(), "ralphx.yaml not found/readable, using embedded config");
+        tracing::warn!(path = %path.display(), "RalphX config file not found/readable, using embedded config");
     }
 
-    parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| {
-        let mut runtime = AllRuntimeConfig {
-            stream: StreamTimeoutsConfig::default(),
-            reconciliation: ReconciliationConfig::default(),
-            git: GitRuntimeConfig::default(),
-            scheduler: SchedulerConfig::default(),
-            supervisor: SupervisorRuntimeConfig::default(),
-            limits: LimitsConfig::default(),
-            verification: VerificationConfig::default(),
-            external_mcp: ExternalMcpConfig::default(),
-            child_session_activity_threshold_secs: None,
-            ui_feature_flags: UiFeatureFlagsConfig::default(),
-        };
-        runtime_config::apply_env_overrides(&mut runtime);
-        LoadedConfig {
-            agents: Vec::new(),
-            claude: ClaudeRuntimeConfig {
-                mcp_server_name: "ralphx".to_string(),
-                setting_sources: None,
-                permission_mode: "default".to_string(),
-                dangerously_skip_permissions: false,
-                permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
-                use_append_system_prompt_file: true,
-                settings: None,
-                default_effort: "medium".to_string(),
-            },
-            process_mapping: ProcessMapping::default(),
-            team_constraints: TeamConstraintsConfig::default(),
-            defer_merge_enabled: true,
-            file_logging: true,
-            runtime,
-            execution_defaults: ExecutionDefaultsConfig::default(),
-        }
-    })
+    let mut cfg = parse_raw_config(EMBEDDED_CONFIG)
+        .and_then(|mut parsed| {
+            if let Some((claude_path, overlay)) = load_claude_config_overlay() {
+                apply_claude_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %claude_path.display(),
+                    "Loaded Claude harness config overlay from config/harnesses/claude.yaml"
+                );
+            }
+            if let Some((codex_path, overlay)) = load_codex_config_overlay() {
+                apply_codex_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %codex_path.display(),
+                    "Loaded Codex harness config overlay from config/harnesses/codex.yaml"
+                );
+            }
+            if let Some((external_mcp_path, overlay)) = load_external_mcp_config_overlay() {
+                apply_external_mcp_config_overlay(&mut parsed, overlay);
+                tracing::info!(
+                    path = %external_mcp_path.display(),
+                    "Loaded external MCP config overlay from config/external-mcp.yaml"
+                );
+            }
+            resolve_loaded_config_with_lookup(parsed, &|name| std::env::var(name).ok())
+        })
+        .unwrap_or_else(|| {
+            let mut runtime = AllRuntimeConfig {
+                stream: StreamTimeoutsConfig::default(),
+                reconciliation: ReconciliationConfig::default(),
+                git: GitRuntimeConfig::default(),
+                scheduler: SchedulerConfig::default(),
+                supervisor: SupervisorRuntimeConfig::default(),
+                limits: LimitsConfig::default(),
+                verification: VerificationConfig::default(),
+                external_mcp: ExternalMcpConfig::default(),
+                child_session_activity_threshold_secs: None,
+                ui_feature_flags: UiFeatureFlagsConfig::default(),
+            };
+            runtime_config::apply_env_overrides(&mut runtime);
+            LoadedConfig {
+                agents: Vec::new(),
+                claude: ClaudeRuntimeConfig {
+                    mcp_server_name: "ralphx".to_string(),
+                    setting_sources: None,
+                    permission_mode: "default".to_string(),
+                    dangerously_skip_permissions: false,
+                    permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
+                    use_append_system_prompt_file: true,
+                    settings: None,
+                    default_effort: "medium".to_string(),
+                },
+                process_mapping: ProcessMapping::default(),
+                team_constraints: TeamConstraintsConfig::default(),
+                defer_merge_enabled: true,
+                file_logging: true,
+                runtime,
+                execution_defaults: ExecutionDefaultsConfig::default(),
+                agent_harness_defaults: default_agent_harness_defaults(),
+            }
+        });
+
+    if let Some((process_path, overlay)) = load_process_config_overlay() {
+        apply_process_config_overlay(&mut cfg, overlay);
+        tracing::info!(
+            path = %process_path.display(),
+            "Loaded process config overlay from config/processes.yaml"
+        );
+    }
+
+    cfg
 }
 
 pub fn agent_configs() -> &'static [AgentConfig] {
@@ -822,19 +1592,30 @@ pub fn claude_runtime_config() -> &'static ClaudeRuntimeConfig {
 }
 
 pub fn get_agent_config(agent_name: &str) -> Option<&'static AgentConfig> {
-    let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    let lookup_name = super::canonical_short_agent_name(agent_name);
     agent_configs().iter().find(|c| c.name == lookup_name)
 }
 
 pub fn get_effective_settings(agent_name: Option<&str>) -> Option<&'static serde_json::Value> {
     let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
     if let Some(name) = agent_name {
-        let lookup_name = name.strip_prefix("ralphx:").unwrap_or(name);
+        let lookup_name = super::canonical_short_agent_name(name);
         if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
             return agent.settings.as_ref();
         }
     }
     loaded.claude.settings.as_ref()
+}
+
+pub fn get_effective_settings_profile(agent_name: Option<&str>) -> Option<&'static str> {
+    let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
+    if let Some(name) = agent_name {
+        let lookup_name = super::canonical_short_agent_name(name);
+        if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
+            return agent.settings_profile.as_deref();
+        }
+    }
+    None
 }
 
 pub fn get_allowed_tools(agent_name: &str) -> Option<String> {
@@ -862,13 +1643,19 @@ pub fn defer_merge_enabled() -> bool {
 }
 
 pub fn file_logging_enabled() -> bool {
-    LOADED_CONFIG_CELL
-        .get_or_init(load_config)
-        .file_logging
+    LOADED_CONFIG_CELL.get_or_init(load_config).file_logging
 }
 
 pub fn execution_defaults_config() -> &'static ExecutionDefaultsConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).execution_defaults
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .execution_defaults
+}
+
+pub fn agent_harness_defaults_config() -> &'static AgentHarnessDefaultsConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .agent_harness_defaults
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
@@ -955,8 +1742,8 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
 
         if !c.mcp_only {
             // Memory skills only for dedicated memory agents
-            let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
-            if lookup_name == "memory-maintainer" || lookup_name == "memory-capture" {
+            let lookup_name = super::canonical_short_agent_name(agent_name);
+            if lookup_name == "ralphx-memory-maintainer" || lookup_name == "ralphx-memory-capture" {
                 for t in MEMORY_SKILLS {
                     tools.push((*t).to_string());
                 }

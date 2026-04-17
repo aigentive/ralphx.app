@@ -1,0 +1,135 @@
+use ralphx_lib::commands::conversation_stats_commands::{
+    build_conversation_stats_response, build_scope_stats_response,
+};
+use ralphx_lib::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
+use ralphx_lib::domain::entities::{
+    AgentRun, ChatContextType, ChatConversation, ChatMessage, IdeationSessionId, MessageRole,
+    ProjectId, TaskId,
+};
+
+#[test]
+fn test_conversation_stats_prefers_message_usage_when_available() {
+    let session_id = IdeationSessionId::new();
+    let mut conversation = ChatConversation::new_ideation(session_id.clone());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "thread-1".to_string(),
+    });
+    conversation.set_provider_origin(Some("openai".to_string()), None);
+
+    let mut message = ChatMessage::orchestrator_in_session(session_id.clone(), "done");
+    message.conversation_id = Some(conversation.id);
+    message.provider_harness = Some(AgentHarnessKind::Codex);
+    message.provider_session_id = Some("thread-1".to_string());
+    message.upstream_provider = Some("openai".to_string());
+    message.effective_model_id = Some("gpt-5.4".to_string());
+    message.effective_effort = Some("high".to_string());
+    message.input_tokens = Some(120);
+    message.output_tokens = Some(40);
+    message.cache_creation_tokens = Some(5);
+    message.cache_read_tokens = Some(8);
+    message.estimated_usd = Some(0.42);
+
+    let mut run = AgentRun::new(conversation.id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.upstream_provider = Some("openai".to_string());
+    run.effective_model_id = Some("gpt-5.4".to_string());
+    run.logical_effort = Some(LogicalEffort::High);
+    run.effective_effort = Some("high".to_string());
+    run.input_tokens = Some(999);
+    run.output_tokens = Some(111);
+    run.estimated_usd = Some(1.25);
+
+    let response = build_conversation_stats_response(&conversation, &[message], &[run]);
+
+    assert_eq!(response.usage_coverage.effective_totals_source, "messages");
+    assert_eq!(response.message_usage_totals.input_tokens, 120);
+    assert_eq!(response.message_usage_totals.output_tokens, 40);
+    assert_eq!(response.effective_usage_totals.input_tokens, 120);
+    assert_eq!(response.effective_usage_totals.output_tokens, 40);
+    assert_eq!(response.effective_usage_totals.estimated_usd, Some(0.42));
+    assert_eq!(response.by_harness[0].key, "codex");
+    assert_eq!(response.by_harness[0].usage.input_tokens, 120);
+    assert_eq!(response.by_model[0].key, "gpt-5.4");
+    assert_eq!(response.by_effort[0].key, "high");
+}
+
+#[test]
+fn test_conversation_stats_falls_back_to_run_usage_when_messages_lack_usage() {
+    let session_id = IdeationSessionId::new();
+    let mut conversation = ChatConversation::new_ideation(session_id.clone());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Claude,
+        provider_session_id: "session-1".to_string(),
+    });
+    conversation.set_provider_origin(Some("z_ai".to_string()), Some("z_ai".to_string()));
+
+    let mut message = ChatMessage::orchestrator_in_session(session_id, "hello");
+    message.conversation_id = Some(conversation.id);
+    message.provider_harness = Some(AgentHarnessKind::Claude);
+
+    let mut run = AgentRun::new(conversation.id);
+    run.harness = Some(AgentHarnessKind::Claude);
+    run.upstream_provider = Some("z_ai".to_string());
+    run.provider_profile = Some("z_ai".to_string());
+    run.effective_model_id = Some("glm-4.7".to_string());
+    run.effective_effort = Some("medium".to_string());
+    run.input_tokens = Some(300);
+    run.output_tokens = Some(120);
+    run.cache_creation_tokens = Some(30);
+    run.cache_read_tokens = Some(12);
+
+    let response = build_conversation_stats_response(&conversation, &[message], &[run]);
+
+    assert_eq!(response.usage_coverage.effective_totals_source, "runs");
+    assert_eq!(response.message_usage_totals.input_tokens, 0);
+    assert_eq!(response.run_usage_totals.input_tokens, 300);
+    assert_eq!(response.effective_usage_totals.input_tokens, 300);
+    assert_eq!(response.by_upstream_provider[0].key, "z_ai");
+    assert_eq!(response.by_model[0].key, "glm-4.7");
+    assert_eq!(response.attribution_coverage.provider_messages_with_attribution, 1);
+}
+
+#[test]
+fn test_scope_stats_include_context_breakdown_and_conversation_count() {
+    let project_id = ProjectId::from_string("project-1".to_string());
+    let task_id = TaskId::from_string("task-1".to_string());
+    let session_id = IdeationSessionId::new();
+
+    let project_conversation = ChatConversation::new_project(project_id.clone());
+    let mut task_conversation = ChatConversation::new_task(task_id);
+    task_conversation.context_type = ChatContextType::TaskExecution;
+
+    let mut project_message = ChatMessage::user_in_project(project_id.clone(), "project");
+    project_message.role = MessageRole::Orchestrator;
+    project_message.conversation_id = Some(project_conversation.id);
+    project_message.provider_harness = Some(AgentHarnessKind::Codex);
+    project_message.effective_model_id = Some("gpt-5.4".to_string());
+    project_message.effective_effort = Some("high".to_string());
+    project_message.input_tokens = Some(100);
+    project_message.output_tokens = Some(20);
+
+    let mut task_message = ChatMessage::orchestrator_in_session(session_id, "task");
+    task_message.conversation_id = Some(task_conversation.id);
+    task_message.provider_harness = Some(AgentHarnessKind::Codex);
+    task_message.effective_model_id = Some("gpt-5.4".to_string());
+    task_message.effective_effort = Some("high".to_string());
+    task_message.input_tokens = Some(30);
+    task_message.output_tokens = Some(10);
+
+    let response = build_scope_stats_response(
+        "project",
+        project_id.as_str(),
+        &[project_conversation, task_conversation],
+        &[project_message, task_message],
+        &[],
+    );
+
+    assert_eq!(response.scope_type, "project");
+    assert_eq!(response.conversation_count, 2);
+    assert_eq!(response.usage_coverage.effective_totals_source, "messages");
+    assert_eq!(response.effective_usage_totals.input_tokens, 130);
+    assert_eq!(response.by_context_type.len(), 2);
+    assert_eq!(response.by_context_type[0].key, "project");
+    assert_eq!(response.by_context_type[1].key, "task_execution");
+}

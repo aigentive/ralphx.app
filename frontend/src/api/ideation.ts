@@ -94,6 +94,7 @@ function toVerificationStatusResponse(
     status: raw.status as VerificationStatusResponse["status"],
     inProgress: raw.in_progress,
     ...(raw.verification_generation !== undefined && { generation: raw.verification_generation }),
+    ...(raw.selected_generation !== undefined && { selectedGeneration: raw.selected_generation }),
     ...(raw.current_round !== undefined && { currentRound: raw.current_round }),
     ...(raw.max_rounds !== undefined && { maxRounds: raw.max_rounds }),
     ...(raw.gap_score !== undefined && { gapScore: raw.gap_score }),
@@ -101,7 +102,13 @@ function toVerificationStatusResponse(
     ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
     gaps: raw.current_gaps,
     rounds: raw.rounds,
+    roundDetails: raw.round_details,
+    runHistory: raw.run_history.map((entry) => ({
+      ...entry,
+      status: entry.status as VerificationStatusResponse["status"],
+    })),
     ...(raw.plan_version !== undefined && { planVersion: raw.plan_version }),
+    ...(raw.verification_child !== undefined && { verificationChild: raw.verification_child }),
   };
 }
 
@@ -231,7 +238,7 @@ export const ideationApi = {
     },
 
     /**
-     * Spawn a session-namer agent to auto-generate a title from the first message
+     * Spawn a ralphx-utility-session-namer agent to auto-generate a title from the first message
      * Runs in background and returns immediately (fire-and-forget)
      * @param sessionId The session ID
      * @param firstMessage The user's first message in the session
@@ -578,10 +585,10 @@ export const ideationApi = {
         "update_ideation_settings",
         {
           settings: {
-            plan_mode: settings.planMode,
-            require_plan_approval: settings.requirePlanApproval,
-            suggest_plans_for_complex: settings.suggestPlansForComplex,
-            auto_link_proposals: settings.autoLinkProposals,
+            plan_mode: "optional",
+            require_plan_approval: false,
+            suggest_plans_for_complex: false,
+            auto_link_proposals: false,
             require_accept_for_finalize: settings.requireAcceptForFinalize,
             require_verification_for_proposals: settings.requireVerificationForProposals,
             require_verification_for_accept: settings.requireVerificationForAccept,
@@ -605,9 +612,15 @@ export const ideationApi = {
      * @param sessionId The session ID
      * @returns Verification status response
      */
-    getStatus: async (sessionId: string): Promise<VerificationStatusResponse> => {
+    getStatus: async (
+      sessionId: string,
+      generation?: number
+    ): Promise<VerificationStatusResponse> => {
+      const search = generation !== undefined
+        ? `?generation=${encodeURIComponent(String(generation))}`
+        : "";
       const res = await fetch(
-        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification`
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification${search}`
       );
       if (!res.ok) {
         throw new Error(`Failed to get verification status: ${res.status}`);

@@ -94,6 +94,10 @@ async fn count_running(app_state: &AppState) -> u32 {
             _ => continue,
         };
 
+        if task.archived_at.is_some() {
+            continue;
+        }
+
         if !context_matches_running_status_for_gc(context_type, task.internal_status) {
             continue;
         }
@@ -130,6 +134,10 @@ async fn count_visible_processes(app_state: &AppState) -> usize {
             _ => continue,
         };
 
+        if task.archived_at.is_some() {
+            continue;
+        }
+
         if !context_matches_running_status_for_gc(context_type, task.internal_status) {
             continue;
         }
@@ -155,6 +163,19 @@ async fn test_running_count_excludes_failed_task_with_stale_registry() {
 
     let count = count_running(&state).await;
     assert_eq!(count, 0, "Failed task must not be counted as running");
+}
+
+#[tokio::test]
+async fn test_running_count_excludes_archived_executing_task_with_registry() {
+    let (state, task) = setup_with_task(InternalStatus::Executing).await;
+    state.task_repo.archive(&task.id).await.unwrap();
+    register_task_execution(&*state.running_agent_registry, &task.id).await;
+
+    let running_count = count_running(&state).await;
+    let process_count = count_visible_processes(&state).await;
+
+    assert_eq!(running_count, 0, "archived task must not count as running");
+    assert_eq!(process_count, 0, "archived task must not appear in running processes");
 }
 
 // =========================================================================
@@ -745,8 +766,12 @@ fn make_ideation_session(session_id: &str, project_id: &ProjectId) -> IdeationSe
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
+        verification_current_round: None,
+        verification_max_rounds: None,
+        verification_gap_count: 0,
+        verification_gap_score: None,
+        verification_convergence_reason: None,
         source_project_id: None,
         source_session_id: None,
         source_task_id: None,
@@ -826,6 +851,10 @@ async fn count_scoped_running(
             Ok(Some(task)) => task,
             _ => continue,
         };
+
+        if task.archived_at.is_some() {
+            continue;
+        }
 
         if let Some(pid) = project_id {
             if task.project_id != *pid {

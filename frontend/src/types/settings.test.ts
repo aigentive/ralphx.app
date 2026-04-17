@@ -3,15 +3,11 @@
 import { describe, it, expect } from "vitest";
 import {
   ExecutionSettingsSchema,
-  ModelSettingsSchema,
   ProjectReviewSettingsSchema,
-  SupervisorSettingsSchema,
   ProjectSettingsSchema,
   SettingsProfileSchema,
   DEFAULT_EXECUTION_SETTINGS,
-  DEFAULT_MODEL_SETTINGS,
   DEFAULT_PROJECT_REVIEW_SETTINGS,
-  DEFAULT_SUPERVISOR_SETTINGS,
   DEFAULT_PROJECT_SETTINGS,
   parseProjectSettings,
   safeParseProjectSettings,
@@ -27,7 +23,6 @@ describe("ExecutionSettingsSchema", () => {
       auto_commit: false,
       commit_message_prefix: "fix: ",
       pause_on_failure: false,
-      review_before_destructive: true,
     };
     const result = ExecutionSettingsSchema.parse(data);
     expect(result.max_concurrent_tasks).toBe(4);
@@ -50,28 +45,6 @@ describe("ExecutionSettingsSchema", () => {
   it("allows disabling project ideation with a zero cap", () => {
     const result = ExecutionSettingsSchema.parse({ project_ideation_max: 0 });
     expect(result.project_ideation_max).toBe(0);
-  });
-});
-
-describe("ModelSettingsSchema", () => {
-  it("parses valid model settings", () => {
-    const data = {
-      model: "opus",
-      allow_opus_upgrade: false,
-    };
-    const result = ModelSettingsSchema.parse(data);
-    expect(result.model).toBe("opus");
-    expect(result.allow_opus_upgrade).toBe(false);
-  });
-
-  it("applies defaults for missing fields", () => {
-    const result = ModelSettingsSchema.parse({});
-    expect(result).toEqual(DEFAULT_MODEL_SETTINGS);
-  });
-
-  it("validates model enum values", () => {
-    expect(() => ModelSettingsSchema.parse({ model: "invalid" })).toThrow();
-    expect(ModelSettingsSchema.parse({ model: "haiku" }).model).toBe("haiku");
   });
 });
 
@@ -102,50 +75,15 @@ describe("ProjectReviewSettingsSchema", () => {
   });
 });
 
-describe("SupervisorSettingsSchema", () => {
-  it("parses valid supervisor settings", () => {
-    const data = {
-      supervisor_enabled: false,
-      loop_threshold: 5,
-      stuck_timeout: 600,
-    };
-    const result = SupervisorSettingsSchema.parse(data);
-    expect(result.supervisor_enabled).toBe(false);
-    expect(result.loop_threshold).toBe(5);
-    expect(result.stuck_timeout).toBe(600);
-  });
-
-  it("applies defaults for missing fields", () => {
-    const result = SupervisorSettingsSchema.parse({});
-    expect(result).toEqual(DEFAULT_SUPERVISOR_SETTINGS);
-  });
-
-  it("validates loop_threshold range", () => {
-    expect(() => SupervisorSettingsSchema.parse({ loop_threshold: 1 })).toThrow();
-    expect(() => SupervisorSettingsSchema.parse({ loop_threshold: 11 })).toThrow();
-    expect(SupervisorSettingsSchema.parse({ loop_threshold: 6 }).loop_threshold).toBe(6);
-  });
-
-  it("validates stuck_timeout range", () => {
-    expect(() => SupervisorSettingsSchema.parse({ stuck_timeout: 30 })).toThrow();
-    expect(() => SupervisorSettingsSchema.parse({ stuck_timeout: 2000 })).toThrow();
-    expect(SupervisorSettingsSchema.parse({ stuck_timeout: 900 }).stuck_timeout).toBe(900);
-  });
-});
-
 describe("ProjectSettingsSchema", () => {
   it("parses full project settings", () => {
     const data = {
       execution: { max_concurrent_tasks: 3 },
-      model: { model: "opus" },
       review: { ai_review_enabled: false },
-      supervisor: { supervisor_enabled: false },
     };
     const result = ProjectSettingsSchema.parse(data);
     expect(result.execution.max_concurrent_tasks).toBe(3);
-    expect(result.model.model).toBe("opus");
     expect(result.review.ai_review_enabled).toBe(false);
-    expect(result.supervisor.supervisor_enabled).toBe(false);
   });
 
   it("applies all defaults for empty object", () => {
@@ -159,9 +97,7 @@ describe("ProjectSettingsSchema", () => {
     });
     expect(result.execution.max_concurrent_tasks).toBe(4);
     expect(result.execution.auto_commit).toBe(true); // default
-    expect(result.model).toEqual(DEFAULT_MODEL_SETTINGS);
     expect(result.review).toEqual(DEFAULT_PROJECT_REVIEW_SETTINGS);
-    expect(result.supervisor).toEqual(DEFAULT_SUPERVISOR_SETTINGS);
   });
 });
 

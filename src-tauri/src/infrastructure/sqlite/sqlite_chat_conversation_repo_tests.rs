@@ -1,7 +1,10 @@
 // Tests for SqliteChatConversationRepository (sqlite_chat_conversation_repo.rs)
 // Included via #[cfg(test)] mod in mod.rs
 
-use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::entities::{
+    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
+};
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::infrastructure::sqlite::SqliteChatConversationRepository;
 use crate::testing::SqliteTestDb;
@@ -20,12 +23,22 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         context_type,
         context_id: context_id.to_string(),
         claude_session_id: None,
+        provider_session_id: None,
+        provider_harness: None,
+        upstream_provider: None,
+        provider_profile: None,
         title: None,
         message_count: 0,
         last_message_at: None,
         created_at: now,
         updated_at: now,
         parent_conversation_id: None,
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     }
 }
 
@@ -62,18 +75,32 @@ async fn test_create_preserves_optional_fields() {
         context_type: ChatContextType::Task,
         context_id: "task-42".to_string(),
         claude_session_id: Some("session-xyz".to_string()),
+        provider_session_id: Some("session-xyz".to_string()),
+        provider_harness: Some(AgentHarnessKind::Claude),
+        upstream_provider: Some("anthropic".to_string()),
+        provider_profile: Some("default".to_string()),
         title: Some("My Conversation".to_string()),
         message_count: 5,
         last_message_at: Some(now),
         created_at: now,
         updated_at: now,
         parent_conversation_id: Some(parent_id_str.clone()),
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     };
 
     repo.create(conv.clone()).await.unwrap();
     let loaded = repo.get_by_id(&conv.id).await.unwrap().unwrap();
 
     assert_eq!(loaded.claude_session_id, Some("session-xyz".to_string()));
+    assert_eq!(loaded.provider_session_id, Some("session-xyz".to_string()));
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(loaded.upstream_provider.as_deref(), Some("anthropic"));
+    assert_eq!(loaded.provider_profile.as_deref(), Some("default"));
     assert_eq!(loaded.title, Some("My Conversation".to_string()));
     assert_eq!(loaded.message_count, 5);
     assert!(loaded.last_message_at.is_some());
@@ -189,6 +216,39 @@ async fn test_get_active_for_context_not_found() {
     assert!(result.is_none());
 }
 
+#[tokio::test]
+async fn test_get_attribution_backfill_summary_counts_legacy_rows() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut pending = make_conversation(ChatContextType::Ideation, "ctx-pending");
+    pending.claude_session_id = Some("claude-pending".to_string());
+
+    let mut completed = make_conversation(ChatContextType::Ideation, "ctx-completed");
+    completed.claude_session_id = Some("claude-completed".to_string());
+    completed.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
+
+    let mut parse_failed = make_conversation(ChatContextType::Ideation, "ctx-parse-failed");
+    parse_failed.claude_session_id = Some("claude-parse-failed".to_string());
+    parse_failed.attribution_backfill_status = Some(AttributionBackfillStatus::ParseFailed);
+
+    repo.create(pending).await.unwrap();
+    repo.create(completed).await.unwrap();
+    repo.create(parse_failed).await.unwrap();
+    repo.create(make_conversation(ChatContextType::Project, "ctx-non-legacy"))
+        .await
+        .unwrap();
+
+    let summary = repo.get_attribution_backfill_summary().await.unwrap();
+
+    assert_eq!(summary.eligible_conversation_count, 3);
+    assert_eq!(summary.pending_count, 1);
+    assert_eq!(summary.completed_count, 1);
+    assert_eq!(summary.parse_failed_count, 1);
+    assert_eq!(summary.remaining_count(), 1);
+    assert_eq!(summary.attention_count(), 1);
+}
+
 // --- update_claude_session_id ---
 
 #[tokio::test]
@@ -204,6 +264,36 @@ async fn test_update_claude_session_id() {
 
     let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert_eq!(loaded.claude_session_id, Some("new-session-id".to_string()));
+    assert_eq!(loaded.provider_session_id, Some("new-session-id".to_string()));
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[tokio::test]
+async fn test_update_provider_session_ref_for_codex() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
+    let conv_id = conv.id;
+    repo.create(conv).await.unwrap();
+
+    repo.update_provider_session_ref(
+        &conv_id,
+        &ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-session-id".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        loaded.provider_session_id,
+        Some("codex-session-id".to_string())
+    );
+    assert_eq!(loaded.claude_session_id, None);
 }
 
 // --- clear_claude_session_id ---
@@ -219,12 +309,22 @@ async fn test_clear_claude_session_id() {
         context_type: ChatContextType::Ideation,
         context_id: "ctx-1".to_string(),
         claude_session_id: Some("existing-session".to_string()),
+        provider_session_id: Some("existing-session".to_string()),
+        provider_harness: Some(AgentHarnessKind::Claude),
+        upstream_provider: None,
+        provider_profile: None,
         title: None,
         message_count: 0,
         last_message_at: None,
         created_at: now,
         updated_at: now,
         parent_conversation_id: None,
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     };
     let conv_id = conv.id.clone();
     repo.create(conv).await.unwrap();
@@ -233,6 +333,26 @@ async fn test_clear_claude_session_id() {
 
     let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert!(loaded.claude_session_id.is_none());
+    assert!(loaded.provider_session_id.is_none());
+    assert!(loaded.provider_harness.is_none());
+}
+
+#[tokio::test]
+async fn test_update_provider_origin() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
+    let conv_id = conv.id.clone();
+    repo.create(conv).await.unwrap();
+
+    repo.update_provider_origin(&conv_id, Some("z_ai"), Some("z_ai"))
+        .await
+        .unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(loaded.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(loaded.provider_profile.as_deref(), Some("z_ai"));
 }
 
 // --- update_title ---
@@ -298,6 +418,62 @@ async fn test_delete_nonexistent_is_ok() {
     let result = repo.delete(&missing).await;
 
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_list_needing_attribution_backfill_only_returns_pending_rows() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut pending = make_conversation(ChatContextType::Ideation, "ctx-pending");
+    pending.claude_session_id = Some("claude-pending".to_string());
+    let pending_id = pending.id;
+
+    let mut running = make_conversation(ChatContextType::Ideation, "ctx-running");
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+
+    let mut partial = make_conversation(ChatContextType::Ideation, "ctx-partial");
+    partial.claude_session_id = Some("claude-partial".to_string());
+    partial.attribution_backfill_status = Some(AttributionBackfillStatus::Partial);
+
+    repo.create(pending).await.unwrap();
+    repo.create(running).await.unwrap();
+    repo.create(partial).await.unwrap();
+
+    let needing = repo.list_needing_attribution_backfill(10).await.unwrap();
+    assert_eq!(needing.len(), 1);
+    assert_eq!(needing[0].id, pending_id);
+}
+
+#[tokio::test]
+async fn test_reset_running_attribution_backfill_to_pending() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut running = make_conversation(ChatContextType::Ideation, "ctx-running");
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+    let running_id = running.id;
+
+    let mut completed = make_conversation(ChatContextType::Ideation, "ctx-completed");
+    completed.claude_session_id = Some("claude-completed".to_string());
+    completed.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
+
+    repo.create(running).await.unwrap();
+    repo.create(completed).await.unwrap();
+
+    let reset_count = repo
+        .reset_running_attribution_backfill_to_pending()
+        .await
+        .unwrap();
+    assert_eq!(reset_count, 1);
+
+    let updated = repo.get_by_id(&running_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Pending)
+    );
 }
 
 // --- delete_by_context ---

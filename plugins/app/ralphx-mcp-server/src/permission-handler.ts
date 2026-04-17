@@ -16,6 +16,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { safeError } from "./redact.js";
+import {
+  isWithin,
+  normalizePathLike,
+} from "./path-policy.js";
 
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 const SAFE_READONLY_BASH_COMMANDS = new Set([
@@ -77,15 +81,6 @@ function getStringField(
   return undefined;
 }
 
-function expandHome(value: string): string {
-  if (!value.startsWith("~")) return value;
-  return path.join(os.homedir(), value.slice(1));
-}
-
-function normalizePathLike(value: string): string {
-  return path.resolve(expandHome(value));
-}
-
 function isSensitivePath(targetPath: string): boolean {
   const normalized = normalizePathLike(targetPath);
   const basename = path.basename(normalized);
@@ -95,11 +90,6 @@ function isSensitivePath(targetPath: string): boolean {
     basename.startsWith(".env.") ||
     parts.includes(".git")
   );
-}
-
-function isWithin(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function findGitRepoRoot(targetPath: string): string | null {

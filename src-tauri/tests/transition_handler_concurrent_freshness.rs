@@ -44,9 +44,8 @@ fn make_task_with_branch(task_branch: &str, conflict_count: u32) -> Task {
     );
     t.task_branch = Some(task_branch.to_string());
     if conflict_count > 0 {
-        t.metadata = Some(
-            serde_json::json!({ "freshness_conflict_count": conflict_count }).to_string(),
-        );
+        t.metadata =
+            Some(serde_json::json!({ "freshness_conflict_count": conflict_count }).to_string());
     }
     t
 }
@@ -90,7 +89,10 @@ fn concurrent_test_config() -> ReconciliationConfig {
 /// `shared_{name}.rs`. The repo is left on `main`.
 fn setup_conflicting_plan_branch(path: &std::path::Path, name: &str) {
     let branch = format!("plan/{name}");
-    let safe_name: String = name.chars().map(|c| if matches!(c, '/' | '-') { '_' } else { c }).collect();
+    let safe_name: String = name
+        .chars()
+        .map(|c| if matches!(c, '/' | '-') { '_' } else { c })
+        .collect();
     let filename = format!("shared_{safe_name}.rs");
 
     // Branch off from current main HEAD
@@ -101,11 +103,7 @@ fn setup_conflicting_plan_branch(path: &std::path::Path, name: &str) {
         .expect("git branch");
 
     // Add diverging commit on main
-    std::fs::write(
-        path.join(&filename),
-        "// main version\nfn main_impl() {}",
-    )
-    .unwrap();
+    std::fs::write(path.join(&filename), "// main version\nfn main_impl() {}").unwrap();
     let _ = std::process::Command::new("git")
         .args(["add", &filename])
         .current_dir(path)
@@ -120,11 +118,7 @@ fn setup_conflicting_plan_branch(path: &std::path::Path, name: &str) {
         .args(["checkout", &branch])
         .current_dir(path)
         .output();
-    std::fs::write(
-        path.join(&filename),
-        "// plan version\nfn plan_impl() {}",
-    )
-    .unwrap();
+    std::fs::write(path.join(&filename), "// plan version\nfn plan_impl() {}").unwrap();
     let _ = std::process::Command::new("git")
         .args(["add", &filename])
         .current_dir(path)
@@ -213,6 +207,7 @@ async fn concurrent_freshness_same_plan_branch_no_deadlock() {
                 &project,
                 &format!("concurrent-task-{i}"),
                 Some("plan/concurrent-test"),
+                None,
                 None,
                 None,
                 "executing",
@@ -322,6 +317,7 @@ async fn stress_rapid_conflict_cycles_blocked_at_cap() {
             Some("plan/stress-test"),
             None,
             None,
+            None,
             "executing",
             &cfg,
         )
@@ -423,6 +419,7 @@ async fn dirty_worktree_emergency_commit_enables_freshness() {
         None, // no plan branch — source check only
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -491,7 +488,10 @@ async fn dirty_worktree_failed_autocommit_skips_gracefully() {
         .current_dir(path)
         .output()
         .expect("git status");
-    assert!(!status.stdout.is_empty(), "Pre-condition: worktree must be dirty");
+    assert!(
+        !status.stdout.is_empty(),
+        "Pre-condition: worktree must be dirty"
+    );
 
     // Simulate auto-commit failure by making .git/objects read-only.
     // This prevents git from writing new objects (commit will fail).
@@ -513,6 +513,7 @@ async fn dirty_worktree_failed_autocommit_skips_gracefully() {
         &task,
         &project,
         "dirty-failed-commit-task",
+        None,
         None,
         None,
         None,
@@ -582,6 +583,7 @@ async fn git_lock_contention_plan_check_is_transient_non_fatal() {
         &project,
         "lock-contention-task",
         Some("plan/lock-test"),
+        None,
         None,
         None,
         "executing",
@@ -674,6 +676,7 @@ async fn concurrent_plan_branch_updates_no_deadlock_or_blocked() {
                 &project,
                 &format!("concurrent-lock-task-{i}"),
                 Some("plan/concurrent-lock-test"),
+                None,
                 None,
                 None,
                 "executing",

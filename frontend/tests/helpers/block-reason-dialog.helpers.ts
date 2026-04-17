@@ -17,8 +17,7 @@ import { Page } from "@playwright/test";
  * This uses the actual production UI flow
  */
 export async function openBlockDialogViaKanban(
-  page: Page,
-  projectId?: string
+  page: Page
 ): Promise<void> {
   // Navigate to kanban if not already there
   const kanbanButton = page.getByRole("button", { name: /kanban/i });
@@ -27,9 +26,9 @@ export async function openBlockDialogViaKanban(
     await page.waitForTimeout(500);
   }
 
-  // Find the specific "Ready Task" card (we know this exists in seed data)
-  // The task card contains the title text
-  const readyTaskCard = page.getByText("Ready Task").locator("..");
+  // Use the stable task-card test id from the seeded mock store.
+  const readyTaskCard = page.getByTestId("task-card-task-mock-2");
+  await readyTaskCard.waitFor({ state: "visible", timeout: 10000 });
 
   // Right-click to open context menu
   await readyTaskCard.click({ button: "right" });

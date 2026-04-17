@@ -31,8 +31,12 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
+        verification_current_round: None,
+        verification_max_rounds: None,
+        verification_gap_count: 0,
+        verification_gap_score: None,
+        verification_convergence_reason: None,
         source_project_id: None,
         source_session_id: None,
         source_task_id: None,
@@ -100,6 +104,7 @@ mod verification_init_tests {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 
@@ -122,8 +127,12 @@ mod verification_init_tests {
             title_source: None,
             verification_status: Default::default(),
             verification_in_progress: false,
-            verification_metadata: None,
             verification_generation: 0,
+            verification_current_round: None,
+            verification_max_rounds: None,
+            verification_gap_count: 0,
+            verification_gap_score: None,
+            verification_convergence_reason: None,
             source_project_id: None,
             source_session_id: None,
             source_task_id: None,
@@ -517,7 +526,7 @@ mod verification_init_tests {
         let response = result.unwrap().0;
         let child_id = IdeationSessionId::from_string(response.session_id.clone());
 
-        // In tests, ClaudeChatService spawn fails (no real Claude CLI), so orchestration_triggered
+        // In tests, the app chat runtime spawn fails (no real Claude CLI), so orchestration_triggered
         // will be false and generation will be None after rollback.
         // The key invariant to assert: when a description is provided and verification initializes,
         // the user message stored before the spawn attempt contains the augmented metadata.

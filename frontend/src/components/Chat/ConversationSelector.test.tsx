@@ -29,6 +29,8 @@ const mockConversations: ChatConversation[] = [
     id: "conv-1",
     contextType: "ideation",
     contextId: "session-1",
+    providerSessionId: "claude-session-1",
+    providerHarness: "claude",
     claudeSessionId: "claude-session-1",
     title: "Dark mode implementation",
     messageCount: 12,
@@ -40,7 +42,9 @@ const mockConversations: ChatConversation[] = [
     id: "conv-2",
     contextType: "ideation",
     contextId: "session-1",
-    claudeSessionId: "claude-session-2",
+    providerSessionId: "thread-codex-2",
+    providerHarness: "codex",
+    claudeSessionId: null,
     title: "API refactoring discussion",
     messageCount: 8,
     lastMessageAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
@@ -51,12 +55,27 @@ const mockConversations: ChatConversation[] = [
     id: "conv-3",
     contextType: "ideation",
     contextId: "session-1",
+    providerSessionId: null,
+    providerHarness: null,
     claudeSessionId: null,
     title: null,
     messageCount: 0,
     lastMessageAt: null,
     createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 min ago
     updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "conv-4",
+    contextType: "ideation",
+    contextId: "session-1",
+    providerSessionId: "thread-openai-4",
+    providerHarness: "openai",
+    claudeSessionId: null,
+    title: "Cross-provider exploration",
+    messageCount: 5,
+    lastMessageAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
   },
 ];
 
@@ -143,6 +162,32 @@ describe("ConversationSelector", () => {
 
     expect(screen.getByText("Dark mode implementation")).toBeInTheDocument();
     expect(screen.getByText("API refactoring discussion")).toBeInTheDocument();
+  });
+
+  it("shows provider harness badges when available", async () => {
+    const user = userEvent.setup();
+    render(<ConversationSelector {...defaultProps} />);
+
+    const trigger = screen.getByTestId("conversation-selector-trigger");
+    await user.click(trigger);
+
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("Openai")).toBeInTheDocument();
+  });
+
+  it("shows stored-session versus new-attempt provider copy", async () => {
+    const user = userEvent.setup();
+    render(<ConversationSelector {...defaultProps} />);
+
+    const trigger = screen.getByTestId("conversation-selector-trigger");
+    await user.click(trigger);
+
+    expect(screen.getByText("Stored Claude session")).toBeInTheDocument();
+    expect(screen.getByText("Stored Codex session")).toBeInTheDocument();
+    expect(
+      screen.getByText("New attempt will use current settings"),
+    ).toBeInTheDocument();
   });
 
   it("generates fallback title for conversations without title", async () => {
@@ -255,10 +300,12 @@ describe("ConversationSelector", () => {
 
     // conv-1 (2 hours ago) should be first
     expect(items[0]).toHaveAttribute("data-testid", "conversation-item-conv-1");
-    // conv-2 (1 day ago) should be second
-    expect(items[1]).toHaveAttribute("data-testid", "conversation-item-conv-2");
+    // conv-4 (4 hours ago) should be second
+    expect(items[1]).toHaveAttribute("data-testid", "conversation-item-conv-4");
+    // conv-2 (1 day ago) should be third
+    expect(items[2]).toHaveAttribute("data-testid", "conversation-item-conv-2");
     // conv-3 (no messages) should be last
-    expect(items[2]).toHaveAttribute("data-testid", "conversation-item-conv-3");
+    expect(items[3]).toHaveAttribute("data-testid", "conversation-item-conv-3");
   });
 
   it("shows loading state", async () => {

@@ -43,6 +43,32 @@ describe("callTauri — retry on network errors", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("passes custom transport headers through artifact mutation requests", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = callTauri(
+      "update_plan_artifact",
+      { artifact_id: "artifact-1", content: "updated" },
+      { headers: { "X-RalphX-Caller-Session-Id": "child-session" } }
+    );
+    await vi.runAllTimersAsync();
+
+    expect(await result).toEqual({ ok: true });
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:3847/api/update_plan_artifact",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-RalphX-Caller-Session-Id": "child-session",
+        }),
+      })
+    );
+  });
+
   it("retries on network error (statusCode 0) and succeeds on 2nd attempt", async () => {
     const successResponse = new Response(JSON.stringify({ ok: true }), {
       status: 200,

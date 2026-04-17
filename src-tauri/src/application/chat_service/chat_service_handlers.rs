@@ -13,11 +13,15 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::question_state::QuestionState;
+use crate::application::runtime_factory::{
+    build_task_scheduler_with_fallback, build_transition_service_with_fallback, RuntimeFactoryDeps,
+};
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::AppState;
 use crate::application::InteractiveProcessRegistry;
 use crate::commands::{execution_commands::AGENT_ACTIVE_STATUSES, ExecutionState};
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     app_state::ExecutionHaltMode, AgentRunId, ChatContextType, ChatConversation,
     ChatConversationId, ChatMessageId, IdeationSessionId, InternalStatus, MergeFailureSource,
@@ -35,13 +39,17 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
+use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 
 use super::chat_service_context;
-use super::chat_service_errors::{classify_agent_error, StreamError};
+use super::chat_service_errors::{
+    classify_agent_error, is_nonfatal_mcp_tool_cancellation, StreamError,
+};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
 use crate::application::reconciliation::verification_handoff;
+use crate::application::reconciliation::verification_reconciliation::ReconcileVerificationChildCompletion;
 use crate::utils::secret_redactor::redact;
 
 fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
@@ -49,6 +57,83 @@ fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
         context_type,
         ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project
     )
+}
+
+const VERIFICATION_AUTO_CONTINUE_METADATA: &str = r#"{"resume_in_place":true}"#;
+
+fn queue_verification_auto_continue(
+    message_queue: &Arc<MessageQueue>,
+    child_id: &IdeationSessionId,
+    continuation_message: String,
+) {
+    let mut queued = crate::domain::services::QueuedMessage::new(continuation_message);
+    queued.metadata_override = Some(VERIFICATION_AUTO_CONTINUE_METADATA.to_string());
+    message_queue.queue_front_existing(ChatContextType::Ideation, child_id.as_str(), queued);
+}
+
+async fn handle_verification_child_completion<R: Runtime>(
+    child_id: &IdeationSessionId,
+    parent_id: &IdeationSessionId,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    message_queue: &Arc<MessageQueue>,
+    app_handle: &Option<AppHandle<R>>,
+    verification_child_registry: &Option<
+        Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
+    >,
+) {
+    let reconcile_result = crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
+        parent_id,
+        child_id,
+        ideation_session_repo,
+        app_handle.as_ref(),
+    )
+    .await;
+
+    match reconcile_result {
+        Some(ReconcileVerificationChildCompletion::Terminal(result)) => {
+            verification_handoff::maybe_inject_verification_result_message(
+                parent_id,
+                &result,
+                conversation_repo,
+                chat_message_repo,
+                message_queue,
+            )
+            .await;
+
+            if let Some(registry) = verification_child_registry {
+                tracing::info!(
+                    context_id = child_id.as_str(),
+                    "Sending SIGTERM to verification child process after terminal reconciliation"
+                );
+                registry.remove_and_kill(child_id.as_str());
+            }
+        }
+        Some(ReconcileVerificationChildCompletion::AutoContinue(request)) => {
+            queue_verification_auto_continue(
+                message_queue,
+                child_id,
+                request.continuation_message,
+            );
+            tracing::info!(
+                context_id = child_id.as_str(),
+                current_round = request.snapshot.current_round,
+                max_rounds = request.snapshot.max_rounds,
+                gap_count = request.snapshot.current_gaps.len(),
+                "Queued hidden resume-in-place continuation for actionable non-terminal verification state"
+            );
+
+            if let Some(registry) = verification_child_registry {
+                tracing::info!(
+                    context_id = child_id.as_str(),
+                    "Sending SIGTERM to verification child process before in-place verification continuation"
+                );
+                registry.remove_and_kill(child_id.as_str());
+            }
+        }
+        None => {}
+    }
 }
 
 /// Returns true if all steps for `task_id` are Completed or Skipped (and at least one
@@ -135,6 +220,246 @@ fn execution_completion_action(
     }
 }
 
+fn build_transition_service<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    execution_state: Arc<ExecutionState>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+) -> TaskTransitionService<R> {
+    let deps = build_runtime_factory_deps(
+        app_handle,
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+        None,
+        None,
+        None,
+    );
+    build_transition_service_with_fallback(app_handle, execution_state, &deps)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_task_scheduler_service<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    execution_state: Arc<ExecutionState>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+) -> TaskSchedulerService<R> {
+    let deps = build_runtime_factory_deps(
+        app_handle,
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+        execution_settings_repo,
+        plan_branch_repo,
+        interactive_process_registry,
+    );
+    build_task_scheduler_with_fallback(app_handle, execution_state, &deps)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_runtime_factory_deps<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+) -> RuntimeFactoryDeps {
+    RuntimeFactoryDeps::from_core(
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+    )
+    .with_runtime_support(
+        execution_settings_repo,
+        app_handle
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo)),
+        plan_branch_repo,
+        interactive_process_registry,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_recovery_retry_background_context<R: Runtime>(
+    retry_child: tokio::process::Child,
+    recovery_harness: AgentHarnessKind,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: ChatConversationId,
+    agent_run_id: &str,
+    new_session_id: String,
+    working_directory: &Path,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: &Arc<dyn ArtifactRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+    task_repo: &Arc<dyn TaskRepository>,
+    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    delegated_session_repo: &Arc<dyn crate::domain::repositories::DelegatedSessionRepository>,
+    execution_settings_repo: &Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: &Option<
+        Arc<dyn crate::domain::repositories::AgentLaneSettingsRepository>,
+    >,
+    ideation_effort_settings_repo: &Option<
+        Arc<dyn crate::domain::repositories::IdeationEffortSettingsRepository>,
+    >,
+    ideation_model_settings_repo: &Option<
+        Arc<dyn crate::domain::repositories::IdeationModelSettingsRepository>,
+    >,
+    task_proposal_repo: &Option<Arc<dyn TaskProposalRepository>>,
+    activity_event_repo: &Arc<dyn ActivityEventRepository>,
+    memory_event_repo: &Arc<dyn MemoryEventRepository>,
+    message_queue: &Arc<MessageQueue>,
+    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
+    execution_state: &Option<Arc<ExecutionState>>,
+    question_state: &Option<Arc<QuestionState>>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    app_handle: &Option<AppHandle<R>>,
+    run_chain_id: Option<String>,
+    user_message_content: Option<&str>,
+    retry_conv: ChatConversation,
+    agent_name: Option<&str>,
+    team_mode: bool,
+    review_repo: &Option<Arc<dyn ReviewRepository>>,
+    task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
+    interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
+    verification_child_registry: &Option<
+        Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
+    >,
+) -> super::chat_service_send_background::BackgroundRunContext<R> {
+    use super::chat_service_send_background::{BackgroundRunContext, BackgroundRunRepos};
+
+    BackgroundRunContext {
+        child: retry_child,
+        harness: recovery_harness,
+        context_type,
+        context_id: context_id.to_string(),
+        conversation_id,
+        agent_run_id: agent_run_id.to_string(),
+        stored_session_id: Some(new_session_id.clone()),
+        working_directory: working_directory.to_path_buf(),
+        cli_path: cli_path.to_path_buf(),
+        plugin_dir: plugin_dir.to_path_buf(),
+        repos: BackgroundRunRepos {
+            chat_message_repo: Arc::clone(chat_message_repo),
+            chat_attachment_repo: Arc::clone(chat_attachment_repo),
+            artifact_repo: Arc::clone(artifact_repo),
+            conversation_repo: Arc::clone(conversation_repo),
+            agent_run_repo: Arc::clone(agent_run_repo),
+            task_repo: Arc::clone(task_repo),
+            task_dependency_repo: Arc::clone(task_dependency_repo),
+            project_repo: Arc::clone(project_repo),
+            ideation_session_repo: Arc::clone(ideation_session_repo),
+            delegated_session_repo: Arc::clone(delegated_session_repo),
+            execution_settings_repo: execution_settings_repo.clone(),
+            agent_lane_settings_repo: agent_lane_settings_repo.clone(),
+            ideation_effort_settings_repo: ideation_effort_settings_repo.clone(),
+            ideation_model_settings_repo: ideation_model_settings_repo.clone(),
+            task_proposal_repo: task_proposal_repo.clone(),
+            activity_event_repo: Arc::clone(activity_event_repo),
+            memory_event_repo: Arc::clone(memory_event_repo),
+            message_queue: Arc::clone(message_queue),
+            running_agent_registry: Arc::clone(running_agent_registry),
+            task_step_repo: task_step_repo.clone(),
+            review_repo: review_repo.clone(),
+        },
+        execution_state: execution_state.clone(),
+        question_state: question_state.clone(),
+        plan_branch_repo: plan_branch_repo.clone(),
+        app_handle: app_handle.clone(),
+        run_chain_id,
+        is_retry_attempt: true,
+        user_message_content: user_message_content.map(str::to_string),
+        conversation: Some(retry_conv),
+        agent_name: agent_name.map(str::to_string),
+        team_mode,
+        assistant_message_attribution: crate::domain::entities::ChatMessageAttribution {
+            attribution_source: Some("native_runtime".to_string()),
+            provider_harness: Some(recovery_harness),
+            provider_session_id: Some(new_session_id.clone()),
+            upstream_provider: None,
+            provider_profile: None,
+            logical_model: None,
+            effective_model_id: None,
+            logical_effort: None,
+            effective_effort: None,
+        },
+        cancellation_token: tokio_util::sync::CancellationToken::new(),
+        team_service: None,
+        streaming_state_cache: super::StreamingStateCache::new(),
+        interactive_process_registry: interactive_process_registry.clone(),
+        verification_child_registry: verification_child_registry.clone(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IncompleteReviewAction {
     SkipDuringShutdown,
@@ -191,25 +516,8 @@ pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
     app_state.running_agent_registry.stop_all().await;
     app_state.interactive_process_registry.clear().await;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(execution_state.inner()),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service = app_state
+        .build_transition_service_with_execution_state(Arc::clone(execution_state.inner()));
 
     let paused_at = chrono::Utc::now().to_rfc3339();
     let projects = match app_state.project_repo.get_all().await {
@@ -283,21 +591,105 @@ pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
     );
 }
 
-/// Read existing message content and tool_calls from the database.
+/// Read existing message content, tool_calls, and content_blocks from the database.
 ///
 /// Used before error finalization to preserve any content that was flushed
 /// during streaming, so the error note is appended rather than overwriting.
 async fn read_existing_message_content(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     message_id: &str,
-) -> (String, Option<String>) {
+) -> (String, Option<String>, Option<String>) {
     match chat_message_repo
         .get_by_id(&ChatMessageId::from_string(message_id.to_string()))
         .await
     {
-        Ok(Some(msg)) => (msg.content, msg.tool_calls),
-        _ => (String::new(), None),
+        Ok(Some(msg)) => (msg.content, msg.tool_calls, msg.content_blocks),
+        _ => (String::new(), None, None),
     }
+}
+
+fn terminal_tool_result(reason: &str) -> serde_json::Value {
+    serde_json::json!({
+        "status": "aborted",
+        "reason": reason,
+    })
+}
+
+fn seal_unresolved_tool_calls_json(tool_calls_json: Option<String>, reason: &str) -> Option<String> {
+    let raw = tool_calls_json?;
+    let mut tool_calls: Vec<ToolCall> = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(raw),
+    };
+
+    let sealed_result = terminal_tool_result(reason);
+    let mut changed = false;
+    for tool_call in &mut tool_calls {
+        if tool_call.result.is_none() {
+            tool_call.result = Some(sealed_result.clone());
+            changed = true;
+        }
+    }
+
+    if !changed {
+        return Some(raw);
+    }
+
+    serde_json::to_string(&tool_calls).ok().or(Some(raw))
+}
+
+fn seal_unresolved_content_blocks_json(
+    content_blocks_json: Option<String>,
+    reason: &str,
+) -> Option<String> {
+    let raw = content_blocks_json?;
+    let mut content_blocks: Vec<ContentBlockItem> = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return Some(raw),
+    };
+
+    let sealed_result = terminal_tool_result(reason);
+    let mut changed = false;
+    for block in &mut content_blocks {
+        if let ContentBlockItem::ToolUse { result, .. } = block {
+            if result.is_none() {
+                *result = Some(sealed_result.clone());
+                changed = true;
+            }
+        }
+    }
+
+    if !changed {
+        return Some(raw);
+    }
+
+    serde_json::to_string(&content_blocks).ok().or(Some(raw))
+}
+
+async fn finalize_assistant_message_with_terminal_tool_state<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    event_ctx: &EventContextPayload,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls_json: Option<String>,
+    content_blocks_json: Option<String>,
+    reason: &str,
+) {
+    let sealed_tool_calls = seal_unresolved_tool_calls_json(tool_calls_json, reason);
+    let sealed_content_blocks = seal_unresolved_content_blocks_json(content_blocks_json, reason);
+    super::chat_service_send_background::finalize_assistant_message(
+        chat_message_repo,
+        app_handle,
+        event_ctx,
+        message_id,
+        role,
+        content,
+        sealed_tool_calls.as_deref(),
+        sealed_content_blocks.as_deref(),
+    )
+    .await;
 }
 
 /// Handle successful stream completion: task state transitions and merge auto-completion.
@@ -373,8 +765,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     }
 
                     // Create scheduler for auto-scheduling next Ready task
-                    let mut scheduler_svc = TaskSchedulerService::new(
-                        Arc::clone(exec_state),
+                    let scheduler_svc = build_task_scheduler_service(
+                        app_handle,
                         Arc::clone(project_repo),
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
@@ -386,26 +778,19 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(activity_event_repo),
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
+                        Arc::clone(exec_state),
                         Arc::clone(memory_event_repo),
-                        app_handle.clone(),
+                        execution_settings_repo.clone(),
+                        plan_branch_repo.clone(),
+                        interactive_process_registry.clone(),
                     );
-                    if let Some(ref repo) = execution_settings_repo {
-                        scheduler_svc =
-                            scheduler_svc.with_execution_settings_repo(Arc::clone(repo));
-                    }
-                    if let Some(ref repo) = plan_branch_repo {
-                        scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
-                    }
-                    if let Some(ref ipr) = interactive_process_registry {
-                        scheduler_svc =
-                            scheduler_svc.with_interactive_process_registry(Arc::clone(ipr));
-                    }
                     let scheduler_concrete = Arc::new(scheduler_svc);
                     scheduler_concrete
                         .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
                     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -418,7 +803,6 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     )
                     .with_task_scheduler(task_scheduler);
@@ -444,7 +828,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         all_steps_done,
                     );
 
-                    if completion_action == ExecutionCompletionAction::PendingReview && all_steps_done
+                    if completion_action == ExecutionCompletionAction::PendingReview
+                        && all_steps_done
                     {
                         tracing::info!(
                                 task_id = task_id.as_str(),
@@ -534,8 +919,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     exec_state.is_shutting_down.load(Ordering::SeqCst),
                 ) {
                     IncompleteReviewAction::SkipDuringShutdown => {
-                    // L1 shutdown guard: skip escalation during clean app shutdown.
-                    // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
+                        // L1 shutdown guard: skip escalation during clean app shutdown.
+                        // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
                         tracing::info!(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping review escalation; task stays in Reviewing for auto-recovery"
@@ -556,129 +941,130 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         return;
                     }
                     IncompleteReviewAction::Escalate => {
-                    tracing::info!(
-                        task_id = task_id.as_str(),
-                        "Review agent completed without calling complete_review; escalating"
-                    );
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Review agent completed without calling complete_review; escalating"
+                        );
 
-                    // Store info in metadata for UI visibility
-                    let mut metadata_obj = task
-                        .metadata
-                        .as_deref()
-                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                        .unwrap_or_else(|| serde_json::json!({}));
-                    if let Some(obj) = metadata_obj.as_object_mut() {
-                        obj.insert(
-                            "last_agent_error".to_string(),
-                            serde_json::json!(
-                                "Review agent completed without calling complete_review"
-                            ),
-                        );
-                        obj.insert(
-                            "last_agent_error_context".to_string(),
-                            serde_json::json!("review"),
-                        );
-                        obj.insert(
-                            "last_agent_error_at".to_string(),
-                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                        );
-                    }
-                    let mut updated_task = task.clone();
-                    updated_task.metadata =
-                        Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                    updated_task.touch();
-                    let _ = task_repo.update(&updated_task).await;
+                        // Store info in metadata for UI visibility
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!(
+                                    "Review agent completed without calling complete_review"
+                                ),
+                            );
+                            obj.insert(
+                                "last_agent_error_context".to_string(),
+                                serde_json::json!("review"),
+                            );
+                            obj.insert(
+                                "last_agent_error_at".to_string(),
+                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
 
-                    // Store a ReviewNote so the frontend can display why the task was escalated.
-                    if let Some(ref repo) = review_repo {
-                        let reason = "Review agent exited without calling complete_review";
-                        let note = ReviewNote::with_notes(
-                            task_id.clone(),
-                            ReviewerType::System,
-                            ReviewOutcome::Rejected,
-                            reason.to_string(),
+                        // Store a ReviewNote so the frontend can display why the task was escalated.
+                        if let Some(ref repo) = review_repo {
+                            let reason = "Review agent exited without calling complete_review";
+                            let note = ReviewNote::with_notes(
+                                task_id.clone(),
+                                ReviewerType::System,
+                                ReviewOutcome::Rejected,
+                                reason.to_string(),
+                            );
+                            if let Err(e) = repo.add_note(&note).await {
+                                tracing::warn!(
+                                    task_id = task_id.as_str(),
+                                    error = %e,
+                                    "Failed to store escalation ReviewNote after incomplete review"
+                                );
+                            }
+                        }
+
+                        // Transition to Escalated (no scheduler needed)
+                        let transition_service = build_transition_service(
+                            app_handle,
+                            Arc::clone(task_repo),
+                            Arc::clone(task_dependency_repo),
+                            Arc::clone(project_repo),
+                            Arc::clone(chat_message_repo),
+                            Arc::clone(chat_attachment_repo),
+                            Arc::clone(conversation_repo),
+                            Arc::clone(agent_run_repo),
+                            Arc::clone(ideation_session_repo),
+                            Arc::clone(activity_event_repo),
+                            Arc::clone(message_queue),
+                            Arc::clone(running_agent_registry),
+                            Arc::clone(exec_state),
+                            Arc::clone(memory_event_repo),
                         );
-                        if let Err(e) = repo.add_note(&note).await {
-                            tracing::warn!(
+                        let transition_service = if let Some(ref repo) = execution_settings_repo {
+                            transition_service.with_execution_settings_repo(Arc::clone(repo))
+                        } else {
+                            transition_service
+                        };
+                        let transition_service = if let Some(ref repo) = plan_branch_repo {
+                            transition_service.with_plan_branch_repo(Arc::clone(repo))
+                        } else {
+                            transition_service
+                        };
+                        let transition_service = if let Some(ref ipr) = interactive_process_registry
+                        {
+                            transition_service.with_interactive_process_registry(Arc::clone(ipr))
+                        } else {
+                            transition_service
+                        };
+
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::Escalated)
+                            .await
+                        {
+                            tracing::error!(
                                 task_id = task_id.as_str(),
                                 error = %e,
-                                "Failed to store escalation ReviewNote after incomplete review"
+                                "Failed to transition reviewing task to Escalated after incomplete review"
                             );
                         }
                     }
-
-                    // Transition to Escalated (no scheduler needed)
-                    let transition_service = TaskTransitionService::new(
-                        Arc::clone(task_repo),
-                        Arc::clone(task_dependency_repo),
-                        Arc::clone(project_repo),
-                        Arc::clone(chat_message_repo),
-                        Arc::clone(chat_attachment_repo),
-                        Arc::clone(conversation_repo),
-                        Arc::clone(agent_run_repo),
-                        Arc::clone(ideation_session_repo),
-                        Arc::clone(activity_event_repo),
-                        Arc::clone(message_queue),
-                        Arc::clone(running_agent_registry),
-                        Arc::clone(exec_state),
-                        app_handle.clone(),
-                        Arc::clone(memory_event_repo),
-                    );
-                    let transition_service = if let Some(ref repo) = execution_settings_repo {
-                        transition_service.with_execution_settings_repo(Arc::clone(repo))
-                    } else {
-                        transition_service
-                    };
-                    let transition_service = if let Some(ref repo) = plan_branch_repo {
-                        transition_service.with_plan_branch_repo(Arc::clone(repo))
-                    } else {
-                        transition_service
-                    };
-                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
-                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
-                    } else {
-                        transition_service
-                    };
-
-                    if let Err(e) = transition_service
-                        .transition_task(&task_id, InternalStatus::Escalated)
-                        .await
-                    {
-                        tracing::error!(
-                            task_id = task_id.as_str(),
-                            error = %e,
-                            "Failed to transition reviewing task to Escalated after incomplete review"
-                        );
-                    }
-                    }
                     IncompleteReviewAction::IgnoreAlreadyTransitioned => {
-                    // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
-                    // chat_service_send_background.rs re-incremented running_count before this
-                    // handler ran IFF execution_slot_held == false (interactive mode where
-                    // TurnComplete freed the slot mid-stream). Negate that re-increment to
-                    // prevent a running_count leak that would cause merge deferral checks to
-                    // incorrectly see count=1.
-                    //
-                    // Guard: when execution_slot_held == true (autonomous review), TurnComplete
-                    // never freed the slot, so no re-increment happened in send_background.rs.
-                    // Decrementing here would cause a spurious underflow (running_count below 0).
-                    if !execution_slot_held {
-                        let count_before = exec_state.running_count();
-                        let count_after = exec_state.decrement_running();
-                        tracing::info!(
-                            task_id = task_id.as_str(),
-                            status = ?task.internal_status,
-                            count_before,
-                            count_after,
-                            "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
-                        );
-                    } else {
-                        tracing::debug!(
-                            task_id = task_id.as_str(),
-                            status = ?task.internal_status,
-                            "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
-                        );
-                    }
+                        // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
+                        // chat_service_send_background.rs re-incremented running_count before this
+                        // handler ran IFF execution_slot_held == false (interactive mode where
+                        // TurnComplete freed the slot mid-stream). Negate that re-increment to
+                        // prevent a running_count leak that would cause merge deferral checks to
+                        // incorrectly see count=1.
+                        //
+                        // Guard: when execution_slot_held == true (autonomous review), TurnComplete
+                        // never freed the slot, so no re-increment happened in send_background.rs.
+                        // Decrementing here would cause a spurious underflow (running_count below 0).
+                        if !execution_slot_held {
+                            let count_before = exec_state.running_count();
+                            let count_after = exec_state.decrement_running();
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                status = ?task.internal_status,
+                                count_before,
+                                count_after,
+                                "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
+                            );
+                        } else {
+                            tracing::debug!(
+                                task_id = task_id.as_str(),
+                                status = ?task.internal_status,
+                                "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
+                            );
+                        }
                     }
                 }
             }
@@ -740,37 +1126,17 @@ pub(super) async fn handle_stream_success<R: Runtime>(
             Ok(Some(child_session)) => {
                 if child_session.session_purpose == SessionPurpose::Verification {
                     if let Some(parent_id) = child_session.parent_session_id {
-                        let reconcile_result = crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
-                            &parent_id,
+                        handle_verification_child_completion(
                             &child_id,
+                            &parent_id,
                             ideation_session_repo,
-                            app_handle.as_ref(),
+                            conversation_repo,
+                            chat_message_repo,
+                            message_queue,
+                            app_handle,
+                            verification_child_registry,
                         )
                         .await;
-
-                        // Synthesize and inject <verification-result> handoff message
-                        // when reconcile returns NeedsRevision and the dedup guard allows it.
-                        // Fire-and-forget: errors are logged but never block the handler.
-                        if let Some(result) = reconcile_result {
-                            verification_handoff::maybe_inject_verification_result_message(
-                                &parent_id,
-                                &result,
-                                conversation_repo,
-                                chat_message_repo,
-                                message_queue,
-                            )
-                            .await;
-
-                            // Fix A: Kill the lingering verification child process after
-                            // terminal reconciliation so the 600s idle timeout cannot fire.
-                            if let Some(registry) = verification_child_registry {
-                                tracing::info!(
-                                    context_id,
-                                    "Sending SIGTERM to verification child process after terminal reconciliation"
-                                );
-                                registry.remove_and_kill(context_id);
-                            }
-                        }
                     }
                 }
             }
@@ -870,6 +1236,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     pre_assistant_msg_id: &str,
     event_ctx: &EventContextPayload,
     stored_session_id: Option<&str>,
+    effective_harness: AgentHarnessKind,
     is_retry_attempt: bool,
     user_message_content: Option<&str>,
     conversation: Option<&ChatConversation>,
@@ -906,6 +1273,20 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
     >,
 ) -> bool {
+    let conversation_provider_session_ref =
+        conversation.and_then(|conv| conv.provider_session_ref());
+    let stored_provider_harness = conversation_provider_session_ref
+        .as_ref()
+        .map(|session_ref| session_ref.harness)
+        .or_else(|| stored_session_id.map(|_| effective_harness));
+    let stored_provider_session_id = stored_session_id
+        .map(|session_id| session_id.to_string())
+        .or_else(|| {
+            conversation_provider_session_ref
+                .as_ref()
+                .map(|session_ref| session_ref.provider_session_id.clone())
+        });
+
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
     if let Some(StreamError::Cancelled {
         turns_finalized,
@@ -981,13 +1362,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:run_completed",
-                    AgentRunCompletedPayload {
-                        conversation_id: conversation_id.as_str().to_string(),
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        claude_session_id: stored_session_id.map(|s| s.to_string()),
-                        run_chain_id: run_chain_id.clone(),
-                    },
+                    AgentRunCompletedPayload::with_provider_session(
+                        conversation_id.as_str().to_string(),
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        stored_provider_harness,
+                        stored_provider_session_id.clone(),
+                        run_chain_id.clone(),
+                    ),
                 );
             }
             return false;
@@ -1049,13 +1431,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:run_completed",
-                    AgentRunCompletedPayload {
-                        conversation_id: conversation_id.as_str().to_string(),
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        claude_session_id: stored_session_id.map(|s| s.to_string()),
-                        run_chain_id: run_chain_id.clone(),
-                    },
+                    AgentRunCompletedPayload::with_provider_session(
+                        conversation_id.as_str().to_string(),
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        stored_provider_harness,
+                        stored_provider_session_id.clone(),
+                        run_chain_id.clone(),
+                    ),
                 );
             }
             return false;
@@ -1077,22 +1460,23 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             .await;
 
         // Update pre-created message — append stop note to any content already flushed
-        let (existing_content, existing_tool_calls) =
+        let (existing_content, existing_tool_calls, existing_content_blocks) =
             read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
         let stop_note = if existing_content.is_empty() {
             "[Agent stopped]".to_string()
         } else {
             format!("{}\n\n[Agent stopped]", existing_content)
         };
-        super::chat_service_send_background::finalize_assistant_message(
+        finalize_assistant_message_with_terminal_tool_state(
             chat_message_repo,
             app_handle.as_ref(),
             event_ctx,
             pre_assistant_msg_id,
             &get_assistant_role(&context_type).to_string(),
             &stop_note,
-            existing_tool_calls.as_deref(),
-            None,
+            existing_tool_calls,
+            existing_content_blocks,
+            "stopped",
         )
         .await;
 
@@ -1134,7 +1518,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 conversation_id = conversation_id.as_str(),
                 context_type = %context_type,
                 context_id = %context_id,
-                "Detected stale Claude session"
+                "Detected stale provider session"
             );
 
             // Feature flag check
@@ -1155,10 +1539,15 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 );
                 // Fall through to clear session
             } else if let (Some(msg), Some(conv)) = (user_message_content, conversation) {
+                let recovery_harness = conv
+                    .provider_session_ref()
+                    .map(|session_ref| session_ref.harness)
+                    .unwrap_or(effective_harness);
                 // Attempt recovery
                 match super::chat_service_recovery::attempt_session_recovery(
                     &conversation_id,
                     conv,
+                    recovery_harness,
                     context_type,
                     context_id,
                     msg,
@@ -1199,101 +1588,114 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
                         // Retry send with fresh session (set is_retry=true)
                         let mut retry_conv = conv.clone();
-                        retry_conv.claude_session_id = Some(new_session_id.clone());
+                        retry_conv.set_provider_session_ref(
+                            crate::domain::agents::ProviderSessionRef {
+                                harness: recovery_harness,
+                                provider_session_id: new_session_id.clone(),
+                            },
+                        );
                         let ideation_effort_settings_repo = app_handle.as_ref().map(|handle| {
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_effort_settings_repo)
+                        });
+                        let agent_lane_settings_repo = app_handle.as_ref().map(|handle| {
+                            let app_state = handle.state::<AppState>();
+                            Arc::clone(&app_state.agent_lane_settings_repo)
                         });
                         let ideation_model_settings_repo = app_handle.as_ref().map(|handle| {
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_model_settings_repo)
                         });
+                        let delegated_session_repo = app_handle.as_ref().map(|handle| {
+                            let app_state = handle.state::<AppState>();
+                            Arc::clone(&app_state.delegated_session_repo)
+                        });
 
-                        // Build command for retry
-                        if let Ok(spawnable) = chat_service_context::build_command(
-                            cli_path,
-                            plugin_dir,
-                            &retry_conv,
-                            msg,
-                            working_directory,
-                            None,
-                            resolved_project_id.as_deref(),
-                            team_mode,
-                            Arc::clone(chat_attachment_repo),
-                            Arc::clone(artifact_repo),
-                            ideation_model_settings_repo.clone(),
-                            &[],  // retry path — no session history injection needed
-                            0,    // total_available: not needed here — session_messages is empty
-                            None, // effort_override: recovery retry uses default
-                            None, // model_override: recovery retry uses resolved ideation settings when available
-                        )
-                        .await
-                        {
+                        let retry_spawnable =
+                            chat_service_context::build_resume_command_for_harness(
+                                recovery_harness,
+                                cli_path,
+                                plugin_dir,
+                                context_type,
+                                context_id,
+                                msg,
+                                working_directory,
+                                &new_session_id,
+                                resolved_project_id.as_deref(),
+                                team_mode,
+                                Arc::clone(chat_attachment_repo),
+                                Arc::clone(artifact_repo),
+                                agent_lane_settings_repo.clone(),
+                                ideation_effort_settings_repo.clone(),
+                                ideation_model_settings_repo.clone(),
+                                Arc::clone(ideation_session_repo),
+                                Arc::clone(
+                                    delegated_session_repo
+                                        .as_ref()
+                                        .expect("delegated session repo available"),
+                                ),
+                                Arc::clone(task_repo),
+                                &[],
+                                0,
+                                None,
+                                None,
+                                false,
+                            )
+                            .await
+                            .map(|provider_spawnable| provider_spawnable.spawnable);
+
+                        if let Ok(spawnable) = retry_spawnable {
                             if let Ok(retry_child) = spawnable.spawn().await {
-                                use super::chat_service_send_background::{
-                                    BackgroundRunContext, BackgroundRunRepos,
-                                };
-                                // Recursive call with is_retry_attempt=true
                                 super::chat_service_send_background::spawn_send_message_background(
-                                    BackgroundRunContext {
-                                        child: retry_child,
+                                    build_recovery_retry_background_context(
+                                        retry_child,
+                                        recovery_harness,
                                         context_type,
-                                        context_id: context_id.to_string(),
+                                        context_id,
                                         conversation_id,
-                                        agent_run_id: agent_run_id.to_string(),
-                                        stored_session_id: Some(new_session_id),
-                                        working_directory: working_directory.to_path_buf(),
-                                        cli_path: cli_path.to_path_buf(),
-                                        plugin_dir: plugin_dir.to_path_buf(),
-                                        repos: BackgroundRunRepos {
-                                            chat_message_repo: Arc::clone(chat_message_repo),
-                                            chat_attachment_repo: Arc::clone(chat_attachment_repo),
-                                            artifact_repo: Arc::clone(artifact_repo),
-                                            conversation_repo: Arc::clone(conversation_repo),
-                                            agent_run_repo: Arc::clone(agent_run_repo),
-                                            task_repo: Arc::clone(task_repo),
-                                            task_dependency_repo: Arc::clone(task_dependency_repo),
-                                            project_repo: Arc::clone(project_repo),
-                                            ideation_session_repo: Arc::clone(
-                                                ideation_session_repo,
-                                            ),
-                                            execution_settings_repo: execution_settings_repo
-                                                .clone(),
-                                            ideation_effort_settings_repo:
-                                                ideation_effort_settings_repo.clone(),
-                                            ideation_model_settings_repo:
-                                                ideation_model_settings_repo.clone(),
-                                            task_proposal_repo: task_proposal_repo.clone(),
-                                            activity_event_repo: Arc::clone(activity_event_repo),
-                                            memory_event_repo: Arc::clone(memory_event_repo),
-                                            message_queue: Arc::clone(message_queue),
-                                            running_agent_registry: Arc::clone(
-                                                running_agent_registry,
-                                            ),
-                                            task_step_repo: None,
-                                            review_repo: review_repo.clone(),
-                                        },
-                                        execution_state: execution_state.clone(),
-                                        question_state: question_state.clone(),
-                                        plan_branch_repo: plan_branch_repo.clone(),
-                                        app_handle: app_handle.clone(),
-                                        run_chain_id: run_chain_id.clone(),
-                                        is_retry_attempt: true,
-                                        user_message_content: user_message_content
-                                            .map(|s| s.to_string()),
-                                        conversation: Some(retry_conv),
-                                        agent_name: agent_name.map(|s| s.to_string()),
+                                        agent_run_id,
+                                        new_session_id,
+                                        working_directory,
+                                        cli_path,
+                                        plugin_dir,
+                                        chat_message_repo,
+                                        chat_attachment_repo,
+                                        artifact_repo,
+                                        conversation_repo,
+                                        agent_run_repo,
+                                        task_repo,
+                                        task_dependency_repo,
+                                        project_repo,
+                                        ideation_session_repo,
+                                        delegated_session_repo
+                                            .as_ref()
+                                            .expect("delegated session repo available"),
+                                        execution_settings_repo,
+                                        &agent_lane_settings_repo,
+                                        &ideation_effort_settings_repo,
+                                        &ideation_model_settings_repo,
+                                        task_proposal_repo,
+                                        activity_event_repo,
+                                        memory_event_repo,
+                                        message_queue,
+                                        running_agent_registry,
+                                        execution_state,
+                                        question_state,
+                                        plan_branch_repo,
+                                        app_handle,
+                                        run_chain_id.clone(),
+                                        user_message_content,
+                                        retry_conv,
+                                        agent_name,
                                         team_mode,
-                                        cancellation_token:
-                                            tokio_util::sync::CancellationToken::new(),
-                                        team_service: None, // Recovery retries don't need team events
-                                        streaming_state_cache: super::StreamingStateCache::new(), // Fresh cache for retry
-                                        interactive_process_registry: None, // Retries don't use interactive mode
-                                        verification_child_registry: None, // Retries don't kill verification processes
-                                    },
+                                        review_repo,
+                                        task_step_repo,
+                                        interactive_process_registry,
+                                        verification_child_registry,
+                                    ),
                                 );
 
-                                return true; // Recovery spawned retry, caller should return early
+                                return true;
                             }
                         }
 
@@ -1310,9 +1712,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 }
             }
 
-            // Clear stale session ID as fallback
+            // Clear stale provider session reference as fallback
             let _ = conversation_repo
-                .clear_claude_session_id(&conversation_id)
+                .clear_provider_session_ref(&conversation_id)
                 .await;
         }
         _ => {
@@ -1322,10 +1724,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     tracing::info!(
                         conversation_id = conversation_id.as_str(),
                         error_type = %se,
-                        "Clearing session ID due to stream error requiring session reset"
+                        "Clearing provider session due to stream error requiring session reset"
                     );
                     let _ = conversation_repo
-                        .clear_claude_session_id(&conversation_id)
+                        .clear_provider_session_ref(&conversation_id)
                         .await;
                 }
             }
@@ -1364,6 +1766,20 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     terminal_status = ?parent_state.terminal_status,
                     "Gate B+C: suppressing agent:error for terminal verification child"
                 );
+                let (existing_content, existing_tool_calls, existing_content_blocks) =
+                    read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
+                finalize_assistant_message_with_terminal_tool_state(
+                    chat_message_repo,
+                    app_handle.as_ref(),
+                    event_ctx,
+                    pre_assistant_msg_id,
+                    &get_assistant_role(&context_type).to_string(),
+                    &existing_content,
+                    existing_tool_calls,
+                    existing_content_blocks,
+                    "verification_parent_resolved",
+                )
+                .await;
                 verification_handoff::inject_verification_handoff_if_missing(
                     &parent_state.parent_id,
                     &parent_state.parent_conversation_id,
@@ -1380,10 +1796,65 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         }
     }
 
+    if context_type == ChatContextType::Ideation {
+        let child_id = IdeationSessionId::from_string(context_id.to_string());
+        if let Some(ReconcileVerificationChildCompletion::AutoContinue(request)) =
+            crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
+                &child_id,
+                ideation_session_repo,
+                app_handle.as_ref(),
+                "agent_error",
+            )
+            .await
+        {
+            queue_verification_auto_continue(
+                message_queue,
+                &child_id,
+                request.continuation_message,
+            );
+            tracing::info!(
+                context_id = child_id.as_str(),
+                current_round = request.snapshot.current_round,
+                max_rounds = request.snapshot.max_rounds,
+                gap_count = request.snapshot.current_gaps.len(),
+                "Queued hidden resume-in-place continuation after verification child error"
+            );
+
+            let (existing_content, existing_tool_calls, existing_content_blocks) =
+                read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
+            finalize_assistant_message_with_terminal_tool_state(
+                chat_message_repo,
+                app_handle.as_ref(),
+                event_ctx,
+                pre_assistant_msg_id,
+                &get_assistant_role(&context_type).to_string(),
+                &existing_content,
+                existing_tool_calls,
+                existing_content_blocks,
+                "verification_auto_continue",
+            )
+            .await;
+
+            return false;
+        }
+    }
+
     // Read existing content before overwriting — append error to any content already flushed
-    let (existing_content, existing_tool_calls) =
+    let (existing_content, existing_tool_calls, existing_content_blocks) =
         read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
-    let error_note = if existing_content.is_empty() {
+    let suppress_transcript_error_note = matches!(
+        stream_error,
+        Some(StreamError::AgentExit { stderr, .. }) if is_nonfatal_mcp_tool_cancellation(stderr)
+    );
+    let error_note = if suppress_transcript_error_note {
+        tracing::info!(
+            conversation_id = conversation_id.as_str(),
+            context_type = %context_type,
+            context_id,
+            "Suppressing non-fatal MCP cancellation note from persisted assistant transcript"
+        );
+        existing_content
+    } else if existing_content.is_empty() {
         format!("{} {}]", super::AGENT_ERROR_PREFIX, redacted_error)
     } else {
         format!(
@@ -1393,15 +1864,16 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             redacted_error
         )
     };
-    super::chat_service_send_background::finalize_assistant_message(
+    finalize_assistant_message_with_terminal_tool_state(
         chat_message_repo,
         app_handle.as_ref(),
         event_ctx,
         pre_assistant_msg_id,
         &get_assistant_role(&context_type).to_string(),
         &error_note,
-        existing_tool_calls.as_deref(),
-        None,
+        existing_tool_calls,
+        existing_content_blocks,
+        "interrupted",
     )
     .await;
 
@@ -1429,6 +1901,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     msg.to_string(),
                     Some(r#"{"resume_in_place":true}"#.to_string()),
                     None,
+                    Some(effective_harness),
                 );
             }
         }
@@ -1666,7 +2139,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         target_status
                     };
 
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -1679,7 +2153,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
                     let transition_service = if let Some(ref repo) = execution_settings_repo {
@@ -2030,7 +2503,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     }
 
                     // Transition to Escalated
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -2043,7 +2517,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
                     let transition_service = if let Some(ref repo) = execution_settings_repo {
@@ -2105,19 +2578,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 "Review agent failed but no execution_state available for fallback transition"
             );
         }
-    }
-
-    // Path B: Reset verification state when a verification child errors (no turns produced)
-    // Ideation context falls through all TaskExecution/Merge/Review blocks above.
-    if context_type == ChatContextType::Ideation {
-        let child_id = IdeationSessionId::from_string(context_id.to_string());
-        crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
-            &child_id,
-            ideation_session_repo,
-            app_handle.as_ref(),
-            "agent_error",
-        )
-        .await;
     }
 
     // Emit error event AFTER all state transitions are complete so the UI reflects
@@ -2260,21 +2720,45 @@ async fn fetch_parent_verification_state(
         }
     };
 
-    // Parse verification metadata to extract convergence_reason and current_gaps
-    let (convergence_reason, current_gaps) = parent_session
-        .verification_metadata
-        .as_deref()
-        .and_then(|json| {
-            serde_json::from_str::<crate::domain::entities::VerificationMetadata>(json).ok()
-        })
-        .map(|meta| (meta.convergence_reason.clone(), meta.current_gaps.clone()))
-        .unwrap_or_else(|| (None, vec![]));
+    let (terminal_status, in_progress, convergence_reason, current_gaps) = match ideation_session_repo
+        .get_verification_run_snapshot(
+            &parent_session_id,
+            parent_session.verification_generation,
+        )
+        .await
+    {
+        Ok(Some(snapshot)) => (
+            snapshot.status,
+            snapshot.in_progress,
+            snapshot.convergence_reason.clone(),
+            snapshot.current_gaps.clone(),
+        ),
+        Ok(None) => (
+            parent_session.verification_status,
+            parent_session.verification_in_progress,
+            parent_session.verification_convergence_reason.clone(),
+            vec![],
+        ),
+        Err(e) => {
+            tracing::warn!(
+                parent_id = %parent_session_id.as_str(),
+                error = %e,
+                "Gate B: failed to fetch native verification snapshot"
+            );
+            (
+                parent_session.verification_status,
+                parent_session.verification_in_progress,
+                parent_session.verification_convergence_reason.clone(),
+                vec![],
+            )
+        }
+    };
 
     Some(ParentVerificationState {
         parent_id: parent_session_id,
         parent_conversation_id,
-        in_progress: parent_session.verification_in_progress,
-        terminal_status: parent_session.verification_status,
+        in_progress,
+        terminal_status,
         convergence_reason,
         current_gaps,
     })

@@ -285,8 +285,8 @@ describe("useGlobalAgentLifecycle", () => {
     act(() => {
       fireEvent("agent:run_started", {
         ...mkRunStarted("ideation", "session-1"),
-        effectiveModelId: "claude-sonnet-4-6",
-        effectiveModelLabel: "Sonnet 4.6",
+        effective_model_id: "claude-sonnet-4-6",
+        effective_model_label: "Sonnet 4.6",
       });
     });
 
@@ -312,8 +312,8 @@ describe("useGlobalAgentLifecycle", () => {
     act(() => {
       fireEvent("agent:run_started", {
         ...mkRunStarted("task_execution", "task-99"),
-        effectiveModelId: "claude-sonnet-4-6",
-        // effectiveModelLabel intentionally absent
+        effective_model_id: "claude-sonnet-4-6",
+        // effective_model_label intentionally absent
       });
     });
 

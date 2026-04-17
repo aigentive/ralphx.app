@@ -2,6 +2,16 @@ import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { setupApp } from "../fixtures/setup.fixtures";
 
+interface PlanStoreWithSetState {
+  setState(
+    updater: (state: {
+      activeExecutionPlanIdByProject: Record<string, string | null>;
+    }) => {
+      activeExecutionPlanIdByProject: Record<string, string | null>;
+    }
+  ): void;
+}
+
 /**
  * Integration tests for Global Active Plan feature
  *
@@ -24,6 +34,57 @@ async function waitForQueriesAfterPlanChange(page: Page, timeoutMs = 2000) {
   await page.waitForTimeout(timeoutMs);
 }
 
+async function setDeterministicActivePlan(
+  page: Page,
+  projectId: string,
+  sessionId: string | null,
+  executionPlanId: string | null = sessionId
+) {
+  await page.evaluate(
+    async ({
+      targetProjectId,
+      targetSessionId,
+      targetExecutionPlanId,
+    }: {
+      targetProjectId: string;
+      targetSessionId: string | null;
+      targetExecutionPlanId: string | null;
+    }) => {
+      const { planApi } = await import("/src/api/plan");
+      const planStore = (window as unknown as {
+        __planStore?: { getState(): { loadActivePlan(projectId: string): Promise<void> } };
+      }).__planStore;
+
+      if (!planStore) {
+        throw new Error("planStore not available");
+      }
+
+      if (targetSessionId === null) {
+        await planApi.clearActivePlan(targetProjectId);
+      } else {
+        await planApi.setActivePlan(targetProjectId, targetSessionId, "quick_switcher");
+      }
+
+      await planStore.getState().loadActivePlan(targetProjectId);
+      if (targetExecutionPlanId !== targetSessionId) {
+        (window as unknown as {
+          __planStore?: PlanStoreWithSetState;
+        }).__planStore?.setState((state) => ({
+          activeExecutionPlanIdByProject: {
+            ...state.activeExecutionPlanIdByProject,
+            [targetProjectId]: targetExecutionPlanId,
+          },
+        }));
+      }
+    },
+    {
+      targetProjectId: projectId,
+      targetSessionId: sessionId,
+      targetExecutionPlanId: executionPlanId,
+    }
+  );
+}
+
 test.describe("Active Plan Cross-View Sync", () => {
   test.beforeEach(async ({ page }) => {
     await setupApp(page);
@@ -35,20 +96,13 @@ test.describe("Active Plan Cross-View Sync", () => {
         throw new Error("Mock store not available - ensure api-mock is configured");
       }
 
-      // Clear existing data
-      store.projects.clear();
+      // Preserve the seeded demo project so app bootstrap and project selection stay aligned.
       store.tasks.clear();
 
-      // Create project
-      const project = {
-        id: "test-project-1",
-        name: "Test Project",
-        workingDirectory: "/test",
-        defaultBranch: "main",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      store.projects.set(project.id, project);
+      const project = store.projects.get("project-mock-1");
+      if (!project) {
+        throw new Error("Seeded project-mock-1 not available");
+      }
 
       // Set as active project in projectStore (using dynamic import since we're in browser context)
       const { useProjectStore } = await import("/src/stores/projectStore");
@@ -125,9 +179,12 @@ test.describe("Active Plan Cross-View Sync", () => {
 
       tasks.forEach(t => store.tasks.set(t.id, t));
 
-      // Initialize active plan state (no plan selected initially)
-      if (!store.activePlans) store.activePlans = new Map();
-      store.activePlans.set(project.id, null);
+      const { planApi } = await import("/src/api/plan");
+      await planApi.clearActivePlan(project.id);
+      const planStore = (window as unknown as {
+        __planStore?: { getState(): { loadActivePlan(projectId: string): Promise<void> } };
+      }).__planStore;
+      await planStore?.getState().loadActivePlan(project.id);
 
       // Invalidate queries to refetch with new data
       const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: () => void } }).__queryClient;
@@ -144,40 +201,27 @@ test.describe("Active Plan Cross-View Sync", () => {
     // Navigate to Graph first (simulating user navigation after session acceptance)
     await page.click('[data-testid="nav-graph"]');
 
-    // Wait for graph empty state to appear initially (no plan selected yet)
-    await page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 });
+    // Wait for the graph no-plan placeholder to appear initially.
+    await expect(page.getByText("No plan selected")).toBeVisible();
 
-    // Now set active plan via planStore (simulating session acceptance)
+    await setDeterministicActivePlan(page, "project-mock-1", "session-1", "session-1");
     const debugInfo = await page.evaluate(async () => {
-      // Get the planStore from window (exposed by zustand devtools or direct access)
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.setActivePlan("test-project-1", "session-1", "acceptance");
-
-      // Get fresh state after update (Zustand state is immutable, need to call getState() again)
-      const freshStore = usePlanStore.getState();
-      const activePlan = freshStore.activePlanByProject["test-project-1"];
-
-      // Check what's in the mock store
-      const mockStore = (window as unknown as { __mockStore?: { tasks: Map<string, unknown>, activePlans?: Map<string, string | null> } }).__mockStore;
-      const taskCount = mockStore?.tasks?.size ?? 0;
-      const activePlanFromMock = mockStore?.activePlans?.get("test-project-1");
-
-      // Force React Query to refetch task-graph queries with the new ideationSessionId
-      const queryClient = (window as unknown as { __queryClient?: { invalidateQueries: (options: { queryKey: string[] }) => Promise<void>, refetchQueries: (options: { queryKey: string[] }) => Promise<void> } }).__queryClient;
-      if (queryClient) {
-        // Invalidate and refetch task-graph queries
-        await queryClient.invalidateQueries({ queryKey: ['task-graph'] });
-        await queryClient.refetchQueries({ queryKey: ['task-graph'] });
-      }
-
+      const planStore = (window as unknown as {
+        __planStore?: {
+          getState(): {
+            activePlanByProject: Record<string, string | null>;
+          };
+        };
+      }).__planStore;
+      const mockStore = (window as unknown as {
+        __mockStore?: { tasks: Map<string, unknown>; activePlans?: Map<string, string | null> };
+      }).__mockStore;
       return {
-        activePlanInStore: activePlan,
-        activePlanInMock: activePlanFromMock,
-        taskCount,
+        activePlanInStore: planStore?.getState().activePlanByProject["project-mock-1"],
+        activePlanInMock: mockStore?.activePlans?.get("project-mock-1"),
+        taskCount: mockStore?.tasks?.size ?? 0,
       };
     });
-
     console.log("Debug info:", debugInfo);
 
     // Wait for React Query to refetch with new ideationSessionId and settle
@@ -200,12 +244,7 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 2: Accept session → navigate to Kanban → verify filtered board", async ({ page }) => {
-    // Set active plan via planStore (simulating session acceptance)
-    await page.evaluate(async () => {
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.setActivePlan("test-project-1", "session-2", "acceptance");
-    });
+    await setDeterministicActivePlan(page, "project-mock-1", "session-2", "session-2");
 
     // Wait for React Query to refetch with new ideationSessionId
     await waitForQueriesAfterPlanChange(page, 2000);
@@ -235,13 +274,7 @@ test.describe("Active Plan Cross-View Sync", () => {
       page.waitForSelector('[data-testid="graph-empty-state"]', { timeout: 10000 })
     ]);
 
-    // Simulate plan selection via planStore
-    // (Plan selector UI interaction would trigger this in real app)
-    await page.evaluate(async () => {
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.setActivePlan("test-project-1", "session-1", "ui_selection");
-    });
+    await setDeterministicActivePlan(page, "project-mock-1", "session-1", "session-1");
 
     // Wait for React Query to refetch with new ideationSessionId
     await waitForQueriesAfterPlanChange(page, 2000);
@@ -260,13 +293,7 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 4: Select plan via quick switcher → verify both Graph and Kanban update", async ({ page }) => {
-    // Simulate plan selection via quick switcher using planStore
-    // (Quick switcher UI interaction would trigger this in real app)
-    await page.evaluate(async () => {
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.setActivePlan("test-project-1", "session-2", "quick_switcher");
-    });
+    await setDeterministicActivePlan(page, "project-mock-1", "session-2", "session-2");
 
     // Wait for React Query to refetch with new ideationSessionId
     await waitForQueriesAfterPlanChange(page, 2000);
@@ -298,12 +325,7 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 5: No active plan → both views show empty state", async ({ page }) => {
-    // Clear active plan via planStore
-    await page.evaluate(async () => {
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.clearActivePlan("test-project-1");
-    });
+    await setDeterministicActivePlan(page, "project-mock-1", null, null);
 
     // Wait for React Query to refetch with null ideationSessionId
     await waitForQueriesAfterPlanChange(page, 2000);
@@ -333,19 +355,18 @@ test.describe("Active Plan Cross-View Sync", () => {
   });
 
   test("Test 6: Reopen active session → verify plan cleared → empty states shown", async ({ page }) => {
-    // Set initial active plan via planStore
-    await page.evaluate(async () => {
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.setActivePlan("test-project-1", "session-1", "acceptance");
-    });
+    await setDeterministicActivePlan(page, "project-mock-1", "session-1", "session-1");
 
     // Wait for queries to settle with session-1
     await waitForQueriesAfterPlanChange(page, 2000);
 
     // Simulate reopening a session which clears the active plan
     await page.evaluate(async () => {
-      const mockStore = (window as unknown as { __mockStore?: unknown }).__mockStore;
+      const mockStore = (window as unknown as {
+        __mockStore?: {
+          sessions?: Map<string, { status: string; convertedAt: string | null }>;
+        };
+      }).__mockStore;
       if (mockStore) {
         // Change session status to active (reopened)
         const session = mockStore.sessions.get("session-1");
@@ -354,10 +375,12 @@ test.describe("Active Plan Cross-View Sync", () => {
           session.convertedAt = null;
         }
       }
-      // Clear active plan via planStore
-      const { usePlanStore } = await import("/src/stores/planStore");
-      const store = usePlanStore.getState();
-      await store.clearActivePlan("test-project-1");
+      const { planApi } = await import("/src/api/plan");
+      await planApi.clearActivePlan("project-mock-1");
+      const planStore = (window as unknown as {
+        __planStore?: { getState(): { loadActivePlan(projectId: string): Promise<void> } };
+      }).__planStore;
+      await planStore?.getState().loadActivePlan("project-mock-1");
     });
 
     // Wait for queries to refetch with null ideationSessionId

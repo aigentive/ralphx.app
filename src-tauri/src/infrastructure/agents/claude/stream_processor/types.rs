@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::entities::AgentRunUsage;
+
 // ============================================================================
 // Stream Message Types (from Claude CLI stream-json output)
 // ============================================================================
@@ -108,6 +110,8 @@ pub struct AssistantMessage {
     pub content: Vec<AssistantContent>,
     #[serde(default)]
     pub stop_reason: Option<String>,
+    #[serde(default)]
+    pub usage: Option<serde_json::Value>,
 }
 
 /// Content block in assistant message
@@ -180,6 +184,8 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_context: Option<DiffContext>,
     /// Stats for Task/Agent tool calls — populated at TaskCompleted time.
     /// Field is absent (not null) for old rows and non-Task tool calls.
@@ -199,6 +205,8 @@ pub enum ContentBlockItem {
         name: String,
         arguments: serde_json::Value,
         result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        parent_tool_use_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         diff_context: Option<serde_json::Value>,
     },
@@ -327,6 +335,7 @@ pub struct StreamResult {
     /// Content blocks in order (text and tool calls interleaved)
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub usage: AgentRunUsage,
     pub is_error: bool,
     pub errors: Vec<String>,
     pub error_subtype: Option<String>,

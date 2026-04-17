@@ -68,14 +68,36 @@ pub async fn get_execution_status(
     // Keep execution state synchronized to global execution contexts.
     // Subtract idle interactive slots (processes alive between turns that already
     // freed their execution slot via TurnComplete) to avoid re-inflating the counter.
-    let total_with_slot = registry_entries
-        .iter()
-        .filter(|(key, _)| {
-            ChatContextType::from_str(&key.context_type)
-                .map(uses_execution_slot)
-                .unwrap_or(false)
-        })
-        .count();
+    let mut total_with_slot = 0usize;
+    for (key, _) in &registry_entries {
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        if matches!(context_type, ChatContextType::Ideation) {
+            total_with_slot += 1;
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id.clone());
+        let task = match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
+        if task.archived_at.is_some()
+            || !context_matches_running_status_for_gc(context_type, task.internal_status)
+        {
+            continue;
+        }
+
+        total_with_slot += 1;
+    }
     let active_count =
         (total_with_slot.saturating_sub(execution_state.interactive_idle_count())) as u32;
     execution_state.set_running_count(active_count);
@@ -122,6 +144,10 @@ pub async fn get_execution_status(
             Ok(Some(task)) => task,
             _ => continue,
         };
+
+        if task.archived_at.is_some() {
+            continue;
+        }
 
         scoped_subjects.push(ScopedExecutionSubject::Task {
             context_type,

@@ -53,8 +53,8 @@ impl fmt::Display for MemoryActorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MemoryActorType::System => write!(f, "system"),
-            MemoryActorType::MemoryMaintainer => write!(f, "memory-maintainer"),
-            MemoryActorType::MemoryCapture => write!(f, "memory-capture"),
+            MemoryActorType::MemoryMaintainer => write!(f, "ralphx-memory-maintainer"),
+            MemoryActorType::MemoryCapture => write!(f, "ralphx-memory-capture"),
         }
     }
 }
@@ -65,8 +65,8 @@ impl std::str::FromStr for MemoryActorType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "system" => Ok(MemoryActorType::System),
-            "memory-maintainer" => Ok(MemoryActorType::MemoryMaintainer),
-            "memory-capture" => Ok(MemoryActorType::MemoryCapture),
+            "ralphx-memory-maintainer" => Ok(MemoryActorType::MemoryMaintainer),
+            "ralphx-memory-capture" => Ok(MemoryActorType::MemoryCapture),
             _ => Err(ParseMemoryActorTypeError(s.to_string())),
         }
     }

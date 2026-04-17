@@ -85,6 +85,7 @@ async fn config_disabled_returns_ok_without_checking() {
         Some("plan/feature-1"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -123,6 +124,7 @@ async fn skip_window_within_threshold_returns_ok_skipped() {
         &task,
         &project,
         "task-skip",
+        None,
         None,
         None,
         None,
@@ -167,6 +169,7 @@ async fn skip_window_expired_proceeds_with_check() {
         &project,
         "task-expired-skip",
         None, // no plan branch → skip plan check
+        None,
         None,
         None,
         "executing",
@@ -222,6 +225,7 @@ async fn plan_already_up_to_date_continues_to_source() {
         Some("plan/fresh-plan"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -275,6 +279,7 @@ async fn plan_updated_continues_to_source() {
         Some("plan/behind-plan"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -301,6 +306,7 @@ async fn plan_not_plan_branch_skipped() {
         &project,
         "task-no-plan",
         None, // no plan branch
+        None,
         None,
         None,
         "executing",
@@ -371,6 +377,7 @@ async fn plan_conflicts_returns_route_to_merging() {
         Some("plan/conflicting"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -379,7 +386,10 @@ async fn plan_conflicts_returns_route_to_merging() {
     assert!(
         matches!(
             result,
-            Err(FreshnessAction::RouteToMerging { conflict_type: "plan_update", .. })
+            Err(FreshnessAction::RouteToMerging {
+                conflict_type: "plan_update",
+                ..
+            })
         ),
         "Plan conflict must return RouteToMerging with conflict_type=plan_update. Got: {:?}",
         result
@@ -402,6 +412,7 @@ async fn plan_error_is_non_fatal_continues() {
         &project,
         "task-plan-error",
         Some("plan/nonexistent-plan-branch"), // branch doesn't exist → Error (non-fatal)
+        None,
         None,
         None,
         "executing",
@@ -436,16 +447,13 @@ async fn source_already_up_to_date_returns_ok() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
-    assert!(
-        result.is_ok(),
-        "Source up-to-date → Ok. Got: {:?}",
-        result
-    );
+    assert!(result.is_ok(), "Source up-to-date → Ok. Got: {:?}", result);
     let meta = result.unwrap();
     assert!(
         !meta.branch_freshness_conflict,
@@ -479,6 +487,7 @@ async fn source_updated_returns_ok() {
         &task,
         &project,
         "task-source-updated",
+        None,
         None,
         None,
         None,
@@ -528,6 +537,7 @@ async fn source_conflicts_returns_route_to_merging() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -536,7 +546,10 @@ async fn source_conflicts_returns_route_to_merging() {
     assert!(
         matches!(
             result,
-            Err(FreshnessAction::RouteToMerging { conflict_type: "source_update", .. })
+            Err(FreshnessAction::RouteToMerging {
+                conflict_type: "source_update",
+                ..
+            })
         ),
         "Source conflict must return RouteToMerging with conflict_type=source_update. Got: {:?}",
         result
@@ -556,6 +569,7 @@ async fn source_error_is_non_fatal_returns_ok() {
         &task,
         &project,
         "task-no-branch",
+        None,
         None,
         None,
         None,
@@ -598,13 +612,16 @@ async fn plan_conflict_increments_count_and_routes() {
         Some("plan/count-test-1"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
     match result {
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+        Err(FreshnessAction::RouteToMerging {
+            freshness_metadata, ..
+        }) => {
             assert_eq!(
                 freshness_metadata.freshness_conflict_count, 1,
                 "Count should be incremented from 0 to 1"
@@ -639,13 +656,16 @@ async fn plan_conflict_at_cap_auto_resets_first_time() {
         Some("plan/count-cap-test"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
     match result {
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+        Err(FreshnessAction::RouteToMerging {
+            freshness_metadata, ..
+        }) => {
             assert_eq!(
                 freshness_metadata.freshness_auto_reset_count, 1,
                 "First cap must set auto_reset_count=1"
@@ -655,9 +675,7 @@ async fn plan_conflict_at_cap_auto_resets_first_time() {
                 "First cap auto-reset must reset count to 0"
             );
         }
-        other => panic!(
-            "First cap must RouteToMerging (auto-reset), not block. Got: {other:?}"
-        ),
+        other => panic!("First cap must RouteToMerging (auto-reset), not block. Got: {other:?}"),
     }
 }
 
@@ -688,6 +706,7 @@ async fn plan_conflict_at_cap_returns_blocked_after_auto_reset() {
         Some("plan/count-cap-test2"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -714,6 +733,7 @@ async fn success_resets_conflict_count() {
         &task,
         &project,
         "task-reset-count",
+        None,
         None,
         None,
         None,
@@ -768,14 +788,22 @@ async fn dual_conflict_sequential_plan_then_source() {
         Some("plan/dual-conflict-plan"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
     let freshness_after_call1 = match result1 {
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, conflict_type: "plan_update", .. }) => {
-            assert_eq!(freshness_metadata.freshness_conflict_count, 1, "Call 1 must set count=1");
+        Err(FreshnessAction::RouteToMerging {
+            freshness_metadata,
+            conflict_type: "plan_update",
+            ..
+        }) => {
+            assert_eq!(
+                freshness_metadata.freshness_conflict_count, 1,
+                "Call 1 must set count=1"
+            );
             freshness_metadata
         }
         other => panic!("Call 1 expected RouteToMerging(plan_update), got: {other:?}"),
@@ -801,14 +829,22 @@ async fn dual_conflict_sequential_plan_then_source() {
         Some("plan/dual-conflict-plan"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
     let freshness_after_call2 = match result2 {
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, conflict_type: "source_update", .. }) => {
-            assert_eq!(freshness_metadata.freshness_conflict_count, 2, "Call 2 must set count=2");
+        Err(FreshnessAction::RouteToMerging {
+            freshness_metadata,
+            conflict_type: "source_update",
+            ..
+        }) => {
+            assert_eq!(
+                freshness_metadata.freshness_conflict_count, 2,
+                "Call 2 must set count=2"
+            );
             freshness_metadata
         }
         other => panic!("Call 2 expected RouteToMerging(source_update), got: {other:?}"),
@@ -827,6 +863,7 @@ async fn dual_conflict_sequential_plan_then_source() {
         &project,
         "task-dual",
         Some("plan/dual-conflict-plan"),
+        None,
         None,
         None,
         "executing",
@@ -863,11 +900,7 @@ fn setup_plan_conflict(path: &std::path::Path, plan_branch_name: &str) {
 
     // Add conflicting commit to main
     let filename = format!("shared_{}.rs", plan_branch_name.replace('/', "_"));
-    std::fs::write(
-        path.join(&filename),
-        "// main version\nfn main_impl() {}",
-    )
-    .unwrap();
+    std::fs::write(path.join(&filename), "// main version\nfn main_impl() {}").unwrap();
     let _ = std::process::Command::new("git")
         .args(["add", &filename])
         .current_dir(path)
@@ -882,11 +915,7 @@ fn setup_plan_conflict(path: &std::path::Path, plan_branch_name: &str) {
         .args(["checkout", plan_branch_name])
         .current_dir(path)
         .output();
-    std::fs::write(
-        path.join(&filename),
-        "// plan version\nfn plan_impl() {}",
-    )
-    .unwrap();
+    std::fs::write(path.join(&filename), "// plan version\nfn plan_impl() {}").unwrap();
     let _ = std::process::Command::new("git")
         .args(["add", &filename])
         .current_dir(path)
@@ -950,7 +979,11 @@ fn setup_source_conflict(path: &std::path::Path, task_branch: &str) {
         .current_dir(path)
         .output();
     let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "fix: main changes feature.rs (source conflict)"])
+        .args([
+            "commit",
+            "-m",
+            "fix: main changes feature.rs (source conflict)",
+        ])
         .current_dir(path)
         .output();
 
@@ -1068,17 +1101,44 @@ fn cleanup_scope_routing_only_clears_routing_flags_preserves_conflict_state() {
 
     let after = FreshnessMetadata::from_task_metadata(&meta);
     // Routing flags cleared
-    assert!(!after.branch_freshness_conflict, "branch_freshness_conflict must be cleared");
-    assert!(after.freshness_origin_state.is_none(), "freshness_origin_state must be cleared");
-    assert!(!after.plan_update_conflict, "plan_update_conflict must be cleared");
-    assert!(!after.source_update_conflict, "source_update_conflict must be cleared");
-    assert!(after.conflict_files.is_empty(), "conflict_files must be cleared");
-    assert!(after.source_branch.is_none(), "source_branch must be cleared");
-    assert!(after.target_branch.is_none(), "target_branch must be cleared");
+    assert!(
+        !after.branch_freshness_conflict,
+        "branch_freshness_conflict must be cleared"
+    );
+    assert!(
+        after.freshness_origin_state.is_none(),
+        "freshness_origin_state must be cleared"
+    );
+    assert!(
+        !after.plan_update_conflict,
+        "plan_update_conflict must be cleared"
+    );
+    assert!(
+        !after.source_update_conflict,
+        "source_update_conflict must be cleared"
+    );
+    assert!(
+        after.conflict_files.is_empty(),
+        "conflict_files must be cleared"
+    );
+    assert!(
+        after.source_branch.is_none(),
+        "source_branch must be cleared"
+    );
+    assert!(
+        after.target_branch.is_none(),
+        "target_branch must be cleared"
+    );
     // Conflict state preserved
     assert_eq!(after.freshness_conflict_count, 3, "count must be preserved");
-    assert!(after.freshness_backoff_until.is_some(), "backoff_until must be preserved");
-    assert_eq!(after.freshness_auto_reset_count, 1, "auto_reset_count must be preserved");
+    assert!(
+        after.freshness_backoff_until.is_some(),
+        "backoff_until must be preserved"
+    );
+    assert_eq!(
+        after.freshness_auto_reset_count, 1,
+        "auto_reset_count must be preserved"
+    );
 }
 
 #[test]
@@ -1097,12 +1157,28 @@ fn cleanup_scope_conflict_state_resets_count_and_backoff() {
 
     let after = FreshnessMetadata::from_task_metadata(&meta);
     // Conflict state reset
-    assert_eq!(after.freshness_conflict_count, 0, "count must be 0 after ConflictState reset");
-    assert!(after.freshness_backoff_until.is_none(), "backoff_until must be None after ConflictState reset");
-    assert_eq!(after.freshness_auto_reset_count, 0, "auto_reset_count must be 0 after ConflictState reset");
+    assert_eq!(
+        after.freshness_conflict_count, 0,
+        "count must be 0 after ConflictState reset"
+    );
+    assert!(
+        after.freshness_backoff_until.is_none(),
+        "backoff_until must be None after ConflictState reset"
+    );
+    assert_eq!(
+        after.freshness_auto_reset_count, 0,
+        "auto_reset_count must be 0 after ConflictState reset"
+    );
     // Routing flags NOT cleared by ConflictState scope
-    assert!(after.branch_freshness_conflict, "branch_freshness_conflict must NOT be cleared by ConflictState");
-    assert_eq!(after.freshness_origin_state.as_deref(), Some("re_executing"), "origin_state must NOT be cleared by ConflictState");
+    assert!(
+        after.branch_freshness_conflict,
+        "branch_freshness_conflict must NOT be cleared by ConflictState"
+    );
+    assert_eq!(
+        after.freshness_origin_state.as_deref(),
+        Some("re_executing"),
+        "origin_state must NOT be cleared by ConflictState"
+    );
 }
 
 #[test]
@@ -1143,7 +1219,10 @@ fn cleanup_scope_full_removes_all_freshness_keys() {
     for key in FRESHNESS_KEYS {
         assert!(!obj.contains_key(*key), "Full scope must remove '{key}'");
     }
-    assert_eq!(meta["other_key"], "preserved", "Non-freshness key must survive Full cleanup");
+    assert_eq!(
+        meta["other_key"], "preserved",
+        "Non-freshness key must survive Full cleanup"
+    );
 }
 
 // --- RoutingOnly scope safety: not used in Merging→complete_merge path ---
@@ -1234,7 +1313,11 @@ fn backoff_reads_from_config_not_hardcoded() {
     assert_eq!(d3.num_seconds(), 120, "base=30 count=3 must be 120s (30*4)");
 
     let d_big = FreshnessMetadata::compute_backoff(20, 30, 300).unwrap();
-    assert_eq!(d_big.num_seconds(), 300, "count=20 must be capped at max=300");
+    assert_eq!(
+        d_big.num_seconds(),
+        300,
+        "count=20 must be capped at max=300"
+    );
 
     // Different base: 120s base, 900s max
     let cfg_base = FreshnessMetadata::compute_backoff(2, 120, 900).unwrap();
@@ -1289,7 +1372,10 @@ fn is_in_backoff_true_when_backoff_until_in_future() {
         freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(300)),
         ..Default::default()
     };
-    assert!(meta.is_in_backoff(), "backoff_until in future must return true");
+    assert!(
+        meta.is_in_backoff(),
+        "backoff_until in future must return true"
+    );
 }
 
 #[test]
@@ -1298,13 +1384,19 @@ fn is_in_backoff_false_when_backoff_until_in_past() {
         freshness_backoff_until: Some(Utc::now() - chrono::Duration::seconds(1)),
         ..Default::default()
     };
-    assert!(!meta.is_in_backoff(), "backoff_until in past must return false");
+    assert!(
+        !meta.is_in_backoff(),
+        "backoff_until in past must return false"
+    );
 }
 
 #[test]
 fn is_in_backoff_false_when_none() {
     let meta = FreshnessMetadata::default();
-    assert!(!meta.is_in_backoff(), "None backoff_until must return false");
+    assert!(
+        !meta.is_in_backoff(),
+        "None backoff_until must return false"
+    );
 }
 
 // --- serde defaults for new fields (upgrade path) ---
@@ -1357,17 +1449,32 @@ fn upgrade_path_mid_conflict_cycle_gets_auto_reset() {
     };
 
     // Simulate first-cap auto-reset
-    assert_eq!(freshness.freshness_auto_reset_count, 0, "pre: must have never auto-reset");
-    assert!(freshness.freshness_conflict_count > 3, "pre: count must exceed cap");
+    assert_eq!(
+        freshness.freshness_auto_reset_count, 0,
+        "pre: must have never auto-reset"
+    );
+    assert!(
+        freshness.freshness_conflict_count > 3,
+        "pre: count must exceed cap"
+    );
 
     // Apply auto-reset (what handle_cap_if_needed does on first cap)
     freshness.freshness_conflict_count = 0;
     freshness.freshness_auto_reset_count = 1;
     freshness.freshness_backoff_until = Some(Utc::now() + chrono::Duration::seconds(600));
 
-    assert_eq!(freshness.freshness_conflict_count, 0, "post: count reset to 0");
-    assert_eq!(freshness.freshness_auto_reset_count, 1, "post: auto_reset_count=1");
-    assert!(freshness.freshness_backoff_until.is_some(), "post: cooldown backoff set");
+    assert_eq!(
+        freshness.freshness_conflict_count, 0,
+        "post: count reset to 0"
+    );
+    assert_eq!(
+        freshness.freshness_auto_reset_count, 1,
+        "post: auto_reset_count=1"
+    );
+    assert!(
+        freshness.freshness_backoff_until.is_some(),
+        "post: cooldown backoff set"
+    );
     assert!(freshness.is_in_backoff(), "post: must be in backoff window");
 }
 
@@ -1396,13 +1503,16 @@ async fn backoff_set_at_conflict_detection() {
         Some("plan/backoff-test"),
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
     .await;
 
     match result {
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+        Err(FreshnessAction::RouteToMerging {
+            freshness_metadata, ..
+        }) => {
             assert!(
                 freshness_metadata.freshness_backoff_until.is_some(),
                 "backoff_until must be set after first conflict (base=60s)"
@@ -1494,14 +1604,19 @@ fn execution_blocked_reason_format() {
     assert_eq!(parts[0], "FRESHNESS_BLOCKED");
     assert_eq!(parts[1], "6", "segment 2 must be total conflict count");
     assert_eq!(parts[2], "10", "segment 3 must be cooldown minutes");
-    assert_eq!(parts[3], "src/foo.rs, src/bar.rs", "segment 4 must be conflict files");
+    assert_eq!(
+        parts[3], "src/foo.rs, src/bar.rs",
+        "segment 4 must be conflict files"
+    );
     assert!(
         parts[4].contains("Persistent freshness conflicts"),
         "segment 5 must contain human-readable message"
     );
 
     // Verify the FreshnessAction::ExecutionBlocked variant wraps it correctly
-    let action = FreshnessAction::ExecutionBlocked { reason: reason.clone() };
+    let action = FreshnessAction::ExecutionBlocked {
+        reason: reason.clone(),
+    };
     assert!(
         matches!(action, FreshnessAction::ExecutionBlocked { .. }),
         "must be ExecutionBlocked variant"
@@ -1537,6 +1652,7 @@ async fn no_backoff_refresh_after_successful_merge() {
         None,
         None,
         None,
+        None,
         "executing",
         &cfg,
     )
@@ -1556,7 +1672,10 @@ async fn no_backoff_refresh_after_successful_merge() {
                 meta.freshness_auto_reset_count, 0,
                 "Successful check must reset auto_reset_count"
             );
-            assert!(!meta.is_in_backoff(), "After success, task must NOT be in backoff");
+            assert!(
+                !meta.is_in_backoff(),
+                "After success, task must NOT be in backoff"
+            );
         }
         Err(e) => panic!("Expected Ok (fresh repo), got: {e:?}"),
     }
@@ -1581,7 +1700,9 @@ fn serde_round_trip_includes_new_fields() {
 
     // freshness_backoff_until must be written as RFC3339 string
     assert!(
-        meta.get("freshness_backoff_until").and_then(|v| v.as_str()).is_some(),
+        meta.get("freshness_backoff_until")
+            .and_then(|v| v.as_str())
+            .is_some(),
         "freshness_backoff_until must be written as RFC3339 string"
     );
     assert_eq!(

@@ -17,6 +17,15 @@ import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
+import {
+  formatMessageAttributionTooltip,
+  formatProviderModelEffortLabel,
+  formatProviderHarnessLabel,
+  getProviderHarnessBadgeStyle,
+} from "./provider-harness";
+import {
+  normalizeToolCallTranscriptPayload,
+} from "./verification-tool-calls";
 
 // ============================================================================
 // Types
@@ -32,6 +41,7 @@ export interface ContentBlockItem {
   name?: string;
   arguments?: unknown;
   result?: unknown;
+  parentToolUseId?: string;
   /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
   diffContext?: {
     oldContent?: string;
@@ -53,6 +63,19 @@ export interface MessageItemProps {
   teammateName?: string | null | undefined;
   /** Teammate color for left-border indicator */
   teammateColor?: string | null | undefined;
+  providerHarness?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
+  upstreamProvider?: string | null | undefined;
+  providerProfile?: string | null | undefined;
+  logicalModel?: string | null | undefined;
+  effectiveModelId?: string | null | undefined;
+  logicalEffort?: string | null | undefined;
+  effectiveEffort?: string | null | undefined;
+  inputTokens?: number | null | undefined;
+  outputTokens?: number | null | undefined;
+  cacheCreationTokens?: number | null | undefined;
+  cacheReadTokens?: number | null | undefined;
+  estimatedUsd?: number | null | undefined;
 }
 
 // ============================================================================
@@ -68,18 +91,63 @@ export const MessageItem = React.memo(function MessageItem({
   attachments,
   teammateName,
   teammateColor,
+  providerHarness,
+  providerSessionId,
+  upstreamProvider,
+  providerProfile,
+  logicalModel,
+  effectiveModelId,
+  logicalEffort,
+  effectiveEffort,
+  inputTokens,
+  outputTokens,
+  cacheCreationTokens,
+  cacheReadTokens,
+  estimatedUsd,
 }: MessageItemProps) {
   const isUser = role === "user";
+  const providerHarnessLabel = formatProviderHarnessLabel(providerHarness);
+  const providerHarnessStyle = getProviderHarnessBadgeStyle(providerHarness);
+  const modelEffortLabel = formatProviderModelEffortLabel({
+    logicalModel,
+    effectiveModelId,
+    logicalEffort,
+    effectiveEffort,
+  });
+  const providerTooltip = formatMessageAttributionTooltip({
+    providerHarness,
+    providerSessionId,
+    upstreamProvider,
+    providerProfile,
+    logicalModel,
+    effectiveModelId,
+    logicalEffort,
+    effectiveEffort,
+    inputTokens,
+    outputTokens,
+    cacheCreationTokens,
+    cacheReadTokens,
+    estimatedUsd,
+  });
+  const showProviderMeta =
+    !isUser &&
+    !teammateName &&
+    (providerHarnessLabel !== null || modelEffortLabel !== null);
 
   // Use pre-parsed data directly (parsing now happens at API layer)
-  const parsedContentBlocks = contentBlocks ?? [];
-  const parsedToolCalls = toolCalls ?? [];
+  const { contentBlocks: parsedContentBlocks, toolCalls: parsedToolCalls } = useMemo(
+    () => normalizeToolCallTranscriptPayload({
+      contentBlocks,
+      toolCalls,
+    }),
+    [contentBlocks, toolCalls],
+  );
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
   // Collect IDs of child tool calls that belong to Task subagents.
   // These are embedded in Task result content blocks and should NOT render as top-level cards.
   const childToolCallIds = useMemo(() => {
-    const blocks = contentBlocks ?? [];
+    const blocks = parsedContentBlocks;
     if (blocks.length === 0) return new Set<string>();
     const ids = new Set<string>();
     for (const block of blocks) {
@@ -101,7 +169,7 @@ export const MessageItem = React.memo(function MessageItem({
       }
     }
     return ids;
-  }, [contentBlocks]);
+  }, [parsedContentBlocks]);
 
   return (
     <div
@@ -128,6 +196,33 @@ export const MessageItem = React.memo(function MessageItem({
       )}
 
       <div className="flex flex-col gap-3 min-w-0 w-full">
+        {showProviderMeta && (
+          <div
+            className="flex items-center gap-2 min-w-0"
+            data-testid="message-provider-meta"
+          >
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+              style={providerHarnessStyle}
+              title={providerTooltip ?? undefined}
+              aria-label={providerTooltip ?? providerHarnessLabel ?? undefined}
+              data-testid="message-provider-badge"
+            >
+              {providerHarnessLabel}
+            </span>
+            {modelEffortLabel && (
+              <span
+                className="text-[10px] min-w-0 truncate"
+                style={{ color: "rgba(255,255,255,0.48)" }}
+                title={providerTooltip ?? undefined}
+                data-testid="message-model-effort"
+              >
+                {modelEffortLabel}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Render attachments for user messages */}
         {isUser && attachments && attachments.length > 0 && (
           <MessageAttachments attachments={attachments} />
@@ -197,5 +292,18 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.contentBlocks === next.contentBlocks
     && prev.attachments === next.attachments
     && prev.teammateName === next.teammateName
-    && prev.teammateColor === next.teammateColor;
+    && prev.teammateColor === next.teammateColor
+    && prev.providerHarness === next.providerHarness
+    && prev.providerSessionId === next.providerSessionId
+    && prev.upstreamProvider === next.upstreamProvider
+    && prev.providerProfile === next.providerProfile
+    && prev.logicalModel === next.logicalModel
+    && prev.effectiveModelId === next.effectiveModelId
+    && prev.logicalEffort === next.logicalEffort
+    && prev.effectiveEffort === next.effectiveEffort
+    && prev.inputTokens === next.inputTokens
+    && prev.outputTokens === next.outputTokens
+    && prev.cacheCreationTokens === next.cacheCreationTokens
+    && prev.cacheReadTokens === next.cacheReadTokens
+    && prev.estimatedUsd === next.estimatedUsd;
 });

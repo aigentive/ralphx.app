@@ -11,7 +11,7 @@
 // - ExecutionState: claim_interactive_slot + increment_running (burst prevention)
 // - RunningAgentRegistry: try_register (Gate 2 dedup)
 //
-// The actual ClaudeChatService::send_message requires a Tauri Runtime, so these
+// The actual app chat runtime send_message path requires a Tauri Runtime, so these
 // tests simulate the Gate 1 logic step-by-step using the real components, matching
 // the pattern used by interactive_mode_integration.rs and team_nudge_running_count_tests.rs.
 

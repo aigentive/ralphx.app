@@ -8,10 +8,13 @@ Usage: ./dev-fresh
 
 From repo root:
 1. cleans the Rust build artifacts under src-tauri/
-2. starts the native Tauri dev app from frontend/
+2. clears Vite optimized dependency cache under frontend/
+3. verifies no stale Tauri/Vite dev server is already occupying the dev ports
+4. starts the native Tauri dev app from frontend/
 
 Equivalent to:
   cd src-tauri && cargo clean
+  rm -rf frontend/node_modules/.vite
   cd ../frontend && npm run tauri dev
 EOF
   exit 0
@@ -19,11 +22,26 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
+VITE_PORT=1420
+TAURI_BACKEND_PORT=3847
+
+if lsof -ti tcp:"$VITE_PORT" >/dev/null 2>&1 || lsof -ti tcp:"$TAURI_BACKEND_PORT" >/dev/null 2>&1; then
+  cat >&2 <<EOF
+dev-fresh refused to start because a stale dev process is still holding one of the dev ports:
+  frontend Vite dev server: $VITE_PORT
+  Tauri backend: $TAURI_BACKEND_PORT
+
+Stop the existing tauri/vite dev process first, then rerun ./dev-fresh.
+Closing the app window is not sufficient if the terminal process is still alive.
+EOF
+  exit 1
+fi
 
 (
   cd "$PROJECT_ROOT/src-tauri"
   cargo clean
 
   cd "$PROJECT_ROOT/frontend"
+  rm -rf node_modules/.vite
   npm run tauri dev
 )

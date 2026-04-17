@@ -71,6 +71,36 @@ pub(super) async fn prune_stale_execution_registry_entries(
     // this keeps the slot counter accurate between 30s reconciliation cycles (Bug 3).
     if pruned_any {
         let remaining = app_state.running_agent_registry.list_all().await;
+        let mut active_slots = 0u32;
+        for (key, _) in &remaining {
+            let context_type = match ChatContextType::from_str(&key.context_type) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if !uses_execution_slot(context_type) {
+                continue;
+            }
+
+            if matches!(context_type, ChatContextType::Ideation) {
+                active_slots += 1;
+                continue;
+            }
+
+            let task_id = TaskId::from_string(key.context_id.clone());
+            let task = match app_state.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                _ => continue,
+            };
+
+            if task.archived_at.is_some()
+                || !context_matches_running_status_for_gc(context_type, task.internal_status)
+            {
+                continue;
+            }
+
+            active_slots += 1;
+        }
         let idle_count = remaining
             .iter()
             .filter(|(k, _)| {
@@ -78,6 +108,6 @@ pub(super) async fn prune_stale_execution_registry_entries(
                 execution_state.is_interactive_idle(&slot_key)
             })
             .count() as u32;
-        execution_state.set_running_count((remaining.len() as u32).saturating_sub(idle_count));
+        execution_state.set_running_count(active_slots.saturating_sub(idle_count));
     }
 }

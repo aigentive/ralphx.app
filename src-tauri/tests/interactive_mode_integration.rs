@@ -5,8 +5,8 @@
 //
 // These tests verify the ExecutionState + InteractiveProcessRegistry contracts
 // that the reconciler relies on for correct prune/skip decisions.
-// Also includes tests for claude_session_id persistence in both interactive
-// and non-interactive modes.
+// Also includes tests for provider-session persistence in both interactive
+// and non-interactive modes, while preserving the legacy Claude alias.
 
 use std::sync::Arc;
 
@@ -14,6 +14,7 @@ use ralphx_lib::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{ChatConversation, TaskId};
 use ralphx_lib::domain::repositories::ChatConversationRepository;
 use ralphx_lib::domain::services::running_agent_registry::{
@@ -558,8 +559,8 @@ async fn test_reconciler_pattern_with_mixed_active_and_idle() {
 // ========================================
 
 /// Simulates what the TurnComplete arm in process_stream_background does:
-/// when a TurnComplete event arrives with session_id=Some(...), it calls
-/// conversation_repo.update_claude_session_id(conversation_id, sess_id).
+/// when a TurnComplete event arrives with session_id=Some(...), it persists a
+/// provider session ref and keeps the legacy Claude alias in sync.
 #[tokio::test]
 async fn test_interactive_turn_complete_persists_session_id() {
     let repo = MemoryChatConversationRepository::new();
@@ -578,12 +579,20 @@ async fn test_interactive_turn_complete_persists_session_id() {
 
     // Simulate TurnComplete: session_id is Some → persist it
     let session_id = "test-session-123";
-    repo.update_claude_session_id(&conv_id, session_id)
+    repo.update_provider_session_ref(
+        &conv_id,
+        &ProviderSessionRef {
+            harness: AgentHarnessKind::Claude,
+            provider_session_id: session_id.to_string(),
+        },
+    )
         .await
         .unwrap();
 
     // Verify persisted
     let after = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(after.provider_session_id, Some(session_id.to_string()));
+    assert_eq!(after.provider_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(
         after.claude_session_id,
         Some(session_id.to_string()),
@@ -592,7 +601,7 @@ async fn test_interactive_turn_complete_persists_session_id() {
 }
 
 /// The session_id_persisted flag in process_stream_background ensures only the
-/// first TurnComplete with a session_id calls update_claude_session_id.
+/// first TurnComplete with a session_id persists a provider session ref.
 /// This test verifies that simulating the guard logic produces first-wins semantics.
 #[tokio::test]
 async fn test_session_id_first_capture_wins() {
@@ -607,7 +616,13 @@ async fn test_session_id_first_capture_wins() {
     let first_session_id = "first-session-abc";
     let mut session_id_persisted = false;
     if !session_id_persisted {
-        repo.update_claude_session_id(&conv_id, first_session_id)
+        repo.update_provider_session_ref(
+            &conv_id,
+            &ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id: first_session_id.to_string(),
+            },
+        )
             .await
             .unwrap();
         session_id_persisted = true;
@@ -616,13 +631,24 @@ async fn test_session_id_first_capture_wins() {
     // Simulate second TurnComplete: session_id_persisted=true → skip persistence
     let second_session_id = "second-session-xyz";
     if !session_id_persisted {
-        repo.update_claude_session_id(&conv_id, second_session_id)
+        repo.update_provider_session_ref(
+            &conv_id,
+            &ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id: second_session_id.to_string(),
+            },
+        )
             .await
             .unwrap();
     }
 
     // First session_id must win
     let result = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        result.provider_session_id,
+        Some(first_session_id.to_string())
+    );
+    assert_eq!(result.provider_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(
         result.claude_session_id,
         Some(first_session_id.to_string()),
@@ -631,7 +657,7 @@ async fn test_session_id_first_capture_wins() {
 }
 
 /// The TurnComplete arm uses `if let (Some(ref sess_id), ...) = (&session_id, ...)`,
-/// so it only calls update_claude_session_id when session_id is Some.
+/// so it only persists a provider session ref when session_id is Some.
 /// An existing session_id must not be cleared when a later TurnComplete has None.
 #[tokio::test]
 async fn test_turn_complete_with_none_session_id_does_not_clear_existing() {
@@ -644,7 +670,13 @@ async fn test_turn_complete_with_none_session_id_does_not_clear_existing() {
 
     // First TurnComplete: set session_id
     let existing_session_id = "existing-session-456";
-    repo.update_claude_session_id(&conv_id, existing_session_id)
+    repo.update_provider_session_ref(
+        &conv_id,
+        &ProviderSessionRef {
+            harness: AgentHarnessKind::Claude,
+            provider_session_id: existing_session_id.to_string(),
+        },
+    )
         .await
         .unwrap();
 
@@ -652,14 +684,25 @@ async fn test_turn_complete_with_none_session_id_does_not_clear_existing() {
     let session_id_from_event: Option<String> = None;
     if let Some(ref sess_id) = session_id_from_event {
         // This branch is only entered when Some — will not run for None
-        repo.update_claude_session_id(&conv_id, sess_id)
+        repo.update_provider_session_ref(
+            &conv_id,
+            &ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id: sess_id.clone(),
+            },
+        )
             .await
             .unwrap();
     }
-    // clear_claude_session_id is never called in TurnComplete path
+    // clear_provider_session_ref is never called in TurnComplete path
 
     // Existing session_id must be preserved
     let result = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        result.provider_session_id,
+        Some(existing_session_id.to_string())
+    );
+    assert_eq!(result.provider_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(
         result.claude_session_id,
         Some(existing_session_id.to_string()),
@@ -668,8 +711,8 @@ async fn test_turn_complete_with_none_session_id_does_not_clear_existing() {
 }
 
 /// Non-interactive (one-shot) agents persist session_id via the post-loop code in
-/// chat_service_send_background.rs: `if let Some(ref sess_id) = claude_session_id { ... }`
-/// This is the same underlying update_claude_session_id call — verify it persists.
+/// chat_service_send_background.rs: `if let Some(ref sess_id) = provider_session_id { ... }`
+/// This is the same underlying provider-session update call — verify it persists.
 #[tokio::test]
 async fn test_non_interactive_post_loop_persists_session_id() {
     let repo = MemoryChatConversationRepository::new();
@@ -687,9 +730,15 @@ async fn test_non_interactive_post_loop_persists_session_id() {
     );
 
     // Simulate post-loop persistence (chat_service_send_background.rs Ok(outcome) branch)
-    let claude_session_id: Option<String> = Some("noninteractive-session-789".to_string());
-    if let Some(ref sess_id) = claude_session_id {
-        repo.update_claude_session_id(&conv_id, sess_id)
+    let provider_session_id: Option<String> = Some("noninteractive-session-789".to_string());
+    if let Some(ref sess_id) = provider_session_id {
+        repo.update_provider_session_ref(
+            &conv_id,
+            &ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id: sess_id.clone(),
+            },
+        )
             .await
             .unwrap();
     }
@@ -697,9 +746,14 @@ async fn test_non_interactive_post_loop_persists_session_id() {
     // Verify persisted
     let after = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert_eq!(
+        after.provider_session_id,
+        Some("noninteractive-session-789".to_string())
+    );
+    assert_eq!(after.provider_harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
         after.claude_session_id,
         Some("noninteractive-session-789".to_string()),
-        "Non-interactive post-loop must persist claude_session_id from StreamOutcome"
+        "Non-interactive post-loop must persist the legacy Claude alias from StreamOutcome"
     );
 }
 

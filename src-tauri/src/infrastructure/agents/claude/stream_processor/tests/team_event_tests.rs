@@ -179,6 +179,7 @@ fn test_teammate_spawned_from_real_stream_format() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });
@@ -255,6 +256,7 @@ fn test_team_created_from_real_stream_format() {
                 input: serde_json::json!({"team_name": "tabs-vs-spaces-debate"}),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });
@@ -315,6 +317,7 @@ fn test_team_event_emitted_after_tool_result_received() {
                 input: serde_json::json!({"team_name": "test-team"}),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });

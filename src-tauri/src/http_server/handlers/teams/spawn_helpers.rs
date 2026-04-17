@@ -1,8 +1,38 @@
 
 use super::*;
+use crate::application::harness_runtime_registry::resolve_default_harness_plugin_dir;
 
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
+
+pub(super) async fn ensure_team_mode_supported_for_context(
+    state: &HttpServerState,
+    context_type: &str,
+    context_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    use crate::domain::entities::chat_conversation::ChatContextType;
+
+    let Ok(context_type_enum) = context_type.parse::<ChatContextType>() else {
+        return Ok(());
+    };
+
+    if crate::application::team_mode_supported_for_context(
+        &state.app_state,
+        context_type_enum,
+        context_id,
+    )
+    .await
+    {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::CONFLICT,
+        format!(
+            "Team mode is not supported when the effective harness for {context_type} resolves to Codex. Codex currently operates in solo mode for this context."
+        ),
+    ))
+}
 
 pub(super) async fn resolve_teammate_working_dir(
     state: &HttpServerState,
@@ -114,6 +144,10 @@ pub(super) async fn resolve_teammate_working_dir(
     }
 }
 
+pub(super) fn resolve_teammate_plugin_dir(working_dir: &std::path::Path) -> PathBuf {
+    resolve_default_harness_plugin_dir(working_dir)
+}
+
 /// Fallback working directory (same as TeammateSpawnConfig::new default).
 fn default_working_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
@@ -133,6 +167,7 @@ pub(super) async fn resolve_teammate_project_id(
         context_id,
         state.app_state.task_repo.clone(),
         state.app_state.ideation_session_repo.clone(),
+        state.app_state.delegated_session_repo.clone(),
     )
     .await
 }

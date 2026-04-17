@@ -21,7 +21,7 @@ pub async fn get_or_create_conversation(
     // TaskExecution + Merge: ALWAYS create a fresh conversation — never reuse prior run context.
     // - TaskExecution: Worker agents reconstruct context via MCP tools (get_task_context, etc.).
     // - Merge: Each merge attempt (conflict resolution or validation recovery) needs a fresh
-    //   Claude session. Reusing a stale session causes the agent to resume dead context.
+    //   provider session. Reusing a stale session causes the agent to resume dead context.
     //   Mirrors is_fresh_review_cycle logic in chat_service_context.rs.
     let force_fresh =
         context_type == ChatContextType::TaskExecution || context_type == ChatContextType::Merge;
@@ -52,6 +52,9 @@ pub async fn get_or_create_conversation(
         ChatContextType::Ideation => {
             ChatConversation::new_ideation(IdeationSessionId::from_string(context_id))
         }
+        ChatContextType::Delegation => ChatConversation::new_delegation(
+            crate::domain::entities::DelegatedSessionId::from_string(context_id),
+        ),
         ChatContextType::Task => {
             ChatConversation::new_task(TaskId::from_string(context_id.to_string()))
         }

@@ -24,12 +24,25 @@ use crate::application::reconciliation::recovery_queue::{
 use crate::application::reconciliation::verification_handoff::ReconcileChildCompleteResult;
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionPurpose,
-    VerificationMetadata, VerificationStatus,
+    VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::{
-    emit_verification_status_changed, is_process_alive, RunningAgentRegistry,
+    build_blank_verification_snapshot, clear_verification_snapshot,
+    emit_verification_status_changed, is_process_alive,
+    load_current_verification_snapshot_or_default, RunningAgentRegistry,
 };
+
+#[derive(Debug, Clone)]
+pub(crate) struct VerificationAutoContinueRequest {
+    pub continuation_message: String,
+    pub snapshot: VerificationRunSnapshot,
+}
+
+pub(crate) enum ReconcileVerificationChildCompletion {
+    Terminal(ReconcileChildCompleteResult),
+    AutoContinue(VerificationAutoContinueRequest),
+}
 
 /// Configuration for the verification reconciliation service.
 #[derive(Debug, Clone, Copy)]
@@ -219,26 +232,22 @@ impl VerificationReconciliationService {
                 continue;
             }
 
-            // Cold boot: inject app_restart metadata. Periodic: preserve existing metadata.
-            let metadata = if cold_boot {
-                build_convergence_metadata("app_restart")
-            } else {
-                session.verification_metadata.clone()
-            };
-
-            // Force-reset via update_verification_state (unconditional).
-            // reset_verification() guards on in_progress=false and is only for
-            // conditional resets on plan artifact updates — not for crash recovery.
-            match self
-                .ideation_session_repo
-                .update_verification_state(
-                    &session.id,
+            let reset_result = async {
+                let mut snapshot = load_current_verification_snapshot_or_default(
+                    self.ideation_session_repo.as_ref(),
+                    session,
                     VerificationStatus::Unverified,
                     false,
-                    metadata,
                 )
-                .await
-            {
+                .await?;
+                clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+                self.ideation_session_repo
+                    .save_verification_run_snapshot(&session.id, &snapshot)
+                    .await
+            }
+            .await;
+
+            match reset_result {
                 Ok(()) => {
                     if cold_boot {
                         tracing::info!(
@@ -386,13 +395,11 @@ impl VerificationReconciliationService {
                 }
             };
 
-            // Extract recovery metadata from parent's verification_metadata
-            let parsed_meta: Option<VerificationMetadata> = parent
-                .verification_metadata
-                .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok());
+            // Extract recovery metadata from the native verification snapshot when present.
+            let snapshot =
+                load_effective_verification_view(&self.ideation_session_repo, &parent).await;
 
-            let current_round = parsed_meta.as_ref().map(|m| m.rounds.len() as u32);
+            let current_round = snapshot.as_ref().map(|run| run.current_round);
             let verification_generation = if parent.verification_generation >= 0 {
                 Some(parent.verification_generation as u32)
             } else {
@@ -560,8 +567,8 @@ impl VerificationReconciliationService {
             let parent_id = IdeationSessionId::from_string(parent_id_str.clone());
             let should_archive = match self.ideation_session_repo.get_by_id(&parent_id).await {
                 Ok(Some(parent)) => {
-                    // Only archive children if the parent's verification loop is not active
-                    !parent.verification_in_progress
+                    // Prefer the native run snapshot when it exists; the parent summary can lag.
+                    !effective_verification_in_progress(&self.ideation_session_repo, &parent).await
                 }
                 Ok(None) => {
                     // Parent deleted — archive orphaned children
@@ -917,11 +924,11 @@ async fn resolve_verification_parent(
                     "resolve_verification_parent: parent is ImportedVerified — skip"
                 );
                 ResolvedParent::ImportedVerified
-            } else if !parent.verification_in_progress {
+            } else if !effective_verification_in_progress(repo, &parent).await {
                 tracing::debug!(
                     parent_id = %parent_id.as_str(),
                     caller,
-                    "resolve_verification_parent: verification not in progress — skip"
+                    "resolve_verification_parent: authoritative verification view is not in progress — skip"
                 );
                 ResolvedParent::AlreadyResolved
             } else {
@@ -951,20 +958,22 @@ async fn resolve_verification_parent(
 /// Reconcile verification state when a verification child agent's run completes successfully.
 ///
 /// Called from `handle_stream_success` when the completed session has
-/// `session_purpose == Verification`. Analyzes `verification_metadata` on the parent
+/// `session_purpose == Verification`. Analyzes the parent's native verification run view
 /// to determine the correct terminal status, updates the parent, archives the child,
 /// and emits a frontend event.
 ///
-/// Three decision branches based on metadata state:
+/// Three decision branches based on native run-snapshot state:
+/// - actionable `needs_revision` + `in_progress=true` + no `convergence_reason`
+///   → keep child alive and auto-continue the loop in-place
 /// - `convergence_reason` set → map to status via `convergence_reason_to_status`
 /// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
-/// - no metadata or empty rounds → agent completed without updates → `Unverified`
-pub async fn reconcile_verification_on_child_complete<R: Runtime>(
+/// - no snapshot or empty rounds → agent completed without updates → `Unverified`
+pub(crate) async fn reconcile_verification_on_child_complete<R: Runtime>(
     parent_id: &IdeationSessionId,
     child_id: &IdeationSessionId,
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
-) -> Option<ReconcileChildCompleteResult> {
+) -> Option<ReconcileVerificationChildCompletion> {
     // Resolve parent (fetch + 3-guard check)
     let parent = match resolve_verification_parent(
         parent_id,
@@ -986,72 +995,121 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
         }
     };
 
-    // Parse verification_metadata from parent
-    let parsed_meta: Option<VerificationMetadata> = parent
-        .verification_metadata
-        .as_ref()
-        .and_then(|s| match serde_json::from_str(s) {
-            Ok(m) => Some(m),
-            Err(e) => {
-                tracing::warn!(
-                    parent_id = %parent_id.as_str(),
-                    error = %e,
-                    "Failed to parse verification_metadata — treating as None"
-                );
-                None
-            }
-        });
+    // Load the authoritative verification snapshot for this generation.
+    let snapshot = load_effective_verification_view(repo, &parent).await;
 
-    let has_convergence_reason = parsed_meta
+    if let Some(run) = snapshot.as_ref() {
+        if has_pending_unreported_round(run) {
+            repair_parent_verification_from_snapshot(repo, parent_id, run).await;
+            tracing::info!(
+                parent_id = %parent_id.as_str(),
+                child_id = %child_id.as_str(),
+                current_round = run.current_round,
+                max_rounds = run.max_rounds,
+                "Verification child exited while the current round was still pending required-critic settlement; queueing in-place continuation"
+            );
+            return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                VerificationAutoContinueRequest {
+                    continuation_message: format!(
+                        "[System] Continue the active verification loop in this same session.\n\
+                         The backend-owned verification state still has an active round {}/{} \
+                         with no authoritative round report yet, so required verification critics \
+                         may still be settling.\n\
+                         Refresh get_plan_verification, wait for or publish the current round \
+                         result, and do not treat this run as terminal until the backend-owned \
+                         state advances past the active round or gains a convergence_reason.",
+                        run.current_round, run.max_rounds
+                    ),
+                    snapshot: run.clone(),
+                },
+            ));
+        }
+
+        if run.status == VerificationStatus::NeedsRevision
+            && run.in_progress
+            && run.convergence_reason.is_none()
+        {
+            repair_parent_verification_from_snapshot(repo, parent_id, run).await;
+            tracing::info!(
+                parent_id = %parent_id.as_str(),
+                child_id = %child_id.as_str(),
+                current_round = run.current_round,
+                max_rounds = run.max_rounds,
+                gap_count = run.current_gaps.len(),
+                "Verification child exited on actionable non-terminal needs_revision; queueing in-place continuation"
+            );
+            return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                VerificationAutoContinueRequest {
+                    continuation_message: format!(
+                        "[System] Continue the active verification loop in this same session.\n\
+                         The backend-owned verification state is still actionable non-terminal \
+                         needs_revision (round {}/{}), so terminal cleanup must not end the run \
+                         yet.\n\
+                         Refresh get_plan_verification and get_session_plan, revise the plan \
+                         against the current actionable gaps, then continue to the next \
+                         verification round. Do not call complete_plan_verification again until \
+                         the backend-owned state is truly terminal with a convergence_reason.",
+                        run.current_round, run.max_rounds
+                    ),
+                    snapshot: run.clone(),
+                },
+            ));
+        }
+    }
+
+    let has_convergence_reason = snapshot
         .as_ref()
-        .and_then(|m| m.convergence_reason.as_deref())
+        .and_then(|run| run.convergence_reason.as_deref())
         .is_some();
-    let has_rounds = parsed_meta
+    let has_rounds = snapshot
         .as_ref()
-        .map(|m| !m.rounds.is_empty())
+        .map(|run| !run.rounds.is_empty())
         .unwrap_or(false);
 
-    // Determine terminal status and emit metadata based on what the agent produced
-    let (terminal_status, updated_metadata_json, emit_metadata, convergence_reason_override) =
+    // Determine terminal status and emit native snapshot state based on what the agent produced.
+    let (terminal_status, emit_snapshot, convergence_reason_override) =
         if has_convergence_reason {
             // Branch 1: Agent completed with convergence_reason — map to terminal status
-            let reason = parsed_meta
+            let reason = snapshot
                 .as_ref()
                 .unwrap()
                 .convergence_reason
                 .as_deref()
                 .unwrap_or("");
             let status = convergence_reason_to_status(reason);
-            // Keep existing metadata as-is (convergence_reason already present)
-            (status, parent.verification_metadata.clone(), parsed_meta.clone(), None::<String>)
+            let mut updated_snapshot = snapshot.clone().unwrap();
+            updated_snapshot.status = status;
+            updated_snapshot.in_progress = false;
+            (status, Some(updated_snapshot), None::<String>)
         } else if has_rounds {
             // Branch 2: Agent crashed mid-round with partial progress
-            let mut updated_m = parsed_meta.clone().unwrap();
-            updated_m.convergence_reason = Some("agent_crashed_mid_round".to_string());
-            let updated_json = serde_json::to_string(&updated_m).ok();
+            let mut updated_snapshot = snapshot.clone().unwrap();
+            updated_snapshot.status = VerificationStatus::NeedsRevision;
+            updated_snapshot.in_progress = false;
+            updated_snapshot.convergence_reason = Some("agent_crashed_mid_round".to_string());
             (
                 VerificationStatus::NeedsRevision,
-                updated_json,
-                Some(updated_m),
+                Some(updated_snapshot),
                 None::<String>,
             )
         } else {
-            // Branch 3: No metadata or empty rounds — agent completed without any updates
-            let minimal_json = serde_json::to_string(&serde_json::json!({
-                "convergence_reason": "agent_completed_without_update",
-            }))
-            .ok();
+            // Branch 3: No snapshot or empty rounds — agent completed without any updates
             (
                 VerificationStatus::Unverified,
-                minimal_json,
-                None::<VerificationMetadata>,
+                None::<VerificationRunSnapshot>,
                 Some("agent_completed_without_update".to_string()),
             )
         };
 
-    // Update parent verification state
+    let authoritative_snapshot = emit_snapshot.unwrap_or_else(|| {
+        let mut snapshot =
+            build_blank_verification_snapshot(parent.verification_generation, terminal_status, false);
+        snapshot.convergence_reason = convergence_reason_override.clone();
+        snapshot
+    });
+
     match repo
-        .update_verification_state(parent_id, terminal_status, false, updated_metadata_json)
+        .save_verification_run_snapshot(parent_id, &authoritative_snapshot)
         .await
     {
         Ok(()) => {
@@ -1067,7 +1125,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
             tracing::warn!(
                 parent_id = %parent_id.as_str(),
                 error = %e,
-                "Failed to update parent verification state during reconciliation"
+                "Failed to persist parent verification snapshot during reconciliation"
             );
             // Still archive the child and emit even if update failed
         }
@@ -1080,7 +1138,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
             parent_id.as_str(),
             terminal_status,
             false,
-            emit_metadata.as_ref(),
+            Some(&authoritative_snapshot),
             convergence_reason_override.as_deref(),
             Some(parent.verification_generation),
         );
@@ -1092,26 +1150,29 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     // Orphan cleanup: archive any OTHER active verification children of this parent
     archive_sibling_verification_children(repo, parent_id, Some(child_id)).await;
 
-    Some(ReconcileChildCompleteResult {
-        terminal_status,
-        parsed_meta: emit_metadata,
-    })
+    Some(ReconcileVerificationChildCompletion::Terminal(
+        ReconcileChildCompleteResult {
+            terminal_status,
+            parsed_snapshot: Some(authoritative_snapshot),
+        },
+    ))
 }
 
 /// Reset parent verification state when a verification child agent errors or is stopped.
 ///
 /// Used for Path B (agent error — `convergence_reason = "agent_error"`) and
-/// Path C (user stop — `convergence_reason = "user_stopped"`). Always resets parent
-/// to `Unverified` with the given reason, regardless of metadata state.
+/// Path C (user stop — `convergence_reason = "user_stopped"`). For actionable
+/// non-terminal agent exits, returns an auto-continue request instead of resetting
+/// the parent to `Unverified`.
 ///
 /// Looks up the child session internally to find the parent. No-ops if the child is
 /// not a verification session or has no `parent_session_id`.
-pub async fn reset_verification_on_child_error<R: Runtime>(
+pub(crate) async fn reset_verification_on_child_error<R: Runtime>(
     child_id: &IdeationSessionId,
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
     convergence_reason: &str,
-) {
+) -> Option<ReconcileVerificationChildCompletion> {
     // Fetch child to determine purpose and parent_id
     let child_session = match repo.get_by_id(child_id).await {
         Ok(Some(s)) => s,
@@ -1120,7 +1181,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 child_id = %child_id.as_str(),
                 "reset_verification_on_child_error: child session not found"
             );
-            return;
+            return None;
         }
         Err(e) => {
             tracing::warn!(
@@ -1128,13 +1189,13 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 error = %e,
                 "reset_verification_on_child_error: failed to fetch child session"
             );
-            return;
+            return None;
         }
     };
 
     // Only act on verification child sessions
     if child_session.session_purpose != SessionPurpose::Verification {
-        return;
+        return None;
     }
 
     let parent_id = match child_session.parent_session_id {
@@ -1145,7 +1206,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
                 "Verification child has no parent_session_id — archiving child only"
             );
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
     };
 
@@ -1160,28 +1221,91 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
         ResolvedParent::Ready(p) => p,
         ResolvedParent::NotFound => {
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
-        ResolvedParent::ImportedVerified => return,
+        ResolvedParent::ImportedVerified => return None,
         ResolvedParent::AlreadyResolved => {
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
     };
 
-    // Build minimal metadata JSON with the error convergence_reason
-    let error_metadata_json = build_convergence_metadata(convergence_reason);
+    let snapshot = load_effective_verification_view(repo, &parent).await;
+    if convergence_reason == "agent_error" {
+        if let Some(run) = snapshot.as_ref() {
+            if has_pending_unreported_round(run) {
+                repair_parent_verification_from_snapshot(repo, &parent_id, run).await;
+                tracing::info!(
+                    parent_id = %parent_id.as_str(),
+                    child_id = %child_id.as_str(),
+                    current_round = run.current_round,
+                    max_rounds = run.max_rounds,
+                    "Verification child errored while the current round was still pending required-critic settlement; queueing in-place continuation"
+                );
+                return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                    VerificationAutoContinueRequest {
+                        continuation_message: format!(
+                            "[System] Continue the active verification loop in this same session.\n\
+                             The backend-owned verification state still has an active round {}/{} \
+                             with no authoritative round report yet, so required verification critics \
+                             may still be settling.\n\
+                             Refresh get_plan_verification, wait for or publish the current round \
+                             result, and do not treat this run as terminal until the backend-owned \
+                             state advances past the active round or gains a convergence_reason.",
+                            run.current_round, run.max_rounds
+                        ),
+                        snapshot: run.clone(),
+                    },
+                ));
+            }
 
-    // Reset parent to Unverified with the given reason
-    match repo
-        .update_verification_state(
-            &parent_id,
+            if run.status == VerificationStatus::NeedsRevision
+                && run.in_progress
+                && run.convergence_reason.is_none()
+            {
+                repair_parent_verification_from_snapshot(repo, &parent_id, run).await;
+                tracing::info!(
+                    parent_id = %parent_id.as_str(),
+                    child_id = %child_id.as_str(),
+                    current_round = run.current_round,
+                    max_rounds = run.max_rounds,
+                    gap_count = run.current_gaps.len(),
+                    "Verification child errored on actionable non-terminal needs_revision; queueing in-place continuation"
+                );
+                return Some(ReconcileVerificationChildCompletion::AutoContinue(
+                    VerificationAutoContinueRequest {
+                        continuation_message: format!(
+                            "[System] Continue the active verification loop in this same session.\n\
+                             The backend-owned verification state is still actionable non-terminal \
+                             needs_revision (round {}/{}), so this agent_error must not reset or \
+                             finalize the run.\n\
+                             Refresh get_plan_verification and get_session_plan, revise the plan \
+                             against the current actionable gaps, then continue to the next \
+                             verification round. Do not call complete_plan_verification again until \
+                             the backend-owned state is truly terminal with a convergence_reason.",
+                            run.current_round, run.max_rounds
+                        ),
+                        snapshot: run.clone(),
+                    },
+                ));
+            }
+        }
+    }
+
+    let reset_result = async {
+        let mut snapshot = load_current_verification_snapshot_or_default(
+            repo.as_ref(),
+            &parent,
             VerificationStatus::Unverified,
             false,
-            error_metadata_json,
         )
-        .await
-    {
+        .await?;
+        clear_verification_snapshot(&mut snapshot, VerificationStatus::Unverified, false);
+        repo.save_verification_run_snapshot(&parent_id, &snapshot).await
+    }
+    .await;
+
+    match reset_result {
         Ok(()) => {
             tracing::info!(
                 parent_id = %parent_id.as_str(),
@@ -1218,6 +1342,8 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
 
     // Orphan cleanup: archive any other active verification children
     archive_sibling_verification_children(repo, &parent_id, Some(child_id)).await;
+
+    None
 }
 
 /// Archive orphaned sibling verification children of a parent session.
@@ -1258,78 +1384,65 @@ async fn archive_sibling_verification_children(
     }
 }
 
-/// Build a minimal convergence metadata JSON string containing only `convergence_reason`.
-///
-/// Used to inject a reason into sessions that have no existing structured metadata
-/// (cold-boot resets, error paths, agent-completed-without-update). Returns `None`
-/// only when `serde_json` serialization unexpectedly fails.
-fn build_convergence_metadata(reason: &str) -> Option<String> {
-    serde_json::to_string(&serde_json::json!({
-        "convergence_reason": reason,
-    }))
-    .ok()
-}
-
-/// Determine the terminal verification status and associated metadata for a completed child agent.
-///
-/// Three decision branches based on metadata state:
-/// - `convergence_reason` set → map to status via `convergence_reason_to_status`, keep existing metadata
-/// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
-/// - no metadata or empty rounds → agent completed without updates → `Unverified`
-///
-/// Returns `(terminal_status, updated_metadata_json, emit_metadata, convergence_reason_override)`.
-#[allow(dead_code)]
-fn determine_terminal_status_and_metadata(
-    parsed_meta: Option<VerificationMetadata>,
-    existing_metadata_json: Option<String>,
-) -> (
-    VerificationStatus,
-    Option<String>,
-    Option<VerificationMetadata>,
-    Option<String>,
-) {
-    let has_convergence_reason = parsed_meta
-        .as_ref()
-        .and_then(|m| m.convergence_reason.as_deref())
-        .is_some();
-    let has_rounds = parsed_meta
-        .as_ref()
-        .map(|m| !m.rounds.is_empty())
-        .unwrap_or(false);
-
-    if has_convergence_reason {
-        // Branch 1: Agent completed with convergence_reason — map to terminal status
-        let reason = parsed_meta
-            .as_ref()
-            .unwrap()
-            .convergence_reason
-            .as_deref()
-            .unwrap_or("");
-        let status = convergence_reason_to_status(reason);
-        // Keep existing metadata as-is (convergence_reason already present)
-        (status, existing_metadata_json, parsed_meta, None::<String>)
-    } else if has_rounds {
-        // Branch 2: Agent crashed mid-round with partial progress
-        let mut updated_m = parsed_meta.unwrap();
-        updated_m.convergence_reason = Some("agent_crashed_mid_round".to_string());
-        let updated_json = serde_json::to_string(&updated_m).ok();
-        (
-            VerificationStatus::NeedsRevision,
-            updated_json,
-            Some(updated_m),
-            None::<String>,
-        )
-    } else {
-        // Branch 3: No metadata or empty rounds — agent completed without any updates
-        let minimal_json = build_convergence_metadata("agent_completed_without_update");
-        (
-            VerificationStatus::Unverified,
-            minimal_json,
-            None::<VerificationMetadata>,
-            Some("agent_completed_without_update".to_string()),
-        )
+async fn load_effective_verification_view(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    session: &IdeationSession,
+) -> Option<VerificationRunSnapshot> {
+    match repo
+        .get_verification_run_snapshot(&session.id, session.verification_generation)
+        .await
+    {
+        Ok(Some(snapshot)) => Some(snapshot),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!(
+                session_id = %session.id.as_str(),
+                generation = session.verification_generation,
+                error = %e,
+                "Failed to load native verification snapshot"
+            );
+            None
+        }
     }
 }
+
+fn has_pending_unreported_round(run: &VerificationRunSnapshot) -> bool {
+    run.status == VerificationStatus::Reviewing
+        && run.in_progress
+        && run.convergence_reason.is_none()
+        && run.current_round > 0
+        && run.rounds.is_empty()
+        && !run
+            .rounds
+            .iter()
+            .any(|round| round.round == run.current_round)
+}
+
+async fn effective_verification_in_progress(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    session: &IdeationSession,
+) -> bool {
+    load_effective_verification_view(repo, session)
+        .await
+        .map(|snapshot| snapshot.in_progress)
+        .unwrap_or(session.verification_in_progress)
+}
+
+async fn repair_parent_verification_from_snapshot(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    parent_id: &IdeationSessionId,
+    snapshot: &VerificationRunSnapshot,
+) {
+    if let Err(error) = repo.save_verification_run_snapshot(parent_id, snapshot).await {
+        tracing::warn!(
+            parent_id = %parent_id.as_str(),
+            generation = snapshot.generation,
+            error = %error,
+            "Failed to reassert authoritative verification snapshot before auto-continue"
+        );
+    }
+}
+
 
 /// Map a `convergence_reason` string to the appropriate `VerificationStatus`.
 ///

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::AgentHarnessKind;
 
 #[test]
 fn test_conversation_id_creation() {
@@ -58,6 +59,8 @@ fn test_new_ideation_conversation() {
     assert_eq!(conv.context_type, ChatContextType::Ideation);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
+    assert_eq!(conv.provider_harness, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }
@@ -73,6 +76,179 @@ fn test_set_claude_session_id() {
         conv.claude_session_id,
         Some("550e8400-e29b-41d4-a716-446655440000".to_string())
     );
+    assert_eq!(
+        conv.provider_session_id,
+        Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+    );
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_set_provider_session_ref_for_codex() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+
+    conv.set_provider_session_ref(crate::agents::ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-session-123".to_string(),
+    });
+
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        conv.provider_session_id,
+        Some("codex-session-123".to_string())
+    );
+    assert_eq!(conv.claude_session_id, None);
+    assert!(!conv.has_claude_session());
+}
+
+#[test]
+fn test_provider_session_ref_falls_back_to_legacy_claude_field() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    let session_ref = conv.provider_session_ref().expect("provider session");
+    assert_eq!(session_ref.harness, AgentHarnessKind::Claude);
+    assert_eq!(session_ref.provider_session_id, "legacy-session");
+}
+
+#[test]
+fn test_legacy_claude_session_alias_only_applies_to_claude() {
+    assert_eq!(
+        legacy_claude_session_alias(Some(AgentHarnessKind::Claude), Some("session-123")),
+        Some("session-123".to_string())
+    );
+    assert_eq!(
+        legacy_claude_session_alias(Some(AgentHarnessKind::Codex), Some("session-123")),
+        None
+    );
+}
+
+#[test]
+fn test_compatible_provider_session_fields_from_provider_ref_restores_legacy_alias_for_claude() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        compatible_provider_session_fields_from_provider_ref(
+            Some(AgentHarnessKind::Claude),
+            Some("session-123".to_string()),
+        );
+
+    assert_eq!(claude_session_id.as_deref(), Some("session-123"));
+    assert_eq!(provider_session_id.as_deref(), Some("session-123"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_from_provider_ref_keeps_codex_without_legacy_alias() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        compatible_provider_session_fields_from_provider_ref(
+            Some(AgentHarnessKind::Codex),
+            Some("thread-123".to_string()),
+        );
+
+    assert_eq!(claude_session_id, None);
+    assert_eq!(provider_session_id.as_deref(), Some("thread-123"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_from_legacy_claude_field() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(Some("legacy-session".to_string()), None, None);
+
+    assert_eq!(claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_restores_legacy_alias_for_claude() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            None,
+            Some("provider-session".to_string()),
+            Some(AgentHarnessKind::Claude),
+        );
+
+    assert_eq!(claude_session_id.as_deref(), Some("provider-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("provider-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_keeps_codex_without_legacy_alias() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            None,
+            Some("codex-session".to_string()),
+            Some(AgentHarnessKind::Codex),
+        );
+
+    assert_eq!(claude_session_id, None);
+    assert_eq!(provider_session_id.as_deref(), Some("codex-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_restore_legacy_claude_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.provider_harness = Some(AgentHarnessKind::Claude);
+    conv.provider_session_id = Some("claude-session-456".to_string());
+
+    let (claude_session_id, provider_session_id, provider_harness) =
+        conv.compatible_provider_session_fields();
+
+    assert_eq!(claude_session_id.as_deref(), Some("claude-session-456"));
+    assert_eq!(provider_session_id.as_deref(), Some("claude-session-456"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_derive_provider_metadata_from_legacy_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    let (claude_session_id, provider_session_id, provider_harness) =
+        conv.compatible_provider_session_fields();
+
+    assert_eq!(claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_fields_in_place_from_legacy_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    conv.normalize_provider_session_fields();
+
+    assert_eq!(conv.claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(conv.provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_fields_in_place_restores_legacy_claude_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.provider_harness = Some(AgentHarnessKind::Claude);
+    conv.provider_session_id = Some("claude-session-456".to_string());
+
+    conv.normalize_provider_session_fields();
+
+    assert_eq!(
+        conv.claude_session_id.as_deref(),
+        Some("claude-session-456")
+    );
+    assert_eq!(
+        conv.provider_session_id.as_deref(),
+        Some("claude-session-456")
+    );
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
 }
 
 #[test]
@@ -100,6 +276,7 @@ fn test_new_task_execution_conversation() {
     assert_eq!(conv.context_type, ChatContextType::TaskExecution);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }
@@ -113,6 +290,7 @@ fn test_new_review_conversation() {
     assert_eq!(conv.context_type, ChatContextType::Review);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }

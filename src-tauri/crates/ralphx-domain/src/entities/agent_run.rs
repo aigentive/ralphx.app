@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+use crate::agents::{AgentHarnessKind, LogicalEffort};
+
 use super::{ChatConversation, ChatConversationId};
 
 /// Unique identifier for an agent run
@@ -119,6 +121,50 @@ impl AgentRunStatus {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentRunUsage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentRunAttribution {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness: Option<AgentHarnessKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<LogicalEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+}
+
+impl AgentRunUsage {
+    pub fn is_empty(&self) -> bool {
+        self.input_tokens.is_none()
+            && self.output_tokens.is_none()
+            && self.cache_creation_tokens.is_none()
+            && self.cache_read_tokens.is_none()
+            && self.estimated_usd.is_none()
+    }
+}
+
 /// An agent run tracks the execution of a Claude agent for a conversation
 ///
 /// This enables:
@@ -139,6 +185,51 @@ pub struct AgentRun {
     pub completed_at: Option<DateTime<Utc>>,
     /// Error message (if failed)
     pub error_message: Option<String>,
+    /// Harness that executed this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness: Option<AgentHarnessKind>,
+    /// Provider session ID associated with this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    /// Upstream provider backing the selected harness.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    /// Optional harness/runtime profile used for the upstream provider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    /// User-facing configured model for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    /// Resolved provider model ID used at runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    /// Logical reasoning effort used for cross-provider configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<LogicalEffort>,
+    /// Resolved provider-specific effort actually used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    /// Provider input tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Provider output tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Provider cache creation tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    /// Provider cache read/hit tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    /// Estimated USD cost attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    /// Approval policy used for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    /// Sandbox mode used for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     /// Correlation ID linking all runs in a single message chain
     /// (initial run + all queue continuations via --resume)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,6 +250,21 @@ impl AgentRun {
             started_at: Utc::now(),
             completed_at: None,
             error_message: None,
+            harness: None,
+            provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
+            logical_model: None,
+            effective_model_id: None,
+            logical_effort: None,
+            effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
+            approval_policy: None,
+            sandbox_mode: None,
             run_chain_id: Some(chain_id),
             parent_run_id: None,
         }
@@ -177,6 +283,21 @@ impl AgentRun {
             started_at: Utc::now(),
             completed_at: None,
             error_message: None,
+            harness: None,
+            provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
+            logical_model: None,
+            effective_model_id: None,
+            logical_effort: None,
+            effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
+            approval_policy: None,
+            sandbox_mode: None,
             run_chain_id: Some(run_chain_id),
             parent_run_id: Some(parent_run_id),
         }
@@ -201,6 +322,51 @@ impl AgentRun {
         self.status = AgentRunStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.error_message = None;
+    }
+
+    pub fn apply_usage(&mut self, usage: &AgentRunUsage) {
+        if let Some(value) = usage.input_tokens {
+            self.input_tokens = Some(value);
+        }
+        if let Some(value) = usage.output_tokens {
+            self.output_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_creation_tokens {
+            self.cache_creation_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_read_tokens {
+            self.cache_read_tokens = Some(value);
+        }
+        if let Some(value) = usage.estimated_usd {
+            self.estimated_usd = Some(value);
+        }
+    }
+
+    pub fn apply_attribution(&mut self, attribution: &AgentRunAttribution) {
+        if let Some(value) = attribution.harness {
+            self.harness = Some(value);
+        }
+        if let Some(value) = attribution.provider_session_id.as_ref() {
+            self.provider_session_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.upstream_provider.as_ref() {
+            self.upstream_provider = Some(value.clone());
+        }
+        if let Some(value) = attribution.provider_profile.as_ref() {
+            self.provider_profile = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_model.as_ref() {
+            self.logical_model = Some(value.clone());
+        }
+        if let Some(value) = attribution.effective_model_id.as_ref() {
+            self.effective_model_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_effort {
+            self.logical_effort = Some(value);
+        }
+        if let Some(value) = attribution.effective_effort.as_ref() {
+            self.effective_effort = Some(value.clone());
+        }
     }
 
     /// Get the duration of the run (if completed)

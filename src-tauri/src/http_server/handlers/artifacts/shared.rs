@@ -1,5 +1,7 @@
 use super::*;
 
+pub(super) const CALLER_SESSION_ID_HEADER: &str = "x-ralphx-caller-session-id";
+
 // ============================================================================
 // EditError Types
 // ============================================================================
@@ -79,13 +81,27 @@ pub(super) fn map_app_err(e: AppError) -> HttpError {
 /// inside the synchronous spawn_blocking closure of db.run().
 /// Accepts TOCTOU trade-off (single-user context, self-healing on process exit).
 ///
-/// SIMPLIFICATION: plan-verifier agents are autonomous (no stdin pipes) and do NOT
+/// SIMPLIFICATION: ralphx-plan-verifier agents are autonomous (no stdin pipes) and do NOT
 /// register in InteractiveProcessRegistry. Therefore is_generating = is_running.
-/// This was verified during implementation: plan-verifier agents spawn via
+/// This was verified during implementation: ralphx-plan-verifier agents spawn via
 /// ChatService::send_message() which registers only in RunningAgentRegistry.
 ///
-/// TRUST MODEL: caller_session_id is cooperative/protocol-based only. :3847 is
-/// localhost-only (single-user desktop) — prevents accidental concurrent writes, not adversarial.
+/// TRUST MODEL: caller identity is transport-owned when provided via
+/// `x-ralphx-caller-session-id`; JSON `caller_session_id` remains a compatibility fallback.
+/// :3847 is localhost-only (single-user desktop) — prevents accidental concurrent writes, not adversarial.
+pub(super) fn resolve_caller_session_id(
+    headers: &axum::http::HeaderMap,
+    body_caller_session_id: Option<&str>,
+) -> Option<String> {
+    headers
+        .get(CALLER_SESSION_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| body_caller_session_id.map(ToOwned::to_owned))
+}
+
 #[doc(hidden)]
 pub async fn check_verification_freeze(
     owning_sessions: &[IdeationSession],
@@ -94,7 +110,13 @@ pub async fn check_verification_freeze(
     session_repo: &dyn IdeationSessionRepository,
 ) -> Result<(), AppError> {
     for session in owning_sessions {
-        if !session.verification_in_progress {
+        let verification_in_progress = session_repo
+            .get_verification_status(&session.id)
+            .await?
+            .map(|(_, in_progress)| in_progress)
+            .unwrap_or(session.verification_in_progress);
+
+        if !verification_in_progress {
             continue;
         }
 

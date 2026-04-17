@@ -10,9 +10,33 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
-import { ToolCallIndicator } from "./ToolCallIndicator";
 import type { ToolCall } from "./tool-widgets/shared.constants";
-import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
+import {
+  extractDelegationMetadata,
+  isDelegationStartToolCall,
+} from "./delegation-tool-calls";
+import { TaskToolCallDelegatedTranscript } from "./TaskToolCallDelegatedTranscript";
+import {
+  EMPTY_STATS,
+  extractChildToolCalls,
+  extractTaskArgs,
+  extractTaskStats,
+} from "./TaskToolCallCard.utils";
+import {
+  TaskCardTranscriptView,
+} from "./TaskCardTranscript";
+import { buildTaskCardTranscriptEntryFromToolCall } from "./TaskCardTranscript.utils";
+import {
+  formatProviderModelEffortLabel,
+} from "./provider-harness";
+import {
+  TaskCardKindBadge,
+  TaskCardModelBadge,
+  TaskCardProviderHarnessBadge,
+  TaskCardStatusBadge,
+  TaskCardSubagentTypeBadge,
+  TaskCardSummary,
+} from "./TaskCardShared";
 
 // ============================================================================
 // Types
@@ -23,215 +47,10 @@ interface TaskToolCallCardProps {
   className?: string;
 }
 
-interface TaskArgs {
-  description: string | undefined;
-  subagent_type: string | undefined;
-  model: string | undefined;
-  prompt: string | undefined;
-  /** Agent-specific: named agent */
-  name: string | undefined;
-  /** Agent-specific: isolation mode (e.g. "worktree") */
-  isolation: string | undefined;
-  /** Agent-specific: whether to run in background */
-  run_in_background: boolean | undefined;
-}
-
-interface TaskStats {
-  /** True when result was parsed (even if all fields are undefined). False when no parseable result. */
-  statsAvailable: boolean;
-  agentId: string | undefined;
-  totalDurationMs: number | undefined;
-  totalTokens: number | undefined;
-  totalToolUseCount: number | undefined;
-  model: string | undefined;
-  textOutput: string | undefined;
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const EMPTY_ARGS: TaskArgs = {
-  description: undefined,
-  subagent_type: undefined,
-  model: undefined,
-  prompt: undefined,
-  name: undefined,
-  isolation: undefined,
-  run_in_background: undefined,
-};
-
-/** Extract Task/Agent arguments (description, subagent_type, model, and Agent-specific fields) */
-function extractTaskArgs(args: unknown): TaskArgs {
-  if (!args || typeof args !== "object") return EMPTY_ARGS;
-  const a = args as Record<string, unknown>;
-  return {
-    description: typeof a.description === "string" ? a.description : undefined,
-    subagent_type: typeof a.subagent_type === "string" ? a.subagent_type : undefined,
-    model: typeof a.model === "string" ? a.model : undefined,
-    prompt: typeof a.prompt === "string" ? a.prompt : undefined,
-    name: typeof a.name === "string" ? a.name : undefined,
-    isolation: typeof a.isolation === "string" ? a.isolation : undefined,
-    run_in_background: typeof a.run_in_background === "boolean" ? a.run_in_background : undefined,
-  };
-}
-
-/**
- * Parse the Task tool result to extract stats.
- *
- * The result text typically looks like:
- * ```
- * [subagent output text here]
- * agentId: abc1234 (for resuming...)
- * <usage>total_tokens: 12345
- * tool_uses: 8
- * duration_ms: 45000</usage>
- * ```
- */
-const EMPTY_STATS: TaskStats = {
-  statsAvailable: false,
-  agentId: undefined,
-  totalDurationMs: undefined,
-  totalTokens: undefined,
-  totalToolUseCount: undefined,
-  model: undefined,
-  textOutput: undefined,
-};
-
-/**
- * Extract child tool calls from the Task result content blocks.
- *
- * When result is an array of content blocks, tool_use blocks represent
- * tool calls made by the subagent. We pair each tool_use with its
- * subsequent tool_result (matched by tool_use_id) to build ToolCall objects.
- */
-function extractChildToolCalls(result: unknown): ToolCall[] {
-  if (!Array.isArray(result)) return [];
-
-  const toolUseBlocks: Array<{ id: string; name: string; input: unknown }> = [];
-  const toolResultMap = new Map<string, unknown>();
-
-  for (const block of result) {
-    if (!block || typeof block !== "object") continue;
-    const b = block as Record<string, unknown>;
-
-    if (b.type === "tool_use" && typeof b.name === "string" && typeof b.id === "string") {
-      toolUseBlocks.push({ id: b.id, name: b.name, input: b.input });
-    } else if (b.type === "tool_result" && typeof b.tool_use_id === "string") {
-      toolResultMap.set(b.tool_use_id, b.content);
-    }
-  }
-
-  return toolUseBlocks.map((tu) => {
-    const tc: ToolCall = { id: tu.id, name: tu.name, arguments: tu.input };
-    const resultContent = toolResultMap.get(tu.id);
-    if (resultContent != null) {
-      tc.result = resultContent;
-    }
-    return tc;
-  });
-}
-
-/** Text-parsing fallback: extract stats and textOutput from raw result content. Used for old DB rows without a structured stats field. */
-function extractTaskStatsFromResult(result: unknown): TaskStats {
-  if (result == null) return EMPTY_STATS;
-
-  // Result can be a string, array of content blocks, or JSON object
-  let text: string;
-  if (typeof result === "string") {
-    text = result;
-  } else if (Array.isArray(result)) {
-    // Array of content blocks — join text blocks
-    const textBlocks = result.filter(
-      (b: unknown) => b && typeof b === "object" && (b as Record<string, unknown>).type === "text",
-    );
-    if (textBlocks.length === 0) {
-      // tool_use-only array or empty — result exists but no text stats available
-      return { ...EMPTY_STATS, statsAvailable: false };
-    }
-    text = textBlocks.map((b: unknown) => (b as Record<string, unknown>).text as string).join("\n");
-  } else if (typeof result === "object") {
-    // Single content block object — extract .text field if present
-    const obj = result as Record<string, unknown>;
-    if (typeof obj.text === "string") {
-      text = obj.text;
-    } else {
-      return { ...EMPTY_STATS, statsAvailable: false };
-    }
-  } else {
-    return EMPTY_STATS;
-  }
-
-  let agentId: string | undefined;
-  let totalDurationMs: number | undefined;
-  let totalTokens: number | undefined;
-  let totalToolUseCount: number | undefined;
-  let textOutput: string | undefined;
-
-  // Extract agentId (case-insensitive — defensive, CLI currently emits lowercase)
-  const agentIdMatch = text.match(/agentId:\s*([a-fA-F0-9]+)/i);
-  if (agentIdMatch) {
-    agentId = agentIdMatch[1];
-  }
-
-  // Extract usage stats from <usage> block
-  const usageMatch = text.match(/<usage>([\s\S]*?)<\/usage>/);
-  if (usageMatch) {
-    const usage = usageMatch[1] ?? "";
-    const tokensMatch = usage.match(/total_tokens:\s*(\d+)/);
-    const toolsMatch = usage.match(/tool_uses:\s*(\d+)/);
-    const durationMatch = usage.match(/duration_ms:\s*(\d+)/);
-
-    if (tokensMatch) totalTokens = parseInt(tokensMatch[1]!, 10);
-    if (toolsMatch) totalToolUseCount = parseInt(toolsMatch[1]!, 10);
-    if (durationMatch) totalDurationMs = parseInt(durationMatch[1]!, 10);
-  }
-
-  // Extract text output (everything before agentId/usage block).
-  // Use (?:^|\n) to handle agentId at start of text (no preceding newline)
-  const agentIdPos = text.search(/(?:^|\n)agentId:/);
-  if (agentIdPos >= 0) {
-    // Slice up to the match position (0 if agentId is first line → empty output)
-    textOutput = text.slice(0, agentIdPos).trim() || undefined;
-  } else if (!usageMatch) {
-    // No agentId or usage block — the whole result is text output
-    textOutput = text.trim() || undefined;
-  }
-
-  return { statsAvailable: true, agentId, totalDurationMs, totalTokens, totalToolUseCount, model: undefined, textOutput };
-}
-
-/**
- * Extract stats for a Task/Agent tool call.
- *
- * Structured path (new DB rows): checks toolCall.stats first — directly uses camelCase fields
- * persisted by the backend at TaskCompleted time. agentId and textOutput still come from result.
- *
- * Text-parsing fallback (old DB rows): if toolCall.stats is absent/undefined, falls back to
- * parsing the result text for embedded <usage> tags and agentId lines.
- */
-function extractTaskStats(toolCall: ToolCall): TaskStats {
-  // Structured path: use stats field if present (new DB rows — camelCase from backend)
-  if (toolCall.stats !== undefined) {
-    // Still extract agentId + textOutput from result text (not in stats field)
-    const fromResult = extractTaskStatsFromResult(toolCall.result);
-    return {
-      statsAvailable: true,
-      agentId: fromResult.agentId,
-      totalDurationMs: toolCall.stats.durationMs,
-      totalTokens: toolCall.stats.totalTokens,
-      totalToolUseCount: toolCall.stats.totalToolUses,
-      model: toolCall.stats.model,
-      textOutput: fromResult.textOutput,
-    };
-  }
-
-  // Text-parsing fallback for old DB rows without structured stats
-  if (import.meta.env.DEV) {
-    console.debug("[extractTaskStats] text-parsing fallback for tool call:", toolCall.id);
-  }
-  return extractTaskStatsFromResult(toolCall.result);
-}
 
 // ============================================================================
 // Component
@@ -245,44 +64,102 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const hasError = Boolean(toolCall.error);
 
   const taskArgs = useMemo(() => extractTaskArgs(toolCall.arguments), [toolCall.arguments]);
-  const taskStats = useMemo(() => extractTaskStats(toolCall), [toolCall]);
+  const delegation = useMemo(
+    () => extractDelegationMetadata(toolCall.arguments, toolCall.result),
+    [toolCall.arguments, toolCall.result],
+  );
+  const isDelegateCall = isDelegationStartToolCall(toolCall.name);
+  const taskStats = useMemo(
+    () => isDelegateCall
+      ? {
+          ...EMPTY_STATS,
+          statsAvailable: true,
+          totalDurationMs: delegation.durationMs,
+          totalTokens: delegation.totalTokens,
+          model: delegation.effectiveModelId ?? delegation.logicalModel,
+          textOutput: delegation.textOutput,
+          estimatedUsd: delegation.estimatedUsd,
+        }
+      : extractTaskStats(toolCall),
+    [delegation, isDelegateCall, toolCall],
+  );
   const childToolCalls = useMemo(() => extractChildToolCalls(toolCall.result), [toolCall.result]);
 
-  const isAgentCall = toolCall.name.toLowerCase() === "agent";
-  const subagentType = taskArgs.subagent_type || "agent";
-  const model = taskArgs.model || "";
+  const isAgentCall = !isDelegateCall && toolCall.name.toLowerCase() === "agent";
+  const subagentType = isDelegateCall ? "delegated" : taskArgs.subagent_type || "agent";
+  const model = isDelegateCall
+    ? delegation.effectiveModelId ?? delegation.logicalModel ?? ""
+    : taskArgs.model || "";
+  const providerModelEffortLabel = isDelegateCall
+      ? formatProviderModelEffortLabel({
+        providerHarness: delegation.providerHarness,
+        providerSessionId: delegation.providerSessionId,
+        upstreamProvider: delegation.upstreamProvider,
+        providerProfile: delegation.providerProfile,
+        logicalModel: delegation.logicalModel,
+        effectiveModelId: delegation.effectiveModelId,
+        logicalEffort: delegation.logicalEffort,
+        effectiveEffort: delegation.effectiveEffort,
+        inputTokens: delegation.inputTokens,
+        outputTokens: delegation.outputTokens,
+        cacheCreationTokens: delegation.cacheCreationTokens,
+        cacheReadTokens: delegation.cacheReadTokens,
+        estimatedUsd: delegation.estimatedUsd,
+      })
+    : null;
 
   // Card title: Agent with name → show name (team mode); otherwise description or fallback
-  const cardTitle = isAgentCall && taskArgs.name
-    ? taskArgs.name
-    : taskArgs.description || (isAgentCall ? "Agent task" : "Subagent task");
+  const cardTitle = isDelegateCall
+    ? delegation.agentName || delegation.title || "Delegated specialist"
+    : isAgentCall && taskArgs.name
+      ? taskArgs.name
+      : taskArgs.description || (isAgentCall ? "Agent task" : "Subagent task");
 
   // Hide subagent_type badge when it's the redundant default "agent" value
-  const showSubagentTypeBadge = Boolean(subagentType && subagentType !== "agent");
+  const showSubagentTypeBadge = !isDelegateCall && Boolean(subagentType && subagentType !== "agent");
 
   // Subtitle: shown below title for named agents (description or prompt preview)
-  const subtitle = isAgentCall && taskArgs.name && taskArgs.description
-    ? taskArgs.description
-    : isAgentCall && taskArgs.name && !taskArgs.description && taskArgs.prompt
-      ? taskArgs.prompt.slice(0, 100) + "..."
-      : null;
+  const subtitle = isDelegateCall
+    ? delegation.prompt
+      ? `${delegation.prompt.slice(0, 100)}${delegation.prompt.length > 100 ? "..." : ""}`
+      : null
+    : isAgentCall && taskArgs.name && taskArgs.description
+      ? taskArgs.description
+      : isAgentCall && taskArgs.name && !taskArgs.description && taskArgs.prompt
+        ? taskArgs.prompt.slice(0, 100) + "..."
+        : null;
 
-  const subagentColor = getSubagentTypeColor(subagentType);
-  const modelColor = model ? getModelColor(model) : null;
+  const bodyText = delegation.textOutput ?? taskStats.textOutput;
+  const delegatedConversationId = isDelegateCall ? delegation.delegatedConversationId ?? null : null;
+  const statusBadge = isDelegateCall && delegation.status && delegation.status !== "completed"
+    ? delegation.status
+    : null;
 
-  // Build stats summary
-  const statParts: string[] = [];
-  if (taskStats.totalDurationMs != null) {
-    statParts.push(formatDuration(taskStats.totalDurationMs));
-  }
-  if (taskStats.totalTokens != null) {
-    statParts.push(`${taskStats.totalTokens.toLocaleString()} tokens`);
-  }
-  if (taskStats.totalToolUseCount != null) {
-    statParts.push(`${taskStats.totalToolUseCount} tool${taskStats.totalToolUseCount !== 1 ? "s" : ""}`);
-  }
-
-  const hasBody = Boolean(taskStats.textOutput) || hasError || childToolCalls.length > 0;
+  const transcriptEntry = useMemo(
+    () => buildTaskCardTranscriptEntryFromToolCall({
+      entryId: toolCall.id,
+      bodyText,
+      childToolCalls,
+    }),
+    [bodyText, childToolCalls, toolCall.id],
+  );
+  const hasTranscriptBody = transcriptEntry.blocks.length > 0;
+  const hasBody = hasTranscriptBody || hasError || delegatedConversationId != null;
+  const providerMetadata = {
+    providerHarness: delegation.providerHarness,
+    providerSessionId: delegation.providerSessionId,
+    upstreamProvider: delegation.upstreamProvider,
+    providerProfile: delegation.providerProfile,
+    logicalModel: delegation.logicalModel,
+    effectiveModelId: delegation.effectiveModelId,
+    logicalEffort: delegation.logicalEffort,
+    effectiveEffort: delegation.effectiveEffort,
+    inputTokens: delegation.inputTokens,
+    outputTokens: delegation.outputTokens,
+    cacheCreationTokens: delegation.cacheCreationTokens,
+    cacheReadTokens: delegation.cacheReadTokens,
+    estimatedUsd: delegation.estimatedUsd,
+  };
 
   return (
     <div
@@ -298,7 +175,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
         className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-opacity ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
         aria-expanded={hasBody ? isExpanded : undefined}
-        aria-label={`${subagentType} subagent: ${cardTitle}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
+        aria-label={`${isDelegateCall ? "delegated" : subagentType} task: ${cardTitle}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
       >
         {/* Expand/Collapse chevron (only if has body) */}
         {hasBody ? (
@@ -317,28 +194,10 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         )}
 
         {/* Agent vs Task label */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-            backgroundColor: isAgentCall ? "hsla(14, 100%, 60%, 0.12)" : "hsla(220, 10%, 50%, 0.12)",
-            color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
-          }}
-        >
-          {isAgentCall ? "Agent" : "Task"}
-        </span>
+        <TaskCardKindBadge toolName={toolCall.name} />
 
         {/* Subagent type badge — hidden for redundant "agent" default */}
-        {showSubagentTypeBadge && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-            style={{
-              backgroundColor: subagentColor.bg,
-              color: subagentColor.text,
-            }}
-          >
-            {subagentType}
-          </span>
-        )}
+        {showSubagentTypeBadge && <TaskCardSubagentTypeBadge subagentType={subagentType} />}
 
         {/* Title text */}
         <span
@@ -348,17 +207,24 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           {cardTitle}
         </span>
 
+        {isDelegateCall && (
+          <TaskCardProviderHarnessBadge
+            providerHarness={delegation.providerHarness}
+            providerMetadata={providerMetadata}
+          />
+        )}
+
         {/* Model badge */}
-        {model && modelColor && (
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-            style={{
-              backgroundColor: modelColor.bg,
-              color: modelColor.text,
-            }}
-          >
-            {model}
-          </span>
+        {!providerModelEffortLabel && (
+          <TaskCardModelBadge label={model || null} colorKey={model || null} />
+        )}
+
+        {providerModelEffortLabel && (
+          <TaskCardModelBadge
+            label={providerModelEffortLabel}
+            colorKey={delegation.effectiveModelId ?? delegation.logicalModel ?? providerModelEffortLabel}
+            providerMetadata={providerMetadata}
+          />
         )}
 
         {/* Agent-specific: isolation badge */}
@@ -388,17 +254,9 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         )}
 
         {/* Error indicator */}
-        {hasError && (
-          <span
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-            style={{
-              backgroundColor: "hsla(0 70% 50% / 0.2)",
-              color: "hsl(0 70% 70%)",
-            }}
-          >
-            Failed
-          </span>
-        )}
+        <TaskCardStatusBadge label={statusBadge} />
+
+        <TaskCardStatusBadge label={hasError ? "Failed" : null} tone="error" />
       </button>
 
       {/* Subtitle: description or prompt preview for named agents */}
@@ -417,16 +275,26 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
       )}
 
       {/* Stats summary (shown below header when collapsed) */}
-      {statParts.length > 0 && (
+      {(
+        taskStats.totalDurationMs != null ||
+        taskStats.totalTokens != null ||
+        taskStats.totalToolUseCount != null ||
+        taskStats.estimatedUsd != null
+      ) && (
         <div
           className="px-3 py-1.5"
           style={{
             borderTop: `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`,
           }}
         >
-          <span className="text-xs" style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}>
-            {statParts.join(" \u00B7 ")}
-          </span>
+          <TaskCardSummary
+            metrics={{
+              totalDurationMs: taskStats.totalDurationMs,
+              totalTokens: taskStats.totalTokens,
+              totalToolUseCount: taskStats.totalToolUseCount,
+              estimatedUsd: taskStats.estimatedUsd,
+            }}
+          />
         </div>
       )}
 
@@ -435,7 +303,12 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         <div
           className="px-3 pb-3 pt-2"
           style={{
-            borderTop: statParts.length > 0
+            borderTop: (
+              taskStats.totalDurationMs != null ||
+              taskStats.totalTokens != null ||
+              taskStats.totalToolUseCount != null ||
+              taskStats.estimatedUsd != null
+            )
               ? `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`
               : undefined,
           }}
@@ -456,30 +329,16 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             </pre>
           )}
 
-          {/* Child tool calls — rendered as compact ToolCallIndicators */}
-          {childToolCalls.length > 0 && (
-            <div className="space-y-1 max-h-64 overflow-y-auto mb-2">
-              {childToolCalls.map((tc) => (
-                <ToolCallIndicator key={tc.id} toolCall={tc} compact />
-              ))}
+          {delegatedConversationId ? (
+            <TaskToolCallDelegatedTranscript
+              conversationId={delegatedConversationId}
+              fallbackText={bodyText}
+            />
+          ) : hasTranscriptBody ? (
+            <div className="max-h-64 overflow-y-auto">
+              <TaskCardTranscriptView entries={[transcriptEntry]} />
             </div>
-          )}
-
-          {/* Subagent text output */}
-          {taskStats.textOutput && (
-            <pre
-              className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64"
-              style={{
-                backgroundColor: "var(--bg-surface, hsl(220 10% 10%))",
-                color: "var(--text-secondary, hsl(220 10% 80%))",
-                fontFamily: "var(--font-mono)",
-                wordBreak: "break-word",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {taskStats.textOutput}
-            </pre>
-          )}
+          ) : null}
         </div>
       )}
     </div>

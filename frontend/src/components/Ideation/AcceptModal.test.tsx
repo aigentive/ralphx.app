@@ -4,8 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { AcceptModal } from "./AcceptModal";
 import { getGitBranches } from "@/api/projects";
 import type { TaskProposal, DependencyGraph } from "@/types/ideation";
@@ -13,6 +15,21 @@ import type { TaskProposal, DependencyGraph } from "@/types/ideation";
 vi.mock("@/api/projects", () => ({
   getGitBranches: vi.fn().mockResolvedValue(["main", "develop"]),
 }));
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
+  });
+
+  return rtlRender(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+}
 
 const mockProposals: TaskProposal[] = [
   {
@@ -215,9 +232,11 @@ describe("AcceptModal", () => {
       expect(screen.getByText(/merge-to-main task is added automatically/i)).toBeInTheDocument();
     });
 
-    it("renders base branch input always visible", () => {
+    it("renders base branch input always visible", async () => {
       render(<AcceptModal {...defaultProps} workingDirectory="/some/path" baseBranch="main" />);
-      expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
+      });
     });
   });
 
@@ -306,7 +325,7 @@ describe("AcceptModal", () => {
       expect(input).toHaveValue("main");
     });
 
-    it("always shows branch selector (not conditional on feature branch toggle)", () => {
+    it("always shows branch selector (not conditional on feature branch toggle)", async () => {
       render(
         <AcceptModal
           {...defaultProps}
@@ -315,7 +334,9 @@ describe("AcceptModal", () => {
         />
       );
 
-      expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
+      });
     });
 
     it("sends baseBranchOverride in accept options", async () => {

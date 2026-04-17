@@ -11,7 +11,9 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Calendar, Download } from "lucide-react";
 import { formatMinutesHuman } from "@/lib/formatters";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import type { ScopeUsageStats } from "@/api/metrics";
 import { useProjectStats } from "@/hooks/useProjectStats";
+import { useProjectChatUsageStats } from "@/hooks/useProjectChatUsageStats";
 import { useProjectTrends } from "@/hooks/useProjectTrends";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
 import type { ProjectStats, ProjectTrends, WeeklyDataPoint } from "@/types/project-stats";
@@ -29,6 +31,7 @@ import {
   ColumnDwellTimeBreakdown,
   CopyMarkdownButton,
 } from "./insights/MetricsDetails";
+import { UsageInsightsCard } from "./insights/UsageInsightsCard";
 
 // ============================================================================
 // Week Start Day Preference (localStorage-backed)
@@ -197,6 +200,7 @@ export function InsightsView() {
   const tzOffsetMinutes = useMemo(() => -new Date().getTimezoneOffset(), []);
 
   const statsQuery = useProjectStats(projectId, weekStartDay, tzOffsetMinutes);
+  const usageStatsQuery = useProjectChatUsageStats(projectId);
   const trendsQuery = useProjectTrends(projectId, weekStartDay, tzOffsetMinutes);
 
   // No active project
@@ -254,12 +258,14 @@ export function InsightsView() {
       showEme={showEme}
       weekStartDay={weekStartDay}
       onWeekStartDayChange={setWeekStartDay}
+      {...(usageStatsQuery.data !== undefined ? { usageStats: usageStatsQuery.data } : {})}
     />
   );
 }
 
 function InsightsContent({
   stats,
+  usageStats,
   trends,
   projectId,
   hasEnoughForTrends,
@@ -268,6 +274,7 @@ function InsightsContent({
   onWeekStartDayChange,
 }: {
   stats: ProjectStats;
+  usageStats?: ScopeUsageStats;
   trends: ProjectTrends;
   projectId: string;
   hasEnoughForTrends: boolean;
@@ -407,6 +414,8 @@ function InsightsContent({
             <div className="block min-[1200px]:hidden">
               <EmeSection stats={stats} showEme={showEme} projectId={projectId} />
             </div>
+
+            {usageStats && <UsageInsightsCard stats={usageStats} />}
 
             {/* Trend charts */}
             {!hasEnoughForTrends ? (

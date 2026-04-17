@@ -143,7 +143,10 @@ async fn task_with_plan_branch_merges_to_plan_not_main() {
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Plan task merge to plan branch".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "Plan task merge to plan branch".to_string(),
+    );
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(task_branch.clone());
     task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
@@ -157,12 +160,7 @@ async fn task_with_plan_branch_merges_to_plan_not_main() {
     project_repo.create(project).await.unwrap();
 
     // Plan branch with session_id="sess-1" and status=Active
-    let pb = make_plan_branch(
-        "artifact-1",
-        &plan_branch,
-        PlanBranchStatus::Active,
-        None,
-    );
+    let pb = make_plan_branch("artifact-1", &plan_branch, PlanBranchStatus::Active, None);
     plan_branch_repo.create(pb).await.unwrap();
 
     let (_, services) =
@@ -277,12 +275,7 @@ async fn check_already_merged_detects_prior_merge_on_plan_branch() {
     project_repo.create(project).await.unwrap();
 
     // Plan branch Active with session_id="sess-1"
-    let pb = make_plan_branch(
-        "artifact-1",
-        &plan_branch,
-        PlanBranchStatus::Active,
-        None,
-    );
+    let pb = make_plan_branch("artifact-1", &plan_branch, PlanBranchStatus::Active, None);
     plan_branch_repo.create(pb).await.unwrap();
 
     let (_, services) =
@@ -347,8 +340,7 @@ async fn metadata_toctou_guard_survives_conflict_metadata() {
     merge_metadata_into(&mut task, &conflict_meta);
 
     // Verify: merge_target_branch must survive the conflict metadata write
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
 
     assert_eq!(
         meta.get("merge_target_branch").and_then(|v| v.as_str()),
@@ -501,12 +493,7 @@ async fn plan_update_conflict_retry_uses_correct_target() {
     project_repo.create(project).await.unwrap();
 
     // Plan branch with session_id="sess-1" and status=Active
-    let pb = make_plan_branch(
-        "artifact-1",
-        &plan_branch,
-        PlanBranchStatus::Active,
-        None,
-    );
+    let pb = make_plan_branch("artifact-1", &plan_branch, PlanBranchStatus::Active, None);
     plan_branch_repo.create(pb).await.unwrap();
 
     let (chat_service, services) =
@@ -629,8 +616,7 @@ async fn plan_branch_repo_none_fallback_uses_metadata_guard() {
     );
 
     // Verify the metadata guard still has the correct plan branch cached
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     assert_eq!(
         meta.get("merge_target_branch").and_then(|v| v.as_str()),
         Some("plan/feature-x"),
@@ -652,9 +638,136 @@ async fn plan_branch_repo_none_fallback_uses_metadata_guard() {
         Some(Arc::clone(&plan_branch_repo_mem) as Arc<dyn PlanBranchRepository>);
     let (source2, target2) = resolve_merge_branches(&task, &project, &plan_branch_repo_opt).await;
 
-    assert_eq!(source2, "task/feature-x", "Source should be the task branch");
+    assert_eq!(
+        source2, "task/feature-x",
+        "Source should be the task branch"
+    );
     assert_eq!(
         target2, "plan/feature-x",
         "With plan_branch_repo wired and Active plan branch, target should be 'plan/feature-x'"
+    );
+}
+
+/// Regression: when a plan branch was accepted against a non-project base branch,
+/// PendingMerge must keep using the plan branch's own source branch for freshness.
+///
+/// Before the fix, the merge pipeline always used `project.base_branch` ("main")
+/// for plan freshness. Reaccepted plans based on another branch would immediately
+/// route to `plan_update_conflict` and spawn a merger agent even though the plan
+/// branch was already fresh relative to its actual source branch.
+#[tokio::test]
+async fn pending_merge_uses_plan_source_branch_instead_of_project_base() {
+    let dir = tempfile::TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .expect("git command failed")
+    };
+
+    run(&["init", "-b", "main"]);
+    run(&["config", "user.email", "test@test.com"]);
+    run(&["config", "user.name", "Test"]);
+    std::fs::write(path.join("README.md"), "# test repo").unwrap();
+    run(&["add", "."]);
+    run(&["commit", "-m", "initial commit"]);
+
+    let release_branch = "release/2026-04".to_string();
+    run(&["checkout", "-b", &release_branch]);
+    std::fs::write(path.join("shared.txt"), "release baseline\n").unwrap();
+    run(&["add", "shared.txt"]);
+    run(&["commit", "-m", "release baseline"]);
+
+    let plan_branch = "plan/non-main-base".to_string();
+    run(&["checkout", "-b", &plan_branch]);
+    std::fs::write(path.join("plan-init.txt"), "plan branch init\n").unwrap();
+    run(&["add", "plan-init.txt"]);
+    run(&["commit", "-m", "init plan branch"]);
+
+    let task_branch = "task/non-main-base".to_string();
+    run(&["checkout", "-b", &task_branch]);
+    std::fs::write(path.join("feature.rs"), "// task work\nfn task_work() {}\n").unwrap();
+    run(&["add", "feature.rs"]);
+    run(&["commit", "-m", "feat: task work"]);
+
+    run(&["checkout", "main"]);
+    std::fs::write(path.join("shared.txt"), "main divergence\n").unwrap();
+    run(&["add", "shared.txt"]);
+    run(&["commit", "-m", "main divergence"]);
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Non-main plan merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(task_branch.clone());
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = make_real_git_project(&path.to_string_lossy());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.merge_strategy = MergeStrategy::Merge;
+    project_repo.create(project).await.unwrap();
+
+    let mut pb = make_plan_branch("artifact-1", &plan_branch, PlanBranchStatus::Active, None);
+    pb.source_branch = release_branch.clone();
+    pb.base_branch_override = Some(release_branch.clone());
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let (chat_service, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let services = services
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "Task should merge cleanly into the plan branch when the plan source branch is fresh. \
+         A Merging status here means the pipeline incorrectly used project.base_branch. \
+         Metadata: {:?}",
+        updated.metadata,
+    );
+    assert_eq!(
+        chat_service.call_count(),
+        0,
+        "A non-main-base plan freshness check should not spawn a merger agent"
+    );
+
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_target_branch").and_then(|v| v.as_str()),
+        Some(plan_branch.as_str()),
+        "Task should still merge into the plan branch"
+    );
+
+    let plan_log = std::process::Command::new("git")
+        .args(["log", "--oneline", &plan_branch])
+        .current_dir(path)
+        .output()
+        .expect("git log plan branch");
+    let plan_log_str = String::from_utf8_lossy(&plan_log.stdout);
+    assert!(
+        plan_log_str.contains("task work"),
+        "Plan branch should contain the task commit. Log:\n{}",
+        plan_log_str,
+    );
+    assert!(
+        !plan_log_str.contains("main divergence"),
+        "Plan branch must not pull in project.base_branch ('main') during this merge. Log:\n{}",
+        plan_log_str,
     );
 }

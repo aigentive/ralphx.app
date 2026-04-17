@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use tauri::{Emitter, State};
+use tracing::warn;
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -85,22 +86,45 @@ pub async fn analyze_dependencies(
 ) -> Result<DependencyGraphResponse, String> {
     let session_id = IdeationSessionId::from_string(session_id);
 
+    analyze_dependencies_for_session(state.inner(), &session_id).await
+}
+
+/// Analyze dependencies for a session and mark the session as dependency-reviewed.
+#[doc(hidden)]
+pub async fn analyze_dependencies_for_session(
+    state: &AppState,
+    session_id: &IdeationSessionId,
+) -> Result<DependencyGraphResponse, String> {
     // Get proposals for this session
     let proposals = state
         .task_proposal_repo
-        .get_by_session(&session_id)
+        .get_by_session(session_id)
         .await
         .map_err(|e| e.to_string())?;
 
     // Get all dependencies for this session
     let deps = state
         .proposal_dependency_repo
-        .get_all_for_session(&session_id)
+        .get_all_for_session(session_id)
         .await
         .map_err(|e| e.to_string())?;
 
     // Build the graph directly (inline version of DependencyService logic)
     let graph = build_dependency_graph(&proposals, &deps);
+
+    // Mirror the HTTP dependency-analysis contract: viewing the graph counts as
+    // reviewing dependency ordering for the accept gate.
+    if let Err(error) = state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+    {
+        warn!(
+            session_id = session_id.as_str(),
+            error = %error,
+            "Failed to mark dependency analysis as acknowledged"
+        );
+    }
 
     Ok(DependencyGraphResponse::from(graph))
 }

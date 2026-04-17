@@ -91,7 +91,7 @@ The mock API provides factory-generated data for:
 | Feature | Reason |
 |---------|--------|
 | **Real data persistence** | No SQLite database |
-| **Agent execution** | No Claude Code backend |
+| **Agent execution** | No native agent harness backend |
 | **File system access** | Mocked plugin returns empty |
 | **Native dialogs** | Mocked to return defaults |
 | **Auto-updates** | Mocked updater plugin |

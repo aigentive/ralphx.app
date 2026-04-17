@@ -6,6 +6,7 @@
  */
 
 import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ResolveQuestionInput } from "@/api/ask-user-question";
 
 /**
@@ -18,5 +19,9 @@ export const mockAskUserQuestionApi = {
 
   resolveQuestion: async (_input: ResolveQuestionInput): Promise<void> => {
     console.log("[mock] resolveQuestion called");
+  },
+
+  getPendingQuestions: async (): Promise<AskUserQuestionPayload[]> => {
+    return [];
   },
 } as const;

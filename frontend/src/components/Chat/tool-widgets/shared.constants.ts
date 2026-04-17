@@ -31,6 +31,8 @@ export interface ToolCall {
   arguments: unknown;
   /** Result returned from the tool (can be any JSON value) */
   result?: unknown;
+  /** Parent tool_use id when this call belongs to a delegated/child task transcript */
+  parentToolUseId?: string;
   /** Error message if tool call failed */
   error?: string;
   /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
@@ -97,6 +99,24 @@ export interface ParsedMcpResult {
   [key: string]: unknown;
 }
 
+function parseMcpTextContentArray(result: unknown): unknown {
+  if (!Array.isArray(result) || result.length === 0) {
+    return null;
+  }
+
+  const first = result[0];
+  if (first?.type === "text" && typeof first.text === "string") {
+    try {
+      return JSON.parse(first.text);
+    } catch {
+      return null;
+    }
+  }
+
+  // Plain array (not MCP wrapper) — return as-is
+  return result;
+}
+
 /**
  * Unwrap MCP content array to raw parsed value (object OR array).
  * Unlike parseMcpToolResult, returns `unknown` to allow Array.isArray narrowing.
@@ -111,22 +131,30 @@ export function parseMcpToolResultRaw(result: unknown): unknown {
       return null;
     }
   }
-  // Already a plain object (non-array)
   if (result != null && typeof result === "object" && !Array.isArray(result)) {
+    const structuredContent =
+      (result as Record<string, unknown>).structured_content
+      ?? (result as Record<string, unknown>).structuredContent;
+    if (structuredContent != null) {
+      const parsedStructured = parseMcpToolResultRaw(structuredContent);
+      if (parsedStructured != null) {
+        return parsedStructured;
+      }
+    }
+
+    const parsedWrappedContent = parseMcpTextContentArray(
+      (result as Record<string, unknown>).content
+    );
+    if (parsedWrappedContent != null) {
+      return parsedWrappedContent;
+    }
+
+    // Already a plain object (non-array)
     return result;
   }
   // MCP content array: [{type:"text", text:"..."}]
-  if (Array.isArray(result) && result.length > 0) {
-    const first = result[0];
-    if (first?.type === "text" && typeof first.text === "string") {
-      try {
-        return JSON.parse(first.text);
-      } catch {
-        return null;
-      }
-    }
-    // Plain array (not MCP wrapper) — return as-is
-    return result;
+  if (Array.isArray(result)) {
+    return parseMcpTextContentArray(result);
   }
   return null;
 }

@@ -1,9 +1,9 @@
 /**
  * MCP tool definitions for plan artifact management
- * Used by orchestrator-ideation agent to create and manage implementation plans
+ * Used by ralphx-ideation agent to create and manage implementation plans
  */
 /**
- * Plan artifact tools for orchestrator-ideation agent
+ * Plan artifact tools for ralphx-ideation agent
  * All tools are proxies that forward to Tauri backend via HTTP
  */
 export const PLAN_TOOLS = [
@@ -32,7 +32,7 @@ export const PLAN_TOOLS = [
     },
     {
         name: "update_plan_artifact",
-        description: "Update an existing implementation plan's content. Creates a NEW version with a new artifact ID (immutable version chain). Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before updating. Linked proposals are automatically re-linked to the new version (plan_version_at_creation is preserved). The response includes `previous_artifact_id` and `session_id` for reference. You do NOT need to call get_session_plan between updates to refresh the ID.",
+        description: "Update an existing implementation plan's content. Creates a NEW version with a new artifact ID (immutable version chain). Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before updating. Linked proposals are automatically re-linked to the new version (plan_version_at_creation is preserved). The response includes `previous_artifact_id` and `session_id` for reference. You do NOT need to call get_session_plan between updates to refresh the ID. Caller-session routing for verification freeze bypass is derived automatically from live app context; do not pass it manually.",
         inputSchema: {
             type: "object",
             properties: {
@@ -43,10 +43,6 @@ export const PLAN_TOOLS = [
                 content: {
                     type: "string",
                     description: "Updated plan content in markdown format. This will create a new version of the artifact with a new ID.",
-                },
-                caller_session_id: {
-                    type: "string",
-                    description: "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
                 },
             },
             required: ["artifact_id", "content"],
@@ -89,118 +85,107 @@ export const PLAN_TOOLS = [
     {
         name: "report_verification_round",
         description: "Verifier-friendly helper for reporting an in-progress verification round on the PARENT ideation session. " +
-            "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
-            "This is the simpler alias for update_plan_verification with status fixed to reviewing and in_progress fixed to true. " +
-            "Use this after each round once the merged gap list is ready. If generation is stale, call get_plan_verification again instead of guessing.",
+            "The parent session remains canonical and is derived automatically from the active verification child context. Do not pass session_id. " +
+            "Use this after each round once the merged gap list is ready. The response is authoritative for next-step control flow: it returns the backend verification state after convergence checks, so the verifier should use returned status/in_progress/convergence_reason instead of re-implementing zero-blocking, jaccard, or max-round rules in the prompt. " +
+            "If the response says needs_revision, treat that as actionable plan feedback unless the convergence_reason is a terminal non-actionable runtime/user stop reason. If generation is stale, call get_plan_verification again instead of guessing.",
         inputSchema: {
             type: "object",
             examples: [
                 {
-                    session_id: "parent-session-id",
                     round: 1,
-                    gaps: [],
                     generation: 3,
                 },
             ],
             properties: {
-                session_id: {
-                    type: "string",
-                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
-                },
                 round: {
                     type: "integer",
                     description: "Current round number (1-based).",
                 },
-                gaps: {
-                    type: "array",
-                    items: {
-                        type: "object",
-                        properties: {
-                            severity: {
-                                type: "string",
-                                enum: ["critical", "high", "medium", "low"],
-                            },
-                            category: { type: "string" },
-                            description: { type: "string" },
-                            why_it_matters: { type: "string" },
-                            source: {
-                                type: "string",
-                                enum: ["layer1", "layer2", "both"],
-                                description: "Which critic layer identified this gap (for per-critic tracking)",
-                            },
-                        },
-                        required: ["severity", "category", "description"],
-                    },
-                    description: "Merged current-round gaps after critic/specialist processing.",
-                },
                 generation: {
                     type: "integer",
-                    description: "Generation counter for zombie protection. Pass on every verifier call. If mismatched, the server rejects the request.",
+                    description: "Generation counter for zombie protection. Pass on every verifier call. The backend reads the current-round merged gaps from the last run_verification_round result instead of trusting prompt-assembled round state.",
                 },
             },
-            required: ["session_id", "round", "generation"],
+            required: ["round", "generation"],
+        },
+    },
+    {
+        name: "run_verification_enrichment",
+        description: "Backend-owned one-time verification enrichment helper for the PARENT ideation session. " +
+            "The parent session is derived automatically from the active verification child context; do not pass session_id. " +
+            "The verifier chooses which enrichment specialists to run. The backend dispatches those specialists once, waits a bounded amount for typed finding publication or terminal delegate state, and returns the latest findings plus delegate snapshots.",
+        inputSchema: {
+            type: "object",
+            examples: [
+                {
+                    selected_specialists: ["intent", "code-quality"],
+                },
+            ],
+            properties: {
+                selected_specialists: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Explicit enrichment specialists to run. Allowed values: ['intent', 'code-quality'].",
+                },
+            },
+            required: [],
+        },
+    },
+    {
+        name: "run_verification_round",
+        description: "Backend-owned verification round driver for the PARENT ideation session. " +
+            "The parent session is derived automatically from the active verification child context; do not pass session_id. " +
+            "The verifier chooses which optional specialists to run. The backend dispatches those specialists, runs the required completeness + feasibility critics, waits for bounded settlement, and returns structured required critic findings plus backend-owned merged gaps.",
+        inputSchema: {
+            type: "object",
+            examples: [
+                {
+                    round: 2,
+                    selected_specialists: ["ux", "pipeline-safety"],
+                },
+            ],
+            properties: {
+                round: {
+                    type: "integer",
+                    description: "Current verification round number (1-based).",
+                },
+                selected_specialists: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Explicit optional specialists to run. Allowed values: ['ux', 'prompt-quality', 'pipeline-safety', 'state-machine'].",
+                },
+            },
+            required: ["round"],
         },
     },
     {
         name: "complete_plan_verification",
         description: "Verifier-friendly helper for terminal verification updates on the PARENT ideation session. " +
-            "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
-            "This is the simpler alias for update_plan_verification with in_progress fixed to false. " +
-            "Use verified or needs_revision for normal terminal outcomes; use reviewing only for abort/error cleanup. External sessions cannot use status='skipped'. " +
+            "The parent session remains canonical and is derived automatically from the active verification child context. Do not pass session_id. " +
+            "For verifier-owned runs, the helper uses the backend-owned current round state created by run_verification_round instead of trusting prompt-supplied settlement fields. " +
+            "If the required delegate set settles as infrastructure/runtime failure, the backend resets the parent to unverified instead of recording a bogus content verdict. " +
+            "Call this only for true terminal outcomes: verified, exhausted revision, explicit escalation, or runtime/user stop. Do not call it immediately after an actionable needs_revision round report. " +
+            "Use verified or needs_revision for normal terminal outcomes; skipped remains available only where skip is actually allowed by the backend. Do NOT pass reviewing here. " +
             "If generation is stale, call get_plan_verification again instead of guessing.",
         inputSchema: {
             type: "object",
             examples: [
                 {
-                    session_id: "parent-session-id",
                     status: "verified",
                     round: 1,
-                    gaps: [],
                     convergence_reason: "zero_blocking",
-                    generation: 3,
-                },
-                {
-                    session_id: "parent-session-id",
-                    status: "reviewing",
-                    convergence_reason: "agent_error",
                     generation: 3,
                 },
             ],
             properties: {
-                session_id: {
-                    type: "string",
-                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
-                },
                 status: {
                     type: "string",
-                    enum: ["reviewing", "needs_revision", "verified", "skipped"],
-                    description: "Terminal verification status. Use verified or needs_revision for normal completion, reviewing only for abort/error cleanup, and skipped only for flows where skip is actually allowed.",
+                    enum: ["needs_revision", "verified", "skipped"],
+                    description: "Terminal verification status. Use verified or needs_revision for normal completion, and skipped only for flows where skip is actually allowed.",
                 },
                 round: {
                     type: "integer",
                     description: "Current round number (1-based). Include when it helps downstream summaries.",
-                },
-                gaps: {
-                    type: "array",
-                    items: {
-                        type: "object",
-                        properties: {
-                            severity: {
-                                type: "string",
-                                enum: ["critical", "high", "medium", "low"],
-                            },
-                            category: { type: "string" },
-                            description: { type: "string" },
-                            why_it_matters: { type: "string" },
-                            source: {
-                                type: "string",
-                                enum: ["layer1", "layer2", "both"],
-                                description: "Which critic layer identified this gap (for per-critic tracking)",
-                            },
-                        },
-                        required: ["severity", "category", "description"],
-                    },
-                    description: "Final merged gap list for the terminal outcome.",
                 },
                 convergence_reason: {
                     type: "string",
@@ -222,114 +207,18 @@ export const PLAN_TOOLS = [
                     description: "Generation counter for zombie protection. Pass on every verifier call. If mismatched, the server rejects the request.",
                 },
             },
-            required: ["session_id", "status", "generation"],
-        },
-    },
-    {
-        name: "update_plan_verification",
-        description: "Update verification state for an ideation session. Use the PARENT ideation session_id as the canonical target; if a verification child session_id is passed, the backend remaps it automatically. " +
-            "Typical verifier flow: mid-round call with status='reviewing', in_progress=true, round=<n>, gaps=[...], generation=<current>; terminal call with in_progress=false and status='verified' or 'needs_revision'. " +
-            "External sessions cannot use status='skipped'. If the server rejects a call, read the error and correct the payload instead of guessing a new shape. " +
-            "Example reviewing payload: {\"session_id\":\"<parent-session>\",\"status\":\"reviewing\",\"in_progress\":true,\"round\":1,\"gaps\":[],\"generation\":3}. " +
-            "Example terminal payload: {\"session_id\":\"<parent-session>\",\"status\":\"verified\",\"in_progress\":false,\"round\":1,\"gaps\":[],\"convergence_reason\":\"zero_blocking\",\"generation\":3}.",
-        inputSchema: {
-            type: "object",
-            examples: [
-                {
-                    session_id: "parent-session-id",
-                    status: "reviewing",
-                    in_progress: true,
-                    round: 1,
-                    gaps: [],
-                    generation: 3,
-                },
-                {
-                    session_id: "parent-session-id",
-                    status: "verified",
-                    in_progress: false,
-                    round: 1,
-                    gaps: [],
-                    convergence_reason: "zero_blocking",
-                    generation: 3,
-                },
-            ],
-            properties: {
-                session_id: {
-                    type: "string",
-                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
-                },
-                status: {
-                    type: "string",
-                    enum: ["reviewing", "needs_revision", "verified", "skipped"],
-                    description: "New verification status. Use reviewing for in-progress rounds; use verified or needs_revision only for terminal updates; skipped is not allowed for external sessions.",
-                },
-                in_progress: {
-                    type: "boolean",
-                    description: "Whether the verification loop is still active. Mid-round updates should use true; final cleanup should use false.",
-                },
-                round: {
-                    type: "integer",
-                    description: "Current round number (1-based). Include on reviewing updates.",
-                },
-                gaps: {
-                    type: "array",
-                    items: {
-                        type: "object",
-                        properties: {
-                            severity: {
-                                type: "string",
-                                enum: ["critical", "high", "medium", "low"],
-                            },
-                            category: { type: "string" },
-                            description: { type: "string" },
-                            why_it_matters: { type: "string" },
-                            source: {
-                                type: "string",
-                                enum: ["layer1", "layer2", "both"],
-                                description: "Which critic layer identified this gap (for per-critic tracking)",
-                            },
-                        },
-                        required: ["severity", "category", "description"],
-                    },
-                    description: "Gaps identified in this round. For reviewing updates this should reflect the merged current-round gaps.",
-                },
-                convergence_reason: {
-                    type: "string",
-                    enum: [
-                        "zero_blocking",
-                        "jaccard_converged",
-                        "max_rounds",
-                        "critic_parse_failure",
-                        "agent_error",
-                        "user_stopped",
-                        "user_skipped",
-                        "user_reverted",
-                        "escalated_to_parent",
-                    ],
-                    description: "Why verification converged. Required for terminal needs_revision -> verified promotion and recommended on all terminal calls.",
-                },
-                generation: {
-                    type: "integer",
-                    description: "Generation counter for zombie protection. Pass on every verifier call. If omitted, weaker models can accidentally write stale state; if mismatched, the server rejects the request.",
-                },
-            },
-            required: ["session_id", "status"],
+            required: ["status", "generation"],
         },
     },
     {
         name: "get_plan_verification",
-        description: "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. Verification child session_ids are auto-remapped to the parent ideation session. " +
+        description: "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. The canonical parent session is derived automatically from the active verification child context, so do not pass session_id. " +
             "If a verification update call is rejected, call this again on the parent session and copy the returned generation/in_progress values instead of guessing.",
         inputSchema: {
             type: "object",
-            examples: [{ session_id: "parent-session-id" }],
-            properties: {
-                session_id: {
-                    type: "string",
-                    description: "The ideation session ID",
-                },
-            },
-            required: ["session_id"],
+            examples: [{}],
+            properties: {},
+            required: [],
         },
     },
     {
@@ -370,7 +259,7 @@ export const PLAN_TOOLS = [
     },
     {
         name: "edit_plan_artifact",
-        description: "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed.",
+        description: "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed. Caller-session routing for verification freeze bypass is derived automatically from live app context; do not pass it manually.",
         inputSchema: {
             type: "object",
             properties: {
@@ -398,10 +287,6 @@ export const PLAN_TOOLS = [
                         required: ["old_text", "new_text"],
                     },
                     description: "List of edit operations to apply sequentially. Each operation finds old_text and replaces with new_text.",
-                },
-                caller_session_id: {
-                    type: "string",
-                    description: "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
                 },
             },
             required: ["artifact_id", "edits"],

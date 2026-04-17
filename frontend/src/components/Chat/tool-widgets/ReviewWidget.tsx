@@ -206,10 +206,21 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
       }}
     >
       {/* Header */}
-      <button
+      <div
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
+        onKeyDown={(event) => {
+          if (!hasBody) {
+            return;
+          }
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setIsExpanded((prev) => !prev);
+          }
+        }}
         className={`w-full flex items-center flex-wrap gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"} transition-opacity`}
         aria-expanded={hasBody ? isExpanded : undefined}
+        role={hasBody ? "button" : undefined}
+        tabIndex={hasBody ? 0 : undefined}
       >
         {/* Expand/collapse chevron */}
         {hasBody ? (
@@ -269,7 +280,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
             Open Follow-up
           </button>
         )}
-      </button>
+      </div>
 
       {/* Expanded body */}
       {isExpanded && hasBody && (

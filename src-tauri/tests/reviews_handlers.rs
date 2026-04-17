@@ -50,6 +50,7 @@ async fn setup_review_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -63,6 +64,7 @@ async fn setup_review_scope_drift_state() -> (HttpServerState, Task) {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     };
 
     let repo = setup_real_git_repo();

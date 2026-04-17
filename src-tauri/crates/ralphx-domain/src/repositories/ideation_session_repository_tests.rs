@@ -179,7 +179,6 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         _id: &IdeationSessionId,
         _status: VerificationStatus,
         _in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         Ok(())
     }
@@ -191,14 +190,30 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, crate::domain::entities::VerificationRunSnapshot)> {
         unimplemented!()
     }
 
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(VerificationStatus, bool)>> {
+        Ok(None)
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _snapshot: &crate::domain::entities::VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _generation: i32,
+    ) -> AppResult<Option<crate::domain::entities::VerificationRunSnapshot>> {
         Ok(None)
     }
 
@@ -303,6 +318,13 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         _auto_accept_started_at: Option<String>,
     ) -> AppResult<()> {
         unimplemented!()
+    }
+
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        Ok(0)
     }
 
     fn count_active_by_session_sync(
@@ -476,8 +498,12 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
+        verification_current_round: None,
+        verification_max_rounds: None,
+        verification_gap_count: 0,
+        verification_gap_score: None,
+        verification_convergence_reason: None,
         source_project_id: None,
         source_session_id: None,
         source_task_id: None,
@@ -500,6 +526,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        last_effective_model: None,
     }
 }
 

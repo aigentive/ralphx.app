@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PlanTabContent } from "./PlanTabContent";
 import { useIdeationStore } from "@/stores/ideationStore";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
-import type { IdeationSettings } from "@/types/ideation-config";
 import type { Artifact } from "@/types/artifact";
 
 vi.mock("sonner", () => ({
@@ -67,19 +66,6 @@ const mockSession: IdeationSession = {
   sessionPurpose: "general",
 };
 
-const optionalSettings: IdeationSettings = {
-  planMode: "optional",
-  requirePlanApproval: false,
-  suggestPlansForComplex: true,
-  autoLinkProposals: true,
-};
-const requiredSettings: IdeationSettings = {
-  planMode: "required",
-  requirePlanApproval: false,
-  suggestPlansForComplex: true,
-  autoLinkProposals: true,
-};
-
 const defaultProps = {
   session: mockSession,
   proposals: [] as TaskProposal[],
@@ -107,29 +93,17 @@ describe("PlanTabContent — PlanEmptyState integration", () => {
     vi.clearAllMocks();
   });
 
-  it("renders PlanEmptyState when no plan, settings loaded with optional planMode, and no proposals", () => {
-    useIdeationStore.setState({ planArtifact: null, ideationSettings: optionalSettings });
-    render(<PlanTabContent {...defaultProps} />);
-    expect(screen.getByTestId("plan-empty-state")).toBeInTheDocument();
-  });
-
-  it("renders PlanEmptyState when ideationSettings is null (null treated as non-required mode)", () => {
+  it("renders PlanEmptyState when no plan and no proposals", () => {
     useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     expect(screen.getByTestId("plan-empty-state")).toBeInTheDocument();
-  });
-
-  it("does NOT render PlanEmptyState when planMode is 'required' (spinner shown instead)", () => {
-    useIdeationStore.setState({ planArtifact: null, ideationSettings: requiredSettings });
-    render(<PlanTabContent {...defaultProps} />);
-    expect(screen.queryByTestId("plan-empty-state")).toBeNull();
   });
 
   it("does NOT render PlanEmptyState when proposals exist (Import button shown instead)", () => {
     const proposals = [
       { id: "p1", title: "Proposal 1" } as TaskProposal,
     ];
-    useIdeationStore.setState({ planArtifact: null, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} proposals={proposals} />);
     expect(screen.queryByTestId("plan-empty-state")).toBeNull();
     // Import button is shown instead
@@ -138,7 +112,7 @@ describe("PlanTabContent — PlanEmptyState integration", () => {
 
   it("calls onImportPlan when the browse button inside PlanEmptyState is clicked", async () => {
     const onImportPlan = vi.fn();
-    useIdeationStore.setState({ planArtifact: null, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} onImportPlan={onImportPlan} />);
     await userEvent.click(screen.getByTestId("drop-hint"));
     expect(onImportPlan).toHaveBeenCalledTimes(1);
@@ -152,14 +126,14 @@ describe("PlanTabContent — PlanEditor wiring", () => {
   });
 
   it("shows PlanDisplay when plan artifact exists and not editing", () => {
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     expect(screen.getByTestId("plan-display")).toBeInTheDocument();
     expect(screen.queryByTestId("plan-editor")).toBeNull();
   });
 
   it("switches to PlanEditor when Edit button is clicked", async () => {
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     await userEvent.click(screen.getByTestId("edit-button"));
     expect(screen.getByTestId("plan-editor")).toBeInTheDocument();
@@ -168,14 +142,14 @@ describe("PlanTabContent — PlanEditor wiring", () => {
 
   it("calls onHistoricalVersionViewed when Edit button is clicked", async () => {
     const onHistoricalVersionViewed = vi.fn();
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} onHistoricalVersionViewed={onHistoricalVersionViewed} />);
     await userEvent.click(screen.getByTestId("edit-button"));
     expect(onHistoricalVersionViewed).toHaveBeenCalledTimes(1);
   });
 
   it("returns to PlanDisplay on Cancel", async () => {
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     await userEvent.click(screen.getByTestId("edit-button"));
     await userEvent.click(screen.getByTestId("cancel-button"));
@@ -184,7 +158,7 @@ describe("PlanTabContent — PlanEditor wiring", () => {
   });
 
   it("calls setPlanArtifact and returns to PlanDisplay on Save", async () => {
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     await userEvent.click(screen.getByTestId("edit-button"));
     await userEvent.click(screen.getByTestId("save-button"));
@@ -194,7 +168,7 @@ describe("PlanTabContent — PlanEditor wiring", () => {
 
   it("exits edit mode with toast when plan version changes externally while editing", async () => {
     const { toast } = await import("sonner");
-    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
     await userEvent.click(screen.getByTestId("edit-button"));
     expect(screen.getByTestId("plan-editor")).toBeInTheDocument();

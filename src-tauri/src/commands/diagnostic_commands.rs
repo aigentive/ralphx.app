@@ -1,9 +1,36 @@
-// Diagnostic commands — agent health inspection for runtime observability
+// Diagnostic commands — agent health and harness availability inspection
 
 use serde::Serialize;
 use tauri::State;
 
+use crate::application::harness_runtime_registry::{
+    probe_codex_harness_with_capabilities, HarnessRuntimeProbe,
+};
 use crate::application::AppState;
+use crate::infrastructure::agents::CodexCliCapabilities;
+
+#[derive(Debug, Clone)]
+pub struct CodexCliProbeStatus {
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub available: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub error: Option<String>,
+}
+
+impl From<HarnessRuntimeProbe> for CodexCliProbeStatus {
+    fn from(value: HarnessRuntimeProbe) -> Self {
+        Self {
+            binary_path: value.binary_path,
+            binary_found: value.binary_found,
+            probe_succeeded: value.probe_succeeded,
+            available: value.available,
+            missing_core_exec_features: value.missing_core_exec_features,
+            error: value.error,
+        }
+    }
+}
 
 /// Serializable IPR entry for agent health report
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +59,22 @@ pub struct AgentHealthReport {
     pub ipr_entries: Vec<IprEntryResponse>,
     /// All agents currently tracked in the running agent registry
     pub running_agents: Vec<RunningAgentResponse>,
+}
+
+/// Codex CLI diagnostics for backend availability and feature support.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCliDiagnosticsResponse {
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub version: Option<String>,
+    pub has_core_exec_support: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub supports_search_flag: bool,
+    pub supports_resume_subcommand: bool,
+    pub supports_mcp_subcommand: bool,
+    pub error: Option<String>,
 }
 
 /// Get agent health — IPR entries + running agents for runtime inspection.
@@ -68,4 +111,79 @@ pub async fn get_agent_health(state: State<'_, AppState>) -> Result<AgentHealthR
         ipr_entries,
         running_agents,
     })
+}
+
+#[doc(hidden)]
+pub fn build_codex_cli_diagnostics_response(
+    probe: CodexCliProbeStatus,
+    capabilities: Option<CodexCliCapabilities>,
+) -> CodexCliDiagnosticsResponse {
+    match capabilities {
+        Some(capabilities) => CodexCliDiagnosticsResponse {
+            binary_path: probe.binary_path,
+            binary_found: probe.binary_found,
+            probe_succeeded: probe.probe_succeeded,
+            version: capabilities.version.clone(),
+            has_core_exec_support: capabilities.has_core_exec_support(),
+            missing_core_exec_features: capabilities
+                .missing_core_exec_features()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            supports_search_flag: capabilities.supports_search_flag,
+            supports_resume_subcommand: capabilities.supports_resume_subcommand,
+            supports_mcp_subcommand: capabilities.supports_mcp_subcommand,
+            error: probe.error,
+        },
+        None => CodexCliDiagnosticsResponse {
+            binary_path: probe.binary_path,
+            binary_found: probe.binary_found,
+            probe_succeeded: probe.probe_succeeded,
+            version: None,
+            has_core_exec_support: probe.available,
+            missing_core_exec_features: probe.missing_core_exec_features,
+            supports_search_flag: false,
+            supports_resume_subcommand: false,
+            supports_mcp_subcommand: false,
+            error: probe.error,
+        },
+    }
+}
+
+/// Get Codex CLI diagnostics without requiring the frontend to shell out locally.
+#[tauri::command]
+pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
+    let (probe, capabilities) = probe_codex_harness_with_capabilities();
+    Ok(build_codex_cli_diagnostics_response(probe.into(), capabilities))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_codex_cli_diagnostics_response_preserves_probe_error_without_capabilities() {
+        let response = build_codex_cli_diagnostics_response(
+            CodexCliProbeStatus {
+                binary_path: Some("/usr/local/bin/codex".to_string()),
+                binary_found: true,
+                probe_succeeded: false,
+                available: false,
+                missing_core_exec_features: vec!["exec".to_string()],
+                error: Some("Codex CLI is missing required capability: exec".to_string()),
+            },
+            None,
+        );
+
+        assert!(!response.probe_succeeded);
+        assert!(!response.has_core_exec_support);
+        assert_eq!(
+            response.missing_core_exec_features,
+            vec!["exec".to_string()]
+        );
+        assert_eq!(
+            response.error.as_deref(),
+            Some("Codex CLI is missing required capability: exec")
+        );
+    }
 }

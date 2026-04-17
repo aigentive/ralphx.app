@@ -2,13 +2,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import type {
-  ChatConversation,
-  AgentRun,
-  ContextType,
-} from "../types/chat-conversation";
+import type { ChatConversation, AgentRun, ContextType } from "../types/chat-conversation";
+import { normalizeConversationProviderMetadata } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
+import { isWebMode } from "@/lib/tauri-detection";
 
 // ============================================================================
 // Typed Invoke Helper
@@ -46,6 +44,20 @@ export interface ChatMessageResponse {
   contentBlocks: ContentBlockItem[] | null;
   /** Sender name for team mode messages (teammate name or "lead") */
   sender: string | null;
+  attributionSource?: string | null;
+  providerHarness?: string | null;
+  providerSessionId?: string | null;
+  upstreamProvider?: string | null;
+  providerProfile?: string | null;
+  logicalModel?: string | null;
+  effectiveModelId?: string | null;
+  logicalEffort?: string | null;
+  effectiveEffort?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  cacheReadTokens?: number | null;
+  estimatedUsd?: number | null;
   createdAt: string;
 }
 
@@ -73,6 +85,7 @@ export function parseContentBlocks(raw: unknown): ContentBlockItem[] {
       name: block.name,
       arguments: block.arguments,
       result: block.result,
+      parentToolUseId: block.parent_tool_use_id ?? block.parentToolUseId,
     };
     // Transform diff_context (snake_case) to diffContext (camelCase) for tool_use blocks
     if (block.type === "tool_use" && block.diff_context) {
@@ -103,6 +116,7 @@ export function parseToolCalls(raw: unknown): ToolCall[] {
       name: tc.name ?? "unknown",
       arguments: tc.arguments ?? {},
       result: tc.result,
+      parentToolUseId: tc.parent_tool_use_id ?? tc.parentToolUseId,
       error: tc.error,
     };
     if (tc.diff_context) {
@@ -146,13 +160,34 @@ export interface ActiveStreamingTaskResponse {
   subagent_type?: string;
   model?: string;
   status: string;
+  agent_id?: string;
   teammate_name?: string;
+  delegated_job_id?: string;
+  delegated_session_id?: string;
+  delegated_conversation_id?: string;
+  delegated_agent_run_id?: string;
+  provider_harness?: string;
+  provider_session_id?: string;
+  upstream_provider?: string;
+  provider_profile?: string;
+  logical_model?: string;
+  effective_model_id?: string;
+  logical_effort?: string;
+  effective_effort?: string;
+  approval_policy?: string;
+  sandbox_mode?: string;
   /** Total tokens used (from TaskCompleted stats) */
   total_tokens?: number;
   /** Total tool uses count (from TaskCompleted stats) */
   total_tool_uses?: number;
   /** Duration in milliseconds (from TaskCompleted stats) */
   duration_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_read_tokens?: number;
+  estimated_usd?: number;
+  text_output?: string;
 }
 
 /**
@@ -218,6 +253,13 @@ export interface ChildSessionStatusResponse {
 export async function getChildSessionStatus(
   sessionId: string
 ): Promise<ChildSessionStatusResponse> {
+  if (isWebMode()) {
+    const mockedResponse = await window.__mockChatApi?.getChildSessionStatus(sessionId);
+    if (mockedResponse) {
+      return mockedResponse;
+    }
+  }
+
   const res = await fetch(
     `http://localhost:3847/api/ideation/sessions/${sessionId}/child-status?include_messages=true&message_limit=5`
   );
@@ -254,6 +296,10 @@ const ChatConversationResponseSchema = z.object({
   context_type: z.string(),
   context_id: z.string(),
   claude_session_id: z.string().nullable(),
+  provider_session_id: z.string().nullable().optional(),
+  provider_harness: z.string().min(1).nullable().optional(),
+  upstream_provider: z.string().nullable().optional(),
+  provider_profile: z.string().nullable().optional(),
   title: z.string().nullable(),
   message_count: z.number(),
   last_message_at: z.string().nullable(),
@@ -276,16 +322,170 @@ type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
 type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
 
 function transformConversation(raw: RawConversation): ChatConversation {
+  const providerMetadata = normalizeConversationProviderMetadata({
+    claudeSessionId: raw.claude_session_id,
+    providerSessionId: raw.provider_session_id ?? null,
+    providerHarness: raw.provider_harness ?? null,
+  });
+
   return {
     id: raw.id,
     contextType: raw.context_type as ContextType,
     contextId: raw.context_id,
-    claudeSessionId: raw.claude_session_id,
+    ...providerMetadata,
+    upstreamProvider: raw.upstream_provider ?? null,
+    providerProfile: raw.provider_profile ?? null,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+export interface UsageTotalsResponse {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  estimatedUsd: number | null;
+}
+
+export interface UsageBucketResponse {
+  key: string;
+  count: number;
+  usage: UsageTotalsResponse;
+}
+
+export interface ConversationUsageCoverageResponse {
+  providerMessageCount: number;
+  providerMessagesWithUsage: number;
+  runCount: number;
+  runsWithUsage: number;
+  effectiveTotalsSource: string;
+}
+
+export interface ConversationAttributionCoverageResponse {
+  providerMessageCount: number;
+  providerMessagesWithAttribution: number;
+  runCount: number;
+  runsWithAttribution: number;
+}
+
+export interface ConversationStatsResponse {
+  conversationId: string;
+  contextType: ContextType;
+  contextId: string;
+  providerHarness: string | null;
+  upstreamProvider: string | null;
+  providerProfile: string | null;
+  messageUsageTotals: UsageTotalsResponse;
+  runUsageTotals: UsageTotalsResponse;
+  effectiveUsageTotals: UsageTotalsResponse;
+  usageCoverage: ConversationUsageCoverageResponse;
+  attributionCoverage: ConversationAttributionCoverageResponse;
+  byHarness: UsageBucketResponse[];
+  byUpstreamProvider: UsageBucketResponse[];
+  byModel: UsageBucketResponse[];
+  byEffort: UsageBucketResponse[];
+}
+
+const UsageTotalsResponseSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_tokens: z.number(),
+  cache_read_tokens: z.number(),
+  estimated_usd: z.number().nullable(),
+});
+
+const UsageBucketResponseSchema = z.object({
+  key: z.string(),
+  count: z.number(),
+  usage: UsageTotalsResponseSchema,
+});
+
+const ConversationUsageCoverageResponseSchema = z.object({
+  provider_message_count: z.number(),
+  provider_messages_with_usage: z.number(),
+  run_count: z.number(),
+  runs_with_usage: z.number(),
+  effective_totals_source: z.string(),
+});
+
+const ConversationAttributionCoverageResponseSchema = z.object({
+  provider_message_count: z.number(),
+  provider_messages_with_attribution: z.number(),
+  run_count: z.number(),
+  runs_with_attribution: z.number(),
+});
+
+const ConversationStatsResponseSchema = z.object({
+  conversation_id: z.string(),
+  context_type: z.string(),
+  context_id: z.string(),
+  provider_harness: z.string().nullable(),
+  upstream_provider: z.string().nullable(),
+  provider_profile: z.string().nullable(),
+  message_usage_totals: UsageTotalsResponseSchema,
+  run_usage_totals: UsageTotalsResponseSchema,
+  effective_usage_totals: UsageTotalsResponseSchema,
+  usage_coverage: ConversationUsageCoverageResponseSchema,
+  attribution_coverage: ConversationAttributionCoverageResponseSchema,
+  by_harness: z.array(UsageBucketResponseSchema),
+  by_upstream_provider: z.array(UsageBucketResponseSchema),
+  by_model: z.array(UsageBucketResponseSchema),
+  by_effort: z.array(UsageBucketResponseSchema),
+});
+
+type RawConversationStats = z.infer<typeof ConversationStatsResponseSchema>;
+
+function transformUsageTotals(raw: z.infer<typeof UsageTotalsResponseSchema>): UsageTotalsResponse {
+  return {
+    inputTokens: raw.input_tokens,
+    outputTokens: raw.output_tokens,
+    cacheCreationTokens: raw.cache_creation_tokens,
+    cacheReadTokens: raw.cache_read_tokens,
+    estimatedUsd: raw.estimated_usd,
+  };
+}
+
+function transformUsageBucket(raw: z.infer<typeof UsageBucketResponseSchema>): UsageBucketResponse {
+  return {
+    key: raw.key,
+    count: raw.count,
+    usage: transformUsageTotals(raw.usage),
+  };
+}
+
+function transformConversationStats(raw: RawConversationStats): ConversationStatsResponse {
+  return {
+    conversationId: raw.conversation_id,
+    contextType: raw.context_type as ContextType,
+    contextId: raw.context_id,
+    providerHarness: raw.provider_harness,
+    upstreamProvider: raw.upstream_provider,
+    providerProfile: raw.provider_profile,
+    messageUsageTotals: transformUsageTotals(raw.message_usage_totals),
+    runUsageTotals: transformUsageTotals(raw.run_usage_totals),
+    effectiveUsageTotals: transformUsageTotals(raw.effective_usage_totals),
+    usageCoverage: {
+      providerMessageCount: raw.usage_coverage.provider_message_count,
+      providerMessagesWithUsage: raw.usage_coverage.provider_messages_with_usage,
+      runCount: raw.usage_coverage.run_count,
+      runsWithUsage: raw.usage_coverage.runs_with_usage,
+      effectiveTotalsSource: raw.usage_coverage.effective_totals_source,
+    },
+    attributionCoverage: {
+      providerMessageCount: raw.attribution_coverage.provider_message_count,
+      providerMessagesWithAttribution:
+        raw.attribution_coverage.provider_messages_with_attribution,
+      runCount: raw.attribution_coverage.run_count,
+      runsWithAttribution: raw.attribution_coverage.runs_with_attribution,
+    },
+    byHarness: raw.by_harness.map(transformUsageBucket),
+    byUpstreamProvider: raw.by_upstream_provider.map(transformUsageBucket),
+    byModel: raw.by_model.map(transformUsageBucket),
+    byEffort: raw.by_effort.map(transformUsageBucket),
   };
 }
 
@@ -307,9 +507,24 @@ const AgentMessageSchema = z.object({
   id: z.string(),
   role: z.string(),
   content: z.string(),
+  metadata: z.string().nullable().optional(),
   tool_calls: z.any().nullable(),
   content_blocks: z.any().nullable(),
   sender: z.string().nullable().optional(),
+  attribution_source: z.string().nullable().optional(),
+  provider_harness: z.string().nullable().optional(),
+  provider_session_id: z.string().nullable().optional(),
+  upstream_provider: z.string().nullable().optional(),
+  provider_profile: z.string().nullable().optional(),
+  logical_model: z.string().nullable().optional(),
+  effective_model_id: z.string().nullable().optional(),
+  logical_effort: z.string().nullable().optional(),
+  effective_effort: z.string().nullable().optional(),
+  input_tokens: z.number().nullable().optional(),
+  output_tokens: z.number().nullable().optional(),
+  cache_creation_tokens: z.number().nullable().optional(),
+  cache_read_tokens: z.number().nullable().optional(),
+  estimated_usd: z.number().nullable().optional(),
   created_at: z.string(),
 });
 
@@ -323,8 +538,22 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     taskId: null,
     role: raw.role,
     sender: raw.sender ?? null,
+    attributionSource: raw.attribution_source ?? null,
+    providerHarness: raw.provider_harness ?? null,
+    providerSessionId: raw.provider_session_id ?? null,
+    upstreamProvider: raw.upstream_provider ?? null,
+    providerProfile: raw.provider_profile ?? null,
+    logicalModel: raw.logical_model ?? null,
+    effectiveModelId: raw.effective_model_id ?? null,
+    logicalEffort: raw.logical_effort ?? null,
+    effectiveEffort: raw.effective_effort ?? null,
+    inputTokens: raw.input_tokens ?? null,
+    outputTokens: raw.output_tokens ?? null,
+    cacheCreationTokens: raw.cache_creation_tokens ?? null,
+    cacheReadTokens: raw.cache_read_tokens ?? null,
+    estimatedUsd: raw.estimated_usd ?? null,
     content: raw.content,
-    metadata: null,
+    metadata: raw.metadata ?? null,
     parentMessageId: null,
     conversationId: null,
     // Parse at API layer to avoid redundant parsing in components
@@ -373,6 +602,17 @@ export async function getConversation(
     conversation: transformConversation(raw.conversation),
     messages: raw.messages.map(transformAgentMessage),
   };
+}
+
+export async function getConversationStats(
+  conversationId: string
+): Promise<ConversationStatsResponse | null> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_stats",
+    { conversationId },
+    ConversationStatsResponseSchema.nullable()
+  );
+  return raw ? transformConversationStats(raw) : null;
 }
 
 /**
@@ -447,6 +687,7 @@ export const chatApi = {
   // Conversation management
   listConversations,
   getConversation,
+  getConversationStats,
   createConversation,
   getAgentRunStatus,
   // Message sending & queue

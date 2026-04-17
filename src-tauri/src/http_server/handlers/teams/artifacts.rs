@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::{VerificationFindingGap, VerificationFindingMetadata};
 
 const PLACEHOLDER_SESSION_IDS: &[&str] = &["SESSION_ID", "unknown", "<session_id>"];
 
@@ -59,6 +60,114 @@ async fn validate_team_artifact_session_id(
     Ok(session_id.to_string())
 }
 
+fn normalize_verification_critic(critic: &str) -> String {
+    critic.trim().to_lowercase()
+}
+
+fn verification_title_prefix(critic: &str) -> String {
+    match normalize_verification_critic(critic).as_str() {
+        "completeness" => "Completeness".to_string(),
+        "feasibility" => "Feasibility".to_string(),
+        "intent" => "IntentAlignment".to_string(),
+        "code-quality" => "CodeQuality".to_string(),
+        "ux" => "UX".to_string(),
+        "prompt-quality" => "PromptQuality".to_string(),
+        "pipeline-safety" => "PipelineSafety".to_string(),
+        "state-machine" => "StateMachine".to_string(),
+        other => {
+            let mut chars = other.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => "Verification".to_string(),
+            }
+        }
+    }
+}
+
+fn build_verification_finding_title(
+    critic: &str,
+    round: u32,
+    title_suffix: Option<&str>,
+) -> String {
+    let prefix = verification_title_prefix(critic);
+    let suffix = title_suffix
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(" - {value}"))
+        .unwrap_or_default();
+    format!("{prefix}: Round {round}{suffix}")
+}
+
+fn render_verification_finding_content(finding: &VerificationFindingMetadata) -> String {
+    let mut lines = vec![
+        "## Verification Finding".to_string(),
+        format!("- Critic: {}", finding.critic),
+        format!("- Round: {}", finding.round),
+        format!("- Status: {}", finding.status),
+    ];
+
+    if let Some(coverage) = finding.coverage.as_deref() {
+        lines.push(format!("- Coverage: {coverage}"));
+    }
+
+    lines.push(String::new());
+    lines.push("## Summary".to_string());
+    lines.push(finding.summary.clone());
+
+    if !finding.gaps.is_empty() {
+        lines.push(String::new());
+        lines.push("## Gaps".to_string());
+        for gap in &finding.gaps {
+            let mut line = format!(
+                "- [{}] {}: {}",
+                gap.severity, gap.category, gap.description
+            );
+            if let Some(lens) = gap.lens.as_deref().filter(|value| !value.is_empty()) {
+                line.push_str(&format!(" (lens: {lens})"));
+            }
+            lines.push(line);
+            if let Some(why) = gap
+                .why_it_matters
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                lines.push(format!("  Why it matters: {why}"));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn map_verification_gap_payload(
+    gap: &VerificationFindingGap,
+) -> VerificationFindingGapPayload {
+    VerificationFindingGapPayload {
+        severity: gap.severity.clone(),
+        category: gap.category.clone(),
+        description: gap.description.clone(),
+        why_it_matters: gap.why_it_matters.clone(),
+        source: gap.source.clone(),
+        lens: gap.lens.clone(),
+    }
+}
+
+fn parse_created_after_filter(
+    created_after: Option<&str>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, (StatusCode, String)> {
+    let Some(created_after) = created_after.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    let parsed = chrono::DateTime::parse_from_rfc3339(created_after).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid created_after timestamp '{created_after}': {error}"),
+        )
+    })?;
+    Ok(Some(parsed.with_timezone(&chrono::Utc)))
+}
+
 pub async fn create_team_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateTeamArtifactRequest>,
@@ -94,6 +203,7 @@ pub async fn create_team_artifact(
         author_teammate: "team-lead".to_string(),
         session_id: Some(resolved_session_id.clone()),
         team_phase: None,
+        verification_finding: None,
     });
 
     let artifact_id = artifact.id.to_string();
@@ -142,6 +252,149 @@ pub async fn create_team_artifact(
     }
 
     Ok(Json(CreateTeamArtifactResponse { artifact_id }))
+}
+
+pub async fn publish_verification_finding(
+    State(state): State<HttpServerState>,
+    Json(req): Json<PublishVerificationFindingRequest>,
+) -> Result<Json<PublishVerificationFindingResponse>, (StatusCode, String)> {
+    let resolved_session_id =
+        validate_team_artifact_session_id(&state, &req.session_id, "create").await?;
+
+    let critic = normalize_verification_critic(&req.critic);
+    if critic.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "critic is required for publish_verification_finding".to_string(),
+        ));
+    }
+
+    let status = req.status.trim().to_lowercase();
+    if !matches!(status.as_str(), "complete" | "partial" | "error") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "status must be one of: complete, partial, error".to_string(),
+        ));
+    }
+
+    let summary = req.summary.trim().to_string();
+    if summary.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "summary is required for publish_verification_finding".to_string(),
+        ));
+    }
+
+    let mut gaps = Vec::with_capacity(req.gaps.len());
+    for gap in &req.gaps {
+        let severity = gap.severity.trim().to_lowercase();
+        if !matches!(severity.as_str(), "critical" | "high" | "medium" | "low") {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Invalid verification gap severity '{}'. Valid severities: critical, high, medium, low",
+                    gap.severity
+                ),
+            ));
+        }
+        let category = gap.category.trim().to_string();
+        let description = gap.description.trim().to_string();
+        if category.is_empty() || description.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Each verification gap requires non-empty category and description".to_string(),
+            ));
+        }
+        gaps.push(VerificationFindingGap {
+            severity,
+            category,
+            description,
+            why_it_matters: gap
+                .why_it_matters
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            source: gap
+                .source
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+            lens: gap
+                .lens
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        });
+    }
+
+    let finding = VerificationFindingMetadata {
+        critic: critic.clone(),
+        round: req.round,
+        status,
+        coverage: req
+            .coverage
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        summary,
+        gaps,
+    };
+
+    let title = build_verification_finding_title(&critic, req.round, req.title_suffix.as_deref());
+    let content = render_verification_finding_content(&finding);
+    let mut artifact = Artifact::new_inline(
+        &title,
+        ArtifactType::VerificationFinding,
+        content,
+        "team-lead",
+    );
+    artifact.bucket_id = Some(ArtifactBucketId::from_string("team-findings"));
+    artifact.metadata.team_metadata = Some(crate::domain::entities::TeamArtifactMetadata {
+        team_name: "verification".to_string(),
+        author_teammate: critic.clone(),
+        session_id: Some(resolved_session_id.clone()),
+        team_phase: Some(format!("round-{}", req.round)),
+        verification_finding: Some(finding.clone()),
+    });
+
+    let artifact_id = artifact.id.to_string();
+    state
+        .app_state
+        .artifact_repo
+        .create(artifact)
+        .await
+        .map_err(|e| {
+            error!("Failed to create verification finding artifact: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    info!(
+        artifact_id = %artifact_id,
+        session_id = %resolved_session_id,
+        requested_session_id = %req.session_id,
+        critic = %critic,
+        round = req.round,
+        "Verification finding artifact created"
+    );
+
+    if let Some(app_handle) = &state.app_state.app_handle {
+        use crate::application::chat_service::{events, TeamArtifactCreatedPayload};
+        let _ = app_handle.emit(
+            events::TEAM_ARTIFACT_CREATED,
+            TeamArtifactCreatedPayload {
+                artifact_id: artifact_id.clone(),
+                session_id: resolved_session_id.clone(),
+                artifact_type: "VerificationFinding".to_string(),
+                title,
+            },
+        );
+    }
+
+    Ok(Json(PublishVerificationFindingResponse { artifact_id }))
 }
 
 // ============================================================================
@@ -214,4 +467,78 @@ pub async fn get_team_artifacts(
         artifacts: filtered,
         count,
     }))
+}
+
+pub async fn get_verification_findings(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Query(query): Query<VerificationFindingQuery>,
+) -> Result<Json<GetVerificationFindingsResponse>, (StatusCode, String)> {
+    let resolved_session_id =
+        validate_team_artifact_session_id(&state, &session_id, "read").await?;
+    let created_after = parse_created_after_filter(query.created_after.as_deref())?;
+    let critic_filter = query
+        .critic
+        .as_deref()
+        .map(normalize_verification_critic)
+        .filter(|value| !value.is_empty());
+
+    let bucket_id = ArtifactBucketId::from_string("team-findings");
+    let artifacts = state
+        .app_state
+        .artifact_repo
+        .get_by_bucket(&bucket_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get verification finding artifacts: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let mut findings: Vec<VerificationFindingSummary> = artifacts
+        .into_iter()
+        .filter(|artifact| artifact.artifact_type == ArtifactType::VerificationFinding)
+        .filter_map(|artifact| {
+            let team_metadata = artifact.metadata.team_metadata.as_ref()?;
+            if team_metadata.session_id.as_deref() != Some(resolved_session_id.as_str()) {
+                return None;
+            }
+            let verification = team_metadata.verification_finding.as_ref()?;
+            if let Some(round) = query.round {
+                if verification.round != round {
+                    return None;
+                }
+            }
+            if let Some(ref critic) = critic_filter {
+                if normalize_verification_critic(&verification.critic) != *critic {
+                    return None;
+                }
+            }
+            if let Some(created_after) = created_after {
+                if artifact.metadata.created_at < created_after {
+                    return None;
+                }
+            }
+            Some(VerificationFindingSummary {
+                artifact_id: artifact.id.to_string(),
+                title: artifact.name.clone(),
+                created_at: artifact.metadata.created_at.to_rfc3339(),
+                author_teammate: Some(team_metadata.author_teammate.clone()),
+                critic: verification.critic.clone(),
+                round: verification.round,
+                status: verification.status.clone(),
+                coverage: verification.coverage.clone(),
+                summary: verification.summary.clone(),
+                gaps: verification
+                    .gaps
+                    .iter()
+                    .map(map_verification_gap_payload)
+                    .collect(),
+            })
+        })
+        .collect();
+
+    findings.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    let count = findings.len();
+
+    Ok(Json(GetVerificationFindingsResponse { findings, count }))
 }

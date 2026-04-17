@@ -3,7 +3,7 @@ use tracing::warn;
 
 // ── Top-level wrapper ────────────────────────────────────────────────────
 
-/// All runtime configuration collected from ralphx.yaml + env overrides.
+/// All runtime configuration collected from config/ralphx.yaml + env overrides.
 #[derive(Debug, Clone)]
 pub struct AllRuntimeConfig {
     pub stream: StreamTimeoutsConfig,
@@ -24,7 +24,7 @@ pub struct AllRuntimeConfig {
 /// A specialist agent entry in the verification pipeline.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SpecialistEntry {
-    /// Unique agent name (matches ralphx.yaml agent name, e.g. "ideation-specialist-code-quality").
+    /// Unique agent name (matches config/ralphx.yaml agent name, e.g. "ralphx-ideation-specialist-code-quality").
     pub name: String,
     /// Human-readable display name shown in the UI.
     pub display_name: String,
@@ -38,7 +38,7 @@ pub struct SpecialistEntry {
 
 /// Configuration for the plan verification feature.
 ///
-/// All fields required in ralphx.yaml under `ideation.verification:`.
+/// All fields required in config/ralphx.yaml under `ideation.verification:`.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct VerificationConfig {
@@ -66,7 +66,7 @@ pub struct VerificationConfig {
     #[serde(default = "default_accept_stale_execution_plan_secs")]
     pub accept_stale_execution_plan_secs: u64,
     /// Specialist agents available in the verification pipeline.
-    /// Loaded from `verification.specialists` in `ralphx.yaml`.
+    /// Loaded from `verification.specialists` in `config/ralphx.yaml`.
     #[serde(default)]
     pub specialists: Vec<SpecialistEntry>,
 }
@@ -200,7 +200,7 @@ pub(crate) struct TimeoutsWrapper {
 
 // ── Individual config structs ────────────────────────────────────────────
 
-/// All fields required in ralphx.yaml except backward-compatible timeout fields
+/// All fields required in config/ralphx.yaml except backward-compatible timeout fields
 /// with serde defaults (`max_wall_clock_secs`, `completion_grace_secs`).
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
@@ -244,7 +244,7 @@ impl Default for StreamTimeoutsConfig {
     }
 }
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in config/ralphx.yaml — no serde defaults.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReconciliationConfig {
@@ -424,7 +424,7 @@ impl Default for ReconciliationConfig {
     }
 }
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in config/ralphx.yaml — no serde defaults.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitRuntimeConfig {
@@ -466,7 +466,7 @@ impl Default for GitRuntimeConfig {
     }
 }
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in config/ralphx.yaml — no serde defaults.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SchedulerConfig {
@@ -491,7 +491,7 @@ impl Default for SchedulerConfig {
     }
 }
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in config/ralphx.yaml — no serde defaults.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SupervisorRuntimeConfig {
@@ -516,7 +516,7 @@ impl Default for SupervisorRuntimeConfig {
     }
 }
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in config/ralphx.yaml — no serde defaults.
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LimitsConfig {

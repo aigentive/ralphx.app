@@ -358,6 +358,8 @@ If validation keeps failing and reverting (indicating a code problem, not a tran
 
 RalphX uses AI agents to handle merge conflicts and validation failures automatically.
 
+Today the merge lane is still usually Claude-backed. Codex support is being added through the shared multi-harness runtime, but team-mode merge helpers remain Claude-only for now.
+
 ### Merger Agent
 
 **When it's spawned:** When the programmatic merge detects conflicts that can't be resolved automatically.

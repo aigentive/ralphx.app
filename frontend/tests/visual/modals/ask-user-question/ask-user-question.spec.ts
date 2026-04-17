@@ -1,253 +1,150 @@
 import { test, expect } from "@playwright/test";
-import { AskUserQuestionModalPage } from "../../../pages/modals/ask-user-question.page";
-import { setupApp } from "../../../fixtures/setup.fixtures";
+import { setupIdeationChatScenario } from "../../../fixtures/chat.fixtures";
 import {
-  triggerAskUserQuestionModal,
+  triggerAskUserQuestionBanner,
   createSingleSelectQuestion,
   createMultiSelectQuestion,
 } from "../../../helpers/ask-user-question.helpers";
 
 /**
- * Visual regression tests for AskUserQuestionModal component.
- *
- * The AskUserQuestionModal is a modal that displays questions from agents
- * requiring user input during execution. It supports both single-select
- * (radio buttons) and multi-select (checkboxes) options, with an always-present
- * "Other" option for custom text responses.
+ * Visual regression tests for the inline QuestionInputBanner component.
  */
 
-test.describe("AskUserQuestionModal", () => {
-  let modalPage: AskUserQuestionModalPage;
-
+test.describe("QuestionInputBanner", () => {
   test.beforeEach(async ({ page }) => {
-    modalPage = new AskUserQuestionModalPage(page);
-    await setupApp(page);
+    await setupIdeationChatScenario(page, "ideation_db_widget_mix");
   });
 
   test.describe("single-select question", () => {
-    test("renders modal with question and options", async ({ page }) => {
+    test("renders banner with question and options", async ({ page }) => {
       const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Wait for modal to appear
-      await modalPage.waitForModal();
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
 
-      // Verify modal is visible
-      await expect(modalPage.modal).toBeVisible();
-
-      // Verify header and question text
-      await expect(modalPage.header).toHaveText(question.header);
-      await expect(modalPage.questionText).toHaveText(question.question);
-
-      // Verify all options are rendered as radio buttons
-      // 3 options + 1 "Other" option = 4 radio buttons
-      const radioCount = await modalPage.getRadioCount();
-      expect(radioCount).toBe(4);
+      await expect(
+        banner.locator("span").filter({ hasText: question.header! }).first()
+      ).toBeVisible();
+      await expect(banner.getByText(question.question)).toBeVisible();
+      await expect(banner.getByRole("button", { name: /JWT tokens/i })).toBeVisible();
+      await expect(banner.getByRole("button", { name: /Session cookies/i })).toBeVisible();
+      await expect(banner.getByRole("button", { name: /OAuth only/i })).toBeVisible();
     });
 
     test("allows selecting a single option", async ({ page }) => {
       const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Select the first option
-      await modalPage.selectOption("JWT tokens");
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
 
-      // Verify the radio is checked
-      const jwtRadio = modalPage.getRadioByLabel("JWT tokens");
-      await expect(jwtRadio).toHaveAttribute("data-state", "checked");
+      await banner.getByRole("button", { name: /JWT tokens/i }).click();
 
-      // Verify submit button is enabled
-      await expect(modalPage.submitButton).toBeEnabled();
-    });
-
-    test("shows text input when Other is selected", async ({ page }) => {
-      const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
-
-      // Select "Other"
-      const otherRadio = modalPage.getOtherRadio();
-      await otherRadio.click();
-
-      // Verify text input is visible
-      await expect(modalPage.otherInput).toBeVisible();
-
-      // Type custom text
-      await modalPage.otherInput.fill("Custom authentication method");
-
-      // Verify submit button is enabled
-      await expect(modalPage.submitButton).toBeEnabled();
+      const input = page.getByPlaceholder("Type 1-3 or a custom response...");
+      await expect(input).toHaveValue("1");
     });
 
     test("matches snapshot - default state", async ({ page }) => {
       const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Wait for animations to complete
-      await modalPage.waitForAnimations();
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
 
-      // Take snapshot
-      await expect(page).toHaveScreenshot("ask-user-question-single-select.png", {
+      await page.waitForTimeout(200);
+
+      await expect(banner).toHaveScreenshot("ask-user-question-single-select.png", {
         maxDiffPixelRatio: 0.01,
       });
     });
 
     test("matches snapshot - with selection", async ({ page }) => {
       const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Select an option
-      await modalPage.selectOption("JWT tokens");
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
+      await banner.getByRole("button", { name: /JWT tokens/i }).click();
 
-      // Wait for animations
-      await modalPage.waitForAnimations();
+      await page.waitForTimeout(200);
 
-      // Take snapshot
-      await expect(page).toHaveScreenshot("ask-user-question-single-select-selected.png", {
-        maxDiffPixelRatio: 0.01,
-      });
-    });
-
-    test("matches snapshot - Other selected with text", async ({ page }) => {
-      const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
-
-      // Select Other and type text
-      await modalPage.selectOtherWithText("Custom authentication method");
-
-      // Wait for animations
-      await modalPage.waitForAnimations();
-
-      // Take snapshot
-      await expect(page).toHaveScreenshot("ask-user-question-single-select-other.png", {
+      await expect(banner).toHaveScreenshot("ask-user-question-single-select-selected.png", {
         maxDiffPixelRatio: 0.01,
       });
     });
   });
 
   test.describe("multi-select question", () => {
-    test("renders modal with checkboxes", async ({ page }) => {
+    test("renders banner with multi-select chips", async ({ page }) => {
       const question = createMultiSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Wait for modal to appear
-      await modalPage.waitForModal();
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
 
-      // Verify modal is visible
-      await expect(modalPage.modal).toBeVisible();
-
-      // Verify header and question text
-      await expect(modalPage.header).toHaveText(question.header);
-      await expect(modalPage.questionText).toHaveText(question.question);
-
-      // Verify all options are rendered as checkboxes
-      // 3 options + 1 "Other" option = 4 checkboxes
-      const checkboxCount = await modalPage.getCheckboxCount();
-      expect(checkboxCount).toBe(4);
+      await expect(
+        banner.locator("span").filter({ hasText: question.header! }).first()
+      ).toBeVisible();
+      await expect(banner.getByText(question.question)).toBeVisible();
+      await expect(banner.getByRole("button", { name: /Dark mode/i })).toBeVisible();
+      await expect(banner.getByRole("button", { name: /Analytics/i })).toBeVisible();
+      await expect(banner.getByRole("button", { name: /Notifications/i })).toBeVisible();
     });
 
     test("allows selecting multiple options", async ({ page }) => {
       const question = createMultiSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Select multiple options
-      await modalPage.selectMultiple(["Dark mode", "Analytics"]);
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
+      await banner.getByRole("button", { name: /Dark mode/i }).click();
+      await banner.getByRole("button", { name: /Analytics/i }).click();
 
-      // Verify both checkboxes are checked
-      const darkModeCheckbox = modalPage.getCheckboxByLabel("Dark mode");
-      const analyticsCheckbox = modalPage.getCheckboxByLabel("Analytics");
-      await expect(darkModeCheckbox).toHaveAttribute("data-state", "checked");
-      await expect(analyticsCheckbox).toHaveAttribute("data-state", "checked");
-
-      // Verify submit button is enabled
-      await expect(modalPage.submitButton).toBeEnabled();
-    });
-
-    test("allows toggling checkboxes", async ({ page }) => {
-      const question = createMultiSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
-
-      // Check a checkbox
-      await modalPage.toggleCheckbox("Dark mode");
-      const checkbox = modalPage.getCheckboxByLabel("Dark mode");
-      await expect(checkbox).toHaveAttribute("data-state", "checked");
-
-      // Uncheck it
-      await modalPage.toggleCheckbox("Dark mode");
-      await expect(checkbox).toHaveAttribute("data-state", "unchecked");
+      const input = page.getByPlaceholder("Type 1-3 or a custom response...");
+      await expect(input).toHaveValue("1, 2");
     });
 
     test("matches snapshot - default state", async ({ page }) => {
       const question = createMultiSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Wait for animations
-      await modalPage.waitForAnimations();
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
+      await page.waitForTimeout(200);
 
-      // Take snapshot
-      await expect(page).toHaveScreenshot("ask-user-question-multi-select.png", {
+      await expect(banner).toHaveScreenshot("ask-user-question-multi-select.png", {
         maxDiffPixelRatio: 0.01,
       });
     });
 
     test("matches snapshot - multiple selections", async ({ page }) => {
       const question = createMultiSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Select multiple options
-      await modalPage.selectMultiple(["Dark mode", "Notifications"]);
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
+      await banner.getByRole("button", { name: /Dark mode/i }).click();
+      await banner.getByRole("button", { name: /Notifications/i }).click();
 
-      // Wait for animations
-      await modalPage.waitForAnimations();
+      await page.waitForTimeout(200);
 
-      // Take snapshot
-      await expect(page).toHaveScreenshot("ask-user-question-multi-select-selected.png", {
+      await expect(banner).toHaveScreenshot("ask-user-question-multi-select-selected.png", {
         maxDiffPixelRatio: 0.01,
       });
     });
   });
 
-  test.describe("submit button behavior", () => {
-    test("submit button is disabled when no option is selected", async ({ page }) => {
+  test.describe("banner controls", () => {
+    test("dismiss button hides the banner", async ({ page }) => {
       const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
+      await triggerAskUserQuestionBanner(page, question);
 
-      // Verify submit button is disabled
-      await expect(modalPage.submitButton).toBeDisabled();
-    });
+      const banner = page.getByTestId("question-input-banner");
+      await expect(banner).toBeVisible();
+      await page.getByRole("button", { name: "Dismiss question" }).click();
 
-    test("submit button is disabled when Other is selected but input is empty", async ({ page }) => {
-      const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
-
-      // Select Other but don't type anything
-      const otherRadio = modalPage.getOtherRadio();
-      await otherRadio.click();
-
-      // Verify submit button is still disabled
-      await expect(modalPage.submitButton).toBeDisabled();
-    });
-
-    test("submit button is enabled when Other has valid text", async ({ page }) => {
-      const question = createSingleSelectQuestion();
-      await triggerAskUserQuestionModal(page, question);
-      await modalPage.waitForModal();
-
-      // Select Other and type text
-      await modalPage.selectOtherWithText("Custom value");
-
-      // Verify submit button is enabled
-      await expect(modalPage.submitButton).toBeEnabled();
+      await expect(banner).toBeHidden();
     });
   });
 });

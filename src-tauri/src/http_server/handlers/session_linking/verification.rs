@@ -103,7 +103,7 @@ pub(crate) async fn create_verification_child_session(
         }
         Err(e) => {
             error!(
-                "Failed to spawn plan-verifier on verification child session {}: {}",
+                "Failed to spawn ralphx-plan-verifier on verification child session {}: {}",
                 child_session_str, e
             );
             // Archive the child row so it does not linger as an orphan
@@ -162,6 +162,7 @@ mod tests {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 
@@ -184,8 +185,12 @@ mod tests {
             title_source: None,
             verification_status: VerificationStatus::default(),
             verification_in_progress: false,
-            verification_metadata: None,
             verification_generation: 0,
+            verification_current_round: None,
+            verification_max_rounds: None,
+            verification_gap_count: 0,
+            verification_gap_score: None,
+            verification_convergence_reason: None,
             source_project_id: Some("source-project".to_string()),
             source_session_id: Some("source-session".to_string()),
             source_task_id: None,

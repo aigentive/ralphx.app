@@ -1,82 +1,67 @@
 use super::*;
+use crate::application::harness_runtime_registry::{
+    default_repo_root_working_directory, resolve_harness_agent_bootstrap,
+};
 use crate::application::session_namer_prompt::build_session_namer_prompt;
+use crate::domain::agents::DEFAULT_AGENT_HARNESS;
 
-/// Build a fully configured `ClaudeChatService` from shared app + execution state.
+/// Build a fully configured app chat service from shared app + execution state.
 /// Extracted to avoid duplicating the 12-arg constructor chain across multiple handlers.
 pub(crate) fn build_chat_service(
     app: &crate::application::AppState,
     execution_state: &std::sync::Arc<crate::commands::ExecutionState>,
-) -> ClaudeChatService {
-    let mut chat_service = ClaudeChatService::new(
-        Arc::clone(&app.chat_message_repo),
-        Arc::clone(&app.chat_attachment_repo),
-        Arc::clone(&app.artifact_repo),
-        Arc::clone(&app.chat_conversation_repo),
-        Arc::clone(&app.agent_run_repo),
-        Arc::clone(&app.project_repo),
-        Arc::clone(&app.task_repo),
-        Arc::clone(&app.task_dependency_repo),
-        Arc::clone(&app.ideation_session_repo),
-        Arc::clone(&app.activity_event_repo),
-        Arc::clone(&app.message_queue),
-        Arc::clone(&app.running_agent_registry),
-        Arc::clone(&app.memory_event_repo),
-    )
-    .with_execution_state(Arc::clone(execution_state))
-    .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
-    .with_ideation_effort_settings_repo(Arc::clone(&app.ideation_effort_settings_repo))
-    .with_ideation_model_settings_repo(Arc::clone(&app.ideation_model_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
-    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
-    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
-    if let Some(ref handle) = app.app_handle {
-        chat_service = chat_service.with_app_handle(handle.clone());
-    }
-    chat_service
+) -> crate::application::AppChatService {
+    app.build_chat_service_with_execution_state(Arc::clone(execution_state))
 }
 
 /// Fire-and-forget: spawn the session namer agent to auto-name the session.
-pub(super) fn spawn_session_namer(
-    agent_client: Arc<dyn crate::domain::agents::AgenticClient>,
+pub(super) async fn spawn_session_namer(
+    app: &crate::application::AppState,
+    project_id: &str,
     session_id: String,
     prompt: String,
 ) {
+    let runtime = app.resolve_session_namer_runtime().await;
+    let agent_client = Arc::clone(&runtime.client);
+    let project_id = project_id.to_string();
     tokio::spawn(async move {
         use crate::domain::agents::{AgentConfig, AgentRole};
-        use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
-        use std::path::PathBuf;
-
+        use crate::infrastructure::agents::claude::agent_names;
         let namer_instructions = build_session_namer_prompt(&format!(
             "<session_id>{}</session_id>\n<user_message>{}</user_message>",
             session_id, prompt
         ));
 
-        let working_directory = std::env::current_dir()
-            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
-
-        let mut env = std::collections::HashMap::new();
-        env.insert(
-            "RALPHX_AGENT_TYPE".to_string(),
-            mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+        let working_directory = default_repo_root_working_directory();
+        let bootstrap = resolve_harness_agent_bootstrap(
+            runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
+            agent_names::AGENT_SESSION_NAMER,
+            working_directory,
         );
+        let harness_for_log = runtime.harness;
 
         let config = AgentConfig {
-            role: AgentRole::Custom(
-                mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-            ),
+            role: AgentRole::Custom(bootstrap.agent_role.clone()),
             prompt: namer_instructions,
-            working_directory,
-            plugin_dir: Some(plugin_dir),
-            agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-            model: None,
+            working_directory: bootstrap.working_directory,
+            plugin_dir: Some(bootstrap.plugin_dir),
+            agent: Some(bootstrap.agent_name),
+            model: runtime.model,
+            harness: runtime.harness,
+            logical_effort: runtime.logical_effort,
+            approval_policy: runtime.approval_policy,
+            sandbox_mode: runtime.sandbox_mode,
             max_tokens: None,
             timeout_secs: Some(60),
-            env,
+            env: bootstrap.env,
         };
 
+        tracing::info!(
+            session_id = %session_id,
+            project_id = %project_id,
+            harness = ?harness_for_log,
+            "Spawning external ideation session namer agent"
+        );
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {

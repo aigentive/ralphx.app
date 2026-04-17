@@ -1,14 +1,162 @@
 use async_trait::async_trait;
 use ralphx_lib::application::chat_service::{
-    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    build_command, build_initial_prompt, build_resume_command,
+    build_resume_command_for_harness, build_resume_initial_prompt,
+    create_assistant_message, finalize_assistant_message_for_test,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
-    is_text_file, resolve_working_directory,
+    is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
+    ProviderResumeMode,
 };
+use ralphx_lib::application::AppState;
+use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::AppResult;
 use ralphx_lib::infrastructure::memory::*;
-use std::sync::Arc;
+use ralphx_lib::testing::create_mock_app;
+use std::fs;
+use std::future::Future;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::Listener;
+use tempfile::TempDir;
+
+fn provider_state_home_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn claude_spawn_override_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[allow(clippy::await_holding_lock)]
+async fn with_provider_state_home_override<T, Fut>(
+    home: &Path,
+    f: impl FnOnce() -> Fut,
+) -> T
+where
+    Fut: Future<Output = T>,
+{
+    let _guard = provider_state_home_lock().lock().expect("lock poisoned");
+    let previous = std::env::var_os("RALPHX_PROVIDER_STATE_HOME_OVERRIDE");
+    std::env::set_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE", home);
+    let result = f().await;
+    match previous {
+        Some(value) => std::env::set_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE", value),
+        None => std::env::remove_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE"),
+    }
+    result
+}
+
+#[allow(clippy::await_holding_lock)]
+async fn with_claude_spawn_allowed_in_tests<T, Fut>(f: impl FnOnce() -> Fut) -> T
+where
+    Fut: Future<Output = T>,
+{
+    let _guard = claude_spawn_override_lock().lock().expect("lock poisoned");
+    let previous = std::env::var_os("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS");
+    std::env::set_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS", "1");
+    let result = f().await;
+    match previous {
+        Some(value) => std::env::set_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS", value),
+        None => std::env::remove_var("RALPHX_ALLOW_CLAUDE_SPAWN_IN_TESTS"),
+    }
+    result
+}
+
+fn write_file(path: &Path, contents: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent dirs");
+    }
+    fs::write(path, contents).expect("write test file");
+}
+
+fn empty_delegated_session_repo() -> Arc<dyn DelegatedSessionRepository> {
+    Arc::new(MemoryDelegatedSessionRepository::new())
+}
+
+fn make_fake_codex_cli(temp: &TempDir) -> PathBuf {
+    let script_path = temp.path().join("codex");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 0.116.0"
+  exit 0
+fi
+if [ "$1" = "--help" ]; then
+  cat <<'EOF'
+Codex CLI
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  mcp         Manage external MCP servers for Codex
+  resume      Resume a previous interactive session
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --search
+      --add-dir <DIR>
+EOF
+  exit 0
+fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  cat <<'EOF'
+Run Codex non-interactively
+
+Usage: codex exec [OPTIONS] [PROMPT] [COMMAND]
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --add-dir <DIR>
+      --json
+  -C, --cd <DIR>
+      --skip-git-repo-check
+EOF
+  exit 0
+fi
+exit 0
+"#;
+
+    write_file(&script_path, script);
+    let mut permissions = fs::metadata(&script_path)
+        .expect("metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).expect("chmod script");
+    script_path
+}
+
+fn make_codex_home_with_session(session_id: &str) -> TempDir {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let session_path = temp
+        .path()
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("04")
+        .join("11")
+        .join(format!("rollout-2026-04-11T03-49-25-{session_id}.jsonl"));
+    write_file(&session_path, "{\"type\":\"thread.started\"}\n");
+    temp
+}
+
+fn make_claude_home_with_session(session_id: &str) -> TempDir {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let transcript_path = temp
+        .path()
+        .join(".claude")
+        .join("projects")
+        .join("project-a")
+        .join(format!("{session_id}.jsonl"));
+    write_file(&transcript_path, "{\"type\":\"assistant\"}\n");
+    temp
+}
 
 #[test]
 fn test_is_text_file_by_mime_type() {
@@ -65,6 +213,89 @@ fn test_is_text_file_by_extension() {
     // Files without extensions
     assert!(!is_text_file(None, "README"));
     assert!(!is_text_file(None, "no-extension"));
+}
+
+#[test]
+fn create_assistant_message_keeps_delegation_conversation_scope() {
+    let conversation_id = ChatConversationId::new();
+
+    let message = create_assistant_message(
+        ChatContextType::Delegation,
+        "delegated-session",
+        "delegated reply",
+        conversation_id,
+        &[],
+        &[],
+    );
+
+    assert_eq!(message.role, MessageRole::Orchestrator);
+    assert_eq!(message.session_id, None);
+    assert_eq!(message.project_id, None);
+    assert_eq!(message.task_id, None);
+    assert_eq!(message.conversation_id, Some(conversation_id));
+}
+
+#[tokio::test]
+async fn finalize_assistant_message_emits_delegated_conversation_id() {
+    let state = AppState::new_test();
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let conversation_id = ChatConversationId::new();
+    let delegated_conversation_id = conversation_id.as_str();
+    let orchestrator_role = MessageRole::Orchestrator.to_string();
+
+    let message = create_assistant_message(
+        ChatContextType::Delegation,
+        "delegated-session",
+        "queued delegated reply",
+        conversation_id,
+        &[],
+        &[],
+    );
+    let message_id = message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(message)
+        .await
+        .expect("insert delegated assistant message");
+
+    let captured: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
+    let captured_clone = Arc::clone(&captured);
+    handle.listen("agent:message_created", move |event| {
+        let payload: serde_json::Value =
+            serde_json::from_str(event.payload()).expect("event payload JSON");
+        *captured_clone.lock().expect("capture lock") = Some(payload);
+    });
+
+    finalize_assistant_message_for_test(
+        &state.chat_message_repo,
+        Some(&handle),
+        &delegated_conversation_id,
+        &ChatContextType::Delegation.to_string(),
+        "delegated-session",
+        &message_id,
+        &orchestrator_role,
+        "final delegated reply",
+        None,
+        None,
+    )
+    .await;
+
+    let payload = captured
+        .lock()
+        .expect("capture lock")
+        .clone()
+        .expect("agent:message_created payload");
+    assert_eq!(
+        payload["conversation_id"].as_str(),
+        Some(delegated_conversation_id.as_str()),
+        "delegated finalize must emit the child conversation id"
+    );
+    assert_eq!(
+        payload["context_type"].as_str(),
+        Some(ChatContextType::Delegation.to_string().as_str())
+    );
+    assert_eq!(payload["context_id"].as_str(), Some("delegated-session"));
 }
 
 #[tokio::test]
@@ -299,7 +530,6 @@ impl IdeationSessionRepository for MockIdeationRepo {
         _id: &IdeationSessionId,
         _status: VerificationStatus,
         _in_progress: bool,
-        _metadata_json: Option<String>,
     ) -> AppResult<()> {
         unimplemented!()
     }
@@ -311,15 +541,31 @@ impl IdeationSessionRepository for MockIdeationRepo {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, entities::VerificationRunSnapshot)> {
         unimplemented!()
     }
 
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(VerificationStatus, bool)>> {
         unimplemented!()
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _snapshot: &entities::VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        _id: &IdeationSessionId,
+        _generation: i32,
+    ) -> AppResult<Option<entities::VerificationRunSnapshot>> {
+        Ok(None)
     }
 
     async fn revert_plan_and_skip_verification(
@@ -787,6 +1033,7 @@ async fn test_get_entity_status_for_resume_ideation_accepted() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -809,6 +1056,7 @@ async fn test_get_entity_status_for_resume_ideation_active() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -827,6 +1075,7 @@ async fn test_get_entity_status_for_resume_ideation_not_found() {
         ChatContextType::Ideation,
         session_id.as_str(),
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -843,6 +1092,7 @@ async fn test_get_entity_status_for_resume_project_context() {
         ChatContextType::Project,
         "project-id",
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
     )
     .await;
@@ -878,6 +1128,8 @@ async fn test_build_command_with_team_mode_true() {
         true, // team_mode=true
         chat_attachment_repo,
         artifact_repo,
+        None,
+        None,
         None,
         &[],
         0,
@@ -915,6 +1167,8 @@ async fn test_build_command_with_team_mode_false() {
         chat_attachment_repo,
         artifact_repo,
         None,
+        None,
+        None,
         &[],
         0,
         None, // effort_override
@@ -929,8 +1183,6 @@ async fn test_build_command_with_team_mode_false() {
 
 #[test]
 fn test_build_resume_initial_prompt_ideation_includes_context_id_no_recovery_note() {
-    // After the session_history injection refactor, the <recovery_note> has been removed.
-    // build_resume_initial_prompt now delegates to build_initial_prompt.
     let context_id = "test-session-123";
     let user_message = "hello";
     let result =
@@ -938,6 +1190,7 @@ fn test_build_resume_initial_prompt_ideation_includes_context_id_no_recovery_not
     assert!(result.contains(&format!("<context_id>{}</context_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
     assert!(!result.contains("get_session_messages"));
+    assert!(!result.contains("<session_history"));
     assert!(result.contains(&format!("<user_message>{}</user_message>", user_message)));
 }
 
@@ -973,6 +1226,52 @@ fn test_build_resume_initial_prompt_task_execution_delegates_to_initial_prompt()
     assert_eq!(resume, initial);
 }
 
+#[test]
+fn provider_resume_mode_for_codex_requires_local_session_artifact() {
+    let missing_home = tempfile::tempdir().expect("tempdir");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Codex,
+            "019d7821-a3c9-7a92-ac91-25d19653181c",
+            missing_home.path()
+        ),
+        ProviderResumeMode::Recovery
+    );
+
+    let existing_home = make_codex_home_with_session("019d7821-a3c9-7a92-ac91-25d19653181c");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Codex,
+            "019d7821-a3c9-7a92-ac91-25d19653181c",
+            existing_home.path()
+        ),
+        ProviderResumeMode::Resume
+    );
+}
+
+#[test]
+fn provider_resume_mode_for_claude_requires_local_transcript() {
+    let missing_home = tempfile::tempdir().expect("tempdir");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Claude,
+            "00000000-0000-4000-8000-000000000000",
+            missing_home.path()
+        ),
+        ProviderResumeMode::Recovery
+    );
+
+    let existing_home = make_claude_home_with_session("00000000-0000-4000-8000-000000000000");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Claude,
+            "00000000-0000-4000-8000-000000000000",
+            existing_home.path()
+        ),
+        ProviderResumeMode::Resume
+    );
+}
+
 #[tokio::test]
 async fn test_build_resume_command_with_team_mode() {
     // Test that build_resume_command accepts team_mode parameter
@@ -999,7 +1298,10 @@ async fn test_build_resume_command_with_team_mode() {
         chat_attachment_repo.clone(),
         artifact_repo.clone(),
         None,
+        None,
+        None,
         ideation_repo.clone(),
+        empty_delegated_session_repo(),
         task_repo.clone(),
         &[],
         0,
@@ -1022,7 +1324,10 @@ async fn test_build_resume_command_with_team_mode() {
         chat_attachment_repo,
         artifact_repo,
         None,
+        None,
+        None,
         ideation_repo,
+        empty_delegated_session_repo(),
         task_repo,
         &[],
         0,
@@ -1033,6 +1338,217 @@ async fn test_build_resume_command_with_team_mode() {
 
     // Test passes if no panics occurred
 }
+
+#[tokio::test]
+async fn codex_resume_command_falls_back_to_exec_when_session_is_missing() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Project,
+            "project-1",
+            "continue",
+            &working_dir,
+            "missing-session",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::empty()),
+            empty_delegated_session_repo(),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex recovery command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert_eq!(args.first().map(String::as_str), Some("exec"));
+    assert!(
+        !args.iter().any(|arg| arg == "resume"),
+        "missing Codex session should force recovery, not exec resume: {args:?}"
+    );
+}
+
+#[tokio::test]
+async fn codex_resume_command_uses_resume_subcommand_when_session_exists() {
+    let home = make_codex_home_with_session("session-123");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Project,
+            "project-1",
+            "continue",
+            &working_dir,
+            "session-123",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::empty()),
+            empty_delegated_session_repo(),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex resume command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert!(
+        args.windows(3)
+            .any(|window| window == ["exec", "resume", "session-123"]),
+        "existing Codex session should use exec resume: {args:?}"
+    );
+}
+
+#[tokio::test]
+async fn codex_verifier_command_disables_shell_tool() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/agent.yaml"),
+        "name: ralphx-plan-verifier\nrole: plan_verifier\n",
+    );
+    write_file(
+        &cli_temp
+            .path()
+            .join("agents/ralphx-plan-verifier/codex/agent.yaml"),
+        "runtime_features:\n  shell_tool: false\n",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+    let parent_id = IdeationSessionId::new();
+    let child_id = IdeationSessionId::new();
+    let verification_child = IdeationSession::builder()
+        .id(child_id.clone())
+        .project_id(ProjectId::new())
+        .parent_session_id(parent_id)
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Ideation,
+            child_id.as_str(),
+            "continue",
+            &working_dir,
+            "missing-session",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::with_session(verification_child)),
+            empty_delegated_session_repo(),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex verifier command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert!(
+        args.iter().any(|arg| arg == "features.shell_tool=false"),
+        "verifier Codex command must disable shell_tool: {args:?}"
+    );
+
+    let envs = result.spawnable.get_envs_for_test();
+    let working_dir_env = envs
+        .iter()
+        .find(|(key, _)| key == "RALPHX_WORKING_DIRECTORY")
+        .map(|(_, value)| value.to_string_lossy().into_owned());
+    assert_eq!(
+        working_dir_env.as_deref(),
+        Some(working_dir.to_string_lossy().as_ref()),
+        "spawn env must carry canonical working directory for MCP filesystem tools"
+    );
+}
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests for format_session_history
@@ -1447,6 +1963,28 @@ fn integration_ideation_spawn_first_message_no_session_history_block() {
         prompt.contains("Hello, start a new plan"),
         "current user message must be present"
     );
+    assert!(
+        prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
+        "fresh ideation spawn must mark bootstrap mode explicitly so prompt logic can skip recovery-only MCP calls"
+    );
+}
+
+#[test]
+fn integration_ideation_resume_prompt_marks_provider_resume_bootstrap_mode() {
+    let sid = IdeationSessionId::new();
+
+    let prompt = build_resume_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "continue the same plan",
+        &[],
+        0,
+    );
+
+    assert!(
+        prompt.contains("<session_bootstrap_mode>provider_resume</session_bootstrap_mode>"),
+        "provider resume prompts must be distinguished from fresh ideation and explicit recovery flows"
+    );
 }
 
 #[test]
@@ -1555,6 +2093,7 @@ async fn resolve_working_directory_merge_context_accepts_rebase_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1606,6 +2145,7 @@ async fn resolve_working_directory_merge_context_accepts_merge_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1658,6 +2198,7 @@ async fn resolve_working_directory_merge_context_rejects_task_prefix() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1696,6 +2237,7 @@ async fn resolve_working_directory_review_rejects_missing_worktree_path() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1740,6 +2282,7 @@ async fn resolve_working_directory_task_execution_rejects_missing_worktree_dir()
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1782,6 +2325,7 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        empty_delegated_session_repo(),
         std::path::Path::new("/tmp/default"),
     )
     .await;
@@ -1795,12 +2339,12 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
 // --- Verifier subagent cap injection tests ---
 //
 // These tests verify that build_command correctly resolves CLAUDE_CODE_SUBAGENT_MODEL
-// from the verifier_subagent_model DB field for plan-verifier, and that non-verifier
+// from the verifier_subagent_model DB field for ralphx-plan-verifier, and that non-verifier
 // agents use their own resolved model as the subagent cap instead.
 
 #[tokio::test]
 async fn test_plan_verifier_sets_subagent_cap_env_var() {
-    // When build_command is called with entity_status="verification" (plan-verifier),
+    // When build_command is called with entity_status="verification" (ralphx-plan-verifier),
     // and the DB has verifier_subagent_model=haiku, then CLAUDE_CODE_SUBAGENT_MODEL=haiku
     // must appear in the spawned command's environment variables.
     let repo = MemoryIdeationModelSettingsRepository::new();
@@ -1814,23 +2358,28 @@ async fn test_plan_verifier_sets_subagent_cap_env_var() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        Some("verification"),
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            Some("verification"),
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -1844,14 +2393,14 @@ async fn test_plan_verifier_sets_subagent_cap_env_var() {
     assert_eq!(
         subagent_model.as_deref(),
         Some("haiku"),
-        "CLAUDE_CODE_SUBAGENT_MODEL should be haiku for plan-verifier with DB override"
+        "CLAUDE_CODE_SUBAGENT_MODEL should be haiku for ralphx-plan-verifier with DB override"
     );
 }
 
 #[tokio::test]
 async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
     // When the DB has no rows, the hardcoded "haiku" default must still appear
-    // in CLAUDE_CODE_SUBAGENT_MODEL for plan-verifier.
+    // in CLAUDE_CODE_SUBAGENT_MODEL for ralphx-plan-verifier.
     let repo = MemoryIdeationModelSettingsRepository::new();
     // No rows seeded → falls back to "haiku"
 
@@ -1861,23 +2410,28 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        Some("verification"),
-        None, // no project_id → no project row
-        false,
-        attachment_repo,
-        artifact_repo,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            Some("verification"),
+            None, // no project_id → no project row
+            false,
+            attachment_repo,
+            artifact_repo,
+            None,
+            None,
+            Some(settings_repo),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -1897,12 +2451,36 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
 
 #[tokio::test]
 async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
-    // For non-verifier ideation agents (orchestrator-ideation), the subagent cap
-    // must come from the ideation_subagent_model DB field — NOT from the agent's own
-    // resolved model and NOT from verifier_subagent_model.
-    let repo = MemoryIdeationModelSettingsRepository::new();
-    // Set ideation_subagent_model = "sonnet" explicitly; verifier_subagent_model = "haiku"
-    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku", "sonnet")
+    // For non-verifier ideation agents (ralphx-ideation), the subagent cap
+    // must come from the IdeationSubagent lane row — NOT from the IdeationVerifierSubagent lane.
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationSubagent lane = "sonnet"; IdeationVerifierSubagent = "haiku" — must not bleed in
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationVerifierSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("haiku".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -1910,26 +2488,32 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     let conv = ChatConversation::new_ideation(session_id);
     let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
-    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+    let lane_repo_arc: Arc<dyn ralphx_lib::domain::repositories::AgentLaneSettingsRepository> =
+        lane_repo;
 
-    // No entity_status → orchestrator-ideation (default ideation agent)
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        None, // no entity_status → orchestrator-ideation
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,
-    )
+    // No entity_status → ralphx-ideation (default ideation agent)
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None, // no entity_status → ralphx-ideation
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            Some(lane_repo_arc),
+            None,
+            None,
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -1940,28 +2524,53 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // The subagent cap for orchestrator-ideation comes from ideation_subagent_model DB field ("sonnet")
+    // The subagent cap for ralphx-ideation comes from IdeationSubagent lane row ("sonnet")
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "orchestrator-ideation subagent cap should come from ideation_subagent_model DB field"
+        "ralphx-ideation subagent cap should come from IdeationSubagent lane row"
     );
     assert_ne!(
         subagent_model.as_deref(),
         Some("haiku"),
-        "verifier_subagent_model must not bleed into non-verifier agents"
+        "IdeationVerifierSubagent lane must not bleed into non-verifier agents"
     );
 }
 
 #[tokio::test]
 async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
-    // PO#4: build_command for orchestrator-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
-    // to the ideation_subagent_model DB field value ("sonnet"), NOT to resolved_model_override
-    // ("opus", which is the agent's primary model). This verifies the dispatch uses the
-    // correct dedicated field.
-    let repo = MemoryIdeationModelSettingsRepository::new();
-    // primary_model=opus, ideation_subagent_model=sonnet — they differ so we can distinguish.
-    repo.upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
+    // build_command for ralphx-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
+    // to the IdeationSubagent lane row model ("sonnet"), NOT to the primary agent model ("opus").
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationPrimary=opus, IdeationSubagent=sonnet — they differ so we can distinguish
+    lane_repo
+        .upsert_for_project(
+            "proj-1",
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("opus".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    lane_repo
+        .upsert_for_project(
+            "proj-1",
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -1969,26 +2578,32 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
     let conv = ChatConversation::new_ideation(session_id);
     let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
-    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+    let lane_repo_arc: Arc<dyn ralphx_lib::domain::repositories::AgentLaneSettingsRepository> =
+        lane_repo;
 
-    // entity_status=None → orchestrator-ideation (non-verifier ideation agent)
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conv,
-        "continue",
-        std::path::Path::new("/tmp"),
-        None,          // no entity_status → orchestrator-ideation
-        Some("proj-1"),
-        false,
-        attachment_repo,
-        artifact_repo,
-        Some(settings_repo),
-        &[],
-        0,
-        None,
-        None,          // model_override=None; resolved_model_override will be "opus" from primary bucket
-    )
+    // entity_status=None → ralphx-ideation (non-verifier ideation agent)
+    let result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None,          // no entity_status → ralphx-ideation
+            Some("proj-1"),
+            false,
+            attachment_repo,
+            artifact_repo,
+            Some(lane_repo_arc),
+            None,
+            None,
+            &[],
+            0,
+            None,
+            None,          // model_override=None; primary model is "opus" from lane row
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());
@@ -1999,39 +2614,50 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // CLAUDE_CODE_SUBAGENT_MODEL must come from ideation_subagent_model ("sonnet"),
-    // NOT from the agent's resolved primary model ("opus").
+    // CLAUDE_CODE_SUBAGENT_MODEL must come from IdeationSubagent lane row ("sonnet"),
+    // NOT from the agent's primary lane model ("opus").
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "CLAUDE_CODE_SUBAGENT_MODEL must equal ideation_subagent_model DB field (sonnet), not resolved_model_override (opus)"
+        "CLAUDE_CODE_SUBAGENT_MODEL must equal IdeationSubagent lane model (sonnet), not primary model (opus)"
     );
     assert_ne!(
         subagent_model.as_deref(),
         Some("opus"),
-        "resolved_model_override (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for orchestrator-ideation"
+        "primary lane model (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for ralphx-ideation"
     );
 }
 
 #[tokio::test]
 async fn test_both_build_and_resume_use_ideation_subagent_cap() {
     // Both build_command AND build_resume_command must inject
-    // CLAUDE_CODE_SUBAGENT_MODEL = ideation_subagent_model DB field for orchestrator-ideation.
-    // This test MUST FAIL if either function uses old behavior (resolved_model_override or agent's own model).
-    {
-        let seeded = MemoryIdeationModelSettingsRepository::new();
-        // primary_model=opus (so resolved_model_override=opus), ideation_subagent_model=sonnet
-        seeded
-            .upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
-            .await
-            .unwrap();
-        let settings_repo_seeded: Arc<dyn IdeationModelSettingsRepository> = Arc::new(seeded);
+    // CLAUDE_CODE_SUBAGENT_MODEL = IdeationSubagent lane row model for ralphx-ideation.
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+    use ralphx_lib::domain::repositories::AgentLaneSettingsRepository;
 
-        let session_id = IdeationSessionId::new();
-        let conv = ChatConversation::new_ideation(session_id.clone());
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationPrimary=opus, IdeationSubagent=sonnet — they differ so we can distinguish
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    let lane_repo_arc: Arc<dyn AgentLaneSettingsRepository> = lane_repo;
 
-        // --- Test build_command ---
-        let build_result = build_command(
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id.clone());
+
+    // --- Test build_command ---
+    let build_result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
             std::path::Path::new("/fake/claude"),
             std::path::Path::new("/fake/plugin"),
             &conv,
@@ -2042,29 +2668,34 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
             false,
             Arc::new(MemoryChatAttachmentRepository::new()),
             Arc::new(MemoryArtifactRepository::new()),
-            Some(Arc::clone(&settings_repo_seeded)),
+            Some(Arc::clone(&lane_repo_arc)),
+            None,
+            None,
             &[],
             0,
             None,
             None,
         )
-        .await;
+        .await
+    })
+    .await;
 
-        assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
-        let build_cmd = build_result.unwrap();
-        let build_envs = build_cmd.get_envs_for_test();
-        let build_subagent = build_envs
-            .iter()
-            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
-            .map(|(_, v)| v.to_string_lossy().into_owned());
-        assert_eq!(
-            build_subagent.as_deref(),
-            Some("sonnet"),
-            "build_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
-        );
+    assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
+    let build_cmd = build_result.unwrap();
+    let build_envs = build_cmd.get_envs_for_test();
+    let build_subagent = build_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        build_subagent.as_deref(),
+        Some("sonnet"),
+        "build_command: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationSubagent lane model (sonnet)"
+    );
 
-        // --- Test build_resume_command ---
-        let resume_result = build_resume_command(
+    // --- Test build_resume_command ---
+    let resume_result = with_claude_spawn_allowed_in_tests(|| async {
+        build_resume_command(
             std::path::Path::new("/fake/claude"),
             std::path::Path::new("/fake/plugin"),
             ChatContextType::Ideation,
@@ -2076,27 +2707,87 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
             false,
             Arc::new(MemoryChatAttachmentRepository::new()),
             Arc::new(MemoryArtifactRepository::new()),
-            Some(settings_repo_seeded),
+            Some(Arc::clone(&lane_repo_arc)),
+            None,
+            None,
             Arc::new(MemoryIdeationSessionRepository::new()),
+            empty_delegated_session_repo(),
             Arc::new(MemoryTaskRepository::new()),
             &[],
             0,
             None,
             None,
         )
-        .await;
+        .await
+    })
+    .await;
 
-        assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
-        let resume_cmd = resume_result.unwrap();
-        let resume_envs = resume_cmd.get_envs_for_test();
-        let resume_subagent = resume_envs
-            .iter()
-            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
-            .map(|(_, v)| v.to_string_lossy().into_owned());
-        assert_eq!(
-            resume_subagent.as_deref(),
-            Some("sonnet"),
-            "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
-        );
-    }
+    assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
+    let resume_cmd = resume_result.unwrap();
+    let resume_envs = resume_cmd.get_envs_for_test();
+    let resume_subagent = resume_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        resume_subagent.as_deref(),
+        Some("sonnet"),
+        "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationSubagent lane model (sonnet)"
+    );
+}
+
+#[tokio::test]
+async fn test_build_command_resumes_from_provider_session_ref_without_legacy_alias() {
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Claude,
+        provider_session_id: "provider-only-session".to_string(),
+    });
+    conversation.claude_session_id = None;
+    let home = make_claude_home_with_session("provider-only-session");
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        with_claude_spawn_allowed_in_tests(|| async {
+            build_command(
+                std::path::Path::new("/fake/claude"),
+                std::path::Path::new("/fake/plugin"),
+                &conversation,
+                "continue",
+                std::path::Path::new("/tmp"),
+                None,
+                None,
+                false,
+                Arc::new(MemoryChatAttachmentRepository::new()),
+                Arc::new(MemoryArtifactRepository::new()),
+                None,
+                None,
+                None,
+                &[],
+                0,
+                None,
+                None,
+            )
+            .await
+        })
+        .await
+    })
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let command = result.unwrap();
+    let args = command.get_args_for_test();
+
+    assert!(
+        args.windows(2)
+            .any(|window| window[0] == "--resume" && window[1] == "provider-only-session"),
+        "build_command must resume from the canonical provider session reference",
+    );
+
+    let lead_session = command
+        .get_envs_for_test()
+        .iter()
+        .find(|(key, _)| key == "RALPHX_LEAD_SESSION_ID")
+        .map(|(_, value)| value.to_string_lossy().into_owned());
+
+    assert_eq!(lead_session.as_deref(), Some("provider-only-session"));
 }

@@ -191,91 +191,103 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   const isPendingCapacity = !!(data?.pending_initial_prompt);
   const latestMessage = data?.recent_messages[data.recent_messages.length - 1];
   const snippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
+  const visualState =
+    isLoading
+      ? "loading"
+      : isError
+        ? "error"
+        : isPendingCapacity
+          ? "pending"
+          : agentStatus === "idle"
+            ? "idle"
+            : "active";
 
   return (
-    <WidgetCard
-      {...(compact !== undefined && { compact })}
-      defaultExpanded={false}
-      header={
-        <WidgetHeader
-          icon={<GitBranch size={12} />}
-          title={purpose === "verification" ? "Verification Session" : "Follow-up Session"}
-          {...(compact !== undefined && { compact })}
-          badge={
-            <>
-              {purpose && <Badge variant={purposeVariant} compact>{purpose}</Badge>}
-              {orchestrationTriggered === true && (
-                <Badge variant="success" compact>Agent spawned</Badge>
-              )}
-              {isPendingCapacity && agentStatus === "idle" && (
-                <Badge variant="warning" compact>Waiting for capacity</Badge>
-              )}
-              {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
-              {sessionId && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onNavigate(sessionId); }}
-                  onKeyDown={(e) => { e.stopPropagation(); }}
-                  style={{
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    cursor: "pointer",
-                    border: `1px solid ${colors.accentBorder}`,
-                    borderRadius: 4,
-                    backgroundColor: colors.accentDim,
-                    color: colors.accent,
-                    lineHeight: 1.4,
-                  }}
-                  aria-label="Open Session"
-                >
-                  Open Session
-                </button>
-              )}
-            </>
-          }
-        />
-      }
-    >
-      {/* Full session title — always visible in body */}
-      <span
-        style={{
-          display: "block",
-          fontSize: 12,
-          color: colors.textPrimary,
-          wordBreak: "break-word",
-          marginBottom: 4,
-        }}
+    <div data-testid={`child-session-widget-${visualState}`}>
+      <WidgetCard
+        {...(compact !== undefined && { compact })}
+        defaultExpanded={false}
+        header={
+          <WidgetHeader
+            icon={<GitBranch size={12} />}
+            title={purpose === "verification" ? "Verification Session" : "Follow-up Session"}
+            {...(compact !== undefined && { compact })}
+            badge={
+              <>
+                {purpose && <Badge variant={purposeVariant} compact>{purpose}</Badge>}
+                {orchestrationTriggered === true && (
+                  <Badge variant="success" compact>Agent spawned</Badge>
+                )}
+                {isPendingCapacity && agentStatus === "idle" && (
+                  <Badge variant="warning" compact>Waiting for capacity</Badge>
+                )}
+                {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
+                {sessionId && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onNavigate(sessionId); }}
+                    onKeyDown={(e) => { e.stopPropagation(); }}
+                    style={{
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      border: `1px solid ${colors.accentBorder}`,
+                      borderRadius: 4,
+                      backgroundColor: colors.accentDim,
+                      color: colors.accent,
+                      lineHeight: 1.4,
+                    }}
+                    aria-label="Open Session"
+                  >
+                    Open Session
+                  </button>
+                )}
+              </>
+            }
+          />
+        }
       >
-        {title}
-      </span>
-
-      {/* Collapsed body: snippet (single line — stable height) */}
-      <WidgetRow compact={compact}>
+        {/* Full session title — always visible in body */}
         <span
           style={{
-            ...truncatedTitleStyle(compact),
-            fontSize: 11,
-            color: (snippet || isPendingCapacity) ? colors.textMuted : "transparent",
+            display: "block",
+            fontSize: 12,
+            color: colors.textPrimary,
+            wordBreak: "break-word",
+            marginBottom: 4,
           }}
         >
-          {snippet ?? (isPendingCapacity ? "Waiting for capacity..." : "No messages yet")}
+          {title}
         </span>
-      </WidgetRow>
 
-      {/* Expanded body (visible when card is open) */}
-      {isLoading && <LoadingSkeleton />}
-      {isError && <ErrorState onRetry={() => void refetch()} />}
-      {!isLoading && !isError && data && data.recent_messages.length > 0 && (
-        <div style={{ marginTop: 4 }}>
-          {data.recent_messages.map((msg, idx) => (
-            <MessagePreviewItem
-              key={idx}
-              role={msg.role}
-              content={msg.content}
-              createdAt={msg.created_at}
-            />
-          ))}
-        </div>
-      )}
-    </WidgetCard>
+        {/* Collapsed body: snippet (single line — stable height) */}
+        <WidgetRow compact={compact}>
+          <span
+            style={{
+              ...truncatedTitleStyle(compact),
+              fontSize: 11,
+              color: (snippet || isPendingCapacity) ? colors.textMuted : "transparent",
+            }}
+          >
+            {snippet ?? (isPendingCapacity ? "Waiting for capacity..." : "No messages yet")}
+          </span>
+        </WidgetRow>
+
+        {/* Expanded body (visible when card is open) */}
+        {isLoading && <LoadingSkeleton />}
+        {isError && <ErrorState onRetry={() => void refetch()} />}
+        {!isLoading && !isError && data && data.recent_messages.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            {data.recent_messages.map((msg, idx) => (
+              <MessagePreviewItem
+                key={idx}
+                role={msg.role}
+                content={msg.content}
+                createdAt={msg.created_at}
+              />
+            ))}
+          </div>
+        )}
+      </WidgetCard>
+    </div>
   );
 });

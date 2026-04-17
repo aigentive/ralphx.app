@@ -1,0 +1,55 @@
+name: ralphx-execution-coder
+role: worker
+description: "Executes implementation tasks autonomously"
+capabilities:
+  mcp_tools:
+    - start_step
+    - complete_step
+    - skip_step
+    - fail_step
+    - add_step
+    - get_step_progress
+    - get_step_context
+    - get_task_context
+    - get_artifact
+    - get_artifact_version
+    - get_related_artifacts
+    - search_project_artifacts
+    - get_review_notes
+    - get_task_steps
+    - get_task_issues
+    - mark_issue_in_progress
+    - mark_issue_addressed
+    - get_project_analysis
+    - search_memories
+    - get_memory
+    - get_memories_for_paths
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+harnesses:
+  claude:
+    model: sonnet
+    permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit
+        - Task
+        - LSP
+    preapproved_cli_tools:
+      - Read
+      - Grep
+      - Glob
+      - WebFetch
+      - WebSearch
+      - Skill
+      - Write
+      - Edit
+      - Bash
+      - Task
+      - Task(Plan)
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

@@ -4,13 +4,12 @@ use std::sync::Arc;
 
 use crate::application::reconciliation::verification_handoff::{
     derive_recommended_action, format_verification_result_xml, inject_verification_handoff_if_missing,
-    maybe_inject_verification_result_message, summarize_gaps, top_3_blockers,
-    ReconcileChildCompleteResult, ESCALATED_TO_PARENT, VERIFICATION_RESULT_MARKER,
+    is_actionable_for_parent_agent, maybe_inject_verification_result_message, summarize_gaps,
+    top_3_blockers, ReconcileChildCompleteResult, ESCALATED_TO_PARENT,
+    VERIFICATION_RESULT_METADATA_KEY,
 };
-use crate::domain::entities::{
-    ChatConversationId, ChatMessage, IdeationSessionId, VerificationGap, VerificationMetadata,
-    VerificationStatus,
-};
+use crate::domain::entities::{ChatContextType, ChatConversationId, ChatMessage, IdeationSessionId,
+    VerificationGap, VerificationRunSnapshot, VerificationStatus};
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
 use crate::infrastructure::memory::{MemoryChatConversationRepository, MemoryChatMessageRepository};
@@ -25,16 +24,20 @@ fn make_gap(severity: &str, description: &str) -> VerificationGap {
     }
 }
 
-fn make_meta(convergence_reason: Option<&str>, gaps: Vec<VerificationGap>) -> VerificationMetadata {
-    VerificationMetadata {
-        v: 1,
+fn make_snapshot(
+    convergence_reason: Option<&str>,
+    gaps: Vec<VerificationGap>,
+) -> VerificationRunSnapshot {
+    VerificationRunSnapshot {
+        generation: 0,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
         current_round: 3,
         max_rounds: 5,
         rounds: vec![],
         current_gaps: gaps,
         convergence_reason: convergence_reason.map(str::to_string),
         best_round_index: None,
-        parse_failures: vec![],
     }
 }
 
@@ -45,7 +48,7 @@ fn make_meta(convergence_reason: Option<&str>, gaps: Vec<VerificationGap>) -> Ve
 #[tokio::test]
 async fn needs_revision_max_rounds_synthesizes_message() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(
+    let snapshot = make_snapshot(
         Some("max_rounds"),
         vec![
             make_gap("critical", "Auth bypass possible"),
@@ -54,7 +57,7 @@ async fn needs_revision_max_rounds_synthesizes_message() {
     );
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -72,11 +75,16 @@ async fn needs_revision_max_rounds_synthesizes_message() {
     assert_eq!(messages.len(), 1, "expected exactly one injected message");
 
     let content = &messages[0].content;
-    assert!(content.contains("<verification-result>"), "should contain XML root tag");
-    assert!(content.contains("<status>needs_revision</status>"), "should contain status");
-    assert!(content.contains("<convergence_reason>max_rounds</convergence_reason>"), "should contain reason");
-    assert!(content.contains("<recommended_next_action>revise_plan</recommended_next_action>"), "max_rounds → revise_plan");
+    assert!(content.contains("Verification found plan blockers."));
+    assert!(content.contains("Recommended next action: revise_plan"));
     assert!(content.contains("critical"), "should include blocker severity");
+    let metadata = messages[0].metadata.as_deref().expect("metadata should be present");
+    assert!(metadata.contains(VERIFICATION_RESULT_METADATA_KEY));
+    let queued = queue
+        .pop(ChatContextType::Ideation, parent_id.as_str())
+        .expect("actionable result should queue parent handoff");
+    assert!(queued.content.contains("<verification-result>"));
+    assert!(queued.content.contains("<recommended_next_action>revise_plan</recommended_next_action>"));
 }
 
 // ---------------------------------------------------------------------------
@@ -86,13 +94,13 @@ async fn needs_revision_max_rounds_synthesizes_message() {
 #[tokio::test]
 async fn needs_revision_escalated_to_parent_skips_synthesis() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(
+    let snapshot = make_snapshot(
         Some(ESCALATED_TO_PARENT),
         vec![make_gap("critical", "Already escalated gap")],
     );
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -118,10 +126,10 @@ async fn needs_revision_escalated_to_parent_skips_synthesis() {
 async fn needs_revision_agent_crashed_empty_gaps_fallback() {
     let parent_id = IdeationSessionId::new();
     // Simulate agent crash: NeedsRevision with no current_gaps
-    let meta = make_meta(Some("agent_crashed_mid_round"), vec![]);
+    let snapshot = make_snapshot(Some("agent_crashed_mid_round"), vec![]);
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::NeedsRevision,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -143,9 +151,10 @@ async fn needs_revision_agent_crashed_empty_gaps_fallback() {
         content.contains("Agent completed without producing gap analysis"),
         "should use crash fallback summary for empty gaps"
     );
+    assert!(content.contains("Recommended next action: rerun_verification"));
     assert!(
-        content.contains("<recommended_next_action>rerun_verification</recommended_next_action>"),
-        "agent_crashed_mid_round → rerun_verification"
+        queue.pop(ChatContextType::Ideation, parent_id.as_str()).is_none(),
+        "infra/runtime results should not nudge the parent ideation agent"
     );
 }
 
@@ -156,10 +165,10 @@ async fn needs_revision_agent_crashed_empty_gaps_fallback() {
 #[tokio::test]
 async fn verified_completion_no_synthesis() {
     let parent_id = IdeationSessionId::new();
-    let meta = make_meta(Some("zero_blocking"), vec![]);
+    let snapshot = make_snapshot(Some("zero_blocking"), vec![]);
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::Verified,
-        parsed_meta: Some(meta),
+        parsed_snapshot: Some(snapshot),
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -185,7 +194,7 @@ async fn unverified_completion_no_synthesis() {
     let parent_id = IdeationSessionId::new();
     let result = ReconcileChildCompleteResult {
         terminal_status: VerificationStatus::Unverified,
-        parsed_meta: None,
+        parsed_snapshot: None,
     };
 
     let conv_repo: Arc<dyn ChatConversationRepository> = Arc::new(MemoryChatConversationRepository::new());
@@ -264,8 +273,21 @@ fn derive_recommended_action_maps_correctly() {
     assert_eq!(derive_recommended_action(Some("gap_score_plateau")), "explore_code_paths");
     assert_eq!(derive_recommended_action(Some("agent_crashed_mid_round")), "rerun_verification");
     assert_eq!(derive_recommended_action(Some("agent_completed_without_update")), "rerun_verification");
+    assert_eq!(derive_recommended_action(Some("agent_error")), "rerun_verification");
+    assert_eq!(derive_recommended_action(Some("critic_parse_failure")), "rerun_verification");
     assert_eq!(derive_recommended_action(None), "rerun_verification");
     assert_eq!(derive_recommended_action(Some("unknown_future_reason")), "rerun_verification");
+}
+
+#[test]
+fn actionable_classification_maps_correctly() {
+    assert!(is_actionable_for_parent_agent(Some("max_rounds")));
+    assert!(is_actionable_for_parent_agent(Some("jaccard_converged")));
+    assert!(is_actionable_for_parent_agent(Some("gap_score_plateau")));
+    assert!(!is_actionable_for_parent_agent(Some("agent_error")));
+    assert!(!is_actionable_for_parent_agent(Some("agent_crashed_mid_round")));
+    assert!(!is_actionable_for_parent_agent(Some("critic_parse_failure")));
+    assert!(!is_actionable_for_parent_agent(None));
 }
 
 #[test]
@@ -356,12 +378,15 @@ async fn test_handoff_injected_on_timeout_when_parent_needs_revision() {
     );
     let content = &messages[0].content;
     assert!(
-        content.contains(VERIFICATION_RESULT_MARKER),
-        "injected message must contain the <verification-result> XML root tag"
+        content.contains("Verification found plan blockers."),
+        "injected message should use the user-facing summary fallback"
     );
     assert!(
-        content.contains("<status>needs_revision</status>"),
-        "injected message must contain the NeedsRevision status"
+        messages[0]
+            .metadata
+            .as_deref()
+            .is_some_and(|metadata| metadata.contains(VERIFICATION_RESULT_METADATA_KEY)),
+        "injected message must carry structured verification-result metadata"
     );
 }
 
@@ -385,8 +410,9 @@ async fn test_no_duplicate_handoff_on_timeout_after_success_injection() {
     // Pre-seed a <verification-result> message (as the success path would have injected).
     let mut existing_msg = ChatMessage::system_in_session(
         parent_id.clone(),
-        format!("{VERIFICATION_RESULT_MARKER}<status>needs_revision</status></verification-result>"),
-    );
+        "Verification found plan blockers.",
+    )
+    .with_metadata(r#"{"verification_result":true}"#);
     existing_msg.conversation_id = Some(conv_id);
     msg_repo
         .create(existing_msg)

@@ -73,8 +73,8 @@ Agent Teams would add a **peer-to-peer communication layer** that RalphX's curre
 
 | Agent Teams Component | Role | RalphX Equivalent | Notes |
 |----------------------|------|-------------------|-------|
-| **Team Lead** | Creates team, spawns teammates, coordinates work | `ralphx-worker` or `orchestrator-ideation` | The lead is the main Claude Code session |
-| **Teammates** | Separate Claude Code instances working on tasks | `ralphx-coder` instances (currently subagents) | Each teammate has own context window |
+| **Team Lead** | Creates team, spawns teammates, coordinates work | `ralphx-execution-worker` or `ralphx-ideation` | The lead is the main Claude Code session |
+| **Teammates** | Separate Claude Code instances working on tasks | `ralphx-execution-coder` instances (currently subagents) | Each teammate has own context window |
 | **Task List** | Shared work items teammates claim and complete | RalphX task board (SQLite) + MCP tools | Agent teams use `~/.claude/tasks/{team}/` |
 | **Mailbox** | Messaging between agents | Not present in current architecture | New capability agent teams would add |
 
@@ -684,10 +684,10 @@ If rejected: teammate stays in plan mode, revises based on feedback
 
 | RalphX Agent | Current Permission | Agent Teams Equivalent |
 |-------------|-------------------|----------------------|
-| `ralphx-worker` | `acceptEdits` (Write/Edit/Bash pre-approved) | Lead would inherit this |
-| `ralphx-coder` | `acceptEdits` | Teammate would inherit from lead |
-| `ralphx-reviewer` | `default` (Read-only focus) | Could use `plan` mode |
-| `ralphx-merger` | `default` + Read, Edit, Bash preapproved | Custom allowed tools |
+| `ralphx-execution-worker` | `acceptEdits` (Write/Edit/Bash pre-approved) | Lead would inherit this |
+| `ralphx-execution-coder` | `acceptEdits` | Teammate would inherit from lead |
+| `ralphx-execution-reviewer` | `default` (Read-only focus) | Could use `plan` mode |
+| `ralphx-execution-merger` | `default` + Read, Edit, Bash preapproved | Custom allowed tools |
 
 ### 7.4 RalphX Permission Bridge
 
@@ -808,9 +808,9 @@ Press **Shift+Tab** to cycle into delegate mode after starting a team.
 
 | RalphX Pattern | Agent Teams Equivalent |
 |----------------|----------------------|
-| `ralphx-worker` orchestrates, `ralphx-coder` implements | Lead in delegate mode + coder teammates |
-| `orchestrator-ideation` plans, workers execute | Lead in delegate mode + researcher/worker teammates |
-| `ralphx-orchestrator` coordinates complex tasks | Natural fit for delegate mode lead |
+| `ralphx-execution-worker` orchestrates, `ralphx-execution-coder` implements | Lead in delegate mode + coder teammates |
+| `ralphx-ideation` plans, workers execute | Lead in delegate mode + researcher/worker teammates |
+| `ralphx-execution-orchestrator` coordinates complex tasks | Natural fit for delegate mode lead |
 
 ### 10.4 When to Use
 
@@ -881,7 +881,7 @@ RalphX already has quality enforcement:
 | Review requirement | State machine: executing → reviewing (mandatory) | Could add review teammate to team |
 | Wave gates | Worker validates each coder wave | TeammateIdle hook to verify wave results |
 | Issue tracking | MCP tools: mark_issue_in_progress/addressed | TaskCompleted hook to check all issues resolved |
-| Supervisor monitoring | `ralphx-supervisor` detects loops/stalls | TeammateIdle hook as lightweight alternative |
+| Supervisor monitoring | Supervisor service or TeammateIdle hook | TeammateIdle hook as lightweight alternative |
 
 ### 11.4 Combining RalphX Hooks with Team Hooks
 
@@ -981,7 +981,7 @@ All matching hooks run in parallel.
 |-------------------|---------------------|----------------------|
 | **Worker → Coder delegation** | Subagent Task calls (max 3 parallel) | Team with coder teammates + peer messaging |
 | **Ideation exploration** | 3× Task(Explore) subagents | Research team with competing hypotheses |
-| **Code review** | Single `ralphx-reviewer` | Multiple reviewers (security, performance, tests) |
+| **Code review** | Single `ralphx-execution-reviewer` | Multiple reviewers (security, performance, tests) |
 | **Cross-layer features** | Sequential execution per task | Frontend + backend + test teammates in parallel |
 | **Complex debugging** | Single worker retries | Competing hypothesis investigation |
 
@@ -1011,13 +1011,12 @@ The table below shows **template mappings** — predefined agent types that can 
 
 | RalphX Agent | Potential Team Role | Model | Key MCP Tools |
 |-------------|--------------------|----|---------------|
-| `ralphx-worker` | **Team Lead** (coordinator) | sonnet | step management, task context, issue tracking |
-| `ralphx-coder` | **Teammate** (implementer) | sonnet | step management, task context, artifacts |
-| `ralphx-reviewer` | **Teammate** (reviewer) | sonnet | review completion, task context |
-| `orchestrator-ideation` | **Team Lead** (ideation) | opus | proposals, plans, analysis |
-| `ralphx-deep-researcher` | **Teammate** (researcher) | opus | WebFetch, WebSearch, memories |
-| `ralphx-supervisor` | **Teammate** (monitor) | haiku | pattern detection |
-| `ralphx-merger` | **Standalone** (not team) | opus | merge target, conflict resolution |
+| `ralphx-execution-worker` | **Team Lead** (coordinator) | sonnet | step management, task context, issue tracking |
+| `ralphx-execution-coder` | **Teammate** (implementer) | sonnet | step management, task context, artifacts |
+| `ralphx-execution-reviewer` | **Teammate** (reviewer) | sonnet | review completion, task context |
+| `ralphx-ideation` | **Team Lead** (ideation) | opus | proposals, plans, analysis |
+| `ralphx-research-deep-researcher` | **Teammate** (researcher) | opus | WebFetch, WebSearch, memories |
+| `ralphx-execution-merger` | **Standalone** (not team) | opus | merge target, conflict resolution |
 
 #### 14.3.1 Dynamic Team Roles (Default Behavior)
 
@@ -1037,7 +1036,7 @@ Team leads **define teammate roles dynamically** based on the specific task rath
 
 ```yaml
 team_constraints:
-  ralphx-worker-team:
+  ralphx-execution-team-lead:
     max_teammates: 4
     allowed_models: [sonnet, haiku]           # Cost control: no opus teammates
     allowed_agent_types: [general-purpose]     # Restrict to full-capability agents
@@ -1172,7 +1171,7 @@ env CLAUDECODE=1 \
     CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
   claude \
     --plugin-dir ./plugins/app \
-    --agent ralphx-coder \
+    --agent ralphx-execution-coder \
     --agent-id "coder-1@task-abc123" \
     --agent-name "coder-1" \
     --team-name "task-abc123" \

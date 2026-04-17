@@ -236,7 +236,7 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
     // Step 6: Transition the task back to its origin state.
     // -----------------------------------------------------------------------
     let transition_result = transition_service
-        .transition_task(&task.id, target_status)
+        .transition_task_corrective_with_exit(&task.id, target_status, None, "system")
         .await;
 
     if let Err(e) = transition_result {

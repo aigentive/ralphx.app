@@ -909,7 +909,7 @@ pub async fn apply_proposals_core(
 ///
 /// Delegates to [`apply_proposals_core`] and adds Tauri-specific side effects:
 /// queue-change events, task scheduler trigger for newly Ready tasks, and
-/// session-namer re-trigger at acceptance.
+/// ralphx-utility-session-namer re-trigger at acceptance.
 /// External HTTP callers use [`crate::http_server::handlers::external_apply_proposals`]
 /// instead, which skips the scheduler (external agents poll `get_pipeline_overview`).
 #[tauri::command]
@@ -950,52 +950,61 @@ pub async fn apply_proposals_to_kanban(
         stop_verification_children(&result.session_id, &state).await.ok();
     }
 
-    // Re-trigger session-namer if title was not manually set by user.
+    // Re-trigger ralphx-utility-session-namer if title was not manually set by user.
     // At acceptance, proposals are finalized — namer generates a commit-ready title
     // reflecting the actual work (not just the initial user message).
     // Skip if user has set a custom title (title_source == "user").
     if !result.is_user_title {
+        use crate::application::harness_runtime_registry::{
+            default_repo_root_working_directory, resolve_harness_agent_bootstrap,
+        };
+        use crate::domain::agents::DEFAULT_AGENT_HARNESS;
+        use crate::infrastructure::agents::claude::agent_names;
+
         let proposals_context = result.proposal_titles.join("; ");
         let session_id_str = result.session_id.clone();
+        let runtime = state.resolve_session_namer_runtime().await;
 
-        let agent_client = Arc::clone(&state.agent_client);
-        let working_directory = std::env::current_dir()
-            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+        let agent_client = Arc::clone(&runtime.client);
+        let working_directory = default_repo_root_working_directory();
+        let bootstrap = resolve_harness_agent_bootstrap(
+            runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
+            agent_names::AGENT_SESSION_NAMER,
+            working_directory,
+        );
+        let harness_for_log = runtime.harness;
 
         tokio::spawn(async move {
             use crate::domain::agents::{AgentConfig, AgentRole};
-            use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
             let prompt = build_session_namer_prompt(&format!(
                 "<session_id>{}</session_id>\n<accepted_proposals>{}</accepted_proposals>",
                 session_id_str, proposals_context
             ));
 
-            let mut env = std::collections::HashMap::new();
-            env.insert(
-                "RALPHX_AGENT_TYPE".to_string(),
-                mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-            );
-
             let config = AgentConfig {
-                role: AgentRole::Custom(
-                    mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-                ),
+                role: AgentRole::Custom(bootstrap.agent_role.clone()),
                 prompt,
-                working_directory,
-                plugin_dir: Some(plugin_dir),
-                agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-                model: None,
+                working_directory: bootstrap.working_directory,
+                plugin_dir: Some(bootstrap.plugin_dir),
+                agent: Some(bootstrap.agent_name),
+                model: runtime.model,
+                harness: runtime.harness,
+                logical_effort: runtime.logical_effort,
+                approval_policy: runtime.approval_policy,
+                sandbox_mode: runtime.sandbox_mode,
                 max_tokens: None,
                 timeout_secs: Some(60),
-                env,
+                env: bootstrap.env,
             };
 
             match agent_client.spawn_agent(config).await {
                 Ok(handle) => {
+                    tracing::info!(
+                        session_id = %session_id_str,
+                        harness = ?harness_for_log,
+                        "Re-triggering session namer after ideation acceptance"
+                    );
                     if let Err(e) = agent_client.wait_for_completion(&handle).await {
                         tracing::warn!("Session namer re-trigger failed: {}", e);
                     }

@@ -5,6 +5,7 @@ import {
   parseToolCalls,
   listConversations,
   getConversation,
+  getConversationStats,
   createConversation,
   getAgentRunStatus,
   sendAgentMessage,
@@ -15,6 +16,7 @@ import {
   isAgentRunning,
   chatApi,
   getConversationActiveState,
+  getChildSessionStatus,
 } from "./chat";
 import type { ConversationActiveStateResponse } from "./chat";
 
@@ -23,6 +25,8 @@ const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 describe("chat api", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    delete window.__TAURI_INTERNALS__;
+    delete window.__mockChatApi;
   });
 
   it("parses tool calls", () => {
@@ -31,10 +35,31 @@ describe("chat api", () => {
     expect(parsed[0]).toMatchObject({ id: "t1", name: "bash" });
   });
 
+  it("preserves parent tool linkage on parsed tool calls", () => {
+    const parsed = parseToolCalls('[{"id":"t1","name":"bash","arguments":{"command":"ls"},"parent_tool_use_id":"delegate-1"}]');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      id: "t1",
+      name: "bash",
+      parentToolUseId: "delegate-1",
+    });
+  });
+
   it("parses content blocks", () => {
     const parsed = parseContentBlocks('[{"type":"text","text":"hello"}]');
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toMatchObject({ type: "text", text: "hello" });
+  });
+
+  it("preserves parent tool linkage on parsed content blocks", () => {
+    const parsed = parseContentBlocks('[{"type":"tool_use","id":"tool-1","name":"bash","arguments":{"command":"ls"},"parent_tool_use_id":"delegate-1"}]');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      type: "tool_use",
+      id: "tool-1",
+      name: "bash",
+      parentToolUseId: "delegate-1",
+    });
   });
 
   it("lists conversations", async () => {
@@ -44,6 +69,8 @@ describe("chat api", () => {
         context_type: "project",
         context_id: "p1",
         claude_session_id: null,
+        provider_session_id: "thread-1",
+        provider_harness: "codex",
         title: "Title",
         message_count: 2,
         last_message_at: null,
@@ -58,7 +85,93 @@ describe("chat api", () => {
       contextType: "project",
       contextId: "p1",
     });
-    expect(result[0]).toMatchObject({ contextType: "project", contextId: "p1" });
+    expect(result[0]).toMatchObject({
+      contextType: "project",
+      contextId: "p1",
+      providerSessionId: "thread-1",
+      providerHarness: "codex",
+      upstreamProvider: null,
+      providerProfile: null,
+      claudeSessionId: null,
+    });
+  });
+
+  it("preserves unknown provider harness values", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c-unknown",
+        context_type: "project",
+        context_id: "p-unknown",
+        claude_session_id: null,
+        provider_session_id: "thread-unknown",
+        provider_harness: "openai",
+        title: "Unknown provider row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p-unknown");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "thread-unknown",
+      providerHarness: "openai",
+      claudeSessionId: null,
+    });
+  });
+
+  it("does not infer claude harness from provider session id alone", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c2",
+        context_type: "project",
+        context_id: "p2",
+        claude_session_id: null,
+        provider_session_id: "thread-legacy",
+        provider_harness: null,
+        title: "Legacy provider row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p2");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "thread-legacy",
+      providerHarness: null,
+      claudeSessionId: null,
+    });
+  });
+
+  it("infers claude harness only from the legacy claude session id", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c3",
+        context_type: "project",
+        context_id: "p3",
+        claude_session_id: "claude-thread-1",
+        provider_session_id: null,
+        provider_harness: null,
+        title: "Legacy claude row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p3");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "claude-thread-1",
+      providerHarness: "claude",
+      claudeSessionId: "claude-thread-1",
+    });
   });
 
   it("gets conversation with transformed messages", async () => {
@@ -68,6 +181,8 @@ describe("chat api", () => {
         context_type: "project",
         context_id: "p1",
         claude_session_id: null,
+        provider_session_id: "thread-2",
+        provider_harness: "codex",
         title: null,
         message_count: 1,
         last_message_at: null,
@@ -79,8 +194,23 @@ describe("chat api", () => {
           id: "m1",
           role: "user",
           content: "Hello",
+          metadata: "{\"verification_result\":true}",
           tool_calls: null,
           content_blocks: null,
+          attribution_source: "native",
+          provider_harness: "codex",
+          provider_session_id: "thread-2",
+          upstream_provider: "openai",
+          provider_profile: null,
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4",
+          logical_effort: "high",
+          effective_effort: "high",
+          input_tokens: 120,
+          output_tokens: 40,
+          cache_creation_tokens: 5,
+          cache_read_tokens: 8,
+          estimated_usd: 0.42,
           created_at: "2026-01-24T10:00:00Z",
         },
       ],
@@ -89,7 +219,104 @@ describe("chat api", () => {
     const result = await getConversation("c1");
 
     expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation", { conversationId: "c1" });
-    expect(result.messages[0]).toMatchObject({ id: "m1", createdAt: "2026-01-24T10:00:00Z" });
+    expect(result.messages[0]).toMatchObject({
+      id: "m1",
+      createdAt: "2026-01-24T10:00:00Z",
+      metadata: "{\"verification_result\":true}",
+      attributionSource: "native",
+      providerHarness: "codex",
+      providerSessionId: "thread-2",
+      upstreamProvider: "openai",
+      logicalModel: "gpt-5.4",
+      effectiveEffort: "high",
+      inputTokens: 120,
+      estimatedUsd: 0.42,
+    });
+  });
+
+  it("gets conversation stats with camelCase totals and buckets", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation_id: "c1",
+      context_type: "project",
+      context_id: "p1",
+      provider_harness: "codex",
+      upstream_provider: "openai",
+      provider_profile: null,
+      message_usage_totals: {
+        input_tokens: 120,
+        output_tokens: 40,
+        cache_creation_tokens: 5,
+        cache_read_tokens: 8,
+        estimated_usd: 0.42,
+      },
+      run_usage_totals: {
+        input_tokens: 999,
+        output_tokens: 111,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        estimated_usd: 1.25,
+      },
+      effective_usage_totals: {
+        input_tokens: 120,
+        output_tokens: 40,
+        cache_creation_tokens: 5,
+        cache_read_tokens: 8,
+        estimated_usd: 0.42,
+      },
+      usage_coverage: {
+        provider_message_count: 1,
+        provider_messages_with_usage: 1,
+        run_count: 1,
+        runs_with_usage: 1,
+        effective_totals_source: "messages",
+      },
+      attribution_coverage: {
+        provider_message_count: 1,
+        provider_messages_with_attribution: 1,
+        run_count: 1,
+        runs_with_attribution: 1,
+      },
+      by_harness: [{
+        key: "codex",
+        count: 1,
+        usage: {
+          input_tokens: 120,
+          output_tokens: 40,
+          cache_creation_tokens: 5,
+          cache_read_tokens: 8,
+          estimated_usd: 0.42,
+        },
+      }],
+      by_upstream_provider: [],
+      by_model: [],
+      by_effort: [],
+    });
+
+    const result = await getConversationStats("c1");
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation_stats", {
+      conversationId: "c1",
+    });
+    expect(result).toMatchObject({
+      conversationId: "c1",
+      providerHarness: "codex",
+      upstreamProvider: "openai",
+      usageCoverage: {
+        effectiveTotalsSource: "messages",
+      },
+      effectiveUsageTotals: {
+        inputTokens: 120,
+        estimatedUsd: 0.42,
+      },
+      byHarness: [
+        {
+          key: "codex",
+          usage: {
+            inputTokens: 120,
+          },
+        },
+      ],
+    });
   });
 
   it("creates conversation", async () => {
@@ -98,6 +325,8 @@ describe("chat api", () => {
       context_type: "task",
       context_id: "t1",
       claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
       title: null,
       message_count: 0,
       last_message_at: null,
@@ -116,6 +345,34 @@ describe("chat api", () => {
     mockInvoke.mockResolvedValue(null);
     const result = await getAgentRunStatus("c1");
     expect(result).toBeNull();
+  });
+
+  it("uses the web-mode chat mock for child session status when available", async () => {
+    window.__mockChatApi = {
+      reset: vi.fn(),
+      seedScenario: vi.fn(),
+      listScenarios: vi.fn().mockReturnValue([]),
+      listConversations: vi.fn(),
+      getConversation: vi.fn(),
+      getChildSessionStatus: vi.fn().mockResolvedValue({
+        session_id: "child-1",
+        title: "Mock child session",
+        agent_state: { estimated_status: "likely_generating" },
+        recent_messages: [],
+        lastEffectiveModel: "gpt-5.4-mini",
+      }),
+      setChildSessionStatusOverride: vi.fn(),
+      clearChildSessionStatusOverrides: vi.fn(),
+    };
+
+    const result = await getChildSessionStatus("child-1");
+
+    expect(window.__mockChatApi.getChildSessionStatus).toHaveBeenCalledWith("child-1");
+    expect(result).toMatchObject({
+      session_id: "child-1",
+      title: "Mock child session",
+      lastEffectiveModel: "gpt-5.4-mini",
+    });
   });
 
   it("sends unified agent message", async () => {
@@ -191,6 +448,26 @@ describe("getConversationActiveState", () => {
           total_tokens: 5000,
           total_tool_uses: 12,
           duration_ms: 45000,
+          delegated_job_id: "job-123",
+          delegated_session_id: "delegated-session-123",
+          delegated_conversation_id: "conv-child-123",
+          delegated_agent_run_id: "run-child-123",
+          provider_harness: "codex",
+          provider_session_id: "provider-session-123",
+          upstream_provider: "openai",
+          provider_profile: "prod",
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4-2026-04-01",
+          logical_effort: "high",
+          effective_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          input_tokens: 1100,
+          output_tokens: 2200,
+          cache_creation_tokens: 330,
+          cache_read_tokens: 440,
+          estimated_usd: 1.23,
+          text_output: "done",
         },
       ],
       partial_text: "",
@@ -213,6 +490,12 @@ describe("getConversationActiveState", () => {
     expect(task.total_tokens).toBe(5000);
     expect(task.total_tool_uses).toBe(12);
     expect(task.duration_ms).toBe(45000);
+    expect(task.delegated_job_id).toBe("job-123");
+    expect(task.provider_harness).toBe("codex");
+    expect(task.logical_model).toBe("gpt-5.4");
+    expect(task.input_tokens).toBe(1100);
+    expect(task.estimated_usd).toBe(1.23);
+    expect(task.text_output).toBe("done");
   });
 
   it("handles response with no stats fields (old format)", async () => {

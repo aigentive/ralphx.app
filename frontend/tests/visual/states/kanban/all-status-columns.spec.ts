@@ -37,15 +37,16 @@ test.describe("Kanban Board - All Status Columns", () => {
     });
   });
 
-  test("each workflow column is visible", async () => {
+  test("each workflow column is visible", async ({ page }) => {
     // Wait for board
     await kanban.waitForBoard();
 
-    // Verify all 5 default workflow columns exist (using column IDs)
-    await expect(kanban.column("col-backlog")).toBeVisible();
-    await expect(kanban.column("col-ready")).toBeVisible();
-    await expect(kanban.column("col-executing")).toBeVisible();
-    await expect(kanban.column("col-review")).toBeVisible();
-    await expect(kanban.column("col-approved")).toBeVisible();
+    // Verify all 5 default workflow columns exist by visible headings rather than
+    // stale implementation-specific ids.
+    await expect(page.getByRole("heading", { name: "Backlog" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ready" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Executing" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Done" })).toBeVisible();
   });
 });

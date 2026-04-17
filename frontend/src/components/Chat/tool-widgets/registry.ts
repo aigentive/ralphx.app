@@ -3,6 +3,7 @@
  *
  * Maps tool names to specialized React widget components.
  * ToolCallIndicator checks this registry before falling back to the generic renderer.
+ * Harness/session identity is rendered by the chat chrome, not hard-coded into individual widgets.
  *
  * To register a new widget:
  *   1. Create src/components/Chat/tool-widgets/YourWidget.tsx implementing ToolCallWidgetProps
@@ -26,10 +27,12 @@ import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
 import { BashWidget } from "./BashWidget";
+import { FileChangeWidget } from "./FileChangeWidget";
 import { SkillWidget } from "./SkillWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
 import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
 import { SessionContextWidget, TeamSessionStateWidget, SearchMemoriesWidget, TeamPlanWidget } from "./McpContextWidgets";
+import { getToolCallLookupCandidates } from "./tool-name";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -41,6 +44,7 @@ export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidget
 export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Bash tool → BashWidget (terminal output card)
   "bash": BashWidget,
+  "file_change": FileChangeWidget,
   // File read tool → ReadWidget (file preview card)
   "read": ReadWidget,
   // Search tools → GrepWidget / GlobWidget
@@ -103,7 +107,10 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__finalize_proposals": IdeationWidget,
   "mcp__ralphx__cross_project_guide": IdeationWidget,
   // Verification tools → VerificationWidget
-  "mcp__ralphx__update_plan_verification": VerificationWidget,
+  "mcp__ralphx__run_verification_enrichment": VerificationWidget,
+  "mcp__ralphx__run_verification_round": VerificationWidget,
+  "mcp__ralphx__report_verification_round": VerificationWidget,
+  "mcp__ralphx__complete_plan_verification": VerificationWidget,
   "mcp__ralphx__get_plan_verification": VerificationWidget,
   "mcp__ralphx__get_child_session_status": VerificationWidget,
   "mcp__ralphx__get_verification_confirmation_status": VerificationWidget,
@@ -132,5 +139,12 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
  * Returns undefined if no specialized widget is registered.
  */
 export function getToolCallWidget(toolName: string): ComponentType<ToolCallWidgetProps> | undefined {
-  return TOOL_CALL_WIDGETS[toolName.toLowerCase()];
+  for (const candidate of getToolCallLookupCandidates(toolName)) {
+    const widget = TOOL_CALL_WIDGETS[candidate];
+    if (widget) {
+      return widget;
+    }
+  }
+
+  return undefined;
 }

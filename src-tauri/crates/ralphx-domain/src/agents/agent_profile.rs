@@ -100,7 +100,7 @@ pub enum AutonomyLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeCodeConfig {
-    /// Agent name (resolved via --plugin-dir, e.g. "worker" resolves to plugins/app/agents/worker.md)
+    /// Agent name (resolved via --plugin-dir against generated Claude assets derived from `agents/`)
     pub agent: String,
     /// Skills to inject at startup (resolved via plugin discovery)
     #[serde(default)]
@@ -330,22 +330,6 @@ impl AgentProfile {
         }
     }
 
-    /// Create the built-in supervisor profile
-    pub fn supervisor() -> Self {
-        Self {
-            id: "supervisor".to_string(),
-            name: "Supervisor".to_string(),
-            description: "Monitors task execution and intervenes when problems occur".to_string(),
-            role: ProfileRole::Supervisor,
-            claude_code: ClaudeCodeConfig::new("supervisor"),
-            execution: ExecutionConfig::default()
-                .with_model(Model::Haiku)
-                .with_max_iterations(100),
-            io: IoConfig::default(),
-            behavior: BehaviorConfig::default(),
-        }
-    }
-
     /// Create the built-in orchestrator profile
     pub fn orchestrator() -> Self {
         Self {
@@ -386,7 +370,6 @@ impl AgentProfile {
         vec![
             Self::worker(),
             Self::reviewer(),
-            Self::supervisor(),
             Self::orchestrator(),
             Self::deep_researcher(),
         ]

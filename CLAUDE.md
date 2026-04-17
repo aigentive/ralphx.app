@@ -15,7 +15,7 @@ These are the **owner's directives**. They override default agent judgment on me
 
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
-Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md`
+Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Delegation topology: `.claude/rules/delegation-topology.md` | Ideation verification architecture: `.claude/rules/ideation-verification-architecture.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md`
 
 ## Structure
 ```
@@ -38,11 +38,11 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 
 | Rule | Detail |
 |------|--------|
-| **Never explore manually** | ❌ Reading file after file yourself. ✅ Spawn `Task(Explore)` or `Task(general-purpose)` subagents to search/read in parallel. |
+| **Never explore manually** | ❌ Reading file after file yourself. ✅ Delegate bounded exploration to a read-only specialist or managed teammate and have it summarize findings. |
 | **Leads only delegate** | Team leads coordinate and review. ❌ Leads doing research, running tests, or reading code directly. ✅ Spawn teammates/subagents for ALL work. |
 | **Parallel exploration** | Need info from 3+ files? Spawn 3 subagents in parallel. ❌ Sequential file reads bloating context. |
 | **Direct reads only for confirmation** | Read a specific file:line only when you already know exactly what you need to confirm. ❌ Browsing/scanning files to "understand." |
-| **Subagents for search** | Any `Grep`/`Glob` that might need >2 rounds → use `Task(Explore)` agent. It's designed for this. |
+| **Subagents for search** | Any `Grep`/`Glob` that might need >2 rounds → use a read-only delegate or managed teammate instead of doing it yourself. |
 | **Teammates are disposable, context is not** | Spawn cheap subagents liberally. Your context window is expensive — don't fill it with raw code. Have subagents summarize findings. |
 | **Research via agents, not yourself** | Before ANY implementation: spawn a research agent to gather context. Don't read the code yourself — get a summary back. |
 | **Memory files exist — use them** | Check your auto-memory `MEMORY.md` (at `~/.claude/projects/<project-slug>/memory/`) before exploring. Past findings are already there. |
@@ -100,14 +100,14 @@ External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → H
 ```
 Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
 **MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `plugins/app/ralphx-mcp-server/src/` or `plugins/app/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
-**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
+**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `config/ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
 **Agent frontmatter tool fields (NON-NEGOTIABLE):** Only `tools` and `disallowedTools` are valid in agent `.md` frontmatter. ❌ `allowedTools` — silently ignored by Claude Code. Add MCP tools (e.g., `"mcp__ralphx__*"`) to the `tools` list. Note: `--allowedTools` IS valid as a CLI flag at spawn time — only invalid as frontmatter.
 
 | Agent | MCP Tools |
 |-------|-----------|
-| orchestrator-ideation | *_task_proposal, *_plan_artifact |
-| chat-task | update_task, add_task_note, get_task_details |
-| chat-project | suggest_task, list_tasks |
+| ralphx-ideation | *_task_proposal, *_plan_artifact |
+| ralphx-chat-task | update_task, add_task_note, get_task_details |
+| ralphx-chat-project | suggest_task, list_tasks |
 | worker | get_task_context, get_artifact*, *_step, execution_complete |
 | coder | get_task_context, get_artifact*, *_step (❌ no execution_complete) |
 | reviewer | complete_review, get_task_context |
@@ -130,7 +130,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 | 10 | Implementation playbook: `DEVELOPMENT.md` — read alongside CLAUDE.md files for placement, naming, recipes, and debugging. |
 | 11 | New pattern → add one-liner to relevant CLAUDE.md. Pattern name + rule only. |
 | 12 | Complex work → TaskCreate/TaskUpdate/TaskList (MANDATORY) → `.claude/rules/task-management.md` |
-| 13 | Parallel commits → acquire `.commit-lock` before, release after. Stale = same content >30s → `.claude/rules/commit-lock.md` |
+| 13 | Parallel commits → coordinate via normal git hygiene and verify `git status` / `git diff` before committing; no lock-file protocol |
 | 14 | Tauri invoke: camelCase fields. ✅ `contextId` ❌ `context_id` |
 | 15 | New `.claude/rules/*.md` \| `**/CLAUDE.md` → include this maintainer note at top |
 | 16 | **DbConnection (NON-NEGOTIABLE):** All SQLite repo methods MUST use `db.run(\|conn\| { ... })` via `DbConnection` for non-blocking access. ❌ Direct `conn.lock().await` / `conn.query_row()` in async methods. See `db_connection.rs`. |
@@ -141,7 +141,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 
 ## Adversarial Plan Convergence (NON-NEGOTIABLE)
 
-> Applies to: team leads, ideation team leads (`ideation-team-lead`), solo ideation orchestrators (`orchestrator-ideation`), and any agent planning non-trivial changes.
+> Applies to: team leads, ideation team leads (`ralphx-ideation-team-lead`), solo ideation orchestrators (`ralphx-ideation`), and any agent planning non-trivial changes.
 
 Agent limitations mean no single plan can be trusted in full. Plans proposing code changes MUST pass adversarial debate as part of the VERIFY phase before implementation begins.
 
@@ -157,7 +157,7 @@ Agent limitations mean no single plan can be trusted in full. Plans proposing co
 
 **Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?
 
-Full process details: `plugins/app/agents/ideation-team-lead.md` (Phase 4.5) | `plugins/app/agents/orchestrator-ideation.md` (Phase 3.5)
+Full process details: `agents/ralphx-ideation-team-lead/claude/prompt.md` (Phase 4.5) | `agents/ralphx-ideation/claude/prompt.md` (Phase 3.5)
 
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**
@@ -171,14 +171,14 @@ style={{ boxShadow: "none", outline: "none" }}
 ## Key Features
 - **Active Plan** — Project-scoped plan filtering for Graph/Kanban. Docs: `docs/features/active-plan.md` | `docs/architecture/active-plan-api.md`
 - **Session Recovery** — Expired Claude session recovery with history preservation. Docs: `docs/features/session-recovery.md`
-- **Plan Verification** — Automated adversarial review loop for ideation plans. Docs: `docs/features/plan-verification.md`
+- **Plan Verification** — Automated adversarial review loop for ideation plans. Docs: `docs/features/plan-verification.md` | Architecture: `.claude/rules/ideation-verification-architecture.md`
 
 ## Git Conventions
-❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:` | Co-author: `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>`
+❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:`
 
 ## Misc
 - DB: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
-- App logs: per-launch file — dev: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log` | prod: `~/Library/Application Support/com.ralphx.app/logs/` | latest: `ls -t .artifacts/logs/*.log | head -1` | config: `file_logging` in ralphx.yaml / `RALPHX_FILE_LOGGING` env (default: true)
+- App logs: per-launch file — dev: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log` | prod: `~/Library/Application Support/com.ralphx.app/logs/` | latest: `ls -t .artifacts/logs/*.log | head -1` | config: `file_logging` in `config/ralphx.yaml` / `RALPHX_FILE_LOGGING` env (default: true)
 - Debug logs: `scripts/find-debug-logs.sh -a "<agent-name>" -d "YYYY-MM-DD" -v` — find Claude debug logs by agent name/date/keywords
 - Slash commands: `/activate-prd <path>` — switch PRD | `/create-prd` — PRD wizard
 - Claude integration docs: `docs/ai-docs/claude-code/README.md` — lightweight local index plus official-doc stubs; fetch official Claude Code docs when current vendor behavior matters

@@ -278,6 +278,10 @@ async function updateVerificationQueryCache({
         );
       }
 
+      const preservedRounds = generationChanged ? [] : (cached?.rounds ?? []);
+      const preservedRoundDetails =
+        generationChanged ? [] : (cached?.roundDetails ?? []);
+
       const cacheData: VerificationStatusResponse = {
         sessionId,
         status: status as VerificationStatusResponse["status"],
@@ -288,7 +292,11 @@ async function updateVerificationQueryCache({
         ...(gapScore !== undefined && { gapScore }),
         ...(convergenceReason != null && { convergenceReason }),
         gaps: transformedGaps,
-        rounds: [],  // Event rounds have different shape (fingerprints); safety net refetch fills this
+        // Event rounds have a slimmer shape than the HTTP query; preserve same-generation
+        // lineage until a refetch replaces it with authoritative round summaries/details.
+        rounds: preservedRounds,
+        roundDetails: preservedRoundDetails,
+        runHistory: cached?.runHistory ?? [],
         ...(planVersion !== undefined && { planVersion }),
       };
       queryClient.setQueryData(["verification", sessionId], cacheData);
@@ -302,10 +310,14 @@ async function updateVerificationQueryCache({
       );
     }
 
-    // Fast path has authoritative data. On generation changes we still invalidate as a
-    // safety net so the HTTP cache re-hydrates any fields the start/reset event omitted.
-    if (generationChanged) {
-      queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+    // Fast path carries authoritative headline state. For terminal same-generation updates,
+    // mark the query stale without an immediate refetch so an active Verification tab does
+    // not get clobbered by a behind-persistence response from the server.
+    if (generationChanged || !inProgress) {
+      queryClient.invalidateQueries({
+        queryKey: ["verification", sessionId],
+        refetchType: generationChanged ? "active" : "none",
+      });
     }
   } else {
     // No fast path data — must invalidate to trigger refetch.

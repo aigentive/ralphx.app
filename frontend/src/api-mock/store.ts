@@ -21,7 +21,7 @@ import {
 // Store State
 // ============================================================================
 
-interface MockStore {
+export interface MockStore {
   projects: Map<string, Project>;
   tasks: Map<string, Task>;
   taskSteps: Map<string, TaskStep[]>;

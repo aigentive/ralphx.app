@@ -5,7 +5,9 @@ use super::types::{
     AnswerUserQuestionInput, AnswerUserQuestionResponse, CreateTaskInput, InjectTaskInput,
     InjectTaskResponse, TaskResponse, UnblockTaskResponse, UpdateTaskInput,
 };
-use crate::application::{AppState, TaskSchedulerService, TaskTransitionService};
+use crate::application::chat_service::PauseReason;
+use crate::application::{AppState, TaskTransitionService};
+use crate::commands::execution_commands::prepare_resumed_task_for_entry_actions;
 use crate::commands::execution_commands::project_has_execution_capacity_for_state;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -16,7 +18,7 @@ use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
-use tauri::{Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 async fn clear_failed_steps_for_failed_restart(
     task_step_repo: &Arc<dyn crate::domain::repositories::TaskStepRepository>,
@@ -56,6 +58,29 @@ fn validate_update_task_input(input: &UpdateTaskInput) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn build_transition_service(
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: Option<&AppHandle>,
+) -> TaskTransitionService {
+    state.build_transition_service_for_runtime(
+        Arc::clone(execution_state),
+        app_handle.cloned().or_else(|| state.app_handle.clone()),
+    )
+}
+
+fn build_task_scheduler(
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    app: &AppHandle,
+) -> Arc<dyn TaskScheduler> {
+    let scheduler_concrete = Arc::new(
+        state.build_task_scheduler_for_runtime(Arc::clone(execution_state), Some(app.clone())),
+    );
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    scheduler_concrete as Arc<dyn TaskScheduler>
 }
 
 /// Create a new task
@@ -193,9 +218,6 @@ pub async fn move_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
-    use crate::domain::state_machine::services::TaskScheduler;
-
     tracing::info!(task_id = %task_id, to_status = %to_status, "move_task command invoked");
 
     let task_id = TaskId::from_string(task_id);
@@ -334,52 +356,13 @@ pub async fn move_task(
     }
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
-    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
     // Create the transition service with all required dependencies
     let is_team_mode = agent_variant.as_deref() == Some("team");
-    let mut transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(Arc::clone(&task_scheduler))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let mut transition_service =
+        build_transition_service(&state, &execution_state, Some(&app))
+            .with_task_scheduler(Arc::clone(&task_scheduler));
 
     // ALWAYS set team_mode based on explicit UI selection so it overrides
     // env var defaults and stale metadata. Some(true) = team, Some(false) = solo.
@@ -565,50 +548,11 @@ pub async fn answer_user_question(
         ));
     }
 
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
-    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        build_transition_service(&state, &execution_state, Some(&app))
+            .with_task_scheduler(task_scheduler);
 
     let updated_task = transition_service
         .transition_task(&task_id, InternalStatus::Ready)
@@ -730,9 +674,6 @@ pub async fn block_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
-    use crate::domain::state_machine::services::TaskScheduler;
-
     tracing::info!(task_id = %task_id, reason = ?reason, "block_task command invoked");
 
     let task_id_obj = TaskId::from_string(task_id.clone());
@@ -748,51 +689,12 @@ pub async fn block_task(
     let project_id = task.project_id.clone();
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
-    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
     // Create the transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        build_transition_service(&state, &execution_state, Some(&app))
+            .with_task_scheduler(task_scheduler);
 
     // Transition to Blocked status
     let mut blocked_task = transition_service
@@ -839,9 +741,6 @@ pub async fn unblock_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<UnblockTaskResponse, String> {
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
-    use crate::domain::state_machine::services::TaskScheduler;
-
     tracing::info!(task_id = %task_id, "unblock_task command invoked");
 
     let task_id_obj = TaskId::from_string(task_id.clone());
@@ -900,51 +799,12 @@ pub async fn unblock_task(
     };
 
     // Create the task scheduler for auto-scheduling Ready tasks
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
-    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
     // Create the transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        build_transition_service(&state, &execution_state, Some(&app))
+            .with_task_scheduler(task_scheduler);
 
     // Transition to Ready status
     let mut unblocked_task = transition_service
@@ -1166,25 +1026,7 @@ fn build_task_stopper(
     execution_state: &Arc<ExecutionState>,
     app: &tauri::AppHandle,
 ) -> Arc<dyn TaskStopper> {
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(state, execution_state, Some(app));
 
     Arc::new(TransitionTaskStopper { transition_service })
 }
@@ -1197,8 +1039,6 @@ pub async fn pause_task(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<TaskResponse, String> {
-    use crate::application::TaskTransitionService;
-
     let task_id = TaskId::from_string(task_id);
 
     // Verify task exists
@@ -1222,25 +1062,7 @@ pub async fn pause_task(
     let _ = state.task_repo.update(&task_to_update).await;
 
     // Build transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        state.app_handle.clone(),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, None);
 
     // Transition to Paused
     let updated_task = transition_service
@@ -1277,8 +1099,6 @@ pub async fn stop_task(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<TaskResponse, String> {
-    use crate::application::TaskTransitionService;
-
     let task_id = TaskId::from_string(task_id);
 
     // Get task to capture current status before stopping
@@ -1292,25 +1112,7 @@ pub async fn stop_task(
     let from_status = task.internal_status;
 
     // Build transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        state.app_handle.clone(),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, None);
 
     // Transition to Stopped with context capture
     let updated_task = transition_service
@@ -1350,8 +1152,6 @@ pub async fn cancel_tasks_in_group(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<super::types::BulkCancelResponse, String> {
-    use crate::application::TaskTransitionService;
-
     let project_id_obj = ProjectId::from_string(project_id.clone());
 
     // Determine the group and fetch tasks
@@ -1394,25 +1194,7 @@ pub async fn cancel_tasks_in_group(
     };
 
     // Build transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, Some(&app));
 
     let mut cancelled_count = 0;
 
@@ -1475,10 +1257,6 @@ pub async fn resume_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::chat_service::PauseReason;
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
-    use crate::domain::state_machine::services::TaskScheduler;
-
     let task_id = TaskId::from_string(task_id);
 
     // Get the paused task
@@ -1525,49 +1303,10 @@ pub async fn resume_task(
     }
 
     // Build transition service
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(scheduler_concrete as Arc<dyn TaskScheduler>)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, Some(&app))
+        .with_task_scheduler(task_scheduler);
 
     // Transition to restore status
     transition_service
@@ -1583,10 +1322,9 @@ pub async fn resume_task(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found after transition: {}", task_id.as_str()))?;
 
-    // Clear pause metadata
-    restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
-        restored_task.metadata.as_deref(),
-    ));
+    // Mark this as a continuation resume before re-running entry actions so
+    // fresh execution/merge spawns preserve prior harness lineage.
+    prepare_resumed_task_for_entry_actions(&mut restored_task);
     restored_task.touch();
     state
         .task_repo
@@ -1630,8 +1368,6 @@ pub async fn pause_tasks_in_group(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<super::types::BulkPauseResponse, String> {
-    use crate::application::TaskTransitionService;
-
     let project_id_obj = ProjectId::from_string(project_id.clone());
 
     let tasks = match group_kind.as_str() {
@@ -1672,25 +1408,7 @@ pub async fn pause_tasks_in_group(
         }
     };
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, Some(&app));
 
     let mut paused_count = 0;
 
@@ -1756,8 +1474,6 @@ pub async fn resume_tasks_in_group(
     app: tauri::AppHandle,
 ) -> Result<super::types::BulkResumeResponse, String> {
     use crate::application::chat_service::PauseReason;
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
-    use crate::domain::state_machine::services::TaskScheduler;
 
     let project_id_obj = ProjectId::from_string(project_id.clone());
 
@@ -1804,49 +1520,10 @@ pub async fn resume_tasks_in_group(
         .filter(|t| t.internal_status == InternalStatus::Paused)
         .collect();
 
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
-    );
-    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler = build_task_scheduler(&state, &execution_state, &app);
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(scheduler_concrete as Arc<dyn TaskScheduler>)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = build_transition_service(&state, &execution_state, Some(&app))
+        .with_task_scheduler(task_scheduler);
 
     let mut resumed_count = 0;
 
@@ -1902,9 +1579,7 @@ pub async fn resume_tasks_in_group(
         };
 
         let mut restored_task = updated_task;
-        restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
-            restored_task.metadata.as_deref(),
-        ));
+        prepare_resumed_task_for_entry_actions(&mut restored_task);
         restored_task.touch();
         let _ = state.task_repo.update(&restored_task).await;
 

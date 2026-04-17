@@ -266,6 +266,7 @@ async fn test_get_team_artifacts_by_session_filters_correctly() {
         author_teammate: "researcher".into(),
         session_id: Some("session-abc".into()),
         team_phase: None,
+        verification_finding: None,
     });
 
     // Create artifact with DIFFERENT session_id
@@ -281,6 +282,7 @@ async fn test_get_team_artifacts_by_session_filters_correctly() {
         author_teammate: "analyst".into(),
         session_id: Some("session-xyz".into()),
         team_phase: None,
+        verification_finding: None,
     });
 
     // Create artifact with NO team_metadata

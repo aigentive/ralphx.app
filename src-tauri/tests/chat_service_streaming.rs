@@ -4,7 +4,7 @@ use ralphx_lib::application::chat_service::{
     AgentTaskStartedPayload, AgentToolCallPayload, CompletionSignalTracker, StreamError,
     StreamOutcome, StreamTimeoutConfig,
 };
-use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::domain::entities::{AgentRunUsage, ChatContextType};
 use ralphx_lib::infrastructure::agents::claude::stream_timeouts;
 use ralphx_lib::utils::secret_redactor::redact;
 use std::time::Duration;
@@ -236,6 +236,18 @@ fn test_completion_tool_detection_accepts_finalize_proposals_mcp_name() {
 }
 
 #[test]
+fn test_completion_tool_detection_accepts_codex_double_colon_names() {
+    for tool_name in [
+        "ralphx::execution_complete",
+        "ralphx::complete_review",
+        "ralphx::complete_merge",
+        "ralphx::finalize_proposals",
+    ] {
+        assert!(is_completion_tool_name(tool_name), "{tool_name} should mark completion");
+    }
+}
+
+#[test]
 fn test_completion_tool_detection_rejects_non_completion_mcp_names() {
     let mut tracker = CompletionSignalTracker::default();
 
@@ -340,6 +352,7 @@ fn test_payloads_serialize_with_seq() {
         context_type: "task".to_string(),
         context_id: "task-1".to_string(),
         seq: 0,
+        append_to_previous: false,
     };
     let json = serde_json::to_string(&chunk).unwrap();
     assert!(
@@ -374,6 +387,20 @@ fn test_payloads_serialize_with_seq() {
         subagent_type: Some("bash".to_string()),
         model: Some("sonnet".to_string()),
         teammate_name: None,
+        delegated_job_id: None,
+        delegated_session_id: None,
+        delegated_conversation_id: None,
+        delegated_agent_run_id: None,
+        provider_harness: None,
+        provider_session_id: None,
+        upstream_provider: None,
+        provider_profile: None,
+        logical_model: None,
+        effective_model_id: None,
+        logical_effort: None,
+        effective_effort: None,
+        approval_policy: None,
+        sandbox_mode: None,
         conversation_id: "conv-1".to_string(),
         context_type: "task".to_string(),
         context_id: "task-1".to_string(),
@@ -389,10 +416,32 @@ fn test_payloads_serialize_with_seq() {
     let task_completed = AgentTaskCompletedPayload {
         tool_use_id: "tool-1".to_string(),
         agent_id: Some("agent-1".to_string()),
+        status: None,
         total_duration_ms: Some(1000),
         total_tokens: Some(100),
         total_tool_use_count: Some(5),
         teammate_name: None,
+        delegated_job_id: None,
+        delegated_session_id: None,
+        delegated_conversation_id: None,
+        delegated_agent_run_id: None,
+        provider_harness: None,
+        provider_session_id: None,
+        upstream_provider: None,
+        provider_profile: None,
+        logical_model: None,
+        effective_model_id: None,
+        logical_effort: None,
+        effective_effort: None,
+        approval_policy: None,
+        sandbox_mode: None,
+        input_tokens: None,
+        output_tokens: None,
+        cache_creation_tokens: None,
+        cache_read_tokens: None,
+        estimated_usd: None,
+        text_output: None,
+        error: None,
         conversation_id: "conv-1".to_string(),
         context_type: "task".to_string(),
         context_id: "task-1".to_string(),
@@ -627,6 +676,8 @@ fn test_turn_completed_payload_shape_matches_run_completed() {
         context_type: "task_execution".to_string(),
         context_id: "task-42".to_string(),
         claude_session_id: Some("session-abc".to_string()),
+        provider_harness: Some("claude".to_string()),
+        provider_session_id: Some("session-abc".to_string()),
         run_chain_id: None,
     };
 
@@ -635,6 +686,8 @@ fn test_turn_completed_payload_shape_matches_run_completed() {
     assert_eq!(json["context_type"], "task_execution");
     assert_eq!(json["context_id"], "task-42");
     assert_eq!(json["claude_session_id"], "session-abc");
+    assert_eq!(json["provider_harness"], "claude");
+    assert_eq!(json["provider_session_id"], "session-abc");
     // run_chain_id is None → should be absent (skip_serializing_if)
     assert!(
         json.get("run_chain_id").is_none(),
@@ -650,6 +703,8 @@ fn test_turn_completed_payload_with_no_session_id() {
         context_type: "ideation".to_string(),
         context_id: "session-7".to_string(),
         claude_session_id: None,
+        provider_harness: Some("codex".to_string()),
+        provider_session_id: Some("thread-7".to_string()),
         run_chain_id: None,
     };
 
@@ -657,6 +712,8 @@ fn test_turn_completed_payload_with_no_session_id() {
     assert_eq!(json["conversation_id"], "conv-interactive-2");
     assert_eq!(json["context_type"], "ideation");
     assert_eq!(json["context_id"], "session-7");
+    assert_eq!(json["provider_harness"], "codex");
+    assert_eq!(json["provider_session_id"], "thread-7");
     // claude_session_id=None → serializes as null (no skip_serializing_if on this field)
     assert!(
         json["claude_session_id"].is_null(),
@@ -673,6 +730,8 @@ fn test_non_interactive_run_completed_includes_run_chain_id() {
         context_type: "task_execution".to_string(),
         context_id: "task-99".to_string(),
         claude_session_id: Some("session-xyz".to_string()),
+        provider_harness: Some("claude".to_string()),
+        provider_session_id: Some("session-xyz".to_string()),
         run_chain_id: Some("chain-abc".to_string()),
     };
 
@@ -695,6 +754,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-1".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 2,
         execution_slot_held: false, // idle between turns at exit
@@ -717,6 +777,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-2".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true, // normal exit — slot still held
@@ -747,6 +808,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -763,6 +825,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true,
@@ -819,6 +882,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-abc".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -839,6 +903,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-abc".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -857,6 +922,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -1109,6 +1175,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("sess-1".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false, // slot released at TurnComplete
@@ -1123,6 +1190,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true, // slot not yet released
@@ -1138,6 +1206,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: "error: session expired".to_string(),
         turns_finalized: 1,
         execution_slot_held: false,

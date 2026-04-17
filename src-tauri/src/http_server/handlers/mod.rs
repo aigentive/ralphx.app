@@ -3,6 +3,7 @@ use crate::domain::entities::ChatContextType;
 use crate::infrastructure::agents::claude::format_stream_json_input;
 
 pub mod api_keys;
+pub mod coordination;
 pub mod external;
 pub mod external_auth;
 pub mod artifacts;
@@ -25,6 +26,7 @@ pub mod verification;
 pub mod worker;
 
 pub use api_keys::*;
+pub use coordination::*;
 pub use external::*;
 #[allow(unused_imports)]
 pub use external_auth::*;

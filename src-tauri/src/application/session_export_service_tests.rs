@@ -4,7 +4,7 @@
 
 use crate::application::session_export_service::{
     DependencyData, PlanVersionData, ProposalData, PriorityFactorsData,
-    SessionExport, SessionExportService, SessionData, SourceInstance,
+    SessionExport, SessionExportService, SessionData, SourceInstance, VerificationExportData,
 };
 use crate::application::AppState;
 use crate::error::AppError;
@@ -196,8 +196,16 @@ fn build_minimal_export() -> SessionExport {
             title: Some("Imported Session".into()),
             status: "active".into(),
             team_mode: "solo".into(),
-            verification_status: "verified".into(),
-            verification_metadata: None,
+            verification: Some(VerificationExportData {
+                status: "verified".into(),
+                in_progress: false,
+                generation: 0,
+                current_round: None,
+                max_rounds: None,
+                gap_count: 0,
+                gap_score: None,
+                convergence_reason: None,
+            }),
         },
         plan_versions: vec![PlanVersionData {
             version: 1,
@@ -264,6 +272,53 @@ async fn export_session_no_plan_returns_empty_versions() {
 
     assert_eq!(export.plan_versions.len(), 0);
     assert_eq!(export.schema_version, 1);
+}
+
+#[tokio::test]
+async fn export_uses_native_verification_shape_not_legacy_metadata_blob() {
+    let app_state = AppState::new_sqlite_test();
+    seed_project(&app_state, "project-1", "Project 1").await;
+    seed_session(&app_state, "session-1", "project-1", None).await;
+
+    app_state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE ideation_sessions
+                 SET verification_status = 'needs_revision',
+                     verification_in_progress = 0,
+                     verification_generation = 4,
+                     verification_current_round = 2,
+                     verification_max_rounds = 5,
+                     verification_gap_count = 3,
+                     verification_gap_score = 11,
+                     verification_convergence_reason = 'critic_gap_found'
+                 WHERE id = 'session-1'",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let service = make_service(&app_state);
+    let export = service.export("session-1", "project-1").await.unwrap();
+    let json = serde_json::to_value(&export).unwrap();
+
+    assert!(json["session"]["verification"].is_object());
+    assert_eq!(json["session"]["verification"]["status"], "needs_revision");
+    assert_eq!(json["session"]["verification"]["generation"], 4);
+    assert_eq!(json["session"]["verification"]["currentRound"], 2);
+    assert_eq!(json["session"]["verification"]["gapCount"], 3);
+    assert_eq!(json["session"]["verification"]["gapScore"], 11);
+    assert_eq!(
+        json["session"]["verification"]["convergenceReason"],
+        "critic_gap_found"
+    );
+    assert!(
+        json["session"].get("verificationMetadata").is_none(),
+        "legacy verificationMetadata export field must be gone"
+    );
 }
 
 #[tokio::test]

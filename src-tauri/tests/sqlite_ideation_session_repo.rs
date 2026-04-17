@@ -1,8 +1,8 @@
+use ralphx_lib::domain::entities::ideation::{SessionOrigin, SessionPurpose};
 use ralphx_lib::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationStatus,
+    VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
-use ralphx_lib::domain::entities::ideation::{SessionOrigin, SessionPurpose};
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository;
 use ralphx_lib::testing::SqliteTestDb;
@@ -801,7 +801,6 @@ async fn test_set_parent_updates_updated_at() {
 
 // ==================== UPDATE_PLAN_ARTIFACT_ID TESTS ====================
 
-
 #[tokio::test]
 async fn test_update_plan_artifact_id_sets_value() {
     let db = setup_test_db();
@@ -906,7 +905,7 @@ async fn test_update_verification_state_roundtrip() {
     repo.create(session.clone()).await.unwrap();
 
     // Default state
-    let (status, in_progress, _) = repo
+    let (status, in_progress) = repo
         .get_verification_status(&session.id)
         .await
         .unwrap()
@@ -915,22 +914,15 @@ async fn test_update_verification_state_roundtrip() {
     assert!(!in_progress);
 
     // Update to reviewing + in_progress
-    let metadata = Some(r#"{"v":1,"current_round":1,"max_rounds":5}"#.to_string());
-    repo.update_verification_state(
-        &session.id,
-        VerificationStatus::Reviewing,
-        true,
-        metadata.clone(),
-    )
-    .await
-    .unwrap();
+    repo.update_verification_state(&session.id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
 
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
 
-    let (status2, in_progress2, _) = repo
+    let (status2, in_progress2) = repo
         .get_verification_status(&session.id)
         .await
         .unwrap()
@@ -956,10 +948,10 @@ async fn test_update_verification_state_all_status_variants() {
         VerificationStatus::Skipped,
         VerificationStatus::Unverified,
     ] {
-        repo.update_verification_state(&session.id, status, false, None)
+        repo.update_verification_state(&session.id, status, false)
             .await
             .unwrap();
-        let (s, _, _) = repo
+        let (s, _) = repo
             .get_verification_status(&session.id)
             .await
             .unwrap()
@@ -979,23 +971,24 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
     repo.create(session.clone()).await.unwrap();
 
     // Set to needs_revision, not in progress
-    repo.update_verification_state(
-        &session.id,
-        VerificationStatus::NeedsRevision,
-        false,
-        Some(r#"{"v":1}"#.to_string()),
-    )
-    .await
-    .unwrap();
+    repo.update_verification_state(&session.id, VerificationStatus::NeedsRevision, false)
+        .await
+        .unwrap();
 
     // Reset should clear all 3 columns and return true
     let reset = repo.reset_verification(&session.id).await.unwrap();
-    assert!(reset, "reset_verification must return true when in_progress=0");
+    assert!(
+        reset,
+        "reset_verification must return true when in_progress=0"
+    );
 
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Unverified);
     assert!(!found.verification_in_progress);
-    assert!(found.verification_metadata.is_none());
+    assert_eq!(
+        found.verification_generation, 1,
+        "reset_verification must increment generation to fence stale verifier callbacks"
+    );
 }
 
 #[tokio::test]
@@ -1008,27 +1001,22 @@ async fn test_reset_verification_is_noop_when_in_progress() {
     let session = create_test_session(&project_id, Some("In Progress Session"));
     repo.create(session.clone()).await.unwrap();
 
-    let metadata = Some(r#"{"v":1,"current_round":3}"#.to_string());
-
     // Set to reviewing with in_progress = true
-    repo.update_verification_state(
-        &session.id,
-        VerificationStatus::Reviewing,
-        true,
-        metadata.clone(),
-    )
-    .await
-    .unwrap();
+    repo.update_verification_state(&session.id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
 
     // Reset should be a no-op because in_progress = 1 and return false
     let reset = repo.reset_verification(&session.id).await.unwrap();
-    assert!(!reset, "reset_verification must return false when in_progress=1");
+    assert!(
+        !reset,
+        "reset_verification must return false when in_progress=1"
+    );
 
-    // All 3 columns should remain unchanged
+    // Status flags remain unchanged while no native verification snapshot is present
     let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
     assert_eq!(found.verification_status, VerificationStatus::Reviewing);
     assert!(found.verification_in_progress);
-    assert_eq!(found.verification_metadata, metadata);
 }
 
 #[tokio::test]
@@ -1038,7 +1026,10 @@ async fn test_reset_verification_returns_false_for_nonexistent_session() {
     let fake_id = IdeationSessionId::new();
 
     let reset = repo.reset_verification(&fake_id).await.unwrap();
-    assert!(!reset, "reset_verification must return false for nonexistent session");
+    assert!(
+        !reset,
+        "reset_verification must return false for nonexistent session"
+    );
 }
 
 #[tokio::test]
@@ -1049,6 +1040,128 @@ async fn test_get_verification_status_returns_none_for_nonexistent_session() {
 
     let result = repo.get_verification_status(&id).await.unwrap();
     assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_get_verification_status_prefers_active_generation_snapshot_over_stale_summary() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let mut session = create_test_session(&project_id, Some("Snapshot First"));
+    session.verification_generation = 3;
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    repo.save_verification_run_snapshot(
+        &session_id,
+        &VerificationRunSnapshot {
+            generation: 3,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 2,
+            max_rounds: 5,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: vec![VerificationGap {
+                severity: "high".to_string(),
+                category: "testing".to_string(),
+                description: "Missing regression".to_string(),
+                why_it_matters: None,
+                source: Some("completeness".to_string()),
+            }],
+            rounds: vec![],
+        },
+    )
+    .await
+    .unwrap();
+
+    repo.update_verification_state(&session_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    let (status, in_progress) = repo
+        .get_verification_status(&session_id)
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(
+        status,
+        VerificationStatus::Reviewing,
+        "active-generation snapshot must override stale summary status"
+    );
+    assert!(
+        in_progress,
+        "active-generation snapshot must override stale summary in_progress flag"
+    );
+}
+
+#[tokio::test]
+async fn test_save_and_get_verification_run_snapshot_roundtrip() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, Some("Verification Snapshot"));
+    repo.create(session.clone()).await.unwrap();
+
+    let snapshot = VerificationRunSnapshot {
+        generation: 7,
+        status: VerificationStatus::NeedsRevision,
+        in_progress: false,
+        current_round: 2,
+        max_rounds: 5,
+        best_round_index: Some(1),
+        convergence_reason: Some("escalated_to_parent".to_string()),
+        current_gaps: vec![VerificationGap {
+            severity: "high".to_string(),
+            category: "testing".to_string(),
+            description: "Missing regression".to_string(),
+            why_it_matters: Some("Plan can regress at runtime".to_string()),
+            source: Some("completeness".to_string()),
+        }],
+        rounds: vec![
+            VerificationRoundSnapshot {
+                round: 1,
+                gap_score: 10,
+                fingerprints: vec!["gap-auth".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "critical".to_string(),
+                    category: "security".to_string(),
+                    description: "Auth missing".to_string(),
+                    why_it_matters: None,
+                    source: Some("completeness".to_string()),
+                }],
+                parse_failed: false,
+            },
+            VerificationRoundSnapshot {
+                round: 2,
+                gap_score: 3,
+                fingerprints: vec!["gap-regression".to_string()],
+                gaps: vec![VerificationGap {
+                    severity: "high".to_string(),
+                    category: "testing".to_string(),
+                    description: "Missing regression".to_string(),
+                    why_it_matters: Some("Plan can regress at runtime".to_string()),
+                    source: Some("feasibility".to_string()),
+                }],
+                parse_failed: true,
+            },
+        ],
+    };
+
+    repo.save_verification_run_snapshot(&session.id, &snapshot)
+        .await
+        .unwrap();
+
+    let found = repo
+        .get_verification_run_snapshot(&session.id, 7)
+        .await
+        .unwrap()
+        .expect("snapshot must exist");
+    assert_eq!(found, snapshot);
 }
 
 // ==================== CIRCULAR IMPORT VALIDATION TESTS ====================
@@ -1105,7 +1218,10 @@ fn test_validate_no_circular_import_happy_path() {
         )
     });
 
-    assert!(result.is_ok(), "Simple cross-project import should be allowed");
+    assert!(
+        result.is_ok(),
+        "Simple cross-project import should be allowed"
+    );
 }
 
 #[test]
@@ -1270,7 +1386,10 @@ fn test_validate_no_circular_import_depth_limit_9_ok() {
         )
     });
 
-    assert!(result.is_ok(), "9-hop chain should be within depth limit of 10");
+    assert!(
+        result.is_ok(),
+        "9-hop chain should be within depth limit of 10"
+    );
 }
 
 #[test]
@@ -1363,17 +1482,32 @@ fn test_insert_sync_and_get_by_id_sync() {
         SqliteIdeationSessionRepository::insert_sync(conn, &session).unwrap()
     });
     assert_eq!(inserted.id, session.id);
-    assert_eq!(inserted.verification_status, VerificationStatus::ImportedVerified);
-    assert_eq!(inserted.source_project_id, Some("source-proj-123".to_string()));
-    assert_eq!(inserted.source_session_id, Some("source-sess-456".to_string()));
+    assert_eq!(
+        inserted.verification_status,
+        VerificationStatus::ImportedVerified
+    );
+    assert_eq!(
+        inserted.source_project_id,
+        Some("source-proj-123".to_string())
+    );
+    assert_eq!(
+        inserted.source_session_id,
+        Some("source-sess-456".to_string())
+    );
 
     let fetched = db.with_connection(|conn| {
         SqliteIdeationSessionRepository::get_by_id_sync(conn, session.id.as_str())
             .unwrap()
             .unwrap()
     });
-    assert_eq!(fetched.verification_status, VerificationStatus::ImportedVerified);
-    assert_eq!(fetched.source_session_id, Some("source-sess-456".to_string()));
+    assert_eq!(
+        fetched.verification_status,
+        VerificationStatus::ImportedVerified
+    );
+    assert_eq!(
+        fetched.source_session_id,
+        Some("source-sess-456".to_string())
+    );
 }
 
 // ==================== GROUP COUNT TESTS ====================
@@ -1408,6 +1542,45 @@ async fn create_task_in_db(
         "INSERT INTO tasks (id, project_id, category, title, internal_status, ideation_session_id, created_at, updated_at) \
          VALUES (?1, ?2, 'regular', 'Test Task', ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![id, project_id, internal_status, session_id],
+    )
+    .unwrap();
+}
+
+async fn create_task_in_db_with_execution_plan(
+    shared: &Arc<TokioMutex<Connection>>,
+    id: &str,
+    project_id: &str,
+    session_id: &str,
+    internal_status: &str,
+    execution_plan_id: &str,
+    archived: bool,
+) {
+    let id = id.to_string();
+    let project_id = project_id.to_string();
+    let session_id = session_id.to_string();
+    let internal_status = internal_status.to_string();
+    let execution_plan_id = execution_plan_id.to_string();
+    let archived_at = archived.then(|| "2026-04-16T00:00:00+00:00".to_string());
+    let conn = shared.lock().await;
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, category, title, internal_status, ideation_session_id, execution_plan_id, archived_at, created_at, updated_at) \
+         VALUES (?1, ?2, 'regular', 'Test Task', ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        rusqlite::params![id, project_id, internal_status, session_id, execution_plan_id, archived_at],
+    )
+    .unwrap();
+}
+
+async fn create_execution_plan_in_db(
+    shared: &Arc<TokioMutex<Connection>>,
+    id: &str,
+    session_id: &str,
+    status: &str,
+) {
+    let conn = shared.lock().await;
+    conn.execute(
+        "INSERT INTO execution_plans (id, session_id, status, created_at) \
+         VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now'))",
+        rusqlite::params![id, session_id, status],
     )
     .unwrap();
 }
@@ -1479,7 +1652,14 @@ async fn test_get_group_counts_accepted_with_active_tasks_in_progress() {
     update_session_status(&shared, &session_id, "accepted").await;
 
     // Add an executing task (active status — not idle, not terminal)
-    create_task_in_db(&shared, "task-001", project_id.as_str(), &session_id, "executing").await;
+    create_task_in_db(
+        &shared,
+        "task-001",
+        project_id.as_str(),
+        &session_id,
+        "executing",
+    )
+    .await;
 
     let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
@@ -1506,7 +1686,14 @@ async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
     update_session_status(&shared, &session_id, "accepted").await;
 
     // All tasks are terminal
-    create_task_in_db(&shared, "task-002", project_id.as_str(), &session_id, "merged").await;
+    create_task_in_db(
+        &shared,
+        "task-002",
+        project_id.as_str(),
+        &session_id,
+        "merged",
+    )
+    .await;
 
     let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
@@ -1515,6 +1702,67 @@ async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
     assert_eq!(counts.accepted, 0);
     assert_eq!(counts.done, 1);
     assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_done_ignores_archived_and_superseded_execution_plan_tasks() {
+    let project_id = ProjectId::new();
+    let (_db, shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Repeated Reaccept Session"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    create_execution_plan_in_db(&shared, "ep-superseded", &session_id, "superseded").await;
+    create_execution_plan_in_db(&shared, "ep-current", &session_id, "active").await;
+
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-old-unarchived",
+        project_id.as_str(),
+        &session_id,
+        "paused",
+        "ep-superseded",
+        false,
+    )
+    .await;
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-current-archived",
+        project_id.as_str(),
+        &session_id,
+        "paused",
+        "ep-current",
+        true,
+    )
+    .await;
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-current-merged",
+        project_id.as_str(),
+        &session_id,
+        "merged",
+        "ep-current",
+        false,
+    )
+    .await;
+
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
+
+    assert_eq!(
+        counts.in_progress, 0,
+        "superseded/archived tasks must not keep the session in_progress"
+    );
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(
+        counts.done, 1,
+        "only the current unarchived execution-plan tasks should classify the session"
+    );
 }
 
 #[tokio::test]
@@ -1558,12 +1806,29 @@ async fn test_get_group_counts_accepted_with_mix_active_and_idle() {
     update_session_status(&shared, &session_id, "accepted").await;
 
     // Mix: one active (executing) + one idle (backlog) — active takes precedence
-    create_task_in_db(&shared, "task-003", project_id.as_str(), &session_id, "executing").await;
-    create_task_in_db(&shared, "task-004", project_id.as_str(), &session_id, "backlog").await;
+    create_task_in_db(
+        &shared,
+        "task-003",
+        project_id.as_str(),
+        &session_id,
+        "executing",
+    )
+    .await;
+    create_task_in_db(
+        &shared,
+        "task-004",
+        project_id.as_str(),
+        &session_id,
+        "backlog",
+    )
+    .await;
 
     let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
-    assert_eq!(counts.in_progress, 1, "Session with active tasks should be in_progress");
+    assert_eq!(
+        counts.in_progress, 1,
+        "Session with active tasks should be in_progress"
+    );
     assert_eq!(counts.accepted, 0);
     assert_eq!(counts.done, 0);
 }
@@ -1592,7 +1857,14 @@ async fn test_get_group_counts_multiple_groups_simultaneously() {
     let in_prog_id = in_prog.id.as_str().to_string();
     repo.create(in_prog).await.unwrap();
     update_session_status(&shared, &in_prog_id, "accepted").await;
-    create_task_in_db(&shared, "task-005", project_id.as_str(), &in_prog_id, "reviewing").await;
+    create_task_in_db(
+        &shared,
+        "task-005",
+        project_id.as_str(),
+        &in_prog_id,
+        "reviewing",
+    )
+    .await;
 
     // Accepted (no tasks)
     let accepted = create_test_session(&project_id, Some("Accepted"));
@@ -1605,7 +1877,14 @@ async fn test_get_group_counts_multiple_groups_simultaneously() {
     let done_id = done.id.as_str().to_string();
     repo.create(done).await.unwrap();
     update_session_status(&shared, &done_id, "accepted").await;
-    create_task_in_db(&shared, "task-006", project_id.as_str(), &done_id, "approved").await;
+    create_task_in_db(
+        &shared,
+        "task-006",
+        project_id.as_str(),
+        &done_id,
+        "approved",
+    )
+    .await;
 
     let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
@@ -1756,9 +2035,30 @@ async fn test_list_by_group_progress_data_for_accepted_subgroups() {
     update_session_status(&shared, &session_id, "accepted").await;
 
     // Add tasks: 1 active, 1 idle, 1 terminal
-    create_task_in_db(&shared, "task-p1", project_id.as_str(), &session_id, "executing").await;
-    create_task_in_db(&shared, "task-p2", project_id.as_str(), &session_id, "backlog").await;
-    create_task_in_db(&shared, "task-p3", project_id.as_str(), &session_id, "merged").await;
+    create_task_in_db(
+        &shared,
+        "task-p1",
+        project_id.as_str(),
+        &session_id,
+        "executing",
+    )
+    .await;
+    create_task_in_db(
+        &shared,
+        "task-p2",
+        project_id.as_str(),
+        &session_id,
+        "backlog",
+    )
+    .await;
+    create_task_in_db(
+        &shared,
+        "task-p3",
+        project_id.as_str(),
+        &session_id,
+        "merged",
+    )
+    .await;
 
     let (sessions, total) = repo
         .list_by_group(&project_id, "in_progress", 0, 20, None)
@@ -1768,11 +2068,91 @@ async fn test_list_by_group_progress_data_for_accepted_subgroups() {
     assert_eq!(total, 1);
     assert_eq!(sessions.len(), 1);
 
-    let progress = sessions[0].progress.as_ref().expect("Progress should be populated for in_progress group");
+    let progress = sessions[0]
+        .progress
+        .as_ref()
+        .expect("Progress should be populated for in_progress group");
     assert_eq!(progress.active, 1, "Should have 1 active task");
     assert_eq!(progress.idle, 1, "Should have 1 idle task");
     assert_eq!(progress.done, 1, "Should have 1 done task");
     assert_eq!(progress.total, 3, "Should have 3 total tasks");
+}
+
+#[tokio::test]
+async fn test_list_by_group_done_scopes_progress_to_current_unarchived_execution_plan_tasks() {
+    let project_id = ProjectId::new();
+    let (_db, shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Done Current Plan Only"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session.clone()).await.unwrap();
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    create_execution_plan_in_db(&shared, "ep-old", &session_id, "superseded").await;
+    create_execution_plan_in_db(&shared, "ep-live", &session_id, "active").await;
+
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-old-paused",
+        project_id.as_str(),
+        &session_id,
+        "paused",
+        "ep-old",
+        false,
+    )
+    .await;
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-live-paused-archived",
+        project_id.as_str(),
+        &session_id,
+        "paused",
+        "ep-live",
+        true,
+    )
+    .await;
+    create_task_in_db_with_execution_plan(
+        &shared,
+        "task-live-merged",
+        project_id.as_str(),
+        &session_id,
+        "merged",
+        "ep-live",
+        false,
+    )
+    .await;
+
+    let (in_progress_sessions, in_progress_total) = repo
+        .list_by_group(&project_id, "in_progress", 0, 20, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        in_progress_total, 0,
+        "stale historical tasks must not place the session in in_progress"
+    );
+    assert!(in_progress_sessions.is_empty());
+
+    let (done_sessions, done_total) = repo
+        .list_by_group(&project_id, "done", 0, 20, None)
+        .await
+        .unwrap();
+
+    assert_eq!(done_total, 1);
+    assert_eq!(done_sessions.len(), 1);
+    assert_eq!(done_sessions[0].session.id, session.id);
+
+    let progress = done_sessions[0]
+        .progress
+        .as_ref()
+        .expect("done group should include progress");
+    assert_eq!(progress.active, 0);
+    assert_eq!(progress.idle, 0);
+    assert_eq!(progress.done, 1);
+    assert_eq!(progress.total, 1);
 }
 
 #[tokio::test]
@@ -1834,7 +2214,7 @@ async fn test_list_by_group_parent_title_resolved() {
 /// storage precision issues.
 ///
 /// Verifies:
-/// - Returned (new_gen, cleared_metadata) tuple is correct
+/// - Returned (new_gen, cleared_snapshot) tuple is correct
 /// - DB is updated atomically: status=reviewing, in_progress=true, gen=N+1
 /// - All stale metadata fields are cleared in the stored JSON
 #[tokio::test]
@@ -1854,54 +2234,40 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     repo.create(session).await.unwrap();
 
     // Set stale metadata: 2 rounds, 1 gap, convergence_reason set, parse_failures non-empty
-    let stale_meta = serde_json::json!({
-        "v": 1,
-        "current_round": 2,
-        "max_rounds": 5,
-        "rounds": [
-            {"fingerprints": ["fp-a", "fp-b"], "gap_score": 10},
-            {"fingerprints": ["fp-a"], "gap_score": 6}
-        ],
-        "current_gaps": [
-            {"severity": "critical", "category": "security", "description": "Auth bypass risk", "why_it_matters": null}
-        ],
-        "convergence_reason": "max_rounds",
-        "best_round_index": 1,
-        "parse_failures": [1]
-    })
-    .to_string();
-
-    repo.update_verification_state(
-        &session_id_obj,
-        VerificationStatus::Verified,
-        false,
-        Some(stale_meta),
-    )
-    .await
-    .unwrap();
+    repo.update_verification_state(&session_id_obj, VerificationStatus::Verified, false)
+        .await
+        .unwrap();
 
     // Call reset_and_begin_reverify — must atomically clear metadata, increment gen, set Reviewing
-    let (new_gen, cleared_metadata) = repo
+    let (new_gen, cleared_snapshot) = repo
         .reset_and_begin_reverify(session_id_obj.as_str())
         .await
         .unwrap();
 
     // Assert returned tuple (DB starts at generation=0, so reset increments to 1)
     assert_eq!(new_gen, 1, "generation must be incremented from 0 to 1");
-    assert!(cleared_metadata.current_gaps.is_empty(), "returned current_gaps must be empty");
-    assert!(cleared_metadata.rounds.is_empty(), "returned rounds must be empty");
+    assert_eq!(cleared_snapshot.generation, 1);
+    assert_eq!(cleared_snapshot.status, VerificationStatus::Reviewing);
+    assert!(cleared_snapshot.in_progress);
     assert!(
-        cleared_metadata.convergence_reason.is_none(),
+        cleared_snapshot.current_gaps.is_empty(),
+        "returned current_gaps must be empty"
+    );
+    assert!(
+        cleared_snapshot.rounds.is_empty(),
+        "returned rounds must be empty"
+    );
+    assert!(
+        cleared_snapshot.convergence_reason.is_none(),
         "returned convergence_reason must be None"
     );
     assert!(
-        cleared_metadata.best_round_index.is_none(),
+        cleared_snapshot.best_round_index.is_none(),
         "returned best_round_index must be None"
     );
-    assert_eq!(cleared_metadata.current_round, 0, "returned current_round must be 0");
-    assert!(
-        cleared_metadata.parse_failures.is_empty(),
-        "returned parse_failures must be empty"
+    assert_eq!(
+        cleared_snapshot.current_round, 0,
+        "returned current_round must be 0"
     );
 
     // Assert DB was updated atomically
@@ -1911,38 +2277,21 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
         VerificationStatus::Reviewing,
         "DB status must be Reviewing"
     );
-    assert!(updated.verification_in_progress, "DB in_progress must be true");
-    assert_eq!(updated.verification_generation, 1, "DB generation must be 1");
+    assert!(
+        updated.verification_in_progress,
+        "DB in_progress must be true"
+    );
+    assert_eq!(
+        updated.verification_generation, 1,
+        "DB generation must be 1"
+    );
 
-    // Parse stored metadata to verify SQLite-level JSON serialization is correct
-    let stored_meta: serde_json::Value = serde_json::from_str(
-        updated.verification_metadata.as_deref().unwrap_or("{}"),
-    )
-    .unwrap();
-    assert_eq!(
-        stored_meta["current_gaps"],
-        serde_json::json!([]),
-        "SQLite current_gaps must be empty array"
-    );
-    assert_eq!(
-        stored_meta["rounds"],
-        serde_json::json!([]),
-        "SQLite rounds must be empty array"
-    );
-    assert!(
-        stored_meta["convergence_reason"].is_null(),
-        "SQLite convergence_reason must be null"
-    );
-    assert!(
-        stored_meta["best_round_index"].is_null(),
-        "SQLite best_round_index must be null"
-    );
-    assert_eq!(stored_meta["current_round"], 0, "SQLite current_round must be 0");
-    assert_eq!(
-        stored_meta["parse_failures"],
-        serde_json::json!([]),
-        "SQLite parse_failures must be empty array"
-    );
+    // Native reverify state lives in the returned snapshot rather than the session row.
+    assert_eq!(updated.verification_current_round, None);
+    assert_eq!(updated.verification_max_rounds, None);
+    assert_eq!(updated.verification_gap_count, 0);
+    assert_eq!(updated.verification_gap_score, None);
+    assert_eq!(updated.verification_convergence_reason, None);
 }
 
 // ==================== SESSION PURPOSE FILTER TESTS ====================
@@ -1951,7 +2300,6 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
 /// verification_child_count must be correct, and existing column positions must not be corrupted.
 #[tokio::test]
 async fn test_list_by_group_excludes_verification_sessions_and_counts_children() {
-
     let db = setup_test_db();
     let project_id = ProjectId::new();
     create_test_project(&db, &project_id, "Test Project", "/test/purpose");
@@ -1981,7 +2329,10 @@ async fn test_list_by_group_excludes_verification_sessions_and_counts_children()
         .unwrap();
 
     // Verification session must be excluded
-    assert_eq!(total, 1, "Only 1 session should be visible (verification child excluded)");
+    assert_eq!(
+        total, 1,
+        "Only 1 session should be visible (verification child excluded)"
+    );
     assert_eq!(sessions.len(), 1);
 
     let result = &sessions[0];
@@ -2009,7 +2360,6 @@ async fn test_list_by_group_excludes_verification_sessions_and_counts_children()
 /// Regression guard: get_group_counts must exclude verification sessions from all counts.
 #[tokio::test]
 async fn test_get_group_counts_excludes_verification_sessions() {
-
     let db = setup_test_db();
     let project_id = ProjectId::new();
     create_test_project(&db, &project_id, "Test Project", "/test/counts");
@@ -2036,7 +2386,10 @@ async fn test_get_group_counts_excludes_verification_sessions() {
     let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     // Only 2 general sessions should appear as drafts
-    assert_eq!(counts.drafts, 2, "Drafts count must exclude verification sessions");
+    assert_eq!(
+        counts.drafts, 2,
+        "Drafts count must exclude verification sessions"
+    );
 }
 
 // ==================== ARCHIVE CLEARS VERIFICATION_IN_PROGRESS TESTS ====================
@@ -2054,14 +2407,9 @@ async fn test_archive_clears_verification_in_progress_when_set() {
     repo.create(session.clone()).await.unwrap();
 
     // Set verification_in_progress = true
-    repo.update_verification_state(
-        &session.id,
-        VerificationStatus::Reviewing,
-        true,
-        Some(r#"{"v":1}"#.to_string()),
-    )
-    .await
-    .unwrap();
+    repo.update_verification_state(&session.id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
 
     // Verify flag is set
     let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
@@ -2141,7 +2489,10 @@ async fn test_get_stale_in_progress_sessions_excludes_archived() {
     }
 
     let stale_cutoff = chrono::Utc::now();
-    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    let results = repo
+        .get_stale_in_progress_sessions(stale_cutoff)
+        .await
+        .unwrap();
     assert!(
         results.iter().all(|s| s.id != session.id),
         "archived session must be excluded from stale query even with verification_in_progress=1"
@@ -2175,7 +2526,10 @@ async fn test_get_stale_in_progress_sessions_includes_active() {
     }
 
     let stale_cutoff = chrono::Utc::now();
-    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    let results = repo
+        .get_stale_in_progress_sessions(stale_cutoff)
+        .await
+        .unwrap();
     assert!(
         results.iter().any(|s| s.id == session.id),
         "active stale session must be included in stale query"
@@ -2298,7 +2652,10 @@ async fn test_set_pending_initial_prompt_stores_value() {
         .unwrap();
 
     let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
-    assert_eq!(fetched.pending_initial_prompt, Some("Hello world".to_string()));
+    assert_eq!(
+        fetched.pending_initial_prompt,
+        Some("Hello world".to_string())
+    );
 }
 
 #[tokio::test]
@@ -2388,7 +2745,10 @@ async fn test_claim_pending_session_is_idempotent_second_claim_returns_none() {
         .claim_pending_session_for_project(project_id.as_str())
         .await
         .unwrap();
-    assert!(second.is_none(), "second claim must return None after prompt cleared");
+    assert!(
+        second.is_none(),
+        "second claim must return None after prompt cleared"
+    );
 }
 
 #[tokio::test]
@@ -2405,7 +2765,9 @@ async fn test_claim_pending_session_respects_status_active_filter() {
         .unwrap();
 
     // Archive the session — status changes from 'active' to 'archived'
-    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
 
     // Claim must ignore non-active sessions
     let result = repo
@@ -2522,10 +2884,15 @@ async fn test_list_projects_with_pending_sessions_excludes_non_active() {
     repo.set_pending_initial_prompt(session.id.as_str(), Some("archived".to_string()))
         .await
         .unwrap();
-    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
 
     let result = repo.list_projects_with_pending_sessions().await.unwrap();
-    assert!(result.is_empty(), "archived sessions must not appear in pending projects list");
+    assert!(
+        result.is_empty(),
+        "archived sessions must not appear in pending projects list"
+    );
 }
 
 #[tokio::test]
@@ -2545,7 +2912,10 @@ async fn test_list_projects_with_pending_sessions_excludes_cleared_prompts() {
         .unwrap();
 
     let result = repo.list_projects_with_pending_sessions().await.unwrap();
-    assert!(result.is_empty(), "cleared prompt must not appear in pending projects list");
+    assert!(
+        result.is_empty(),
+        "cleared prompt must not appear in pending projects list"
+    );
 }
 
 // ============================================================================
@@ -2563,27 +2933,43 @@ async fn test_count_pending_sessions_for_project_basic() {
     let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // No pending sessions initially
-    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    let count = repo
+        .count_pending_sessions_for_project(&project_id)
+        .await
+        .unwrap();
     assert_eq!(count, 0, "no pending sessions initially");
 
     // Add a session with pending prompt
     let s1 = create_test_session(&project_id, Some("Session 1"));
     repo.create(s1.clone()).await.unwrap();
-    repo.set_pending_initial_prompt(s1.id.as_str(), Some("hello".to_string())).await.unwrap();
+    repo.set_pending_initial_prompt(s1.id.as_str(), Some("hello".to_string()))
+        .await
+        .unwrap();
 
-    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    let count = repo
+        .count_pending_sessions_for_project(&project_id)
+        .await
+        .unwrap();
     assert_eq!(count, 1, "one pending session");
 
     // Add another pending session
     let s2 = create_test_session(&project_id, Some("Session 2"));
     repo.create(s2.clone()).await.unwrap();
-    repo.set_pending_initial_prompt(s2.id.as_str(), Some("world".to_string())).await.unwrap();
+    repo.set_pending_initial_prompt(s2.id.as_str(), Some("world".to_string()))
+        .await
+        .unwrap();
 
-    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    let count = repo
+        .count_pending_sessions_for_project(&project_id)
+        .await
+        .unwrap();
     assert_eq!(count, 2, "two pending sessions");
 
     // Other project should have 0
-    let count_other = repo.count_pending_sessions_for_project(&other_project_id).await.unwrap();
+    let count_other = repo
+        .count_pending_sessions_for_project(&other_project_id)
+        .await
+        .unwrap();
     assert_eq!(count_other, 0, "other project has no pending sessions");
 }
 
@@ -2597,11 +2983,18 @@ async fn test_count_pending_sessions_excludes_archived() {
 
     let session = create_test_session(&project_id, None);
     repo.create(session.clone()).await.unwrap();
-    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued".to_string())).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued".to_string()))
+        .await
+        .unwrap();
     // Archive the session — should be excluded from count
-    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
 
-    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    let count = repo
+        .count_pending_sessions_for_project(&project_id)
+        .await
+        .unwrap();
     assert_eq!(count, 0, "archived sessions must not count as pending");
 }
 
@@ -2615,11 +3008,18 @@ async fn test_count_pending_sessions_excludes_cleared_prompt() {
 
     let session = create_test_session(&project_id, None);
     repo.create(session.clone()).await.unwrap();
-    repo.set_pending_initial_prompt(session.id.as_str(), Some("temp".to_string())).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("temp".to_string()))
+        .await
+        .unwrap();
     // Clear the prompt
-    repo.set_pending_initial_prompt(session.id.as_str(), None).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), None)
+        .await
+        .unwrap();
 
-    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    let count = repo
+        .count_pending_sessions_for_project(&project_id)
+        .await
+        .unwrap();
     assert_eq!(count, 0, "cleared prompt must not count as pending");
 }
 
@@ -2645,7 +3045,10 @@ async fn test_set_pending_if_unset_sets_when_null() {
     assert!(result, "must return true when prompt was NULL");
 
     let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
-    assert_eq!(fetched.pending_initial_prompt.as_deref(), Some("First message"));
+    assert_eq!(
+        fetched.pending_initial_prompt.as_deref(),
+        Some("First message")
+    );
 }
 
 #[tokio::test]
@@ -2946,11 +3349,17 @@ async fn test_get_group_counts_search_filters_by_title_substring() {
     repo.create(s2).await.unwrap();
     repo.create(s3).await.unwrap();
 
-    let counts = repo.get_group_counts(&project_id, Some("auth")).await.unwrap();
+    let counts = repo
+        .get_group_counts(&project_id, Some("auth"))
+        .await
+        .unwrap();
     // Only the 2 "Auth*" sessions should be counted in drafts
     assert_eq!(counts.drafts, 2);
 
-    let counts_dash = repo.get_group_counts(&project_id, Some("Dashboard")).await.unwrap();
+    let counts_dash = repo
+        .get_group_counts(&project_id, Some("Dashboard"))
+        .await
+        .unwrap();
     assert_eq!(counts_dash.drafts, 1);
 }
 
@@ -2965,9 +3374,18 @@ async fn test_get_group_counts_search_case_insensitive() {
     repo.create(s1).await.unwrap();
 
     // All variants of casing should match
-    let counts_lower = repo.get_group_counts(&project_id, Some("auth")).await.unwrap();
-    let counts_upper = repo.get_group_counts(&project_id, Some("AUTH")).await.unwrap();
-    let counts_mixed = repo.get_group_counts(&project_id, Some("Auth")).await.unwrap();
+    let counts_lower = repo
+        .get_group_counts(&project_id, Some("auth"))
+        .await
+        .unwrap();
+    let counts_upper = repo
+        .get_group_counts(&project_id, Some("AUTH"))
+        .await
+        .unwrap();
+    let counts_mixed = repo
+        .get_group_counts(&project_id, Some("Auth"))
+        .await
+        .unwrap();
 
     assert_eq!(counts_lower.drafts, 1, "lowercase search should match");
     assert_eq!(counts_upper.drafts, 1, "uppercase search should match");
@@ -2990,7 +3408,10 @@ async fn test_get_group_counts_empty_search_returns_all() {
     let counts_empty = repo.get_group_counts(&project_id, Some("")).await.unwrap();
     let counts_none = repo.get_group_counts(&project_id, None).await.unwrap();
 
-    assert_eq!(counts_empty.drafts, counts_none.drafts, "empty search = no filter");
+    assert_eq!(
+        counts_empty.drafts, counts_none.drafts,
+        "empty search = no filter"
+    );
     assert_eq!(counts_empty.drafts, 2);
 }
 
@@ -3004,7 +3425,10 @@ async fn test_get_group_counts_search_no_match_returns_zeros() {
     let s1 = create_test_session(&project_id, Some("Alpha"));
     repo.create(s1).await.unwrap();
 
-    let counts = repo.get_group_counts(&project_id, Some("nonexistent")).await.unwrap();
+    let counts = repo
+        .get_group_counts(&project_id, Some("nonexistent"))
+        .await
+        .unwrap();
     assert_eq!(counts.drafts, 0);
     assert_eq!(counts.archived, 0);
 }
@@ -3054,13 +3478,21 @@ async fn test_list_by_group_search_case_insensitive() {
         .list_by_group(&project_id, "drafts", 0, 20, Some("upper case"))
         .await
         .unwrap();
-    assert_eq!(sessions_lower.len(), 1, "lowercase search should match uppercase title");
+    assert_eq!(
+        sessions_lower.len(),
+        1,
+        "lowercase search should match uppercase title"
+    );
 
     let (sessions_upper, _) = repo
         .list_by_group(&project_id, "drafts", 0, 20, Some("UPPER CASE"))
         .await
         .unwrap();
-    assert_eq!(sessions_upper.len(), 1, "uppercase search should match uppercase title");
+    assert_eq!(
+        sessions_upper.len(),
+        1,
+        "uppercase search should match uppercase title"
+    );
 }
 
 #[tokio::test]
@@ -3111,7 +3543,10 @@ async fn test_list_by_group_search_special_chars_treated_literally() {
         .list_by_group(&project_id, "drafts", 0, 20, Some("%"))
         .await
         .unwrap();
-    assert_eq!(percent_total, 1, "% should be treated literally, matching only '100% complete'");
+    assert_eq!(
+        percent_total, 1,
+        "% should be treated literally, matching only '100% complete'"
+    );
     assert_eq!(
         percent_results[0].session.title.as_deref(),
         Some("100% complete")
@@ -3122,7 +3557,10 @@ async fn test_list_by_group_search_special_chars_treated_literally() {
         .list_by_group(&project_id, "drafts", 0, 20, Some("_"))
         .await
         .unwrap();
-    assert_eq!(underscore_total, 1, "_ should be treated literally, matching only 'task_cleanup plan'");
+    assert_eq!(
+        underscore_total, 1,
+        "_ should be treated literally, matching only 'task_cleanup plan'"
+    );
     assert_eq!(
         underscore_results[0].session.title.as_deref(),
         Some("task_cleanup plan")
@@ -3141,8 +3579,14 @@ async fn test_get_latest_verification_child_returns_none_when_no_children() {
     let parent = create_test_session(&project_id, Some("Parent Session"));
     repo.create(parent.clone()).await.unwrap();
 
-    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
-    assert!(result.is_none(), "should return None when parent has no verification children");
+    let result = repo
+        .get_latest_verification_child(&parent.id)
+        .await
+        .unwrap();
+    assert!(
+        result.is_none(),
+        "should return None when parent has no verification children"
+    );
 }
 
 #[tokio::test]
@@ -3163,10 +3607,15 @@ async fn test_get_latest_verification_child_returns_archived_child() {
     repo.create(child.clone()).await.unwrap();
 
     // Archive the child
-    repo.update_status(&child.id, IdeationSessionStatus::Archived).await.unwrap();
+    repo.update_status(&child.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
 
     // get_latest_verification_child should return it even though archived
-    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    let result = repo
+        .get_latest_verification_child(&parent.id)
+        .await
+        .unwrap();
     assert!(result.is_some(), "should return archived child");
     assert_eq!(result.unwrap().id, child.id);
 }
@@ -3196,7 +3645,10 @@ async fn test_get_latest_verification_child_returns_most_recent() {
     repo.create(child2.clone()).await.unwrap();
 
     // Should return the most recently created child
-    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    let result = repo
+        .get_latest_verification_child(&parent.id)
+        .await
+        .unwrap();
     assert!(result.is_some());
     assert_eq!(
         result.unwrap().id,
@@ -3223,6 +3675,9 @@ async fn test_get_latest_verification_child_ignores_non_verification_children() 
     repo.create(general_child.clone()).await.unwrap();
 
     // No verification children exist — should return None
-    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    let result = repo
+        .get_latest_verification_child(&parent.id)
+        .await
+        .unwrap();
     assert!(result.is_none(), "should ignore non-verification children");
 }

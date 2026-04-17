@@ -1,5 +1,5 @@
 // Infrastructure layer - external implementations
-// SQLite, file system, Claude CLI interactions
+// SQLite, file system, and harness-specific external integrations
 
 pub mod agents;
 pub mod memory;

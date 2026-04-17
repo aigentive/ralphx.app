@@ -1,6 +1,6 @@
 //! Branch freshness checks for execution and review entry points.
 //!
-//! Ensures both plan←main and task←feature branches are fresh before
+//! Ensures both plan←source and task←feature branches are fresh before
 //! an agent is spawned. On conflict, routes to Merging state for resolution.
 
 // Callers in on_enter_states.rs and side_effects.rs are added in subsequent steps.
@@ -52,7 +52,7 @@ pub struct FreshnessMetadata {
     #[serde(default)]
     pub freshness_conflict_count: u32,
 
-    /// True when the plan←main update had conflicts requiring merger agent resolution.
+    /// True when the plan←source update had conflicts requiring merger agent resolution.
     #[serde(default)]
     pub plan_update_conflict: bool,
 
@@ -301,7 +301,7 @@ pub enum FreshnessAction {
     ExecutionBlocked { reason: String },
 }
 
-/// Ensures both plan←main and task←feature branches are fresh.
+/// Ensures both plan←source and task←feature branches are fresh.
 ///
 /// Must be called BEFORE any agent process is spawned (before `send_message()`).
 ///
@@ -318,6 +318,7 @@ pub async fn ensure_branches_fresh(
     project: &Project,
     task_id_str: &str,
     plan_branch: Option<&str>,
+    plan_source_branch: Option<&str>,
     app_handle: Option<&tauri::AppHandle>,
     activity_event_repo: Option<&Arc<dyn ActivityEventRepository>>,
     origin_state: &str,
@@ -428,12 +429,12 @@ pub async fn ensure_branches_fresh(
         }
     }
 
-    let freshness_timeout =
-        std::time::Duration::from_secs(config.branch_freshness_timeout_secs);
+    let freshness_timeout = std::time::Duration::from_secs(config.branch_freshness_timeout_secs);
 
-    let base_branch = project.base_branch.as_deref().unwrap_or("main");
+    let base_branch =
+        plan_source_branch.unwrap_or_else(|| project.base_branch.as_deref().unwrap_or("main"));
 
-    // 6. Plan freshness check (plan←main)
+    // 6. Plan freshness check (plan←source branch)
     if let Some(plan_branch_name) = plan_branch {
         // Heap-allocate the large update future to avoid overflowing tokio worker stacks
         // when startup reconciliation inlines deep async chains.

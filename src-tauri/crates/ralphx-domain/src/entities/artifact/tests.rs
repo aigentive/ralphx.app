@@ -72,9 +72,9 @@ fn process_id_from_string_preserves_value() {
 // ===== ArtifactType Tests =====
 
 #[test]
-fn artifact_type_all_returns_21_types() {
+fn artifact_type_all_returns_22_types() {
     let all = ArtifactType::all();
-    assert_eq!(all.len(), 21);
+    assert_eq!(all.len(), 22);
 }
 
 #[test]
@@ -103,6 +103,8 @@ fn artifact_type_deserializes() {
     assert_eq!(t, ArtifactType::Prd);
     let t: ArtifactType = serde_json::from_str("\"research_document\"").unwrap();
     assert_eq!(t, ArtifactType::ResearchDocument);
+    let t: ArtifactType = serde_json::from_str("\"verification_finding\"").unwrap();
+    assert_eq!(t, ArtifactType::VerificationFinding);
 }
 
 #[test]
@@ -372,6 +374,16 @@ fn artifact_bucket_research_outputs_has_correct_types() {
     assert!(research.accepts_type(ArtifactType::Findings));
     assert!(research.accepts_type(ArtifactType::Recommendations));
     assert!(!research.accepts_type(ArtifactType::CodeChange));
+}
+
+#[test]
+fn artifact_bucket_team_findings_accepts_verification_findings() {
+    let buckets = ArtifactBucket::system_buckets();
+    let team = buckets
+        .iter()
+        .find(|b| b.id.as_str() == "team-findings")
+        .unwrap();
+    assert!(team.accepts_type(ArtifactType::VerificationFinding));
 }
 
 #[test]

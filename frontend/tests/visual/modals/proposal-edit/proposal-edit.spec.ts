@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { IdeationPage } from "../../../pages/ideation.page";
 import { ProposalEditModalPage } from "../../../pages/modals/proposal-edit.page";
 import { setupIdeation } from "../../../fixtures/setup.fixtures";
 import { loadMockIdeationSession, openProposalEditModal } from "../../../helpers/ideation.helpers";
@@ -15,11 +14,9 @@ import { loadMockIdeationSession, openProposalEditModal } from "../../../helpers
  */
 
 test.describe("ProposalEditModal", () => {
-  let ideation: IdeationPage;
   let proposalEditModal: ProposalEditModalPage;
 
   test.beforeEach(async ({ page }) => {
-    ideation = new IdeationPage(page);
     proposalEditModal = new ProposalEditModalPage(page);
     await setupIdeation(page);
     await loadMockIdeationSession(page);

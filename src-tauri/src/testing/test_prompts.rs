@@ -25,9 +25,6 @@ pub const QA_TESTER_TEST: &str = "Respond with exactly: QA_TESTER_COMPLETE";
 /// Minimal prompt for testing reviewer agent
 pub const REVIEWER_TEST: &str = "Respond with exactly: REVIEW_COMPLETE_APPROVED";
 
-/// Minimal prompt for testing supervisor agent
-pub const SUPERVISOR_TEST: &str = "Respond with exactly: SUPERVISOR_CHECK_OK";
-
 /// Expected responses for validation
 pub mod expected {
     pub const ECHO_OK: &str = "TEST_ECHO_OK";
@@ -36,7 +33,6 @@ pub mod expected {
     pub const QA_REFINER_OK: &str = "QA_REFINER_COMPLETE";
     pub const QA_TESTER_OK: &str = "QA_TESTER_COMPLETE";
     pub const REVIEWER_OK: &str = "REVIEW_COMPLETE_APPROVED";
-    pub const SUPERVISOR_OK: &str = "SUPERVISOR_CHECK_OK";
 }
 
 /// Generate a minimal prompt for iteration testing

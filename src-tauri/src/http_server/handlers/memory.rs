@@ -1,5 +1,5 @@
 // Memory MCP tool handlers
-// These handlers are restricted to memory agents only (memory-maintainer, memory-capture)
+// These handlers are restricted to memory agents only (ralphx-memory-maintainer, ralphx-memory-capture)
 // Access control is enforced via three-layer allowlist model
 
 use std::sync::Arc;

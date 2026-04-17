@@ -7,7 +7,10 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
-use crate::application::task_scheduler_service::TaskSchedulerService;
+use crate::application::runtime_factory::{
+    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
+    build_transition_service_with_fallback,
+};
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::commands::ExecutionState;
@@ -385,6 +388,7 @@ pub async fn retry_merge(
     let plan_branch_repo = Arc::clone(&state.plan_branch_repo);
     let memory_event_repo = Arc::clone(&state.memory_event_repo);
     let execution_settings_repo = Arc::clone(&state.execution_settings_repo);
+    let agent_lane_settings_repo = Arc::clone(&state.agent_lane_settings_repo);
     let execution_state_clone = Arc::clone(execution_state.inner());
     let app_handle_opt = state.app_handle.clone();
     let task_id_for_spawn = task_id_parsed.clone();
@@ -408,6 +412,7 @@ pub async fn retry_merge(
             plan_branch_repo,
             memory_event_repo,
             execution_settings_repo,
+            agent_lane_settings_repo,
             execution_state_clone,
             app_handle_opt,
             ipr,
@@ -439,6 +444,7 @@ async fn execute_merge_retry_background(
     plan_branch_repo: Arc<dyn crate::domain::repositories::PlanBranchRepository>,
     memory_event_repo: Arc<dyn crate::domain::repositories::MemoryEventRepository>,
     execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
+    agent_lane_settings_repo: Arc<dyn crate::domain::repositories::AgentLaneSettingsRepository>,
     execution_state: Arc<ExecutionState>,
     app_handle_opt: Option<tauri::AppHandle>,
     interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
@@ -448,51 +454,42 @@ async fn execute_merge_retry_background(
         "Background merge retry execution started"
     );
 
+    let deps = RuntimeFactoryDeps {
+        task_repo: Arc::clone(&task_repo),
+        task_dependency_repo: Arc::clone(&task_dependency_repo),
+        project_repo: Arc::clone(&project_repo),
+        chat_message_repo: Arc::clone(&chat_message_repo),
+        chat_attachment_repo: Arc::clone(&chat_attachment_repo),
+        conversation_repo: Arc::clone(&chat_conversation_repo),
+        agent_run_repo: Arc::clone(&agent_run_repo),
+        ideation_session_repo: Arc::clone(&ideation_session_repo),
+        activity_event_repo: Arc::clone(&activity_event_repo),
+        message_queue: Arc::clone(&message_queue),
+        running_agent_registry: Arc::clone(&running_agent_registry),
+        memory_event_repo: Arc::clone(&memory_event_repo),
+        agent_clients: None,
+        execution_plan_repo: None,
+        execution_settings_repo: Some(Arc::clone(&execution_settings_repo)),
+        agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
+        plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
+        interactive_process_registry: Some(Arc::clone(&interactive_process_registry)),
+    };
+
     // Create transition service with all necessary dependencies
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&project_repo),
-            Arc::clone(&task_repo),
-            Arc::clone(&task_dependency_repo),
-            Arc::clone(&chat_message_repo),
-            Arc::clone(&chat_attachment_repo),
-            Arc::clone(&chat_conversation_repo),
-            Arc::clone(&agent_run_repo),
-            Arc::clone(&ideation_session_repo),
-            Arc::clone(&activity_event_repo),
-            Arc::clone(&message_queue),
-            Arc::clone(&running_agent_registry),
-            Arc::clone(&memory_event_repo),
-            app_handle_opt.clone(),
-        )
-        .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&interactive_process_registry)),
-    );
+    let scheduler_concrete = Arc::new(build_task_scheduler_with_fallback(
+        &app_handle_opt,
+        Arc::clone(&execution_state),
+        &deps,
+    ));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&task_repo),
-        Arc::clone(&task_dependency_repo),
-        Arc::clone(&project_repo),
-        Arc::clone(&chat_message_repo),
-        Arc::clone(&chat_attachment_repo),
-        Arc::clone(&chat_conversation_repo),
-        Arc::clone(&agent_run_repo),
-        Arc::clone(&ideation_session_repo),
-        Arc::clone(&activity_event_repo),
-        Arc::clone(&message_queue),
-        Arc::clone(&running_agent_registry),
+    let transition_service = build_transition_service_with_fallback(
+        &app_handle_opt,
         Arc::clone(&execution_state),
-        app_handle_opt,
-        Arc::clone(&memory_event_repo),
+        &deps,
     )
-    .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
+    .with_task_scheduler(task_scheduler);
 
     let result = transition_service
         .transition_task(&task_id, InternalStatus::PendingMerge)
@@ -765,50 +762,18 @@ fn create_transition_service(
 ) -> TaskTransitionService<tauri::Wry> {
     // Create scheduler for post-merge scheduling (unblocked plan_merge tasks)
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
+        state.build_task_scheduler_for_runtime(
             Arc::clone(execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
             state.app_handle.clone(),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+        ),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let mut svc = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(execution_state),
-        state.app_handle.clone(),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let mut svc = state
+        .build_transition_service_with_execution_state(Arc::clone(execution_state))
+        .with_task_scheduler(task_scheduler)
+        .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry));
     if let Some(ref github_svc) = state.github_service {
         svc = svc.with_github_service(Arc::clone(github_svc));
     }

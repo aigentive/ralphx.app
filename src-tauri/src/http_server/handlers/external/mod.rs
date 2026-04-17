@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tracing::error;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
@@ -29,7 +29,6 @@ use crate::domain::services::{
     emit_verification_started, emit_verification_status_changed,
 };
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
-use crate::infrastructure::agents::claude::verification_config;
 use ralphx_domain::entities::EventType;
 
 use super::{HttpError, HttpServerState};

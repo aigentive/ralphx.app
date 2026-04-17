@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 
 #[derive(Debug, Deserialize)]
 pub struct TriggerVerificationRequest {
@@ -93,6 +94,40 @@ pub async fn trigger_verification_http(
         }));
     }
 
+    if session.verification_in_progress {
+        crate::http_server::handlers::ideation::repair_blank_orphaned_verification_generation(
+            &state.app_state,
+            &session,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to repair stale verification state for session {}: {}",
+                session_id, e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    }
+
+    let (_, effective_in_progress) = crate::domain::services::load_effective_verification_status(
+        state.app_state.ideation_session_repo.as_ref(),
+        &session,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load effective verification status for session {}: {}",
+            session_id, e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    if effective_in_progress {
+        return Ok(Json(TriggerVerificationResponse {
+            status: "already_running".to_string(),
+            session_id,
+        }));
+    }
+
     let sid_for_trigger = session_id.clone();
     let generation_opt = state
         .app_state
@@ -100,7 +135,10 @@ pub async fn trigger_verification_http(
         .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &sid_for_trigger))
         .await
         .map_err(|e| {
-            error!("trigger_auto_verify_sync failed for session {}: {}", session_id, e);
+            error!(
+                "trigger_auto_verify_sync failed for session {}: {}",
+                session_id, e
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -111,14 +149,14 @@ pub async fn trigger_verification_http(
         }));
     };
 
-    let cfg = verification_config();
+    let max_rounds = default_verification_max_rounds();
     if let Some(app_handle) = &state.app_state.app_handle {
-        emit_verification_started(app_handle, &session_id, generation, cfg.max_rounds);
+        emit_verification_started(app_handle, &session_id, generation, max_rounds);
     }
     let title = format!("Auto-verification (gen {generation})");
     let description = format!(
         "Run verification round loop. parent_session_id: {session_id}, generation: {generation}, max_rounds: {}",
-        cfg.max_rounds
+        max_rounds
     );
     match crate::http_server::handlers::session_linking::create_verification_child_session(
         &state,
@@ -189,7 +227,6 @@ pub async fn get_plan_verification_external_http(
     scope: ProjectScope,
     Path(session_id): Path<String>,
 ) -> Result<Json<ExternalVerificationResponse>, StatusCode> {
-    use crate::domain::entities::ideation::VerificationMetadata;
     use crate::domain::services::gap_score;
 
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
@@ -207,34 +244,73 @@ pub async fn get_plan_verification_external_http(
 
     session.assert_project_scope(&scope).map_err(|e| e.status)?;
 
-    let status_str = session.verification_status.to_string();
-    let in_progress = session.verification_in_progress;
+    let summary_status = session.verification_status;
+    let summary_in_progress = session.verification_in_progress;
 
-    let metadata: Option<VerificationMetadata> = session
-        .verification_metadata
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id_obj, session.verification_generation)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to load native verification snapshot for session {}: {}",
+                session_id, e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
-    let round = metadata.as_ref().and_then(|m| {
-        if m.current_round > 0 {
-            Some(m.current_round)
+    let child_state = crate::http_server::handlers::ideation::load_verification_child_state(
+        &state.app_state.ideation_session_repo,
+        &session_id_obj,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load verification child state for {}: {}",
+            session_id, e
+        );
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let stale_blank_active_generation =
+        crate::http_server::handlers::ideation::is_blank_orphaned_active_generation(
+            summary_in_progress,
+            snapshot.as_ref(),
+            &child_state,
+        );
+    let effective_snapshot = if stale_blank_active_generation {
+        None
+    } else {
+        snapshot.as_ref()
+    };
+
+    let status_str = effective_snapshot
+        .map(|run| run.status.to_string())
+        .unwrap_or_else(|| summary_status.to_string());
+    let in_progress = effective_snapshot
+        .map(|run| run.in_progress)
+        .unwrap_or(summary_in_progress);
+
+    let round = effective_snapshot.and_then(|run| {
+        if run.current_round > 0 {
+            Some(run.current_round)
         } else {
             None
         }
     });
-    let max_rounds = metadata.as_ref().and_then(|m| {
-        if m.max_rounds > 0 {
-            Some(m.max_rounds)
+    let max_rounds = effective_snapshot.and_then(|run| {
+        if run.max_rounds > 0 {
+            Some(run.max_rounds)
         } else {
             None
         }
     });
-    let gap_count = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
-    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
-    let gaps: Vec<ExternalGapDetail> = metadata
-        .as_ref()
-        .map(|m| {
-            m.current_gaps
+    let gap_count = effective_snapshot.map(|run| gap_score(&run.current_gaps));
+    let convergence_reason = effective_snapshot.and_then(|run| run.convergence_reason.clone());
+    let gaps: Vec<ExternalGapDetail> = effective_snapshot
+        .map(|run| {
+            run.current_gaps
                 .iter()
                 .map(|g| ExternalGapDetail {
                     severity: g.severity.clone(),
@@ -247,18 +323,13 @@ pub async fn get_plan_verification_external_http(
 
     // Fetch verification child continuity data
     let verification_child = {
-        use crate::domain::entities::IdeationSessionId as SessionId;
         use crate::domain::entities::ideation::IdeationSessionStatus;
+        use crate::domain::entities::IdeationSessionId as SessionId;
         use crate::domain::services::running_agent_registry::RunningAgentKey;
         use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
 
-        match state
-            .app_state
-            .ideation_session_repo
-            .get_latest_verification_child(&session_id_obj)
-            .await
-        {
-            Ok(Some(child)) => {
+        match child_state.latest_child {
+            Some(child) => {
                 let child_id_str = child.id.as_str().to_string();
                 let child_session_id = SessionId::from_string(child_id_str.clone());
 
@@ -327,14 +398,7 @@ pub async fn get_plan_verification_external_http(
                     last_assistant_message_at,
                 })
             }
-            Ok(None) => None,
-            Err(e) => {
-                error!(
-                    "Failed to fetch verification child for {}: {}",
-                    session_id, e
-                );
-                None
-            }
+            None => None,
         }
     };
 

@@ -1,0 +1,35 @@
+name: ralphx-qa-prep
+role: qa_prep
+description: "Generates acceptance criteria and test steps for task QA"
+capabilities:
+  mcp_tools:
+    - fs_read_file
+    - fs_list_dir
+    - fs_grep
+    - fs_glob
+    - delegate_start
+    - delegate_wait
+    - delegate_cancel
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
+    disallowed_tools:
+      - Write
+      - Edit
+      - Bash
+      - NotebookEdit
+    preapproved_cli_tools:
+      - Task(Plan)
+    skills:
+      - acceptance-criteria-writing
+      - qa-step-generation
+  codex:
+    runtime_features:
+      shell_tool: false
+delegation:
+  allowed_targets:
+    - ralphx-general-explorer

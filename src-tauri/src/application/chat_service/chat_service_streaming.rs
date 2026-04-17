@@ -13,28 +13,54 @@ use tracing::info;
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
+use crate::domain::agents::{
+    standard_harness_behavior, AgentHarnessKind, HarnessStreamMode, ProviderSessionRef,
+};
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventType, AgentRunId, ChatContextType, ChatConversationId,
-    ChatMessageId, TaskId,
+    ActivityEvent, ActivityEventType, AgentRunId, AgentRunUsage, ChatContextType,
+    ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatConversationRepository,
-    ChatMessageRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
+    TaskRepository,
 };
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall, ToolCallStats,
 };
+use crate::infrastructure::agents::{
+    extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
+    extract_codex_file_change_snapshot, extract_codex_thread_id, extract_codex_tool_call_snapshot,
+    extract_codex_usage, parse_codex_event_line, CodexFileChange, CodexFileChangeSnapshot,
+    CodexToolCallPhase, CodexToolCallSnapshot,
+};
 use tokio_util::sync::CancellationToken;
 
-use crate::utils::truncate_str;
 use super::chat_service_errors::StreamError;
+use super::chat_service_types::AgentUsageUpdatedPayload;
 use super::streaming_state_cache::{CachedStreamingTask, CachedToolCall, StreamingStateCache};
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
+use crate::utils::truncate_str;
+
+#[doc(hidden)]
+pub(crate) fn stream_mode_for_harness(harness: AgentHarnessKind) -> HarnessStreamMode {
+    standard_harness_behavior(harness).stream_mode
+}
+
+#[doc(hidden)]
+pub(crate) fn provider_session_ref_for_harness(
+    harness: AgentHarnessKind,
+    provider_session_id: impl Into<String>,
+) -> ProviderSessionRef {
+    ProviderSessionRef {
+        harness,
+        provider_session_id: provider_session_id.into(),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProcessExitDetails {
@@ -105,7 +131,27 @@ const COMPLETION_TOOL_NAMES: &[&str] = &[
 
 #[doc(hidden)]
 pub fn is_completion_tool_name(name: &str) -> bool {
-    COMPLETION_TOOL_NAMES.contains(&name)
+    let normalized = name.trim().to_ascii_lowercase();
+
+    if COMPLETION_TOOL_NAMES.contains(&normalized.as_str()) {
+        return true;
+    }
+
+    if let Some(tool_name) = normalized.strip_prefix("ralphx::") {
+        return matches!(
+            tool_name,
+            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+        );
+    }
+
+    if let Some(tool_name) = normalized.strip_prefix("ralphx:") {
+        return matches!(
+            tool_name,
+            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+        );
+    }
+
+    false
 }
 
 /// Final flush of accumulated content to DB before returning an error.
@@ -131,6 +177,377 @@ async fn flush_content_before_error(
             )
             .await;
     }
+}
+
+async fn persist_agent_run_usage(
+    agent_run_repo: &Option<Arc<dyn AgentRunRepository>>,
+    agent_run_id: &Option<String>,
+    usage: &AgentRunUsage,
+) {
+    if usage.is_empty() {
+        return;
+    }
+
+    if let (Some(repo), Some(run_id)) = (agent_run_repo.as_ref(), agent_run_id.as_ref()) {
+        let _ = repo
+            .update_usage(&AgentRunId::from_string(run_id.clone()), usage)
+            .await;
+    }
+}
+
+async fn persist_assistant_message_usage(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    usage: &AgentRunUsage,
+) {
+    if usage.is_empty() {
+        return;
+    }
+
+    if let (Some(repo), Some(message_id)) =
+        (chat_message_repo.as_ref(), assistant_message_id.as_ref())
+    {
+        let _ = repo
+            .update_usage(&ChatMessageId::from_string(message_id.clone()), usage)
+            .await;
+    }
+}
+
+fn emit_usage_updated_event<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    conversation_id: &str,
+    context_type: &str,
+    context_id: &str,
+) {
+    if let Some(handle) = app_handle.as_ref() {
+        let _ = handle.emit(
+            events::AGENT_USAGE_UPDATED,
+            AgentUsageUpdatedPayload {
+                conversation_id: conversation_id.to_string(),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+            },
+        );
+    }
+}
+
+async fn persist_assistant_message_snapshot(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    response_text: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlockItem],
+) {
+    if let (Some(repo), Some(message_id)) =
+        (chat_message_repo.as_ref(), assistant_message_id.as_ref())
+    {
+        let tool_calls_json = serde_json::to_string(tool_calls).ok();
+        let content_blocks_json = serde_json::to_string(content_blocks).ok();
+        let _ = repo
+            .update_content(
+                &ChatMessageId::from_string(message_id.clone()),
+                response_text,
+                tool_calls_json.as_deref(),
+                content_blocks_json.as_deref(),
+            )
+            .await;
+    }
+}
+
+fn codex_tool_call_content_block(tool_call: &ToolCall) -> ContentBlockItem {
+    ContentBlockItem::ToolUse {
+        id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        arguments: tool_call.arguments.clone(),
+        result: tool_call.result.clone(),
+        parent_tool_use_id: tool_call.parent_tool_use_id.clone(),
+        diff_context: tool_call
+            .diff_context
+            .as_ref()
+            .and_then(|context| serde_json::to_value(context).ok()),
+    }
+}
+
+fn upsert_codex_tool_call_snapshot(
+    tool_calls: &mut Vec<ToolCall>,
+    content_blocks: &mut Vec<ContentBlockItem>,
+    tool_call: ToolCall,
+) {
+    if let Some(tool_id) = tool_call.id.as_deref() {
+        if let Some(existing) = tool_calls
+            .iter_mut()
+            .find(|existing| existing.id.as_deref() == Some(tool_id))
+        {
+            existing.name = tool_call.name.clone();
+            existing.arguments = tool_call.arguments.clone();
+            if tool_call.result.is_some() || existing.result.is_none() {
+                existing.result = tool_call.result.clone();
+            }
+            if tool_call.diff_context.is_some() || existing.diff_context.is_none() {
+                existing.diff_context = tool_call.diff_context.clone();
+            }
+            if tool_call.stats.is_some() || existing.stats.is_none() {
+                existing.stats = tool_call.stats.clone();
+            }
+        } else {
+            tool_calls.push(tool_call.clone());
+        }
+
+        if let Some(existing_block) = content_blocks.iter_mut().find(|block| {
+            matches!(
+                block,
+                ContentBlockItem::ToolUse { id, .. } if id.as_deref() == Some(tool_id)
+            )
+        }) {
+            *existing_block = codex_tool_call_content_block(&tool_call);
+            return;
+        }
+    } else if let Some(existing) = tool_calls.iter_mut().find(|existing| {
+        existing.name == tool_call.name && existing.arguments == tool_call.arguments
+    }) {
+        if tool_call.result.is_some() || existing.result.is_none() {
+            existing.result = tool_call.result.clone();
+        }
+        if tool_call.diff_context.is_some() || existing.diff_context.is_none() {
+            existing.diff_context = tool_call.diff_context.clone();
+        }
+        if tool_call.stats.is_some() || existing.stats.is_none() {
+            existing.stats = tool_call.stats.clone();
+        }
+        return;
+    } else {
+        tool_calls.push(tool_call.clone());
+    }
+
+    content_blocks.push(codex_tool_call_content_block(&tool_call));
+}
+
+#[derive(Debug, Clone)]
+struct PendingCodexFileChange {
+    path: String,
+    kind: String,
+    old_content: Option<String>,
+}
+
+fn codex_file_change_tool_call_id(item_id: Option<&str>, path: &str, index: usize) -> String {
+    item_id
+        .map(|id| format!("{id}:{index}"))
+        .unwrap_or_else(|| format!("codex-file-change:{path}:{index}"))
+}
+
+fn codex_file_change_arguments(change: &CodexFileChange) -> serde_json::Value {
+    serde_json::json!({
+        "changes": [
+            {
+                "path": change.path,
+                "kind": change.kind,
+            }
+        ]
+    })
+}
+
+fn codex_file_change_started_snapshot(
+    item_id: Option<&str>,
+    change: &CodexFileChange,
+    index: usize,
+) -> CodexToolCallSnapshot {
+    CodexToolCallSnapshot {
+        phase: CodexToolCallPhase::Started,
+        tool_call: ToolCall {
+            id: Some(codex_file_change_tool_call_id(item_id, &change.path, index)),
+            name: "file_change".to_string(),
+            arguments: codex_file_change_arguments(change),
+            result: None,
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+    }
+}
+
+fn codex_file_change_completed_snapshot(
+    tool_id: String,
+    change: PendingCodexFileChange,
+    status: Option<&str>,
+) -> CodexToolCallSnapshot {
+    let status_result = serde_json::json!({
+        "status": status,
+        "kind": change.kind,
+    });
+
+    let maybe_new_content = std::fs::read_to_string(&change.path).ok();
+    let tool_call = match change.kind.as_str() {
+        "update" => {
+            if let Some(new_content) = maybe_new_content {
+                if let Some(old_content) = change.old_content.clone() {
+                    ToolCall {
+                        id: Some(tool_id),
+                        name: "edit".to_string(),
+                        arguments: serde_json::json!({
+                            "file_path": change.path,
+                            "old_string": old_content,
+                            "new_string": new_content,
+                        }),
+                        result: Some(status_result),
+                        parent_tool_use_id: None,
+                        diff_context: Some(DiffContext {
+                            old_content: change.old_content,
+                            file_path: change.path,
+                        }),
+                        stats: None,
+                    }
+                } else {
+                    ToolCall {
+                        id: Some(tool_id),
+                        name: "write".to_string(),
+                        arguments: serde_json::json!({
+                            "file_path": change.path,
+                            "content": new_content,
+                        }),
+                        result: Some(status_result),
+                        parent_tool_use_id: None,
+                        diff_context: Some(DiffContext {
+                            old_content: None,
+                            file_path: change.path,
+                        }),
+                        stats: None,
+                    }
+                }
+            } else {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "file_change".to_string(),
+                    arguments: serde_json::json!({
+                        "changes": [
+                            {
+                                "path": change.path,
+                                "kind": change.kind,
+                            }
+                        ]
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: None,
+                    stats: None,
+                }
+            }
+        }
+        "add" | "create" => {
+            if let Some(new_content) = maybe_new_content {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "write".to_string(),
+                    arguments: serde_json::json!({
+                        "file_path": change.path,
+                        "content": new_content,
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: Some(DiffContext {
+                        old_content: None,
+                        file_path: change.path,
+                    }),
+                    stats: None,
+                }
+            } else {
+                ToolCall {
+                    id: Some(tool_id),
+                    name: "file_change".to_string(),
+                    arguments: serde_json::json!({
+                        "changes": [
+                            {
+                                "path": change.path,
+                                "kind": change.kind,
+                            }
+                        ]
+                    }),
+                    result: Some(status_result),
+                    parent_tool_use_id: None,
+                    diff_context: None,
+                    stats: None,
+                }
+            }
+        }
+        _ => ToolCall {
+            id: Some(tool_id),
+            name: "file_change".to_string(),
+            arguments: serde_json::json!({
+                "changes": [
+                    {
+                        "path": change.path,
+                        "kind": change.kind,
+                    }
+                ]
+            }),
+            result: Some(status_result),
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+    };
+
+    CodexToolCallSnapshot {
+        phase: CodexToolCallPhase::Completed,
+        tool_call,
+    }
+}
+
+fn resolve_codex_file_change_tool_call_snapshots(
+    snapshot: CodexFileChangeSnapshot,
+    pending_changes: &mut HashMap<String, PendingCodexFileChange>,
+) -> Vec<CodexToolCallSnapshot> {
+    snapshot
+        .changes
+        .into_iter()
+        .enumerate()
+        .map(|(index, change)| {
+            let tool_id =
+                codex_file_change_tool_call_id(snapshot.id.as_deref(), &change.path, index);
+            match snapshot.phase {
+                CodexToolCallPhase::Started => {
+                    pending_changes.insert(
+                        tool_id.clone(),
+                        PendingCodexFileChange {
+                            path: change.path.clone(),
+                            kind: change.kind.clone(),
+                            old_content: std::fs::read_to_string(&change.path).ok(),
+                        },
+                    );
+                    codex_file_change_started_snapshot(snapshot.id.as_deref(), &change, index)
+                }
+                CodexToolCallPhase::Completed => {
+                    let pending =
+                        pending_changes
+                            .remove(&tool_id)
+                            .unwrap_or(PendingCodexFileChange {
+                                path: change.path,
+                                kind: change.kind,
+                                old_content: None,
+                            });
+                    codex_file_change_completed_snapshot(
+                        tool_id,
+                        pending,
+                        snapshot.status.as_deref(),
+                    )
+                }
+            }
+        })
+        .collect()
+}
+
+fn add_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
+    if let Some(value) = value {
+        *total = Some(total.unwrap_or(0) + value);
+    }
+}
+
+fn accumulate_codex_usage(
+    total: &mut AgentRunUsage,
+    usage: crate::infrastructure::agents::CodexUsage,
+) {
+    add_usage_u64(&mut total.input_tokens, usage.input_tokens);
+    add_usage_u64(&mut total.cache_read_tokens, usage.cached_input_tokens);
+    add_usage_u64(&mut total.output_tokens, usage.output_tokens);
 }
 
 /// Per-context-type timeout thresholds for stream processing.
@@ -194,6 +611,7 @@ pub struct StreamOutcome {
     pub tool_calls: Vec<ToolCall>,
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub usage: AgentRunUsage,
     pub stderr_text: String,
     /// Number of turns fully finalized during interactive streaming
     /// (via `TurnComplete` events). When > 0 and `response_text` is empty,
@@ -313,6 +731,7 @@ impl CompletionSignalTracker {
 /// * `streaming_state_cache` - Cache for streaming state to hydrate frontend on navigation
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
+    harness: AgentHarnessKind,
     context_type: ChatContextType,
     context_id: &str,
     conversation_id: &ChatConversationId,
@@ -332,6 +751,29 @@ pub async fn process_stream_background<R: Runtime>(
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
+    if stream_mode_for_harness(harness) == HarnessStreamMode::CodexJsonl {
+        return process_codex_stream_background(
+            child,
+            context_type,
+            context_id,
+            conversation_id,
+            app_handle,
+            activity_event_repo,
+            task_repo,
+            chat_message_repo,
+            assistant_message_id,
+            question_state,
+            cancellation_token,
+            streaming_state_cache,
+            running_agent_registry,
+            agent_run_repo,
+            agent_run_id,
+            execution_state,
+            conversation_repo,
+        )
+        .await;
+    }
+
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
     let stream_cfg = stream_timeouts();
@@ -435,6 +877,7 @@ pub async fn process_stream_background<R: Runtime>(
     // lets the timeout handler know work is still happening.
     let mut active_task_tracker = ActiveTaskTracker::default();
     let mut completion_signal_tracker = CompletionSignalTracker::default();
+    let mut last_emitted_usage = AgentRunUsage::default();
 
     // Count of turns fully finalized in the loop (interactive mode).
     // Used to tell the caller whether post-loop finalization should be skipped.
@@ -708,7 +1151,12 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] ToolCallCompleted"
                         );
                     }
-                    StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                    StreamEvent::TeamMessageSent {
+                        sender,
+                        recipient,
+                        content,
+                        message_type,
+                    } => {
                         tracing::info!(
                             conversation_id = %conversation_id_str,
                             sender = %sender,
@@ -725,7 +1173,11 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TeamCreated"
                         );
                     }
-                    StreamEvent::TeammateSpawned { teammate_name, team_name, .. } => {
+                    StreamEvent::TeammateSpawned {
+                        teammate_name,
+                        team_name,
+                        ..
+                    } => {
                         tracing::info!(
                             conversation_id = %conversation_id_str,
                             teammate_name = %teammate_name,
@@ -743,7 +1195,13 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TurnComplete — accumulated content summary"
                         );
                     }
-                    StreamEvent::TaskStarted { tool_use_id, description, teammate_name, team_name, .. } => {
+                    StreamEvent::TaskStarted {
+                        tool_use_id,
+                        description,
+                        teammate_name,
+                        team_name,
+                        ..
+                    } => {
                         tracing::debug!(
                             conversation_id = %conversation_id_str,
                             tool_use_id = %tool_use_id,
@@ -753,7 +1211,11 @@ pub async fn process_stream_background<R: Runtime>(
                             "[STREAM_EVT] TaskStarted"
                         );
                     }
-                    StreamEvent::TaskCompleted { tool_use_id, agent_id, .. } => {
+                    StreamEvent::TaskCompleted {
+                        tool_use_id,
+                        agent_id,
+                        ..
+                    } => {
                         tracing::debug!(
                             conversation_id = %conversation_id_str,
                             tool_use_id = %tool_use_id,
@@ -780,15 +1242,14 @@ pub async fn process_stream_background<R: Runtime>(
                     )
                 {
                     if let Some(ref repo) = chat_message_repo {
-                        let msg =
-                            super::chat_service_context::create_assistant_message(
-                                context_type,
-                                context_id,
-                                "",
-                                conversation_id.clone(),
-                                &[],
-                                &[],
-                            );
+                        let msg = super::chat_service_context::create_assistant_message(
+                            context_type,
+                            context_id,
+                            "",
+                            conversation_id.clone(),
+                            &[],
+                            &[],
+                        );
                         let new_id = msg.id.as_str().to_string();
                         let _ = repo.create(msg).await;
                         tracing::debug!(
@@ -817,6 +1278,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     seq: stream_seq,
+                                    append_to_previous: true,
                                 },
                             );
                             stream_seq += 1;
@@ -1082,12 +1544,10 @@ pub async fn process_stream_background<R: Runtime>(
                         if let (Some(ref repo), Some(ref msg_id)) =
                             (&chat_message_repo, &assistant_message_id)
                         {
-                            let role = super::chat_service_helpers::get_assistant_role(
-                                &context_type,
-                            )
-                            .to_string();
-                            let tool_calls_json =
-                                serde_json::to_string(&processor.tool_calls).ok();
+                            let role =
+                                super::chat_service_helpers::get_assistant_role(&context_type)
+                                    .to_string();
+                            let tool_calls_json = serde_json::to_string(&processor.tool_calls).ok();
                             let content_blocks_json =
                                 serde_json::to_string(&processor.content_blocks).ok();
                             super::chat_service_send_background::finalize_assistant_message(
@@ -1101,6 +1561,22 @@ pub async fn process_stream_background<R: Runtime>(
                                 content_blocks_json.as_deref(),
                             )
                             .await;
+                            let turn_usage = processor.current_turn_usage();
+                            persist_assistant_message_usage(
+                                &chat_message_repo,
+                                &assistant_message_id,
+                                &turn_usage,
+                            )
+                            .await;
+                            if turn_usage != last_emitted_usage {
+                                emit_usage_updated_event(
+                                    &app_handle,
+                                    &conversation_id_str,
+                                    &context_type_str,
+                                    &context_id_str,
+                                );
+                                last_emitted_usage = turn_usage;
+                            }
                         }
 
                         // Persist session_id to DB on first TurnComplete
@@ -1108,21 +1584,23 @@ pub async fn process_stream_background<R: Runtime>(
                             if let (Some(ref sess_id), Some(ref repo)) =
                                 (&session_id, &conversation_repo)
                             {
+                                let session_ref =
+                                    provider_session_ref_for_harness(harness, sess_id.clone());
                                 if let Err(e) = repo
-                                    .update_claude_session_id(conversation_id, sess_id)
+                                    .update_provider_session_ref(conversation_id, &session_ref)
                                     .await
                                 {
                                     tracing::error!(
                                         error = %e,
                                         conversation_id = %conversation_id_str,
                                         session_id = %sess_id,
-                                        "TurnComplete: failed to persist claude_session_id"
+                                        "TurnComplete: failed to persist provider_session_ref"
                                     );
                                 } else {
                                     tracing::info!(
                                         conversation_id = %conversation_id_str,
                                         session_id = %sess_id,
-                                        "TurnComplete: persisted claude_session_id to DB"
+                                        "TurnComplete: persisted provider_session_ref to DB"
                                     );
                                 }
                                 session_id_persisted = true;
@@ -1131,12 +1609,9 @@ pub async fn process_stream_background<R: Runtime>(
 
                         // Complete the agent_run DB record so the recovery poll
                         // (`useChatRecovery`) no longer sees status=running.
-                        if let (Some(ref repo), Some(ref run_id)) =
-                            (&agent_run_repo, &agent_run_id)
+                        if let (Some(ref repo), Some(ref run_id)) = (&agent_run_repo, &agent_run_id)
                         {
-                            let _ = repo
-                                .complete(&AgentRunId::from_string(run_id))
-                                .await;
+                            let _ = repo.complete(&AgentRunId::from_string(run_id)).await;
                         }
 
                         // Emit turn_completed (NOT run_completed) for interactive turns.
@@ -1146,15 +1621,17 @@ pub async fn process_stream_background<R: Runtime>(
                         // creates a new conversation for TaskExecution contexts) instead
                         // of queueAgentMessage (which delivers via existing stdin).
                         if let Some(ref handle) = app_handle {
+                            let provider_session_id = session_id.clone();
                             let _ = handle.emit(
                                 super::chat_service_types::events::AGENT_TURN_COMPLETED,
-                                super::chat_service_types::AgentRunCompletedPayload {
-                                    conversation_id: conversation_id_str.clone(),
-                                    context_type: context_type_str.clone(),
-                                    context_id: context_id_str.clone(),
-                                    claude_session_id: session_id,
-                                    run_chain_id: None,
-                                },
+                                super::chat_service_types::AgentRunCompletedPayload::with_provider_session(
+                                    conversation_id_str.clone(),
+                                    context_type_str.clone(),
+                                    context_id_str.clone(),
+                                    Some(harness),
+                                    provider_session_id,
+                                    None,
+                                ),
                             );
                         }
 
@@ -1239,10 +1716,31 @@ pub async fn process_stream_background<R: Runtime>(
                             subagent_type: subagent_type.clone(),
                             model: model.clone(),
                             status: "running".to_string(),
+                            agent_id: None,
                             teammate_name: tm_name.clone(),
+                            delegated_job_id: None,
+                            delegated_session_id: None,
+                            delegated_conversation_id: None,
+                            delegated_agent_run_id: None,
+                            provider_harness: None,
+                            provider_session_id: None,
+                            upstream_provider: None,
+                            provider_profile: None,
+                            logical_model: None,
+                            effective_model_id: None,
+                            logical_effort: None,
+                            effective_effort: None,
+                            approval_policy: None,
+                            sandbox_mode: None,
                             total_tokens: None,
                             total_tool_uses: None,
                             duration_ms: None,
+                            input_tokens: None,
+                            output_tokens: None,
+                            cache_creation_tokens: None,
+                            cache_read_tokens: None,
+                            estimated_usd: None,
+                            text_output: None,
                         };
                         streaming_state_cache
                             .add_task(&conversation_id_str, cached_task)
@@ -1258,6 +1756,20 @@ pub async fn process_stream_background<R: Runtime>(
                                     subagent_type,
                                     model,
                                     teammate_name: tm_name,
+                                    delegated_job_id: None,
+                                    delegated_session_id: None,
+                                    delegated_conversation_id: None,
+                                    delegated_agent_run_id: None,
+                                    provider_harness: None,
+                                    provider_session_id: None,
+                                    upstream_provider: None,
+                                    provider_profile: None,
+                                    logical_model: None,
+                                    effective_model_id: None,
+                                    logical_effort: None,
+                                    effective_effort: None,
+                                    approval_policy: None,
+                                    sandbox_mode: None,
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
@@ -1325,10 +1837,32 @@ pub async fn process_stream_background<R: Runtime>(
                                 AgentTaskCompletedPayload {
                                     tool_use_id,
                                     agent_id,
+                                    status: Some("completed".to_string()),
                                     total_duration_ms,
                                     total_tokens,
                                     total_tool_use_count,
                                     teammate_name: tm_name_for_payload,
+                                    delegated_job_id: None,
+                                    delegated_session_id: None,
+                                    delegated_conversation_id: None,
+                                    delegated_agent_run_id: None,
+                                    provider_harness: None,
+                                    provider_session_id: None,
+                                    upstream_provider: None,
+                                    provider_profile: None,
+                                    logical_model: None,
+                                    effective_model_id: None,
+                                    logical_effort: None,
+                                    effective_effort: None,
+                                    approval_policy: None,
+                                    sandbox_mode: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    cache_creation_tokens: None,
+                                    cache_read_tokens: None,
+                                    estimated_usd: None,
+                                    text_output: None,
+                                    error: None,
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
@@ -1484,11 +2018,17 @@ pub async fn process_stream_background<R: Runtime>(
                         // we re-emit here so the frontend recovers if it missed the initial event.
                         // Try to include conversation_id if the stream processor already created one.
                         let conv_id = if let Some(ref service) = team_service {
-                            service.tracker()
-                                .get_team_status(&team_name).await.ok()
-                                .and_then(|s| s.teammates.iter()
-                                    .find(|t| t.name == teammate_name)
-                                    .and_then(|t| t.conversation_id.clone()))
+                            service
+                                .tracker()
+                                .get_team_status(&team_name)
+                                .await
+                                .ok()
+                                .and_then(|s| {
+                                    s.teammates
+                                        .iter()
+                                        .find(|t| t.name == teammate_name)
+                                        .and_then(|t| t.conversation_id.clone())
+                                })
                         } else {
                             None
                         };
@@ -1650,8 +2190,8 @@ pub async fn process_stream_background<R: Runtime>(
             } else {
                 (false, true)
             };
-            let is_completion_grace_period = completion_signal_tracker
-                .is_in_grace_period(completion_grace_duration);
+            let is_completion_grace_period =
+                completion_signal_tracker.is_in_grace_period(completion_grace_duration);
 
             if should_kill_on_timeout(
                 stream_start.elapsed(),
@@ -1751,7 +2291,10 @@ pub async fn process_stream_background<R: Runtime>(
                         "Stream parse stall after completion tool call, staying in shutdown grace period"
                     );
                 } else {
-                    debug_assert!(false, "parse stall bypass branch should be exhaustively handled");
+                    debug_assert!(
+                        false,
+                        "parse stall bypass branch should be exhaustively handled"
+                    );
                 }
                 // CRITICAL: reset last_parsed_at to prevent hot spin loop
                 last_parsed_at = std::time::Instant::now();
@@ -1761,18 +2304,30 @@ pub async fn process_stream_background<R: Runtime>(
 
         // Debounced flush: persist accumulated content every 2s for crash recovery
         if last_flush.elapsed() >= FLUSH_INTERVAL {
-            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id)
-            {
-                let current_text = processor.response_text.clone();
-                let current_tools = serde_json::to_string(&processor.tool_calls).ok();
-                let _ = repo
-                    .update_content(
-                        &ChatMessageId::from_string(msg_id.clone()),
-                        &current_text,
-                        current_tools.as_deref(),
-                        None, // content_blocks only on final update
-                    )
-                    .await;
+            persist_assistant_message_snapshot(
+                &chat_message_repo,
+                &assistant_message_id,
+                &processor.response_text,
+                &processor.tool_calls,
+                &processor.content_blocks,
+            )
+            .await;
+            let current_turn_usage = processor.current_turn_usage();
+            persist_assistant_message_usage(
+                &chat_message_repo,
+                &assistant_message_id,
+                &current_turn_usage,
+            )
+            .await;
+            persist_agent_run_usage(&agent_run_repo, &agent_run_id, &current_turn_usage).await;
+            if current_turn_usage != last_emitted_usage {
+                emit_usage_updated_event(
+                    &app_handle,
+                    &conversation_id_str,
+                    &context_type_str,
+                    &context_id_str,
+                );
+                last_emitted_usage = current_turn_usage;
             }
             last_flush = std::time::Instant::now();
         }
@@ -1900,14 +2455,15 @@ pub async fn process_stream_background<R: Runtime>(
 
     // The execution slot is held unless we're idle between interactive turns
     // (TurnComplete decremented and no new message re-incremented).
-    let execution_slot_held = !between_interactive_turns
-        || !super::uses_execution_slot(context_type);
+    let execution_slot_held =
+        !between_interactive_turns || !super::uses_execution_slot(context_type);
 
     let outcome = StreamOutcome {
         response_text: result.response_text,
         tool_calls: result.tool_calls,
         content_blocks: result.content_blocks,
         session_id: result.session_id,
+        usage: result.usage,
         stderr_text: stderr_content,
         turns_finalized,
         execution_slot_held,
@@ -1923,6 +2479,9 @@ pub async fn process_stream_background<R: Runtime>(
         &outcome.content_blocks,
     )
     .await;
+    persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &outcome.usage)
+        .await;
+    persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
 
     // Check if cancellation was requested during/after stream processing.
     // Fixes race where EOF from killed process wins the tokio::select! over
@@ -2047,6 +2606,480 @@ pub async fn process_stream_background<R: Runtime>(
     Ok(outcome)
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn process_codex_stream_background<R: Runtime>(
+    mut child: tokio::process::Child,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: &ChatConversationId,
+    app_handle: Option<AppHandle<R>>,
+    activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
+    task_repo: Option<Arc<dyn TaskRepository>>,
+    chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: Option<String>,
+    question_state: Option<Arc<QuestionState>>,
+    cancellation_token: CancellationToken,
+    streaming_state_cache: StreamingStateCache,
+    running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
+    agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
+    agent_run_id: Option<String>,
+    _execution_state: Option<Arc<crate::commands::ExecutionState>>,
+    conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
+) -> Result<StreamOutcome, StreamError> {
+    let timeout_config = StreamTimeoutConfig::for_context(&context_type);
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "codex".to_string(),
+            error: "Failed to capture stdout".to_string(),
+        })?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "codex".to_string(),
+            error: "Failed to capture stderr".to_string(),
+        })?;
+
+    let event_ctx = event_context(conversation_id, &context_type, context_id);
+    let conversation_id_str = event_ctx.conversation_id.clone();
+    let context_type_str = event_ctx.context_type.clone();
+    let context_id_str = event_ctx.context_id.clone();
+    let task_id_for_persistence = if matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) {
+        Some(TaskId::from_string(context_id.to_string()))
+    } else {
+        None
+    };
+
+    let stderr_task = tokio::spawn(async move {
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        let mut stderr_content = String::new();
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            stderr_content.push_str(&line);
+            stderr_content.push('\n');
+        }
+
+        stderr_content
+    });
+
+    let stdout_reader = BufReader::new(stdout);
+    let mut lines = stdout_reader.lines();
+    let mut response_text = String::new();
+    let mut tool_calls = Vec::<ToolCall>::new();
+    let mut content_blocks = Vec::<ContentBlockItem>::new();
+    let mut errors = Vec::<String>::new();
+    let mut session_id: Option<String> = None;
+    let mut usage = AgentRunUsage::default();
+    let mut lines_seen = 0usize;
+    let mut lines_parsed = 0usize;
+    let mut stream_seq = 0u64;
+    let mut last_parsed_at = std::time::Instant::now();
+    let stream_start = std::time::Instant::now();
+    let max_wall_clock = std::time::Duration::from_secs(stream_timeouts().max_wall_clock_secs);
+    let mut last_flush = std::time::Instant::now();
+    const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut completion_signal_tracker = CompletionSignalTracker::default();
+    let mut last_emitted_usage = AgentRunUsage::default();
+    let mut pending_codex_file_changes: HashMap<String, PendingCodexFileChange> = HashMap::new();
+    let heartbeat_key = running_agent_registry
+        .as_ref()
+        .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
+    let mut last_heartbeat = std::time::Instant::now();
+    const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+    loop {
+        let line = tokio::select! {
+            _ = cancellation_token.cancelled() => {
+                let _ = child.kill().await;
+                flush_content_before_error(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                ).await;
+                return Err(StreamError::Cancelled {
+                    turns_finalized: 0,
+                    completion_tool_called: false,
+                });
+            }
+            read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
+                match read_result {
+                    Ok(Ok(Some(line))) => line,
+                    Ok(Ok(None)) => break,
+                    Ok(Err(error)) => {
+                        return Err(StreamError::AgentExit {
+                            exit_code: None,
+                            stderr: error.to_string(),
+                        });
+                    }
+                    Err(_) => {
+                        let has_pending_question = if let Some(ref qs) = question_state {
+                            qs.has_pending_for_session(context_id).await
+                        } else {
+                            false
+                        };
+                        let (pid_alive, child_exited) = if let Some(pid) = child.id() {
+                            let exited = child.try_wait().ok().flatten().is_some();
+                            let alive = crate::domain::services::is_process_alive(pid);
+                            (alive, exited)
+                        } else {
+                            (false, true)
+                        };
+
+                        if should_kill_on_timeout(
+                            stream_start.elapsed(),
+                            max_wall_clock,
+                            has_pending_question,
+                            false,
+                            pid_alive,
+                            child_exited,
+                            false,
+                            false,
+                        ) {
+                            let _ = child.kill().await;
+                            flush_content_before_error(
+                                &chat_message_repo,
+                                &assistant_message_id,
+                                &response_text,
+                                &tool_calls,
+                                &content_blocks,
+                            ).await;
+                            return Err(StreamError::Timeout {
+                                context_type,
+                                elapsed_secs: timeout_config.line_read_timeout.as_secs(),
+                            });
+                        }
+                        continue;
+                    }
+                }
+            }
+        };
+
+        lines_seen += 1;
+
+        if let Some(event) = parse_codex_event_line(&line) {
+            lines_parsed += 1;
+            last_parsed_at = std::time::Instant::now();
+
+            if let Some(thread_id) = extract_codex_thread_id(&event) {
+                session_id = Some(thread_id.clone());
+                if let Some(ref repo) = conversation_repo {
+                    let _ = repo
+                        .update_provider_session_ref(
+                            conversation_id,
+                            &provider_session_ref_for_harness(AgentHarnessKind::Codex, thread_id),
+                        )
+                        .await;
+                }
+            }
+
+            if let Some(text) = extract_codex_agent_message(&event) {
+                if !response_text.is_empty() {
+                    response_text.push_str("\n\n");
+                }
+                response_text.push_str(&text);
+                content_blocks.push(ContentBlockItem::Text { text: text.clone() });
+
+                persist_assistant_message_snapshot(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                )
+                .await;
+
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        events::AGENT_CHUNK,
+                        AgentChunkPayload {
+                            text,
+                            conversation_id: conversation_id_str.clone(),
+                            context_type: context_type_str.clone(),
+                            context_id: context_id_str.clone(),
+                            seq: stream_seq,
+                            append_to_previous: false,
+                        },
+                    );
+                    stream_seq += 1;
+                }
+            }
+
+            let mut codex_tool_snapshots = Vec::new();
+            if let Some(file_change_snapshot) = extract_codex_file_change_snapshot(&event) {
+                codex_tool_snapshots.extend(resolve_codex_file_change_tool_call_snapshots(
+                    file_change_snapshot,
+                    &mut pending_codex_file_changes,
+                ));
+            }
+            if let Some(snapshot) = extract_codex_tool_call_snapshot(&event) {
+                codex_tool_snapshots.push(snapshot);
+            }
+
+            for snapshot in codex_tool_snapshots {
+                let tool_call = snapshot.tool_call;
+                if is_completion_tool_name(&tool_call.name) {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        tool_name = %tool_call.name,
+                        "Detected completion tool call in Codex stream"
+                    );
+                }
+                upsert_codex_tool_call_snapshot(
+                    &mut tool_calls,
+                    &mut content_blocks,
+                    tool_call.clone(),
+                );
+                if snapshot.phase == CodexToolCallPhase::Completed
+                    && is_completion_tool_name(&tool_call.name)
+                {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        tool_name = %tool_call.name,
+                        "Completion tool call observed during Codex streaming; enabling shutdown grace period"
+                    );
+                }
+                let diff_context_value = tool_call
+                    .diff_context
+                    .as_ref()
+                    .and_then(|value| serde_json::to_value(value).ok());
+                streaming_state_cache
+                    .upsert_tool_call(
+                        &conversation_id_str,
+                        CachedToolCall {
+                            id: tool_call
+                                .id
+                                .clone()
+                                .unwrap_or_else(|| format!("codex-tool-{}", stream_seq)),
+                            name: tool_call.name.clone(),
+                            arguments: tool_call.arguments.clone(),
+                            result: tool_call.result.clone(),
+                            diff_context: diff_context_value.clone(),
+                            parent_tool_use_id: None,
+                        },
+                    )
+                    .await;
+
+                persist_assistant_message_snapshot(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                )
+                .await;
+
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        events::AGENT_TOOL_CALL,
+                        AgentToolCallPayload {
+                            tool_name: tool_call.name.clone(),
+                            tool_id: tool_call.id.clone(),
+                            arguments: tool_call.arguments.clone(),
+                            result: tool_call.result.clone(),
+                            conversation_id: conversation_id_str.clone(),
+                            context_type: context_type_str.clone(),
+                            context_id: context_id_str.clone(),
+                            diff_context: diff_context_value,
+                            parent_tool_use_id: None,
+                            seq: stream_seq,
+                        },
+                    );
+                    stream_seq += 1;
+                }
+
+                if matches!(
+                    context_type,
+                    ChatContextType::TaskExecution | ChatContextType::Merge
+                ) {
+                    if let (Some(ref repo), Some(ref task_id)) =
+                        (&activity_event_repo, &task_id_for_persistence)
+                    {
+                        let event = ActivityEvent::new_task_event(
+                            task_id.clone(),
+                            ActivityEventType::ToolCall,
+                            tool_call.name.clone(),
+                        );
+                        let event = if let Some(ref t_repo) = task_repo {
+                            if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                event.with_status(task.internal_status)
+                            } else {
+                                event
+                            }
+                        } else {
+                            event
+                        };
+                        let _ = repo.save(event).await;
+                    }
+                }
+
+                if is_completion_tool_name(&tool_call.name) {
+                    completion_signal_tracker.mark_completion_called();
+                }
+            }
+
+            if let Some(command_execution) = extract_codex_command_execution(&event) {
+                if let Some(exit_code) = command_execution.exit_code {
+                    if exit_code != 0 {
+                        errors.push(command_execution.aggregated_output.clone().unwrap_or_else(
+                            || format!("Codex command_execution failed with exit code {exit_code}"),
+                        ));
+                    }
+                }
+            }
+
+            if let Some(error) = extract_codex_error_message(&event) {
+                if crate::infrastructure::agents::codex::stream_processor::is_non_fatal_mcp_resource_probe_error(
+                    &event,
+                    &error,
+                ) {
+                    continue;
+                }
+                errors.push(error);
+            }
+
+            if let Some(event_usage) = extract_codex_usage(&event) {
+                accumulate_codex_usage(&mut usage, event_usage);
+                persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &usage)
+                    .await;
+                persist_agent_run_usage(&agent_run_repo, &agent_run_id, &usage).await;
+                if usage != last_emitted_usage {
+                    emit_usage_updated_event(
+                        &app_handle,
+                        &conversation_id_str,
+                        &context_type_str,
+                        &context_id_str,
+                    );
+                    last_emitted_usage = usage.clone();
+                }
+            }
+        } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
+            let _ = child.kill().await;
+            flush_content_before_error(
+                &chat_message_repo,
+                &assistant_message_id,
+                &response_text,
+                &tool_calls,
+                &content_blocks,
+            )
+            .await;
+            return Err(StreamError::ParseStall {
+                context_type,
+                elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
+                lines_seen,
+                lines_parsed,
+            });
+        }
+
+        if last_flush.elapsed() >= FLUSH_INTERVAL {
+            persist_assistant_message_snapshot(
+                &chat_message_repo,
+                &assistant_message_id,
+                &response_text,
+                &tool_calls,
+                &content_blocks,
+            )
+            .await;
+            last_flush = std::time::Instant::now();
+        }
+
+        if lines_parsed > 0 && last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+            if let (Some(ref registry), Some(ref key)) = (&running_agent_registry, &heartbeat_key) {
+                registry.update_heartbeat(key, chrono::Utc::now()).await;
+            }
+            last_heartbeat = std::time::Instant::now();
+        }
+    }
+
+    let stderr_content = {
+        let raw = stderr_task.await.unwrap_or_default();
+        crate::utils::secret_redactor::redact(&raw)
+    };
+    let status = child.wait().await.map_err(|error| StreamError::AgentExit {
+        exit_code: None,
+        stderr: error.to_string(),
+    })?;
+
+    let outcome = StreamOutcome {
+        response_text,
+        tool_calls,
+        content_blocks,
+        session_id: session_id.clone(),
+        usage,
+        stderr_text: stderr_content.clone(),
+        turns_finalized: 0,
+        execution_slot_held: true,
+        silent_interactive_exit: false,
+    };
+
+    flush_content_before_error(
+        &chat_message_repo,
+        &assistant_message_id,
+        &outcome.response_text,
+        &outcome.tool_calls,
+        &outcome.content_blocks,
+    )
+    .await;
+    persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &outcome.usage)
+        .await;
+    persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
+
+    if !errors.is_empty() {
+        let error_message = errors.join("; ");
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&error_message)
+        {
+            return Err(provider_error);
+        }
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: error_message,
+        });
+    }
+
+    if !status.success()
+        && !outcome.has_meaningful_output()
+        && !completion_signal_tracker.was_called()
+    {
+        let stderr_trimmed = outcome.stderr_text.trim().to_string();
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&stderr_trimmed)
+        {
+            return Err(provider_error);
+        }
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: stderr_trimmed,
+        });
+    }
+
+    if outcome.tool_calls.is_empty() {
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&outcome.response_text)
+        {
+            return Err(provider_error);
+        }
+    }
+
+    if cancellation_token.is_cancelled() {
+        return Err(StreamError::Cancelled {
+            turns_finalized: 0,
+            completion_tool_called: false,
+        });
+    }
+
+    Ok(outcome)
+}
+
 /// Determines whether the stream should be killed on timeout.
 ///
 /// Returns `true` = kill (terminate with error), `false` = reset timeout and continue.
@@ -2113,7 +3146,9 @@ fn emit_heartbeat<R: Runtime>(
             "reason": reason,
         });
         if let Some(extra_fields) = extra {
-            if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra_fields.as_object()) {
+            if let (Some(obj), Some(extra_obj)) =
+                (payload.as_object_mut(), extra_fields.as_object())
+            {
                 for (k, v) in extra_obj {
                     obj.insert(k.clone(), v.clone());
                 }

@@ -9,6 +9,9 @@
  * MUST match before the generic sk- catch-all to prevent double-redaction.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 interface RedactPattern {
   regex: RegExp;
   replacement: string;
@@ -75,4 +78,81 @@ function stringify(arg: unknown): string {
 export function safeError(...args: unknown[]): void {
   const redacted = args.map((arg) => redactSecrets(stringify(arg)));
   console.error(...redacted);
+}
+
+let traceLogPath: string | null = null;
+
+function slugify(input: string): string {
+  const slug = input
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug.length > 0 ? slug : "unknown";
+}
+
+function buildTraceFilename(): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const agentType = slugify(process.env.RALPHX_AGENT_TYPE ?? "unknown-agent");
+  const contextType = slugify(process.env.RALPHX_CONTEXT_TYPE ?? "unknown-context");
+  const contextId = slugify((process.env.RALPHX_CONTEXT_ID ?? "no-context-id").slice(0, 32));
+  return `${timestamp}-${process.pid}-${agentType}-${contextType}-${contextId}.jsonl`;
+}
+
+function resolveTraceDir(): string {
+  const override = process.env.RALPHX_MCP_TRACE_DIR?.trim();
+  if (override) {
+    return override;
+  }
+  return path.join(process.cwd(), ".artifacts/logs/mcp-proxy");
+}
+
+export function getTraceLogPath(): string {
+  if (traceLogPath) {
+    return traceLogPath;
+  }
+
+  const traceDir = resolveTraceDir();
+  fs.mkdirSync(traceDir, { recursive: true });
+  traceLogPath = path.join(traceDir, buildTraceFilename());
+  return traceLogPath;
+}
+
+export function resetTraceLogPathForTests(): void {
+  traceLogPath = null;
+}
+
+type TraceRecord = {
+  ts: string;
+  pid: number;
+  event: string;
+  agent_type: string;
+  task_id: string | null;
+  project_id: string | null;
+  context_type: string | null;
+  context_id: string | null;
+  payload?: string;
+};
+
+export function safeTrace(event: string, payload?: unknown): void {
+  const record: TraceRecord = {
+    ts: new Date().toISOString(),
+    pid: process.pid,
+    event,
+    agent_type: process.env.RALPHX_AGENT_TYPE ?? "unknown",
+    task_id: process.env.RALPHX_TASK_ID ?? null,
+    project_id: process.env.RALPHX_PROJECT_ID ?? null,
+    context_type: process.env.RALPHX_CONTEXT_TYPE ?? null,
+    context_id: process.env.RALPHX_CONTEXT_ID ?? null,
+  };
+
+  if (payload !== undefined) {
+    record.payload = redactSecrets(stringify(payload));
+  }
+
+  try {
+    fs.appendFileSync(getTraceLogPath(), `${JSON.stringify(record)}\n`, "utf8");
+  } catch (error) {
+    safeError("[RalphX MCP] Failed to append MCP trace log:", error);
+  }
 }

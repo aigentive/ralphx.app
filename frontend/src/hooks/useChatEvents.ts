@@ -19,12 +19,21 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
+import { conversationStatsKey } from "@/hooks/useConversationStats";
 import { getContextConfig } from "@/lib/chat-context-registry";
+import { isProviderRole } from "@/lib/chat/provider-role";
 import type { ContextType } from "@/types/chat-conversation";
+import type { AgentRunCompletedPayload } from "@/types/events";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { useChatStore } from "@/stores/chatStore";
+import { canonicalizeToolName } from "@/components/Chat/tool-widgets/tool-name";
+import {
+  extractDelegationMetadata,
+  isDelegationControlToolCall,
+  isDelegationStartToolCall,
+} from "@/components/Chat/delegation-tool-calls";
 
 // ============================================================================
 // Types
@@ -98,6 +107,35 @@ export function useChatEvents({
       payload.conversation_id === activeConversationId &&
       (!contextId || payload.context_id === contextId);
 
+    const isDelegatedTaskEventPayload = (payload: {
+      tool_name?: string;
+      subagent_type?: string;
+      delegated_job_id?: string;
+      delegated_session_id?: string;
+      delegated_conversation_id?: string;
+      delegated_agent_run_id?: string;
+    }) =>
+      (payload.tool_name != null && canonicalizeToolName(payload.tool_name) === "delegate_start")
+      || payload.subagent_type === "delegated"
+      || payload.delegated_job_id != null
+      || payload.delegated_session_id != null
+      || payload.delegated_conversation_id != null
+      || payload.delegated_agent_run_id != null;
+
+    const normalizeDelegatedTaskStatus = (
+      status: string | undefined,
+    ): StreamingTask["status"] | undefined => {
+      switch (status) {
+        case "running":
+        case "completed":
+        case "failed":
+        case "cancelled":
+          return status;
+        default:
+          return undefined;
+      }
+    };
+
     // ── agent:tool_call ──────────────────────────────────────────────
     // Handles tool call accumulation for streaming display.
     // Routes child tool calls to parent task when supportsSubagentTasks is enabled.
@@ -158,8 +196,56 @@ export function useChatEvents({
 
           // 3. Update matching entry in streamingTasks.childToolCalls
           setStreamingTasks((prev) => {
-            let changed = false;
             const next = new Map(prev);
+            let changed = false;
+
+            const parentTask = prev.get(toolUseId);
+            if (parentTask && canonicalizeToolName(parentTask.toolName) === "delegate_start") {
+              const delegation = extractDelegationMetadata(undefined, result);
+              const inferredFailure =
+                delegation.status == null
+                && delegation.textOutput?.trim().startsWith("ERROR:");
+              const nextStatus =
+                normalizeDelegatedTaskStatus(delegation.status)
+                ?? (inferredFailure ? "failed" : parentTask.status);
+              const updatedTask: StreamingTask = {
+                ...parentTask,
+                status: nextStatus,
+                ...(delegation.agentName
+                  ? { subagentType: "delegated", model: delegation.effectiveModelId ?? delegation.logicalModel ?? parentTask.model }
+                  : {}),
+                ...(delegation.providerHarness ? { providerHarness: delegation.providerHarness } : {}),
+                ...(delegation.providerSessionId ? { providerSessionId: delegation.providerSessionId } : {}),
+                ...(delegation.upstreamProvider ? { upstreamProvider: delegation.upstreamProvider } : {}),
+                ...(delegation.providerProfile ? { providerProfile: delegation.providerProfile } : {}),
+                ...(delegation.jobId ? { delegatedJobId: delegation.jobId } : {}),
+                ...(delegation.delegatedSessionId ? { delegatedSessionId: delegation.delegatedSessionId } : {}),
+                ...(delegation.delegatedConversationId ? { delegatedConversationId: delegation.delegatedConversationId } : {}),
+                ...(delegation.delegatedAgentRunId ? { delegatedAgentRunId: delegation.delegatedAgentRunId } : {}),
+                ...(delegation.logicalModel ? { logicalModel: delegation.logicalModel } : {}),
+                ...(delegation.effectiveModelId ? { effectiveModelId: delegation.effectiveModelId } : {}),
+                ...(delegation.logicalEffort ? { logicalEffort: delegation.logicalEffort } : {}),
+                ...(delegation.effectiveEffort ? { effectiveEffort: delegation.effectiveEffort } : {}),
+                ...(delegation.approvalPolicy ? { approvalPolicy: delegation.approvalPolicy } : {}),
+                ...(delegation.sandboxMode ? { sandboxMode: delegation.sandboxMode } : {}),
+                ...(delegation.inputTokens != null ? { inputTokens: delegation.inputTokens } : {}),
+                ...(delegation.outputTokens != null ? { outputTokens: delegation.outputTokens } : {}),
+                ...(delegation.cacheCreationTokens != null
+                  ? { cacheCreationTokens: delegation.cacheCreationTokens }
+                  : {}),
+                ...(delegation.cacheReadTokens != null ? { cacheReadTokens: delegation.cacheReadTokens } : {}),
+                ...(delegation.totalTokens != null ? { totalTokens: delegation.totalTokens } : {}),
+                ...(delegation.estimatedUsd != null ? { estimatedUsd: delegation.estimatedUsd } : {}),
+                ...(delegation.durationMs != null ? { totalDurationMs: delegation.durationMs } : {}),
+                ...(delegation.textOutput ? { textOutput: delegation.textOutput } : {}),
+                ...((nextStatus === "completed" || nextStatus === "failed" || nextStatus === "cancelled")
+                  ? { completedAt: Date.now() }
+                  : {}),
+              };
+              next.set(toolUseId, updatedTask);
+              changed = true;
+            }
+
             for (const [taskId, task] of prev) {
               const childIdx = task.childToolCalls.findIndex((tc) => tc.id === toolUseId);
               if (childIdx >= 0) {
@@ -200,6 +286,59 @@ export function useChatEvents({
           entry.diffContext = diffContext;
         }
 
+        const canonicalToolName = canonicalizeToolName(tool_name);
+
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationStartToolCall(canonicalToolName)) {
+          setStreamingContentBlocks((prev) => {
+            const alreadyHasMarker = prev.some(
+              (block) => block.type === "task" && block.toolUseId === id,
+            );
+            if (alreadyHasMarker) return prev;
+            return [...prev, { type: "task", toolUseId: id }];
+          });
+          setStreamingTasks((prev) => {
+            if (prev.has(id)) return prev;
+            const delegation = extractDelegationMetadata(args, result);
+            const description =
+              delegation.title
+              ?? delegation.prompt
+              ?? (typeof args === "object" && args != null && "prompt" in args && typeof (args as { prompt?: unknown }).prompt === "string"
+                ? (args as { prompt: string }).prompt
+                : "");
+            const next = new Map(prev);
+            next.set(id, {
+              toolUseId: id,
+              toolName: tool_name,
+              description,
+              subagentType: "delegated",
+              model: delegation.effectiveModelId ?? delegation.logicalModel ?? "unknown",
+              status: "running",
+              startedAt: Date.now(),
+              childToolCalls: [],
+              ...(delegation.jobId ? { delegatedJobId: delegation.jobId } : {}),
+              ...(delegation.delegatedSessionId ? { delegatedSessionId: delegation.delegatedSessionId } : {}),
+              ...(delegation.delegatedConversationId ? { delegatedConversationId: delegation.delegatedConversationId } : {}),
+              ...(delegation.delegatedAgentRunId ? { delegatedAgentRunId: delegation.delegatedAgentRunId } : {}),
+              ...(delegation.providerHarness ? { providerHarness: delegation.providerHarness } : {}),
+              ...(delegation.providerSessionId ? { providerSessionId: delegation.providerSessionId } : {}),
+              ...(delegation.upstreamProvider ? { upstreamProvider: delegation.upstreamProvider } : {}),
+              ...(delegation.providerProfile ? { providerProfile: delegation.providerProfile } : {}),
+              ...(delegation.logicalModel ? { logicalModel: delegation.logicalModel } : {}),
+              ...(delegation.effectiveModelId ? { effectiveModelId: delegation.effectiveModelId } : {}),
+              ...(delegation.logicalEffort ? { logicalEffort: delegation.logicalEffort } : {}),
+              ...(delegation.effectiveEffort ? { effectiveEffort: delegation.effectiveEffort } : {}),
+              ...(delegation.approvalPolicy ? { approvalPolicy: delegation.approvalPolicy } : {}),
+              ...(delegation.sandboxMode ? { sandboxMode: delegation.sandboxMode } : {}),
+            });
+            return next;
+          });
+          return;
+        }
+
+        if (supportsSubagentTasks && !parent_tool_use_id && isDelegationControlToolCall(canonicalToolName)) {
+          return;
+        }
+
         // Record start time for new non-result tool calls (for elapsed timer display)
         // Also update heartbeat timestamp so watchdog doesn't false-trigger during long tool calls
         if (storeKey && result == null) {
@@ -209,6 +348,12 @@ export function useChatEvents({
             store.setToolCallStartTime(storeKey, id, Date.now());
           }
           store.updateLastAgentEvent(storeKey);
+        } else if (storeKey && result != null) {
+          const store = useChatStore.getState();
+          store.removeToolCallStartTime(storeKey, id);
+          store.updateLastAgentEvent(storeKey);
+          store.setLastToolCallCompletionTimestamp(storeKey, Date.now());
+          store.setToolCallCompletionTimestamp(storeKey, id, Date.now());
         }
 
         // Route to parent task's childToolCalls if this is a subagent tool call
@@ -272,8 +417,7 @@ export function useChatEvents({
           // Task/Agent tool calls get a position-marker block { type: "task", toolUseId }
           // so they render inline at the correct position (not grouped after all text).
           // Actual task metadata is read from streamingTasks Map via toolUseId lookup.
-          const lowerToolName = tool_name.toLowerCase();
-          if (lowerToolName === "task" || lowerToolName === "agent") {
+          if (canonicalToolName === "task" || canonicalToolName === "agent" || canonicalToolName === "delegate_start") {
             setStreamingContentBlocks((prev) => {
               // Only add the marker once — deduplicate by toolUseId
               const alreadyHasMarker = prev.some((block) => block.type === "task" && block.toolUseId === id);
@@ -321,26 +465,102 @@ export function useChatEvents({
           description?: string;
           subagent_type?: string;
           model?: string;
+          delegated_job_id?: string;
+          delegated_session_id?: string;
+          delegated_conversation_id?: string;
+          delegated_agent_run_id?: string;
+          provider_harness?: string;
+          provider_session_id?: string;
+          upstream_provider?: string;
+          provider_profile?: string;
+          logical_model?: string;
+          effective_model_id?: string;
+          logical_effort?: string;
+          effective_effort?: string;
+          approval_policy?: string;
+          sandbox_mode?: string;
           conversation_id: string;
           context_id?: string;
           context_type?: string;
           seq?: number;
         }>("agent:task_started", (payload) => {
           if (!isRelevant(payload)) return;
+          setStreamingContentBlocks((prev) => {
+            const alreadyHasMarker = prev.some(
+              (block) => block.type === "task" && block.toolUseId === payload.tool_use_id,
+            );
+            if (alreadyHasMarker) return prev;
+            return [...prev, { type: "task", toolUseId: payload.tool_use_id }];
+          });
           setStreamingTasks((prev) => {
+            const existing = prev.get(payload.tool_use_id);
             const next = new Map(prev);
+            const isDelegated = isDelegatedTaskEventPayload(payload);
+            const delegatedJobId = payload.delegated_job_id ?? existing?.delegatedJobId;
+            const delegatedSessionId = payload.delegated_session_id ?? existing?.delegatedSessionId;
+            const delegatedConversationId =
+              payload.delegated_conversation_id ?? existing?.delegatedConversationId;
+            const delegatedAgentRunId =
+              payload.delegated_agent_run_id ?? existing?.delegatedAgentRunId;
+            const providerHarness = payload.provider_harness ?? existing?.providerHarness;
+            const providerSessionId = payload.provider_session_id ?? existing?.providerSessionId;
+            const upstreamProvider = payload.upstream_provider ?? existing?.upstreamProvider;
+            const providerProfile = payload.provider_profile ?? existing?.providerProfile;
+            const logicalModel = payload.logical_model ?? existing?.logicalModel;
+            const effectiveModelId = payload.effective_model_id ?? existing?.effectiveModelId;
+            const logicalEffort = payload.logical_effort ?? existing?.logicalEffort;
+            const effectiveEffort = payload.effective_effort ?? existing?.effectiveEffort;
+            const approvalPolicy = payload.approval_policy ?? existing?.approvalPolicy;
+            const sandboxMode = payload.sandbox_mode ?? existing?.sandboxMode;
             const newTask: StreamingTask = {
               toolUseId: payload.tool_use_id,
-              toolName: payload.tool_name ?? "Task",
-              description: payload.description ?? "",
-              subagentType: payload.subagent_type ?? "unknown",
-              model: payload.model ?? "unknown",
-              status: "running",
-              startedAt: Date.now(),
-              childToolCalls: [],
+              toolName: payload.tool_name ?? existing?.toolName ?? "Task",
+              description: payload.description ?? existing?.description ?? "",
+              subagentType:
+                payload.subagent_type
+                ?? existing?.subagentType
+                ?? (isDelegated ? "delegated" : "unknown"),
+              model:
+                payload.model
+                ?? payload.effective_model_id
+                ?? payload.logical_model
+                ?? existing?.model
+                ?? "unknown",
+              status: normalizeDelegatedTaskStatus(existing?.status) ?? "running",
+              startedAt: existing?.startedAt ?? Date.now(),
+              childToolCalls: existing?.childToolCalls ?? [],
+              ...(delegatedJobId != null ? { delegatedJobId } : {}),
+              ...(delegatedSessionId != null ? { delegatedSessionId } : {}),
+              ...(delegatedConversationId != null ? { delegatedConversationId } : {}),
+              ...(delegatedAgentRunId != null ? { delegatedAgentRunId } : {}),
+              ...(providerHarness != null ? { providerHarness } : {}),
+              ...(providerSessionId != null ? { providerSessionId } : {}),
+              ...(upstreamProvider != null ? { upstreamProvider } : {}),
+              ...(providerProfile != null ? { providerProfile } : {}),
+              ...(logicalModel != null ? { logicalModel } : {}),
+              ...(effectiveModelId != null ? { effectiveModelId } : {}),
+              ...(logicalEffort != null ? { logicalEffort } : {}),
+              ...(effectiveEffort != null ? { effectiveEffort } : {}),
+              ...(approvalPolicy != null ? { approvalPolicy } : {}),
+              ...(sandboxMode != null ? { sandboxMode } : {}),
+              ...(existing?.completedAt != null ? { completedAt: existing.completedAt } : {}),
+              ...(existing?.totalDurationMs != null ? { totalDurationMs: existing.totalDurationMs } : {}),
+              ...(existing?.totalTokens != null ? { totalTokens: existing.totalTokens } : {}),
+              ...(existing?.totalToolUseCount != null ? { totalToolUseCount: existing.totalToolUseCount } : {}),
+              ...(existing?.agentId ? { agentId: existing.agentId } : {}),
+              ...(existing?.inputTokens != null ? { inputTokens: existing.inputTokens } : {}),
+              ...(existing?.outputTokens != null ? { outputTokens: existing.outputTokens } : {}),
+              ...(existing?.cacheCreationTokens != null
+                ? { cacheCreationTokens: existing.cacheCreationTokens }
+                : {}),
+              ...(existing?.cacheReadTokens != null ? { cacheReadTokens: existing.cacheReadTokens } : {}),
+              ...(existing?.estimatedUsd != null ? { estimatedUsd: existing.estimatedUsd } : {}),
+              ...(existing?.textOutput ? { textOutput: existing.textOutput } : {}),
             };
             if (payload.seq != null) {
               newTask.seq = payload.seq;
+            } else if (existing?.seq != null) {
+              newTask.seq = existing.seq;
             }
             next.set(payload.tool_use_id, newTask);
             return next;
@@ -355,9 +575,31 @@ export function useChatEvents({
         bus.subscribe<{
           tool_use_id: string;
           agent_id?: string;
+          status?: string;
+          delegated_job_id?: string;
+          delegated_session_id?: string;
+          delegated_conversation_id?: string;
+          delegated_agent_run_id?: string;
+          provider_harness?: string;
+          provider_session_id?: string;
+          upstream_provider?: string;
+          provider_profile?: string;
+          logical_model?: string;
+          effective_model_id?: string;
+          logical_effort?: string;
+          effective_effort?: string;
+          approval_policy?: string;
+          sandbox_mode?: string;
           total_duration_ms?: number;
           total_tokens?: number;
           total_tool_use_count?: number;
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_creation_tokens?: number;
+          cache_read_tokens?: number;
+          estimated_usd?: number;
+          text_output?: string;
+          error?: string;
           conversation_id: string;
           context_id?: string;
           context_type?: string;
@@ -366,11 +608,24 @@ export function useChatEvents({
           if (!isRelevant(payload)) return;
           setStreamingTasks((prev) => {
             const task = prev.get(payload.tool_use_id);
-            if (!task) return prev;
+            const isDelegated = isDelegatedTaskEventPayload(payload);
+            if (!task && !isDelegated) return prev;
             const next = new Map(prev);
             const updated: StreamingTask = {
-              ...task,
-              status: "completed",
+              ...(task ?? {
+                toolUseId: payload.tool_use_id,
+                toolName: payload.delegated_job_id ? "delegate_start" : "Task",
+                description: "",
+                subagentType: isDelegated ? "delegated" : "unknown",
+                model:
+                  payload.effective_model_id
+                  ?? payload.logical_model
+                  ?? "unknown",
+                startedAt: Date.now(),
+                childToolCalls: [],
+                status: "running",
+              }),
+              status: normalizeDelegatedTaskStatus(payload.status) ?? "completed",
               completedAt: Date.now(),
             };
             if (payload.agent_id != null) {
@@ -384,6 +639,66 @@ export function useChatEvents({
             }
             if (payload.total_tool_use_count != null) {
               updated.totalToolUseCount = payload.total_tool_use_count;
+            }
+            if (payload.delegated_job_id != null) {
+              updated.delegatedJobId = payload.delegated_job_id;
+            }
+            if (payload.delegated_session_id != null) {
+              updated.delegatedSessionId = payload.delegated_session_id;
+            }
+            if (payload.delegated_conversation_id != null) {
+              updated.delegatedConversationId = payload.delegated_conversation_id;
+            }
+            if (payload.delegated_agent_run_id != null) {
+              updated.delegatedAgentRunId = payload.delegated_agent_run_id;
+            }
+            if (payload.provider_harness != null) {
+              updated.providerHarness = payload.provider_harness;
+            }
+            if (payload.provider_session_id != null) {
+              updated.providerSessionId = payload.provider_session_id;
+            }
+            if (payload.upstream_provider != null) {
+              updated.upstreamProvider = payload.upstream_provider;
+            }
+            if (payload.provider_profile != null) {
+              updated.providerProfile = payload.provider_profile;
+            }
+            if (payload.logical_model != null) {
+              updated.logicalModel = payload.logical_model;
+            }
+            if (payload.effective_model_id != null) {
+              updated.effectiveModelId = payload.effective_model_id;
+            }
+            if (payload.logical_effort != null) {
+              updated.logicalEffort = payload.logical_effort;
+            }
+            if (payload.effective_effort != null) {
+              updated.effectiveEffort = payload.effective_effort;
+            }
+            if (payload.approval_policy != null) {
+              updated.approvalPolicy = payload.approval_policy;
+            }
+            if (payload.sandbox_mode != null) {
+              updated.sandboxMode = payload.sandbox_mode;
+            }
+            if (payload.input_tokens != null) {
+              updated.inputTokens = payload.input_tokens;
+            }
+            if (payload.output_tokens != null) {
+              updated.outputTokens = payload.output_tokens;
+            }
+            if (payload.cache_creation_tokens != null) {
+              updated.cacheCreationTokens = payload.cache_creation_tokens;
+            }
+            if (payload.cache_read_tokens != null) {
+              updated.cacheReadTokens = payload.cache_read_tokens;
+            }
+            if (payload.estimated_usd != null) {
+              updated.estimatedUsd = payload.estimated_usd;
+            }
+            if (payload.text_output != null) {
+              updated.textOutput = payload.text_output;
             }
             if (payload.seq != null) {
               updated.seq = payload.seq;
@@ -400,13 +715,23 @@ export function useChatEvents({
     // match when activeConversationId is the teammate's conversation.
     if (supportsStreamingText) {
       unsubscribes.push(
-        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string; seq?: number }>(
+        bus.subscribe<{
+          text: string;
+          conversation_id: string;
+          context_id?: string;
+          context_type?: string;
+          seq?: number;
+          append_to_previous?: boolean;
+        }>(
           "agent:chunk", (payload) => {
             if (!isRelevant(payload)) return;
             setStreamingContentBlocks((prev) => {
               const lastBlock = prev[prev.length - 1];
-              // If last block is text, append to it; otherwise create new text block
-              if (lastBlock?.type === "text") {
+              const shouldAppend = payload.append_to_previous ?? true;
+              // If last block is text and the backend says this chunk extends it, append.
+              // Codex agent_message events are already logical text blocks, so they set
+              // append_to_previous=false to preserve live block boundaries.
+              if (shouldAppend && lastBlock?.type === "text") {
                 const updated = [...prev];
                 // Preserve existing seq when appending to block (don't use latest chunk's seq)
                 const appendBlock = { type: "text" as const, text: lastBlock.text + payload.text };
@@ -444,7 +769,7 @@ export function useChatEvents({
         if (!payload.conversation_id) return;
         if (!isRelevant(payload)) return;
 
-        if (payload.role === "assistant") {
+        if (isProviderRole(payload.role)) {
           const convId = payload.conversation_id;
           const assistantMessageId = payload.message_id;
 
@@ -506,6 +831,9 @@ export function useChatEvents({
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(payload.conversation_id),
         });
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 
@@ -513,11 +841,7 @@ export function useChatEvents({
     // Clear all streaming state on run completion.
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
-      bus.subscribe<{
-        conversation_id: string;
-        context_id?: string;
-        context_type?: string;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
@@ -530,6 +854,10 @@ export function useChatEvents({
           store.clearToolCallStartTimes(storeKey);
           store.clearToolCallCompletionTimestamps(storeKey);
         }
+
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 
@@ -537,16 +865,35 @@ export function useChatEvents({
     // Clear streaming state on turn completion (agent still alive in interactive mode).
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
-      bus.subscribe<{
-        conversation_id: string;
-        context_id?: string;
-        context_type?: string;
-      }>("agent:turn_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
+      })
+    );
+
+    // ── agent:usage_updated ─────────────────────────────────────────
+    // Usage snapshots are persisted during the live turn; refetch stats immediately.
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_id?: string;
+        context_type?: string;
+      }>("agent:usage_updated", (payload) => {
+        if (!isRelevant(payload)) return;
+
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(payload.conversation_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 

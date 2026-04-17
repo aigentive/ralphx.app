@@ -28,12 +28,14 @@ import { DurationDisplay } from "./shared/DurationDisplay";
 import { api } from "@/lib/tauri";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
+import { executionKeys } from "@/hooks/useExecutionControl";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import {
   TaskRerunDialog,
   type TaskRerunResult,
 } from "@/components/tasks/TaskRerunDialog";
 import { useGitDiff } from "@/hooks/useGitDiff";
+import { resumeExecutionIfStopped } from "@/lib/task-actions/resume-execution-if-stopped";
 
 interface CompletedTaskDetailProps {
   task: Task;
@@ -141,16 +143,18 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
           case "revert_commit":
           case "create_new":
             await api.tasks.move(task.id, "ready", undefined, result.note);
+            await resumeExecutionIfStopped(task.projectId);
             break;
         }
 
-        await queryClient.invalidateQueries({
-          queryKey: taskKeys.list(task.projectId),
-        });
         setIsRerunDialogOpen(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to reopen task");
       } finally {
+        await queryClient.invalidateQueries({
+          queryKey: taskKeys.list(task.projectId),
+        });
+        await queryClient.invalidateQueries({ queryKey: executionKeys.all });
         setIsProcessing(false);
       }
     },

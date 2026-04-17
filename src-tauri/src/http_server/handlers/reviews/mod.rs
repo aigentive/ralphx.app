@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 
 use super::*;
-use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
+use crate::application::{GitService, TaskTransitionService};
 use crate::domain::entities::{
     InternalStatus, Review, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };

@@ -73,7 +73,11 @@ function formatPlanTitle(planArtifactId: string, index: number): string {
   return `Plan ${suffix}`;
 }
 
-function buildGraphResponse(projectId: string, ideationSessionId?: string | null): TaskDependencyGraphResponseRaw {
+function buildGraphResponse(
+  projectId: string,
+  ideationSessionId?: string | null,
+  executionPlanId?: string | null
+): TaskDependencyGraphResponseRaw {
   const store = getStore();
   let tasks = Array.from(store.tasks.values()).filter(
     (task) => task.projectId === projectId
@@ -82,6 +86,9 @@ function buildGraphResponse(projectId: string, ideationSessionId?: string | null
   // Filter by ideationSessionId (matches planArtifactId) if provided
   if (ideationSessionId !== undefined) {
     tasks = tasks.filter((task) => task.planArtifactId === ideationSessionId);
+  } else if (executionPlanId !== undefined && executionPlanId !== null) {
+    // In web-mode mocks, execution-plan-scoped tasks reuse planArtifactId as the stable filter key.
+    tasks = tasks.filter((task) => task.planArtifactId === executionPlanId);
   }
   const planGroupMap = new Map<
     string,
@@ -146,8 +153,12 @@ function buildGraphResponse(projectId: string, ideationSessionId?: string | null
 }
 
 export const mockTaskGraphApi = {
-  getDependencyGraph: async (projectId: string, _includeArchived: boolean = false, ideationSessionId?: string | null): Promise<TaskDependencyGraphResponseRaw> =>
-    buildGraphResponse(projectId, ideationSessionId),
+  getDependencyGraph: async (
+    projectId: string,
+    _includeArchived: boolean = false,
+    executionPlanId?: string | null
+  ): Promise<TaskDependencyGraphResponseRaw> =>
+    buildGraphResponse(projectId, undefined, executionPlanId),
 
   getTimelineEvents: async (
     _projectId: string,

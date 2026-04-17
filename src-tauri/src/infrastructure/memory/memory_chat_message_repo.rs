@@ -7,9 +7,10 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
+use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, MessageRole, ProjectId,
-    TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageAttribution, ChatMessageId,
+    IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -201,6 +202,38 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         Ok(())
     }
 
+    async fn update_provider_session_ref(
+        &self,
+        id: &ChatMessageId,
+        session_ref: &ProviderSessionRef,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.update_provider_session_ref(session_ref);
+        }
+        Ok(())
+    }
+
+    async fn update_usage(&self, id: &ChatMessageId, usage: &AgentRunUsage) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.apply_usage(usage);
+        }
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &ChatMessageId,
+        attribution: &ChatMessageAttribution,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.apply_attribution(attribution);
+        }
+        Ok(())
+    }
+
     async fn count_unread_assistant_messages(
         &self,
         session_id: &str,
@@ -305,7 +338,11 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         let messages = self.messages.read().unwrap();
         let exists = messages.values().any(|m| {
             m.conversation_id.as_ref() == Some(conversation_id)
-                && m.content.contains(crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER)
+                && (m.content.contains(
+                    crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER,
+                ) || m.metadata.as_deref().is_some_and(|metadata| {
+                    metadata.contains(crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_METADATA_KEY)
+                }))
         });
         Ok(exists)
     }

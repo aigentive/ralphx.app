@@ -8,14 +8,16 @@
 // - GET  /api/team/plan/pending/:context_id — get_pending_plan (frontend reconciliation)
 // - POST /api/team/spawn          — request_teammate_spawn (validates, spawns, registers, streams)
 // - POST /api/team/artifact       — create_team_artifact
+// - POST /api/team/verification_finding — publish_verification_finding
 // - GET  /api/team/artifacts/:session_id — get_team_artifacts
+// - GET  /api/team/verification-findings/:session_id — get_verification_findings
 // - GET  /api/team/session_state/:session_id — get_team_session_state
 // - POST /api/team/session_state  — save_team_session_state
 
 use std::path::PathBuf;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -35,10 +37,13 @@ use crate::domain::entities::{
 use crate::http_server::types::{
     ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
     CreateTeamArtifactResponse, GetPendingPlanResponse, GetTeamArtifactsResponse,
-    RejectTeamPlanRequest, RequestTeamPlanRequest, RequestTeamPlanResponse,
-    RequestTeammateSpawnRequest, RequestTeammateSpawnResponse, SaveTeamSessionStateRequest,
-    SaveTeamSessionStateResponse, SpawnedTeammateInfo, TeamArtifactSummary, TeamCompositionEntry,
-    TeamPlanRegisterResponse, TeamSessionStateResponse,
+    GetVerificationFindingsResponse, PublishVerificationFindingRequest,
+    PublishVerificationFindingResponse, RejectTeamPlanRequest, RequestTeamPlanRequest,
+    RequestTeamPlanResponse, RequestTeammateSpawnRequest, RequestTeammateSpawnResponse,
+    SaveTeamSessionStateRequest, SaveTeamSessionStateResponse, SpawnedTeammateInfo,
+    TeamArtifactSummary, TeamCompositionEntry, TeamPlanRegisterResponse,
+    TeamSessionStateResponse, VerificationFindingGapPayload, VerificationFindingQuery,
+    VerificationFindingSummary,
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, resolve_effort, team_constraints_config, validate_team_plan,
@@ -52,7 +57,10 @@ mod spawn;
 mod spawn_execution;
 mod spawn_helpers;
 
-pub use self::artifacts::{create_team_artifact, get_team_artifacts};
+pub use self::artifacts::{
+    create_team_artifact, get_team_artifacts, get_verification_findings,
+    publish_verification_finding,
+};
 pub use self::plan::{
     approve_team_plan, await_team_plan, get_pending_plan, reject_team_plan,
     request_team_plan_register,
@@ -66,6 +74,6 @@ pub use self::spawn_helpers::{
 
 use self::spawn_execution::execute_team_spawn;
 use self::spawn_helpers::{
-    resolve_lead_session_from_config, resolve_teammate_project_id,
-    resolve_teammate_working_dir,
+    ensure_team_mode_supported_for_context, resolve_lead_session_from_config,
+    resolve_teammate_plugin_dir, resolve_teammate_project_id, resolve_teammate_working_dir,
 };

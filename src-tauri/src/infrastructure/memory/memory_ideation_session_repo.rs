@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    SessionOrigin, VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
+    SessionOrigin, VerificationConfirmationStatus, VerificationRunSnapshot, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts,
@@ -21,6 +21,7 @@ use crate::error::{AppError, AppResult};
 /// In-memory implementation of IdeationSessionRepository for testing
 pub struct MemoryIdeationSessionRepository {
     sessions: RwLock<HashMap<String, IdeationSession>>,
+    verification_runs: RwLock<HashMap<(String, i32), VerificationRunSnapshot>>,
 }
 
 impl MemoryIdeationSessionRepository {
@@ -28,7 +29,30 @@ impl MemoryIdeationSessionRepository {
     pub fn new() -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
+            verification_runs: RwLock::new(HashMap::new()),
         }
+    }
+
+    fn clear_verification_summary(session: &mut IdeationSession) {
+        session.verification_current_round = None;
+        session.verification_max_rounds = None;
+        session.verification_gap_count = 0;
+        session.verification_gap_score = None;
+        session.verification_convergence_reason = None;
+    }
+
+    fn apply_verification_snapshot_summary(
+        session: &mut IdeationSession,
+        snapshot: &VerificationRunSnapshot,
+    ) {
+        session.verification_current_round =
+            (snapshot.current_round > 0).then_some(snapshot.current_round);
+        session.verification_max_rounds =
+            (snapshot.max_rounds > 0).then_some(snapshot.max_rounds);
+        session.verification_gap_count = snapshot.current_gaps.len() as u32;
+        session.verification_gap_score = (!snapshot.current_gaps.is_empty())
+            .then_some(crate::domain::services::gap_score(&snapshot.current_gaps));
+        session.verification_convergence_reason = snapshot.convergence_reason.clone();
     }
 }
 
@@ -249,12 +273,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         id: &IdeationSessionId,
         status: VerificationStatus,
         in_progress: bool,
-        metadata_json: Option<String>,
     ) -> AppResult<()> {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
             session.verification_status = status;
             session.verification_in_progress = in_progress;
-            session.verification_metadata = metadata_json;
+            Self::clear_verification_summary(session);
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -271,7 +294,8 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             }
             session.verification_status = VerificationStatus::Unverified;
             session.verification_in_progress = false;
-            session.verification_metadata = None;
+            Self::clear_verification_summary(session);
+            session.verification_generation += 1;
             session.updated_at = Utc::now();
             Ok(true)
         } else {
@@ -282,46 +306,89 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         session_id: &str,
-    ) -> AppResult<(i32, VerificationMetadata)> {
+    ) -> AppResult<(i32, VerificationRunSnapshot)> {
         let mut sessions = self.sessions.write().unwrap();
         let session = sessions.get_mut(session_id).ok_or_else(|| {
             crate::error::AppError::Database(format!("Session not found: {}", session_id))
         })?;
 
-        // Parse existing metadata (or use default), then clear all stale fields
-        let mut metadata: VerificationMetadata = session
-            .verification_metadata
-            .as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        metadata.current_gaps = vec![];
-        metadata.rounds = vec![];
-        metadata.convergence_reason = None;
-        metadata.best_round_index = None;
-        metadata.current_round = 0;
-        metadata.parse_failures = vec![];
-
         let new_gen = session.verification_generation + 1;
+        let snapshot = VerificationRunSnapshot {
+            generation: new_gen,
+            status: VerificationStatus::Reviewing,
+            in_progress: true,
+            current_round: 0,
+            max_rounds: 0,
+            best_round_index: None,
+            convergence_reason: None,
+            current_gaps: Vec::new(),
+            rounds: Vec::new(),
+        };
 
         session.verification_status = VerificationStatus::Reviewing;
         session.verification_in_progress = true;
         session.verification_generation = new_gen;
-        session.verification_metadata = serde_json::to_string(&metadata).ok();
+        Self::clear_verification_summary(session);
         session.updated_at = chrono::Utc::now();
 
-        Ok((new_gen, metadata))
+        Ok((new_gen, snapshot))
     }
 
     async fn get_verification_status(
         &self,
         id: &IdeationSessionId,
-    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
-        Ok(self
+    ) -> AppResult<Option<(VerificationStatus, bool)>> {
+        let session = self
             .sessions
             .read()
             .unwrap()
             .get(&id.to_string())
-            .map(|s| (s.verification_status, s.verification_in_progress, s.verification_metadata.clone())))
+            .cloned();
+        let Some(session) = session else {
+            return Ok(None);
+        };
+
+        let effective = self
+            .verification_runs
+            .read()
+            .unwrap()
+            .get(&(id.to_string(), session.verification_generation))
+            .map(|snapshot| (snapshot.status, snapshot.in_progress))
+            .unwrap_or((session.verification_status, session.verification_in_progress));
+
+        Ok(Some(effective))
+    }
+
+    async fn save_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        snapshot: &VerificationRunSnapshot,
+    ) -> AppResult<()> {
+        self.verification_runs.write().unwrap().insert(
+            (id.to_string(), snapshot.generation),
+            snapshot.clone(),
+        );
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            if session.verification_generation == snapshot.generation {
+                Self::apply_verification_snapshot_summary(session, snapshot);
+                session.verification_status = snapshot.status;
+                session.verification_in_progress = snapshot.in_progress;
+            }
+        }
+        Ok(())
+    }
+
+    async fn get_verification_run_snapshot(
+        &self,
+        id: &IdeationSessionId,
+        generation: i32,
+    ) -> AppResult<Option<VerificationRunSnapshot>> {
+        Ok(self
+            .verification_runs
+            .read()
+            .unwrap()
+            .get(&(id.to_string(), generation))
+            .cloned())
     }
 
     async fn revert_plan_and_skip_verification(
@@ -335,19 +402,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 Some(crate::domain::entities::ArtifactId::from_string(new_plan_artifact_id));
             session.verification_status = VerificationStatus::Skipped;
             session.verification_in_progress = false;
-            session.verification_metadata = Some(
-                serde_json::json!({
-                    "v": 1,
-                    "current_round": 0,
-                    "max_rounds": 0,
-                    "rounds": [],
-                    "current_gaps": [],
-                    "convergence_reason": convergence_reason,
-                    "best_round_index": null,
-                    "parse_failures": []
-                })
-                .to_string(),
-            );
+            session.verification_current_round = None;
+            session.verification_max_rounds = None;
+            session.verification_gap_count = 0;
+            session.verification_gap_score = Some(0);
+            session.verification_convergence_reason = Some(convergence_reason);
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -369,19 +428,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 Some(crate::domain::entities::ArtifactId::from_string(new_artifact_id));
             session.verification_status = VerificationStatus::Skipped;
             session.verification_in_progress = false;
-            session.verification_metadata = Some(
-                serde_json::json!({
-                    "v": 1,
-                    "current_round": 0,
-                    "max_rounds": 0,
-                    "rounds": [],
-                    "current_gaps": [],
-                    "convergence_reason": convergence_reason,
-                    "best_round_index": null,
-                    "parse_failures": []
-                })
-                .to_string(),
-            );
+            session.verification_current_round = None;
+            session.verification_max_rounds = None;
+            session.verification_gap_count = 0;
+            session.verification_gap_score = Some(0);
+            session.verification_convergence_reason = Some(convergence_reason);
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -389,8 +440,12 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
 
     async fn increment_verification_generation(
         &self,
-        _session_id: &IdeationSessionId,
+        session_id: &IdeationSessionId,
     ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(session_id.as_str()) {
+            session.verification_generation += 1;
+            Self::clear_verification_summary(session);
+        }
         Ok(())
     }
 

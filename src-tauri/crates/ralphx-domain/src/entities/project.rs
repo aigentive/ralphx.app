@@ -111,13 +111,13 @@ impl FromStr for MergeStrategy {
 #[serde(rename_all = "snake_case")]
 pub enum MergeValidationMode {
     /// Validation failure → MergeIncomplete (user decides)
-    #[default]
     Block,
     /// Validation failure → spawn merger agent to attempt fix, then fall back to Block
     AutoFix,
     /// Validation failure → proceed to Merged, store warnings
     Warn,
     /// Skip validation entirely
+    #[default]
     Off,
 }
 

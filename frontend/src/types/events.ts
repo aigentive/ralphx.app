@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { InternalStatusSchema } from "./status";
 import { TaskSchema } from "./task";
+import type { ConversationProviderMetadata } from "./chat-conversation";
 
 // ============================================================================
 // Agent Message Events (high frequency)
@@ -520,10 +521,9 @@ export interface TeamPlanAutoApprovedPayload {
 
 /**
  * Payload emitted with the agent:run_started Tauri event.
- * Fields use snake_case for the original fields (Rust fields without camelCase annotation).
- * effectiveModelId and effectiveModelLabel use camelCase because the Rust
- * AgentRunStartedPayload struct has #[serde(rename_all = "camelCase")].
- * effectiveModelId and effectiveModelLabel are optional — present only when
+ * Canonical wire fields are snake_case to match the backend event serializer.
+ * CamelCase aliases stay optional here only as a temporary compatibility read path.
+ * effective_model_id and effective_model_label are optional — present only when
  * the backend captured the resolved model at spawn time.
  */
 export interface AgentRunStartedPayload {
@@ -532,6 +532,61 @@ export interface AgentRunStartedPayload {
   context_id: string;
   conversation_id: string;
   teammate_name?: string | null;
+  effective_model_id?: string;
+  effective_model_label?: string;
+  provider_harness?: string | null;
+  provider_session_id?: string | null;
   effectiveModelId?: string;
   effectiveModelLabel?: string;
+  providerHarness?: string | null;
+  providerSessionId?: string | null;
+}
+
+/**
+ * Payload emitted with the agent:run_completed and agent:turn_completed Tauri events.
+ * Fields remain snake_case to match the backend serializer for these payloads.
+ */
+export interface AgentRunCompletedPayload {
+  conversation_id: string;
+  context_type: string;
+  context_id: string;
+  claude_session_id?: string | null;
+  provider_harness?: string | null;
+  provider_session_id?: string | null;
+  run_chain_id?: string | null;
+  teammate_name?: string | null;
+}
+
+export function extractConversationProviderMetadataFromRunPayload(
+  payload: AgentRunStartedPayload | AgentRunCompletedPayload
+): ConversationProviderMetadata {
+  if ("provider_harness" in payload || "provider_session_id" in payload) {
+    const snakePayload = payload as AgentRunStartedPayload | AgentRunCompletedPayload;
+    return {
+      providerHarness:
+        snakePayload.provider_harness ??
+        ("providerHarness" in snakePayload ? snakePayload.providerHarness : undefined) ??
+        undefined,
+      providerSessionId:
+        snakePayload.provider_session_id ??
+        ("providerSessionId" in snakePayload ? snakePayload.providerSessionId : undefined) ??
+        undefined,
+    };
+  }
+
+  if ("providerHarness" in payload || "providerSessionId" in payload) {
+    const startedPayload = payload as AgentRunStartedPayload;
+    return {
+      providerHarness: startedPayload.providerHarness ?? undefined,
+      providerSessionId: startedPayload.providerSessionId ?? undefined,
+    };
+  }
+
+  const completedPayload = payload as AgentRunCompletedPayload;
+
+  return {
+    claudeSessionId: completedPayload.claude_session_id ?? undefined,
+    providerHarness: completedPayload.provider_harness ?? undefined,
+    providerSessionId: completedPayload.provider_session_id ?? undefined,
+  };
 }

@@ -13,6 +13,7 @@ use crate::domain::entities::{
     TaskId,
 };
 use crate::infrastructure::sqlite::{open_connection, run_migrations};
+use crate::infrastructure::sqlite::sqlite_project_repo::insert_project_row;
 
 pub struct SqliteTestDb {
     _temp_dir: TempDir,
@@ -60,9 +61,16 @@ impl SqliteTestDb {
 
     pub fn insert_project(&self, project: Project) -> Project {
         self.with_connection(|conn| {
+            insert_project_row(conn, &project).expect("Failed to insert test project");
+        });
+        project
+    }
+
+    pub fn insert_project_using_schema_defaults(&self, project: Project) -> Project {
+        self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 rusqlite::params![
                     project.id.as_str(),
                     project.name.as_str(),
@@ -71,7 +79,6 @@ impl SqliteTestDb {
                     project.base_branch.as_deref(),
                     project.worktree_parent_directory.as_deref(),
                     project.use_feature_branches as i64,
-                    project.merge_validation_mode.to_string(),
                     project.merge_strategy.to_string(),
                     project.detected_analysis.as_deref(),
                     project.custom_analysis.as_deref(),
@@ -81,7 +88,7 @@ impl SqliteTestDb {
                     project.github_pr_enabled as i64,
                 ],
             )
-            .expect("Failed to insert test project");
+            .expect("Failed to insert test project using schema defaults");
         });
         project
     }
@@ -171,19 +178,45 @@ impl SqliteTestDb {
     pub fn insert_conversation(&self, conversation: ChatConversation) -> ChatConversation {
         self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO chat_conversations (id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO chat_conversations (
+                    id, context_type, context_id, claude_session_id, provider_session_id,
+                    provider_harness, upstream_provider, provider_profile, title, message_count, last_message_at, created_at,
+                    updated_at, parent_conversation_id, attribution_backfill_status,
+                    attribution_backfill_source, attribution_backfill_source_path,
+                    attribution_backfill_last_attempted_at, attribution_backfill_completed_at,
+                    attribution_backfill_error_summary
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 rusqlite::params![
                     conversation.id.as_str(),
                     conversation.context_type.to_string(),
                     conversation.context_id.as_str(),
                     conversation.claude_session_id.as_deref(),
+                    conversation.provider_session_id.as_deref(),
+                    conversation
+                        .provider_harness
+                        .map(|value| value.to_string()),
+                    conversation.upstream_provider.as_deref(),
+                    conversation.provider_profile.as_deref(),
                     conversation.title.as_deref(),
                     conversation.message_count,
                     conversation.last_message_at.as_ref().map(|dt| dt.to_rfc3339()),
                     conversation.created_at.to_rfc3339(),
                     conversation.updated_at.to_rfc3339(),
                     conversation.parent_conversation_id.as_deref(),
+                    conversation
+                        .attribution_backfill_status
+                        .map(|value| value.to_string()),
+                    conversation.attribution_backfill_source.as_deref(),
+                    conversation.attribution_backfill_source_path.as_deref(),
+                    conversation
+                        .attribution_backfill_last_attempted_at
+                        .as_ref()
+                        .map(|dt| dt.to_rfc3339()),
+                    conversation
+                        .attribution_backfill_completed_at
+                        .as_ref()
+                        .map(|dt| dt.to_rfc3339()),
+                    conversation.attribution_backfill_error_summary.as_deref(),
                 ],
             )
             .expect("Failed to insert test conversation");

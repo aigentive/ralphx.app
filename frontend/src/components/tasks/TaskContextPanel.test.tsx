@@ -10,6 +10,7 @@ import { TaskContextPanel } from "./TaskContextPanel";
 import { taskContextApi } from "@/api/task-context";
 import type { TaskContext } from "@/types/task-context";
 import userEvent from "@testing-library/user-event";
+import { useTaskChatUsageStats } from "@/hooks/useTaskChatUsageStats";
 
 // Mock the API
 vi.mock("@/api/task-context", () => ({
@@ -18,9 +19,14 @@ vi.mock("@/api/task-context", () => ({
   },
 }));
 
+vi.mock("@/hooks/useTaskChatUsageStats", () => ({
+  useTaskChatUsageStats: vi.fn(),
+}));
+
 const mockTaskContextApi = taskContextApi as {
   getTaskContext: ReturnType<typeof vi.fn>;
 };
+const mockUseTaskChatUsageStats = useTaskChatUsageStats as ReturnType<typeof vi.fn>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -99,6 +105,7 @@ const mockTaskContext: TaskContext = {
 describe("TaskContextPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseTaskChatUsageStats.mockReturnValue({ data: undefined });
   });
 
   describe("Loading State", () => {
@@ -390,6 +397,87 @@ describe("TaskContextPanel", () => {
   });
 
   describe("Integration", () => {
+    it("shows task usage card when scoped usage stats are available", async () => {
+      mockTaskContextApi.getTaskContext.mockResolvedValue(mockTaskContext);
+      mockUseTaskChatUsageStats.mockReturnValue({
+        data: {
+          scopeType: "task",
+          scopeId: "task-1",
+          conversationCount: 2,
+          messageUsageTotals: {
+            inputTokens: 300,
+            outputTokens: 90,
+            cacheCreationTokens: 20,
+            cacheReadTokens: 30,
+            estimatedUsd: 0.52,
+          },
+          runUsageTotals: {
+            inputTokens: 300,
+            outputTokens: 90,
+            cacheCreationTokens: 20,
+            cacheReadTokens: 30,
+            estimatedUsd: 0.52,
+          },
+          effectiveUsageTotals: {
+            inputTokens: 300,
+            outputTokens: 90,
+            cacheCreationTokens: 20,
+            cacheReadTokens: 30,
+            estimatedUsd: 0.52,
+          },
+          usageCoverage: {
+            providerMessageCount: 4,
+            providerMessagesWithUsage: 4,
+            runCount: 2,
+            runsWithUsage: 2,
+            effectiveTotalsSource: "messages",
+          },
+          attributionCoverage: {
+            providerMessageCount: 4,
+            providerMessagesWithAttribution: 4,
+            runCount: 2,
+            runsWithAttribution: 2,
+          },
+          byContextType: [],
+          byHarness: [
+            {
+              key: "codex",
+              count: 2,
+              usage: {
+                inputTokens: 300,
+                outputTokens: 90,
+                cacheCreationTokens: 20,
+                cacheReadTokens: 30,
+                estimatedUsd: 0.52,
+              },
+            },
+          ],
+          byUpstreamProvider: [],
+          byModel: [
+            {
+              key: "gpt-5.4",
+              count: 2,
+              usage: {
+                inputTokens: 300,
+                outputTokens: 90,
+                cacheCreationTokens: 20,
+                cacheReadTokens: 30,
+                estimatedUsd: 0.52,
+              },
+            },
+          ],
+          byEffort: [],
+        },
+      });
+
+      render(<TaskContextPanel taskId="task-1" />, { wrapper: createWrapper() });
+
+      await waitFor(() => {
+        expect(screen.getByText("AI Usage")).toBeInTheDocument();
+        expect(screen.getByText("Harness: codex")).toBeInTheDocument();
+      });
+    });
+
     it("displays all sections when full context available", async () => {
       mockTaskContextApi.getTaskContext.mockResolvedValue(mockTaskContext);
 

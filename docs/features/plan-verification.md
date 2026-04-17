@@ -8,7 +8,7 @@ This feature was motivated by manual adversarial review of the plan verification
 
 ## Verification Flow
 
-Verification runs in a **hidden child session** with a dedicated `plan-verifier` agent. The parent session stays unblocked for ideation work while the round loop runs independently.
+Verification runs in a **hidden child session** with a dedicated `ralphx-plan-verifier` agent. The parent session stays unblocked for ideation work while the round loop runs independently.
 
 ```
 create_plan_artifact() OR trigger_verification_http()
@@ -21,28 +21,28 @@ create_verification_child_session()
   ├─ session_purpose = Verification
   ├─ title = "Auto-verification (gen N)"
   ├─ description = "Run verification round loop. parent_session_id: ..., generation: ..., max_rounds: ..."
-  └─ routes to plan-verifier agent (purpose-based routing)
+  └─ routes to ralphx-plan-verifier agent (purpose-based routing)
         │
         ├─ orchestration_triggered=false? → reset_auto_verify_sync(parent)
         │
         ▼
-plan-verifier agent (in child session):
+ralphx-plan-verifier agent (in child session):
   • Reads plan via get_session_plan (inherited from parent)
   • ROUND LOOP:
       A. Zombie guard: get_plan_verification(parent_session_id) — check generation
-      B. Spawn plan-critic-completeness + plan-critic-implementation-feasibility (parallel Task subagents)
+      B. Spawn ralphx-plan-critic-completeness + ralphx-plan-critic-implementation-feasibility (parallel Task subagents)
       C. Critics fetch plan via get_session_plan MCP tool (no prompt bloat)
       D. Critics return structured gaps (JSON)
          ├─ Parse failure? → record in sliding window
       E. Merge gaps, compute fingerprints, Jaccard similarity
-      F. update_plan_verification(parent_session_id, ...) — writes to PARENT session
+      F. report_verification_round(parent_session_id, round, generation) — persists the backend-owned round result on the PARENT session
       G. Convergence check:
            ┌─ 0 critical AND 0 high AND 0 medium (round ≥ 2) → "zero_blocking" ✅
            ├─ Jaccard(round_N, round_N+1) ≥ 0.8 for 2 rounds → "jaccard_converged" ✅
            ├─ current_round ≥ max_rounds → "max_rounds" ✅ (hard cap)
            └─ ≥ 3 parse failures in last 5 rounds → "critic_parse_failure" ✅
       H. Not converged → correct plan via update_plan_artifact / edit_plan_artifact → next round
-      I. Converged → update_plan_verification(parent_session_id, in_progress=false)
+      I. Converged → complete_plan_verification(parent_session_id, status, generation)
         │
         ▼
 Child session archived automatically on agent exit
@@ -133,14 +133,17 @@ Typed errors (no string comparison):
 | `RoundExceedsMax { round, max }` | Critic reports round > max_rounds |
 | `AgentCrashed { round }` | Recovery resets stuck session |
 
-## MCP Tools (Orchestrator)
+## MCP Tools
 
 | Tool | Method | Description |
 |------|--------|-------------|
-| `update_plan_verification` | POST | Reports round results from critic. Required: `session_id`, `status`. Optional: `gaps`, `round`, `convergence_reason`, `in_progress` |
+| `run_verification_enrichment` | POST | Runs verifier-selected enrichment specialists and returns delegate snapshots plus typed findings |
+| `run_verification_round` | POST | Runs one backend-owned verification round with required critics plus optional specialists |
+| `report_verification_round` | POST | Persists the current round outcome using backend-owned merged gaps and convergence checks |
+| `complete_plan_verification` | POST | Finalizes a verification run using backend-owned current-round state |
 | `get_plan_verification` | GET | Reads current verification status, round history, and gap list |
 
-Available to: `orchestrator-ideation`, `ideation-team-lead`, `plan-verifier`.
+Available to: `ralphx-plan-verifier` for the verifier-owned helpers; `ralphx-ideation` and `ralphx-ideation-team-lead` only start/observe/stop verification via child-session + status tools.
 
 ## Tauri Events
 
@@ -192,7 +195,7 @@ Error messages are relayed verbatim to external agents via the MCP server:
 
 | Status | Error Message |
 |--------|--------------|
-| `Unverified` | "Cannot create proposals: plan verification has not been run. Either run verification (update_plan_verification with status 'reviewing') or skip it (update_plan_verification with status 'skipped', convergence_reason 'user_skipped')." |
+| `Unverified` | "Cannot create proposals: plan verification has not been run. Start verification before mutating proposals." |
 | `Reviewing` | "Cannot {operation} proposals: plan verification is in progress (round {N}/{max}). Complete the current verification round before modifying proposals." |
 | `NeedsRevision` | "Cannot {operation} proposals: plan verification found {N} unresolved gap(s). Update the plan to address gaps (update_plan_artifact), then re-run verification." |
 
@@ -267,7 +270,7 @@ INFO  session_id=... "Reconciliation reset stuck verification"
 
 | File | Purpose |
 |------|---------|
-| `domain/entities/ideation/types.rs` | `VerificationStatus`, `VerificationMetadata`, `VerificationGap`, `VerificationError` |
+| `domain/entities/ideation/` + `domain/entities/mod.rs` | `VerificationStatus`, `VerificationGap`, `VerificationRunSnapshot`, `VerificationRoundSnapshot`, `VerificationError` |
 | `domain/services/gap_fingerprint.rs` | 4-layer normalization + Jaccard similarity |
 | `domain/services/verification_gate.rs` | `check_verification_gate()` — shared across all 3 acceptance paths |
 | `domain/repositories/ideation_session_repository.rs` | `update_verification_state()`, `reset_verification()`, `get_verification_status()`, `revert_plan_and_skip_with_artifact()` |
@@ -275,4 +278,4 @@ INFO  session_id=... "Reconciliation reset stuck verification"
 | `http_server/handlers/external.rs` | `POST /api/external/apply_proposals`, `POST /api/external/trigger_verification` |
 | `http_server/handlers/session_linking.rs` | `create_verification_child_session()` — creates child with `session_purpose=Verification` |
 | `application/reconciliation/verification_reconciliation.rs` | Startup + periodic stuck-session reset + orphaned child detection |
-| `plugins/app/agents/plan-verifier.md` | Dedicated agent owning the round loop in child session |
+| `agents/ralphx-plan-verifier/claude/prompt.md` | Dedicated agent owning the round loop in child session |

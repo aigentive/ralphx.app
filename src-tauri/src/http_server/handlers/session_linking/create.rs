@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 use crate::domain::entities::{build_child_session, matching_blocker_followup_session, ChildSessionDraftInput, TaskId};
 use crate::http_server::helpers::get_task_context_impl;
 
@@ -14,7 +15,49 @@ async fn initialize_verification_state(
         ));
     }
 
-    let verify_cfg = verification_config();
+    if parent.verification_in_progress {
+        crate::http_server::handlers::ideation::repair_blank_orphaned_verification_generation(
+            &state.app_state,
+            parent,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to repair stale verification state for {}: {}",
+                parent_id.as_str(),
+                e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to repair verification state: {}", e),
+            )
+        })?;
+    }
+
+    let (_, effective_in_progress) = crate::domain::services::load_effective_verification_status(
+        state.app_state.ideation_session_repo.as_ref(),
+        parent,
+    )
+    .await
+    .map_err(|e| {
+        error!(
+            "Failed to load effective verification status for {}: {}",
+            parent_id.as_str(),
+            e
+        );
+        json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to check verification state: {}", e),
+        )
+    })?;
+    if effective_in_progress {
+        return Err(json_error(
+            StatusCode::CONFLICT,
+            "Verification already in progress",
+        ));
+    }
+
+    let verification_max_rounds = default_verification_max_rounds();
     let parent_id_str = parent_id.as_str().to_string();
     let verify_result = state
         .app_state
@@ -36,7 +79,7 @@ async fn initialize_verification_state(
                     app_handle,
                     parent_id.as_str(),
                     new_generation,
-                    verify_cfg.max_rounds,
+                    verification_max_rounds,
                 );
             }
             Ok(Some(new_generation))
@@ -57,7 +100,20 @@ async fn initialize_verification_state(
                 })?;
             let fresh_parent = fresh_parent
                 .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
-            if fresh_parent.verification_in_progress {
+            let (_, fresh_in_progress) =
+                crate::domain::services::load_effective_verification_status(
+                    state.app_state.ideation_session_repo.as_ref(),
+                    &fresh_parent,
+                )
+                .await
+                .map_err(|e| {
+                    error!("Failed to re-check effective verification status: {}", e);
+                    json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to check verification state: {}", e),
+                    )
+                })?;
+            if fresh_in_progress {
                 Err(json_error(
                     StatusCode::CONFLICT,
                     "Verification already in progress",
@@ -238,7 +294,8 @@ async fn spawn_child_orchestration(
                         parent_id,
                         current_generation,
                         "capacity-deferred spawn",
-                    );
+                    )
+                    .await;
                 }
                 ChildOrchestrationResult::DeferredCapacity
             } else {
@@ -248,7 +305,13 @@ async fn spawn_child_orchestration(
         Err(e) => {
             error!("{error_context} {}: {}", child_session_str, e);
             if let Some(current_generation) = verification_generation.take() {
-                rollback_verification_state(state, parent_id, current_generation, "spawn failure");
+                rollback_verification_state(
+                    state,
+                    parent_id,
+                    current_generation,
+                    "spawn failure",
+                )
+                .await;
             }
             // Only archive verification children on spawn failure — general follow-up
             // children remain Active so users can retry orchestration later.
@@ -276,7 +339,7 @@ pub(crate) async fn create_child_session_impl(
     mut req: CreateChildSessionRequest,
 ) -> Result<CreateChildSessionResponse, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
-    let verify_cfg = verification_config();
+    let verification_max_rounds = default_verification_max_rounds();
     let mut verification_generation = None;
     req.blocker_fingerprint = resolve_blocker_fingerprint(state, &req).await?;
 
@@ -366,6 +429,26 @@ pub(crate) async fn create_child_session_impl(
     } else {
         (None, None)
     };
+    let team_mode_requested = resolved_team_mode
+        .as_deref()
+        .is_some_and(|mode| mode != "solo");
+    let team_mode_supported =
+        crate::application::ideation_harness_availability::ideation_team_mode_supported_for_project(
+            &state.app_state.agent_lane_settings_repo,
+            Some(parent.project_id.as_str()),
+        )
+        .await;
+    let (resolved_team_mode, resolved_team_config_json) =
+        if team_mode_requested && !team_mode_supported {
+            tracing::info!(
+                parent_session_id = %parent_id.as_str(),
+                project_id = %parent.project_id,
+                "Downgrading child ideation session team mode to solo because the primary harness does not support team mode"
+            );
+            (Some("solo".to_string()), None)
+        } else {
+            (resolved_team_mode, resolved_team_config_json)
+        };
 
     let (team_mode, team_config_json) = validate_resolved_team_config(
         resolved_team_mode.as_ref(),
@@ -398,12 +481,14 @@ pub(crate) async fn create_child_session_impl(
     let child_session_str = child_id.as_str().to_string();
     let parent_session_str = parent_id.as_str().to_string();
 
-    let created_session = state
+    let created_session = match state
         .app_state
         .ideation_session_repo
         .create(child_session)
         .await
-        .map_err(|e| {
+    {
+        Ok(session) => session,
+        Err(e) => {
             error!("Failed to create child session: {}", e);
             if let Some(current_generation) = verification_generation {
                 rollback_verification_state(
@@ -411,39 +496,37 @@ pub(crate) async fn create_child_session_impl(
                     &parent_id,
                     current_generation,
                     "child DB insert failure",
-                );
+                )
+                .await;
             }
-            json_error(
+            return Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create session: {}", e),
-            )
-        })?;
+            ));
+        }
+    };
 
     let link = SessionLink::new(
         parent_id.clone(),
         child_id.clone(),
         SessionRelationship::FollowOn,
     );
-    state
-        .app_state
-        .session_link_repo
-        .create(link)
-        .await
-        .map_err(|e| {
-            error!("Failed to create session link: {}", e);
-            if let Some(current_generation) = verification_generation {
-                rollback_verification_state(
-                    state,
-                    &parent_id,
-                    current_generation,
-                    "link creation failure",
-                );
-            }
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create session link: {}", e),
+    if let Err(e) = state.app_state.session_link_repo.create(link).await {
+        error!("Failed to create session link: {}", e);
+        if let Some(current_generation) = verification_generation {
+            rollback_verification_state(
+                state,
+                &parent_id,
+                current_generation,
+                "link creation failure",
             )
-        })?;
+            .await;
+        }
+        return Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create session link: {}", e),
+        ));
+    }
 
     let parent_context = if req.inherit_context {
         Some(load_parent_context(state, &parent).await)
@@ -458,7 +541,7 @@ pub(crate) async fn create_child_session_impl(
     let (effective_initial_prompt, effective_description) = build_effective_prompts(
         &req,
         verification_generation,
-        verify_cfg.max_rounds,
+        verification_max_rounds,
         &parent_session_str,
     );
 

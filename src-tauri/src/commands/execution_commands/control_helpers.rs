@@ -30,13 +30,6 @@ pub(super) async fn load_execution_halt_mode(
         .map_err(|e| e.to_string())
 }
 
-pub(super) async fn ensure_resume_allowed(app_state: &AppState) -> Result<(), String> {
-    if load_execution_halt_mode(app_state).await? == ExecutionHaltMode::Stopped {
-        return Err(RESUME_AFTER_STOP_ERROR.to_string());
-    }
-    Ok(())
-}
-
 pub(super) fn queued_message_to_send_options(
     message: &crate::domain::services::QueuedMessage,
 ) -> SendMessageOptions {
@@ -49,6 +42,7 @@ pub(super) fn queued_message_to_send_options(
     SendMessageOptions {
         metadata: message.metadata_override.clone(),
         created_at,
+        harness_override: message.harness_override,
         ..Default::default()
     }
 }
@@ -87,6 +81,19 @@ pub(super) async fn queue_key_matches_project(
             let session_id = IdeationSessionId::from_string(key.context_id.clone());
             let Some(session) = app_state
                 .ideation_session_repo
+                .get_by_id(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok(false);
+            };
+            Ok(session.project_id == *project_id)
+        }
+        ChatContextType::Delegation => {
+            let session_id =
+                crate::domain::entities::DelegatedSessionId::from_string(key.context_id.clone());
+            let Some(session) = app_state
+                .delegated_session_repo
                 .get_by_id(&session_id)
                 .await
                 .map_err(|e| e.to_string())?
@@ -655,15 +662,7 @@ where
                 key.context_type,
                 &key.context_id,
                 &queued.content,
-                SendMessageOptions {
-                    metadata: queued.metadata_override.clone(),
-                    created_at: queued
-                        .created_at_override
-                        .as_deref()
-                        .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
-                        .map(|ts| ts.with_timezone(&chrono::Utc)),
-                    ..Default::default()
-                },
+                queued_message_to_send_options(&queued),
             )
             .await;
 

@@ -1,5 +1,9 @@
 use super::*;
-use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId};
+use crate::agents::ProviderSessionRef;
+use crate::domain::entities::{
+    ChatContextType, ChatConversation, ConversationAttributionBackfillState,
+    ConversationAttributionBackfillSummary, IdeationSessionId,
+};
 use std::sync::Arc;
 
 // Mock implementation for testing trait object usage
@@ -55,15 +59,24 @@ impl ChatConversationRepository for MockChatConversationRepository {
             .cloned())
     }
 
-    async fn update_claude_session_id(
+    async fn update_provider_session_ref(
         &self,
         _id: &ChatConversationId,
-        _claude_session_id: &str,
+        _session_ref: &ProviderSessionRef,
     ) -> AppResult<()> {
         Ok(())
     }
 
-    async fn clear_claude_session_id(&self, _id: &ChatConversationId) -> AppResult<()> {
+    async fn clear_provider_session_ref(&self, _id: &ChatConversationId) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_provider_origin(
+        &self,
+        _id: &ChatConversationId,
+        _upstream_provider: Option<&str>,
+        _provider_profile: Option<&str>,
+    ) -> AppResult<()> {
         Ok(())
     }
 
@@ -78,6 +91,31 @@ impl ChatConversationRepository for MockChatConversationRepository {
         _last_message_at: chrono::DateTime<chrono::Utc>,
     ) -> AppResult<()> {
         Ok(())
+    }
+
+    async fn list_needing_attribution_backfill(
+        &self,
+        _limit: u32,
+    ) -> AppResult<Vec<ChatConversation>> {
+        Ok(self.conversations.clone())
+    }
+
+    async fn reset_running_attribution_backfill_to_pending(&self) -> AppResult<u64> {
+        Ok(0)
+    }
+
+    async fn update_attribution_backfill_state(
+        &self,
+        _id: &ChatConversationId,
+        _state: ConversationAttributionBackfillState,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_attribution_backfill_summary(
+        &self,
+    ) -> AppResult<ConversationAttributionBackfillSummary> {
+        Ok(ConversationAttributionBackfillSummary::default())
     }
 
     async fn delete(&self, _id: &ChatConversationId) -> AppResult<()> {

@@ -16,7 +16,8 @@ use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
     IdeationSessionBuilder, IdeationSessionId, IdeationSessionStatus, Project, ProjectId,
-    SessionOrigin, SessionPurpose, VerificationStatus,
+    SessionOrigin, SessionPurpose, VerificationConfirmationStatus, VerificationRunSnapshot,
+    VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
@@ -24,6 +25,7 @@ use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegis
 use ralphx_lib::error::AppError;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::agents::claude::verification_config;
 use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 use ralphx_lib::infrastructure::memory::MemoryIdeationSessionRepository;
 use std::sync::Arc;
@@ -42,6 +44,7 @@ async fn setup_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -121,8 +124,12 @@ fn make_active_session() -> IdeationSession {
         title_source: None,
         verification_status: Default::default(),
         verification_in_progress: false,
-        verification_metadata: None,
         verification_generation: 0,
+        verification_current_round: None,
+        verification_max_rounds: None,
+        verification_gap_count: 0,
+        verification_gap_score: None,
+        verification_convergence_reason: None,
         source_project_id: None,
         source_session_id: None,
         source_task_id: None,
@@ -289,6 +296,7 @@ async fn test_child_can_update_own_plan() {
     // Child updates its own plan
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: child_artifact_id.clone(),
             content: "v2 content".to_string(),
@@ -363,6 +371,7 @@ async fn test_update_inherited_only_plan_returns_422_with_clear_message() {
     // Act: try to update the inherited-only artifact
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: orphan_id.as_str().to_string(),
             content: "Attempted override".to_string(),
@@ -504,6 +513,7 @@ async fn test_parent_plan_unaffected_by_child_plan_operations() {
     // Child updates its own plan
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: child_artifact_id.clone(),
             content: "Child content v2".to_string(),
@@ -764,6 +774,7 @@ async fn test_update_plan_artifact_resets_verification_when_not_in_progress() {
     // Update the plan artifact
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "Updated content".to_string(),
@@ -813,7 +824,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Verified, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Verified, true)
         .await
         .unwrap();
 
@@ -854,7 +865,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session2_id, VerificationStatus::NeedsRevision, true, None)
+        .update_verification_state(&session2_id, VerificationStatus::NeedsRevision, true)
         .await
         .unwrap();
 
@@ -892,6 +903,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     // Since the session for the artifact has in_progress=false, the update succeeds normally.
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id,
             content: "Auto-corrected content from verification loop".to_string(),
@@ -1052,6 +1064,7 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
     // Update → v2
     let v2 = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: v1_id.clone(),
             content: "v2 content".to_string(),
@@ -1066,6 +1079,7 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
     // Update again using the STALE v1 ID — should still succeed, resolving to v2 first
     let v3 = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: v1_id.clone(), // stale
             content: "v3 content".to_string(),
@@ -1127,6 +1141,45 @@ async fn test_trigger_auto_verify_sync_atomicity_and_skip() {
         VerificationStatus::Reviewing,
         "status must be Reviewing"
     );
+    assert_eq!(
+        after_trigger.verification_current_round, None,
+        "current_round summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_max_rounds, None,
+        "session summary max_rounds stays unset until the native snapshot projects it"
+    );
+    assert_eq!(
+        after_trigger.verification_gap_count, 0,
+        "gap_count summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_gap_score, None,
+        "gap_score summary must be cleared on a fresh verification start"
+    );
+    assert_eq!(
+        after_trigger.verification_convergence_reason, None,
+        "convergence_reason summary must be cleared on a fresh verification start"
+    );
+
+    let snapshot = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_run_snapshot(&session_id, 1)
+        .await
+        .unwrap()
+        .expect("fresh verification start must seed a native run snapshot");
+    assert_eq!(snapshot.generation, 1);
+    assert_eq!(snapshot.status, VerificationStatus::Reviewing);
+    assert!(snapshot.in_progress, "fresh snapshot must be in progress");
+    assert_eq!(snapshot.current_round, 0);
+    assert_eq!(
+        snapshot.max_rounds,
+        verification_config().max_rounds,
+        "fresh snapshot must carry the configured round budget"
+    );
+    assert!(snapshot.current_gaps.is_empty(), "fresh snapshot must start gap-free");
+    assert!(snapshot.rounds.is_empty(), "fresh snapshot must start with no round history");
 
     // Second trigger on same session: in_progress=1, so must be skipped
     let sid2 = session_id.as_str().to_string();
@@ -1207,6 +1260,22 @@ async fn test_reset_auto_verify_sync_clears_in_progress() {
         VerificationStatus::Unverified,
         "status must be Unverified after reset"
     );
+    let (effective_status, effective_in_progress) = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_status(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        effective_status,
+        VerificationStatus::Unverified,
+        "authoritative verification status must also reset to Unverified"
+    );
+    assert!(
+        !effective_in_progress,
+        "authoritative verification status must also clear in_progress"
+    );
 }
 
 /// create_plan_artifact skips trigger when verification_in_progress=1 (mutex held).
@@ -1228,7 +1297,7 @@ async fn test_create_plan_artifact_skips_trigger_when_already_in_progress() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -1306,7 +1375,7 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -1326,6 +1395,7 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
     // reset_verification_sync has in_progress=0 guard — no-op while running
     let _ = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: latest_artifact_id,
             content: "auto-corrected plan content".to_string(),
@@ -1421,6 +1491,7 @@ async fn test_update_plan_artifact_batch_updates_linked_proposals() {
     // Update the plan artifact — proposals must be re-linked to the new artifact
     let updated = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "new plan content".to_string(),
@@ -1663,6 +1734,7 @@ async fn test_edit_plan_artifact_happy_path() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -1694,6 +1766,7 @@ async fn test_edit_plan_artifact_resolves_stale_id() {
     // First update to create a stale original ID
     let update_result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: original_artifact_id.clone(),
             content: "v2 content with unique anchor phrase here".to_string(),
@@ -1708,6 +1781,7 @@ async fn test_edit_plan_artifact_resolves_stale_id() {
     // Edit using the ORIGINAL (stale) artifact ID — should auto-resolve to v2
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: original_artifact_id.clone(), // stale ID
             edits: vec![PlanEdit {
@@ -1752,6 +1826,7 @@ async fn test_edit_plan_artifact_rejects_inherited_plan() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: orphan_id.clone(),
             edits: vec![PlanEdit {
@@ -1805,6 +1880,7 @@ async fn test_edit_plan_artifact_rejects_archived_session() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -1852,6 +1928,7 @@ async fn test_edit_plan_artifact_rejects_file_backed_artifact() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -1892,7 +1969,7 @@ async fn test_edit_plan_artifact_resets_verification() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_session_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_session_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 
@@ -1905,10 +1982,12 @@ async fn test_edit_plan_artifact_resets_verification() {
         .unwrap();
     assert_eq!(before.verification_status, VerificationStatus::Verified);
     assert!(!before.verification_in_progress);
+    let gen_before = before.verification_generation;
 
     // Edit the plan
     let _ = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -1935,6 +2014,11 @@ async fn test_edit_plan_artifact_resets_verification() {
         "Verification should be reset to Unverified after editing plan"
     );
     assert!(!after.verification_in_progress, "in_progress should remain false");
+    assert_eq!(
+        after.verification_generation,
+        gen_before + 1,
+        "plan edits that invalidate finished verification must increment generation"
+    );
 }
 
 /// Test 7: Verification preserved during loop — edit while in_progress=1 does NOT reset.
@@ -1947,7 +2031,7 @@ async fn test_edit_plan_artifact_preserves_verification_during_loop() {
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&parent_session_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_session_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
 
@@ -1964,6 +2048,7 @@ async fn test_edit_plan_artifact_preserves_verification_during_loop() {
     // Edit plan while verification loop is running
     let _ = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2005,6 +2090,7 @@ async fn test_edit_plan_artifact_rejects_empty_edits() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![],
@@ -2032,6 +2118,7 @@ async fn test_edit_plan_artifact_rejects_empty_old_text() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2062,6 +2149,7 @@ async fn test_edit_plan_artifact_rejects_oversized_input() {
     let oversized_old_text = "x".repeat(100_001); // 1 byte over 100KB limit
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id,
             edits: vec![PlanEdit {
@@ -2106,6 +2194,7 @@ async fn test_edit_plan_artifact_rejects_oversized_output() {
     // new_text is well under the 100KB per-field limit.
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2153,6 +2242,7 @@ async fn test_edit_plan_artifact_response_has_correct_event_fields() {
 
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2237,6 +2327,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
     // Edit the plan — proposals must follow to the new version
     let edited = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2275,7 +2366,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
 // ============================================================
 //
 // 6A: lock blocks external writes during generating; caller_session_id bypasses
-// 6B: SKIPPED — plan-verifier agents are autonomous (no stdin pipes) and do NOT
+// 6B: SKIPPED — ralphx-plan-verifier agents are autonomous (no stdin pipes) and do NOT
 //     register in InteractiveProcessRegistry. is_generating = is_running.
 //     waiting_for_input cannot be distinguished from idle for verification agents.
 // 6C: no verification children → Ok(())
@@ -2317,10 +2408,17 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
     .await;
     assert!(result.is_ok(), "Should be Ok when verification child is not running");
 
-    // Mark parent as having verification in progress (as happens in production when
-    // verification starts). The early-out guard skips the freeze check when false.
-    let mut parent_verifying = parent.clone();
-    parent_verifying.verification_in_progress = true;
+    // Mark parent as having verification in progress in the repo — freeze truth is now
+    // authoritative and no longer comes from the caller-provided session struct.
+    session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
+        .await
+        .unwrap();
+    let parent_verifying = session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Register child as generating
     running_registry
@@ -2329,7 +2427,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // Without caller_session_id → 409 Conflict
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2342,7 +2440,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // With caller_session_id = child.id → bypass → Ok
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         Some(child_id.as_str()),
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2359,7 +2457,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
         .unregister(&RunningAgentKey::new("ideation", child_id.as_str()), "test-agent-run")
         .await;
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2386,7 +2484,7 @@ async fn test_6a_prime_freeze_released_when_verification_complete() {
 
     // Set verification_in_progress=true and register child as running (freeze active)
     session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true)
         .await
         .unwrap();
     running_registry
@@ -2415,7 +2513,7 @@ async fn test_6a_prime_freeze_released_when_verification_complete() {
 
     // Set verification_in_progress=false (verification round completed)
     session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false)
         .await
         .unwrap();
 
@@ -2512,7 +2610,54 @@ async fn setup_freeze_state(registry: Arc<MemoryRunningAgentRegistry>) -> HttpSe
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
+}
+
+fn caller_session_header(session_id: &IdeationSessionId) -> axum::http::HeaderMap {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-ralphx-caller-session-id",
+        axum::http::HeaderValue::from_str(session_id.as_str()).unwrap(),
+    );
+    headers
+}
+
+async fn save_current_verification_snapshot(
+    state: &HttpServerState,
+    parent_id: &IdeationSessionId,
+    status: VerificationStatus,
+    in_progress: bool,
+    current_round: u32,
+    max_rounds: u32,
+) {
+    let generation = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(parent_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .verification_generation;
+    state
+        .app_state
+        .ideation_session_repo
+        .save_verification_run_snapshot(
+            parent_id,
+            &VerificationRunSnapshot {
+                generation,
+                status,
+                in_progress,
+                current_round,
+                max_rounds,
+                best_round_index: None,
+                convergence_reason: None,
+                current_gaps: vec![],
+                rounds: vec![],
+            },
+        )
+        .await
+        .unwrap();
 }
 
 /// 6D: update_plan_artifact returns 409 during freeze; 200 with caller_session_id bypass.
@@ -2538,12 +2683,15 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
 
     // Mark parent as having verification in progress (as happens in production when
     // verification starts). The early-out guard skips the freeze check when false.
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     // Register child as running (freeze active)
     registry
@@ -2553,6 +2701,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     // update_plan_artifact WITHOUT caller_session_id → 409
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "attempted overwrite during freeze".to_string(),
@@ -2572,6 +2721,7 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     // update_plan_artifact WITH caller_session_id = child.id → 200
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "verifier update — allowed".to_string(),
@@ -2586,16 +2736,20 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
     );
 
     // Phase 3: set in_progress=false (verification complete) → freeze released
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Verified,
+        false,
+        0,
+        0,
+    )
+    .await;
 
     // update_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = update_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(UpdatePlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             content: "update after freeze released".to_string(),
@@ -2633,12 +2787,15 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
 
     // Mark parent as having verification in progress (as happens in production when
     // verification starts). The early-out guard skips the freeze check when false.
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
 
     // Register child as running (freeze active)
     registry
@@ -2648,6 +2805,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     // edit_plan_artifact WITHOUT caller_session_id → 409
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2670,6 +2828,7 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     // edit_plan_artifact WITH caller_session_id = child.id → 200
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2687,16 +2846,20 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     );
 
     // Phase 3: set in_progress=false (verification complete) → freeze released
-    state
-        .app_state
-        .ideation_session_repo
-        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
-        .await
-        .unwrap();
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Verified,
+        false,
+        0,
+        0,
+    )
+    .await;
 
     // edit_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
     let result = edit_plan_artifact(
         State(state.clone()),
+        axum::http::HeaderMap::new(),
         Json(EditPlanArtifactRequest {
             artifact_id: artifact_id.clone(),
             edits: vec![PlanEdit {
@@ -2710,6 +2873,171 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     assert!(
         result.is_ok(),
         "Should succeed after verification_in_progress set to false: {:?}",
+        result.err()
+    );
+}
+
+/// Freeze must still apply when the parent summary is stale but the active-generation snapshot
+/// says verification is still running.
+#[tokio::test]
+async fn test_6d_update_plan_artifact_uses_snapshot_truth_when_summary_is_stale() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        2,
+        5,
+    )
+    .await;
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Unverified, false)
+        .await
+        .unwrap();
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = update_plan_artifact(
+        State(state.clone()),
+        axum::http::HeaderMap::new(),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "attempted overwrite during stale-summary freeze".to_string(),
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "snapshot-backed in-progress verification must still freeze plan edits"
+    );
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::CONFLICT);
+}
+
+/// 6D'': update_plan_artifact also honors the transport-owned caller-session header.
+#[tokio::test]
+async fn test_6d_double_prime_update_plan_artifact_header_bypasses_freeze() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = update_plan_artifact(
+        State(state.clone()),
+        caller_session_header(&child_id),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "header-based verifier update".to_string(),
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "transport-owned caller header should bypass the freeze without body caller_session_id: {:?}",
+        result.err()
+    );
+}
+
+/// 6D''': edit_plan_artifact also honors the transport-owned caller-session header.
+#[tokio::test]
+async fn test_6d_triple_prime_edit_plan_artifact_header_bypasses_freeze() {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let state = setup_freeze_state(Arc::clone(&registry)).await;
+
+    let (parent_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    let mut child = make_active_session();
+    child.parent_session_id = Some(parent_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    save_current_verification_snapshot(
+        &state,
+        &parent_id,
+        VerificationStatus::Reviewing,
+        true,
+        1,
+        5,
+    )
+    .await;
+
+    registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        caller_session_header(&child_id),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "header-based verifier edit".to_string(),
+            }],
+            caller_session_id: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "transport-owned caller header should bypass the freeze without body caller_session_id: {:?}",
         result.err()
     );
 }
@@ -2759,7 +3087,9 @@ async fn test_external_origin_session_auto_verifies_without_config() {
         result.err()
     );
 
-    // Verify verification_in_progress was atomically set — the origin-based override fired
+    // External origin must still bypass config and trigger generation 1. Depending on whether
+    // verifier launch is immediately successful, persisted state may remain Reviewing or may be
+    // rolled back to Pending confirmation after spawn failure cleanup.
     let updated = state
         .app_state
         .ideation_session_repo
@@ -2768,18 +3098,20 @@ async fn test_external_origin_session_auto_verifies_without_config() {
         .unwrap()
         .expect("session must still exist");
 
-    assert!(
-        updated.verification_in_progress,
-        "External-origin session must have verification_in_progress=true after create_plan_artifact, \
-         regardless of global auto_verify config"
-    );
-    assert_eq!(
-        updated.verification_status,
-        VerificationStatus::Reviewing,
-        "External-origin session must enter Reviewing state"
-    );
     assert_eq!(
         updated.verification_generation, 1,
         "External-origin session must have generation=1 after first auto-verify trigger"
+    );
+    assert!(
+        (updated.verification_status == VerificationStatus::Reviewing
+            && updated.verification_in_progress)
+            || (updated.verification_status == VerificationStatus::Unverified
+                && !updated.verification_in_progress
+                && updated.verification_confirmation_status
+                    == Some(VerificationConfirmationStatus::Pending)),
+        "External-origin auto-verify must either still be running or be reset to pending confirmation after spawn cleanup: status={:?}, in_progress={}, confirmation={:?}",
+        updated.verification_status,
+        updated.verification_in_progress,
+        updated.verification_confirmation_status
     );
 }

@@ -21,8 +21,10 @@ use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::interactive_process_registry::{InteractiveProcessKey, InteractiveProcessRegistry};
 use crate::domain::entities::{ChatContextType, IdeationSessionId, IdeationSessionStatus, VerificationStatus};
 use crate::domain::repositories::IdeationSessionRepository;
-use crate::domain::services::RunningAgentRegistry;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    clear_verification_snapshot, emit_verification_status_changed,
+    load_current_verification_snapshot_or_default, RunningAgentRegistry,
+};
 
 /// Configuration for the recovery queue processor.
 #[derive(Debug, Clone)]
@@ -53,14 +55,14 @@ impl Default for RecoveryQueueConfig {
 pub enum RecoveryKind {
     /// PDM-171: orphaned ideation session agent.
     IdeationAgent,
-    /// PDM-172: orphaned verification (plan-verifier) agent in a child session.
+    /// PDM-172: orphaned verification (ralphx-plan-verifier) agent in a child session.
     VerificationAgent,
 }
 
 /// Supplemental metadata for recovery context injection.
 #[derive(Debug, Clone, Default)]
 pub struct RecoveryMetadata {
-    /// Current verification round from parent's verification_metadata (for VerificationAgent).
+    /// Current verification round from the parent's native verification summary.
     pub current_round: Option<u32>,
     /// Verification generation counter — must NOT be incremented during recovery (Constraint 2).
     pub verification_generation: Option<u32>,
@@ -241,7 +243,7 @@ impl RecoveryQueueProcessor {
     /// Flow:
     /// 1. Remove stale IPR entry (Gate 1 — prevents stdin-to-dead-pipe write)
     /// 2. Build recovery prompt with `<recovery_note>` tag
-    /// 3. Call `chat_service.send_message()` to re-spawn the plan-verifier agent
+    /// 3. Call `chat_service.send_message()` to re-spawn the ralphx-plan-verifier agent
     /// 4. On success: emit `agent:session_recovered` for frontend notification
     /// 5. On failure: reset parent to Unverified, archive child, emit `agent:error`
     async fn process_verification_recovery(&self, item: &RecoveryItem) {
@@ -275,7 +277,7 @@ impl RecoveryQueueProcessor {
         );
 
         // Step 2: Build recovery prompt with <recovery_note> tag.
-        // Includes current round and generation so plan-verifier's Phase 0 RECOVER can resume.
+        // Includes current round and generation so ralphx-plan-verifier's Phase 0 RECOVER can resume.
         let current_round = item.metadata.current_round.unwrap_or(0);
         let generation = item.metadata.verification_generation.unwrap_or(0);
         let recovery_prompt = build_verification_recovery_prompt(current_round, generation);
@@ -288,7 +290,7 @@ impl RecoveryQueueProcessor {
             item.metadata.plan_artifact_id.as_deref(),
         );
 
-        // Step 4: Spawn the plan-verifier agent via send_message().
+        // Step 4: Spawn the ralphx-plan-verifier agent via send_message().
         // Note: agent:run_started is emitted automatically by chat_service.send_message() spawn flow.
         let send_result = self
             .chat_service
@@ -339,26 +341,48 @@ impl RecoveryQueueProcessor {
                 // Step 6: Fallback — reset parent verification state to Unverified.
                 // Matches current cold-boot behavior so the user can re-trigger verification.
                 let parent_id = IdeationSessionId::from_string(parent_session_id.clone());
-                let fallback_metadata = serde_json::json!({
-                    "convergence_reason": "recovery_failed"
-                })
-                .to_string();
+                match self.ideation_session_repo.get_by_id(&parent_id).await {
+                    Ok(Some(parent_session)) => {
+                        let reset_result = async {
+                            let mut snapshot = load_current_verification_snapshot_or_default(
+                                self.ideation_session_repo.as_ref(),
+                                &parent_session,
+                                VerificationStatus::Unverified,
+                                false,
+                            )
+                            .await?;
+                            clear_verification_snapshot(
+                                &mut snapshot,
+                                VerificationStatus::Unverified,
+                                false,
+                            );
+                            self.ideation_session_repo
+                                .save_verification_run_snapshot(&parent_id, &snapshot)
+                                .await
+                        }
+                        .await;
 
-                if let Err(repo_err) = self
-                    .ideation_session_repo
-                    .update_verification_state(
-                        &parent_id,
-                        VerificationStatus::Unverified,
-                        false,
-                        Some(fallback_metadata),
-                    )
-                    .await
-                {
-                    tracing::error!(
-                        parent_session_id = %parent_session_id,
-                        error = %repo_err,
-                        "RecoveryQueueProcessor: failed to reset parent verification state after recovery failure"
-                    );
+                        if let Err(repo_err) = reset_result {
+                            tracing::error!(
+                                parent_session_id = %parent_session_id,
+                                error = %repo_err,
+                                "RecoveryQueueProcessor: failed to reset parent verification state after recovery failure"
+                            );
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::error!(
+                            parent_session_id = %parent_session_id,
+                            "RecoveryQueueProcessor: parent session missing during recovery failure fallback"
+                        );
+                    }
+                    Err(repo_err) => {
+                        tracing::error!(
+                            parent_session_id = %parent_session_id,
+                            error = %repo_err,
+                            "RecoveryQueueProcessor: failed to load parent session for recovery failure fallback"
+                        );
+                    }
                 }
 
                 // Step 7: Archive the child session (unrecoverable — spawn failed).
@@ -410,7 +434,7 @@ impl RecoveryQueueProcessor {
 
 /// Build the recovery prompt for a verification agent re-spawn.
 ///
-/// Injects a `<recovery_note>` tag so the plan-verifier agent's Phase 0 RECOVER
+/// Injects a `<recovery_note>` tag so the ralphx-plan-verifier agent's Phase 0 RECOVER
 /// logic can detect the restart and resume from the current round rather than
 /// starting from round 1.
 pub(crate) fn build_verification_recovery_prompt(current_round: u32, generation: u32) -> String {

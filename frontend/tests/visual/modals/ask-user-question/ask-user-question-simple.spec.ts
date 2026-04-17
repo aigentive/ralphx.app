@@ -1,56 +1,18 @@
 import { test, expect } from "@playwright/test";
-import { setupApp } from "../../../fixtures/setup.fixtures";
+import { setupIdeationChatScenario } from "../../../fixtures/chat.fixtures";
 
 /**
  * Minimal test to verify AskUserQuestionModal can be triggered
  */
 
-test("can trigger ask user question modal via event bus", async ({ page }) => {
-  // Listen to console errors
-  const consoleErrors: string[] = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error') {
-      consoleErrors.push(msg.text());
-    }
-  });
+test("can trigger ask user question banner via event bus", async ({ page }) => {
+  await setupIdeationChatScenario(page, "ideation_db_widget_mix");
 
-  await setupApp(page);
-
-  // Force a hard reload to ensure latest code
-  await page.reload({ waitUntil: "networkidle" });
-  await page.waitForSelector('[data-testid="app-header"]', { timeout: 10000 });
-
-  // Wait for React to finish mounting and hooks to subscribe
-  await page.waitForTimeout(2000);
-
-  // Check for console errors
-  if (consoleErrors.length > 0) {
-    console.log("Console errors detected:", consoleErrors);
-  }
-
-  // Check if event bus is available
-  const hasEventBus = await page.evaluate(() => {
-    return typeof (window as any).__eventBus !== "undefined";
-  });
-
-  console.log("EventBus available:", hasEventBus);
-
-  if (!hasEventBus) {
-    throw new Error("EventBus not available on window");
-  }
-
-  // Check listener count
-  const listenerCount = await page.evaluate(() => {
-    const bus = (window as any).__eventBus;
-    return bus.getListenerCount ? bus.getListenerCount("agent:ask_user_question") : -1;
-  });
-
-  console.log("Listeners for agent:ask_user_question:", listenerCount);
-
-  // Emit the event
   await page.evaluate(() => {
     const payload = {
+      requestId: "req-event-bus-1",
       taskId: "test-123",
+      sessionId: "session-mock-1",
       header: "Test Header",
       question: "Test question?",
       options: [
@@ -60,13 +22,11 @@ test("can trigger ask user question modal via event bus", async ({ page }) => {
       multiSelect: false,
     };
 
-    (window as any).__eventBus.emit("agent:ask_user_question", payload);
+    window.__eventBus?.emit("agent:ask_user_question", payload);
   });
 
-  // Wait a bit for React to process
-  await page.waitForTimeout(500);
-
-  // Check if modal appears
-  const modal = page.locator('[data-testid="ask-user-question-modal"]');
-  await expect(modal).toBeVisible({ timeout: 5000 });
+  const banner = page.getByTestId("question-input-banner");
+  await expect(banner).toBeVisible({ timeout: 5000 });
+  await expect(banner.getByText("Test Header")).toBeVisible();
+  await expect(banner.getByText("Test question?")).toBeVisible();
 });

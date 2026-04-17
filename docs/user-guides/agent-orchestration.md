@@ -10,12 +10,12 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 |----------|--------|
 | What runs my task? | A **worker** agent orchestrates — it delegates actual coding to parallel **coder** agents. |
 | Who reviews my code? | A **reviewer** agent analyzes the diff and calls pass/fail. You then approve or request changes. |
-| What handles merge conflicts? | A **merger** agent (Claude Opus) resolves git conflicts programmatically. |
+| What handles merge conflicts? | A **merger** agent resolves git conflicts programmatically. That lane is configured in **Settings → General → Execution Agents**. |
 | How do agents get their instructions? | Via the task context, plan artifact, and their built-in system prompts. You don't write agent prompts. |
 | Can I talk to a running agent? | Yes — use the chat panel to send messages to active agents. They receive your messages mid-execution. |
 | What if the AI asks me a question? | An in-line **User Question** dialog appears — answer it before the agent continues. |
 | What if an agent asks to do something sensitive? | A **Permission Request** dialog appears — you approve or deny the specific action. |
-| What is the MCP? | The messaging layer between Claude agents and the RalphX backend. Agents read task context and report progress via MCP tools. |
+| What is the MCP? | The messaging layer between RalphX agents and the backend. Agents read task context and report progress via MCP tools. |
 
 ---
 
@@ -26,7 +26,7 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 3. [Agent Lifecycle](#agent-lifecycle)
 4. [The Execution Pipeline](#the-execution-pipeline)
    - [Worker and Coder Agents](#worker-and-coder-agents)
-   - [Supervisor Agent](#supervisor-agent)
+   - [Supervisor Service](#supervisor-service)
    - [Reviewer Agent](#reviewer-agent)
    - [Merger Agent](#merger-agent)
 5. [Ideation Agents](#ideation-agents)
@@ -47,13 +47,15 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 
 ## Overview
 
-Every action in RalphX is performed by a Claude AI agent. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
+Every action in RalphX is performed by a configured AI agent harness. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
+
+Harness selection is lane-based, not app-wide. Claude remains the broadest-coverage default, but execution, review, and merge lanes can also be routed to Codex when you configure them that way.
 
 ```
 You describe a feature (Ideation Studio)
           |
           v
-  orchestrator-ideation
+  ralphx-ideation
   researches, plans, proposes tasks
           |
           v
@@ -75,38 +77,42 @@ You describe a feature (Ideation Studio)
 
 Agents are ephemeral. They start when a task enters a state that requires them, run until their job is done, and exit. RalphX automatically manages spawning, monitoring, and recovery.
 
+The chat UI surfaces that runtime choice directly:
+
+- conversation history shows harness badges and stored-session routing hints
+- the active chat header shows the current harness plus provider-session lineage
+- assistant messages show provider metadata when the conversation is continuing on a stored harness session
+
 ---
 
 ## Agent Types
 
-RalphX uses 24 specialized agents across execution, review, merge, ideation, QA, and support roles.
+RalphX uses specialized agents across execution, review, merge, ideation, QA, and support roles.
 
 | Agent | Role | Model | Spawned when |
 |-------|------|-------|--------------|
-| **ralphx-worker** | Orchestrates task execution; decomposes work and delegates to coders | Sonnet | Task enters Executing |
-| **ralphx-coder** | Implements a scoped sub-task with exclusive file ownership | Sonnet | Dispatched by worker |
-| **ralphx-supervisor** | Monitors worker for loops, stalls, and errors; injects guidance | Haiku | Runs alongside worker |
-| **ralphx-reviewer** | Reviews the git diff; approves, requests changes, or escalates | Sonnet | Task enters Reviewing |
-| **ralphx-merger** | Resolves git merge conflicts that programmatic rebase couldn't handle | Opus | Task enters Merging with conflicts |
+| **ralphx-execution-worker** | Orchestrates task execution; decomposes work and delegates to coders | Sonnet | Task enters Executing |
+| **ralphx-execution-coder** | Implements a scoped sub-task with exclusive file ownership | Sonnet | Dispatched by worker |
+| **ralphx-execution-reviewer** | Reviews the git diff; approves, requests changes, or escalates | Sonnet | Task enters Reviewing |
+| **ralphx-execution-merger** | Resolves git merge conflicts that programmatic rebase couldn't handle | Opus | Task enters Merging with conflicts |
 | **ralphx-qa-prep** | Generates acceptance criteria and test steps from the task spec | Sonnet | Task enters Ready (background) |
 | **ralphx-qa-refiner** | Adapts test criteria to match the actual implementation | Sonnet | Task enters QaRefining |
 | **ralphx-qa-executor** | Runs browser-based acceptance tests | Sonnet | Task enters QaTesting |
-| **orchestrator-ideation** | Runs solo ideation sessions: research → plan → propose | Sonnet | Ideation session starts (Solo mode) |
-| **ideation-team-lead** | Coordinates research/debate teams during ideation | Opus | Ideation session starts (Team mode) |
-| **ideation-advocate** | Argues for a specific approach in Debate Team mode | Sonnet | Spawned by team lead |
-| **ideation-critic** | Stress-tests all proposals in Debate Team mode | Sonnet | Spawned by team lead |
-| **ideation-specialist-backend** | Researches Rust/Tauri backend patterns | Sonnet | Spawned by team lead |
-| **ideation-specialist-frontend** | Researches React/TS frontend patterns | Sonnet | Spawned by team lead |
-| **ideation-specialist-infra** | Researches infrastructure and configuration | Sonnet | Spawned by team lead |
+| **ralphx-ideation** | Runs solo ideation sessions: research → plan → propose | Sonnet | Ideation session starts (Solo mode) |
+| **ralphx-ideation-team-lead** | Coordinates research/debate teams during ideation | Opus | Ideation session starts (Team mode) |
+| **ralphx-ideation-advocate** | Argues for a specific approach in Debate Team mode | Sonnet | Spawned by team lead |
+| **ralphx-ideation-critic** | Stress-tests all proposals in Debate Team mode | Sonnet | Spawned by team lead |
+| **ralphx-ideation-specialist-backend** | Researches Rust/Tauri backend patterns | Sonnet | Spawned by team lead |
+| **ralphx-ideation-specialist-frontend** | Researches React/TS frontend patterns | Sonnet | Spawned by team lead |
+| **ralphx-ideation-specialist-infra** | Researches infrastructure and configuration | Sonnet | Spawned by team lead |
 | **deep-researcher** | In-depth codebase or web research | Sonnet | Invoked in research contexts |
-| **project-analyzer** | Analyzes project structure for setup/validation commands | Sonnet | Project added or re-analyzed |
-| **memory-capture** | Saves agent learnings to project memory after execution | Sonnet | After task completes |
-| **memory-maintainer** | Organizes and deduplicates project memory | Sonnet | Periodic / on demand |
-| **session-namer** | Generates a concise name for a new ideation session | Haiku | Session created |
-| **chat-task** | Handles chat interactions in the context of a specific task | Sonnet | Task chat opened |
-| **chat-project** | Handles chat interactions at the project level | Sonnet | Project chat opened |
+| **ralphx-project-analyzer** | Analyzes project structure for setup/validation commands | Sonnet | Project added or re-analyzed |
+| **ralphx-memory-capture** | Saves agent learnings to project memory after execution | Sonnet | After task completes |
+| **ralphx-memory-maintainer** | Organizes and deduplicates project memory | Sonnet | Periodic / on demand |
+| **ralphx-utility-session-namer** | Generates a concise name for a new ideation session | Haiku | Session created |
+| **ralphx-chat-task** | Handles chat interactions in the context of a specific task | Sonnet | Task chat opened |
+| **ralphx-chat-project** | Handles chat interactions at the project level | Sonnet | Project chat opened |
 | **review-chat** | Handles chat about a specific review | Sonnet | Review chat opened |
-| **dependency-suggester** | Suggests task dependencies after proposals are created in an ideation session | Sonnet | After PROPOSE phase completes |
 
 ---
 
@@ -167,9 +173,9 @@ Worker
 
 **What you see:** The task's conversation panel shows the worker's activity. Step progress updates in the task detail view as each sub-scope starts and completes.
 
-### Supervisor Agent
+### Supervisor Service
 
-Alongside every worker runs a lightweight **supervisor** agent (Haiku model). It monitors for problems:
+Supervisor monitoring is owned by the backend supervisor service rather than a spawned agent. The settings and alert types remain in place for future execution-lane integration, but there is no dedicated supervisor agent in the live catalog today.
 
 | Pattern detected | What the supervisor does |
 |-----------------|--------------------------|
@@ -179,7 +185,7 @@ Alongside every worker runs a lightweight **supervisor** agent (Haiku model). It
 | High token usage with no progress | Pauses and notifies you |
 | Critical loop detected | Kills the agent and analyzes the failure |
 
-You'll see supervisor alerts in the task conversation or in the task detail view if the supervisor pauses the task.
+When the supervisor service is wired into live execution, its alerts appear in the task conversation or task detail view.
 
 ### Reviewer Agent
 
@@ -201,7 +207,7 @@ The reviewer runs in the **same conversation** as prior execution cycles, so it 
 
 ### Merger Agent
 
-After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** (Claude Opus — the most capable model) is spawned.
+After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** is spawned on the configured merge lane.
 
 The merger:
 1. Gets the correct source and target branches via MCP.
@@ -218,7 +224,7 @@ If the merger can't resolve a conflict (ambiguous intent, architectural incompat
 
 ### Solo Orchestrator
 
-In **Solo mode**, a single `orchestrator-ideation` agent handles the entire ideation session:
+In **Solo mode**, a single `ralphx-ideation` agent handles the entire ideation session:
 
 1. **Recover** — checks if a plan and proposals already exist (for session resume).
 2. **Understand** — reads your message and determines what you want.
@@ -232,7 +238,9 @@ The orchestrator cannot modify code — it only reads and creates plan artifacts
 
 ### Team Mode: Research Teams and Debate Teams
 
-For complex features, RalphX switches to **team mode**. The `ideation-team-lead` (Opus) coordinates a group of specialist agents.
+For complex features, RalphX switches to **team mode**. The `ralphx-ideation-team-lead` (Opus) coordinates a group of specialist agents.
+
+Team mode is currently a Claude-only capability. If the effective ideation harness is Codex, RalphX keeps the session in solo mode instead of attempting a partial team-mode emulation.
 
 **Research Team** — used when a feature touches multiple layers (frontend + backend, UI + database):
 
@@ -370,12 +378,12 @@ You can send messages to any active agent directly from the Team Activity Panel.
 
 ## Session Recovery
 
-Claude sessions can expire — this happens when a session token becomes invalid (typically due to a long idle period). RalphX handles this automatically.
+Harness sessions can expire or become stale after long idle periods. RalphX handles this automatically.
 
 **What happens when a session expires:**
 1. The agent's output stream stops.
 2. RalphX detects the expired session via the reconciler.
-3. A new Claude session is started for the same agent.
+3. A new session is started for the same agent on the selected harness.
 4. The **conversation history is preserved** — the new session is initialized with the full prior context.
 5. The agent continues from where it left off.
 
@@ -392,7 +400,7 @@ See [Recovery and Retry](execution.md#recovery-and-retry) for the full recovery 
 Agents communicate with the RalphX backend through the **Model Context Protocol (MCP)** — a standardized messaging layer.
 
 ```
-Claude Agent (running locally)
+Selected Harness Agent (running locally)
          |
          | MCP Protocol (JSON over stdio/HTTP)
          v
@@ -439,10 +447,10 @@ Each agent type has a restricted set of actions. This is enforced at three layer
 | **coder** | Same as worker (coder is a scoped variant of worker) |
 | **reviewer** | `get_task_context`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `complete_review`, `get_project_analysis` |
 | **merger** | `get_merge_target`, `get_task_context`, `report_conflict`, `report_incomplete`, `get_project_analysis` |
-| **orchestrator-ideation** | `create_plan_artifact`, `update_plan_artifact`, `create_task_proposal`, `list_session_proposals`, `analyze_session_dependencies` |
-| **ideation-team-lead** | All orchestrator tools + `request_team_plan`, `create_team_artifact`, `get_team_artifacts`, `save_team_session_state` |
-| **chat-task** | `update_task`, `add_task_note`, `get_task_details` |
-| **chat-project** | `suggest_task`, `list_tasks` |
+| **ralphx-ideation** | `create_plan_artifact`, `update_plan_artifact`, `create_task_proposal`, `list_session_proposals`, `analyze_session_dependencies` |
+| **ralphx-ideation-team-lead** | All orchestrator tools + `request_team_plan`, `create_team_artifact`, `get_team_artifacts`, `save_team_session_state` |
+| **ralphx-chat-task** | `update_task`, `add_task_note`, `get_task_details` |
+| **ralphx-chat-project** | `suggest_task`, `list_tasks` |
 
 ### File System Access
 
@@ -460,7 +468,7 @@ Reviewers are read-only — they examine the worktree but don't commit changes.
 
 **What to do:**
 1. Open the task's conversation to check the last agent output.
-2. The supervisor will inject guidance if it detects a stall (after ~2.5 minutes with no git diff).
+2. The supervisor service thresholds are intended to flag stalls (after ~2.5 minutes with no git diff) once live monitoring is wired in.
 3. The reconciler will auto-restart the agent if the process died.
 4. If the issue persists, click **Stop** then **Restart** for a clean agent respawn.
 

@@ -13,7 +13,8 @@ pub use super::review_commands_types::{
     ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, IssueProgressResponse,
     MarkIssueAddressedInput, MarkIssueInProgressInput, RejectFixTaskInput, RejectReviewInput,
     ReopenIssueInput, RequestChangesInput, ReviewActionResponse, ReviewIssueResponse,
-    ReviewNoteResponse, ReviewResponse, VerifyIssueInput,
+    ReviewNoteResponse, ReviewResponse, ReviewSettingsResponse, UpdateReviewSettingsInput,
+    VerifyIssueInput,
 };
 
 // ============================================================================
@@ -225,49 +226,14 @@ pub async fn approve_fix_task(
     }
 
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+        state.build_task_scheduler_for_runtime(Arc::clone(&execution_state), Some(app.clone())),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = state
+        .build_transition_service_with_execution_state(Arc::clone(&execution_state))
+        .with_task_scheduler(task_scheduler);
 
     transition_service
         .transition_task(&fix_task_id, InternalStatus::Ready)
@@ -300,25 +266,8 @@ pub async fn reject_fix_task(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Fix task not found: {}", fix_task_id.as_str()))?;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     transition_service
         .transition_task_corrective(&fix_task_id, InternalStatus::Failed, None, "review_fix")
@@ -438,7 +387,6 @@ use super::review_commands_types::{
     ApproveTaskInput, ReReviewTaskInput, RequestTaskChangesFromReviewingInput,
     RequestTaskChangesInput,
 };
-use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::{
@@ -485,50 +433,15 @@ pub async fn approve_task_for_review(
 
     // 3. Create scheduler for post-merge scheduling (Approved → PendingMerge path)
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
-            Some(app.clone()),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+        state.build_task_scheduler_for_runtime(Arc::clone(&execution_state), Some(app.clone())),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
     // 4. Transition to Approved using TaskTransitionService
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service = state
+        .build_transition_service_with_execution_state(Arc::clone(&execution_state))
+        .with_task_scheduler(task_scheduler);
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service
@@ -590,25 +503,8 @@ pub async fn request_task_changes_for_review(
         .map_err(|e| e.to_string())?;
 
     // 3. Transition to RevisionNeeded (will auto-trigger re-execution)
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service
@@ -682,25 +578,8 @@ pub async fn re_review_task_from_escalated(
     }
 
     // 2. Transition to PendingReview (state machine auto-triggers AI reviewer)
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service
@@ -847,25 +726,8 @@ pub async fn request_task_changes_from_reviewing(
     }
 
     // 5. Transition to RevisionNeeded (auto-chain fires RevisionNeeded → ReExecuting)
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        Some(app.clone()),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     if let Err(e) = transition_service
         .transition_task(&task_id, InternalStatus::RevisionNeeded)
@@ -1114,4 +976,54 @@ pub async fn mark_issue_addressed(
         .map_err(|e| e.to_string())?;
 
     Ok(ReviewIssueResponse::from(issue))
+}
+
+// ============================================================================
+// Commands - Review Settings (global policy)
+// ============================================================================
+
+/// Get the global review policy settings
+#[tauri::command]
+pub async fn get_review_settings(
+    state: State<'_, AppState>,
+) -> Result<ReviewSettingsResponse, String> {
+    let settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewSettingsResponse::from(settings))
+}
+
+/// Update the global review policy settings.
+/// Only the fields provided in the input are changed; ballast fields are preserved.
+#[tauri::command]
+pub async fn update_review_settings(
+    input: UpdateReviewSettingsInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewSettingsResponse, String> {
+    let mut settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(v) = input.require_human_review {
+        settings.require_human_review = v;
+    }
+    if let Some(v) = input.max_fix_attempts {
+        settings.max_fix_attempts = v;
+    }
+    if let Some(v) = input.max_revision_cycles {
+        settings.max_revision_cycles = v;
+    }
+
+    let updated = state
+        .review_settings_repo
+        .update_settings(&settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewSettingsResponse::from(updated))
 }

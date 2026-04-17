@@ -377,9 +377,14 @@ describe("usePauseExecution", () => {
     expect(typeof result.current.resume).toBe("function");
   });
 
-  it("does not resume when halt mode is stopped", async () => {
+  it("starts execution when halt mode is stopped", async () => {
     useUiStore.setState({
       executionStatus: { ...mockStatus, isPaused: true, haltMode: "stopped" },
+    });
+
+    vi.mocked(api.execution.resume).mockResolvedValue({
+      success: true,
+      status: mockStatus,
     });
 
     const { result } = renderHook(() => usePauseExecution(), {
@@ -390,8 +395,10 @@ describe("usePauseExecution", () => {
       result.current.toggle();
     });
 
-    expect(api.execution.resume).not.toHaveBeenCalled();
-    expect(result.current.canPauseToggle).toBe(false);
+    expect(api.execution.resume).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(result.current.canPauseToggle).toBe(true);
+    });
   });
 });
 

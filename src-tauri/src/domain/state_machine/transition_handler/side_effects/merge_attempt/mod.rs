@@ -1,6 +1,8 @@
 use super::*;
+use crate::domain::state_machine::transition_handler::{
+    cleanup_helpers, merge_coordination, merge_helpers, BranchPair, ProjectCtx, TaskCore,
+};
 use crate::domain::state_machine::{State, TransitionHandler};
-use crate::domain::state_machine::transition_handler::{BranchPair, ProjectCtx, TaskCore, cleanup_helpers, merge_coordination, merge_helpers};
 
 mod branch_discovery;
 mod in_flight_guard;
@@ -89,9 +91,16 @@ impl<'a> TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                metadata, false,
-            ).await;
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
+                metadata,
+                false,
+            )
+            .await;
             return;
         }
 
@@ -116,9 +125,16 @@ impl<'a> TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                metadata, true,
-            ).await;
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
+                metadata,
+                true,
+            )
+            .await;
             return;
         }
 
@@ -151,7 +167,12 @@ impl<'a> TransitionHandler<'a> {
             });
             if self
                 .route_merge_scope_violation_to_revision(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
                     metadata,
                 )
                 .await
@@ -160,7 +181,12 @@ impl<'a> TransitionHandler<'a> {
             }
 
             self.transition_to_merge_incomplete(
-                TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
                 serde_json::json!({
                     "error": "Merge scope backstop could not route task back to revision",
                     "error_code": "merge_scope_drift_guard_fallback",
@@ -168,14 +194,16 @@ impl<'a> TransitionHandler<'a> {
                     "target_branch": target_branch,
                 }),
                 true,
-            ).await;
+            )
+            .await;
             return;
         }
 
         // Cache resolved branches in task metadata so auto-complete uses the same target
         // branch (TOCTOU guard: plan state can change between merge start and auto-complete)
         {
-            let mut meta: serde_json::Value = task.metadata
+            let mut meta: serde_json::Value = task
+                .metadata
                 .as_ref()
                 .and_then(|m| serde_json::from_str(m).ok())
                 .unwrap_or_else(|| serde_json::json!({}));
@@ -192,16 +220,37 @@ impl<'a> TransitionHandler<'a> {
         }
 
         // Main-merge deferral check
-        let base_branch = project.base_branch.as_deref().unwrap_or("main");
-        let running_count = self.machine.context.services.execution_state
+        let base_branch = merge_helpers::resolve_effective_base_branch(
+            task,
+            project,
+            plan_branch_repo,
+            Some(&target_branch),
+        )
+        .await;
+        let running_count = self
+            .machine
+            .context
+            .services
+            .execution_state
             .as_ref()
             .map(|s| s.running_count());
         if merge_coordination::check_main_merge_deferral(
-            TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-            BranchPair { source_branch: &source_branch, target_branch: &target_branch },
-            base_branch, running_count,
+            TaskCore {
+                task: &mut *task,
+                task_id: &task_id,
+                task_id_str,
+                task_repo,
+            },
+            BranchPair {
+                source_branch: &source_branch,
+                target_branch: &target_branch,
+            },
+            base_branch.as_str(),
+            running_count,
             self.machine.context.services.app_handle.as_ref(),
-        ).await {
+        )
+        .await
+        {
             return;
         }
 
@@ -218,7 +267,8 @@ impl<'a> TransitionHandler<'a> {
             "Merge pipeline: preconditions validated",
             MergePhase::PRECONDITION_CHECK,
             "passed",
-        ).await;
+        )
+        .await;
 
         let repo_path = Path::new(&project.working_directory);
 
@@ -235,9 +285,16 @@ impl<'a> TransitionHandler<'a> {
         match cleanup_helpers::os_thread_timeout(
             std::time::Duration::from_secs(cleanup_timeout_secs),
             self.pre_merge_cleanup(
-                task_id_str, task, project, repo_path, &target_branch, task_repo,
+                task_id_str,
+                task,
+                project,
+                repo_path,
+                &target_branch,
+                task_repo,
             ),
-        ).await {
+        )
+        .await
+        {
             Ok(()) => {
                 emit_merge_progress(
                     app_handle,
@@ -251,7 +308,8 @@ impl<'a> TransitionHandler<'a> {
                     "Merge pipeline: cleanup complete",
                     MergePhase::MERGE_CLEANUP,
                     "passed",
-                ).await;
+                )
+                .await;
             }
             Err(_os_elapsed) => {
                 tracing::warn!(
@@ -261,10 +319,13 @@ impl<'a> TransitionHandler<'a> {
                 );
                 // Set debris metadata so GUARD knows this is a retry on next attempt
                 // (prevents is_first_clean_attempt from skipping cleanup when stale worktree remains)
-                merge_helpers::merge_metadata_into(task, &serde_json::json!({
-                    "merge_failure_source": serde_json::to_value(MergeFailureSource::CleanupTimeout).unwrap_or_default(),
-                    "cleanup_phase": serde_json::to_value(CleanupPhase::PreMergeWorktreeScan).unwrap_or_default(),
-                }));
+                merge_helpers::merge_metadata_into(
+                    task,
+                    &serde_json::json!({
+                        "merge_failure_source": serde_json::to_value(MergeFailureSource::CleanupTimeout).unwrap_or_default(),
+                        "cleanup_phase": serde_json::to_value(CleanupPhase::PreMergeWorktreeScan).unwrap_or_default(),
+                    }),
+                );
                 if let Err(e) = task_repo.update(task).await {
                     tracing::warn!(
                         task_id = %task_id_str,
@@ -284,11 +345,12 @@ impl<'a> TransitionHandler<'a> {
                     "Merge pipeline: cleanup timed out (best-effort, proceeding)",
                     MergePhase::MERGE_CLEANUP,
                     "warning",
-                ).await;
+                )
+                .await;
             }
         }
 
-        // Branch freshness: ensure plan branch, update from main, update source from target
+        // Branch freshness: ensure plan branch, update from its source branch, update source from target
         emit_merge_progress(
             app_handle,
             task_id_str,
@@ -299,32 +361,36 @@ impl<'a> TransitionHandler<'a> {
 
         // Ensure plan branch exists as git ref (lazy creation for merge target)
         merge_coordination::ensure_plan_branch_exists(
-            task, repo_path, &target_branch, plan_branch_repo,
-        ).await;
+            task,
+            repo_path,
+            &target_branch,
+            plan_branch_repo,
+        )
+        .await;
 
-        // Update plan branch from main if behind (prevents false validation failures)
+        // Update plan branch from its source branch if behind (prevents false validation failures)
         emit_merge_progress(
             app_handle,
             task_id_str,
             MergePhase::new(MergePhase::BRANCH_FRESHNESS),
             MergePhaseStatus::Started,
-            "Updating plan branch from main...".to_string(),
+            format!("Updating plan branch from {}...", base_branch),
         );
-        let freshness_timeout = std::time::Duration::from_secs(
-            reconciliation_config().branch_freshness_timeout_secs,
-        );
+        let freshness_timeout =
+            std::time::Duration::from_secs(reconciliation_config().branch_freshness_timeout_secs);
         let plan_update_start = std::time::Instant::now();
         let plan_update_result = tokio::time::timeout(
             freshness_timeout,
             merge_coordination::update_plan_from_main(
                 repo_path,
                 &target_branch,
-                base_branch,
+                base_branch.as_str(),
                 project,
                 task_id_str,
                 self.machine.context.services.app_handle.as_ref(),
             ),
-        ).await;
+        )
+        .await;
 
         let plan_update_elapsed = plan_update_start.elapsed();
         match plan_update_result {
@@ -346,9 +412,16 @@ impl<'a> TransitionHandler<'a> {
                     "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
                 });
                 self.transition_to_merge_incomplete(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    metadata, true,
-                ).await;
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    metadata,
+                    true,
+                )
+                .await;
                 return;
             }
             Ok(merge_coordination::PlanUpdateResult::AlreadyUpToDate)
@@ -365,10 +438,10 @@ impl<'a> TransitionHandler<'a> {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
-                    "Plan branch update from main produced conflicts — routing to merger agent"
+                    "Plan branch update from source branch produced conflicts — routing to merger agent"
                 );
                 let metadata = serde_json::json!({
-                    "error": "Conflicts detected while updating plan branch from main. Merger agent needed.",
+                    "error": "Conflicts detected while updating plan branch from its source branch. Merger agent needed.",
                     "conflict_files": conflict_files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
                     "source_branch": source_branch,
                     "target_branch": target_branch,
@@ -378,17 +451,23 @@ impl<'a> TransitionHandler<'a> {
                 merge_helpers::merge_metadata_into(task, &metadata);
                 task.internal_status = InternalStatus::Merging;
                 // Create a merge worktree with the plan branch (target) checked out.
-                // The merger agent will run `git merge main` to reproduce and resolve conflicts.
+                // The merger agent will run `git merge <base>` to reproduce and resolve conflicts.
                 // First, clean up any stale plan-update worktree that holds the plan branch —
                 // git won't allow the same branch in two worktrees simultaneously.
-                let plan_update_wt = merge_helpers::compute_plan_update_worktree_path(project, task_id_str);
+                let plan_update_wt =
+                    merge_helpers::compute_plan_update_worktree_path(project, task_id_str);
                 let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt);
-                merge_helpers::pre_delete_worktree(repo_path, &plan_update_wt_path, task_id_str).await;
+                merge_helpers::pre_delete_worktree(repo_path, &plan_update_wt_path, task_id_str)
+                    .await;
                 let merge_wt = merge_helpers::compute_merge_worktree_path(project, task_id_str);
                 let merge_wt_path = std::path::PathBuf::from(&merge_wt);
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
-                    repo_path, &merge_wt_path, &target_branch,
-                ).await {
+                    repo_path,
+                    &merge_wt_path,
+                    &target_branch,
+                )
+                .await
+                {
                     tracing::error!(
                         task_id = task_id_str,
                         error = %e,
@@ -408,10 +487,17 @@ impl<'a> TransitionHandler<'a> {
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    InternalStatus::PendingMerge, InternalStatus::Merging,
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    InternalStatus::PendingMerge,
+                    InternalStatus::Merging,
                     "plan_update_conflict",
-                ).await;
+                )
+                .await;
                 // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
                 // Without this call, the task sits in Merging with no agent and
                 // attempt_merge_auto_complete transitions it straight to MergeIncomplete.
@@ -429,10 +515,10 @@ impl<'a> TransitionHandler<'a> {
                     task_id = task_id_str,
                     error = %err,
                     elapsed_ms = plan_update_elapsed.as_millis() as u64,
-                    "Plan branch update from main failed — aborting merge to prevent stale branch"
+                    "Plan branch update from source branch failed — aborting merge to prevent stale branch"
                 );
                 // Fatal: abort merge. Proceeding with a stale plan branch causes validation
-                // failures that the fixer agent cannot resolve (missing code from main).
+                // failures that the fixer agent cannot resolve (missing code from the source branch).
                 let metadata = serde_json::json!({
                     "error": format!("Plan branch update failed: {}", err),
                     "source_branch": source_branch,
@@ -440,9 +526,16 @@ impl<'a> TransitionHandler<'a> {
                     "merge_failure_source": "PlanUpdateFailed",
                 });
                 self.transition_to_merge_incomplete(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    metadata, true,
-                ).await;
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    metadata,
+                    true,
+                )
+                .await;
                 return;
             }
         }
@@ -466,7 +559,8 @@ impl<'a> TransitionHandler<'a> {
                 task_id_str,
                 self.machine.context.services.app_handle.as_ref(),
             ),
-        ).await;
+        )
+        .await;
 
         let source_update_elapsed = source_update_start.elapsed();
         match source_update_result {
@@ -488,9 +582,16 @@ impl<'a> TransitionHandler<'a> {
                     "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
                 });
                 self.transition_to_merge_incomplete(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    metadata, true,
-                ).await;
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    metadata,
+                    true,
+                )
+                .await;
                 return;
             }
             Ok(merge_coordination::SourceUpdateResult::AlreadyUpToDate)
@@ -527,8 +628,12 @@ impl<'a> TransitionHandler<'a> {
                 // fails with "fatal: '/path/merge-{id}' already exists".
                 merge_helpers::pre_delete_worktree(repo_path, &merge_wt_path, task_id_str).await;
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
-                    repo_path, &merge_wt_path, &source_branch,
-                ).await {
+                    repo_path,
+                    &merge_wt_path,
+                    &source_branch,
+                )
+                .await
+                {
                     tracing::error!(
                         task_id = task_id_str,
                         error = %e,
@@ -548,10 +653,17 @@ impl<'a> TransitionHandler<'a> {
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    InternalStatus::PendingMerge, InternalStatus::Merging,
+                    TaskCore {
+                        task: &mut *task,
+                        task_id: &task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    InternalStatus::PendingMerge,
+                    InternalStatus::Merging,
                     "source_update_conflict",
-                ).await;
+                )
+                .await;
                 // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
                 // Without this call, the task sits in Merging with no agent and
                 // attempt_merge_auto_complete transitions it straight to MergeIncomplete.
@@ -588,25 +700,48 @@ impl<'a> TransitionHandler<'a> {
             "Merge pipeline: branch freshness check passed",
             MergePhase::BRANCH_FRESHNESS,
             "passed",
-        ).await;
+        )
+        .await;
 
         // "Already merged" early exit
-        if self.check_already_merged(
-            TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-            BranchPair { source_branch: &source_branch, target_branch: &target_branch },
-            ProjectCtx { project, repo_path },
-            plan_branch_repo,
-        ).await {
+        if self
+            .check_already_merged(
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
+                BranchPair {
+                    source_branch: &source_branch,
+                    target_branch: &target_branch,
+                },
+                ProjectCtx { project, repo_path },
+                plan_branch_repo,
+            )
+            .await
+        {
             return;
         }
 
         // "Deleted source branch" recovery
-        if self.recover_deleted_source_branch(
-            TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-            BranchPair { source_branch: &source_branch, target_branch: &target_branch },
-            ProjectCtx { project, repo_path },
-            plan_branch_repo,
-        ).await {
+        if self
+            .recover_deleted_source_branch(
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
+                BranchPair {
+                    source_branch: &source_branch,
+                    target_branch: &target_branch,
+                },
+                ProjectCtx { project, repo_path },
+                plan_branch_repo,
+            )
+            .await
+        {
             return;
         }
 
@@ -629,8 +764,14 @@ impl<'a> TransitionHandler<'a> {
         // Concurrent merge guard (TOCTOU-safe deferral under merge_lock)
         if matches!(
             self.run_concurrent_merge_guard(
-                task, task_id_str, &target_branch, project, task_repo, plan_branch_repo,
-            ).await,
+                task,
+                task_id_str,
+                &target_branch,
+                project,
+                task_repo,
+                plan_branch_repo,
+            )
+            .await,
             ConcurrentGuardResult::Deferred
         ) {
             return;
@@ -657,9 +798,16 @@ impl<'a> TransitionHandler<'a> {
                 "target_branch": target_branch,
             });
             self.transition_to_merge_incomplete(
-                TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                metadata, true,
-            ).await;
+                TaskCore {
+                    task: &mut *task,
+                    task_id: &task_id,
+                    task_id_str,
+                    task_repo,
+                },
+                metadata,
+                true,
+            )
+            .await;
             return;
         }
 
@@ -679,15 +827,31 @@ impl<'a> TransitionHandler<'a> {
         );
         self.emit_merge_activity_event(
             task_id_str,
-            format!("Merge pipeline: merging {} into {}", source_branch, target_branch),
+            format!(
+                "Merge pipeline: merging {} into {}",
+                source_branch, target_branch
+            ),
             MergePhase::PROGRAMMATIC_MERGE,
             "started",
-        ).await;
+        )
+        .await;
         self.dispatch_merge_strategy(
-            TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-            BranchPair { source_branch: &source_branch, target_branch: &target_branch },
+            TaskCore {
+                task: &mut *task,
+                task_id: &task_id,
+                task_id_str,
+                task_repo,
+            },
+            BranchPair {
+                source_branch: &source_branch,
+                target_branch: &target_branch,
+            },
             ProjectCtx { project, repo_path },
-            &squash_commit_msg, plan_branch_repo, remaining, deadline_secs,
-        ).await;
+            &squash_commit_msg,
+            plan_branch_repo,
+            remaining,
+            deadline_secs,
+        )
+        .await;
     }
 }

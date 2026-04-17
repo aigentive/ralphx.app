@@ -13,6 +13,31 @@ use crate::domain::entities::{Project, ProjectId};
 use crate::domain::repositories::ProjectRepository;
 use crate::error::AppResult;
 
+pub(crate) fn insert_project_row(conn: &Connection, project: &Project) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        rusqlite::params![
+            project.id.as_str(),
+            project.name.as_str(),
+            project.working_directory.as_str(),
+            project.git_mode.to_string(),
+            project.base_branch.as_deref(),
+            project.worktree_parent_directory.as_deref(),
+            project.use_feature_branches as i64,
+            project.merge_validation_mode.to_string(),
+            project.merge_strategy.to_string(),
+            project.detected_analysis.as_deref(),
+            project.custom_analysis.as_deref(),
+            project.analyzed_at.as_deref(),
+            project.created_at.to_rfc3339(),
+            project.updated_at.to_rfc3339(),
+            project.github_pr_enabled as i64,
+        ],
+    )?;
+    Ok(())
+}
+
 /// SQLite implementation of ProjectRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteProjectRepository {
@@ -40,27 +65,7 @@ impl ProjectRepository for SqliteProjectRepository {
     async fn create(&self, project: Project) -> AppResult<Project> {
         self.db
             .run(move |conn| {
-                conn.execute(
-                    "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                    rusqlite::params![
-                        project.id.as_str(),
-                        project.name,
-                        project.working_directory,
-                        project.git_mode.to_string(),
-                        project.base_branch,
-                        project.worktree_parent_directory,
-                        project.use_feature_branches as i64,
-                        project.merge_validation_mode.to_string(),
-                        project.merge_strategy.to_string(),
-                        project.detected_analysis,
-                        project.custom_analysis,
-                        project.analyzed_at,
-                        project.created_at.to_rfc3339(),
-                        project.updated_at.to_rfc3339(),
-                        project.github_pr_enabled as i64,
-                    ],
-                )?;
+                insert_project_row(conn, &project)?;
                 Ok(project)
             })
             .await

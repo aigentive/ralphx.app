@@ -1,8 +1,8 @@
-# ralphx.yaml Configuration Management System
+# RalphX Runtime Config Management System
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-`ralphx.yaml` is the single source of truth for all Claude agent runtime configuration. It defines tool sets, agent definitions, and Claude CLI runtime behavior. Parsed by Rust at startup, cached via `OnceLock`, and used at every agent spawn.
+`config/ralphx.yaml` is the shared runtime compatibility config for agent definitions, prompt/tool wiring, and Claude/default runtime settings that have not yet been fully extracted into `agents/` and `config/harnesses/*`. The app-level harness selection layer is provider-neutral; Codex-specific runtime behavior is layered on top of these shared agent/lane definitions rather than replacing them.
 
 ---
 
@@ -21,8 +21,8 @@ claude:             # Global Claude CLI runtime settings
     z_ai: { extends: default, env: { ... } }
 
 agents:             # All agent definitions (20 currently)
-  - name: ralphx-worker
-    system_prompt_file: plugins/app/agents/worker.md
+  - name: ralphx-execution-worker
+    system_prompt_file: agents/ralphx-execution-worker/claude/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [start_step, complete_step, ...]
@@ -97,13 +97,13 @@ struct ClaudeRuntimeConfigRaw {
 | Priority | Source | When Used |
 |----------|--------|-----------|
 | 1 | `RALPHX_CONFIG_PATH` env var | Custom config path |
-| 2 | `<project-root>/ralphx.yaml` | Normal operation |
+| 2 | `<project-root>/config/ralphx.yaml` | Normal operation |
 | 3 | `EMBEDDED_CONFIG` (compiled in) | File missing/unreadable |
 
 ### Processing Flow
 
 ```
-ralphx.yaml (or EMBEDDED_CONFIG)
+config/ralphx.yaml (or EMBEDDED_CONFIG)
     │
     ▼
 serde_yaml::from_str() → RalphxConfig
@@ -191,13 +191,13 @@ This ensures `.env` protection applies to all profiles regardless of selection.
 | Profile field | `RALPHX_<KEY>` | `RALPHX_ANTHROPIC_BASE_URL=...` | Overrides `env.<KEY>` in selected profile |
 
 **Agent name normalization:** Non-alphanumeric chars → `_`, uppercased.
-- `orchestrator-ideation` → `ORCHESTRATOR_IDEATION`
-- `ralphx-worker` → `RALPHX_WORKER`
+- `ralphx-ideation` → `ORCHESTRATOR_IDEATION`
+- `ralphx-execution-worker` → `RALPHX_WORKER`
 
 ### Profile Field Override Example
 
 ```yaml
-# In ralphx.yaml:
+# In config/ralphx.yaml:
 settings_profiles:
   z_ai:
     env:
@@ -227,7 +227,7 @@ get_allowed_tools(agent_name) →
 resolved_cli_tools = tool_sets[extends] ∪ include (deduplicated)
 ```
 
-**Example:** `ralphx-worker` with `extends: base_tools, include: [Write, Edit, Task]`
+**Example:** `ralphx-execution-worker` with `extends: base_tools, include: [Write, Edit, Task]`
 → `Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Write,Edit,Task`
 
 ### Preapproved Tools (--allowedTools flag)
@@ -236,18 +236,18 @@ resolved_cli_tools = tool_sets[extends] ∪ include (deduplicated)
 get_preapproved_tools(agent_name) →
     MCP tools:       mcp__<server>__<tool> for each mcp_tools entry
   + CLI tools:       all resolved_cli_tools (unless mcp_only)
-  + Preapproved:     preapproved_cli_tools entries (e.g., Task(Explore))
+  + Preapproved:     preapproved_cli_tools entries (e.g., Task(Plan))
   + Memory skills:   Skill(ralphx:rule-manager) etc. (memory agents only)
 ```
 
-**Example:** `ralphx-worker` generates ~35 preapproved tools:
+**Example:** `ralphx-execution-worker` generates ~35 preapproved tools:
 - `mcp__ralphx__start_step`, `mcp__ralphx__complete_step`, ...
 - `Read`, `Write`, `Edit`, `Bash`, `Task`, ...
-- `Task(Explore)`, `Task(Plan)`
+- `Task(Plan)`
 
 ### MCP-Only Agents
 
-`session-namer` and `dependency-suggester` use `mcp_only: true`:
+`ralphx-utility-session-namer` uses `mcp_only: true`:
 - `--tools ""` → no CLI tools available
 - Only MCP tools via `--allowedTools`
 
@@ -294,7 +294,7 @@ Each spawn generates a temporary MCP config at `/tmp/ralphx-mcp-<pid>-<uuid>.jso
       "command": "node",
       "args": ["<mcp-server-path>/dist/index.js"],
       "env": {
-        "RALPHX_AGENT_TYPE": "ralphx-worker",
+        "RALPHX_AGENT_TYPE": "ralphx-execution-worker",
         "RALPHX_MCP_URL": "http://localhost:3847"
       }
     }
@@ -324,10 +324,10 @@ The `RALPHX_AGENT_TYPE` env var enables server-side tool filtering in `tools.ts`
 
 | File | Purpose |
 |------|---------|
-| `ralphx.yaml` | Configuration source of truth |
+| `config/ralphx.yaml` | Shared runtime compatibility config |
 | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | YAML parsing, config resolution, tool allowlist generation |
 | `src-tauri/src/infrastructure/agents/claude/mod.rs` | CLI command building, MCP config generation |
 | `src-tauri/src/infrastructure/agents/spawner.rs` | State machine → agent spawn orchestration |
 | `src-tauri/src/domain/agents/types.rs` | Domain agent types (AgentConfig, AgentRole) |
-| `plugins/app/ralphx-mcp-server/src/tools.ts` | Server-side MCP tool filtering (TOOL_ALLOWLIST) |
-| `plugins/app/agents/*.md` | Agent system prompts with frontmatter allowlists |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | Server-side MCP tool registry composition and filtering facade |
+| `agents/*/agent.yaml` + prompt files | Canonical agent definitions and prompt bodies |
