@@ -16,6 +16,7 @@ pub(crate) fn launch_startup_pipeline(
     let startup_task_repo = Arc::clone(&app_state.task_repo);
     let startup_project_repo = Arc::clone(&app_state.project_repo);
     let startup_task_dependency_repo = Arc::clone(&app_state.task_dependency_repo);
+    let startup_execution_plan_repo = Arc::clone(&app_state.execution_plan_repo);
     let startup_plan_branch_repo = Arc::clone(&app_state.plan_branch_repo);
     let startup_step_repo = Arc::clone(&app_state.task_step_repo);
     let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
@@ -54,6 +55,7 @@ pub(crate) fn launch_startup_pipeline(
                 task_repo: startup_task_repo,
                 project_repo: startup_project_repo,
                 task_dependency_repo: startup_task_dependency_repo,
+                execution_plan_repo: startup_execution_plan_repo,
                 plan_branch_repo: startup_plan_branch_repo,
                 step_repo: startup_step_repo,
                 chat_message_repo: startup_chat_message_repo,

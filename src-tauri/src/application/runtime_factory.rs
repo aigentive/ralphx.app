@@ -11,7 +11,7 @@ use crate::commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    DelegatedSessionRepository, ExecutionSettingsRepository,
+    DelegatedSessionRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
     IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
@@ -35,6 +35,7 @@ pub(crate) struct RuntimeFactoryDeps {
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     pub agent_clients: Option<AgentClientBundle>,
+    pub execution_plan_repo: Option<Arc<dyn ExecutionPlanRepository>>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
@@ -71,6 +72,7 @@ impl RuntimeFactoryDeps {
             running_agent_registry,
             memory_event_repo,
             agent_clients: None,
+            execution_plan_repo: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
             plan_branch_repo: None,
@@ -83,6 +85,14 @@ impl RuntimeFactoryDeps {
         agent_clients: Option<AgentClientBundle>,
     ) -> Self {
         self.agent_clients = agent_clients;
+        self
+    }
+
+    pub(crate) fn with_execution_plan_repo(
+        mut self,
+        execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
+    ) -> Self {
+        self.execution_plan_repo = Some(execution_plan_repo);
         self
     }
 
@@ -116,6 +126,7 @@ impl RuntimeFactoryDeps {
             Arc::clone(&state.memory_event_repo),
         )
         .with_agent_clients(Some(state.agent_client_bundle()))
+        .with_execution_plan_repo(Arc::clone(&state.execution_plan_repo))
         .with_runtime_support(
             Some(Arc::clone(&state.execution_settings_repo)),
             Some(Arc::clone(&state.agent_lane_settings_repo)),
@@ -535,6 +546,9 @@ pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
     );
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
         scheduler = scheduler.with_execution_settings_repo(Arc::clone(repo));
+    }
+    if let Some(repo) = deps.execution_plan_repo.as_ref() {
+        scheduler = scheduler.with_execution_plan_repo(Arc::clone(repo));
     }
     if let Some(agent_clients) = deps.agent_clients.as_ref() {
         scheduler = scheduler.with_agent_clients(agent_clients.clone());

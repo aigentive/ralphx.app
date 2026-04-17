@@ -240,6 +240,30 @@ async fn test_transition_task_with_none_preserves_existing_metadata() {
 }
 
 #[tokio::test]
+async fn test_transition_task_rejects_archived_task() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Archived Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    let task = app_state.task_repo.create(task).await.unwrap();
+    app_state.task_repo.archive(&task.id).await.unwrap();
+
+    let err = service
+        .transition_task(&task.id, InternalStatus::Executing)
+        .await
+        .expect_err("archived tasks must not be transitionable");
+
+    assert!(
+        matches!(err, AppError::Validation(ref message) if message.contains("archived")),
+        "expected archived-task validation error, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_qa_refining_transition_auto_adds_trigger_origin() {
     let app_state = AppState::new_test();
     let service = build_test_service(&app_state);

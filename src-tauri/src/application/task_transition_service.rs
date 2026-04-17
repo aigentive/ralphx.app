@@ -1363,6 +1363,13 @@ impl<R: Runtime> TaskTransitionService<R> {
                 AppError::NotFound(format!("Task not found: {}", task_id.as_str()))
             })?;
 
+        if task.archived_at.is_some() {
+            return Err(AppError::Validation(format!(
+                "Cannot transition archived task: {}",
+                task_id.as_str()
+            )));
+        }
+
         let old_status = task.internal_status;
         tracing::debug!(
             old_status = old_status.as_str(),

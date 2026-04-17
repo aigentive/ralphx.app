@@ -39,7 +39,8 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
+    ExecutionSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
 };
@@ -74,6 +75,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     pub(super) plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    /// Optional execution plan repository for filtering out superseded plan tasks.
+    pub(super) execution_plan_repo: Option<Arc<dyn ExecutionPlanRepository>>,
     /// Optional shared AppState InteractiveProcessRegistry for stdin message delivery.
     pub(super) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     /// Optional per-project execution settings repository for project-aware admission checks.
@@ -135,6 +138,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             memory_event_repo,
             app_handle,
             plan_branch_repo: None,
+            execution_plan_repo: None,
             interactive_process_registry: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
@@ -149,6 +153,11 @@ impl<R: Runtime> TaskSchedulerService<R> {
     /// Set the plan branch repository for feature branch resolution (builder pattern).
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_execution_plan_repo(mut self, repo: Arc<dyn ExecutionPlanRepository>) -> Self {
+        self.execution_plan_repo = Some(repo);
         self
     }
 
@@ -262,6 +271,15 @@ impl<R: Runtime> TaskSchedulerService<R> {
             // Re-block the task so it doesn't sit in Ready with unsatisfied deps.
             if self.has_unsatisfied_dependencies(&task).await {
                 self.reblock_task(&task).await;
+                continue;
+            }
+
+            if self.is_execution_plan_inactive(&task).await {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    execution_plan_id = ?task.execution_plan_id.as_ref().map(|id| id.as_str()),
+                    "Skipping task: execution plan is no longer active"
+                );
                 continue;
             }
 

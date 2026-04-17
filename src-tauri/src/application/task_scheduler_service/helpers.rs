@@ -234,6 +234,28 @@ impl<R: Runtime> TaskSchedulerService<R> {
         }
     }
 
+    /// Check if a task's execution plan is no longer Active.
+    /// Returns true if the task should NOT be scheduled.
+    pub(super) async fn is_execution_plan_inactive(&self, task: &Task) -> bool {
+        let exec_plan_id = match &task.execution_plan_id {
+            Some(id) => id,
+            None => return false,
+        };
+        let execution_plan_repo = match &self.execution_plan_repo {
+            Some(repo) => repo,
+            None => return false,
+        };
+
+        match execution_plan_repo.get_by_id(exec_plan_id).await {
+            Ok(Some(plan)) => !matches!(
+                plan.status,
+                crate::domain::entities::ExecutionPlanStatus::Active
+            ),
+            Ok(None) => false,
+            Err(_) => false,
+        }
+    }
+
     /// Check if a task has any blocker whose status is not dependency-satisfied.
     /// Returns true if the task should NOT be scheduled. Fail-open on errors.
     pub(super) async fn has_unsatisfied_dependencies(&self, task: &Task) -> bool {

@@ -2,6 +2,7 @@
 // Consolidates the inline cleanup logic from delete_ideation_session,
 // SessionReopenService::reopen, and permanently_delete_task.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -155,37 +156,45 @@ impl TaskCleanupService {
         stop_mode: StopMode,
         emit_events: bool,
     ) -> AppResult<()> {
-        let project_id_str = task.project_id.as_str().to_string();
+        let current_task = self.load_current_task(task).await;
+        let project_id_str = current_task.project_id.as_str().to_string();
 
-        // 1. Stop running agent if task is in an active state
-        if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
-            self.stop_task_agent(task, stop_mode).await;
-        }
+        // 1. Stop any live task context before cleanup starts.
+        self.stop_task_for_cleanup(&current_task, stop_mode).await;
 
         // 2. Clean up git resources (worktree + branch)
-        if let Some(ref branch) = task.task_branch {
+        if let Some(ref branch) = current_task.task_branch {
             tracing::info!(
-                task_id = task.id.as_str(),
+                task_id = current_task.id.as_str(),
                 branch = branch.as_str(),
                 "Cleaning up git resources for task"
             );
         }
-        self.cleanup_git_resources(task).await;
+        self.cleanup_git_resources(&current_task).await;
 
         // 3. Archive task in DB
-        if let Err(e) = self.task_repo.archive(&task.id).await {
+        if let Err(e) = self.task_repo.archive(&current_task.id).await {
             tracing::warn!(
-                task_id = task.id.as_str(),
+                task_id = current_task.id.as_str(),
                 error = %e,
                 "Failed to archive task during cleanup"
             );
             return Err(e);
         }
-        tracing::info!(task_id = task.id.as_str(), "Archived task during cleanup");
+        tracing::info!(
+            task_id = current_task.id.as_str(),
+            "Archived task during cleanup"
+        );
+
+        // Final direct-stop sweep. If a task raced into a live context between the
+        // first stop attempt and the archive write, kill the leaked worker now.
+        if stop_mode == StopMode::DirectStop {
+            self.stop_task_contexts_by_identity(&current_task.id).await;
+        }
 
         // 4. Emit event for real-time UI updates
         if emit_events {
-            self.emit_task_archived(task.id.as_str(), &project_id_str);
+            self.emit_task_archived(current_task.id.as_str(), &project_id_str);
         }
 
         Ok(())
@@ -208,17 +217,22 @@ impl TaskCleanupService {
         emit_events: bool,
     ) -> CleanupReport {
         let mut report = CleanupReport::default();
+        let mut stopped_task_ids = HashSet::new();
+        let mut current_tasks = Vec::with_capacity(tasks.len());
 
-        // If any tasks are active, stop them first (batch all stops before deletes)
+        // Re-fetch each task so cleanup decisions do not rely on a stale caller snapshot.
         for task in tasks {
-            if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
-                self.stop_task_agent(task, stop_mode).await;
+            let current_task = self.load_current_task(task).await;
+            if self.stop_task_for_cleanup(&current_task, stop_mode).await
+                && stopped_task_ids.insert(current_task.id.clone())
+            {
                 report.tasks_stopped += 1;
             }
+            current_tasks.push(current_task);
         }
 
         // Git cleanup for all tasks
-        for task in tasks {
+        for task in &current_tasks {
             if task.task_branch.is_some() || task.worktree_path.is_some() {
                 self.cleanup_git_resources(task).await;
                 report.git_cleanups += 1;
@@ -226,7 +240,7 @@ impl TaskCleanupService {
         }
 
         // Archive tasks in DB and emit events
-        for task in tasks {
+        for task in &current_tasks {
             let project_id_str = task.project_id.as_str().to_string();
             if let Err(e) = self.task_repo.archive(&task.id).await {
                 tracing::warn!(
@@ -241,6 +255,16 @@ impl TaskCleanupService {
                 report.tasks_archived += 1;
                 if emit_events {
                     self.emit_task_archived(task.id.as_str(), &project_id_str);
+                }
+            }
+        }
+
+        if stop_mode == StopMode::DirectStop {
+            for task in &current_tasks {
+                if self.stop_task_contexts_by_identity(&task.id).await
+                    && stopped_task_ids.insert(task.id.clone())
+                {
+                    report.tasks_stopped += 1;
                 }
             }
         }
@@ -353,7 +377,7 @@ impl TaskCleanupService {
     /// - `Graceful`: stop agent process, then transition to Stopped via state machine
     ///   (triggers on_exit side effects like decrement running_count).
     /// - `DirectStop`: stop agent process only, bypass state machine.
-    async fn stop_task_agent(&self, task: &Task, stop_mode: StopMode) {
+    async fn stop_task_agent(&self, task: &Task, stop_mode: StopMode) -> bool {
         // Step 1: Always stop the agent process
         let context_type = match task.internal_status {
             InternalStatus::Reviewing => "review",
@@ -369,7 +393,13 @@ impl TaskCleanupService {
         }
 
         let key = RunningAgentKey::new(context_type, task.id.as_str());
-        let _ = self.running_agent_registry.stop(&key).await;
+        let stopped = self
+            .running_agent_registry
+            .stop(&key)
+            .await
+            .ok()
+            .flatten()
+            .is_some();
 
         // Step 2: For Graceful mode, also transition to Stopped via state machine
         if stop_mode == StopMode::Graceful {
@@ -383,6 +413,53 @@ impl TaskCleanupService {
                 }
             }
         }
+
+        stopped
+    }
+
+    async fn load_current_task(&self, task: &Task) -> Task {
+        match self.task_repo.get_by_id(&task.id).await {
+            Ok(Some(current)) => current,
+            _ => task.clone(),
+        }
+    }
+
+    async fn stop_task_for_cleanup(&self, task: &Task, stop_mode: StopMode) -> bool {
+        match stop_mode {
+            StopMode::Graceful => {
+                if AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                    self.stop_task_agent(task, stop_mode).await
+                } else {
+                    false
+                }
+            }
+            StopMode::DirectStop => self.stop_task_contexts_by_identity(&task.id).await,
+        }
+    }
+
+    async fn stop_task_contexts_by_identity(&self, task_id: &TaskId) -> bool {
+        let mut stopped_any = false;
+
+        for context_type in ["task_execution", "review", "merge"] {
+            if let Some(ref ipr) = self.interactive_process_registry {
+                let ipr_key = InteractiveProcessKey::new(context_type, task_id.as_str());
+                ipr.remove(&ipr_key).await;
+            }
+
+            let key = RunningAgentKey::new(context_type, task_id.as_str());
+            if self
+                .running_agent_registry
+                .stop(&key)
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
+                stopped_any = true;
+            }
+        }
+
+        stopped_any
     }
 
     /// Clean up git resources (worktree + branch) for a task.
@@ -479,3 +556,7 @@ impl TaskCleanupService {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "task_cleanup_service_tests.rs"]
+mod tests;
