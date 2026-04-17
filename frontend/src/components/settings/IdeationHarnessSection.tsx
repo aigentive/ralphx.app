@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Cpu, TriangleAlert } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -71,93 +70,101 @@ function effortLabel(value: string | null | undefined): string {
 }
 
 // ============================================================================
-// ModelCombobox — input with harness-specific preset dropdown
+// ModelSelect — preset selector with safe fallback for existing custom values
 // ============================================================================
 
-interface ModelComboboxProps {
+const MODEL_DEFAULT_VALUE = "__default__";
+const MODEL_CUSTOM_VALUE_PREFIX = "__custom__:";
+
+interface ModelSelectProps {
   value: string | null;
   harness: string;
   disabled: boolean;
   onChange: (value: string | null) => void;
-  comboboxKey: string;
+  laneLabel: string;
+  isGlobal: boolean;
+  testId: string;
 }
 
-function ModelCombobox({ value, harness, disabled, onChange, comboboxKey }: ModelComboboxProps) {
-  const [inputValue, setInputValue] = useState(value ?? "");
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+function modelSelectValue(
+  value: string | null,
+  presets: readonly { value: string; display: string }[],
+): string {
+  if (!value) {
+    return MODEL_DEFAULT_VALUE;
+  }
 
-  // Sync when harness changes or external reset
-  useEffect(() => {
-    setInputValue(value ?? "");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comboboxKey]);
+  return presets.some((preset) => preset.value === value)
+    ? value
+    : `${MODEL_CUSTOM_VALUE_PREFIX}${value}`;
+}
 
+function ModelSelect({
+  value,
+  harness,
+  disabled,
+  onChange,
+  laneLabel,
+  isGlobal,
+  testId,
+}: ModelSelectProps) {
   const presets = getModelPresets(harness);
-  const filtered = presets.filter((p) =>
-    p.value.toLowerCase().includes(inputValue.toLowerCase()) ||
-    p.display.toLowerCase().includes(inputValue.toLowerCase())
-  );
-
-  const commitValue = (val: string) => {
-    setOpen(false);
-    const trimmed = val.trim();
-    const next = trimmed || null;
-    if (next !== value) {
-      onChange(next);
-    }
-  };
-
-  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (containerRef.current?.contains(e.relatedTarget as Node)) {
-      return;
-    }
-    commitValue(inputValue);
-  };
-
-  const handlePresetSelect = (presetValue: string) => {
-    setInputValue(presetValue);
-    setOpen(false);
-    if (presetValue !== value) {
-      onChange(presetValue);
-    }
-  };
-
-  const placeholder = harness === "codex" ? "gpt-5.4" : "sonnet";
+  const currentValue = modelSelectValue(value, presets);
+  const defaultLabel = isGlobal ? "Harness default" : "Use global default";
+  const defaultDescription = isGlobal
+    ? "Follow this provider's built-in default model for the lane."
+    : "Inherit the global model configured for this lane.";
+  const hasCustomValue =
+    value != null && !presets.some((preset) => preset.value === value);
 
   return (
-    <div ref={containerRef} className="relative">
-      <Input
-        value={inputValue}
-        onChange={(e) => {
-          setInputValue(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={handleInputBlur}
-        placeholder={placeholder}
+    <Select
+      value={currentValue}
+      onValueChange={(nextValue) => {
+        const resolvedValue =
+          nextValue === MODEL_DEFAULT_VALUE
+            ? null
+            : nextValue.startsWith(MODEL_CUSTOM_VALUE_PREFIX)
+              ? nextValue.slice(MODEL_CUSTOM_VALUE_PREFIX.length)
+              : nextValue;
+        if (resolvedValue !== value) {
+          onChange(resolvedValue);
+        }
+      }}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        data-testid={testId}
+        aria-label={`${laneLabel} model`}
         disabled={disabled}
         className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
-      />
-      {open && !disabled && filtered.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md shadow-lg max-h-44 overflow-y-auto">
-          {filtered.map((preset) => (
-            <button
-              key={preset.value}
-              type="button"
-              tabIndex={0}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--accent-muted)] cursor-pointer"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handlePresetSelect(preset.value);
-              }}
-            >
-              <span className="text-[var(--text-primary)]">{preset.display}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      >
+        <SelectValue
+          placeholder={harness === "codex" ? "Select Codex model" : "Select Claude model"}
+        />
+      </SelectTrigger>
+      <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+        <SelectItem value={MODEL_DEFAULT_VALUE}>
+          <div className="flex flex-col">
+            <span className="text-[var(--text-primary)]">{defaultLabel}</span>
+            <span className="text-xs text-[var(--text-muted)]">{defaultDescription}</span>
+          </div>
+        </SelectItem>
+        {presets.map((preset) => (
+          <SelectItem key={preset.value} value={preset.value}>
+            <span className="text-[var(--text-primary)]">{preset.display}</span>
+          </SelectItem>
+        ))}
+        {hasCustomValue && value && (
+          <SelectItem value={`${MODEL_CUSTOM_VALUE_PREFIX}${value}`}>
+            <div className="flex flex-col">
+              <span className="text-[var(--text-primary)]">Custom model</span>
+              <span className="text-xs text-[var(--text-muted)]">{value}</span>
+            </div>
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -391,7 +398,6 @@ function HarnessRow({
   const meta = LANE_META[lane.lane];
   const configuredHarness = lane.configuredHarness ?? lane.effectiveHarness;
   const showWarning = !!lane.error || lane.missingCoreExecFeatures.length > 0;
-  const comboboxKey = `${lane.lane}-${configuredHarness}`;
   const showCodexControls = configuredHarness === "codex";
   const codexPolicyLocked = showCodexControls;
   const effortOptions = getEffortOptions(isGlobal);
@@ -403,6 +409,7 @@ function HarnessRow({
 
   const showEffectiveModel = !isGlobal && effectiveModel !== (lane.row?.model ?? null);
   const showEffectiveEffort = !isGlobal && effectiveEffort !== (lane.row?.effort ?? null);
+  const availabilityStatusLabel = showWarning ? "Needs attention" : "Available";
 
   return (
     <div className={isLast ? undefined : "border-b border-[var(--border-subtle)]"}>
@@ -427,9 +434,10 @@ function HarnessRow({
             <SelectTrigger
               id={`harness-${lane.lane}`}
               data-testid={`harness-${lane.lane}`}
+              aria-label={`${meta.label} provider`}
               className="w-[180px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
             >
-              <SelectValue placeholder="Select harness" />
+              <SelectValue placeholder="Select provider" />
             </SelectTrigger>
             <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
               {HARNESS_OPTIONS.map((option) => (
@@ -460,12 +468,14 @@ function HarnessRow({
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
               Model
             </p>
-            <ModelCombobox
+            <ModelSelect
               value={lane.row?.model ?? null}
               harness={configuredHarness}
               disabled={disabled}
               onChange={(nextValue) => onLaneChange({ model: nextValue })}
-              comboboxKey={comboboxKey}
+              laneLabel={meta.label}
+              isGlobal={isGlobal}
+              testId={`model-${lane.lane}`}
             />
             {showEffectiveModel && (
               <p className="text-[11px] text-[var(--text-muted)]">
@@ -485,7 +495,10 @@ function HarnessRow({
               onValueChange={(value) => onLaneChange({ effort: fromSelectValue(value) })}
               disabled={disabled}
             >
-              <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+              <SelectTrigger
+                aria-label={`${meta.label} effort`}
+                className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+              >
                 <SelectValue placeholder="Select effort" />
               </SelectTrigger>
               <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
@@ -523,6 +536,7 @@ function HarnessRow({
                 >
                   <SelectTrigger
                     data-testid={`approval-${lane.lane}`}
+                    aria-label={`${meta.label} approval policy`}
                     className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
                   >
                     <SelectValue placeholder="Select approval policy" />
@@ -549,6 +563,7 @@ function HarnessRow({
                 >
                   <SelectTrigger
                     data-testid={`sandbox-${lane.lane}`}
+                    aria-label={`${meta.label} sandbox mode`}
                     className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
                   >
                     <SelectValue placeholder="Select sandbox mode" />
@@ -577,6 +592,7 @@ function HarnessRow({
           {showWarning && (
             <TriangleAlert className="inline-block w-3 h-3 mr-1 align-[-2px]" />
           )}
+          <span className="font-medium">{`Status: ${availabilityStatusLabel}.`}</span>{" "}
           {availabilityCopy(lane)}
         </p>
       </div>
