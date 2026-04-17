@@ -3,7 +3,6 @@ import type { ExecutionSettings } from "@/types/settings";
 import {
   NumberSettingRow,
   SectionCard,
-  ToggleSettingRow,
 } from "../SettingsView.shared";
 
 interface ExecutionSectionProps {
@@ -46,34 +45,6 @@ export default function ExecutionSection({
         unit=""
         disabled={disabled}
         onChange={(value) => onChange({ project_ideation_max: value })}
-      />
-      <ToggleSettingRow
-        id="auto-commit"
-        label="Auto Commit"
-        description="Automatically commit changes after each completed task"
-        checked={settings.auto_commit}
-        disabled={disabled}
-        onChange={() => onChange({ auto_commit: !settings.auto_commit })}
-      />
-      <ToggleSettingRow
-        id="pause-on-failure"
-        label="Pause on Failure"
-        description="Stop the task queue when a task fails"
-        checked={settings.pause_on_failure}
-        disabled={disabled}
-        onChange={() => onChange({ pause_on_failure: !settings.pause_on_failure })}
-      />
-      <ToggleSettingRow
-        id="review-before-destructive"
-        label="Review Before Destructive"
-        description="Insert review point before tasks that delete files or modify configs"
-        checked={settings.review_before_destructive}
-        disabled={disabled}
-        onChange={() =>
-          onChange({
-            review_before_destructive: !settings.review_before_destructive,
-          })
-        }
       />
     </SectionCard>
   );

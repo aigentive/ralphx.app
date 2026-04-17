@@ -1899,8 +1899,6 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 spawn_harness_override,
                 options.model_override.as_deref(),
                 self.agent_lane_settings_repo.as_ref(),
-                self.ideation_model_settings_repo.as_ref(),
-                self.ideation_effort_settings_repo.as_ref(),
             )
             .await;
         apply_send_message_overrides(&mut resolved_spawn_settings, &options);

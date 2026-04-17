@@ -88,6 +88,9 @@ macro_rules! register_tauri_commands {
             commands::review_commands::reopen_issue,
             commands::review_commands::mark_issue_in_progress,
             commands::review_commands::mark_issue_addressed,
+            // Review settings commands
+            commands::review_commands::get_review_settings,
+            commands::review_commands::update_review_settings,
             commands::execution_commands::get_execution_status,
             commands::execution_commands::pause_execution,
             commands::execution_commands::resume_execution,

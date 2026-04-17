@@ -3,13 +3,8 @@ use std::sync::Arc;
 use super::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort};
 use crate::domain::entities::ChatContextType;
-use crate::domain::repositories::{
-    AgentLaneSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-};
-use crate::infrastructure::memory::{
-    MemoryAgentLaneSettingsRepository, MemoryIdeationEffortSettingsRepository,
-    MemoryIdeationModelSettingsRepository,
-};
+use crate::domain::repositories::AgentLaneSettingsRepository;
+use crate::infrastructure::memory::MemoryAgentLaneSettingsRepository;
 
 fn claude_lane_settings(
     model: &str,
@@ -42,22 +37,10 @@ fn codex_lane_settings(
 }
 
 #[tokio::test]
-async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
+async fn lane_row_with_claude_harness_overrides_model_and_effort() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
 
-    model_repo
-        .upsert_global("haiku", "haiku", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "low", "low")
-        .await
-        .expect("legacy effort seed should succeed");
     lane_repo
         .upsert_for_project(
             "proj-1",
@@ -88,8 +71,6 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
         None,
         None,
         Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
     )
     .await;
 
@@ -121,162 +102,10 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
 }
 
 #[tokio::test]
-async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
-    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
-        Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
-
-    model_repo
-        .upsert_for_project("proj-2", "opus", "haiku", "sonnet", "haiku")
-        .await
-        .expect("legacy project model seed should succeed");
-    effort_repo
-        .upsert(Some("proj-2"), "high", "medium")
-        .await
-        .expect("legacy project effort seed should succeed");
-
-    let resolved = resolve_agent_spawn_settings(
-        "ralphx-ideation",
-        Some("proj-2"),
-        ChatContextType::Ideation,
-        None,
-        None,
-        None,
-        Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
-    )
-    .await;
-
-    assert_eq!(resolved.configured_harness, None);
-    assert_eq!(resolved.configured_model, None);
-    assert_eq!(resolved.model, "opus");
-    assert_eq!(resolved.logical_effort, Some(LogicalEffort::High));
-    assert_eq!(resolved.claude_effort.as_deref(), Some("high"));
-    assert_eq!(resolved.subagent_model_cap.as_deref(), Some("haiku"));
-}
-
-#[tokio::test]
-async fn legacy_ideation_agent_aliases_still_resolve_legacy_buckets() {
-    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
-        Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
-
-    model_repo
-        .upsert_global("opus", "haiku", "sonnet", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "high", "medium")
-        .await
-        .expect("legacy effort seed should succeed");
-
-    let primary = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
-        None,
-        ChatContextType::Ideation,
-        None,
-        None,
-        None,
-        Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
-    )
-    .await;
-    assert_eq!(primary.model, "opus");
-    assert_eq!(primary.logical_effort, Some(LogicalEffort::High));
-
-    let verifier = resolve_agent_spawn_settings(
-        "plan-verifier",
-        None,
-        ChatContextType::Ideation,
-        None,
-        None,
-        None,
-        Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
-    )
-    .await;
-    assert_eq!(verifier.model, "haiku");
-    assert_eq!(verifier.logical_effort, Some(LogicalEffort::Medium));
-}
-
-#[tokio::test]
-async fn claude_lane_without_model_or_effort_still_falls_back_to_legacy_settings() {
-    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
-        Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
-
-    model_repo
-        .upsert_global("opus", "haiku", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "high", "medium")
-        .await
-        .expect("legacy effort seed should succeed");
-    lane_repo
-        .upsert_global(
-            AgentLane::IdeationPrimary,
-            &AgentLaneSettings {
-                harness: AgentHarnessKind::Claude,
-                model: None,
-                effort: None,
-                approval_policy: None,
-                sandbox_mode: None,
-            },
-        )
-        .await
-        .expect("claude lane upsert should succeed");
-
-    let resolved = resolve_agent_spawn_settings(
-        "ralphx-ideation",
-        None,
-        ChatContextType::Ideation,
-        None,
-        None,
-        None,
-        Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
-    )
-    .await;
-
-    assert_eq!(resolved.effective_harness, AgentHarnessKind::Claude);
-    assert_eq!(resolved.model, "opus");
-    assert_eq!(resolved.logical_effort, Some(LogicalEffort::High));
-    assert_eq!(resolved.claude_effort.as_deref(), Some("high"));
-    assert_eq!(resolved.approval_policy, None);
-    assert_eq!(resolved.sandbox_mode, None);
-}
-
-#[tokio::test]
 async fn codex_lane_selection_uses_codex_lane_settings() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
 
-    model_repo
-        .upsert_global("sonnet", "opus", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "medium", "high")
-        .await
-        .expect("legacy effort seed should succeed");
     lane_repo
         .upsert_global(
             AgentLane::IdeationPrimary,
@@ -310,8 +139,6 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
         None,
         None,
         Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
     )
     .await;
 
@@ -346,19 +173,6 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
 async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
-
-    model_repo
-        .upsert_global("sonnet", "opus", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "medium", "high")
-        .await
-        .expect("legacy effort seed should succeed");
 
     lane_repo
         .upsert_global(
@@ -382,8 +196,6 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
         None,
         None,
         Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
     )
     .await;
 
@@ -399,19 +211,6 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
 async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
-
-    model_repo
-        .upsert_global("sonnet", "opus", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "medium", "high")
-        .await
-        .expect("legacy effort seed should succeed");
 
     lane_repo
         .upsert_global(
@@ -435,8 +234,6 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
         None,
         None,
         Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
     )
     .await;
 
@@ -452,19 +249,7 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
 async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selected() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
-    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
-        Arc::new(MemoryIdeationModelSettingsRepository::new());
-    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
-        Arc::new(MemoryIdeationEffortSettingsRepository::new());
 
-    model_repo
-        .upsert_global("sonnet", "opus", "haiku", "haiku")
-        .await
-        .expect("legacy model seed should succeed");
-    effort_repo
-        .upsert(None, "medium", "high")
-        .await
-        .expect("legacy effort seed should succeed");
     lane_repo
         .upsert_global(
             AgentLane::IdeationVerifier,
@@ -488,8 +273,6 @@ async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selecte
         None,
         None,
         Some(&lane_repo),
-        Some(&model_repo),
-        Some(&effort_repo),
     )
     .await;
 
@@ -525,8 +308,6 @@ async fn execution_worker_lane_can_resolve_codex_settings() {
         None,
         None,
         Some(&lane_repo),
-        None,
-        None,
     )
     .await;
 
@@ -565,8 +346,6 @@ async fn execution_worker_harness_override_ignores_mismatched_lane_harness_setti
         Some(AgentHarnessKind::Codex),
         None,
         Some(&lane_repo),
-        None,
-        None,
     )
     .await;
 
@@ -609,8 +388,6 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
         None,
         None,
         Some(&lane_repo),
-        None,
-        None,
     )
     .await;
 
@@ -647,8 +424,6 @@ async fn reexecuting_task_execution_uses_reexecutor_lane_settings() {
         None,
         None,
         Some(&lane_repo),
-        None,
-        None,
     )
     .await;
 

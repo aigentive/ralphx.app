@@ -367,3 +367,47 @@ pub struct MarkIssueAddressedInput {
     pub resolution_notes: String,
     pub attempt_number: i32,
 }
+
+// ============================================================================
+// Review Settings Types
+// ============================================================================
+
+/// Response for global review settings
+#[derive(Debug, Serialize)]
+pub struct ReviewSettingsResponse {
+    pub require_human_review: bool,
+    pub max_fix_attempts: u32,
+    pub max_revision_cycles: u32,
+    /// Stored-only; follow-up decision pending
+    pub ai_review_enabled: bool,
+    /// Stored-only; follow-up decision pending
+    pub ai_review_auto_fix: bool,
+    /// Stored-only; follow-up decision pending
+    pub require_fix_approval: bool,
+}
+
+/// Input for updating the primary review policy fields.
+/// Ballast fields (ai_review_enabled, ai_review_auto_fix, require_fix_approval)
+/// are preserved as-is; only provide fields you want to change.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReviewSettingsInput {
+    pub require_human_review: Option<bool>,
+    pub max_fix_attempts: Option<u32>,
+    pub max_revision_cycles: Option<u32>,
+}
+
+use crate::domain::review::ReviewSettings;
+
+impl From<ReviewSettings> for ReviewSettingsResponse {
+    fn from(s: ReviewSettings) -> Self {
+        Self {
+            require_human_review: s.require_human_review,
+            max_fix_attempts: s.max_fix_attempts,
+            max_revision_cycles: s.max_revision_cycles,
+            ai_review_enabled: s.ai_review_enabled,
+            ai_review_auto_fix: s.ai_review_auto_fix,
+            require_fix_approval: s.require_fix_approval,
+        }
+    }
+}

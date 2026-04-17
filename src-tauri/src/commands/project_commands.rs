@@ -1,7 +1,7 @@
 // Tauri commands for Project CRUD operations
 // Thin layer that delegates to ProjectRepository
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
@@ -17,6 +17,16 @@ use crate::domain::entities::{
     ProjectId,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
+
+/// Deserializes a JSON field as `None` when absent, `Some(None)` when `null`, and `Some(Some(v))` when present.
+/// Used for nullable patch fields where absent means "don't change" and null means "clear".
+fn deserialize_optional_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::deserialize(deserializer)?))
+}
 
 /// Input for creating a new project
 #[derive(Debug, Deserialize)]
@@ -38,6 +48,8 @@ pub struct UpdateProjectInput {
     pub base_branch: Option<String>,
     pub merge_validation_mode: Option<String>,
     pub merge_strategy: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub worktree_parent_directory: Option<Option<String>>,
 }
 
 /// Response wrapper for project operations
@@ -300,6 +312,9 @@ pub async fn update_project(
     }
     if let Some(strategy_str) = input.merge_strategy {
         project.merge_strategy = strategy_str.parse().unwrap_or(MergeStrategy::RebaseSquash);
+    }
+    if let Some(dir) = input.worktree_parent_directory {
+        project.worktree_parent_directory = dir;
     }
 
     project.touch();

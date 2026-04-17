@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Cpu, TriangleAlert } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,149 @@ import {
 import { useAgentHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
 import { selectActiveProject, useProjectStore } from "@/stores/projectStore";
 
+// ============================================================================
+// Preset definitions
+// ============================================================================
+
+const CLAUDE_MODEL_PRESETS = [
+  { value: "sonnet", display: "sonnet" },
+  { value: "opus", display: "opus" },
+  { value: "haiku", display: "haiku" },
+] as const;
+
+const CODEX_MODEL_PRESETS = [
+  { value: "gpt-5.4", display: "gpt-5.4 (Current)" },
+  { value: "gpt-5.4-mini", display: "gpt-5.4-mini" },
+  { value: "gpt-5.3-codex", display: "gpt-5.3-codex" },
+  { value: "gpt-5.3-codex-spark", display: "gpt-5.3-codex-spark" },
+] as const;
+
+function getModelPresets(harness: string) {
+  return harness === "codex" ? CODEX_MODEL_PRESETS : CLAUDE_MODEL_PRESETS;
+}
+
+function getEffortOptions(isGlobal: boolean) {
+  return [
+    {
+      value: "inherit",
+      label: "Default",
+      description: isGlobal
+        ? "Uses the app default from config"
+        : "Uses the global default for this lane",
+    },
+    { value: "low", label: "Low", description: "Fastest responses, minimal reasoning" },
+    { value: "medium", label: "Medium", description: "Balanced speed and quality" },
+    { value: "high", label: "High", description: "Deeper reasoning, slower responses" },
+    { value: "xhigh", label: "Maximum", description: "Highest quality, longest response time" },
+  ] as const;
+}
+
+function effortLabel(value: string | null | undefined): string {
+  if (!value || value === "inherit") return "Default";
+  switch (value) {
+    case "low": return "Low";
+    case "medium": return "Medium";
+    case "high": return "High";
+    case "xhigh": return "Maximum";
+    default: return value;
+  }
+}
+
+// ============================================================================
+// ModelCombobox — input with harness-specific preset dropdown
+// ============================================================================
+
+interface ModelComboboxProps {
+  value: string | null;
+  harness: string;
+  disabled: boolean;
+  onChange: (value: string | null) => void;
+  comboboxKey: string;
+}
+
+function ModelCombobox({ value, harness, disabled, onChange, comboboxKey }: ModelComboboxProps) {
+  const [inputValue, setInputValue] = useState(value ?? "");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync when harness changes or external reset
+  useEffect(() => {
+    setInputValue(value ?? "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comboboxKey]);
+
+  const presets = getModelPresets(harness);
+  const filtered = presets.filter((p) =>
+    p.value.toLowerCase().includes(inputValue.toLowerCase()) ||
+    p.display.toLowerCase().includes(inputValue.toLowerCase())
+  );
+
+  const commitValue = (val: string) => {
+    setOpen(false);
+    const trimmed = val.trim();
+    const next = trimmed || null;
+    if (next !== value) {
+      onChange(next);
+    }
+  };
+
+  const handleInputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (containerRef.current?.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    commitValue(inputValue);
+  };
+
+  const handlePresetSelect = (presetValue: string) => {
+    setInputValue(presetValue);
+    setOpen(false);
+    if (presetValue !== value) {
+      onChange(presetValue);
+    }
+  };
+
+  const placeholder = harness === "codex" ? "gpt-5.4" : "sonnet";
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        value={inputValue}
+        onChange={(e) => {
+          setInputValue(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={handleInputBlur}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+      />
+      {open && !disabled && filtered.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md shadow-lg max-h-44 overflow-y-auto">
+          {filtered.map((preset) => (
+            <button
+              key={preset.value}
+              type="button"
+              tabIndex={0}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--accent-muted)] cursor-pointer"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handlePresetSelect(preset.value);
+              }}
+            >
+              <span className="text-[var(--text-primary)]">{preset.display}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Static config
+// ============================================================================
+
 const HARNESS_OPTIONS: {
   value: KnownHarness;
   label: string;
@@ -38,14 +181,6 @@ const HARNESS_OPTIONS: {
     description: "Provider-neutral Codex harness with solo ideation and lane-level execution routing",
   },
 ];
-
-const EFFORT_OPTIONS = [
-  { value: "inherit", label: "Inherit" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "XHigh" },
-] as const;
 
 const APPROVAL_POLICY_OPTIONS = [
   { value: "inherit", label: "Inherit" },
@@ -223,15 +358,15 @@ function baseLaneUpdate(lane: AgentHarnessLaneView) {
   };
 }
 
-function HarnessRow({
-  lane,
-  disabled,
-  onHarnessChange,
-  onLaneChange,
-  isLast = false,
-}: {
+// ============================================================================
+// HarnessRow
+// ============================================================================
+
+interface HarnessRowProps {
   lane: AgentHarnessLaneView;
+  globalLane: AgentHarnessLaneView | null;
   disabled: boolean;
+  isGlobal: boolean;
   onHarnessChange: (value: KnownHarness) => void;
   onLaneChange: (
     patch: Partial<{
@@ -242,13 +377,32 @@ function HarnessRow({
     }>,
   ) => void;
   isLast?: boolean;
-}) {
+}
+
+function HarnessRow({
+  lane,
+  globalLane,
+  disabled,
+  isGlobal,
+  onHarnessChange,
+  onLaneChange,
+  isLast = false,
+}: HarnessRowProps) {
   const meta = LANE_META[lane.lane];
   const configuredHarness = lane.configuredHarness ?? lane.effectiveHarness;
   const showWarning = !!lane.error || lane.missingCoreExecFeatures.length > 0;
-  const modelKey = `${lane.lane}-${lane.row?.model ?? ""}-${configuredHarness}`;
+  const comboboxKey = `${lane.lane}-${configuredHarness}`;
   const showCodexControls = configuredHarness === "codex";
   const codexPolicyLocked = showCodexControls;
+  const effortOptions = getEffortOptions(isGlobal);
+
+  // Effective model: this lane's configured model, falling back to global lane's configured model
+  const effectiveModel = lane.row?.model ?? globalLane?.row?.model ?? null;
+  // Effective effort: this lane's configured effort, falling back to global lane's configured effort
+  const effectiveEffort = lane.row?.effort ?? globalLane?.row?.effort ?? null;
+
+  const showEffectiveModel = !isGlobal && effectiveModel !== (lane.row?.model ?? null);
+  const showEffectiveEffort = !isGlobal && effectiveEffort !== (lane.row?.effort ?? null);
 
   return (
     <div className={isLast ? undefined : "border-b border-[var(--border-subtle)]"}>
@@ -306,21 +460,21 @@ function HarnessRow({
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
               Model
             </p>
-            <Input
-              key={modelKey}
-              defaultValue={lane.row?.model ?? ""}
-              placeholder={configuredHarness === "codex" ? "gpt-5.4" : "sonnet"}
+            <ModelCombobox
+              value={lane.row?.model ?? null}
+              harness={configuredHarness}
               disabled={disabled}
-              className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
-              onBlur={(event) => {
-                const nextValue = event.target.value.trim();
-                const currentValue = lane.row?.model ?? "";
-                if (nextValue === currentValue) {
-                  return;
-                }
-                onLaneChange({ model: nextValue || null });
-              }}
+              onChange={(nextValue) => onLaneChange({ model: nextValue })}
+              comboboxKey={comboboxKey}
             />
+            {showEffectiveModel && (
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Effective:{" "}
+                <span className="text-[var(--text-secondary)]">
+                  {effectiveModel ?? "(harness default)"}
+                </span>
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -335,13 +489,24 @@ function HarnessRow({
                 <SelectValue placeholder="Select effort" />
               </SelectTrigger>
               <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
-                {EFFORT_OPTIONS.map((option) => (
+                {effortOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    <div className="flex flex-col">
+                      <span className="text-[var(--text-primary)]">{option.label}</span>
+                      <span className="text-xs text-[var(--text-muted)]">{option.description}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {showEffectiveEffort && (
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Effective:{" "}
+                <span className="text-[var(--text-secondary)]">
+                  {effortLabel(effectiveEffort)}
+                </span>
+              </p>
+            )}
           </div>
           {showCodexControls && (
             <>
@@ -419,16 +584,24 @@ function HarnessRow({
   );
 }
 
+// ============================================================================
+// HarnessSubsection
+// ============================================================================
+
 function HarnessSubsection({
   title,
   projectId,
   projectName,
   scope,
+  globalLanes,
+  isGlobal,
 }: {
   title: string;
   projectId: string | null;
   projectName: string | null;
   scope: HarnessSectionScope;
+  globalLanes: AgentHarnessLaneView[];
+  isGlobal: boolean;
 }) {
   const [showError, setShowError] = useState(false);
   const {
@@ -437,7 +610,7 @@ function HarnessSubsection({
     updateLane,
     saveError,
   } = useAgentHarnessSettings(projectId);
-  const isDisabled = projectId === null && title !== "Global Defaults";
+  const isDisabled = !isGlobal && projectId === null;
 
   const handleHarnessChange = (lane: AgentLane, harness: KnownHarness) => {
     if (isDisabled) {
@@ -482,11 +655,11 @@ function HarnessSubsection({
       <div className="mb-3">
         <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
         <p className="text-xs text-[var(--text-muted)] mt-1">
-          {title === "Global Defaults"
+          {isGlobal
             ? scope === "execution"
               ? "Default harness policy for execution worker, reviewer, re-executor, and merger lanes."
               : "Default harness policy for ideation leads, verification, and specialist lanes."
-            : projectId
+            : projectId !== null
               ? `Project overrides for ${projectName ?? "the active project"}.`
               : scope === "execution"
                 ? "Select a project to override execution-pipeline agents for a specific project."
@@ -521,16 +694,23 @@ function HarnessSubsection({
                   {group.description}
                 </p>
               </div>
-              {groupLanes.map((lane, index) => (
-                <HarnessRow
-                  key={`${title}-${lane.lane}`}
-                  lane={lane}
-                  disabled={isDisabled || isPlaceholderData}
-                  onHarnessChange={(value) => handleHarnessChange(lane.lane, value)}
-                  onLaneChange={(patch) => handleLaneSettingsChange(lane, patch)}
-                  isLast={index === groupLanes.length - 1}
-                />
-              ))}
+              {groupLanes.map((lane, index) => {
+                const globalLane = isGlobal
+                  ? null
+                  : (globalLanes.find((g) => g.lane === lane.lane) ?? null);
+                return (
+                  <HarnessRow
+                    key={`${title}-${lane.lane}`}
+                    lane={lane}
+                    globalLane={globalLane}
+                    disabled={isDisabled || isPlaceholderData}
+                    isGlobal={isGlobal}
+                    onHarnessChange={(value) => handleHarnessChange(lane.lane, value)}
+                    onLaneChange={(patch) => handleLaneSettingsChange(lane, patch)}
+                    isLast={index === groupLanes.length - 1}
+                  />
+                );
+              })}
             </div>
           );
         })}
@@ -538,6 +718,10 @@ function HarnessSubsection({
     </div>
   );
 }
+
+// ============================================================================
+// AgentHarnessSection
+// ============================================================================
 
 function AgentHarnessSection({
   scope,
@@ -552,6 +736,9 @@ function AgentHarnessSection({
   const projectId = activeProject?.id ?? null;
   const projectName = activeProject?.name ?? null;
 
+  // Fetch global lanes for effective value resolution in project rows
+  const { lanes: globalLanes } = useAgentHarnessSettings(null);
+
   return (
     <SectionCard
       icon={<Cpu className="w-5 h-5 text-[var(--accent-primary)]" />}
@@ -564,6 +751,8 @@ function AgentHarnessSection({
           projectId={null}
           projectName={null}
           scope={scope}
+          globalLanes={globalLanes}
+          isGlobal={true}
         />
 
         <Separator className="bg-[var(--border-subtle)]" />
@@ -573,6 +762,8 @@ function AgentHarnessSection({
           projectId={projectId}
           projectName={projectName}
           scope={scope}
+          globalLanes={globalLanes}
+          isGlobal={false}
         />
       </div>
     </SectionCard>

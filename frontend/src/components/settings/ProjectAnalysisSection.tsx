@@ -3,7 +3,7 @@
  *
  * Features:
  * - Editable analysis entries with per-field reset
- * - Re-analyze button to trigger project analyzer agent
+ * - Refresh Detected Commands button to trigger project analyzer agent
  * - Batch save button (appears when isDirty)
  * - Template variables reference
  *
@@ -144,10 +144,10 @@ export function ProjectAnalysisSection() {
   return (
     <SectionCard
       icon={<Search className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
-      title="Project Analysis"
+      title="Setup & Validation"
       description="Build system detection and validation commands"
     >
-      {/* Header: Last Analyzed + Re-analyze */}
+      {/* Header: Last Analyzed + Refresh Detected Commands */}
       <div className="flex items-center justify-between py-2">
         <span className="text-xs text-[var(--text-muted)]">
           Last Analyzed: {formatTimestamp(project.analyzedAt)}
@@ -164,7 +164,7 @@ export function ProjectAnalysisSection() {
           ) : (
             <Search className="w-3.5 h-3.5 mr-1" />
           )}
-          Re-analyze
+          Refresh Detected Commands
         </Button>
       </div>
 
@@ -192,7 +192,7 @@ export function ProjectAnalysisSection() {
           <p className="text-xs text-[var(--text-muted)] italic py-2">
             {project.analyzedAt
               ? "No build systems detected"
-              : "Not yet analyzed. Click Re-analyze to detect build systems."}
+              : "Not yet analyzed. Click Refresh Detected Commands to detect build systems."}
           </p>
         )}
 

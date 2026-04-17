@@ -556,15 +556,11 @@ export type {
 // Project Settings types and schemas
 export {
   ExecutionSettingsSchema,
-  ModelSettingsSchema,
   ProjectReviewSettingsSchema,
-  SupervisorSettingsSchema,
   ProjectSettingsSchema,
   SettingsProfileSchema,
   DEFAULT_EXECUTION_SETTINGS,
-  DEFAULT_MODEL_SETTINGS,
   DEFAULT_PROJECT_REVIEW_SETTINGS,
-  DEFAULT_SUPERVISOR_SETTINGS,
   DEFAULT_PROJECT_SETTINGS,
   parseProjectSettings,
   safeParseProjectSettings,
@@ -573,9 +569,7 @@ export {
 } from "./settings";
 export type {
   ExecutionSettings,
-  ModelSettings,
   ProjectReviewSettings,
-  SupervisorSettings,
   ProjectSettings,
   SettingsProfile,
 } from "./settings";

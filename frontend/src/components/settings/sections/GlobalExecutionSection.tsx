@@ -115,7 +115,7 @@ export default function GlobalExecutionSection() {
     return (
       <SectionCard
         icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
-        title="Global Execution"
+        title="Global Capacity"
         description="Cross-project concurrency limits"
       >
         <div className="py-4 flex items-center justify-center">
@@ -128,7 +128,7 @@ export default function GlobalExecutionSection() {
   return (
     <SectionCard
       icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
-      title="Global Execution"
+      title="Global Capacity"
       description="Cross-project concurrency limits"
     >
       {error && (

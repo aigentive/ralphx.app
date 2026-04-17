@@ -1,24 +1,27 @@
-/**
- * GitHubSettingsSection Tests
- */
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { GitHubSettingsSection } from "./GitHubSettingsSection";
+import { RepositorySettingsSection } from "./RepositorySettingsSection";
 
-// Mock the github settings hooks
 vi.mock("@/hooks/useGithubSettings", () => ({
   useGitRemoteUrl: vi.fn(),
   useGhAuthStatus: vi.fn(),
   useUpdateGithubPrEnabled: vi.fn(),
 }));
 
-// Mock the project store
 vi.mock("@/stores/projectStore", () => ({
   useProjectStore: vi.fn(),
   selectActiveProject: vi.fn(),
+}));
+
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    projects: {
+      update: vi.fn(),
+    },
+  },
+  getGitDefaultBranch: vi.fn(),
 }));
 
 import {
@@ -50,32 +53,27 @@ function createWrapper() {
       mutations: { retry: false },
     },
   });
-
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 }
 
-describe("GitHubSettingsSection", () => {
+describe("RepositorySettingsSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Default mock: returns the active project when called as useProjectStore(selector)
     vi.mocked(useProjectStore).mockReturnValue(mockProject);
 
-    // Default: GitHub remote URL
     vi.mocked(useGitRemoteUrl).mockReturnValue({
       data: "https://github.com/user/repo.git",
       isLoading: false,
     } as ReturnType<typeof useGitRemoteUrl>);
 
-    // Default: authenticated
     vi.mocked(useGhAuthStatus).mockReturnValue({
       data: true,
       isLoading: false,
     } as ReturnType<typeof useGhAuthStatus>);
 
-    // Default: mutation setup
     vi.mocked(useUpdateGithubPrEnabled).mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,
@@ -85,15 +83,29 @@ describe("GitHubSettingsSection", () => {
   it("renders null when no project selected", () => {
     vi.mocked(useProjectStore).mockReturnValue(null);
 
-    const { container } = render(<GitHubSettingsSection />, {
+    const { container } = render(<RepositorySettingsSection />, {
       wrapper: createWrapper(),
     });
 
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows remote URL when loaded", () => {
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+  it("renders Repository section title", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByText("Repository")).toBeInTheDocument();
+  });
+
+  it("renders Branching, Merge Behavior, and Diagnostics subsections", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByText("Branching")).toBeInTheDocument();
+    expect(screen.getByText("Merge Behavior")).toBeInTheDocument();
+    expect(screen.getByText("Diagnostics")).toBeInTheDocument();
+  });
+
+  it("shows remote URL in Diagnostics", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     expect(
       screen.getByText("https://github.com/user/repo.git")
@@ -101,7 +113,7 @@ describe("GitHubSettingsSection", () => {
   });
 
   it("shows Authenticated when gh authed", () => {
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     expect(screen.getByText("Authenticated")).toBeInTheDocument();
   });
@@ -112,35 +124,35 @@ describe("GitHubSettingsSection", () => {
       isLoading: false,
     } as ReturnType<typeof useGhAuthStatus>);
 
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     expect(screen.getByText("Not authenticated")).toBeInTheDocument();
   });
 
-  it("disables toggle when remote is not GitHub", () => {
+  it("disables PR mode toggle when remote is not GitHub", () => {
     vi.mocked(useGitRemoteUrl).mockReturnValue({
       data: "https://gitlab.com/user/repo.git",
       isLoading: false,
     } as ReturnType<typeof useGitRemoteUrl>);
 
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     const toggle = screen.getByTestId("github-pr-enabled");
     expect(toggle).toBeDisabled();
   });
 
-  it("enables toggle when remote is GitHub", () => {
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+  it("enables PR mode toggle when remote is GitHub", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     const toggle = screen.getByTestId("github-pr-enabled");
     expect(toggle).not.toBeDisabled();
   });
 
-  it("calls updatePrEnabled.mutateAsync on toggle", async () => {
+  it("calls updatePrEnabled.mutateAsync on PR toggle", async () => {
     const user = userEvent.setup();
     mockMutateAsync.mockResolvedValue(undefined);
 
-    render(<GitHubSettingsSection />, { wrapper: createWrapper() });
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
 
     const toggle = screen.getByTestId("github-pr-enabled");
     await user.click(toggle);
@@ -148,8 +160,21 @@ describe("GitHubSettingsSection", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({
         projectId: "proj-1",
-        enabled: true, // !project.githubPrEnabled (false) = true
+        enabled: true,
       });
     });
+  });
+
+  it("shows base-branch and worktree-location inputs", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByTestId("base-branch")).toBeInTheDocument();
+    expect(screen.getByTestId("worktree-location")).toBeInTheDocument();
+  });
+
+  it("shows merge validation select", () => {
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    expect(screen.getByTestId("merge-validation-mode")).toBeInTheDocument();
   });
 });

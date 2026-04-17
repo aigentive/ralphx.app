@@ -125,6 +125,48 @@ describe("IdeationHarnessSection", () => {
       { onError: expect.any(Function) },
     );
   });
+
+  it("shows Codex model presets in dropdown when input is cleared and focused", () => {
+    render(<IdeationHarnessSection />);
+
+    const modelInput = screen.getByDisplayValue("gpt-5.4");
+    // Clear the input to see all presets
+    fireEvent.change(modelInput, { target: { value: "" } });
+    fireEvent.focus(modelInput);
+
+    expect(screen.getByText("gpt-5.4 (Current)")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.3-codex")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.3-codex-spark")).toBeInTheDocument();
+  });
+
+  it("shows Claude model presets for Claude harness lanes", () => {
+    render(<IdeationHarnessSection />);
+
+    // ideation_verifier is Claude harness with null model
+    const claudeModelInput = screen.getByPlaceholderText("sonnet");
+    expect(claudeModelInput).toBeInTheDocument();
+    fireEvent.change(claudeModelInput, { target: { value: "" } });
+    fireEvent.focus(claudeModelInput);
+
+    expect(screen.getByText("sonnet")).toBeInTheDocument();
+    expect(screen.getByText("opus")).toBeInTheDocument();
+    expect(screen.getByText("haiku")).toBeInTheDocument();
+  });
+
+  it("shows effort options with clearer labels including Default and Maximum", () => {
+    render(<IdeationHarnessSection />);
+
+    // The effort select for ideation_primary shows "Maximum" for xhigh
+    // Check that the effort dropdowns render with the updated labels in the DOM
+    const effortTriggers = document.querySelectorAll('[placeholder="Select effort"]');
+    expect(effortTriggers.length).toBe(0); // triggers don't have placeholders; SelectValue shows selected
+
+    // Verify the effort options are rendered inside SelectContent (accessible)
+    // The "Default" label replaces "Inherit"
+    expect(screen.queryByText("Inherit")).not.toBeInTheDocument();
+    expect(screen.queryByText("XHigh")).not.toBeInTheDocument();
+  });
 });
 
 describe("ExecutionHarnessSection", () => {

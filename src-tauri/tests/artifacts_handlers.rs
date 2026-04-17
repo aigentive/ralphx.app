@@ -2427,7 +2427,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // Without caller_session_id → 409 Conflict
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2440,7 +2440,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // With caller_session_id = child.id → bypass → Ok
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         Some(child_id.as_str()),
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2457,7 +2457,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
         .unregister(&RunningAgentKey::new("ideation", child_id.as_str()), "test-agent-run")
         .await;
     let result = check_verification_freeze(
-        &[parent_verifying.clone()],
+        std::slice::from_ref(&parent_verifying),
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),

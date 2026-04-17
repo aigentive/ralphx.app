@@ -1,26 +1,23 @@
-/**
- * GitSettingsSection - Git settings for project configuration
- *
- * Features:
- * - Editable Base Branch with "Detect Default" action
- * - Worktree Location setting, persisted per project
- *
- * Follows SettingsView pattern using shared components.
- */
-
 import { useState, useCallback, useEffect } from "react";
-import { GitBranch, Loader2, RefreshCw } from "lucide-react";
+import { GitBranch, Loader2, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { api, getGitDefaultBranch } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { MergeValidationMode } from "@/types/project";
-import { SectionCard, SelectSettingRow, SettingRow } from "./SettingsView.shared";
+import {
+  SectionCard,
+  SelectSettingRow,
+  SettingRow,
+  ToggleSettingRow,
+} from "./SettingsView.shared";
+import {
+  useGitRemoteUrl,
+  useGhAuthStatus,
+  useUpdateGithubPrEnabled,
+} from "@/hooks/useGithubSettings";
 
-/**
- * Merge validation mode options
- */
 const VALIDATION_MODE_OPTIONS: {
   value: MergeValidationMode;
   label: string;
@@ -48,9 +45,30 @@ const VALIDATION_MODE_OPTIONS: {
   },
 ];
 
-/**
- * Text input row for editable settings with optional action button
- */
+function SubsectionLabel({
+  children,
+  hint,
+}: {
+  children: React.ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between pt-4 pb-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+        {children}
+      </span>
+      {hint && (
+        <span
+          className="text-[9px] uppercase tracking-wider text-[var(--text-muted)] rounded px-1.5 py-0.5"
+          style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function TextSettingRow({
   id,
   label,
@@ -113,105 +131,82 @@ function TextSettingRow({
   );
 }
 
-/**
- * GitSettingsSection component
- *
- * Allows users to configure git mode, base branch, and worktree location for the active project.
- */
-export function GitSettingsSection() {
+export function RepositorySettingsSection() {
   const project = useProjectStore(selectActiveProject);
   const updateProject = useProjectStore((s) => s.updateProject);
 
-  // Local state for pending changes
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDetectingDefault, setIsDetectingDefault] = useState(false);
   const [pendingBaseBranch, setPendingBaseBranch] = useState<string | null>(null);
   const [pendingWorktreeDir, setPendingWorktreeDir] = useState<string | null>(null);
 
-  // Reset pending state when project changes
+  const { data: remoteUrl, isLoading: isLoadingRemote } = useGitRemoteUrl(
+    project?.id ?? null
+  );
+  const { data: isGhAuthed, isLoading: isLoadingAuth } = useGhAuthStatus();
+  const updatePrEnabled = useUpdateGithubPrEnabled();
+
   useEffect(() => {
     setPendingBaseBranch(null);
     setPendingWorktreeDir(null);
   }, [project?.id]);
 
-  // Handler for base branch change (local state)
   const handleBaseBranchChange = useCallback((value: string) => {
     setPendingBaseBranch(value);
   }, []);
 
-  // Handler for persisting base branch on blur
   const handleBaseBranchBlur = useCallback(async () => {
     if (!project || pendingBaseBranch === null) return;
-
     const newValue = pendingBaseBranch.trim();
-    // Only persist if value changed
     if (newValue === (project.baseBranch ?? "")) {
       setPendingBaseBranch(null);
       return;
     }
-
     setIsUpdating(true);
     try {
-      await api.projects.update(project.id, {
-        baseBranch: newValue || null,
-      });
+      await api.projects.update(project.id, { baseBranch: newValue || null });
       updateProject(project.id, { baseBranch: newValue || null });
       setPendingBaseBranch(null);
       toast.success("Base branch updated");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update base branch"
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update base branch");
     } finally {
       setIsUpdating(false);
     }
   }, [project, pendingBaseBranch, updateProject]);
 
-  // Handler for detecting default branch
   const handleDetectDefaultBranch = useCallback(async () => {
     if (!project?.workingDirectory) {
       toast.error("No working directory set for this project");
       return;
     }
-
     setIsDetectingDefault(true);
     try {
       const defaultBranch = await getGitDefaultBranch(project.workingDirectory);
-
-      // Update both local state and persist to backend
       setIsUpdating(true);
-      await api.projects.update(project.id, {
-        baseBranch: defaultBranch,
-      });
+      await api.projects.update(project.id, { baseBranch: defaultBranch });
       updateProject(project.id, { baseBranch: defaultBranch });
       setPendingBaseBranch(null);
       toast.success(`Detected default branch: ${defaultBranch}`);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to detect default branch"
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to detect default branch");
     } finally {
       setIsDetectingDefault(false);
       setIsUpdating(false);
     }
   }, [project, updateProject]);
 
-  // Handler for worktree directory change (local state)
   const handleWorktreeDirChange = useCallback((value: string) => {
     setPendingWorktreeDir(value);
   }, []);
 
-  // Handler for persisting worktree directory on blur
   const handleWorktreeDirBlur = useCallback(async () => {
     if (!project || pendingWorktreeDir === null) return;
-
     const newValue = pendingWorktreeDir.trim();
-    // Only persist if value changed
     if (newValue === (project.worktreeParentDirectory ?? "~/ralphx-worktrees")) {
       setPendingWorktreeDir(null);
       return;
     }
-
     setIsUpdating(true);
     try {
       await api.projects.update(project.id, {
@@ -221,24 +216,18 @@ export function GitSettingsSection() {
       setPendingWorktreeDir(null);
       toast.success("Worktree location updated");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update worktree location"
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update worktree location");
     } finally {
       setIsUpdating(false);
     }
   }, [project, pendingWorktreeDir, updateProject]);
 
-  // Handler for merge validation mode change
   const handleValidationModeChange = useCallback(
     async (newMode: MergeValidationMode) => {
       if (!project || newMode === project.mergeValidationMode) return;
-
       setIsUpdating(true);
       try {
-        await api.projects.update(project.id, {
-          mergeValidationMode: newMode,
-        });
+        await api.projects.update(project.id, { mergeValidationMode: newMode });
         updateProject(project.id, { mergeValidationMode: newMode });
         const labels: Record<MergeValidationMode, string> = {
           block: "Block on Failure",
@@ -258,21 +247,36 @@ export function GitSettingsSection() {
     [project, updateProject]
   );
 
-  // Early return if no project selected (after all hooks)
-  if (!project) {
-    return null;
-  }
+  const handlePrToggle = async () => {
+    if (!project) return;
+    try {
+      await updatePrEnabled.mutateAsync({
+        projectId: project.id,
+        enabled: !project.githubPrEnabled,
+      });
+      toast.success(project.githubPrEnabled ? "PR mode disabled" : "PR mode enabled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update PR mode");
+    }
+  };
+
+  if (!project) return null;
 
   const baseBranch = pendingBaseBranch ?? project.baseBranch ?? "";
   const worktreeParentDirectory =
     pendingWorktreeDir ?? project.worktreeParentDirectory ?? "~/ralphx-worktrees";
 
+  const isGithubRemote = !!remoteUrl && remoteUrl.includes("github.com");
+  const isToggleDisabled = !isGithubRemote || updatePrEnabled.isPending;
+  const isSaving = isUpdating || updatePrEnabled.isPending;
+
   return (
     <SectionCard
       icon={<GitBranch className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
-      title="Git"
-      description="Version control settings"
+      title="Repository"
+      description="Version control and GitHub integration"
     >
+      <SubsectionLabel>Branching</SubsectionLabel>
       <TextSettingRow
         id="base-branch"
         label="Base Branch"
@@ -287,7 +291,6 @@ export function GitSettingsSection() {
         onAction={handleDetectDefaultBranch}
         actionLoading={isDetectingDefault}
       />
-
       <TextSettingRow
         id="worktree-location"
         label="Worktree Location"
@@ -299,6 +302,7 @@ export function GitSettingsSection() {
         onBlur={handleWorktreeDirBlur}
       />
 
+      <SubsectionLabel>Merge Behavior</SubsectionLabel>
       <SelectSettingRow
         id="merge-validation-mode"
         label="Merge Validation"
@@ -308,9 +312,64 @@ export function GitSettingsSection() {
         disabled={isUpdating}
         onChange={handleValidationModeChange}
       />
+      <ToggleSettingRow
+        id="github-pr-enabled"
+        label="GitHub PR Mode"
+        description={
+          !isGithubRemote
+            ? "Remote is not GitHub — PR mode unavailable"
+            : !isGhAuthed
+            ? "Enable to create draft PRs when plans execute (gh auth required for PR operations)"
+            : "Create draft PRs when plans execute instead of merging directly"
+        }
+        checked={isGithubRemote && (project.githubPrEnabled ?? false)}
+        disabled={isToggleDisabled}
+        onChange={handlePrToggle}
+      />
 
-      {/* Show saving indicator */}
-      {isUpdating && (
+      <SubsectionLabel hint="read-only">Diagnostics</SubsectionLabel>
+      <div
+        className="rounded-md -mx-2 px-2"
+        style={{
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.05)",
+        }}
+      >
+        <SettingRow
+          id="github-remote-url"
+          label="Remote URL"
+          description="Git remote origin for this project"
+        >
+          {isLoadingRemote ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+          ) : (
+            <span className="text-xs text-[var(--text-secondary)] font-mono max-w-[200px] truncate">
+              {remoteUrl ?? "Not configured"}
+            </span>
+          )}
+        </SettingRow>
+        <SettingRow
+          id="gh-auth-status"
+          label="GitHub CLI"
+          description="gh auth status — required for PR operations"
+        >
+          {isLoadingAuth ? (
+            <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+          ) : isGhAuthed ? (
+            <div className="flex items-center gap-1.5 text-xs text-green-400">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Authenticated</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-[var(--status-warning)]">
+              <XCircle className="w-3.5 h-3.5" />
+              <span>Not authenticated</span>
+            </div>
+          )}
+        </SettingRow>
+      </div>
+
+      {isSaving && (
         <div className="flex items-center gap-2 mt-2 text-xs text-[var(--text-muted)]">
           <Loader2 className="w-3 h-3 animate-spin" />
           <span>Saving...</span>

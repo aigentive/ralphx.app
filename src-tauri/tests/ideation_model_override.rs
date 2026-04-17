@@ -248,16 +248,43 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
 
 #[tokio::test]
 async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
-    // PO#5: ralphx-plan-verifier must use verifier_subagent_model ("opus"),
-    // NOT ideation_subagent_model ("haiku"), for CLAUDE_CODE_SUBAGENT_MODEL.
+    // ralphx-plan-verifier must use IdeationVerifierSubagent lane model ("opus"),
+    // NOT IdeationSubagent lane model ("haiku"), for CLAUDE_CODE_SUBAGENT_MODEL.
     // Tested on BOTH build_command AND build_resume_command.
-    // This test MUST FAIL when the dispatch is reversed.
-    let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "opus", "haiku")
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+    use ralphx_lib::domain::repositories::AgentLaneSettingsRepository;
+    use ralphx_lib::infrastructure::memory::MemoryAgentLaneSettingsRepository;
+
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationVerifierSubagent=opus, IdeationSubagent=haiku — must not bleed into verifier
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationVerifierSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("opus".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
         .await
         .unwrap();
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("haiku".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    let lane_repo_arc: Arc<dyn AgentLaneSettingsRepository> = lane_repo;
 
-    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
     let session_id = IdeationSessionId::new();
     let conv = ChatConversation::new_ideation(session_id.clone());
 
@@ -273,9 +300,9 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
         false,
         Arc::new(MemoryChatAttachmentRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
+        Some(Arc::clone(&lane_repo_arc)),
         None,
         None,
-        Some(Arc::clone(&settings_repo)),
         &[],
         0,
         None,
@@ -292,17 +319,17 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
     assert_eq!(
         build_subagent.as_deref(),
         Some("opus"),
-        "build_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+        "build_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationVerifierSubagent lane model (opus), not IdeationSubagent lane model (haiku)"
     );
     assert_ne!(
         build_subagent.as_deref(),
         Some("haiku"),
-        "ideation_subagent_model (haiku) must NOT bleed into ralphx-plan-verifier CLAUDE_CODE_SUBAGENT_MODEL"
+        "IdeationSubagent lane (haiku) must NOT bleed into ralphx-plan-verifier CLAUDE_CODE_SUBAGENT_MODEL"
     );
 
     // --- build_resume_command: same assertion ---
     // Seed a verification IdeationSession so get_entity_status_for_resume returns "verification",
-    // which routes to ralphx-plan-verifier (and thus uses verifier_subagent_model, not ideation_subagent_model).
+    // which routes to ralphx-plan-verifier (and thus uses IdeationVerifierSubagent lane, not IdeationSubagent lane).
     let verification_session = IdeationSessionBuilder::new()
         .id(session_id.clone())
         .project_id(ProjectId("proj-1".to_string()))
@@ -326,9 +353,9 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
         false,
         Arc::new(MemoryChatAttachmentRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
+        Some(Arc::clone(&lane_repo_arc)),
         None,
         None,
-        Some(settings_repo),
         ideation_session_repo,
         Arc::new(MemoryDelegatedSessionRepository::new()),
         Arc::new(MemoryTaskRepository::new()),
@@ -348,12 +375,12 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
     assert_eq!(
         resume_subagent.as_deref(),
         Some("opus"),
-        "build_resume_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+        "build_resume_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationVerifierSubagent lane model (opus)"
     );
     assert_ne!(
         resume_subagent.as_deref(),
         Some("haiku"),
-        "ideation_subagent_model (haiku) must NOT bleed into ralphx-plan-verifier in resume command"
+        "IdeationSubagent lane (haiku) must NOT bleed into ralphx-plan-verifier in resume command"
     );
 }
 

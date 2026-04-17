@@ -2452,11 +2452,35 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
 #[tokio::test]
 async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     // For non-verifier ideation agents (ralphx-ideation), the subagent cap
-    // must come from the ideation_subagent_model DB field — NOT from the agent's own
-    // resolved model and NOT from verifier_subagent_model.
-    let repo = MemoryIdeationModelSettingsRepository::new();
-    // Set ideation_subagent_model = "sonnet" explicitly; verifier_subagent_model = "haiku"
-    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku", "sonnet")
+    // must come from the IdeationSubagent lane row — NOT from the IdeationVerifierSubagent lane.
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationSubagent lane = "sonnet"; IdeationVerifierSubagent = "haiku" — must not bleed in
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationVerifierSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("haiku".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -2464,7 +2488,8 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     let conv = ChatConversation::new_ideation(session_id);
     let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
-    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+    let lane_repo_arc: Arc<dyn ralphx_lib::domain::repositories::AgentLaneSettingsRepository> =
+        lane_repo;
 
     // No entity_status → ralphx-ideation (default ideation agent)
     let result = with_claude_spawn_allowed_in_tests(|| async {
@@ -2479,9 +2504,9 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
             false,
             attachment_repo,
             artifact_repo,
+            Some(lane_repo_arc),
             None,
             None,
-            Some(settings_repo),
             &[],
             0,
             None,
@@ -2499,28 +2524,53 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // The subagent cap for ralphx-ideation comes from ideation_subagent_model DB field ("sonnet")
+    // The subagent cap for ralphx-ideation comes from IdeationSubagent lane row ("sonnet")
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "ralphx-ideation subagent cap should come from ideation_subagent_model DB field"
+        "ralphx-ideation subagent cap should come from IdeationSubagent lane row"
     );
     assert_ne!(
         subagent_model.as_deref(),
         Some("haiku"),
-        "verifier_subagent_model must not bleed into non-verifier agents"
+        "IdeationVerifierSubagent lane must not bleed into non-verifier agents"
     );
 }
 
 #[tokio::test]
 async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
-    // PO#4: build_command for ralphx-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
-    // to the ideation_subagent_model DB field value ("sonnet"), NOT to resolved_model_override
-    // ("opus", which is the agent's primary model). This verifies the dispatch uses the
-    // correct dedicated field.
-    let repo = MemoryIdeationModelSettingsRepository::new();
-    // primary_model=opus, ideation_subagent_model=sonnet — they differ so we can distinguish.
-    repo.upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
+    // build_command for ralphx-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
+    // to the IdeationSubagent lane row model ("sonnet"), NOT to the primary agent model ("opus").
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationPrimary=opus, IdeationSubagent=sonnet — they differ so we can distinguish
+    lane_repo
+        .upsert_for_project(
+            "proj-1",
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("opus".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    lane_repo
+        .upsert_for_project(
+            "proj-1",
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
         .await
         .unwrap();
 
@@ -2528,7 +2578,8 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
     let conv = ChatConversation::new_ideation(session_id);
     let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
-    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+    let lane_repo_arc: Arc<dyn ralphx_lib::domain::repositories::AgentLaneSettingsRepository> =
+        lane_repo;
 
     // entity_status=None → ralphx-ideation (non-verifier ideation agent)
     let result = with_claude_spawn_allowed_in_tests(|| async {
@@ -2543,13 +2594,13 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
             false,
             attachment_repo,
             artifact_repo,
+            Some(lane_repo_arc),
             None,
             None,
-            Some(settings_repo),
             &[],
             0,
             None,
-            None,          // model_override=None; resolved_model_override will be "opus" from primary bucket
+            None,          // model_override=None; primary model is "opus" from lane row
         )
         .await
     })
@@ -2563,117 +2614,126 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // CLAUDE_CODE_SUBAGENT_MODEL must come from ideation_subagent_model ("sonnet"),
-    // NOT from the agent's resolved primary model ("opus").
+    // CLAUDE_CODE_SUBAGENT_MODEL must come from IdeationSubagent lane row ("sonnet"),
+    // NOT from the agent's primary lane model ("opus").
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "CLAUDE_CODE_SUBAGENT_MODEL must equal ideation_subagent_model DB field (sonnet), not resolved_model_override (opus)"
+        "CLAUDE_CODE_SUBAGENT_MODEL must equal IdeationSubagent lane model (sonnet), not primary model (opus)"
     );
     assert_ne!(
         subagent_model.as_deref(),
         Some("opus"),
-        "resolved_model_override (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for ralphx-ideation"
+        "primary lane model (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for ralphx-ideation"
     );
 }
 
 #[tokio::test]
 async fn test_both_build_and_resume_use_ideation_subagent_cap() {
     // Both build_command AND build_resume_command must inject
-    // CLAUDE_CODE_SUBAGENT_MODEL = ideation_subagent_model DB field for ralphx-ideation.
-    // This test MUST FAIL if either function uses old behavior (resolved_model_override or agent's own model).
-    {
-        let seeded = MemoryIdeationModelSettingsRepository::new();
-        // primary_model=opus (so resolved_model_override=opus), ideation_subagent_model=sonnet
-        seeded
-            .upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
-            .await
-            .unwrap();
-        let settings_repo_seeded: Arc<dyn IdeationModelSettingsRepository> = Arc::new(seeded);
+    // CLAUDE_CODE_SUBAGENT_MODEL = IdeationSubagent lane row model for ralphx-ideation.
+    use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
+    use ralphx_lib::domain::repositories::AgentLaneSettingsRepository;
 
-        let session_id = IdeationSessionId::new();
-        let conv = ChatConversation::new_ideation(session_id.clone());
+    let lane_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    // IdeationPrimary=opus, IdeationSubagent=sonnet — they differ so we can distinguish
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationSubagent,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: Some("sonnet".to_string()),
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+            },
+        )
+        .await
+        .unwrap();
+    let lane_repo_arc: Arc<dyn AgentLaneSettingsRepository> = lane_repo;
 
-        // --- Test build_command ---
-        let build_result = with_claude_spawn_allowed_in_tests(|| async {
-            build_command(
-                std::path::Path::new("/fake/claude"),
-                std::path::Path::new("/fake/plugin"),
-                &conv,
-                "continue",
-                std::path::Path::new("/tmp"),
-                None,
-                Some("proj-1"),
-                false,
-                Arc::new(MemoryChatAttachmentRepository::new()),
-                Arc::new(MemoryArtifactRepository::new()),
-                None,
-                None,
-                Some(Arc::clone(&settings_repo_seeded)),
-                &[],
-                0,
-                None,
-                None,
-            )
-            .await
-        })
-        .await;
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id.clone());
 
-        assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
-        let build_cmd = build_result.unwrap();
-        let build_envs = build_cmd.get_envs_for_test();
-        let build_subagent = build_envs
-            .iter()
-            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
-            .map(|(_, v)| v.to_string_lossy().into_owned());
-        assert_eq!(
-            build_subagent.as_deref(),
-            Some("sonnet"),
-            "build_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
-        );
+    // --- Test build_command ---
+    let build_result = with_claude_spawn_allowed_in_tests(|| async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None,
+            Some("proj-1"),
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Some(Arc::clone(&lane_repo_arc)),
+            None,
+            None,
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
+    .await;
 
-        // --- Test build_resume_command ---
-        let resume_result = with_claude_spawn_allowed_in_tests(|| async {
-            build_resume_command(
-                std::path::Path::new("/fake/claude"),
-                std::path::Path::new("/fake/plugin"),
-                ChatContextType::Ideation,
-                session_id.as_str(),
-                "continue",
-                std::path::Path::new("/tmp"),
-                "fake-session-id",
-                Some("proj-1"),
-                false,
-                Arc::new(MemoryChatAttachmentRepository::new()),
-                Arc::new(MemoryArtifactRepository::new()),
-                None,
-                None,
-                Some(settings_repo_seeded),
-                Arc::new(MemoryIdeationSessionRepository::new()),
-                empty_delegated_session_repo(),
-                Arc::new(MemoryTaskRepository::new()),
-                &[],
-                0,
-                None,
-                None,
-            )
-            .await
-        })
-        .await;
+    assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
+    let build_cmd = build_result.unwrap();
+    let build_envs = build_cmd.get_envs_for_test();
+    let build_subagent = build_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        build_subagent.as_deref(),
+        Some("sonnet"),
+        "build_command: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationSubagent lane model (sonnet)"
+    );
 
-        assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
-        let resume_cmd = resume_result.unwrap();
-        let resume_envs = resume_cmd.get_envs_for_test();
-        let resume_subagent = resume_envs
-            .iter()
-            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
-            .map(|(_, v)| v.to_string_lossy().into_owned());
-        assert_eq!(
-            resume_subagent.as_deref(),
-            Some("sonnet"),
-            "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
-        );
-    }
+    // --- Test build_resume_command ---
+    let resume_result = with_claude_spawn_allowed_in_tests(|| async {
+        build_resume_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "continue",
+            std::path::Path::new("/tmp"),
+            "fake-session-id",
+            Some("proj-1"),
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Some(Arc::clone(&lane_repo_arc)),
+            None,
+            None,
+            Arc::new(MemoryIdeationSessionRepository::new()),
+            empty_delegated_session_repo(),
+            Arc::new(MemoryTaskRepository::new()),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
+    .await;
+
+    assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
+    let resume_cmd = resume_result.unwrap();
+    let resume_envs = resume_cmd.get_envs_for_test();
+    let resume_subagent = resume_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        resume_subagent.as_deref(),
+        Some("sonnet"),
+        "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be IdeationSubagent lane model (sonnet)"
+    );
 }
 
 #[tokio::test]

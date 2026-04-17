@@ -585,10 +585,10 @@ export const ideationApi = {
         "update_ideation_settings",
         {
           settings: {
-            plan_mode: settings.planMode,
-            require_plan_approval: settings.requirePlanApproval,
-            suggest_plans_for_complex: settings.suggestPlansForComplex,
-            auto_link_proposals: settings.autoLinkProposals,
+            plan_mode: "optional",
+            require_plan_approval: false,
+            suggest_plans_for_complex: false,
+            auto_link_proposals: false,
             require_accept_for_finalize: settings.requireAcceptForFinalize,
             require_verification_for_proposals: settings.requireVerificationForProposals,
             require_verification_for_accept: settings.requireVerificationForAccept,

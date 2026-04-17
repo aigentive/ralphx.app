@@ -38,7 +38,11 @@ vi.mock("@/providers/EventProvider", () => ({
 }));
 
 vi.mock("./sections/GlobalExecutionSection", () => ({
-  default: () => <div data-testid="global-execution-section">Global Execution</div>,
+  default: () => <div data-testid="global-execution-section">Global Capacity</div>,
+}));
+
+vi.mock("./sections/ReviewPolicySection", () => ({
+  default: () => <div data-testid="review-policy-section">Review Policy</div>,
 }));
 
 vi.mock("./ExternalMcpSettingsPanel", () => ({
@@ -47,8 +51,10 @@ vi.mock("./ExternalMcpSettingsPanel", () => ({
   ),
 }));
 
-vi.mock("./GitHubSettingsSection", () => ({
-  GitHubSettingsSection: () => <div data-testid="github-section">GitHub</div>,
+vi.mock("./RepositorySettingsSection", () => ({
+  RepositorySettingsSection: () => (
+    <div data-testid="repository-section">Repository</div>
+  ),
 }));
 
 // ---------------------------------------------------------------------------
@@ -163,15 +169,6 @@ describe("SettingsDialog", () => {
       expect(screen.queryByTestId("max-concurrent-tasks")).not.toBeInTheDocument();
     });
 
-    it("initializes to Model section when modalContext.section is 'model'", () => {
-      uiState.activeModal = "settings";
-      uiState.modalContext = { section: "model" };
-      render(<SettingsDialog {...defaultProps} />);
-
-      // Model section content is rendered (unique testid)
-      expect(screen.getByTestId("model-selection")).toBeInTheDocument();
-    });
-
     it("initializes to Execution Agents section when modalContext.section is 'execution-harnesses'", () => {
       uiState.activeModal = "settings";
       uiState.modalContext = { section: "execution-harnesses" };
@@ -195,13 +192,13 @@ describe("SettingsDialog", () => {
       // Default is "execution" — execution section content is visible
       expect(screen.getByTestId("max-concurrent-tasks")).toBeInTheDocument();
 
-      // Click "Model" in the left nav rail
-      const modelNavItem = screen.getByRole("button", { name: "Model" });
-      await user.click(modelNavItem);
+      // Click "Review Policy" in the left nav rail
+      const reviewNavItem = screen.getByRole("button", { name: "Review Policy" });
+      await user.click(reviewNavItem);
 
-      // Execution section content is gone; model section content is now visible
+      // Execution section content is gone; review policy section content is now visible
       expect(screen.queryByTestId("max-concurrent-tasks")).not.toBeInTheDocument();
-      expect(screen.getByTestId("model-selection")).toBeInTheDocument();
+      expect(screen.getByTestId("review-policy-section")).toBeInTheDocument();
     });
 
     it("switches active section via keyboard Enter on left rail item", async () => {
@@ -209,13 +206,13 @@ describe("SettingsDialog", () => {
       uiState.activeModal = "settings";
       render(<SettingsDialog {...defaultProps} />);
 
-      // Navigate to Review section via keyboard
-      const reviewNavItem = screen.getByRole("button", { name: "Review" });
+      // Navigate to Review Policy section via keyboard
+      const reviewNavItem = screen.getByRole("button", { name: "Review Policy" });
       reviewNavItem.focus();
       await user.keyboard("{Enter}");
 
-      // Review section content is now visible
-      expect(screen.getByTestId("ai-review-enabled")).toBeInTheDocument();
+      // Review Policy section content is now visible
+      expect(screen.getByTestId("review-policy-section")).toBeInTheDocument();
     });
   });
 

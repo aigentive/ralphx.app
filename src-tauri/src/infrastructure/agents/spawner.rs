@@ -402,8 +402,6 @@ impl AgenticClientSpawner {
             None,
             None,
             self.agent_lane_settings_repo.as_ref(),
-            None,
-            None,
         )
         .await;
 

@@ -209,10 +209,6 @@ export function transformNullableBool(value: number | null | undefined): boolean
 
 export function transformIdeationSettings(raw: IdeationSettingsResponse): IdeationSettings {
   return {
-    planMode: raw.plan_mode as IdeationSettings["planMode"],
-    requirePlanApproval: raw.require_plan_approval,
-    suggestPlansForComplex: raw.suggest_plans_for_complex,
-    autoLinkProposals: raw.auto_link_proposals,
     requireAcceptForFinalize: raw.require_accept_for_finalize,
     requireVerificationForAccept: raw.require_verification_for_accept,
     requireVerificationForProposals: raw.require_verification_for_proposals,

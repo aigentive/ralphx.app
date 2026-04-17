@@ -1,23 +1,20 @@
 /**
- * IdeationSettingsPanel - Configuration for ideation plan workflow
+ * IdeationSettingsPanel - Planning & Verification gate configuration
  *
  * Features:
- * - Plan Workflow Mode radio group (Required/Optional/Parallel)
- * - Require explicit approval checkbox (disabled when not in Required mode)
- * - Suggest plans for complex features checkbox
- * - Auto-link proposals to session plan checkbox
  * - Verification gate controls (requireVerificationForProposals, requireVerificationForAccept)
+ * - Finalization gate (requireAcceptForFinalize)
+ * - Auto-accept finalization convenience toggle (in-memory only)
  * - Collapsible External Session Overrides subsection (3-state inherit/on/off selects)
  * - Follows SettingsView pattern with SettingRow and shadcn components
  */
 
 import { useState } from "react";
-import { Lightbulb, ChevronDown, ChevronRight } from "lucide-react";
+import { ShieldCheck, ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -28,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useIdeationSettings } from "@/hooks/useIdeationSettings";
 import { useUiStore } from "@/stores/uiStore";
-import type { IdeationPlanMode, ExternalIdeationOverrides } from "@/types/ideation-config";
+import type { ExternalIdeationOverrides } from "@/types/ideation-config";
 
 // ============================================================================
 // Setting Row Component
@@ -198,32 +195,6 @@ function OverrideSelectRow({
 }
 
 // ============================================================================
-// Plan Mode Options
-// ============================================================================
-
-const PLAN_MODE_OPTIONS: {
-  value: IdeationPlanMode;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "required",
-    label: "Required",
-    description: "Plan must be created before proposals",
-  },
-  {
-    value: "optional",
-    label: "Optional (Default)",
-    description: "Plan suggested for complex features",
-  },
-  {
-    value: "parallel",
-    label: "Parallel",
-    description: "Plan and proposals created together",
-  },
-];
-
-// ============================================================================
 // IdeationSettingsPanel Component
 // ============================================================================
 
@@ -232,34 +203,6 @@ export function IdeationSettingsPanel() {
   const autoAcceptPlans = useUiStore((s) => s.autoAcceptPlans);
   const setAutoAcceptPlans = useUiStore((s) => s.setAutoAcceptPlans);
   const [showExternalOverrides, setShowExternalOverrides] = useState(false);
-
-  const handlePlanModeChange = (mode: string) => {
-    updateSettings({
-      ...settings,
-      planMode: mode as IdeationPlanMode,
-    });
-  };
-
-  const handleRequirePlanApprovalChange = (checked: boolean) => {
-    updateSettings({
-      ...settings,
-      requirePlanApproval: checked,
-    });
-  };
-
-  const handleSuggestPlansChange = (checked: boolean) => {
-    updateSettings({
-      ...settings,
-      suggestPlansForComplex: checked,
-    });
-  };
-
-  const handleAutoLinkProposalsChange = (checked: boolean) => {
-    updateSettings({
-      ...settings,
-      autoLinkProposals: checked,
-    });
-  };
 
   const handleRequireAcceptForFinalizeChange = (checked: boolean) => {
     updateSettings({
@@ -295,8 +238,6 @@ export function IdeationSettingsPanel() {
     });
   };
 
-  const isRequirePlanApprovalDisabled = settings.planMode !== "required";
-
   return (
     <Card
       className={cn(
@@ -308,82 +249,19 @@ export function IdeationSettingsPanel() {
     >
       <div className="flex items-start gap-3 p-5 pb-0">
         <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
-          <Lightbulb className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+          <ShieldCheck className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
         </div>
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
-            Ideation
+            Planning & Verification
           </h3>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Configure implementation plan workflow
+            Configure acceptance and verification gates
           </p>
         </div>
       </div>
       <Separator className="my-4 bg-[var(--border-subtle)]" />
       <div className="px-5 pb-5 space-y-1">
-        {/* Plan Workflow Mode */}
-        <SettingRow
-          id="plan-workflow-mode"
-          label="Plan Workflow Mode"
-          description="Control when implementation plans are created"
-          isDisabled={isUpdating}
-        >
-          <RadioGroup
-            value={settings.planMode}
-            onValueChange={handlePlanModeChange}
-            disabled={isUpdating}
-            className="flex flex-col gap-2"
-          >
-            {PLAN_MODE_OPTIONS.map((option) => (
-              <div key={option.value} className="flex items-center gap-2">
-                <RadioGroupItem
-                  value={option.value}
-                  id={`plan-mode-${option.value}`}
-                  data-testid={`plan-mode-${option.value}`}
-                  className="border-[var(--border-default)] text-[var(--accent-primary)]"
-                />
-                <Label
-                  htmlFor={`plan-mode-${option.value}`}
-                  className="text-xs text-[var(--text-primary)] cursor-pointer"
-                >
-                  {option.label}
-                </Label>
-              </div>
-            ))}
-          </RadioGroup>
-        </SettingRow>
-
-        {/* Require explicit approval (disabled when not in Required mode) */}
-        <CheckboxSettingRow
-          id="require-plan-approval"
-          label="Require explicit approval"
-          description="User must click 'Approve Plan' before creating proposals (in Required mode)"
-          checked={settings.requirePlanApproval}
-          disabled={isUpdating || isRequirePlanApprovalDisabled}
-          onChange={handleRequirePlanApprovalChange}
-          isSubSetting
-        />
-
-        {/* Suggest plans for complex features */}
-        <CheckboxSettingRow
-          id="suggest-plans-for-complex"
-          label="Suggest plans for complex features"
-          description="When in Optional mode, prompt user for complex features"
-          checked={settings.suggestPlansForComplex}
-          disabled={isUpdating}
-          onChange={handleSuggestPlansChange}
-        />
-
-        {/* Auto-link proposals to session plan */}
-        <CheckboxSettingRow
-          id="auto-link-proposals"
-          label="Auto-link proposals to session plan"
-          description="Automatically set plan reference when creating proposals"
-          checked={settings.autoLinkProposals}
-          disabled={isUpdating}
-          onChange={handleAutoLinkProposalsChange}
-        />
-
         {/* Require agent confirmation before finalizing proposals */}
         <CheckboxSettingRow
           id="require-accept-for-finalize"
@@ -414,11 +292,11 @@ export function IdeationSettingsPanel() {
           onChange={handleRequireVerificationForProposalsChange}
         />
 
-        {/* Auto-accept all finalization dialogs (in-memory only) */}
+        {/* Auto-accept finalization dialogs (in-memory only) */}
         <CheckboxSettingRow
           id="auto-accept-plans"
-          label="Auto-accept ideation plans"
-          description="Automatically accept all pending finalize confirmations without showing the dialog (resets on app restart)"
+          label="Skip finalization confirmation"
+          description="Automatically confirm all pending finalize dialogs without prompting (resets on app restart)"
           checked={autoAcceptPlans}
           disabled={false}
           onChange={setAutoAcceptPlans}

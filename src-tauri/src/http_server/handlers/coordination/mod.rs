@@ -603,8 +603,6 @@ async fn resolve_delegate_model_override(
         Some(harness),
         None,
         Some(&state.app_state.agent_lane_settings_repo),
-        Some(&state.app_state.ideation_model_settings_repo),
-        Some(&state.app_state.ideation_effort_settings_repo),
     )
     .await
     .subagent_model_cap
@@ -626,8 +624,6 @@ async fn resolve_delegate_harness(
         ChatContextType::Ideation,
         None,
         Some(&state.app_state.agent_lane_settings_repo),
-        Some(&state.app_state.ideation_model_settings_repo),
-        Some(&state.app_state.ideation_effort_settings_repo),
     )
     .await
 }
@@ -828,8 +824,6 @@ pub(crate) async fn start_delegate_impl(
         Some(harness),
         None,
         Some(&state.app_state.agent_lane_settings_repo),
-        Some(&state.app_state.ideation_model_settings_repo),
-        Some(&state.app_state.ideation_effort_settings_repo),
     )
     .await;
     let delegated_model = resolve_delegate_model_override(

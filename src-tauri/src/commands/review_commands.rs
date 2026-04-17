@@ -13,7 +13,8 @@ pub use super::review_commands_types::{
     ApproveFixTaskInput, ApproveReviewInput, FixTaskAttemptsResponse, IssueProgressResponse,
     MarkIssueAddressedInput, MarkIssueInProgressInput, RejectFixTaskInput, RejectReviewInput,
     ReopenIssueInput, RequestChangesInput, ReviewActionResponse, ReviewIssueResponse,
-    ReviewNoteResponse, ReviewResponse, VerifyIssueInput,
+    ReviewNoteResponse, ReviewResponse, ReviewSettingsResponse, UpdateReviewSettingsInput,
+    VerifyIssueInput,
 };
 
 // ============================================================================
@@ -975,4 +976,54 @@ pub async fn mark_issue_addressed(
         .map_err(|e| e.to_string())?;
 
     Ok(ReviewIssueResponse::from(issue))
+}
+
+// ============================================================================
+// Commands - Review Settings (global policy)
+// ============================================================================
+
+/// Get the global review policy settings
+#[tauri::command]
+pub async fn get_review_settings(
+    state: State<'_, AppState>,
+) -> Result<ReviewSettingsResponse, String> {
+    let settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewSettingsResponse::from(settings))
+}
+
+/// Update the global review policy settings.
+/// Only the fields provided in the input are changed; ballast fields are preserved.
+#[tauri::command]
+pub async fn update_review_settings(
+    input: UpdateReviewSettingsInput,
+    state: State<'_, AppState>,
+) -> Result<ReviewSettingsResponse, String> {
+    let mut settings = state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(v) = input.require_human_review {
+        settings.require_human_review = v;
+    }
+    if let Some(v) = input.max_fix_attempts {
+        settings.max_fix_attempts = v;
+    }
+    if let Some(v) = input.max_revision_cycles {
+        settings.max_revision_cycles = v;
+    }
+
+    let updated = state
+        .review_settings_repo
+        .update_settings(&settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ReviewSettingsResponse::from(updated))
 }

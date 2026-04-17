@@ -18,7 +18,7 @@ import type {
   ParentSessionContextResponse,
   CreateChildSessionInput,
 } from "@/api/ideation.types";
-import type { IdeationSettings, IdeationPlanMode } from "@/types/ideation-config";
+import type { IdeationSettings } from "@/types/ideation-config";
 import { generateTestUuid } from "@/test/mock-data";
 
 // ============================================================================
@@ -434,10 +434,6 @@ export const mockIdeationApi = {
   settings: {
     get: async (): Promise<IdeationSettings> => {
       return {
-        planMode: "optional" as IdeationPlanMode,
-        requirePlanApproval: false,
-        suggestPlansForComplex: true,
-        autoLinkProposals: true,
         requireAcceptForFinalize: false,
         requireVerificationForAccept: false,
         requireVerificationForProposals: false,

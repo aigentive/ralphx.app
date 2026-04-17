@@ -304,8 +304,6 @@ impl ResolvedChatHarnessCli {
                     request.project_id,
                     request.model_override,
                     request.agent_lane_settings_repo.as_ref(),
-                    request.ideation_model_settings_repo.as_ref(),
-                    request.ideation_effort_settings_repo.as_ref(),
                 )
                 .await;
 
@@ -383,8 +381,6 @@ impl ResolvedChatHarnessCli {
                     request.project_id,
                     request.model_override,
                     request.agent_lane_settings_repo.as_ref(),
-                    request.ideation_model_settings_repo.as_ref(),
-                    request.ideation_effort_settings_repo.as_ref(),
                 )
                 .await;
 
@@ -1678,8 +1674,8 @@ pub async fn build_command(
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
-    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
-    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    _ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    _ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     session_messages: &[ChatMessage],
     total_available: usize,
     effort_override: Option<&str>,
@@ -1723,8 +1719,6 @@ pub async fn build_command(
             stored_harness_override_for_spawn_settings(conversation, agent_name),
             model_override,
             agent_lane_settings_repo.as_ref(),
-            ideation_model_settings_repo.as_ref(),
-            ideation_effort_settings_repo.as_ref(),
         )
         .await;
 
@@ -1998,8 +1992,6 @@ async fn resolve_noninteractive_spawn_settings(
     project_id: Option<&str>,
     model_override: Option<&str>,
     agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
 ) -> ResolvedAgentSpawnSettings {
     crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
         resolve_agent_with_team_mode(&context_type, entity_status, false),
@@ -2009,8 +2001,6 @@ async fn resolve_noninteractive_spawn_settings(
         None,
         model_override,
         agent_lane_settings_repo,
-        ideation_model_settings_repo,
-        ideation_effort_settings_repo,
     )
     .await
 }
@@ -2311,8 +2301,8 @@ pub async fn build_resume_command(
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
-    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
-    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    _ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    _ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
     task_repo: Arc<dyn TaskRepository>,
@@ -2342,8 +2332,6 @@ pub async fn build_resume_command(
             None,
             model_override,
             agent_lane_settings_repo.as_ref(),
-            ideation_model_settings_repo.as_ref(),
-            ideation_effort_settings_repo.as_ref(),
         )
         .await;
 
@@ -2944,8 +2932,6 @@ exit 0
                 Some(harness),
                 None,
                 None,
-                None,
-                None,
             )
             .await;
 
@@ -3002,8 +2988,6 @@ exit 0
                 ChatContextType::Ideation,
                 None,
                 Some(AgentHarnessKind::Claude),
-                None,
-                None,
                 None,
                 None,
             )

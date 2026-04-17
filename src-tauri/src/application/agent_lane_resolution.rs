@@ -5,14 +5,8 @@ use crate::domain::agents::{
     LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
-use crate::domain::repositories::{
-    AgentLaneSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-};
-use crate::infrastructure::agents::claude::{
-    canonical_short_agent_name, effort_bucket_for_agent, resolve_effort,
-    resolve_ideation_effort, resolve_ideation_model, resolve_ideation_subagent_model_with_source, resolve_model,
-    resolve_verifier_subagent_model_with_source,
-};
+use crate::domain::repositories::AgentLaneSettingsRepository;
+use crate::infrastructure::agents::claude::{canonical_short_agent_name, resolve_model};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedAgentSpawnSettings {
@@ -39,8 +33,6 @@ pub(crate) async fn resolve_agent_spawn_settings(
     harness_override: Option<AgentHarnessKind>,
     model_override: Option<&str>,
     agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
 ) -> ResolvedAgentSpawnSettings {
     let primary_lane = lane_for_context(agent_name, context_type, entity_status);
     let subagent_lane = subagent_lane_for_context(agent_name, context_type);
@@ -97,7 +89,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
     {
         model
     } else {
-        resolve_legacy_ideation_model(agent_name, project_id, ideation_model_settings_repo).await
+        resolve_model(Some(agent_name))
     };
 
     let logical_effort = if primary_lane.is_some() {
@@ -109,8 +101,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
         } else if let Some(defaults) = harness_primary_defaults.as_ref() {
             defaults.effort
         } else {
-            resolve_legacy_ideation_effort(agent_name, project_id, ideation_effort_settings_repo)
-                .await
+            None
         }
     } else {
         None
@@ -140,8 +131,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
         {
             model
         } else {
-            resolve_legacy_subagent_model_cap(agent_name, project_id, ideation_model_settings_repo)
-                .await
+            "haiku".to_string()
         };
 
         (configured_subagent_model_cap, Some(subagent_model_cap))
@@ -194,8 +184,6 @@ pub(crate) async fn resolve_agent_subagent_harness(
     context_type: ChatContextType,
     entity_status: Option<&str>,
     agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
 ) -> AgentHarnessKind {
     let primary = resolve_agent_spawn_settings(
         agent_name,
@@ -205,8 +193,6 @@ pub(crate) async fn resolve_agent_subagent_harness(
         None,
         None,
         agent_lane_settings_repo,
-        ideation_model_settings_repo,
-        ideation_effort_settings_repo,
     )
     .await;
 
@@ -357,98 +343,3 @@ fn nondefault_harness_lane_settings(
     Some(generic_harness_lane_defaults(harness, lane))
 }
 
-async fn resolve_legacy_ideation_model(
-    agent_name: &str,
-    project_id: Option<&str>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-) -> String {
-    if let Some(repo) = ideation_model_settings_repo {
-        return resolve_ideation_model(agent_name, project_id, repo.as_ref())
-            .await
-            .model;
-    }
-
-    resolve_model(Some(agent_name))
-}
-
-async fn resolve_legacy_ideation_effort(
-    agent_name: &str,
-    project_id: Option<&str>,
-    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
-) -> Option<LogicalEffort> {
-    let effort = if effort_bucket_for_agent(agent_name).is_none() {
-        resolve_effort(Some(agent_name))
-    } else if let Some(repo) = ideation_effort_settings_repo {
-        resolve_ideation_effort(agent_name, project_id, repo.as_ref()).await
-    } else {
-        resolve_effort(Some(agent_name))
-    };
-
-    effort.parse::<LogicalEffort>().ok().or_else(|| {
-        tracing::warn!(
-            agent_name,
-            effort,
-            "Failed to parse legacy ideation effort into provider-neutral logical effort"
-        );
-        None
-    })
-}
-
-async fn resolve_legacy_subagent_model_cap(
-    agent_name: &str,
-    project_id: Option<&str>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-) -> String {
-    let Some(repo) = ideation_model_settings_repo else {
-        return "haiku".to_string();
-    };
-
-    let project_settings = if let Some(project_id) = project_id {
-        repo.get_for_project(project_id)
-            .await
-            .inspect_err(|error| {
-                tracing::warn!(
-                    %project_id,
-                    %error,
-                    "Failed to fetch project ideation model settings for legacy fallback"
-                );
-            })
-            .ok()
-            .flatten()
-    } else {
-        None
-    };
-    let global_settings = repo
-        .get_global()
-        .await
-        .inspect_err(|error| {
-            tracing::warn!(
-                %error,
-                "Failed to fetch global ideation model settings for legacy fallback"
-            );
-        })
-        .ok()
-        .flatten();
-
-    if ideation_lane_for_agent(agent_name) == Some(AgentLane::IdeationVerifier) {
-        resolve_verifier_subagent_model_with_source(
-            project_settings
-                .as_ref()
-                .map(|settings| &settings.verifier_subagent_model),
-            global_settings
-                .as_ref()
-                .map(|settings| &settings.verifier_subagent_model),
-        )
-        .0
-    } else {
-        resolve_ideation_subagent_model_with_source(
-            project_settings
-                .as_ref()
-                .map(|settings| &settings.ideation_subagent_model),
-            global_settings
-                .as_ref()
-                .map(|settings| &settings.ideation_subagent_model),
-        )
-        .0
-    }
-}
