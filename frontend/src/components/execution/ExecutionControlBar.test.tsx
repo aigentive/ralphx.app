@@ -244,22 +244,22 @@ describe("ExecutionControlBar", () => {
   describe("status indicator colors", () => {
     it("shows success color when running tasks exist", () => {
       renderBar({ runningCount: 1 });
-      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "hsl(14 100% 55%)" });
+      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
     });
 
     it("shows warning color when paused", () => {
       renderBar({ queuedCount: 3, isPaused: true });
-      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "hsl(45 90% 55%)" });
+      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "var(--status-warning)" });
     });
 
     it("shows stopped color when execution is globally stopped", () => {
       renderBar({ isPaused: true, haltMode: "stopped" });
-      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "hsl(0 70% 55%)" });
+      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "var(--status-error)" });
     });
 
     it("shows muted color when idle with no queued", () => {
       renderBar();
-      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "hsl(220 10% 55%)" });
+      expect(screen.getByTestId("status-indicator")).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
 
     it("has pulsing animation class when running", () => {
@@ -299,16 +299,16 @@ describe("ExecutionControlBar", () => {
     it("has error styling when can stop", () => {
       renderBar({ runningCount: 1 });
       const stopBtn = screen.getByTestId("stop-button");
-      expect(stopBtn).toHaveStyle({ backgroundColor: "hsla(0 70% 55% / 0.15)" });
-      expect(stopBtn).toHaveStyle({ color: "hsl(0 70% 55%)" });
+      expect(stopBtn).toHaveStyle({ backgroundColor: "var(--status-error-muted)" });
+      expect(stopBtn).toHaveStyle({ color: "var(--status-error)" });
       expect(stopBtn).toHaveStyle({ opacity: "1" });
     });
 
     it("has muted styling when disabled", () => {
       renderBar();
       const stopBtn = screen.getByTestId("stop-button");
-      expect(stopBtn).toHaveStyle({ backgroundColor: "hsl(220 10% 18%)" });
-      expect(stopBtn).toHaveStyle({ color: "hsl(220 10% 45%)" });
+      expect(stopBtn).toHaveStyle({ backgroundColor: "var(--bg-hover)" });
+      expect(stopBtn).toHaveStyle({ color: "var(--text-muted)" });
       expect(stopBtn).toHaveStyle({ opacity: "0.5" });
     });
 
@@ -325,13 +325,13 @@ describe("ExecutionControlBar", () => {
     it("has accent styling when paused", () => {
       renderBar({ queuedCount: 3, isPaused: true });
       const pauseBtn = screen.getByTestId("pause-toggle-button");
-      expect(pauseBtn).toHaveStyle({ backgroundColor: "hsla(45 90% 55% / 0.15)" });
-      expect(pauseBtn).toHaveStyle({ color: "hsl(45 90% 55%)" });
+      expect(pauseBtn).toHaveStyle({ backgroundColor: "var(--status-warning-muted)" });
+      expect(pauseBtn).toHaveStyle({ color: "var(--status-warning)" });
     });
 
     it("has default styling when not paused", () => {
       renderBar({ runningCount: 1 });
-      expect(screen.getByTestId("pause-toggle-button")).toHaveStyle({ color: "hsl(220 10% 90%)" });
+      expect(screen.getByTestId("pause-toggle-button")).toHaveStyle({ color: "var(--text-primary)" });
     });
   });
 

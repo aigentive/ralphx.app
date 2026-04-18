@@ -47,7 +47,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(142 70% 50%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--status-success)" });
     });
 
     it("maps 'executing' status to green", () => {
@@ -56,7 +56,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(142 70% 50%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--status-success)" });
     });
 
     it("maps 'running' status to green", () => {
@@ -65,7 +65,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(142 70% 50%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--status-success)" });
     });
 
     it("maps 'completed' status to grey", () => {
@@ -74,7 +74,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(220 10% 45%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
 
     it("maps 'done' status to grey", () => {
@@ -83,7 +83,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(220 10% 45%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
 
     it("maps 'failed' status to red", () => {
@@ -92,7 +92,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(0 70% 55%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--status-error)" });
     });
 
     it("maps 'idle' status to yellow", () => {
@@ -101,7 +101,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(45 90% 55%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--status-warning)" });
     });
 
     it("maps unknown status to grey (default)", () => {
@@ -110,7 +110,7 @@ describe("TeamProcessGroup", () => {
       });
       render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
       const dot = screen.getByTestId("teammate-a").querySelector("span.rounded-full");
-      expect(dot).toHaveStyle({ backgroundColor: "hsl(220 10% 45%)" });
+      expect(dot).toHaveStyle({ backgroundColor: "var(--text-muted)" });
     });
 
     it("uses teammate.color override when provided", () => {

@@ -142,7 +142,7 @@ describe("MessageAttachments", () => {
     render(<MessageAttachments attachments={[mockAttachments[0]]} />);
 
     const chip = screen.getByTestId("attachment-chip");
-    expect(chip).toHaveStyle({ background: "hsl(220 10% 15%)" });
+    expect(chip).toHaveStyle({ background: "var(--bg-elevated)" });
   });
 
   it("should render in compact horizontal layout", () => {

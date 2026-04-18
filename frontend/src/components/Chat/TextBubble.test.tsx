@@ -106,13 +106,13 @@ describe("TextBubble", () => {
     it("applies user styling (orange background)", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      expect(bubble).toHaveStyle({ background: "var(--accent-primary)" });
     });
 
     it("applies assistant styling (dark background)", () => {
       const { container } = render(<TextBubble text="Hello" isUser={false} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "hsl(220 10% 14%)" });
+      expect(bubble).toHaveStyle({ background: "var(--bg-elevated)" });
     });
 
     it("applies rounded corners", () => {
