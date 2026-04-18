@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState as SharedEmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import { DiffViewer } from "@/components/diff";
@@ -68,26 +69,19 @@ export function LoadingSpinner() {
 }
 
 /**
- * Empty State - dashed circle with check and message
+ * Empty State - reviews have been handled / none pending. Uses the shared
+ * `<EmptyState>` primitive (neutral variant) so the layout matches the other
+ * empty-state surfaces in the app.
  */
 export function EmptyState() {
   return (
-    <div
+    <SharedEmptyState
       data-testid="reviews-panel-empty"
-      className="flex flex-col items-center justify-center p-12 text-center"
-    >
-      <CheckCircle2
-        className="w-12 h-12 mb-3"
-        style={{ color: "var(--text-secondary)" }}
-        strokeDasharray="4 4"
-      />
-      <p className="text-sm font-medium text-[var(--text-secondary)]">
-        No pending reviews
-      </p>
-      <p className="text-xs text-[var(--text-muted)] mt-1">
-        All reviews have been handled
-      </p>
-    </div>
+      variant="neutral"
+      icon={<CheckCircle2 strokeDasharray="4 4" />}
+      title="No pending reviews"
+      description="All reviews have been handled"
+    />
   );
 }
 
