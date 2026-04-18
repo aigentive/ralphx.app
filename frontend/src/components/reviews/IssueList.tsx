@@ -30,6 +30,7 @@ import type {
   IssueProgressSummary,
 } from "@/types/review-issue";
 import { sortBySeverity } from "@/types/review-issue";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Constants
@@ -41,26 +42,26 @@ const SEVERITY_CONFIG: Record<
 > = {
   critical: {
     icon: AlertCircle,
-    color: "hsl(0 70% 55%)", // status-error
-    bgColor: "hsla(0 70% 55% / 0.15)",
+    color: "var(--status-error)",
+    bgColor: withAlpha("var(--status-error)", 15),
     label: "Critical",
   },
   major: {
     icon: AlertTriangle,
-    color: "hsl(45 90% 55%)", // status-warning
-    bgColor: "hsla(45 90% 55% / 0.15)",
+    color: "var(--status-warning)",
+    bgColor: withAlpha("var(--status-warning)", 15),
     label: "Major",
   },
   minor: {
     icon: Info,
-    color: "hsl(220 80% 60%)", // status-info
-    bgColor: "hsla(220 80% 60% / 0.15)",
+    color: "var(--status-info)",
+    bgColor: withAlpha("var(--status-info)", 15),
     label: "Minor",
   },
   suggestion: {
     icon: Lightbulb,
-    color: "hsl(145 60% 45%)", // status-success
-    bgColor: "hsla(145 60% 45% / 0.15)",
+    color: "var(--status-success)",
+    bgColor: withAlpha("var(--status-success)", 15),
     label: "Suggestion",
   },
 };
@@ -71,32 +72,32 @@ const STATUS_CONFIG: Record<
 > = {
   open: {
     icon: CircleDot,
-    color: "hsl(220 80% 60%)",
-    bgColor: "hsla(220 80% 60% / 0.15)",
+    color: "var(--status-info)",
+    bgColor: withAlpha("var(--status-info)", 15),
     label: "Open",
   },
   in_progress: {
     icon: Clock,
-    color: "hsl(45 90% 55%)",
-    bgColor: "hsla(45 90% 55% / 0.15)",
+    color: "var(--status-warning)",
+    bgColor: withAlpha("var(--status-warning)", 15),
     label: "In Progress",
   },
   addressed: {
     icon: CheckCircle2,
-    color: "hsl(145 60% 45%)",
-    bgColor: "hsla(145 60% 45% / 0.15)",
+    color: "var(--status-success)",
+    bgColor: withAlpha("var(--status-success)", 15),
     label: "Addressed",
   },
   verified: {
     icon: CheckCircle2,
-    color: "hsl(145 60% 45%)",
-    bgColor: "hsla(145 60% 45% / 0.20)",
+    color: "var(--status-success)",
+    bgColor: withAlpha("var(--status-success)", 20),
     label: "Verified",
   },
   wontfix: {
     icon: XCircle,
-    color: "hsl(220 10% 45%)",
-    bgColor: "hsla(220 10% 45% / 0.15)",
+    color: "var(--text-muted)",
+    bgColor: withAlpha("var(--text-muted)", 15),
     label: "Won't Fix",
   },
 };
@@ -190,7 +191,7 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
       className={`rounded-lg transition-colors ${
         onClick ? "cursor-pointer hover:bg-bg-elevated" : ""
       }`}
-      style={{ backgroundColor: "hsl(220 10% 12%)" }}
+      style={{ backgroundColor: "var(--bg-elevated)" }}
       onClick={onClick}
     >
       <div className={compact ? "p-2" : "p-3"}>
@@ -202,8 +203,8 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
             <span
               className="text-[10px] px-1.5 py-0.5 rounded"
               style={{
-                backgroundColor: "hsl(220 10% 16%)",
-                color: "hsl(220 10% 60%)",
+                backgroundColor: "var(--bg-hover)",
+                color: "var(--text-secondary)",
               }}
             >
               {CATEGORY_LABELS[issue.category]}
@@ -214,7 +215,7 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
         {/* Title */}
         <h4
           className={`font-medium ${compact ? "text-[12px]" : "text-[13px]"}`}
-          style={{ color: "hsl(220 10% 90%)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {issue.title}
         </h4>
@@ -223,7 +224,7 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
         {!compact && issue.description && (
           <p
             className="text-[12px] mt-1 line-clamp-2"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {issue.description}
           </p>
@@ -232,10 +233,10 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
         {/* File link (if available) */}
         {hasFileLink && (
           <div className="flex items-center gap-1.5 mt-2">
-            <FileCode className="w-3 h-3" style={{ color: "hsl(220 10% 45%)" }} />
+            <FileCode className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
             <span
               className="text-[11px] font-mono"
-              style={{ color: "hsl(220 80% 60%)" }}
+              style={{ color: "var(--status-info)" }}
             >
               {issue.filePath}:{issue.lineNumber}
             </span>
@@ -246,17 +247,17 @@ function IssueCard({ issue, compact = false, onClick }: IssueCardProps) {
         {!compact && issue.resolutionNotes && (
           <div
             className="mt-2 pt-2"
-            style={{ borderTop: "1px solid hsl(220 10% 18%)" }}
+            style={{ borderTop: "1px solid var(--border-subtle)" }}
           >
             <span
               className="text-[10px] uppercase tracking-wider"
-              style={{ color: "hsl(220 10% 40%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Resolution
             </span>
             <p
               className="text-[11px] mt-0.5"
-              style={{ color: "hsl(220 10% 60%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {issue.resolutionNotes}
             </p>
@@ -294,19 +295,19 @@ function IssueGroup({
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {isExpanded ? (
-          <ChevronDown className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
         ) : (
-          <ChevronRight className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronRight className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
         )}
         <span
           className="text-[11px] uppercase tracking-wider font-medium"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {title}
         </span>
         <span
           className="text-[11px] font-medium ml-1"
-          style={{ color: "hsl(220 10% 35%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           ({issues.length})
         </span>
@@ -362,7 +363,7 @@ export function IssueProgressBar({
       <div className="flex items-center gap-2">
         <div
           className="flex-1 h-1.5 rounded-full overflow-hidden flex"
-          style={{ backgroundColor: "hsl(220 10% 14%)" }}
+          style={{ backgroundColor: "var(--bg-elevated)" }}
         >
           {/* Verified - green solid */}
           {verifiedWidth > 0 && (
@@ -370,7 +371,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${verifiedWidth}%`,
-                backgroundColor: "hsl(145 60% 45%)",
+                backgroundColor: "var(--status-success)",
               }}
             />
           )}
@@ -380,7 +381,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${addressedWidth}%`,
-                backgroundColor: "hsl(145 60% 55%)",
+                backgroundColor: withAlpha("var(--status-success)", 70),
               }}
             />
           )}
@@ -390,7 +391,7 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${wontfixWidth}%`,
-                backgroundColor: "hsl(220 10% 35%)",
+                backgroundColor: "var(--text-muted)",
               }}
             />
           )}
@@ -400,7 +401,7 @@ export function IssueProgressBar({
               className="h-full animate-pulse"
               style={{
                 width: `${inProgressWidth}%`,
-                backgroundColor: "hsl(45 90% 55%)",
+                backgroundColor: "var(--status-warning)",
               }}
             />
           )}
@@ -410,14 +411,14 @@ export function IssueProgressBar({
               className="h-full"
               style={{
                 width: `${openWidth}%`,
-                backgroundColor: "hsl(220 80% 60%)",
+                backgroundColor: "var(--status-info)",
               }}
             />
           )}
         </div>
         <span
           className="text-[10px] tabular-nums shrink-0"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {Math.round(percentResolved)}%
         </span>
@@ -426,27 +427,27 @@ export function IssueProgressBar({
       {/* Status counts */}
       <div className="flex items-center gap-3 text-[10px]">
         {verified > 0 && (
-          <span style={{ color: "hsl(145 60% 45%)" }}>
+          <span style={{ color: "var(--status-success)" }}>
             {verified} verified
           </span>
         )}
         {addressed > 0 && (
-          <span style={{ color: "hsl(145 60% 55%)" }}>
+          <span style={{ color: "var(--status-success)" }}>
             {addressed} addressed
           </span>
         )}
         {inProgress > 0 && (
-          <span style={{ color: "hsl(45 90% 55%)" }}>
+          <span style={{ color: "var(--status-warning)" }}>
             {inProgress} in progress
           </span>
         )}
         {open > 0 && (
-          <span style={{ color: "hsl(220 80% 60%)" }}>
+          <span style={{ color: "var(--status-info)" }}>
             {open} open
           </span>
         )}
         {wontfix > 0 && (
-          <span style={{ color: "hsl(220 10% 45%)" }}>
+          <span style={{ color: "var(--text-muted)" }}>
             {wontfix} won&apos;t fix
           </span>
         )}
@@ -560,7 +561,7 @@ export function IssueList({
 
   if (issues.length === 0) {
     return (
-      <p className="text-[12px] italic py-2" style={{ color: "hsl(220 10% 40%)" }}>
+      <p className="text-[12px] italic py-2" style={{ color: "var(--text-muted)" }}>
         {emptyMessage}
       </p>
     );

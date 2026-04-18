@@ -3,6 +3,7 @@
  */
 
 import { Lightbulb } from "lucide-react";
+import { withAlpha } from "@/lib/theme-colors";
 import { TabEmptyState } from "./TabEmptyState";
 
 interface ProposalsEmptyStateProps {
@@ -21,18 +22,18 @@ function ProposalsMockVisual() {
             className="flex items-center gap-3 p-3 rounded-lg"
             style={{
               opacity,
-              border: "1.5px dashed hsla(14 100% 60% / 0.25)",
-              background: "hsla(14 100% 60% / 0.02)",
+              border: "1.5px dashed var(--accent-border)",
+              background: withAlpha("var(--accent-primary)", 2),
             }}
           >
             <div
               className="w-4 h-4 rounded border-[1.5px] border-dashed flex-shrink-0"
-              style={{ borderColor: "hsla(14 100% 60% / 0.4)" }}
+              style={{ borderColor: withAlpha("var(--accent-primary)", 40) }}
             />
             <div
               className="h-2 rounded-full flex-1"
               style={{
-                background: "hsla(220 10% 100% / 0.06)",
+                background: "var(--overlay-weak)",
                 maxWidth: `${70 - i * 15}%`,
               }}
             />
@@ -45,11 +46,11 @@ function ProposalsMockVisual() {
         <div
           className="w-12 h-12 rounded-xl flex items-center justify-center"
           style={{
-            background: "hsla(45 93% 50% / 0.12)",
-            border: "1px solid hsla(45 93% 50% / 0.25)",
+            background: "var(--status-warning-muted)",
+            border: "1px solid var(--status-warning-border)",
           }}
         >
-          <Lightbulb className="w-5 h-5" style={{ color: "hsl(45 93% 55%)" }} />
+          <Lightbulb className="w-5 h-5" style={{ color: "var(--status-warning)" }} />
         </div>
       </div>
     </div>

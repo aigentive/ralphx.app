@@ -19,6 +19,7 @@ import { PlanCandidateItem } from "./PlanCandidateItem";
 import { PlanClearAction } from "./PlanClearAction";
 import { QuickActionRow } from "./QuickActionRow";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { Button } from "@/components/ui/button";
 import type { SelectionSource } from "@/api/plan";
 
@@ -134,17 +135,17 @@ export function PlanQuickSwitcherPalette({
             onClick={(e) => e.stopPropagation()}
             style={{
               borderRadius: "10px",
-              background: "hsla(220 10% 10% / 0.92)",
+              background: withAlpha("var(--bg-surface)", 92),
               backdropFilter: "blur(20px) saturate(180%)",
               WebkitBackdropFilter: "blur(20px) saturate(180%)",
-              border: "1px solid hsla(220 20% 100% / 0.08)",
-              boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+              border: "1px solid var(--overlay-weak)",
+              boxShadow: "var(--shadow-lg)",
             }}
           >
             {/* Search input */}
             <div
               className="p-3"
-              style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.08)" }}
+              style={{ borderBottom: "1px solid var(--overlay-weak)" }}
             >
               <input
                 ref={inputRef}
@@ -159,7 +160,7 @@ export function PlanQuickSwitcherPalette({
                   "transition-colors"
                 )}
                 style={{
-                  color: "hsl(220 10% 90%)",
+                  color: "var(--text-primary)",
                   boxShadow: "none",
                   outline: "none",
                 }}

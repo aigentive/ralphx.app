@@ -122,16 +122,16 @@ export function PanelHeader({ totalCount, onClose }: PanelHeaderProps) {
     <div
       className="flex items-center justify-between h-11 px-3 border-b shrink-0"
       style={{
-        borderColor: "hsla(220 10% 100% / 0.04)",
-        background: "hsla(220 10% 100% / 0.02)",
+        borderColor: "var(--overlay-faint)",
+        background: "var(--overlay-faint)",
       }}
     >
       <div className="flex items-center gap-2">
-        <CheckCircle2 className="w-4 h-4" style={{ color: "hsl(220 10% 50%)" }} />
+        <CheckCircle2 className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
         <h2
           data-testid="reviews-panel-title"
           className="text-[13px] font-semibold"
-          style={{ color: "hsl(220 10% 90%)", letterSpacing: "-0.01em" }}
+          style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
         >
           Reviews
         </h2>
@@ -183,7 +183,7 @@ export function FilterTabs({
     <div
       className="px-4 py-3 border-b"
       style={{
-        borderColor: "hsla(220 10% 100% / 0.04)",
+        borderColor: "var(--overlay-faint)",
       }}
     >
       <Tabs

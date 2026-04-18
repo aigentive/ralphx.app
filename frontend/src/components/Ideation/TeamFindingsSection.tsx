@@ -52,8 +52,8 @@ export function TeamFindingsSection({
       <div
         className="rounded-lg mb-4"
         style={{
-          background: "hsla(220 10% 100% / 0.02)",
-          border: "1px solid hsla(220 10% 100% / 0.06)",
+          background: "var(--overlay-faint)",
+          border: "1px solid var(--overlay-faint)",
         }}
       >
         <CollapsibleTrigger asChild>
@@ -63,19 +63,19 @@ export function TeamFindingsSection({
           >
             <Users
               className="w-3.5 h-3.5 flex-shrink-0"
-              style={{ color: "hsl(14 100% 60%)" }}
+              style={{ color: "var(--accent-primary)" }}
             />
             <span
               className="text-[12px] font-medium flex-1"
-              style={{ color: "hsl(220 10% 80%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {title}
             </span>
             <span
               className="text-[10px] font-medium w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
               style={{
-                background: "hsla(14 100% 60% / 0.15)",
-                color: "hsl(14 100% 60%)",
+                background: "var(--accent-muted)",
+                color: "var(--accent-primary)",
               }}
             >
               {teammateCount}
@@ -85,7 +85,7 @@ export function TeamFindingsSection({
                 "w-3.5 h-3.5 transition-transform duration-200 flex-shrink-0",
                 !isOpen && "-rotate-90"
               )}
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
           </button>
         </CollapsibleTrigger>
@@ -94,20 +94,20 @@ export function TeamFindingsSection({
           <div className="px-3 pb-3">
             <div
               className="overflow-hidden rounded-md"
-              style={{ border: "1px solid hsla(220 10% 100% / 0.06)" }}
+              style={{ border: "1px solid var(--overlay-faint)" }}
             >
               <table className="w-full text-[12px]">
                 <thead>
-                  <tr style={{ background: "hsla(220 10% 100% / 0.02)" }}>
+                  <tr style={{ background: "var(--overlay-faint)" }}>
                     <th
                       className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider"
-                      style={{ color: "hsl(220 10% 50%)" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       Specialist
                     </th>
                     <th
                       className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider"
-                      style={{ color: "hsl(220 10% 50%)" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       Key Finding
                     </th>
@@ -118,7 +118,7 @@ export function TeamFindingsSection({
                     <tr
                       key={finding.specialist}
                       className="border-t"
-                      style={{ borderColor: "hsla(220 10% 100% / 0.06)" }}
+                      style={{ borderColor: "var(--overlay-faint)" }}
                     >
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className="flex items-center gap-2">
@@ -128,14 +128,14 @@ export function TeamFindingsSection({
                               style={{ background: finding.color }}
                             />
                           )}
-                          <span style={{ color: "hsl(220 10% 85%)" }}>
+                          <span style={{ color: "var(--text-primary)" }}>
                             {finding.specialist}
                           </span>
                         </span>
                       </td>
                       <td
                         className="px-3 py-2"
-                        style={{ color: "hsl(220 10% 65%)" }}
+                        style={{ color: "var(--text-secondary)" }}
                       >
                         {finding.keyFinding}
                       </td>

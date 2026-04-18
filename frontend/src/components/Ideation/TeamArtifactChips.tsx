@@ -30,11 +30,11 @@ interface ArtifactTypeConfig {
   color: string;
 }
 
-const DEFAULT_CONFIG: ArtifactTypeConfig = { icon: FileText, color: "hsl(220 10% 50%)" };
+const DEFAULT_CONFIG: ArtifactTypeConfig = { icon: FileText, color: "var(--text-muted)" };
 
 const ARTIFACT_TYPE_CONFIG: Record<string, ArtifactTypeConfig> = {
-  research: { icon: Microscope, color: "hsl(14 100% 60%)" },
-  analysis: { icon: BarChart3, color: "hsl(174 60% 50%)" },
+  research: { icon: Microscope, color: "var(--accent-primary)" },
+  analysis: { icon: BarChart3, color: "var(--status-info)" },
   summary: DEFAULT_CONFIG,
 };
 
@@ -58,7 +58,7 @@ export const TeamArtifactChips = React.memo(function TeamArtifactChips({
       {/* Section header */}
       <span
         className="text-[11px] font-medium tracking-wide block mb-2"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Team Research &middot; {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}
       </span>
@@ -83,31 +83,31 @@ export const TeamArtifactChips = React.memo(function TeamArtifactChips({
               )}
               style={{
                 background: isActive
-                  ? "hsla(14 100% 60% / 0.06)"
-                  : "hsla(220 10% 100% / 0.02)",
+                  ? "var(--accent-muted)"
+                  : "var(--overlay-faint)",
                 border: isActive
-                  ? "1px solid hsla(14 100% 60% / 0.35)"
-                  : "1px solid hsla(220 10% 100% / 0.06)",
+                  ? "1px solid var(--accent-border)"
+                  : "1px solid var(--overlay-faint)",
                 color: isActive
-                  ? "hsl(220 10% 90%)"
-                  : "hsl(220 10% 65%)",
+                  ? "var(--text-primary)"
+                  : "var(--text-secondary)",
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
-                  e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.12)";
+                  e.currentTarget.style.background = "var(--overlay-faint)";
+                  e.currentTarget.style.borderColor = "var(--overlay-moderate)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.02)";
-                  e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.background = "var(--overlay-faint)";
+                  e.currentTarget.style.borderColor = "var(--overlay-faint)";
                 }
               }}
             >
               <Icon
                 className="w-3.5 h-3.5 flex-shrink-0"
-                style={{ color: isActive ? config.color : "hsl(220 10% 50%)" }}
+                style={{ color: isActive ? config.color : "var(--text-muted)" }}
               />
               <span className="truncate max-w-[140px]">
                 {artifact.name}

@@ -15,6 +15,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useAcceptFinalize, useRejectFinalize } from "@/hooks/useAcceptFinalize";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Inner dialog — rendered only when there's an active session in queue
@@ -69,7 +70,7 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-[200]"
-        style={{ background: "hsla(220 10% 4% / 0.7)", backdropFilter: "blur(4px)" }}
+        style={{ background: "var(--overlay-scrim-deep)", backdropFilter: "blur(4px)" }}
       />
 
       {/* Dialog */}
@@ -79,17 +80,16 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
         aria-labelledby="finalize-dialog-title"
         className="fixed z-[201] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
         style={{
-          background: "hsl(220 10% 10%)",
-          border: "1px solid hsla(220 10% 100% / 0.1)",
-          boxShadow: "0 0 60px hsla(14 100% 60% / 0.06), 0 24px 48px hsla(220 10% 0% / 0.6)",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--overlay-moderate)",
+          boxShadow: "var(--shadow-lg)",
         }}
       >
         {/* Top accent */}
         <div
           className="h-[2px] w-full"
           style={{
-            background:
-              "linear-gradient(90deg, hsla(14 100% 60% / 0.8) 0%, hsla(14 100% 60% / 0.1) 100%)",
+            background: `linear-gradient(90deg, ${withAlpha("var(--accent-primary)", 80)} 0%, ${withAlpha("var(--accent-primary)", 10)} 100%)`,
           }}
         />
 
@@ -99,11 +99,11 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
             <h2
               id="finalize-dialog-title"
               className="text-[15px] font-semibold mb-1"
-              style={{ color: "hsl(220 10% 92%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               Plan Ready for Acceptance
             </h2>
-            <p className="text-[13px]" style={{ color: "hsl(220 10% 50%)" }}>
+            <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
               The agent has finalized proposals and is waiting for your confirmation.
             </p>
           </div>
@@ -113,9 +113,9 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
             <div
               className="mb-5 px-3 py-2.5 rounded-lg text-[13px] font-medium truncate"
               style={{
-                background: "hsla(220 10% 100% / 0.05)",
-                border: "1px solid hsla(220 10% 100% / 0.08)",
-                color: "hsl(220 10% 80%)",
+                background: "var(--overlay-weak)",
+                border: "1px solid var(--overlay-weak)",
+                color: "var(--text-primary)",
               }}
             >
               {sessionTitle}
@@ -134,7 +134,7 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
             <Label
               htmlFor="auto-accept-session"
               className="text-[12px] cursor-pointer select-none"
-              style={{ color: "hsl(220 10% 60%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               Auto-accept plans for this session
             </Label>
@@ -148,19 +148,19 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
               disabled={isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                color: "hsl(220 10% 60%)",
-                border: "1px solid hsla(220 10% 100% / 0.1)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--overlay-moderate)",
                 background: "transparent",
               }}
               onMouseEnter={(e) => {
                 if (!isLoading) {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 80%)";
+                  e.currentTarget.style.background = "var(--overlay-weak)";
+                  e.currentTarget.style.color = "var(--text-primary)";
                 }
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "hsl(220 10% 60%)";
+                e.currentTarget.style.color = "var(--text-secondary)";
               }}
             >
               <Eye className="w-3.5 h-3.5" />
@@ -173,17 +173,17 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
               disabled={isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                color: "hsl(0 70% 65%)",
-                border: "1px solid hsla(0 70% 60% / 0.2)",
-                background: "hsla(0 70% 60% / 0.06)",
+                color: "var(--status-error)",
+                border: "1px solid var(--status-error-border)",
+                background: "var(--status-error-muted)",
               }}
               onMouseEnter={(e) => {
                 if (!isLoading) {
-                  e.currentTarget.style.background = "hsla(0 70% 60% / 0.12)";
+                  e.currentTarget.style.background = withAlpha("var(--status-error)", 12);
                 }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(0 70% 60% / 0.06)";
+                e.currentTarget.style.background = "var(--status-error-muted)";
               }}
             >
               {reject.isPending ? (
@@ -200,20 +200,20 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
               disabled={isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                color: "white",
+                color: "var(--text-inverse)",
                 background: accept.isPending
-                  ? "hsl(14 100% 50%)"
-                  : "hsl(14 100% 60%)",
-                boxShadow: "0 1px 4px hsla(14 100% 40% / 0.3)",
+                  ? withAlpha("var(--accent-primary)", 85)
+                  : "var(--accent-primary)",
+                boxShadow: `0 1px 4px ${withAlpha("var(--accent-primary)", 30)}`,
               }}
               onMouseEnter={(e) => {
                 if (!isLoading) {
-                  e.currentTarget.style.background = "hsl(14 100% 55%)";
+                  e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);
                 }
               }}
               onMouseLeave={(e) => {
                 if (!accept.isPending) {
-                  e.currentTarget.style.background = "hsl(14 100% 60%)";
+                  e.currentTarget.style.background = "var(--accent-primary)";
                 }
               }}
             >

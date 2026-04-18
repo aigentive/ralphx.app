@@ -291,7 +291,7 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                   type="button"
                   onClick={() => navigateToIdeationSession(entry.followup_session_id!)}
                   className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium transition-opacity hover:opacity-80"
-                  style={{ color: "#ff8a5b" }}
+                  style={{ color: "var(--status-warning)" }}
                 >
                   <ExternalLink className="w-3 h-3" />
                   Open

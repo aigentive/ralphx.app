@@ -8,6 +8,7 @@
 import { Clock, MessageSquareText, Settings } from "lucide-react";
 import { useExecutionStatus } from "@/hooks/useExecutionControl";
 import { useUiStore } from "@/stores/uiStore";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Conversation Empty State
@@ -38,22 +39,22 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
           <div
             className="w-14 h-14 rounded-full flex items-center justify-center animate-pulse"
             style={{
-              background: "hsl(38 90% 50% / 0.12)",
-              border: "1px solid hsl(38 90% 50% / 0.25)",
+              background: "var(--status-warning-muted)",
+              border: "1px solid var(--status-warning-border)",
             }}
           >
-            <Clock className="w-6 h-6" style={{ color: "hsl(38 90% 60%)" }} />
+            <Clock className="w-6 h-6" style={{ color: "var(--status-warning)" }} />
           </div>
         </div>
 
-        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
+        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "var(--text-primary)" }}>
           Waiting for capacity
         </h3>
 
         {hasCapacityData ? (
-          <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             Ideation capacity:{" "}
-            <span style={{ color: "hsl(220 10% 80%)" }}>
+            <span style={{ color: "var(--text-primary)" }}>
               {data.ideationActive}/{data.ideationMaxProject} {data.ideationMaxProject === 1 ? "slot" : "slots"} active in this project.
             </span>
             {data.ideationWaiting > 0 && (
@@ -62,7 +63,7 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
             This session will start automatically when a slot opens.
           </p>
         ) : (
-          <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             All ideation slots are in use. This session will start automatically when a slot opens.
           </p>
         )}
@@ -71,7 +72,7 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
         <button
           onClick={() => openModal("settings", { section: "ideation-workflow" })}
           className="mt-3 inline-flex items-center gap-1 text-xs transition-colors"
-          style={{ color: "hsl(38 90% 60%)" }}
+          style={{ color: "var(--status-warning)" }}
         >
           <Settings className="w-3 h-3" />
           Adjust limits in Settings →
@@ -82,17 +83,17 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
           <div
             className="mt-5 text-left rounded-md px-3 py-2.5"
             style={{
-              background: "hsla(220 10% 100% / 0.04)",
-              border: "1px solid hsla(220 10% 100% / 0.08)",
-              borderLeft: "2px solid hsl(38 90% 50% / 0.5)",
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-weak)",
+              borderLeft: `2px solid ${withAlpha("var(--status-warning)", 50)}`,
             }}
           >
-            <p className="text-xs mb-1 font-medium" style={{ color: "hsl(220 10% 50%)" }}>
+            <p className="text-xs mb-1 font-medium" style={{ color: "var(--text-muted)" }}>
               Your queued message
             </p>
             <p
               className="text-sm leading-relaxed line-clamp-4"
-              style={{ color: "hsl(220 10% 70%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {pendingInitialPrompt}
             </p>
@@ -117,46 +118,46 @@ export function ConversationEmptyState() {
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
             style={{
-              background: "hsla(220 10% 100% / 0.05)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
+              background: "var(--overlay-weak)",
+              border: "1px solid var(--overlay-faint)",
             }}
           />
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
             style={{
-              background: "hsla(220 10% 100% / 0.06)",
-              border: "1px solid hsla(220 10% 100% / 0.08)",
+              background: "var(--overlay-weak)",
+              border: "1px solid var(--overlay-weak)",
             }}
           />
           <div
             className="w-14 h-14 rounded-full flex items-center justify-center"
             style={{
-              background: "hsla(14 100% 60% / 0.12)",
-              border: "1px solid hsla(14 100% 60% / 0.25)",
+              background: withAlpha("var(--accent-primary)", 12),
+              border: "1px solid var(--accent-border)",
             }}
           >
-            <MessageSquareText className="w-6 h-6" style={{ color: "hsl(14 100% 60%)" }} />
+            <MessageSquareText className="w-6 h-6" style={{ color: "var(--accent-primary)" }} />
           </div>
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center opacity-50"
             style={{
-              background: "hsla(220 10% 100% / 0.06)",
-              border: "1px solid hsla(220 10% 100% / 0.08)",
+              background: "var(--overlay-weak)",
+              border: "1px solid var(--overlay-weak)",
             }}
           />
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center opacity-30"
             style={{
-              background: "hsla(220 10% 100% / 0.05)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
+              background: "var(--overlay-weak)",
+              border: "1px solid var(--overlay-faint)",
             }}
           />
         </div>
 
-        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
+        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "var(--text-primary)" }}>
           Start the conversation
         </h3>
-        <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
           Describe your ideas and I'll help create task proposals
         </p>
 
@@ -165,11 +166,11 @@ export function ConversationEmptyState() {
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center animate-bounce"
             style={{
-              background: "hsla(14 100% 60% / 0.1)",
-              border: "1px solid hsla(14 100% 60% / 0.2)",
+              background: withAlpha("var(--accent-primary)", 10),
+              border: "1px solid var(--accent-border)",
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: "hsl(14 100% 60%)" }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: "var(--accent-primary)" }}>
               <path d="M7 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>

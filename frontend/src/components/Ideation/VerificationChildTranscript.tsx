@@ -55,8 +55,8 @@ export function VerificationChildTranscript({
         data-testid="verification-child-transcript-loading"
         className="text-[11px] px-2.5 py-2 rounded-md"
         style={{
-          background: "hsla(220 10% 100% / 0.03)",
-          color: "hsl(220 10% 55%)",
+          background: "var(--overlay-faint)",
+          color: "var(--text-secondary)",
         }}
       >
         Loading verification transcript...
@@ -70,8 +70,8 @@ export function VerificationChildTranscript({
         data-testid="verification-child-transcript-error"
         className="text-[11px] px-2.5 py-2 rounded-md"
         style={{
-          background: "hsla(0 70% 50% / 0.08)",
-          color: "hsl(0 70% 72%)",
+          background: "var(--status-error-muted)",
+          color: "var(--status-error)",
         }}
       >
         Unable to load verification transcript.
@@ -85,8 +85,8 @@ export function VerificationChildTranscript({
         data-testid="verification-child-transcript-empty"
         className="text-[11px] px-2.5 py-2 rounded-md"
         style={{
-          background: "hsla(220 10% 100% / 0.03)",
-          color: "hsl(220 10% 55%)",
+          background: "var(--overlay-faint)",
+          color: "var(--text-secondary)",
         }}
       >
         {isActiveRun
@@ -100,7 +100,7 @@ export function VerificationChildTranscript({
     <div className="space-y-3" data-testid="verification-child-transcript">
       <div
         className="text-[10px] uppercase tracking-[0.08em]"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Verification Agent Activity
       </div>

@@ -33,7 +33,7 @@ function SectionHeader({ label }: { label: string }) {
   return (
     <h4
       className="text-[11px] uppercase tracking-wide font-medium mb-1.5"
-      style={{ color: "hsl(220 10% 50%)" }}
+      style={{ color: "var(--text-muted)" }}
     >
       {label}
     </h4>
@@ -57,10 +57,10 @@ export function DebateAdvocateCard({
         <div
           className="rounded-xl transition-all duration-200"
           style={{
-            background: "hsla(220 10% 100% / 0.02)",
+            background: "var(--overlay-faint)",
             border: isWinner
-              ? "1px solid hsl(14 100% 60%)"
-              : "1px solid hsla(220 10% 100% / 0.06)",
+              ? "1px solid var(--accent-primary)"
+              : "1px solid var(--overlay-faint)",
           }}
         >
           <CollapsibleTrigger asChild>
@@ -74,7 +74,7 @@ export function DebateAdvocateCard({
                   !isOpen && "-rotate-90"
                 )}
                 style={{
-                  color: isWinner ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
+                  color: isWinner ? "var(--accent-primary)" : "var(--text-muted)",
                 }}
               />
 
@@ -84,8 +84,8 @@ export function DebateAdvocateCard({
                     className="text-[13px] font-medium tracking-[-0.01em]"
                     style={{
                       color: isWinner
-                        ? "hsl(14 100% 60%)"
-                        : "hsl(220 10% 90%)",
+                        ? "var(--accent-primary)"
+                        : "var(--text-primary)",
                     }}
                   >
                     {advocate.name}
@@ -93,9 +93,9 @@ export function DebateAdvocateCard({
                   <span
                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-md"
                     style={{
-                      background: "hsla(220 10% 100% / 0.04)",
-                      border: "1px solid hsla(220 10% 100% / 0.06)",
-                      color: advocate.color ?? "hsl(220 10% 50%)",
+                      background: "var(--overlay-faint)",
+                      border: "1px solid var(--overlay-faint)",
+                      color: advocate.color ?? "var(--text-muted)",
                     }}
                   >
                     {advocate.role}
@@ -115,11 +115,11 @@ export function DebateAdvocateCard({
                     <li
                       key={s}
                       className="text-[12px] leading-relaxed pl-3 relative"
-                      style={{ color: "hsl(220 10% 70%)" }}
+                      style={{ color: "var(--text-secondary)" }}
                     >
                       <span
                         className="absolute left-0 top-[6px] w-1 h-1 rounded-full"
-                        style={{ background: "hsl(145 70% 45%)" }}
+                        style={{ background: "var(--status-success)" }}
                       />
                       {s}
                     </li>
@@ -135,11 +135,11 @@ export function DebateAdvocateCard({
                     <li
                       key={w}
                       className="text-[12px] leading-relaxed pl-3 relative"
-                      style={{ color: "hsl(220 10% 70%)" }}
+                      style={{ color: "var(--text-secondary)" }}
                     >
                       <span
                         className="absolute left-0 top-[6px] w-1 h-1 rounded-full"
-                        style={{ background: "hsl(0 70% 55%)" }}
+                        style={{ background: "var(--status-error)" }}
                       />
                       {w}
                     </li>
@@ -155,11 +155,11 @@ export function DebateAdvocateCard({
                     <li
                       key={e}
                       className="text-[12px] leading-relaxed pl-3 relative"
-                      style={{ color: "hsl(220 10% 70%)" }}
+                      style={{ color: "var(--text-secondary)" }}
                     >
                       <span
                         className="absolute left-0 top-[6px] w-1 h-1 rounded-full"
-                        style={{ background: "hsl(220 10% 40%)" }}
+                        style={{ background: "var(--text-muted)" }}
                       />
                       {e}
                     </li>
@@ -173,8 +173,8 @@ export function DebateAdvocateCard({
                 <p
                   className="text-[12px] leading-relaxed italic pl-3"
                   style={{
-                    color: "hsl(220 10% 60%)",
-                    borderLeft: "2px solid hsla(220 10% 100% / 0.06)",
+                    color: "var(--text-secondary)",
+                    borderLeft: "2px solid var(--overlay-faint)",
                   }}
                 >
                   {advocate.criticChallenge}

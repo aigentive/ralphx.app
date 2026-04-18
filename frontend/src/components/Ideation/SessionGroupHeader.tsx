@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import {
   Collapsible,
   CollapsibleContent,
@@ -13,14 +14,9 @@ export interface SessionGroupHeaderProps {
   count: number;
   isOpen: boolean;
   onToggle: (open: boolean) => void;
-  /** HSL string e.g. "hsl(14 100% 60%)" — used for count badge tint */
+  /** CSS variable reference e.g. "var(--accent-primary)" — used for count badge tint */
   accentColor?: string;
   children: React.ReactNode;
-}
-
-/** Convert "hsl(H S% L%)" to "hsla(H S% L% / alpha)" */
-function withAlpha(hsl: string, alpha: number): string {
-  return hsl.replace("hsl(", "hsla(").replace(")", ` / ${alpha})`);
 }
 
 export function SessionGroupHeader({
@@ -38,10 +34,10 @@ export function SessionGroupHeader({
         <button
           className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150"
           style={{
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-muted)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+            e.currentTarget.style.background = "var(--overlay-faint)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
@@ -56,9 +52,9 @@ export function SessionGroupHeader({
               className="text-[9px] px-1.5 rounded-full font-medium leading-[16px]"
               style={{
                 background: accentColor
-                  ? withAlpha(accentColor, 0.15)
-                  : "hsla(220 10% 50% / 0.15)",
-                color: accentColor ?? "hsl(220 10% 60%)",
+                  ? withAlpha(accentColor, 15)
+                  : withAlpha("var(--text-muted)", 15),
+                color: accentColor ?? "var(--text-secondary)",
               }}
             >
               {count}

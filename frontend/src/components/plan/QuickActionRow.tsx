@@ -14,6 +14,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import type { QuickAction } from "@/hooks/useIdeationQuickAction";
 
 // ============================================================================
@@ -87,27 +88,27 @@ export function QuickActionRow({
           )}
           style={{
             background: isHighlighted
-              ? "hsla(14 100% 60% / 0.16)"
+              ? withAlpha("var(--accent-primary)", 16)
               : "transparent",
             border: isHighlighted
-              ? "1px solid hsla(14 100% 60% / 0.35)"
+              ? "1px solid var(--accent-border)"
               : "1px solid transparent",
           }}
         >
           <Icon
             className="h-4 w-4 shrink-0"
-            style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 70%)" }}
+            style={{ color: isHighlighted ? "var(--accent-primary)" : "var(--text-secondary)" }}
           />
           <div className="flex-1 min-w-0">
             <div
               className="text-[13px] font-medium leading-tight"
-              style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
+              style={{ color: isHighlighted ? "var(--accent-primary)" : "var(--text-primary)" }}
             >
               {action.label}
             </div>
             <div
               className="text-xs leading-tight mt-0.5 truncate"
-              style={{ color: "hsl(220 10% 62%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {description}
             </div>
@@ -125,8 +126,8 @@ export function QuickActionRow({
           className="px-3 py-2"
         >
           <div className="flex flex-col gap-2">
-            <div className="text-sm" style={{ color: "hsl(220 10% 90%)" }}>
-              <span style={{ color: "hsl(220 10% 70%)" }}>Create session for: </span>
+            <div className="text-sm" style={{ color: "var(--text-primary)" }}>
+              <span style={{ color: "var(--text-secondary)" }}>Create session for: </span>
               <span className="font-medium">{description}</span>
             </div>
             <div className="flex gap-2">
@@ -139,9 +140,9 @@ export function QuickActionRow({
                   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 )}
                 style={{
-                  background: "hsla(14 100% 60% / 0.16)",
-                  border: "1px solid hsla(14 100% 60% / 0.35)",
-                  color: "hsl(14 100% 66%)",
+                  background: withAlpha("var(--accent-primary)", 16),
+                  border: "1px solid var(--accent-border)",
+                  color: "var(--accent-primary)",
                 }}
               >
                 Create Session
@@ -155,9 +156,9 @@ export function QuickActionRow({
                   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 )}
                 style={{
-                  background: "hsla(220 10% 100% / 0.05)",
-                  border: "1px solid hsla(220 20% 100% / 0.1)",
-                  color: "hsl(220 10% 70%)",
+                  background: "var(--overlay-weak)",
+                  border: "1px solid var(--overlay-moderate)",
+                  color: "var(--text-secondary)",
                 }}
               >
                 Cancel
@@ -178,11 +179,11 @@ export function QuickActionRow({
         >
           <Loader2
             className="h-4 w-4 animate-spin shrink-0"
-            style={{ color: "hsl(14 100% 66%)" }}
+            style={{ color: "var(--accent-primary)" }}
           />
           <div
             className="text-[13px] font-medium"
-            style={{ color: "hsl(220 10% 90%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             {action.creatingLabel}
           </div>
@@ -202,11 +203,11 @@ export function QuickActionRow({
             <div className="flex items-center gap-3">
               <Check
                 className="h-4 w-4 shrink-0"
-                style={{ color: "hsl(142 76% 36%)" }}
+                style={{ color: "var(--status-success)" }}
               />
               <div
                 className="text-[13px] font-medium"
-                style={{ color: "hsl(220 10% 90%)" }}
+                style={{ color: "var(--text-primary)" }}
               >
                 {action.successLabel}
               </div>
@@ -220,9 +221,9 @@ export function QuickActionRow({
                 "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               )}
               style={{
-                background: "hsla(14 100% 60% / 0.16)",
-                border: "1px solid hsla(14 100% 60% / 0.35)",
-                color: "hsl(14 100% 66%)",
+                background: withAlpha("var(--accent-primary)", 16),
+                border: "1px solid var(--accent-border)",
+                color: "var(--accent-primary)",
               }}
             >
               {action.viewLabel}

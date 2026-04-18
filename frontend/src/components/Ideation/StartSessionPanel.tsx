@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Lightbulb, Zap, FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import { TaskPickerDialog } from "./TaskPickerDialog";
 import { TeamConfigPanel } from "./TeamConfigPanel";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
@@ -128,15 +129,15 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
     <>
       <div
         className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden"
-        style={{ background: "hsl(220 10% 8%)" }}
+        style={{ background: "var(--bg-base)" }}
       >
         {/* Subtle grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.015]"
           style={{
             backgroundImage: `
-              linear-gradient(hsla(220 10% 100% / 0.5) 1px, transparent 1px),
-              linear-gradient(90deg, hsla(220 10% 100% / 0.5) 1px, transparent 1px)
+              linear-gradient(var(--alpha-white-50) 1px, transparent 1px),
+              linear-gradient(90deg, var(--alpha-white-50) 1px, transparent 1px)
             `,
             backgroundSize: "48px 48px",
           }}
@@ -148,24 +149,24 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             <div
               className="relative w-20 h-20 rounded-[22px] flex items-center justify-center mx-auto"
               style={{
-                background: "hsla(14 100% 60% / 0.12)",
-                border: "1px solid hsla(14 100% 60% / 0.25)",
+                background: withAlpha("var(--accent-primary)", 12),
+                border: "1px solid var(--accent-border)",
               }}
             >
-              <Lightbulb className="w-9 h-9" style={{ color: "hsl(14 100% 60%)" }} strokeWidth={1.5} />
+              <Lightbulb className="w-9 h-9" style={{ color: "var(--accent-primary)" }} strokeWidth={1.5} />
             </div>
           </div>
 
           {/* Content */}
           <h1
             className="text-xl font-semibold tracking-[-0.02em] mb-2"
-            style={{ color: "hsl(220 10% 90%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             Ideation Studio
           </h1>
           <p
             className="text-[14px] leading-relaxed mb-6 max-w-xs mx-auto"
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             Select a session from the sidebar or start a new brainstorming session.
           </p>
@@ -174,7 +175,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
           <div className="mb-6">
             <p
               className="text-[12px] font-medium tracking-wide uppercase mb-3"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Ideation Mode
             </p>
@@ -187,20 +188,20 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
                     onClick={() => setTeamMode(mode.value)}
                     className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
                     style={{
-                      background: isSelected ? "hsla(14 100% 60% / 0.15)" : "hsla(220 10% 100% / 0.03)",
-                      border: `1px solid ${isSelected ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.08)"}`,
-                      color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 60%)",
+                      background: isSelected ? "var(--accent-muted)" : "var(--overlay-faint)",
+                      border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--overlay-weak)"}`,
+                      color: isSelected ? "var(--accent-primary)" : "var(--text-secondary)",
                     }}
                     onMouseEnter={(e) => {
                       if (!isSelected) {
-                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.15)";
-                        e.currentTarget.style.color = "hsl(220 10% 80%)";
+                        e.currentTarget.style.borderColor = "var(--overlay-moderate)";
+                        e.currentTarget.style.color = "var(--text-primary)";
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!isSelected) {
-                        e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.08)";
-                        e.currentTarget.style.color = "hsl(220 10% 60%)";
+                        e.currentTarget.style.borderColor = "var(--overlay-weak)";
+                        e.currentTarget.style.color = "var(--text-secondary)";
                       }
                     }}
                   >
@@ -225,7 +226,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             {/* Info text */}
             <p
               className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               <span className="text-[14px]">&#9432;</span>
               The lead agent will decide what specialist roles to create based on your task.
@@ -238,14 +239,14 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             disabled={isCreating}
             className="h-11 px-6 text-[14px] font-semibold tracking-[-0.01em] border-0 transition-colors duration-150 mt-4"
             style={{
-              background: isCreating ? "hsl(14 100% 60% / 0.6)" : "hsl(14 100% 60%)",
-              color: "white",
+              background: isCreating ? withAlpha("var(--accent-primary)", 60) : "var(--accent-primary)",
+              color: "var(--text-inverse)",
             }}
             onMouseEnter={(e) => {
-              if (!isCreating) e.currentTarget.style.background = "hsl(14 100% 55%)";
+              if (!isCreating) e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);
             }}
             onMouseLeave={(e) => {
-              if (!isCreating) e.currentTarget.style.background = "hsl(14 100% 60%)";
+              if (!isCreating) e.currentTarget.style.background = "var(--accent-primary)";
             }}
           >
             {isCreating ? (
@@ -266,14 +267,14 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             onClick={() => setShowTaskPicker(true)}
             disabled={isCreatingFromTask}
             className="flex items-center justify-center gap-2 mx-auto mt-5 text-[13px] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
             onMouseEnter={(e) => {
               if (!isCreatingFromTask) {
-                e.currentTarget.style.color = "hsl(14 100% 60%)";
+                e.currentTarget.style.color = "var(--accent-primary)";
               }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "hsl(220 10% 60%)";
+              e.currentTarget.style.color = "var(--text-secondary)";
             }}
           >
             {isCreatingFromTask ? (
@@ -298,14 +299,14 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             }}
             disabled={isImporting}
             className="flex items-center justify-center gap-2 mx-auto mt-3 text-[13px] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
             onMouseEnter={(e) => {
               if (!isImporting) {
-                e.currentTarget.style.color = "hsl(14 100% 60%)";
+                e.currentTarget.style.color = "var(--accent-primary)";
               }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "hsl(220 10% 60%)";
+              e.currentTarget.style.color = "var(--text-secondary)";
             }}
           >
             {isImporting ? (
@@ -324,14 +325,14 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
           {/* Keyboard Hints */}
           <div
             className="flex items-center justify-center gap-4 mt-8"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             <div className="flex items-center gap-1.5 text-[11px]">
               <kbd
                 className="px-2 py-1 rounded-md text-[10px] font-medium"
                 style={{
-                  background: "hsla(220 10% 100% / 0.04)",
-                  border: "1px solid hsla(220 10% 100% / 0.08)",
+                  background: "var(--overlay-faint)",
+                  border: "1px solid var(--overlay-weak)",
                 }}
               >
                 ⌘ N
@@ -342,8 +343,8 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
               <kbd
                 className="px-2 py-1 rounded-md text-[10px] font-medium"
                 style={{
-                  background: "hsla(220 10% 100% / 0.04)",
-                  border: "1px solid hsla(220 10% 100% / 0.08)",
+                  background: "var(--overlay-faint)",
+                  border: "1px solid var(--overlay-weak)",
                 }}
               >
                 ⌘ D
