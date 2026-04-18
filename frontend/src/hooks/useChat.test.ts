@@ -13,6 +13,7 @@ import {
   useChat,
   useConversations,
   useConversation,
+  useConversationHistoryWindow,
   useAgentRunStatus,
   chatKeys,
 } from "./useChat";
@@ -50,6 +51,7 @@ vi.mock("@/api/chat", () => ({
     sendAgentMessage: vi.fn(),
     listConversations: vi.fn(),
     getConversation: vi.fn(),
+    getConversationMessagesPage: vi.fn(),
     createConversation: vi.fn(),
     getAgentRunStatus: vi.fn(),
   },
@@ -278,6 +280,76 @@ describe("useConversation", () => {
   });
 });
 
+describe("useConversationHistoryWindow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("loads the latest message window first and prepends older pages on demand", async () => {
+    vi.mocked(chatApi.getConversationMessagesPage)
+      .mockResolvedValueOnce({
+        conversation: mockConversation1,
+        messages: [mockMessage2],
+        limit: 1,
+        offset: 0,
+        totalMessageCount: 2,
+        hasOlder: true,
+      })
+      .mockResolvedValueOnce({
+        conversation: mockConversation1,
+        messages: [mockMessage1],
+        limit: 1,
+        offset: 1,
+        totalMessageCount: 2,
+        hasOlder: false,
+      });
+
+    const { result } = renderHook(
+      () => useConversationHistoryWindow("conv-1", { pageSize: 1 }),
+      {
+        wrapper: createWrapper(),
+      }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data?.messages.map((message) => message.id)).toEqual([
+      "message-2",
+    ]);
+    expect(result.current.loadedStartIndex).toBe(1);
+    expect(result.current.hasOlderMessages).toBe(true);
+    expect(chatApi.getConversationMessagesPage).toHaveBeenCalledWith(
+      "conv-1",
+      1,
+      0
+    );
+
+    await act(async () => {
+      await result.current.fetchOlderMessages();
+    });
+
+    await waitFor(() =>
+      expect(result.current.data?.messages.map((message) => message.id)).toEqual([
+        "message-1",
+        "message-2",
+      ])
+    );
+
+    expect(result.current.loadedStartIndex).toBe(0);
+    expect(result.current.hasOlderMessages).toBe(false);
+    expect(chatApi.getConversationMessagesPage).toHaveBeenNthCalledWith(
+      2,
+      "conv-1",
+      1,
+      1
+    );
+  });
+});
+
 describe("useAgentRunStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -325,6 +397,20 @@ describe("useAgentRunStatus", () => {
 describe("useChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(chatApi.listConversations).mockResolvedValue([]);
+    vi.mocked(chatApi.getConversation).mockResolvedValue({
+      conversation: mockConversation1,
+      messages: [mockMessage1, mockMessage2],
+    });
+    vi.mocked(chatApi.getConversationMessagesPage).mockResolvedValue({
+      conversation: mockConversation1,
+      messages: [mockMessage1, mockMessage2],
+      limit: 40,
+      offset: 0,
+      totalMessageCount: 2,
+      hasOlder: false,
+    });
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue(null);
     // Mock store state
     vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {

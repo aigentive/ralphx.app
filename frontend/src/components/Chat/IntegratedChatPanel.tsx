@@ -12,7 +12,12 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
-import { useChat, useConversation, chatKeys } from "@/hooks/useChat";
+import {
+  useChat,
+  useConversation,
+  useConversationHistoryWindow,
+  chatKeys,
+} from "@/hooks/useChat";
 import {
   useChatStore,
   selectQueuedMessages,
@@ -416,7 +421,12 @@ export function IntegratedChatPanel({
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
-  const regularChatData = useChat(chatContext, { isVisible, storeKey: storeContextKey, disableAutoSelect: true });
+  const regularChatData = useChat(chatContext, {
+    isVisible,
+    storeKey: storeContextKey,
+    disableAutoSelect: true,
+    skipActiveConversationQuery: !!ideationSessionId,
+  });
 
   // Single dynamic query for all agent contexts (execution/review/merge)
   // When currentContextType changes, the query key changes and a fresh fetch fires
@@ -469,8 +479,32 @@ export function IntegratedChatPanel({
     autoSelectConversation({ data: conversationsData, isLoading: conversationsLoading });
   }, [autoSelectConversation, conversationsData, conversationsLoading, isVisible]);
 
+  const {
+    messages: activeConversation,
+    sendMessage,
+    switchConversation: handleSelectConversation,
+    createConversation: handleNewConversation,
+  } = regularChatData;
+
+  // Load teammate conversation messages when on a teammate tab
+  const teammateConversation = useConversation(teammateConversationId);
+  const ideationConversationHistory = useConversationHistoryWindow(
+    ideationSessionId && !isTeammateTab ? activeConversationId : null,
+    {
+      enabled: !!ideationSessionId && !isTeammateTab,
+      pageSize: 40,
+    }
+  );
+
+  const primaryConversationData =
+    ideationSessionId && !isTeammateTab
+      ? ideationConversationHistory.data
+      : activeConversation.data;
+
   // Check if active conversation belongs to current context (needed by recovery effects below)
-  const activeConversationContext = regularChatData.messages.data?.conversation;
+  const activeConversationContext = isTeammateTab
+    ? teammateConversation.data?.conversation
+    : (primaryConversationData?.conversation ?? regularChatData.messages.data?.conversation);
   const isConversationInCurrentContext = useMemo(
     () =>
       (activeConversationContext?.contextType === currentContextType ||
@@ -520,13 +554,6 @@ export function IntegratedChatPanel({
     [showFailedBanner, failedRun]
   );
 
-  const {
-    messages: activeConversation,
-    sendMessage,
-    switchConversation: handleSelectConversation,
-    createConversation: handleNewConversation,
-  } = regularChatData;
-
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // File attachments - use activeConversationId for attachment association
@@ -538,15 +565,12 @@ export function IntegratedChatPanel({
     clearAttachments,
   } = useChatAttachments(activeConversationId ?? "");
 
-  // Load teammate conversation messages when on a teammate tab
-  const teammateConversation = useConversation(teammateConversationId);
-
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
   const activeConversationMeta = useMemo(() => {
     const queriedConversation = isTeammateTab
       ? teammateConversation.data?.conversation
-      : activeConversation.data?.conversation;
+      : primaryConversationData?.conversation;
 
     if (queriedConversation) {
       return queriedConversation;
@@ -560,7 +584,7 @@ export function IntegratedChatPanel({
   }, [
     isTeammateTab,
     teammateConversation.data?.conversation,
-    activeConversation.data?.conversation,
+    primaryConversationData?.conversation,
     conversationsData,
     effectiveConversationId,
   ]);
@@ -573,10 +597,16 @@ export function IntegratedChatPanel({
         return teammateConversation.data?.messages ?? [];
       }
       return activeConversationId && isConversationInCurrentContext
-        ? (activeConversation.data?.messages ?? [])
+        ? (primaryConversationData?.messages ?? [])
         : [];
     },
-    [isTeammateTab, teammateConversation.data?.messages, activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
+    [
+      isTeammateTab,
+      teammateConversation.data?.messages,
+      activeConversationId,
+      isConversationInCurrentContext,
+      primaryConversationData?.messages,
+    ]
   );
 
   // Debug logging for history mode
@@ -604,20 +634,20 @@ export function IntegratedChatPanel({
     messageCount: messagesData.length,
   });
 
-  // Wrap handleSend to include attachment IDs, team target, and clear attachments after send
+  // Wrap handleSend to include attachment IDs, team target, and clear attachments after send.
+  // Auto-scroll on new user messages is handled by ChatMessageList (see its
+  // "new user message → scrollToBottom" effect).
   const handleSend = useCallback(async (message: string) => {
-    // Collect attachment IDs before sending
     const attachmentIds = attachments.map(a => a.id);
-
-    // Call the base handler with attachment IDs and team target
+    logger.debug("[ChatScroll] handleSend firing", {
+      hasAttachments: attachmentIds.length > 0,
+      isTeamActive,
+    });
     await handleSendBase(
       message,
       attachmentIds.length > 0 ? attachmentIds : undefined,
       isTeamActive ? sendTarget : undefined
     );
-
-    // Clear attachments after successful send
-    // Note: If send fails, attachments are preserved for retry
     if (attachmentIds.length > 0) {
       clearAttachments();
     }
@@ -769,7 +799,11 @@ export function IntegratedChatPanel({
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
   const isConversationsLoading = conversations.isLoading;
-  const isActiveConversationLoading = activeConversationId ? activeConversation.isLoading : false;
+  const isActiveConversationLoading = activeConversationId
+    ? ideationSessionId && !isTeammateTab
+      ? ideationConversationHistory.isLoading
+      : activeConversation.isLoading
+    : false;
   const isLoading = isConversationsLoading || isActiveConversationLoading;
 
   // Status badge helpers - disabled in history mode (no live agent)
@@ -928,6 +962,11 @@ export function IntegratedChatPanel({
               ref={virtuosoRef}
               messages={sortedMessages}
               conversationId={effectiveConversationId}
+              firstItemIndex={
+                ideationSessionId && !isTeammateTab
+                  ? ideationConversationHistory.loadedStartIndex
+                  : 0
+              }
               failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}
@@ -941,6 +980,21 @@ export function IntegratedChatPanel({
               contextKey={activeTeam ? storeContextKey : undefined}
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              hasOlderMessages={
+                !!ideationSessionId &&
+                !isTeammateTab &&
+                ideationConversationHistory.hasOlderMessages
+              }
+              isFetchingOlderMessages={
+                !!ideationSessionId &&
+                !isTeammateTab &&
+                ideationConversationHistory.isFetchingOlderMessages
+              }
+              onLoadOlderMessages={
+                ideationSessionId && !isTeammateTab
+                  ? ideationConversationHistory.fetchOlderMessages
+                  : undefined
+              }
             />
           )}
 

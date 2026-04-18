@@ -53,6 +53,7 @@ export interface MessageItemProps {
   role: string;
   content: string;
   createdAt: string;
+  isLastInList?: boolean | undefined;
   /** Pre-parsed tool calls array (parsed at API layer) */
   toolCalls?: ToolCall[] | null;
   /** Pre-parsed content blocks array (parsed at API layer) */
@@ -86,6 +87,7 @@ export const MessageItem = React.memo(function MessageItem({
   role,
   content,
   createdAt,
+  isLastInList = false,
   toolCalls,
   contentBlocks,
   attachments,
@@ -174,7 +176,8 @@ export const MessageItem = React.memo(function MessageItem({
   return (
     <div
       className={cn(
-        "flex min-w-0 mb-5",
+        "flex min-w-0",
+        isLastInList ? "mb-0" : "mb-5",
         isUser ? "justify-end" : "justify-start"
       )}
       style={teammateColor ? { borderLeft: `2px solid ${teammateColor}`, paddingLeft: "8px" } : undefined}
@@ -288,6 +291,7 @@ export const MessageItem = React.memo(function MessageItem({
   return prev.role === next.role
     && prev.content === next.content
     && prev.createdAt === next.createdAt
+    && prev.isLastInList === next.isLastInList
     && prev.toolCalls === next.toolCalls
     && prev.contentBlocks === next.contentBlocks
     && prev.attachments === next.attachments

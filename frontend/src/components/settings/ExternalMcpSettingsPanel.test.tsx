@@ -54,13 +54,12 @@ describe("ExternalMcpSettingsPanel", () => {
     });
   });
 
-  it("renders restart-required badge on each field", async () => {
+  it("renders a single card-level restart-required notice", async () => {
     render(<ExternalMcpSettingsPanel />);
 
     await waitFor(() => {
       const badges = screen.getAllByTestId("restart-required-badge");
-      // One badge per field row: enabled, host, port, auth-token, node-path = 5
-      expect(badges.length).toBe(5);
+      expect(badges.length).toBe(1);
     });
   });
 
