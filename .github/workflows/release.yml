@@ -103,7 +103,7 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.metadata.outputs.source_ref }}
 
@@ -143,7 +143,7 @@ jobs:
           echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload release trace logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-trace-${{ matrix.arch }}
           path: release-trace/${{ matrix.arch }}/*
@@ -250,7 +250,7 @@ jobs:
           cp "${sig_path}" "${dist_dir}/RalphX_${version}_${arch}.app.tar.gz.sig"
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.arch }}
           path: release-dist/${{ matrix.arch }}/*
@@ -266,7 +266,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.metadata.outputs.source_ref }}
 
@@ -280,7 +280,7 @@ jobs:
           fi
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
@@ -421,7 +421,7 @@ jobs:
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.metadata.outputs.source_ref }}
 
@@ -435,7 +435,7 @@ jobs:
           fi
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
