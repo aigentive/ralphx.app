@@ -32,9 +32,9 @@ export function ApiKeysSection() {
       >
         {/* Error state */}
         {error && (
-          <div className="mb-3 px-3 py-2 rounded-md flex items-center gap-2 bg-red-500/10 border border-red-500/20">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <p className="text-sm text-red-400">{error.message}</p>
+          <div className="mb-3 px-3 py-2 rounded-md flex items-center gap-2 bg-status-error/10 border border-status-error/20">
+            <AlertCircle className="w-4 h-4 text-status-error shrink-0" />
+            <p className="text-sm text-status-error">{error.message}</p>
           </div>
         )}
 

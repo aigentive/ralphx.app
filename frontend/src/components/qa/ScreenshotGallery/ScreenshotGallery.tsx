@@ -281,7 +281,7 @@ function Lightbox({
             {isFailed && (
               <Badge
                 variant="outline"
-                className="border-0 bg-red-500/20 text-[var(--status-error)] gap-1.5"
+                className="border-0 bg-status-error/20 text-[var(--status-error)] gap-1.5"
               >
                 <AlertTriangle className="w-3 h-3" />
                 Failed
@@ -290,7 +290,7 @@ function Lightbox({
             {current.stepResult?.status === "passed" && (
               <Badge
                 variant="outline"
-                className="border-0 bg-emerald-500/20 text-[var(--status-success)] gap-1.5"
+                className="border-0 bg-status-success/20 text-[var(--status-success)] gap-1.5"
               >
                 <Check className="w-3 h-3" />
                 Passed
@@ -420,7 +420,7 @@ function Lightbox({
               <div className="flex items-center gap-2 mb-3">
                 <Badge
                   variant="outline"
-                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-emerald-500/20 text-[var(--status-success)]"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-status-success/20 text-[var(--status-success)]"
                 >
                   Expected
                 </Badge>
@@ -435,7 +435,7 @@ function Lightbox({
                   data-testid="comparison-expected-image"
                   src={current.expectedPath}
                   alt="Expected"
-                  className="max-h-[65vh] object-contain rounded-xl border border-emerald-500/30"
+                  className="max-h-[65vh] object-contain rounded-xl border border-status-success/30"
                   draggable={false}
                 />
               ) : (
@@ -461,7 +461,7 @@ function Lightbox({
               <div className="flex items-center gap-2 mb-3">
                 <Badge
                   variant="outline"
-                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-red-500/20 text-[var(--status-error)]"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-status-error/20 text-[var(--status-error)]"
                 >
                   Actual
                 </Badge>
@@ -475,7 +475,7 @@ function Lightbox({
                 data-testid="comparison-actual-image"
                 src={current.path}
                 alt="Actual"
-                className="max-h-[65vh] object-contain rounded-xl border border-red-500/30"
+                className="max-h-[65vh] object-contain rounded-xl border border-status-error/30"
                 draggable={false}
               />
             </div>

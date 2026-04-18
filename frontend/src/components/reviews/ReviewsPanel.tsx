@@ -51,7 +51,7 @@ function getStatusBadgeClass(status: InternalStatus): string {
     case "pending_review":
       return "bg-[var(--status-warning)]/20 text-[var(--status-warning)] border-[var(--status-warning)]/30";
     case "reviewing":
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      return "bg-status-info/20 text-status-info border-status-info/30";
     case "review_passed":
       return "bg-[var(--status-success)]/20 text-[var(--status-success)] border-[var(--status-success)]/30";
     case "escalated":

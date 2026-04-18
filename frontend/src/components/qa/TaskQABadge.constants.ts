@@ -35,13 +35,13 @@ export const STATUS_CONFIG: Record<QADisplayStatus, StatusConfig> = {
   },
   preparing: {
     label: "Preparing",
-    colorClass: "bg-amber-500/15 text-[var(--status-warning)]",
+    colorClass: "bg-status-warning/15 text-[var(--status-warning)]",
     Icon: Loader2,
     spin: true,
   },
   ready: {
     label: "QA Ready",
-    colorClass: "bg-blue-500/15 text-[var(--status-info)]",
+    colorClass: "bg-status-info/15 text-[var(--status-info)]",
     Icon: CheckCircle,
   },
   testing: {
@@ -52,12 +52,12 @@ export const STATUS_CONFIG: Record<QADisplayStatus, StatusConfig> = {
   },
   passed: {
     label: "Passed",
-    colorClass: "bg-emerald-500/15 text-[var(--status-success)]",
+    colorClass: "bg-status-success/15 text-[var(--status-success)]",
     Icon: CheckCircle,
   },
   failed: {
     label: "Failed",
-    colorClass: "bg-red-500/15 text-[var(--status-error)]",
+    colorClass: "bg-status-error/15 text-[var(--status-error)]",
     Icon: XCircle,
   },
   skipped: {

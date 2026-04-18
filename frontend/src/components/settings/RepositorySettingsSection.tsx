@@ -356,7 +356,7 @@ export function RepositorySettingsSection() {
           {isLoadingAuth ? (
             <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
           ) : isGhAuthed ? (
-            <div className="flex items-center gap-1.5 text-xs text-green-400">
+            <div className="flex items-center gap-1.5 text-xs text-status-success">
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Authenticated</span>
             </div>

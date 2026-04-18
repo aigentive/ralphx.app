@@ -331,7 +331,7 @@ export function ResearchPanel() {
                     }
                     className={
                       session.status === "complete"
-                        ? "bg-emerald-500/10 text-emerald-400"
+                        ? "bg-status-success/10 text-status-success"
                         : ""
                     }
                   >

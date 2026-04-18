@@ -615,7 +615,7 @@ export function ReviewDetailModal({
           >
             {/* Error display */}
             {(approveMutation.error || requestChangesMutation.error) && (
-              <span className="text-[12px] text-red-400 mr-auto">
+              <span className="text-[12px] text-status-error mr-auto">
                 {approveMutation.error?.message || requestChangesMutation.error?.message}
               </span>
             )}

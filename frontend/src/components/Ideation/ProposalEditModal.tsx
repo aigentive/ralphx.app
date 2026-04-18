@@ -351,7 +351,7 @@ export function ProposalEditModal({
                       onClick={() => handleRemoveStep(index)}
                       aria-label={`Remove step ${index + 1}`}
                       disabled={isSaving}
-                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-status-error hover:bg-status-error/10"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -404,7 +404,7 @@ export function ProposalEditModal({
                       onClick={() => handleRemoveCriterion(index)}
                       aria-label={`Remove criterion ${index + 1}`}
                       disabled={isSaving}
-                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-status-error hover:bg-status-error/10"
                     >
                       <X className="w-4 h-4" />
                     </button>

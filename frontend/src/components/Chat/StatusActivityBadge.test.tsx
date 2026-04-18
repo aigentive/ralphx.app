@@ -171,7 +171,7 @@ describe("StatusActivityBadge", () => {
 
     const lastActivity = screen.getByText(/Last: 30s ago/);
     expect(lastActivity).toBeDefined();
-    expect(lastActivity.className).toContain("text-green-400");
+    expect(lastActivity.className).toContain("text-status-success");
   });
 
   it("renders 'Last: Xm ago' with yellow color at 1-3 minutes", () => {
@@ -182,7 +182,7 @@ describe("StatusActivityBadge", () => {
 
     const lastActivity = screen.getByText(/Last: 1m 30s ago/);
     expect(lastActivity).toBeDefined();
-    expect(lastActivity.className).toContain("text-yellow-400");
+    expect(lastActivity.className).toContain("text-status-warning");
   });
 
   it("renders with yellow color at exactly 1 minute (60 seconds)", () => {
@@ -193,7 +193,7 @@ describe("StatusActivityBadge", () => {
 
     const lastActivity = screen.getByText(/Last: 1m ago/);
     expect(lastActivity).toBeDefined();
-    expect(lastActivity.className).toContain("text-yellow-400");
+    expect(lastActivity.className).toContain("text-status-warning");
   });
 
   it("renders with red color at 3-5 minutes", () => {
@@ -204,7 +204,7 @@ describe("StatusActivityBadge", () => {
 
     const lastActivity = screen.getByText(/Last: 4m ago/);
     expect(lastActivity).toBeDefined();
-    expect(lastActivity.className).toContain("text-red-400");
+    expect(lastActivity.className).toContain("text-status-error");
   });
 
   it("renders with red color at exactly 3 minutes (180 seconds)", () => {
@@ -215,7 +215,7 @@ describe("StatusActivityBadge", () => {
 
     const lastActivity = screen.getByText(/Last: 3m ago/);
     expect(lastActivity).toBeDefined();
-    expect(lastActivity.className).toContain("text-red-400");
+    expect(lastActivity.className).toContain("text-status-error");
   });
 
   it("updates elapsed time via setInterval every second", () => {
@@ -286,7 +286,7 @@ describe("StatusActivityBadge", () => {
 
     const label = screen.getByText("Tool active");
     expect(label).toBeDefined();
-    expect(label.className).toContain("text-green-400");
+    expect(label.className).toContain("text-status-success");
   });
 
   it("hides 'Last: X ago' when tool calls are active", () => {
@@ -325,7 +325,7 @@ describe("StatusActivityBadge", () => {
 
     const label = screen.getByText("Tool active");
     expect(label).toBeDefined();
-    expect(label.className).toContain("text-green-400");
+    expect(label.className).toContain("text-status-success");
   });
 
   it("shows 'Last: X ago' when no tool calls active AND grace period expired (>5s)", () => {
@@ -371,7 +371,7 @@ describe("StatusActivityBadge", () => {
 
     const label = screen.getByText("Verifying...");
     expect(label).toBeDefined();
-    expect(label.className).toContain("text-blue-400");
+    expect(label.className).toContain("text-status-info");
   });
 
   it("hides 'Last: X ago' when verification child is active", () => {

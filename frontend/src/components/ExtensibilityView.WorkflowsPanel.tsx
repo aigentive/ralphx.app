@@ -154,7 +154,7 @@ export function WorkflowsPanel() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                            className="h-7 w-7 p-0 text-status-error hover:text-status-error"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

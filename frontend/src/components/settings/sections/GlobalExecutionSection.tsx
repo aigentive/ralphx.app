@@ -132,7 +132,7 @@ export default function GlobalExecutionSection() {
       description="Cross-project concurrency limits"
     >
       {error && (
-        <div className="mb-3 px-3 py-2 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="mb-3 px-3 py-2 rounded-md bg-status-error/10 border border-status-error/20 text-status-error text-sm">
           {error}
         </div>
       )}

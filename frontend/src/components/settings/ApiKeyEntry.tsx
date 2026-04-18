@@ -230,7 +230,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               disabled={updateProjectsMutation.isPending}
             />
             {projectSaveError && (
-              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+              <p className="text-xs text-status-error mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 {projectSaveError}
               </p>
@@ -257,7 +257,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               disabled={updatePermsMutation.isPending}
             />
             {permSaveError && (
-              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+              <p className="text-xs text-status-error mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 {permSaveError}
               </p>
@@ -316,8 +316,8 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               data-testid={`revoke-key-${apiKey.id}`}
               className={
                 confirmPending
-                  ? "h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30"
-                  : "h-7 px-2 text-xs text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10"
+                  ? "h-7 px-2 text-xs text-status-error hover:text-status-error hover:bg-status-error/10 border border-status-error/30"
+                  : "h-7 px-2 text-xs text-[var(--text-muted)] hover:text-status-error hover:bg-status-error/10"
               }
             >
               {revokeMutation.isPending ? (
@@ -336,7 +336,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
             </Button>
 
             {revokeError && (
-              <p className="text-xs text-red-400 flex items-center gap-1">
+              <p className="text-xs text-status-error flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 {revokeError}
               </p>

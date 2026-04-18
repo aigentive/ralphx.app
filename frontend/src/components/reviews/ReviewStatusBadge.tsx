@@ -30,19 +30,19 @@ const STATUS_CONFIG: Record<
   },
   approved: {
     label: "Approved",
-    bgClass: "bg-emerald-500/15",
+    bgClass: "bg-status-success/15",
     textClass: "text-[var(--status-success)]",
     Icon: CheckCircle,
   },
   changes_requested: {
     label: "Changes Requested",
-    bgClass: "bg-amber-500/15",
+    bgClass: "bg-status-warning/15",
     textClass: "text-[var(--status-warning)]",
     Icon: AlertCircle,
   },
   rejected: {
     label: "Rejected",
-    bgClass: "bg-red-500/15",
+    bgClass: "bg-status-error/15",
     textClass: "text-[var(--status-error)]",
     Icon: XCircle,
   },

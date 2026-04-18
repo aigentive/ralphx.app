@@ -219,7 +219,7 @@ function AcceptanceCriteriaTab({
                   <Badge
                     data-testid={`criterion-testable-${criterion.id}`}
                     variant="outline"
-                    className="px-1.5 py-0.5 text-xs bg-blue-500/15 text-[var(--status-info)] border-0"
+                    className="px-1.5 py-0.5 text-xs bg-status-info/15 text-[var(--status-info)] border-0"
                   >
                     testable
                   </Badge>
@@ -261,9 +261,9 @@ function TestResultsTab({
   const stepMap = new Map(testSteps?.map((s) => [s.id, s]) ?? []);
 
   const overallStatusClass = results.overall_status === "passed"
-    ? "bg-emerald-500/15 text-[var(--status-success)]"
+    ? "bg-status-success/15 text-[var(--status-success)]"
     : results.overall_status === "failed"
-      ? "bg-red-500/15 text-[var(--status-error)]"
+      ? "bg-status-error/15 text-[var(--status-error)]"
       : "bg-[var(--bg-hover)] text-[var(--text-muted)]";
 
   return (
@@ -337,7 +337,7 @@ function TestResultsTab({
               {isFailed && (stepResult.expected || stepResult.actual || stepResult.error) && (
                 <div
                   data-testid={`failure-details-${stepResult.step_id}`}
-                  className="mt-3 ml-7 p-2 rounded-lg bg-[var(--bg-base)] border border-red-500/30"
+                  className="mt-3 ml-7 p-2 rounded-lg bg-[var(--bg-base)] border border-status-error/30"
                 >
                   {stepResult.error && (
                     <p

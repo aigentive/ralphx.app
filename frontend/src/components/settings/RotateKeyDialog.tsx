@@ -157,7 +157,7 @@ export function RotateKeyDialog({
                 </p>
               </div>
               {error && (
-                <p className="text-xs text-red-400 flex items-center gap-1.5">
+                <p className="text-xs text-status-error flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   {error}
                 </p>
@@ -214,7 +214,7 @@ export function RotateKeyDialog({
                   title="Copy to clipboard"
                 >
                   {copied ? (
-                    <Check className="w-4 h-4 text-green-400" />
+                    <Check className="w-4 h-4 text-status-success" />
                   ) : (
                     <Copy className="w-4 h-4 text-[var(--text-muted)]" />
                   )}

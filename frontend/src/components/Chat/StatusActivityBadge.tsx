@@ -91,9 +91,9 @@ function formatElapsed(seconds: number): string {
 
 /** Get color class for elapsed time */
 function getElapsedColor(seconds: number): string {
-  if (seconds < 60) return "text-green-400";
-  if (seconds < 180) return "text-yellow-400";
-  return "text-red-400";
+  if (seconds < 60) return "text-status-success";
+  if (seconds < 180) return "text-status-warning";
+  return "text-status-error";
 }
 
 // ============================================================================
@@ -290,10 +290,10 @@ export function StatusActivityBadge({
   let badgeColorClass: string;
   if (showToolActive) {
     badgeLabel = "Tool active";
-    badgeColorClass = "text-green-400";
+    badgeColorClass = "text-status-success";
   } else if (activeVerificationChildId) {
     badgeLabel = "Verifying...";
-    badgeColorClass = "text-blue-400";
+    badgeColorClass = "text-status-info";
   } else if (isPostStreamWork && (contextType === "merge" || contextType === "review")) {
     badgeLabel = `Completing ${contextType}...`;
     badgeColorClass = "";

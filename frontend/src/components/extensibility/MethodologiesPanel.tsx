@@ -108,7 +108,7 @@ export function MethodologiesPanel({
                       {methodology.name}
                     </span>
                     {methodology.isActive && (
-                      <Badge className="bg-emerald-500/10 text-emerald-400 border-0">
+                      <Badge className="bg-status-success/10 text-status-success border-0">
                         ACTIVE
                       </Badge>
                     )}

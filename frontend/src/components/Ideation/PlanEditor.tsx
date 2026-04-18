@@ -291,8 +291,8 @@ export function PlanEditor({ plan, onSave, onCancel, isNewPlan = false }: PlanEd
 
       {/* Error message */}
       {error && (
-        <div className="p-4 bg-red-500/10 border-b border-red-500/20">
-          <p className="text-sm text-red-500">{error}</p>
+        <div className="p-4 bg-status-error/10 border-b border-status-error/20">
+          <p className="text-sm text-status-error">{error}</p>
         </div>
       )}
 

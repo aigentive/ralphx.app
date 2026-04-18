@@ -491,7 +491,7 @@ export const PlanItem = memo(function PlanItem({
                 )}
                 {plan.hasPendingPrompt && (
                   <span
-                    className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0"
+                    className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-status-warning animate-pulse flex-shrink-0"
                     title="Waiting for capacity — message queued"
                   />
                 )}

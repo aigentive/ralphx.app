@@ -568,9 +568,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     >
       {/* Freshness Context Banner — shown when task entered Merging due to stale branch detection */}
       {freshnessOriginState !== null && FRESHNESS_BANNER_COPY[freshnessOriginState] !== undefined && (
-        <div className="px-4 py-3 bg-blue-500/10 border-b border-blue-500/20 flex items-center gap-2">
-          <Info className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="text-sm text-blue-200">
+        <div className="px-4 py-3 bg-status-info/10 border-b border-status-info/20 flex items-center gap-2">
+          <Info className="w-4 h-4 text-status-info shrink-0" />
+          <span className="text-sm text-status-info">
             {FRESHNESS_BANNER_COPY[freshnessOriginState]}
           </span>
         </div>
