@@ -95,13 +95,19 @@ export function EmptyState() {
  * Count Badge - pill-shaped badge showing count
  */
 export function CountBadge({ count }: { count: number }) {
+  // Neutral count chip — accent-muted on panel-elevated bg was near-invisible
+  // on Light where both sit in the near-white range. Neutral chip reads cleanly
+  // on all three themes and leaves accent for state-carrying affordances.
+  const isNonZero = count > 0;
   return (
     <Badge
       variant="outline"
       className={cn(
         "inline-flex items-center justify-center min-w-[24px] px-2 py-0.5",
-        "text-xs font-medium rounded-full border-0",
-        "bg-[var(--accent-muted)] text-[var(--accent-primary)]"
+        "text-xs font-medium rounded-full",
+        isNonZero
+          ? "bg-[var(--accent-muted)] text-[var(--accent-primary)] border-[var(--accent-border)]"
+          : "bg-[var(--bg-hover)] text-[var(--text-secondary)] border-[var(--border-subtle)]"
       )}
     >
       {count}
