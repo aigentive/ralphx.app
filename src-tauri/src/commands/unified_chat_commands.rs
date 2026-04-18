@@ -151,6 +151,17 @@ pub struct AgentConversationWithMessagesResponse {
     pub messages: Vec<AgentMessageResponse>,
 }
 
+/// Response for a paginated conversation message window
+#[derive(Debug, Serialize)]
+pub struct AgentConversationMessagesPageResponse {
+    pub conversation: AgentConversationResponse,
+    pub messages: Vec<AgentMessageResponse>,
+    pub limit: u32,
+    pub offset: u32,
+    pub total_message_count: i64,
+    pub has_older: bool,
+}
+
 /// Response for a single message
 #[derive(Debug, Serialize)]
 pub struct AgentMessageResponse {
@@ -851,6 +862,84 @@ pub async fn get_agent_conversation(
     Ok(Some(AgentConversationWithMessagesResponse {
         conversation: AgentConversationResponse::from(cwm.conversation),
         messages,
+    }))
+}
+
+/// Get a tail-first page of conversation messages for fast conversation switching.
+/// `offset` counts how many newest messages to skip before loading older history.
+#[tauri::command]
+pub async fn get_agent_conversation_messages_page(
+    conversation_id: String,
+    limit: Option<u32>,
+    offset: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<Option<AgentConversationMessagesPageResponse>, String> {
+    use crate::domain::entities::ChatConversationId;
+
+    let conversation_id = ChatConversationId::from_string(&conversation_id);
+    let limit = limit.unwrap_or(40).clamp(1, 200);
+    let offset = offset.unwrap_or(0);
+
+    let Some(conversation) = state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    let raw_messages = state
+        .chat_message_repo
+        .get_recent_by_conversation_paginated(&conversation_id, limit, offset)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut messages = Vec::with_capacity(raw_messages.len());
+    for message in raw_messages {
+        let (tool_calls, content_blocks) = reconcile_delegated_result_payloads(
+            &state,
+            message.tool_calls.clone(),
+            message.content_blocks.clone(),
+        )
+        .await;
+
+        messages.push(AgentMessageResponse {
+            id: message.id.as_str().to_string(),
+            role: message.role.to_string(),
+            content: message.content,
+            metadata: message.metadata,
+            tool_calls,
+            content_blocks,
+            attribution_source: message.attribution_source,
+            provider_harness: message.provider_harness.map(|value| value.to_string()),
+            provider_session_id: message.provider_session_id,
+            upstream_provider: message.upstream_provider,
+            provider_profile: message.provider_profile,
+            logical_model: message.logical_model,
+            effective_model_id: message.effective_model_id,
+            logical_effort: message.logical_effort.map(|value| value.to_string()),
+            effective_effort: message.effective_effort,
+            input_tokens: message.input_tokens,
+            output_tokens: message.output_tokens,
+            cache_creation_tokens: message.cache_creation_tokens,
+            cache_read_tokens: message.cache_read_tokens,
+            estimated_usd: message.estimated_usd,
+            created_at: message.created_at.to_rfc3339(),
+        });
+    }
+
+    let fetched_count = offset as i64 + messages.len() as i64;
+    let total_message_count = conversation.message_count.max(0);
+    let has_older = fetched_count < total_message_count;
+
+    Ok(Some(AgentConversationMessagesPageResponse {
+        conversation: AgentConversationResponse::from(conversation),
+        messages,
+        limit,
+        offset,
+        total_message_count,
+        has_older,
     }))
 }
 

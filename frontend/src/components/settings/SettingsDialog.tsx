@@ -16,6 +16,7 @@ import {
   SETTINGS_SECTIONS,
   type SettingsSectionId,
 } from "./settings-registry";
+import { loadActiveSection, saveActiveSection } from "./settings-ui-state";
 import { ApiKeysSection } from "./ApiKeysSection";
 import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
 import { RepositorySettingsSection } from "./RepositorySettingsSection";
@@ -51,7 +52,14 @@ export default function SettingsDialog({
 
   const isOpen = activeModal === "settings";
 
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("execution");
+  const [activeSection, setActiveSectionState] = useState<SettingsSectionId>(
+    () => loadActiveSection() ?? "execution",
+  );
+
+  const setActiveSection = (section: SettingsSectionId) => {
+    setActiveSectionState(section);
+    saveActiveSection(section);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -128,7 +136,7 @@ export default function SettingsDialog({
           <button
             type="button"
             onClick={closeModal}
-            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)] focus:outline-none"
+            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
             aria-label="Close settings"
           >
             <X className="h-4 w-4" />
@@ -165,13 +173,12 @@ export default function SettingsDialog({
                             setActiveSection(section.id);
                           }
                         }}
-                        className="mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors"
+                        className="mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.04)]"
                         style={
                           isActive
                             ? {
-                                background: "rgba(255,107,53,0.16)",
-                                color: "var(--text-primary)",
-                                boxShadow: "inset 2px 0 0 var(--accent-primary)",
+                                background: "#ffffff",
+                                color: "#0a0a0a",
                                 fontWeight: 600,
                               }
                             : {

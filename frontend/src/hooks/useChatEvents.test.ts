@@ -70,6 +70,12 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/hooks/useChat", () => ({
   chatKeys: {
     conversation: (id: string) => ["chat", "conversations", id],
+    conversationHistory: (id: string) => ["chat", "conversations", id, "history"],
+  },
+  getCachedConversationMessages: () => mockQueryData?.messages ?? [],
+  invalidateConversationDataQueries: (_queryClient: unknown, conversationId: string) => {
+    mockInvalidateQueries({ queryKey: ["chat", "conversations", conversationId] });
+    mockInvalidateQueries({ queryKey: ["chat", "conversations", conversationId, "history"] });
   },
 }));
 

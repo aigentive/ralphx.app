@@ -28,7 +28,11 @@ import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
-import { chatKeys } from "./useChat";
+import {
+  chatKeys,
+  invalidateConversationDataQueries,
+  type ConversationHistoryWindowData,
+} from "./useChat";
 import { ideationKeys } from "./useIdeation";
 import { conversationStatsKey } from "./useConversationStats";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -102,6 +106,17 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         }
       );
 
+      queryClient.setQueryData<ConversationHistoryWindowData>(
+        chatKeys.conversationHistory(conversationId),
+        (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            conversation: mergeConversation(oldData.conversation),
+          };
+        }
+      );
+
       queryClient.setQueryData<ChatConversation[]>(
         chatKeys.conversationList(contextType, contextId),
         (oldData) => {
@@ -122,7 +137,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       clearActiveQuestion(eventContextId);
       clearPendingPlan(storeKey);
       queryClient.invalidateQueries({ queryKey: chatKeys.agentRun(conversationId) });
-      queryClient.invalidateQueries({ queryKey: chatKeys.conversation(conversationId) });
+      invalidateConversationDataQueries(queryClient, conversationId);
       queryClient.invalidateQueries({ queryKey: conversationStatsKey(conversationId) });
     }
 
@@ -270,9 +285,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             chatKeys.conversation(activeConversationId),
             (oldData) => {
               if (!oldData) return oldData;
-
-              // Check if message already exists
-              if (oldData.messages.some(m => m.id === message_id)) {
+              const existingMessages = oldData.messages ?? [];
+              if (existingMessages.some(m => m.id === message_id)) {
                 return oldData;
               }
 
@@ -291,16 +305,46 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
                 contentBlocks: null,
                 sender: null,
               };
-              return { ...oldData, messages: [...oldData.messages, newMessage] };
+              return { ...oldData, messages: [...existingMessages, newMessage] };
+            }
+          );
+          queryClient.setQueryData<ConversationHistoryWindowData>(
+            chatKeys.conversationHistory(activeConversationId),
+            (oldData) => {
+              if (!oldData) return oldData;
+              const existingMessages = oldData.messages ?? [];
+              if (existingMessages.some((message) => message.id === message_id)) {
+                return oldData;
+              }
+
+              const newMessage: ChatMessageResponse = {
+                id: message_id,
+                conversationId: conversation_id,
+                sessionId: null,
+                projectId: null,
+                taskId: null,
+                role: role as "user" | "assistant" | "system",
+                content: content || "",
+                metadata: payload.metadata ?? null,
+                parentMessageId: null,
+                createdAt: created_at ?? new Date().toISOString(),
+                toolCalls: null,
+                contentBlocks: null,
+                sender: null,
+              };
+
+              return {
+                ...oldData,
+                messages: [...existingMessages, newMessage],
+                totalMessageCount: (oldData.totalMessageCount ?? existingMessages.length) + 1,
+              };
             }
           );
         } else if (conversation_id !== activeConversationId) {
           // Non-active conversation (e.g. teammate messages): invalidate to refetch from DB.
           // Active-conversation assistant messages are handled exclusively by useChatEvents
           // to avoid duplicate DB refetches that cause visual artifacts during streaming.
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id), // use payload ID, not stale closure
-          });
+          invalidateConversationDataQueries(queryClient, conversation_id);
         }
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(conversation_id),
@@ -384,9 +428,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // conversation invalidation avoids overlapping layout/scroll churn
         // during finalization while preserving refetches for non-active tabs.
         if (conversation_id !== activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
+          invalidateConversationDataQueries(queryClient, conversation_id);
         }
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(conversation_id),

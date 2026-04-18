@@ -54,7 +54,17 @@ vi.mock("@/hooks/useChat", () => ({
   chatKeys: {
     conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
     conversation: (id: string) => ["chat", "conversation", id],
+    conversationHistory: (id: string) => ["chat", "conversation", id, "history"],
     agentRun: (id: string) => ["chat", "agentRun", id],
+  },
+  invalidateConversationDataQueries: (
+    queryClient: { invalidateQueries: (input: { queryKey: unknown[] }) => void },
+    conversationId: string
+  ) => {
+    queryClient.invalidateQueries({ queryKey: ["chat", "conversation", conversationId] });
+    queryClient.invalidateQueries({
+      queryKey: ["chat", "conversation", conversationId, "history"],
+    });
   },
 }));
 

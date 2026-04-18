@@ -26,6 +26,8 @@ import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
 export interface UseChatAutoScrollProps {
   /** Number of messages - used for scrollToIndex target in Virtuoso mode */
   messageCount: number;
+  /** Absolute index offset of the first loaded item (for paged/prepended history) */
+  indexOffset?: number;
   /** Disable auto-scroll (for history mode) */
   disabled?: boolean;
   /** Virtuoso handle ref — when provided, all scrolling goes through Virtuoso APIs */
@@ -59,6 +61,7 @@ export interface UseChatAutoScrollReturn {
 
 export function useChatAutoScroll({
   messageCount,
+  indexOffset = 0,
   disabled = false,
   virtuosoRef,
   conversationId,
@@ -115,6 +118,11 @@ export function useChatAutoScroll({
     messageCountRef.current = messageCount;
   }, [messageCount]);
 
+  const indexOffsetRef = useRef(indexOffset);
+  useEffect(() => {
+    indexOffsetRef.current = indexOffset;
+  }, [indexOffset]);
+
   // Manual scroll-to-bottom
   // Routes through Virtuoso scrollToIndex when available, falls back to DOM marker
   const scrollToBottom = useCallback(() => {
@@ -123,7 +131,7 @@ export function useChatAutoScroll({
     const count = messageCountRef.current;
     if (virtuosoRef?.current && count > 0) {
       virtuosoRef.current.scrollToIndex({
-        index: count - 1,
+        index: indexOffsetRef.current + count - 1,
         align: "end",
         behavior: preferredScrollBehavior,
       });

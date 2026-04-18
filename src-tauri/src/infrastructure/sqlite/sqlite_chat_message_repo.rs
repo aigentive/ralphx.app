@@ -158,6 +158,30 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         }).await
     }
 
+    async fn get_recent_by_conversation_paginated(
+        &self,
+        conversation_id: &ChatConversationId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let conv_id_str = conversation_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
+                     FROM chat_messages WHERE conversation_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT ?2 OFFSET ?3",
+                )?;
+                let mut messages: Vec<ChatMessage> = stmt
+                    .query_map(rusqlite::params![conv_id_str, limit, offset], |row| {
+                        ChatMessage::from_row(row)
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                messages.reverse();
+                Ok(messages)
+            })
+            .await
+    }
+
     async fn delete_by_session(&self, session_id: &IdeationSessionId) -> AppResult<()> {
         let session_id_str = session_id.as_str().to_string();
         self.db.run(move |conn| {
