@@ -181,13 +181,16 @@
   --card-icon-bg: transparent;
   --card-icon-border: var(--accent-primary);
 
-  /* Dialog/modal cohesion on HC — pure-black modal on pure-black canvas
-     has zero surface distinction. Bump the modal body to a subtle gray
-     and the sidebar rail a shade lighter, so the modal reads as a lifted
-     surface with clear header → body → rail layering. The 90% scrim +
-     1px white-alpha border on the DialogContent still frame the edges. */
-  --dialog-bg:      hsl(0 0% 8%);
-  --dialog-rail-bg: hsl(0 0% 12%);
+  /* Dialog/modal design in HC uses the HC language: pure-black everywhere,
+     WHITE borders do the separation work. No tonal ramps — surfaces are
+     all pure black, and strong white strokes frame the modal, its rail,
+     and each card. Matches theme-architecture.md §6 (HC favours shape
+     and stroke over luminance). */
+  --dialog-bg:           var(--color-black);
+  --dialog-rail-bg:      var(--color-black);
+  --dialog-border-color: var(--color-white);
+  --card-bg:             var(--color-black);
+  --card-border:         var(--color-white);
 }
 
 /* HC button affordance — styleguide mandates visible borders on interactive

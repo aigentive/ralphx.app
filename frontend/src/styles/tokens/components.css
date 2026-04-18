@@ -34,8 +34,8 @@
    * Themes override both so the relationship holds per palette.
    * ============================================================================ */
   --dialog-overlay-bg:   var(--overlay-scrim-deep);
-  --dialog-bg:           var(--bg-elevated);
-  --dialog-rail-bg:      var(--bg-surface);
+  --dialog-bg:           var(--bg-elevated); /* main content surface */
+  --dialog-rail-bg:      var(--bg-surface);  /* subtle tonal shift for rail */
   --dialog-border-color: var(--border-subtle);
   --dialog-shadow:       var(--shadow-lg);
 
