@@ -66,14 +66,14 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Run frontend tests
-        run: npm run test:run
-        working-directory: frontend
-
       - name: TypeScript check
         run: npm run typecheck
         working-directory: frontend
 
       - name: Lint
         run: npm run lint
+        working-directory: frontend
+
+      - name: Run frontend tests
+        run: npm run test:run
         working-directory: frontend
