@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   padding: "12px",
                   borderRadius: "6px",
-                  backgroundColor: "rgba(0, 0, 0, 0.4)",
+                  backgroundColor: "var(--overlay-scrim)",
                   marginBottom: "12px",
                   overflow: "auto",
                 }}
@@ -111,7 +111,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     style={{
                       padding: "12px",
                       borderRadius: "6px",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
+                      backgroundColor: "var(--overlay-scrim)",
                       overflow: "auto",
                       maxHeight: "300px",
                     }}

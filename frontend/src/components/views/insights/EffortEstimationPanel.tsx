@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useMetricsConfig, useSaveMetricsConfig } from "@/hooks/useMetricsConfig";
+import { withAlpha } from "@/lib/theme-colors";
 import { DEFAULT_METRICS_CONFIG } from "@/types/project-stats";
 import type { MetricsConfig } from "@/types/project-stats";
 
@@ -176,8 +177,8 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
         {/* Header: title + customized badge */}
         <div className="flex items-center gap-2">
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
+            style={{ letterSpacing: "0.08em" }}
           >
             Equivalent Developer Effort
           </span>
@@ -205,7 +206,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                   </span>
                   <span
                     className="text-[16px] font-medium"
-                    style={{ color: "rgba(255,107,53,0.6)" }}
+                    style={{ color: "var(--accent-primary)", opacity: 0.6 }}
                   >
                     developer hours
                   </span>
@@ -229,13 +230,12 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                   className="h-full rounded-full"
                   style={{
                     width: "100%",
-                    background: `linear-gradient(to right, ${ACCENT} ${rangeBarFillPct}%, rgba(255,107,53,0.35) ${rangeBarFillPct}%)`,
+                    background: `linear-gradient(to right, ${ACCENT} ${rangeBarFillPct}%, ${withAlpha(ACCENT, 35)} ${rangeBarFillPct}%)`,
                   }}
                 />
               </div>
               <div
-                className="flex justify-between text-[10px] tabular-nums"
-                style={{ color: "rgba(255,255,255,0.35)" }}
+                className="flex justify-between text-[10px] tabular-nums text-text-primary/35"
               >
                 <span>{formatEstimate(lowHours)}h coding only</span>
                 <span>{formatEstimate(highHours)}h with overhead</span>
@@ -246,17 +246,16 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
             <Tooltip>
               <TooltipTrigger asChild>
                 <div
-                  className="flex items-center flex-wrap gap-x-1.5 text-[12px] cursor-default w-fit"
-                  style={{ color: "rgba(255,255,255,0.45)" }}
+                  className="flex items-center flex-wrap gap-x-1.5 text-[12px] cursor-default w-fit text-text-primary/45"
                 >
                   {showFteMonths && (
                     <span>~{fteMonths.toFixed(1)} FTE-months</span>
                   )}
-                  {showFteMonths && <span style={{ color: "rgba(255,255,255,0.2)" }}>&middot;</span>}
+                  {showFteMonths && <span className="text-text-primary/20">&middot;</span>}
                   <span>{taskCount} task{taskCount !== 1 ? "s" : ""}</span>
                   {dateRange != null && (
                     <>
-                      <span style={{ color: "rgba(255,255,255,0.2)" }}>&middot;</span>
+                      <span className="text-text-primary/20">&middot;</span>
                       <span>{dateRange}</span>
                     </>
                   )}
@@ -282,8 +281,8 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
           {/* Team Level selector — always visible */}
           <div className="flex flex-col gap-1.5 pt-1">
             <span
-              className="text-[10px] uppercase tracking-wide"
-              style={{ color: "rgba(255,255,255,0.3)", letterSpacing: "0.06em" }}
+              className="text-[10px] uppercase tracking-wide text-text-primary/30"
+              style={{ letterSpacing: "0.06em" }}
             >
               Team Level
             </span>
@@ -301,7 +300,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                         : "var(--overlay-faint)",
                       color: isActive
                         ? ACCENT
-                        : "rgba(255,255,255,0.5)",
+                        : withAlpha("var(--text-primary)", 50),
                     }}
                   >
                     <span className="text-[11px] font-medium">{preset.label}</span>
@@ -309,8 +308,8 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                       className="text-[9px]"
                       style={{
                         color: isActive
-                          ? "rgba(255,107,53,0.6)"
-                          : "rgba(255,255,255,0.25)",
+                          ? withAlpha(ACCENT, 60)
+                          : withAlpha("var(--text-primary)", 25),
                       }}
                     >
                       {preset.description}
@@ -320,7 +319,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
               })}
             </div>
             {currentLevel === "custom" && (
-              <span className="text-[10px]" style={{ color: "rgba(255,107,53,0.5)" }}>
+              <span className="text-[10px]" style={{ color: withAlpha(ACCENT, 50) }}>
                 Custom values
               </span>
             )}
@@ -330,8 +329,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
           <div>
             <button
               onClick={() => setMethodologyOpen(!methodologyOpen)}
-              className="flex items-center gap-1 text-[11px] transition-colors"
-              style={{ color: "rgba(255,255,255,0.4)" }}
+              className="flex items-center gap-1 text-[11px] transition-colors text-text-primary/40"
             >
               {methodologyOpen ? (
                 <ChevronDown className="w-3.5 h-3.5" />
@@ -345,10 +343,10 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
               <div className="flex flex-col gap-3 pt-3">
                 {/* Range explanation */}
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+                  <span className="text-[11px] text-text-primary/50">
                     Range: {formatEstimate(lowHours)} &ndash; {formatEstimate(highHours)} hours
                   </span>
-                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  <span className="text-[10px] text-text-primary/30">
                     Coding only (floor) &rarr; with overhead (typical)
                   </span>
                 </div>
@@ -359,16 +357,10 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                     <div key={field} className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1">
                         <div className="flex flex-col">
-                          <span
-                            className="text-[11px]"
-                            style={{ color: "rgba(255,255,255,0.5)" }}
-                          >
+                          <span className="text-[11px] text-text-primary/50">
                             {label}
                           </span>
-                          <span
-                            className="text-[9px]"
-                            style={{ color: "rgba(255,255,255,0.25)" }}
-                          >
+                          <span className="text-[9px] text-text-primary/25">
                             {sub}
                           </span>
                         </div>
@@ -395,10 +387,9 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                         defaultValue={currentConfig[field]}
                         key={currentConfig[field]}
                         onBlur={(e) => handleFieldBlur(field, e.target.value)}
-                        className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+                        className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 text-text-primary/70"
                         style={{
                           backgroundColor: "var(--overlay-weak)",
-                          color: "rgba(255,255,255,0.7)",
                           boxShadow: "none",
                           outline: "none",
                         }}
@@ -414,16 +405,10 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                   >
                     <div className="flex items-center gap-1">
                       <div className="flex flex-col">
-                        <span
-                          className="text-[11px]"
-                          style={{ color: "rgba(255,255,255,0.5)" }}
-                        >
+                        <span className="text-[11px] text-text-primary/50">
                           Work days/week
                         </span>
-                        <span
-                          className="text-[9px]"
-                          style={{ color: "rgba(255,255,255,0.25)" }}
-                        >
+                        <span className="text-[9px] text-text-primary/25">
                           for time conversion
                         </span>
                       </div>
@@ -448,10 +433,9 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                       defaultValue={currentConfig.workingDaysPerWeek}
                       key={currentConfig.workingDaysPerWeek}
                       onBlur={(e) => handleFieldBlur("workingDaysPerWeek", e.target.value)}
-                      className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+                      className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 text-text-primary/70"
                       style={{
                         backgroundColor: "var(--overlay-weak)",
-                        color: "rgba(255,255,255,0.7)",
                         boxShadow: "none",
                         outline: "none",
                       }}
@@ -464,22 +448,22 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                 {/* What this captures / doesn't capture */}
                 <div className="flex flex-col gap-1.5 pt-1" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    <span className="text-[10px] font-medium text-text-primary/45">
                       What this captures
                     </span>
-                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    <span className="text-[10px] text-text-primary/30">
                       Coding, review, and context switching time
                     </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    <span className="text-[10px] font-medium text-text-primary/45">
                       What this does NOT capture
                     </span>
-                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    <span className="text-[10px] text-text-primary/30">
                       Requirements, deployment, cross-team coordination
                     </span>
                   </div>
-                  <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  <span className="text-[10px] italic text-text-primary/25">
                     These estimates are conservative by design.
                   </span>
                 </div>
@@ -488,8 +472,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                 {!isDefault && (
                   <button
                     onClick={handleReset}
-                    className="text-[11px] transition-colors self-start"
-                    style={{ color: "rgba(255,255,255,0.35)" }}
+                    className="text-[11px] transition-colors self-start text-text-primary/35"
                     data-testid="calibration-reset"
                   >
                     Reset to Senior defaults
@@ -500,7 +483,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
           </div>
 
           {/* Sovereignty footer */}
-          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+          <span className="text-[10px] text-text-primary/20">
             Computed locally. Your metrics never leave your machine.
           </span>
         </TooltipProvider>

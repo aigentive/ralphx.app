@@ -48,7 +48,7 @@ import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { PrStatusBadge } from "./shared/PrStatusBadge";
-import { statusTint } from "@/lib/theme-colors";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -172,13 +172,13 @@ function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active
   if (status === "active" && isHistorical) {
     return (
       <div
-        className="w-5 h-5 rounded-full border-2"
-        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "var(--status-warning-strong)" }}
+        className="w-5 h-5 rounded-full border-2 border-text-primary/20"
+        style={{ backgroundColor: "var(--status-warning-strong)" }}
       />
     );
   }
   return (
-    <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
+    <div className="w-5 h-5 rounded-full border-2 border-text-primary/20" />
   );
 }
 
@@ -263,12 +263,7 @@ function MergeProgressSteps({
         <div className="relative">
           {displayStep !== undefined && <MergeStepIcon status={displayStep.status} isHistorical={isHistorical} />}
         </div>
-        <span
-          className="text-[13px] font-medium flex-1"
-          style={{
-            color: "rgba(255,255,255,0.6)",
-          }}
-        >
+        <span className="text-[13px] font-medium flex-1 text-text-primary/60">
           {displayStep?.label ?? "Merge"}
         </span>
         {expanded
@@ -288,10 +283,10 @@ function MergeProgressSteps({
                 className="text-[13px] font-medium"
                 style={{
                   color: step.status === "completed"
-                    ? "rgba(255,255,255,0.6)"
+                    ? withAlpha("var(--text-primary)", 60)
                     : step.status === "active"
-                    ? isHistorical ? "rgba(255,255,255,0.35)" : "var(--status-info)"
-                    : "rgba(255,255,255,0.35)",
+                    ? isHistorical ? withAlpha("var(--text-primary)", 35) : "var(--status-info)"
+                    : withAlpha("var(--text-primary)", 35),
                 }}
               >
                 {step.label}
@@ -342,8 +337,7 @@ function PrModeCard({
         {planBranch.prPollingActive && (
           <div className="flex items-center gap-1.5">
             <Loader2
-              className="w-3.5 h-3.5 animate-spin"
-              style={{ color: "rgba(255,255,255,0.4)" }}
+              className="w-3.5 h-3.5 animate-spin text-text-primary/40"
             />
             <span className="text-[12px] text-white/40">Monitoring PR status</span>
           </div>

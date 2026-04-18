@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { AuditTrailSidebar } from "./audit-trail/AuditTrailSidebar";
 import { EventCard } from "./audit-trail/EventCards";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Props
@@ -151,7 +152,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                     className="sticky top-0 z-10 px-4 py-2.5 border-b"
                     style={{
                       borderColor: "var(--overlay-weak)",
-                      background: "rgba(18,18,18,0.95)",
+                      background: withAlpha("var(--bg-surface)", 95),
                       backdropFilter: "blur(12px)",
                     }}
                   >

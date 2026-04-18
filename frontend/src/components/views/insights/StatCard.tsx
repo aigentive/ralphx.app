@@ -20,8 +20,8 @@ export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
       style={{ backgroundColor: "hsl(220 10% 12%)", padding: "14px 16px" }}
     >
       <span
-        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
+        style={{ letterSpacing: "0.08em" }}
       >
         {label}
         {tooltip !== undefined && (
@@ -38,13 +38,13 @@ export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
         )}
       </span>
       <span
-        className="text-[22px] font-semibold"
-        style={{ color: "rgba(255,255,255,0.92)", fontFamily: "system-ui" }}
+        className="text-[22px] font-semibold text-text-primary/90"
+        style={{ fontFamily: "system-ui" }}
       >
         {value}
       </span>
       {sub !== undefined && (
-        <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+        <span className="text-[12px] text-text-primary/40">
           {sub}
         </span>
       )}

@@ -52,8 +52,8 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
             <span
               className="text-[11px] px-2 py-0.5 rounded ml-2 shrink-0"
               style={{
-                backgroundColor: "rgba(255,255,255,0.08)",
-                color: "hsl(220 10% 60%)",
+                backgroundColor: "var(--overlay-weak)",
+                color: "var(--text-muted)",
               }}
             >
               {displayLanguage}
@@ -72,7 +72,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
           <span className="flex items-center gap-1.5">
             <span
               className="w-3 h-3 rounded"
-              style={{ backgroundColor: "rgba(255, 69, 58, 0.12)" }}
+              style={{ backgroundColor: "var(--status-error-muted)" }}
             />
             <span style={{ color: "var(--status-error)" }}>-</span>
             <span style={{ color: "hsl(220 10% 50%)" }}>Ours (current)</span>
@@ -80,9 +80,9 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
           <span className="flex items-center gap-1.5">
             <span
               className="w-3 h-3 rounded"
-              style={{ backgroundColor: "rgba(64, 156, 255, 0.12)" }}
+              style={{ backgroundColor: "var(--status-info-muted)" }}
             />
-            <span style={{ color: "#409cff" }}>+</span>
+            <span style={{ color: "var(--status-info)" }}>+</span>
             <span style={{ color: "hsl(220 10% 50%)" }}>Theirs (incoming)</span>
           </span>
         </div>

@@ -650,7 +650,7 @@ describe("AcceptModal", () => {
     it("uses correct overlay styling", () => {
       render(<AcceptModal {...defaultProps} />);
       const overlay = screen.getByTestId("modal-overlay");
-      expect(overlay).toHaveStyle({ backgroundColor: "rgba(0, 0, 0, 0.5)" });
+      expect(overlay).toHaveStyle({ backgroundColor: "var(--overlay-scrim-med)" });
     });
 
     it("modal is centered with fixed positioning", () => {

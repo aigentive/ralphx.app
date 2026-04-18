@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { withAlpha } from "@/lib/theme-colors";
 import type { MethodologyExtension } from "@/types/methodology";
 
 interface MethodologiesPanelProps {
@@ -80,8 +81,8 @@ export function MethodologiesPanel({
                   ? "1px solid var(--accent-border)"
                   : "1px solid var(--border-subtle)",
                 boxShadow: methodology.isActive
-                  ? "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)"
-                  : "0 1px 3px rgba(0,0,0,0.12)",
+                  ? `0 0 0 1px ${withAlpha("var(--accent-primary)", 15)}, var(--shadow-sm)`
+                  : `var(--shadow-xs)`,
               }}
             >
               <CardContent className="p-5">

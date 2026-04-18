@@ -134,8 +134,8 @@ export const ACTIVITY_TYPE_CONFIG: Record<
 export const DEFAULT_ACTIVITY_CONFIG = { icon: MessageSquare, color: "var(--text-muted)" };
 
 export const CARD_STYLE = {
-  backgroundColor: "rgba(0,0,0,0.15)",
-  border: "1px solid rgba(255,255,255,0.05)",
+  backgroundColor: "var(--overlay-scrim)",
+  border: "1px solid var(--overlay-weak)",
 };
 
 export const ERROR_CARD_STYLE = {
@@ -200,8 +200,8 @@ export function ExpandableContent({
   return (
     <div className="mt-1">
       <p
-        className={`text-[12px] whitespace-pre-wrap break-words${italic ? " italic" : ""}`}
-        style={{ color: "rgba(255,255,255,0.6)", lineHeight: "1.5" }}
+        className={`text-[12px] whitespace-pre-wrap break-words text-text-primary/60${italic ? " italic" : ""}`}
+        style={{ lineHeight: "1.5" }}
       >
         {displayText}
       </p>

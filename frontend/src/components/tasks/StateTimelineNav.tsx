@@ -23,6 +23,7 @@ import { isTerminalStatus } from "@/types/status";
 import {
   STATUS_TOKEN_REFS,
   statusTint,
+  withAlpha,
   type StatusTokenKey,
 } from "@/lib/theme-colors";
 
@@ -162,7 +163,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           <span
             className="text-[11px] font-semibold tracking-tight transition-colors duration-200"
             style={{
-              color: isActive ? colorRef : "rgba(255,255,255,0.45)",
+              color: isActive ? colorRef : withAlpha("var(--text-primary)", 45),
             }}
           >
             {config.label}
@@ -174,12 +175,12 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
         sideOffset={8}
         className="px-3 py-1.5 text-[11px] font-medium rounded-lg"
         style={{
-          backgroundColor: "rgba(30, 30, 30, 0.95)",
+          backgroundColor: "var(--bg-elevated)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           border: "0.5px solid var(--overlay-moderate)",
-          color: "rgba(255,255,255,0.7)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+          color: withAlpha("var(--text-primary)", 70),
+          boxShadow: "0 4px 16px var(--overlay-scrim)",
         }}
       >
         <div className="flex items-center gap-2">
@@ -216,7 +217,7 @@ function TimelineConnector({ isActive, color }: TimelineConnectorProps) {
       <ChevronRight
         className="w-3.5 h-3.5 transition-colors duration-200"
         style={{
-          color: isActive ? color : "rgba(255,255,255,0.15)",
+          color: isActive ? color : withAlpha("var(--text-primary)", 15),
         }}
       />
     </div>
@@ -356,8 +357,7 @@ export function StateTimelineNav({
     return (
       <div
         data-testid="timeline-loading"
-        className="flex items-center gap-2.5 px-4 py-3"
-        style={{ color: "rgba(255,255,255,0.4)" }}
+        className="flex items-center gap-2.5 px-4 py-3 text-text-primary/40"
       >
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-[11px] font-medium">Loading history...</span>
@@ -399,7 +399,7 @@ export function StateTimelineNav({
         data-testid="state-timeline-nav"
         className="flex items-center gap-1 px-4 py-3 overflow-x-auto"
         style={{
-          backgroundColor: "rgba(20, 20, 20, 0.6)",
+          backgroundColor: withAlpha("var(--bg-base)", 60),
           backdropFilter: "blur(40px) saturate(150%)",
           WebkitBackdropFilter: "blur(40px) saturate(150%)",
           borderBottom: "0.5px solid var(--overlay-weak)",
@@ -410,14 +410,8 @@ export function StateTimelineNav({
           className="flex items-center gap-2 mr-2 pr-3"
           style={{ borderRight: "1px solid var(--border-subtle)" }}
         >
-          <History
-            className="w-4 h-4"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          />
-          <span
-            className="text-[10px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          >
+          <History className="w-4 h-4 text-text-primary/35" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-primary/35">
             History
           </span>
         </div>
@@ -454,10 +448,7 @@ export function StateTimelineNav({
             className="ml-auto pl-3 flex items-center gap-2"
             style={{ borderLeft: "1px solid var(--border-subtle)" }}
           >
-            <span
-              className="text-[10px] font-medium"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            >
+            <span className="text-[10px] font-medium text-text-primary/40">
               Viewing past state
             </span>
             <button

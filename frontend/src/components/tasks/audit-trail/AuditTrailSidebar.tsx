@@ -108,7 +108,7 @@ function PhaseItem({ phase, isSelected, isLast, onToggle }: PhaseItemProps) {
             left: "5px",
             top: isSelected ? "20px" : "12px",
             bottom: 0,
-            backgroundColor: "var(--border-subtle, rgba(255,255,255,0.08))",
+            backgroundColor: "var(--border-subtle)",
           }}
         />
       )}
@@ -245,8 +245,8 @@ export function AuditTrailSidebar({
             data-testid="sidebar-summary"
             className="flex items-center gap-3 py-2.5 px-3 rounded"
             style={{
-              backgroundColor: "rgba(0,0,0,0.15)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              backgroundColor: "var(--overlay-scrim)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
             <div className="text-[12px]">

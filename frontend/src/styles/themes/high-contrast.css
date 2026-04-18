@@ -73,6 +73,7 @@
   --overlay-weak:       hsla(0 0% 100% / 0.10);
   --overlay-moderate:   hsla(0 0% 100% / 0.20);
   --overlay-scrim:      hsla(0 0% 0% / 0.70);
+  --overlay-scrim-med:  hsla(0 0% 0% / 0.80);
   --overlay-scrim-deep: hsla(0 0% 0% / 0.90);
 
   /* Shadow pulses — yellow for accent, brighter edges so they punch on black */

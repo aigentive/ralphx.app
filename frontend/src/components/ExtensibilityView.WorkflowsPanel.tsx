@@ -98,7 +98,7 @@ export function WorkflowsPanel() {
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
                 border: "1px solid var(--border-subtle)",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                boxShadow: "var(--shadow-xs)",
               }}
             >
               <CardContent className="p-4">

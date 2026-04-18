@@ -17,6 +17,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { SectionTitle } from "./SectionTitle";
+import { withAlpha } from "@/lib/theme-colors";
 import type { MergeValidationStepEvent } from "@/types/events";
 
 function formatDuration(ms: number): string {
@@ -40,7 +41,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   ) : isFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : isSkipped ? (
-    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
+    <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : isCached ? (
     <Archive className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   ) : (
@@ -123,8 +124,8 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const badgeBg = phase === "setup" ? "var(--status-info-muted)" : phase === "install" ? "var(--accent-muted)" : phase === "skipped" ? "rgba(255, 255, 255, 0.08)" : "var(--status-success-muted)";
-  const badgeColor = phase === "setup" ? "var(--status-info)" : phase === "install" ? "var(--accent-primary)" : phase === "skipped" ? "rgba(255, 255, 255, 0.4)" : "var(--status-success)";
+  const badgeBg = phase === "setup" ? "var(--status-info-muted)" : phase === "install" ? "var(--accent-muted)" : phase === "skipped" ? "var(--overlay-weak)" : "var(--status-success-muted)";
+  const badgeColor = phase === "setup" ? "var(--status-info)" : phase === "install" ? "var(--accent-primary)" : phase === "skipped" ? withAlpha("var(--text-primary)", 40) : "var(--status-success)";
 
   const allSkipped = steps.every((s) => s.status === "skipped");
   const statusIcon = anyRunning ? (
@@ -132,7 +133,7 @@ export function StepsGroup({ steps, phase, label }: {
   ) : anyFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : allSkipped ? (
-    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
+    <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : (
     <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   );
@@ -183,7 +184,7 @@ export function StepsGroup({ steps, phase, label }: {
                   ) : isFailed ? (
                     <XCircle className="w-3 h-3" style={{ color: "var(--status-error)" }} />
                   ) : isSkipped ? (
-                    <SkipForward className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
+                    <SkipForward className="w-3 h-3 text-text-primary/30" />
                   ) : (
                     <CheckCircle2 className="w-3 h-3" style={{ color: "var(--status-success)" }} />
                   )}

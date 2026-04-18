@@ -66,8 +66,8 @@ function CheckpointIndicator() {
       data-testid="checkpoint-indicator"
       className="text-[9px] px-1.5 py-px"
       style={{
-        backgroundColor: "rgba(255, 169, 77, 0.2)",
-        color: "#ffa94d",
+        backgroundColor: "var(--status-warning-muted)",
+        color: "var(--status-warning)",
         border: "none",
       }}
     >

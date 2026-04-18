@@ -73,7 +73,7 @@ const NOTICE_STYLES: Record<
 > = {
   ok: {
     wrapper:
-      "bg-[rgba(255,255,255,0.03)] border-[var(--border-subtle)] text-[var(--text-muted)]",
+      "bg-[var(--overlay-faint)] border-[var(--border-subtle)] text-[var(--text-muted)]",
     icon: (
       <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--status-success)]" />
     ),
@@ -85,7 +85,7 @@ const NOTICE_STYLES: Record<
   },
   info: {
     wrapper:
-      "bg-[var(--accent-muted)] border-[rgba(255,107,53,0.18)] text-[var(--text-secondary)]",
+      "bg-[var(--accent-muted)] border-[var(--accent-border)] text-[var(--text-secondary)]",
     icon: (
       <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent-primary)]" />
     ),

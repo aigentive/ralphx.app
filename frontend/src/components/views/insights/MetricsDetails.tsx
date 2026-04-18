@@ -32,12 +32,12 @@ function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+        <span className="text-[12px] text-text-primary/50">
           {label}
         </span>
-        <span className="text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
+        <span className="text-[12px] font-medium text-text-primary/70">
           {pct}%
-          <span className="ml-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <span className="ml-1 text-text-primary/40">
             ({passCount}/{totalCount})
           </span>
         </span>
@@ -95,8 +95,7 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-32 shrink-0 flex items-center gap-1"
-        style={{ color: "rgba(255,255,255,0.5)" }}
+        className="w-32 shrink-0 flex items-center gap-1 text-text-primary/50"
       >
         <span title={displayName}>
           {displayName}
@@ -124,8 +123,7 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
         />
       </div>
       <span
-        className="w-16 text-right shrink-0 tabular-nums"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        className="w-16 text-right shrink-0 tabular-nums text-text-primary/70"
       >
         {formatMinutesHuman(phase.avgMinutes)}
       </span>
@@ -149,10 +147,10 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <GitMerge size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <GitMerge size={14} className="text-text-primary/40" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
+            style={{ letterSpacing: "0.08em" }}
           >
             Quality Breakdown
           </span>
@@ -205,10 +203,10 @@ export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <Clock size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Clock size={14} className="text-text-primary/40" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
+            style={{ letterSpacing: "0.08em" }}
           >
             Cycle Time Breakdown
           </span>
@@ -233,8 +231,7 @@ function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinute
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-24 shrink-0 truncate"
-        style={{ color: "rgba(255,255,255,0.5)" }}
+        className="w-24 shrink-0 truncate text-text-primary/50"
         title={dwell.columnName}
       >
         {dwell.columnName}
@@ -249,8 +246,7 @@ function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinute
         />
       </div>
       <span
-        className="w-16 text-right shrink-0 tabular-nums"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        className="w-16 text-right shrink-0 tabular-nums text-text-primary/70"
       >
         {formatMinutesHuman(dwell.avgMinutes)}
       </span>
@@ -273,10 +269,10 @@ export function ColumnDwellTimeBreakdown({ dwellTimes }: ColumnDwellTimeBreakdow
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <Columns3 size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Columns3 size={14} className="text-text-primary/40" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
+            style={{ letterSpacing: "0.08em" }}
           >
             Kanban Column Time
           </span>
@@ -353,10 +349,9 @@ export function CopyMarkdownButton({ stats }: CopyMarkdownButtonProps) {
   return (
     <button
       onClick={handleCopy}
-      className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+      className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
       style={{
         backgroundColor: "hsl(220 10% 14%)",
-        color: "rgba(255,255,255,0.7)",
       }}
     >
       {copied ? (

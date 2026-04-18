@@ -19,6 +19,7 @@ import {
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { reviewIssuesApi } from "@/api/review-issues";
 import { IssueProgressBar } from "@/components/reviews/IssueList";
+import { withAlpha } from "@/lib/theme-colors";
 import type { Task } from "@/types/task";
 
 interface WaitingTaskDetailProps {
@@ -61,8 +62,7 @@ function WorkSummaryCard({
     return (
       <div className="flex items-center justify-center py-6">
         <Loader2
-          className="w-5 h-5 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-5 h-5 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -75,9 +75,9 @@ function WorkSummaryCard({
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-            style={{ backgroundColor: "rgba(142, 142, 147, 0.15)" }}
+            style={{ backgroundColor: "var(--overlay-moderate)" }}
           >
-            <Clock className="w-4 h-4" style={{ color: "#8e8e93" }} />
+            <Clock className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
           </div>
           <div>
             <span className="text-[11px] uppercase tracking-wider text-white/40 block">
@@ -102,12 +102,12 @@ function WorkSummaryCard({
             style={{
               backgroundColor: allComplete
                 ? "var(--status-success-muted)"
-                : "rgba(142, 142, 147, 0.15)",
+                : "var(--overlay-moderate)",
             }}
           >
             <CheckCircle2
               className="w-4 h-4"
-              style={{ color: allComplete ? "var(--status-success)" : "#8e8e93" }}
+              style={{ color: allComplete ? "var(--status-success)" : "var(--text-muted)" }}
             />
           </div>
           <div>
@@ -116,7 +116,7 @@ function WorkSummaryCard({
             </span>
             <span
               className="text-[13px] font-medium"
-              style={{ color: allComplete ? "var(--status-success)" : "rgba(255,255,255,0.7)" }}
+              style={{ color: allComplete ? "var(--status-success)" : withAlpha("var(--text-primary)", 70) }}
             >
               {totalSteps > 0
                 ? allComplete
@@ -199,8 +199,7 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
           className="flex items-center justify-center py-8"
         >
           <Loader2
-            className="w-5 h-5 animate-spin"
-            style={{ color: "rgba(255,255,255,0.3)" }}
+            className="w-5 h-5 animate-spin text-text-primary/30"
           />
         </div>
       )}

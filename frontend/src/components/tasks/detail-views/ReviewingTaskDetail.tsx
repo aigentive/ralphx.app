@@ -34,7 +34,7 @@ import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
 import type { ReviewNoteResponse } from "@/lib/tauri";
-import { statusTint } from "@/lib/theme-colors";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 interface ReviewingTaskDetailProps {
   task: Task;
@@ -84,8 +84,7 @@ function ReviewStepItem({
         )}
         {status === "pending" && (
           <Circle
-            className="w-5 h-5"
-            style={{ color: "rgba(255,255,255,0.2)" }}
+            className="w-5 h-5 text-text-primary/20"
           />
         )}
       </div>
@@ -96,12 +95,12 @@ function ReviewStepItem({
         style={{
           color:
             status === "completed"
-              ? "rgba(255,255,255,0.6)"
+              ? withAlpha("var(--text-primary)", 60)
               : status === "active"
               ? isHistorical
-                ? "rgba(255,255,255,0.35)"
+                ? withAlpha("var(--text-primary)", 35)
                 : "var(--status-info)"
-              : "rgba(255,255,255,0.35)",
+              : withAlpha("var(--text-primary)", 35),
         }}
       >
         {label}

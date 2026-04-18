@@ -136,7 +136,7 @@ export function AcceptModal({
       <div
         data-testid="modal-overlay"
         className="absolute inset-0"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+        style={{ backgroundColor: "var(--overlay-scrim-med)" }}
         onClick={handleOverlayClick}
       />
       <div

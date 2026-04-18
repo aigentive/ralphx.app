@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Local imports from extracted modules
+import { withAlpha } from "@/lib/theme-colors";
 import type {
   ViewMode,
   MessageTypeFilter,
@@ -315,8 +316,8 @@ export function ActivityView({
       className="flex flex-col h-full"
       style={{
         background: `
-          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
-          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 20% 0%, ${withAlpha("var(--accent-primary)", 6)} 0%, transparent 50%),
+          radial-gradient(ellipse 60% 40% at 80% 100%, ${withAlpha("var(--accent-primary)", 3)} 0%, transparent 50%),
           var(--bg-base)
         `,
       }}

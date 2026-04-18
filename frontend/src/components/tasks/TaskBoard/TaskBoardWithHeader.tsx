@@ -13,6 +13,7 @@ import { WorkflowSelector } from "@/components/workflows/WorkflowSelector";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProjectStatsCard } from "@/components/project/ProjectStatsCard";
 import { TaskBoard } from "./TaskBoard";
+import { withAlpha } from "@/lib/theme-colors";
 import type { WorkflowSchema } from "@/types/workflow";
 
 // ============================================================================
@@ -56,7 +57,7 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
         className="flex items-center justify-between px-3 py-1.5 border-b backdrop-blur-sm"
         style={{
           borderColor: "var(--overlay-weak)",
-          background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+          background: `linear-gradient(180deg, ${withAlpha("var(--bg-elevated)", 95)} 0%, ${withAlpha("var(--bg-surface)", 98)} 100%)`,
         }}
       >
         <WorkflowSelector

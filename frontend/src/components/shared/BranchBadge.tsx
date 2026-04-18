@@ -6,6 +6,7 @@
  */
 
 import { formatBranchDisplay } from "@/lib/branch-utils";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // BranchBadge
@@ -21,10 +22,10 @@ interface BranchBadgeProps {
 }
 
 const VARIANT_COLORS: Record<BranchVariant, string> = {
-  default: "rgba(255, 255, 255, 0.7)",
-  source: "rgba(255, 255, 255, 0.7)",
-  target: "rgba(255, 255, 255, 0.85)",
-  muted: "rgba(255, 255, 255, 0.4)",
+  default: withAlpha("var(--text-primary)", 70),
+  source: withAlpha("var(--text-primary)", 70),
+  target: withAlpha("var(--text-primary)", 85),
+  muted: withAlpha("var(--text-primary)", 40),
 };
 
 const SIZE_CONFIG: Record<BranchSize, { fontSize: string }> = {
@@ -73,8 +74,8 @@ export function BranchFlow({
     <span className="inline-flex items-center gap-1.5 min-w-0">
       <BranchBadge branch={source} variant="source" size={size} />
       <span
+        className="text-text-primary/40"
         style={{
-          color: "rgba(255, 255, 255, 0.4)",
           fontSize: SIZE_CONFIG[size].fontSize,
         }}
       >

@@ -12,6 +12,7 @@ import { SectionCard } from "./SettingsView.shared";
 import { ApiKeyEntry } from "./ApiKeyEntry";
 import { CreateKeyDialog } from "./CreateKeyDialog";
 import { useApiKeys } from "@/hooks/useApiKeys";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Component
@@ -62,7 +63,7 @@ export function ApiKeysSection() {
           <div className="py-6 flex flex-col items-center text-center gap-2">
             <div
               className="p-3 rounded-full"
-              style={{ background: "rgba(255,107,53,0.06)" }}
+              style={{ background: withAlpha("var(--accent-primary)", 6) }}
             >
               <KeyRound className="w-5 h-5 text-[var(--text-muted)]" />
             </div>

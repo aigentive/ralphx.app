@@ -32,6 +32,7 @@ import {
   CopyMarkdownButton,
 } from "./insights/MetricsDetails";
 import { UsageInsightsCard } from "./insights/UsageInsightsCard";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Week Start Day Preference (localStorage-backed)
@@ -72,7 +73,7 @@ function WeekStartToggle({
       className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
       style={{ backgroundColor: "hsl(220 10% 14%)" }}
     >
-      <Calendar size={13} style={{ color: "rgba(255,255,255,0.5)" }} />
+      <Calendar size={13} className="text-text-primary/50" />
       {[
         { day: 0, label: "Sun" },
         { day: 1, label: "Mon" },
@@ -83,8 +84,8 @@ function WeekStartToggle({
           className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
           style={
             value === day
-              ? { backgroundColor: "var(--accent-primary)", color: "#fff" }
-              : { color: "rgba(255,255,255,0.55)" }
+              ? { backgroundColor: "var(--accent-primary)", color: "var(--text-primary)" }
+              : { color: withAlpha("var(--text-primary)", 55) }
           }
           title={`Week starts on ${day === 0 ? "Sunday" : "Monday"}`}
         >
@@ -175,13 +176,10 @@ function EmeSection({
   return (
     <DetailCard>
       <div className="flex flex-col gap-1">
-        <p
-          className="text-[13px] font-medium"
-          style={{ color: "rgba(255,255,255,0.7)" }}
-        >
+        <p className="text-[13px] font-medium text-text-primary/70">
           Effort estimation unlocks after 5 completed tasks
         </p>
-        <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+        <p className="text-[12px] text-text-primary/35">
           {stats.taskCount} of 5 tasks completed — keep going!
         </p>
       </div>
@@ -206,10 +204,7 @@ export function InsightsView() {
   // No active project
   if (!projectId) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ color: "rgba(255,255,255,0.3)" }}
-      >
+      <div className="flex flex-1 items-center justify-center text-text-primary/30">
         <p className="text-[14px]">Select a project to view insights</p>
       </div>
     );
@@ -218,10 +213,7 @@ export function InsightsView() {
   // Loading
   if (statsQuery.isLoading || trendsQuery.isLoading) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ color: "rgba(255,255,255,0.3)" }}
-      >
+      <div className="flex flex-1 items-center justify-center text-text-primary/30">
         <p className="text-[14px]">Loading insights...</p>
       </div>
     );
@@ -230,10 +222,7 @@ export function InsightsView() {
   // Error
   if (statsQuery.error ?? trendsQuery.error) {
     return (
-      <div
-        className="flex flex-1 items-center justify-center"
-        style={{ color: "rgba(255,255,255,0.3)" }}
-      >
+      <div className="flex flex-1 items-center justify-center text-text-primary/30">
         <p className="text-[14px]">Failed to load insights. Try again.</p>
       </div>
     );
@@ -325,12 +314,12 @@ function InsightsContent({
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h1
-              className="text-[22px] font-semibold"
-              style={{ color: "rgba(255,255,255,0.92)", fontFamily: "system-ui" }}
+              className="text-[22px] font-semibold text-text-primary/90"
+              style={{ fontFamily: "system-ui" }}
             >
               Insights
             </h1>
-            <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <p className="text-[13px] text-text-primary/40">
               Project analytics and effort estimation
             </p>
           </div>
@@ -339,10 +328,9 @@ function InsightsContent({
             <CopyMarkdownButton stats={stats} />
             <button
               onClick={() => exportJSON(stats, trends)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
               style={{
                 backgroundColor: "hsl(220 10% 14%)",
-                color: "rgba(255,255,255,0.7)",
               }}
               title="Download JSON"
             >
@@ -351,10 +339,9 @@ function InsightsContent({
             </button>
             <button
               onClick={() => exportCSV(trends)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
               style={{
                 backgroundColor: "hsl(220 10% 14%)",
-                color: "rgba(255,255,255,0.7)",
               }}
               title="Download CSV"
             >
@@ -421,13 +408,10 @@ function InsightsContent({
             {!hasEnoughForTrends ? (
               <DetailCard>
                 <div className="flex flex-col gap-1">
-                  <p
-                    className="text-[13px] font-medium"
-                    style={{ color: "rgba(255,255,255,0.7)" }}
-                  >
+                  <p className="text-[13px] font-medium text-text-primary/70">
                     Trend charts unlock after 10 completed tasks
                   </p>
-                  <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  <p className="text-[12px] text-text-primary/35">
                     {stats.taskCount} of 10 tasks completed
                   </p>
                 </div>

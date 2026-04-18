@@ -202,8 +202,8 @@ export function QuestionInputBanner({
                 width: 18,
                 height: 18,
                 borderRadius: "50%",
-                background: "rgba(52, 211, 153, 0.12)",
-                color: "#34d399",
+                background: "var(--status-success-muted)",
+                color: "var(--status-success)",
                 fontSize: 10,
               }}
             >

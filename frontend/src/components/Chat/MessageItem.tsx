@@ -215,8 +215,7 @@ export const MessageItem = React.memo(function MessageItem({
             </span>
             {modelEffortLabel && (
               <span
-                className="text-[10px] min-w-0 truncate"
-                style={{ color: "rgba(255,255,255,0.48)" }}
+                className="text-[10px] min-w-0 truncate text-text-primary/50"
                 title={providerTooltip ?? undefined}
                 data-testid="message-model-effort"
               >
@@ -275,10 +274,9 @@ export const MessageItem = React.memo(function MessageItem({
 
         <span
           className={cn(
-            "text-[10px] mt-1 px-1",
+            "text-[10px] mt-1 px-1 text-text-primary/40",
             isUser ? "text-right" : "text-left"
           )}
-          style={{ color: "rgba(255,255,255,0.4)" }}
         >
           {formatTimestamp(createdAt)}
         </span>

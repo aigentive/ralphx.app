@@ -68,7 +68,7 @@ function StatRow({
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
         style={{ backgroundColor: "var(--overlay-weak)" }}
       >
-        <Icon className="w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.4)" }} />
+        <Icon className="w-3.5 h-3.5 text-text-primary/40" />
       </div>
       <div className="flex-1 min-w-0">
         <span className="text-[11px] uppercase tracking-wider text-white/40 block">
@@ -110,8 +110,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2
-          className="w-4 h-4 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-4 h-4 animate-spin text-text-primary/30"
         />
       </div>
     );

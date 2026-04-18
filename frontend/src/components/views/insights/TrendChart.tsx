@@ -7,17 +7,18 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { withAlpha } from "@/lib/theme-colors";
 import type { WeeklyDataPoint } from "@/types/project-stats";
 
 const ACCENT = "var(--accent-primary)";
-const SECONDARY_DEFAULT = "rgba(148, 163, 184, 0.7)";
+const SECONDARY_DEFAULT = withAlpha("var(--text-secondary)", 70);
 
 const tooltipStyle = {
   backgroundColor: "hsl(220 10% 12%)",
   border: "none",
   borderRadius: "8px",
   fontSize: "12px",
-  color: "rgba(255,255,255,0.85)",
+  color: withAlpha("var(--text-primary)", 85),
 };
 
 function formatWeek(weekStart: string): string {
@@ -73,26 +74,17 @@ export function TrendChart({
   const header = (
     <div className={timeWindow !== undefined ? "mb-2" : "mb-3"}>
       <div className="flex items-center justify-between">
-        <p
-          className="text-[12px] font-medium"
-          style={{ color: "rgba(255,255,255,0.7)" }}
-        >
+        <p className="text-[12px] font-medium text-text-primary/70">
           {title}
         </p>
         {currentValue !== undefined && (
-          <span
-            className="text-[12px]"
-            style={{ color: "rgba(255,255,255,0.5)" }}
-          >
+          <span className="text-[12px] text-text-primary/50">
             {currentValue}
           </span>
         )}
       </div>
       {timeWindow !== undefined && (
-        <p
-          className="text-[10px] mt-0.5"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-        >
+        <p className="text-[10px] mt-0.5 text-text-primary/35">
           {timeWindow}
         </p>
       )}
@@ -103,7 +95,7 @@ export function TrendChart({
     return (
       <div>
         {header}
-        <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+        <p className="text-[12px] text-text-primary/30">
           No data yet
         </p>
       </div>
@@ -125,12 +117,12 @@ export function TrendChart({
           />
           <XAxis
             dataKey="week"
-            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
+            tick={{ fontSize: 10, fill: withAlpha("var(--text-primary)", 35) }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
+            tick={{ fontSize: 10, fill: withAlpha("var(--text-primary)", 35) }}
             axisLine={false}
             tickLine={false}
             tickFormatter={fmt}
@@ -147,7 +139,7 @@ export function TrendChart({
                 ? [fmt(val), pLabel]
                 : [String(val), pLabel];
             }}
-            labelStyle={{ color: "rgba(255,255,255,0.5)" }}
+            labelStyle={{ color: withAlpha("var(--text-primary)", 50) }}
           />
           <Line
             type="monotone"
@@ -177,10 +169,7 @@ export function TrendChart({
               className="inline-block w-[6px] h-[6px] rounded-full"
               style={{ backgroundColor: color }}
             />
-            <span
-              className="text-[10px]"
-              style={{ color: "rgba(255,255,255,0.5)" }}
-            >
+            <span className="text-[10px] text-text-primary/50">
               {pLabel}
             </span>
           </span>
@@ -189,10 +178,7 @@ export function TrendChart({
               className="inline-block w-[6px] h-[6px] rounded-full"
               style={{ backgroundColor: secondaryColor }}
             />
-            <span
-              className="text-[10px]"
-              style={{ color: "rgba(255,255,255,0.5)" }}
-            >
+            <span className="text-[10px] text-text-primary/50">
               {sLabel}
             </span>
           </span>

@@ -38,7 +38,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
-import { statusTint } from "@/lib/theme-colors";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
@@ -248,7 +248,7 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
       case "attempt_succeeded":
         return "var(--status-success)"; // green
       default:
-        return "rgba(255, 255, 255, 0.5)"; // white/gray
+        return withAlpha("var(--text-primary)", 50); // white/gray
     }
   };
 
@@ -273,16 +273,15 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
 
   const getSourceBadge = (source: string) => {
     const colors = {
-      system: "rgba(100, 200, 255, 0.15)", /* color out of table */
+      system: "var(--status-info-muted)",
       auto: "var(--accent-muted)",
       user: "var(--status-success-muted)",
     };
     return (
       <span
-        className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
+        className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide text-text-primary/70"
         style={{
           backgroundColor: colors[source as keyof typeof colors] ?? "var(--overlay-moderate)",
-          color: "rgba(255, 255, 255, 0.7)",
         }}
       >
         {source}
@@ -303,7 +302,7 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
             style={{
               borderBottom:
                 idx < events.length - 1
-                  ? "1px solid rgba(255, 255, 255, 0.08)"
+                  ? "1px solid var(--overlay-weak)"
                   : "none",
             }}
           >

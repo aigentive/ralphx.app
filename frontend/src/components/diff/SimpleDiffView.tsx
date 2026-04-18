@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 
 interface SimpleDiffViewProps {
   oldContent: string;
@@ -165,10 +166,10 @@ function getLineBackground(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
       return variant === "conflict"
-        ? "rgba(64, 156, 255, 0.12)"
-        : "rgba(52, 199, 89, 0.12)";
+        ? "var(--status-info-muted)"
+        : "var(--status-success-muted)";
     case "deletion":
-      return "rgba(255, 69, 58, 0.12)";
+      return "var(--status-error-muted)";
     default:
       return "transparent";
   }
@@ -181,12 +182,12 @@ function getLineNumColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
       return variant === "conflict"
-        ? "rgba(64, 156, 255, 0.6)"
-        : "rgba(52, 199, 89, 0.6)";
+        ? withAlpha("var(--status-info)", 60)
+        : withAlpha("var(--status-success)", 60);
     case "deletion":
-      return "rgba(255, 69, 58, 0.6)";
+      return withAlpha("var(--status-error)", 60);
     default:
-      return "hsl(220 10% 35%)";
+      return "var(--text-muted)";
   }
 }
 
@@ -214,7 +215,7 @@ function getPrefixColor(type: DiffLine["type"], variant: Variant): string {
     case "deletion":
       return "var(--status-error)";
     case "header":
-      return "rgba(255,255,255,0.45)";
+      return withAlpha("var(--text-primary)", 45);
     default:
       return "transparent";
   }
@@ -290,7 +291,7 @@ function renderHeader(content: string) {
       className="px-3 py-1 text-[11px] font-mono"
       style={{
         backgroundColor: "var(--overlay-weak)",
-        color: "rgba(255,255,255,0.6)",
+        color: withAlpha("var(--text-primary)", 60),
         borderTop: "1px solid var(--overlay-weak)",
         borderBottom: "1px solid var(--overlay-weak)",
       }}

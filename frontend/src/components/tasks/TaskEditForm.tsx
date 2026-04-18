@@ -148,7 +148,7 @@ export function TaskEditForm({
       <div
         className="rounded-lg p-4 mt-5"
         style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
+          background: "var(--overlay-faint)",
           border: "1px solid var(--overlay-weak)",
         }}
       >

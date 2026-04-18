@@ -69,7 +69,7 @@ function TransitionEventCard({ entry }: { entry: AuditEntry }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {entry.fromStatus && <StatusBadge status={entry.fromStatus} />}
-          <ArrowRight className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
+          <ArrowRight className="w-3 h-3 text-text-primary/30" />
           {entry.toStatus && <StatusBadge status={entry.toStatus} />}
           <span className="text-[11px] text-white/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
@@ -116,10 +116,9 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
           </span>
           {isToolCall && toolName && (
             <span
-              className="font-mono text-[10px] px-1.5 py-0.5 rounded"
+              className="font-mono text-[10px] px-1.5 py-0.5 rounded text-text-primary/70"
               style={{
-                backgroundColor: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.7)",
+                backgroundColor: "var(--overlay-weak)",
               }}
             >
               {toolName}
@@ -142,7 +141,7 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
               backgroundColor: "var(--accent-muted)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
             <span className="text-[10px] text-white/45 break-all min-w-0">
@@ -223,7 +222,7 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
               backgroundColor: "var(--accent-muted)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
             <span className="text-[10px] text-white/45 break-all min-w-0">

@@ -12,7 +12,7 @@ import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import { navigateToIdeationSession } from "@/lib/navigation";
-import { statusTint } from "@/lib/theme-colors";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Staleness Detection
@@ -162,9 +162,9 @@ function TimelineItem({
     }
     return {
       Icon: CheckCircle2,
-      color: "#8e8e93",
-      bgColor: "rgba(142, 142, 147, 0.15)",
-      lineColor: "rgba(142, 142, 147, 0.2)",
+      color: "var(--text-muted)",
+      bgColor: "var(--overlay-moderate)",
+      lineColor: withAlpha("var(--text-muted)", 20),
     };
   };
 

@@ -36,13 +36,13 @@ function MiniStat({
   return (
     <div
       className="rounded-lg p-3 flex flex-col gap-1"
-      style={{ backgroundColor: "rgba(255,255,255,0.03)" }}
+      style={{ backgroundColor: "var(--overlay-faint)" }}
     >
-      <div className="flex items-center gap-2 text-[11px]" style={{ color: "rgba(255,255,255,0.42)" }}>
+      <div className="flex items-center gap-2 text-[11px] text-text-primary/40">
         {icon}
         <span className="uppercase tracking-[0.08em]">{label}</span>
       </div>
-      <div className="text-[15px] font-medium" style={{ color: "rgba(255,255,255,0.88)" }}>
+      <div className="text-[15px] font-medium text-text-primary/90">
         {value}
       </div>
     </div>
@@ -60,10 +60,10 @@ export function UsageInsightsCard({ stats }: UsageInsightsCardProps) {
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.88)" }}>
+            <span className="text-sm font-medium text-text-primary/90">
               AI Usage
             </span>
-            <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <span className="text-[12px] text-text-primary/40">
               Aggregated from {stats.usageCoverage.effectiveTotalsSource}
             </span>
           </div>
@@ -97,31 +97,31 @@ export function UsageInsightsCard({ stats }: UsageInsightsCardProps) {
 
         <div className="grid grid-cols-1 min-[800px]:grid-cols-2 gap-3 text-[12px]">
           <div className="flex flex-col gap-1.5">
-            <div style={{ color: "rgba(255,255,255,0.42)" }} className="uppercase tracking-[0.08em] text-[10px]">
+            <div className="uppercase tracking-[0.08em] text-[10px] text-text-primary/40">
               Coverage
             </div>
-            <div style={{ color: "rgba(255,255,255,0.72)" }}>
+            <div className="text-text-primary/70">
               Messages with usage: {stats.usageCoverage.providerMessagesWithUsage}/
               {stats.usageCoverage.providerMessageCount}
             </div>
-            <div style={{ color: "rgba(255,255,255,0.72)" }}>
+            <div className="text-text-primary/70">
               Runs with usage: {stats.usageCoverage.runsWithUsage}/{stats.usageCoverage.runCount}
             </div>
-            <div style={{ color: "rgba(255,255,255,0.72)" }}>
+            <div className="text-text-primary/70">
               Conversations: {stats.conversationCount}
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <div style={{ color: "rgba(255,255,255,0.42)" }} className="uppercase tracking-[0.08em] text-[10px]">
+            <div className="uppercase tracking-[0.08em] text-[10px] text-text-primary/40">
               Dominant breakdowns
             </div>
-            <div className="flex items-center gap-2" style={{ color: "rgba(255,255,255,0.72)" }}>
+            <div className="flex items-center gap-2 text-text-primary/70">
               <Boxes className="w-3.5 h-3.5 shrink-0" />
               <span>Harness: {topHarness}</span>
             </div>
-            <div style={{ color: "rgba(255,255,255,0.72)" }}>Provider: {topProvider}</div>
-            <div style={{ color: "rgba(255,255,255,0.72)" }}>Model: {topModel}</div>
+            <div className="text-text-primary/70">Provider: {topProvider}</div>
+            <div className="text-text-primary/70">Model: {topModel}</div>
           </div>
         </div>
       </div>

@@ -20,7 +20,7 @@ const STATUS_CONFIG = {
     label: "Merged",
     icon: GitMerge,
     // Violet is PR-only — the only non-palette tone we keep.
-    bg: "rgba(175, 82, 222, 0.15)",
+    bg: withAlpha("#af52de", 15),
     color: "#af52de",
   },
   Closed: {

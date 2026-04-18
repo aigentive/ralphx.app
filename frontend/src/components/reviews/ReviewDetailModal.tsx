@@ -38,6 +38,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { withAlpha } from "@/lib/theme-colors";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
@@ -117,8 +118,8 @@ function AIReviewSummary({
       <div
         className="rounded-lg p-3 text-center"
         style={{
-          backgroundColor: "rgba(0, 0, 0, 0.2)",
-          border: "1px solid rgba(255,255,255,0.05)",
+          backgroundColor: "var(--overlay-scrim)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <p className="text-[12px] text-white/40">No AI review yet</p>
@@ -138,7 +139,7 @@ function AIReviewSummary({
       data-testid="ai-review-summary"
       className="rounded-lg p-3 space-y-3"
       style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
+        backgroundColor: "var(--overlay-scrim)",
         border: "1px solid var(--status-success-border)",
       }}
     >
@@ -180,12 +181,11 @@ function AIReviewSummary({
         {checklistItems.map((item, index) => (
           <div
             key={index}
-            className="flex items-center gap-2 py-1"
-            style={{ color: item.passed ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }}
+            className={`flex items-center gap-2 py-1 ${item.passed ? "text-text-primary/60" : "text-text-primary/40"}`}
           >
             <CheckCircle2
               className="w-3.5 h-3.5 shrink-0"
-              style={{ color: item.passed ? "var(--status-success)" : "rgba(255,255,255,0.3)" }}
+              style={{ color: item.passed ? "var(--status-success)" : withAlpha("var(--text-primary)", 30) }}
             />
             <span className="text-[12px]">{item.label}</span>
           </div>
@@ -226,8 +226,8 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
           key={entry.id}
           className="flex items-start gap-2 py-1.5 px-2 rounded"
           style={{
-            backgroundColor: "rgba(0, 0, 0, 0.15)",
-            border: "1px solid rgba(255,255,255,0.05)",
+            backgroundColor: "var(--overlay-scrim)",
+            border: "1px solid var(--overlay-weak)",
           }}
         >
           {/* Icon based on outcome */}
@@ -281,7 +281,7 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
               <div className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
                 style={{
                   backgroundColor: "var(--accent-muted)",
-                  border: "1px solid rgba(255,255,255,0.05)",
+                  border: "1px solid var(--overlay-weak)",
                 }}
               >
                 <span className="text-[10px] text-white/45 break-all min-w-0">
@@ -316,8 +316,8 @@ function RevisionCountBadge({ count }: { count: number }) {
       data-testid="revision-count-badge"
       className="flex items-center gap-1.5 px-2 py-1 rounded"
       style={{
-        backgroundColor: "rgba(251, 191, 36, 0.1)",
-        border: "1px solid rgba(251, 191, 36, 0.2)",
+        backgroundColor: "var(--status-warning-muted)",
+        border: "1px solid var(--status-warning-border)",
       }}
     >
       <RotateCcw
@@ -562,7 +562,7 @@ export function ReviewDetailModal({
                   placeholder="Describe the changes needed..."
                   className="min-h-[80px] text-[13px] resize-none"
                   style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.2)",
+                    backgroundColor: "var(--overlay-scrim)",
                     border: "1px solid var(--overlay-moderate)",
                   }}
                 />

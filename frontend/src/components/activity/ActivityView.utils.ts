@@ -56,17 +56,17 @@ export function getMessageColor(type: ActivityMessageType) {
 export function getMessageBgColor(type: ActivityMessageType) {
   switch (type) {
     case "thinking":
-      return "rgba(128, 128, 128, 0.08)";
+      return "var(--overlay-weak)";
     case "tool_call":
-      return "rgba(255, 107, 53, 0.08)";
+      return "var(--accent-muted)";
     case "tool_result":
-      return "rgba(34, 197, 94, 0.08)";
+      return "var(--status-success-muted)";
     case "text":
-      return "rgba(128, 128, 128, 0.04)";
+      return "var(--overlay-faint)";
     case "error":
-      return "rgba(239, 68, 68, 0.1)";
+      return "var(--status-error-muted)";
     case "system":
-      return "rgba(255, 107, 53, 0.08)";
+      return "var(--accent-muted)";
   }
 }
 

@@ -87,6 +87,7 @@
   --overlay-weak:      var(--alpha-white-6);  /* 6%  — hover emphasis */
   --overlay-moderate:  var(--alpha-white-10); /* 10% — section highlight */
   --overlay-scrim:     var(--alpha-black-30); /* 30% — dialog scrim, hero dim */
+  --overlay-scrim-med: hsla(0 0% 0% / 0.50);  /* 50% — modal centre overlay */
   --overlay-scrim-deep:var(--alpha-black-60); /* 60% — modal backdrop */
 
   /* ============================================================================

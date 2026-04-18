@@ -30,6 +30,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { withAlpha } from "@/lib/theme-colors";
 
 // Import state-specific detail view components
 import {
@@ -295,7 +296,7 @@ function ReviewCard({
   const Icon = reviewerType === "ai" ? Bot : reviewerType === "system" ? Settings : User;
   const label = reviewerType === "ai" ? "AI Review" : reviewerType === "system" ? "System" : "Human Review";
 
-  const defaultStatusColor = { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
+  const defaultStatusColor = { bg: "var(--overlay-weak)", text: withAlpha("var(--text-primary)", 50) };
   const statusColors: Record<string, { bg: string; text: string }> = {
     pending: defaultStatusColor,
     approved: {
@@ -316,7 +317,7 @@ function ReviewCard({
       data-testid={`review-item-${reviewerType}`}
       className="flex items-center justify-between p-2.5 rounded-lg"
       style={{
-        background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
+        background: `linear-gradient(180deg, ${withAlpha("var(--bg-elevated)", 90)} 0%, ${withAlpha("var(--bg-surface)", 95)} 100%)`,
         border: "1px solid var(--overlay-weak)",
       }}
     >
@@ -422,9 +423,9 @@ export function TaskDetailPanel({
                   data-testid="task-detail-category"
                   className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   style={{
-                    backgroundColor: "rgba(255,255,255,0.05)",
+                    backgroundColor: "var(--overlay-weak)",
                     border: "1px solid var(--border-subtle)",
-                    color: "rgba(255,255,255,0.6)",
+                    color: withAlpha("var(--text-primary)", 60),
                   }}
                 >
                   {task.category}

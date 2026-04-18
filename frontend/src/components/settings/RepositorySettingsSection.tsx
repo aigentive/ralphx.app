@@ -332,7 +332,7 @@ export function RepositorySettingsSection() {
         className="rounded-md -mx-2 px-2"
         style={{
           background: "var(--overlay-faint)",
-          border: "1px solid rgba(255,255,255,0.05)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <SettingRow

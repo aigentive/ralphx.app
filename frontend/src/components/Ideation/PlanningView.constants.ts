@@ -90,9 +90,9 @@ export const animationStyles = `
 .shimmer-loading {
   background: linear-gradient(
     90deg,
-    rgba(255,255,255,0) 0%,
-    rgba(255,255,255,0.05) 50%,
-    rgba(255,255,255,0) 100%
+    transparent 0%,
+    var(--overlay-weak) 50%,
+    transparent 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s infinite;

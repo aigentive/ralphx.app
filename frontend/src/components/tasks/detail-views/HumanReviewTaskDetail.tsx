@@ -390,8 +390,7 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2
-          className="w-6 h-6 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-6 h-6 animate-spin text-text-primary/30"
         />
       </div>
     );

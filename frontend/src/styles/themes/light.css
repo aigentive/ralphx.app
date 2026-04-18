@@ -66,6 +66,7 @@
   --overlay-weak:       hsla(220 15% 10% / 0.05);
   --overlay-moderate:   hsla(220 15% 10% / 0.08);
   --overlay-scrim:      hsla(0 0% 0% / 0.25);
+  --overlay-scrim-med:  hsla(0 0% 0% / 0.40);
   --overlay-scrim-deep: hsla(0 0% 0% / 0.50);
 
   /* Shadow pulses — retuned for white-surface contrast (lower alpha) */

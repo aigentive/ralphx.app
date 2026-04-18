@@ -134,8 +134,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2
-          className="w-5 h-5 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-5 h-5 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -190,8 +189,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2
-          className="w-6 h-6 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-6 h-6 animate-spin text-text-primary/30"
         />
       </div>
     );
