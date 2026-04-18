@@ -809,7 +809,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }, [contextKey]);
 
     // Memoize itemContent — lookup teammate info for team mode messages
-    const renderItem = useCallback((_: number, item: TimelineItem) => {
+    const renderItem = useCallback((index: number, item: TimelineItem) => {
+      const isLastTimelineItem = index === timeline.length - 1;
       if (item.kind === "hook") {
         return (
           <div className="px-3 w-full" style={contentContainerStyle}>
@@ -856,6 +857,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             role={msg.role}
             content={msg.content}
             createdAt={msg.createdAt}
+            isLastInList={isLastTimelineItem}
             toolCalls={msg.toolCalls ?? null}
             contentBlocks={msg.contentBlocks ?? null}
             {...(msg.attachments && { attachments: msg.attachments })}
@@ -877,7 +879,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           />
         </div>
       );
-    }, [getTeammateInfo, providerHarness, providerSessionId]);
+    }, [getTeammateInfo, providerHarness, providerSessionId, timeline.length]);
 
     if (isTestEnv) {
       return (
@@ -944,6 +946,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   role={msg.role}
                   content={msg.content}
                   createdAt={msg.createdAt}
+                  isLastInList={index === timeline.length - 1}
                   toolCalls={msg.toolCalls ?? null}
                   contentBlocks={msg.contentBlocks ?? null}
                   {...(msg.attachments && { attachments: msg.attachments })}
