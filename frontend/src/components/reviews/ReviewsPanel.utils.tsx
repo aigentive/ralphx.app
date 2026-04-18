@@ -193,7 +193,7 @@ export function FilterTabs({
         <TabsList
           className={cn(
             "inline-flex h-auto p-1 gap-1",
-            "bg-transparent rounded-[var(--radius-md)]"
+            "bg-[var(--bg-hover)] rounded-[var(--radius-md)]"
           )}
         >
           <TabsTrigger
@@ -202,7 +202,7 @@ export function FilterTabs({
               "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
               "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
               "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
-              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "data-[state=active]:shadow-[var(--shadow-xs)] data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
               "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
               "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
               "transition-all duration-150 min-w-[64px]"
@@ -217,7 +217,7 @@ export function FilterTabs({
               "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
               "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
               "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
-              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "data-[state=active]:shadow-[var(--shadow-xs)] data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
               "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
               "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
               "transition-all duration-150 min-w-[64px]",
@@ -233,7 +233,7 @@ export function FilterTabs({
               "px-3 py-1.5 text-sm font-medium rounded-[var(--radius-md)]",
               "data-[state=inactive]:bg-transparent data-[state=inactive]:text-[var(--text-secondary)]",
               "data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)]",
-              "data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
+              "data-[state=active]:shadow-[var(--shadow-xs)] data-[state=active]:border data-[state=active]:border-[var(--border-subtle)]",
               "hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]",
               "focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]",
               "transition-all duration-150 min-w-[64px]",

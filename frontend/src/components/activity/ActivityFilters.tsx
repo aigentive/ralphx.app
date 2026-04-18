@@ -51,7 +51,7 @@ export function ViewModeToggle({
   const showPulsating = mode === "realtime" && isReceiving;
 
   return (
-    <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-base)]">
+    <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-hover)]">
       <button
         data-testid="activity-mode-realtime"
         onClick={() => onChange("realtime")}
@@ -59,8 +59,8 @@ export function ViewModeToggle({
         className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors relative",
           mode === "realtime"
-            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
-            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent",
+            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-xs)]"
+            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
           disabled && "opacity-50 cursor-not-allowed",
           showPulsating && "live-receiving"
         )}
@@ -78,8 +78,8 @@ export function ViewModeToggle({
         className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
           mode === "historical"
-            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
-            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent",
+            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-xs)]"
+            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >
