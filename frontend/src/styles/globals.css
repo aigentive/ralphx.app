@@ -37,10 +37,13 @@
   --accent-hover: hsl(14 100% 55%);        /* Darker orange for hover */
 
   /* Status colors - for badges/indicators only */
-  --status-success: hsl(145 60% 45%);
-  --status-warning: hsl(45 90% 55%);
-  --status-error: hsl(0 70% 55%);
-  --status-info: hsl(220 80% 60%);
+  /* Status colors — Okabe-Ito CVD-safe palette
+   * (see specs/design/color-blind-design.md §5). Still ships alongside
+   * mandatory icons + text labels per rule §4 — color is redundant not primary. */
+  --status-success: #009e73; /* Okabe-Ito Bluish Green — distinct from yellow under deuteranopia */
+  --status-warning: #f0e442; /* Okabe-Ito Yellow */
+  --status-error: #d55e00;   /* Okabe-Ito Vermillion — reads distinctly under protanopia */
+  --status-info: #0072b2;    /* Okabe-Ito Blue — CVD-safe saturated blue */
 
   /* Borders - minimal, only for inputs */
   --border-subtle: hsl(220 10% 18%);
@@ -440,6 +443,18 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Link underlines — WCAG 1.4.1: links must be distinguishable by more than color.
+ * Global default underlines every <a>; nav/menu items opt out via .no-underline
+ * or the shadcn button classes (they already style as buttons, not links). */
+a:not([class*="no-underline"]):not([class*="btn"]):not([role="button"]) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+a:not([class*="no-underline"]):hover {
+  text-decoration-thickness: 2px;
 }
 
 /* Selection styling */
