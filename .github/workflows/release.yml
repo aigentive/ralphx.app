@@ -26,6 +26,7 @@ permissions:
 env:
   PUBLIC_RELEASES_REPO: aigentive/ralphx-releases
   PUBLIC_RELEASES_BASE_URL: https://github.com/aigentive/ralphx-releases/releases/download
+  HOMEBREW_TAP_REPO: aigentive/homebrew-ralphx
 
 jobs:
   metadata:
@@ -360,3 +361,74 @@ jobs:
 
           create_args+=("${asset_files[@]}")
           "${create_args[@]}"
+
+  update-homebrew-tap:
+    name: Update Homebrew tap
+    if: ${{ needs.metadata.outputs.draft != 'true' && needs.metadata.outputs.prerelease != 'true' }}
+    needs:
+      - metadata
+      - publish-release
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tap publishing environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "Missing required secret: HOMEBREW_TAP_TOKEN" >&2
+            exit 1
+          fi
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Clone Homebrew tap
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" tap-repo
+
+      - name: Render cask
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ needs.metadata.outputs.version }}"
+          arm_dmg="release-assets/release-aarch64/RalphX_${version}_aarch64.dmg"
+          intel_dmg="release-assets/release-x86_64/RalphX_${version}_x86_64.dmg"
+
+          for path in "${arm_dmg}" "${intel_dmg}"; do
+            if [[ ! -f "${path}" ]]; then
+              echo "Required DMG missing for Homebrew tap update: ${path}" >&2
+              exit 1
+            fi
+          done
+
+          arm_sha="$(shasum -a 256 "${arm_dmg}" | awk '{print $1}')"
+          intel_sha="$(shasum -a 256 "${intel_dmg}" | awk '{print $1}')"
+
+          mkdir -p tap-repo/Casks
+          ./scripts/render-homebrew-cask.sh "${version}" "${arm_sha}" "${intel_sha}" > tap-repo/Casks/ralphx.rb
+
+      - name: Commit and push tap update
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd tap-repo
+          if [[ -z "$(git status --short -- Casks/ralphx.rb)" ]]; then
+            echo "Homebrew cask already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/ralphx.rb
+          git commit -m "chore: update ralphx cask to v${{ needs.metadata.outputs.version }}"
+          git push origin HEAD:main
