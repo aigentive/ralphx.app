@@ -82,7 +82,7 @@ jobs:
   build-macos:
     name: Build macOS ${{ matrix.arch }}
     needs: metadata
-    timeout-minutes: 50
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -203,10 +203,47 @@ jobs:
           echo "Validated imported signing identity."
 
       - name: Build production release artifacts
+        shell: bash
         env:
           APPLE_API_KEY_PATH: ${{ steps.api_key.outputs.api_key_path }}
           RALPHX_RELEASE_TRACE_DIR: release-trace/${{ matrix.arch }}
-        run: ./scripts/build-prod-release.sh
+        run: |
+          set -euo pipefail
+
+          trace_dir="release-trace/${{ matrix.arch }}"
+          build_log="${trace_dir}/workflow-build.log"
+          heartbeat_log="${trace_dir}/workflow-heartbeat.log"
+
+          mkdir -p "${trace_dir}"
+          : > "${build_log}"
+          : > "${heartbeat_log}"
+
+          heartbeat() {
+            while true; do
+              printf '[release-heartbeat] %s build step still running for %s\n' \
+                "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+              sleep 60
+            done
+          }
+
+          heartbeat &
+          heartbeat_pid=$!
+
+          cleanup() {
+            kill "${heartbeat_pid}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          printf '[release-heartbeat] %s starting build script for %s\n' \
+            "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+
+          ./scripts/build-prod-release.sh 2>&1 | tee -a "${build_log}"
+
+          printf '[release-heartbeat] %s build script completed for %s\n' \
+            "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
 
       - name: Upload release trace logs
         if: always()
