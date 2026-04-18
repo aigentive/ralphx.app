@@ -92,10 +92,10 @@ export const GLASS_SURFACE: GlassSurface = {
  * Matches Kanban card styling (from TaskCard.utils.ts)
  */
 const PRIORITY_COLORS: Record<number, string> = {
-  1: "hsl(0 70% 55%)",      // P1 Critical - Red
-  2: "hsl(25 90% 55%)",     // P2 High - Deep orange
-  3: "hsl(14 100% 60%)",    // P3 Medium - Accent orange (#ff6b35)
-  4: "hsl(220 10% 35%)",    // P4 Low - Gray
+  1: "var(--status-error)",    // P1 Critical
+  2: "var(--accent-secondary)", // P2 High — soft amber
+  3: "var(--accent-primary)",  // P3 Medium — brand orange
+  4: "var(--text-muted)",      // P4 Low
 };
 
 /**

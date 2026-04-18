@@ -16,7 +16,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "lint:fix": "eslint src --fix"
+    "lint:fix": "eslint src --fix",
+    "check:tokens": "./scripts/check-design-tokens.sh"
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.3",
