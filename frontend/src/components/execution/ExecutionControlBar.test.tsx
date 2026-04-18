@@ -222,15 +222,13 @@ describe("ExecutionControlBar", () => {
     it("applies floating glass background style", () => {
       renderBar();
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar).toHaveStyle({ background: "hsla(220 10% 10% / 0.92)" });
+      expect(bar).toHaveStyle({ background: "var(--bg-surface)" });
     });
 
     it("applies subtle border styling", () => {
       renderBar();
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar.style.borderWidth).toBe("1px");
-      expect(bar.style.borderStyle).toBe("solid");
-      expect(bar.style.borderColor).toBe("rgba(255, 255, 255, 0.08)");
+      expect(bar.style.border).toBe("1px solid var(--overlay-weak)");
     });
 
     it("applies box shadow for elevation", () => {
@@ -238,6 +236,7 @@ describe("ExecutionControlBar", () => {
       const bar = screen.getByTestId("execution-control-bar");
       expect(bar.style.boxShadow).toContain("0 4px 16px");
       expect(bar.style.boxShadow).toContain("0 12px 32px");
+      expect(bar.style.boxShadow).toContain("var(--overlay-scrim)");
     });
   });
 
