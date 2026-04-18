@@ -296,16 +296,17 @@ a:not([class*="no-underline"]):hover {
   border-top: 1px solid var(--border-subtle) !important;
   border-bottom: 1px solid var(--border-subtle) !important;
 }
-/* Syntax highlighting — dark-theme tokens (Prism's Dracula style). TODO:
- * replace with a pair of syntax-color token variables that flip per theme. */
-.diff-viewer-container .token.keyword    { color: #ff79c6 !important; }
-.diff-viewer-container .token.string     { color: #f1fa8c !important; }
-.diff-viewer-container .token.number     { color: #bd93f9 !important; }
-.diff-viewer-container .token.comment    { color: #6272a4 !important; }
-.diff-viewer-container .token.function   { color: #50fa7b !important; }
-.diff-viewer-container .token.class-name { color: #8be9fd !important; }
-.diff-viewer-container .token.operator   { color: #ff79c6 !important; }
-.diff-viewer-container .token.punctuation{ color: var(--text-secondary) !important; }
+/* Syntax highlighting — Prism token colours via --syntax-* component tokens.
+ * Base palette (Dracula-inspired) lives in tokens/components.css; light and
+ * high-contrast themes override for contrast. */
+.diff-viewer-container .token.keyword    { color: var(--syntax-keyword)    !important; }
+.diff-viewer-container .token.string     { color: var(--syntax-string)     !important; }
+.diff-viewer-container .token.number     { color: var(--syntax-number)     !important; }
+.diff-viewer-container .token.comment    { color: var(--syntax-comment)    !important; }
+.diff-viewer-container .token.function   { color: var(--syntax-function)   !important; }
+.diff-viewer-container .token.class-name { color: var(--syntax-class-name) !important; }
+.diff-viewer-container .token.operator   { color: var(--syntax-operator)   !important; }
+.diff-viewer-container .token.punctuation{ color: var(--syntax-punctuation)!important; }
 .diff-viewer-container .diff-view-line.empty {
   background-color: var(--bg-surface) !important;
 }

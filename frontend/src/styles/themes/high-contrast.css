@@ -113,6 +113,17 @@
   --nav-active-bg:   var(--yellow-500);
   --nav-active-text: var(--color-black);
 
+  /* Syntax palette — HC code surface. Bright saturated hues with high
+   * luminance contrast against pure black. */
+  --syntax-keyword:     #ff79c6; /* bright pink */
+  --syntax-string:      #50fa7b; /* bright lime */
+  --syntax-number:      #bd93f9; /* bright lavender */
+  --syntax-comment:     #b0b0b0; /* gray (secondary on black) */
+  --syntax-function:    #8be9fd; /* bright cyan */
+  --syntax-class-name:  var(--yellow-500); /* yellow — main accent */
+  --syntax-operator:    var(--syntax-keyword);
+  --syntax-punctuation: var(--text-secondary);
+
   /* shadcn bridging */
   --background:         var(--bg-base);
   --foreground:         var(--text-primary);

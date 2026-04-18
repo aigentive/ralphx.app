@@ -82,4 +82,18 @@
   --diff-add-strong: color-mix(in srgb, var(--status-success) 25%, transparent);
   --diff-del-bg:     color-mix(in srgb, var(--status-error) 10%, transparent);
   --diff-del-strong: color-mix(in srgb, var(--status-error) 25%, transparent);
+
+  /* ============================================================================
+   * Syntax highlighting — Prism token colours consumed by the diff viewer.
+   * Default is a Dracula-inspired dark palette; light + HC override via
+   * themes/*.css for adequate contrast on white / pure black.
+   * ============================================================================ */
+  --syntax-keyword:    #ff79c6; /* pink — keywords, operators */
+  --syntax-string:     #f1fa8c; /* yellow — string literals */
+  --syntax-number:     #bd93f9; /* purple — numeric literals */
+  --syntax-comment:    #6272a4; /* blue-gray — comments */
+  --syntax-function:   #50fa7b; /* green — function calls / defs */
+  --syntax-class-name: #8be9fd; /* cyan — class names */
+  --syntax-operator:   var(--syntax-keyword);
+  --syntax-punctuation:var(--text-secondary);
 }

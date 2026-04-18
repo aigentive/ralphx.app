@@ -90,6 +90,17 @@
   --nav-active-bg:   var(--orange-700);
   --nav-active-text: var(--color-white);
 
+  /* Syntax palette — light-theme code surface. Prefers Solarized-light
+   * tones — darker hues so they hit AA on white. */
+  --syntax-keyword:     #d33682; /* magenta */
+  --syntax-string:      #859900; /* olive */
+  --syntax-number:      #6c71c4; /* violet */
+  --syntax-comment:     #93a1a1; /* gray */
+  --syntax-function:    #268bd2; /* blue */
+  --syntax-class-name:  #b58900; /* yellow/amber */
+  --syntax-operator:    var(--syntax-keyword);
+  --syntax-punctuation: var(--text-secondary);
+
   /* shadcn bridging */
   --background:         var(--bg-base);
   --foreground:         var(--text-primary);
