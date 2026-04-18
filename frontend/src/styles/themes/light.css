@@ -32,18 +32,24 @@
   --status-success:        var(--cvd-bluish-green-dark);
   --status-success-muted:  hsla(164 100% 24% / 0.12);
   --status-success-border: hsla(164 100% 24% / 0.30);
+  --status-success-strong: hsla(164 100% 24% / 0.50);
 
   --status-warning:        var(--cvd-yellow-dark);
   --status-warning-muted:  hsla(43 100% 33% / 0.12);
   --status-warning-border: hsla(43 100% 33% / 0.30);
+  --status-warning-strong: hsla(43 100% 33% / 0.50);
 
   --status-error:          var(--cvd-vermillion-dark);
   --status-error-muted:    hsla(24 100% 35% / 0.12);
   --status-error-border:   hsla(24 100% 35% / 0.30);
+  --status-error-strong:   hsla(24 100% 35% / 0.50);
 
   --status-info:           var(--cvd-blue-dark);
   --status-info-muted:     hsla(202 100% 27% / 0.12);
   --status-info-border:    hsla(202 100% 27% / 0.30);
+  --status-info-strong:    hsla(202 100% 27% / 0.50);
+
+  --accent-strong:         hsla(14 90% 50% / 0.50);
 
   /* Borders — light grays */
   --border-subtle:  var(--gray-300);
