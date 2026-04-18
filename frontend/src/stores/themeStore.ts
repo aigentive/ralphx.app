@@ -52,10 +52,16 @@ function safeSet(key: string, value: string | null): void {
 
 function loadTheme(): ThemeName {
   const raw = safeGet(THEME_KEY);
-  // Migration: previous releases stored "default" — treat as the canonical
-  // dark theme. Any unrecognised value also falls back to dark.
+  // Explicit user choice wins.
   if (raw === "high-contrast") return "high-contrast";
   if (raw === "light") return "light";
+  if (raw === "dark") return "dark";
+  // First run (no stored value) — mirror the bootstrap script's OS-derived
+  // default so React state matches the DOM attribute set before hydration.
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    if (window.matchMedia("(prefers-contrast: more)").matches) return "high-contrast";
+    if (window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
+  }
   return "dark";
 }
 
@@ -125,12 +131,13 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   motion: loadMotion(),
   fontScale: loadFontScale(),
   setTheme: (theme) => {
-    // Persist theme — `dark` is the implicit default, keep key empty for it.
-    safeSet(THEME_KEY, theme === "dark" ? null : theme);
+    // Always persist the explicit choice — including "dark" — so page reload
+    // doesn't re-infer from OS preference and override the user's pick.
+    safeSet(THEME_KEY, theme);
     applyThemeAttr(theme);
     // Remember the last base (non-HC) theme so toggling HC off can restore it.
     if (theme !== "high-contrast") {
-      safeSet(LAST_BASE_THEME_KEY, theme === "dark" ? null : theme);
+      safeSet(LAST_BASE_THEME_KEY, theme);
       set({ theme, lastBaseTheme: theme });
     } else {
       set({ theme });

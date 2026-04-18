@@ -102,7 +102,7 @@ export default function SettingsDialog({
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
         data-testid="settings-dialog"
-        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"
         hideCloseButton={true}
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
@@ -110,7 +110,7 @@ export default function SettingsDialog({
           Configure execution, ideation, workspace, and access settings.
         </DialogDescription>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text-primary)]">
               Settings

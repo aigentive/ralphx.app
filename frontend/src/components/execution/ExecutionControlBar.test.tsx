@@ -228,15 +228,13 @@ describe("ExecutionControlBar", () => {
     it("applies subtle border styling", () => {
       renderBar();
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar.style.border).toBe("1px solid var(--overlay-weak)");
+      expect(bar.style.border).toBe("1px solid var(--border-subtle)");
     });
 
     it("applies box shadow for elevation", () => {
       renderBar();
       const bar = screen.getByTestId("execution-control-bar");
-      expect(bar.style.boxShadow).toContain("0 4px 16px");
-      expect(bar.style.boxShadow).toContain("0 12px 32px");
-      expect(bar.style.boxShadow).toContain("var(--overlay-scrim)");
+      expect(bar.style.boxShadow).toBe("var(--shadow-md)");
     });
   });
 
