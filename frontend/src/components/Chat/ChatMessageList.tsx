@@ -294,11 +294,22 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       setCumulativeTextLength(prev => Math.max(prev, total));
     }, [normalizedStreamingContentBlocks]);
 
-    const hasFooterStreamingContent =
-      streamingToolCalls.length > 0 ||
-      totalChildCalls > 0 ||
-      (streamingTasks?.size ?? 0) > 0 ||
-      normalizedStreamingContentBlocks.length > 0;
+    const hasRenderableStreamingBlocks = useMemo(
+      () =>
+        normalizedStreamingContentBlocks.some((block) => {
+          if (block.type === "text") {
+            return block.text.trim().length > 0;
+          }
+          if (block.type === "task") {
+            return Boolean(streamingTasks?.get(block.toolUseId));
+          }
+          return true;
+        }),
+      [normalizedStreamingContentBlocks, streamingTasks],
+    );
+
+    const shouldShowFooterFallback = (isSending || isAgentRunning) && !hasRenderableStreamingBlocks;
+    const hasFooterStreamingContent = hasRenderableStreamingBlocks || shouldShowFooterFallback;
 
     useEffect(() => {
       hasFooterStreamingContentRef.current = hasFooterStreamingContent;
@@ -661,6 +672,88 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       };
     }, [conversationId, lastItemIndex, timeline.length]);
 
+    const footerContent = useMemo(() => {
+      if (!hasFooterStreamingContent) {
+        return null;
+      }
+
+      return (
+        <>
+          {normalizedStreamingContentBlocks.map((block, idx) => {
+            if (block.type === "text") {
+              // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
+              if (!block.text.trim()) return null;
+              return (
+                <MessageItem
+                  key={`streaming-text-${idx}`}
+                  role="assistant"
+                  content={block.text}
+                  createdAt={new Date().toISOString()}
+                  toolCalls={null}
+                  contentBlocks={null}
+                  providerHarness={providerHarness}
+                  providerSessionId={providerSessionId}
+                />
+              );
+            }
+            // task position marker — renders TaskSubagentCard at its chronological position.
+            // Task metadata may not be available yet (agent:task_started fires after agent:tool_call),
+            // so render nothing gracefully when the map entry is missing.
+            if (block.type === "task") {
+              const task = streamingTasks?.get(block.toolUseId);
+              if (!task) return null;
+              return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
+            }
+            // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
+            if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
+              return (
+                <DiffToolCallView
+                  key={`streaming-tool-${idx}`}
+                  toolCall={block.toolCall}
+                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                  className="mb-2"
+                />
+              );
+            }
+            // Non-diff tool call — render inline to preserve visual ordering with text blocks
+            return (
+              <ToolCallIndicator
+                key={`streaming-tool-${idx}`}
+                toolCall={block.toolCall}
+                isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                className="mb-2"
+              />
+            );
+          })}
+
+          {/* Fallback when agent is running but no content blocks yet:
+              - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
+              - No tool calls either → show TypingIndicator (agent thinking) */}
+          {shouldShowFooterFallback && (
+            <>
+              {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                <ToolCallIndicator
+                  key={`pending-tool-${idx}`}
+                  toolCall={tc}
+                  isStreaming={tc.result == null && !tc.error}
+                  className="mb-2"
+                />
+              ))}
+              <TypingIndicator />
+            </>
+          )}
+        </>
+      );
+    }, [
+      hasFooterStreamingContent,
+      normalizedStreamingContentBlocks,
+      providerHarness,
+      providerSessionId,
+      shouldShowFooterFallback,
+      streamingTasks,
+      streamingToolCalls,
+    ]);
+
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
     // to re-mount Header/Footer → layout change → atBottomStateChange → re-render → loop.
@@ -677,80 +770,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         </div>
       ),
       Footer: () => {
+        if (!footerContent) {
+          return null;
+        }
         return (
           <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {normalizedStreamingContentBlocks.map((block, idx) => {
-              if (block.type === "text") {
-                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
-                if (!block.text.trim()) return null;
-                return (
-                  <MessageItem
-                    key={`streaming-text-${idx}`}
-                    role="assistant"
-                    content={block.text}
-                    createdAt={new Date().toISOString()}
-                    toolCalls={null}
-                    contentBlocks={null}
-                    providerHarness={providerHarness}
-                    providerSessionId={providerSessionId}
-                  />
-                );
-              }
-              // task position marker — renders TaskSubagentCard at its chronological position.
-              // Task metadata may not be available yet (agent:task_started fires after agent:tool_call),
-              // so render nothing gracefully when the map entry is missing.
-              if (block.type === "task") {
-                const task = streamingTasks?.get(block.toolUseId);
-                if (!task) return null;
-                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
-              }
-              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
-              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
-                return (
-                  <DiffToolCallView
-                    key={`streaming-tool-${idx}`}
-                    toolCall={block.toolCall}
-                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                    className="mb-2"
-                  />
-                );
-              }
-              // Non-diff tool call — render inline to preserve visual ordering with text blocks
-              return (
-                <ToolCallIndicator
-                  key={`streaming-tool-${idx}`}
-                  toolCall={block.toolCall}
-                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                  className="mb-2"
-                />
-              );
-            })}
-
-            {/* Fallback when agent is running but no content blocks yet:
-                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
-                - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
-              <>
-                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
-                  <ToolCallIndicator
-                    key={`pending-tool-${idx}`}
-                    toolCall={tc}
-                    isStreaming={tc.result == null && !tc.error}
-                    className="mb-2"
-                  />
-                ))}
-                <TypingIndicator />
-              </>
-            )}
-
+            {footerContent}
           </div>
         );
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, normalizedStreamingContentBlocks,
-      isSending, isAgentRunning, handleFooterRef, providerHarness, providerSessionId,
+      footerContent, handleFooterRef,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -931,71 +962,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             );
           })}
 
-          <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {normalizedStreamingContentBlocks.map((block, idx) => {
-              if (block.type === "text") {
-                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
-                if (!block.text.trim()) return null;
-                return (
-                  <MessageItem
-                    key={`streaming-text-${idx}`}
-                    role="assistant"
-                    content={block.text}
-                    createdAt={new Date().toISOString()}
-                    toolCalls={null}
-                    contentBlocks={null}
-                    providerHarness={providerHarness}
-                    providerSessionId={providerSessionId}
-                  />
-                );
-              }
-              // task position marker — renders TaskSubagentCard at its chronological position
-              if (block.type === "task") {
-                const task = streamingTasks?.get(block.toolUseId);
-                if (!task) return null;
-                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
-              }
-              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
-              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
-                return (
-                  <DiffToolCallView
-                    key={`streaming-tool-${idx}`}
-                    toolCall={block.toolCall}
-                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                    className="mb-2"
-                  />
-                );
-              }
-              // Non-diff tool call — render inline to preserve visual ordering with text blocks
-              return (
-                <ToolCallIndicator
-                  key={`streaming-tool-${idx}`}
-                  toolCall={block.toolCall}
-                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                  className="mb-2"
-                />
-              );
-            })}
-
-            {/* Fallback when agent is running but no content blocks yet:
-                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
-                - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
-              <>
-                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
-                  <ToolCallIndicator
-                    key={`pending-tool-${idx}`}
-                    toolCall={tc}
-                    isStreaming={tc.result == null && !tc.error}
-                    className="mb-2"
-                  />
-                ))}
-                <TypingIndicator />
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+          {footerContent && (
+            <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+              {footerContent}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
           {/* Scroll-to-bottom button — same position as production branch */}
           {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (
             <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">

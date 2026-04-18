@@ -38,6 +38,28 @@ const CODEX_MODEL_PRESETS = [
   { value: "gpt-5.3-codex-spark", display: "gpt-5.3-codex-spark" },
 ] as const;
 
+const MULTILINE_SELECT_TRIGGER_CLASS = [
+  "min-h-[52px]",
+  "h-auto",
+  "items-start",
+  "gap-2",
+  "py-2",
+  "whitespace-normal",
+  "[&>span]:line-clamp-none",
+  "[&>span]:flex-1",
+  "[&>span]:min-w-0",
+  "[&>span]:text-left",
+  "[&>span]:leading-tight",
+  "[&>span>div]:flex",
+  "[&>span>div]:w-full",
+  "[&>span>div]:min-w-0",
+  "[&>span>div]:flex-col",
+  "[&>span>div]:items-start",
+  "[&>span>div>span]:block",
+  "[&>span>div>span:last-child]:max-w-full",
+  "[&>span>div>span:last-child]:truncate",
+].join(" ");
+
 function getModelPresets(harness: string) {
   return harness === "codex" ? CODEX_MODEL_PRESETS : CLAUDE_MODEL_PRESETS;
 }
@@ -137,7 +159,7 @@ function ModelSelect({
         data-testid={testId}
         aria-label={`${laneLabel} model`}
         disabled={disabled}
-        className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+        className={`${MULTILINE_SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
       >
         <SelectValue
           placeholder={harness === "codex" ? "Select Codex model" : "Select Claude model"}
@@ -435,7 +457,7 @@ function HarnessRow({
               id={`harness-${lane.lane}`}
               data-testid={`harness-${lane.lane}`}
               aria-label={`${meta.label} provider`}
-              className="w-[180px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
+              className={`w-[180px] ${MULTILINE_SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]`}
             >
               <SelectValue placeholder="Select provider" />
             </SelectTrigger>
@@ -497,7 +519,7 @@ function HarnessRow({
             >
               <SelectTrigger
                 aria-label={`${meta.label} effort`}
-                className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                className={`${MULTILINE_SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
               >
                 <SelectValue placeholder="Select effort" />
               </SelectTrigger>

@@ -256,4 +256,15 @@ describe("ExecutionHarnessSection", () => {
     expect(screen.getByText("Execution Worker")).toBeInTheDocument();
     expect(screen.queryByText("Primary Ideation")).not.toBeInTheDocument();
   });
+
+  it("uses taller left-aligned triggers for multiline provider, model, and effort selections", () => {
+    render(<ExecutionHarnessSection />);
+
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("items-start");
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("min-h-[52px]");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("items-start");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("min-h-[52px]");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("items-start");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("min-h-[52px]");
+  });
 });
