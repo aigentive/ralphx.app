@@ -29,7 +29,7 @@ TRACE_DIR="${RALPHX_RELEASE_TRACE_DIR:-${PROJECT_ROOT}/.artifacts/release-trace}
 RAW_TRACE_LOG="${TRACE_DIR}/tauri-build.log"
 STAGE_TRACE_LOG="${TRACE_DIR}/release-stages.log"
 
-CLEAN="false"
+CLEAN="${RALPHX_RELEASE_CLEAN_BUNDLE:-false}"
 SKIP_BUILD="false"
 
 timestamp_utc() {
@@ -151,6 +151,10 @@ DMG_DIR="${PROJECT_ROOT}/src-tauri/target/release/bundle/dmg"
 BIN_PATH="${PROJECT_ROOT}/src-tauri/target/release/ralphx"
 
 prepare_trace_dir
+
+if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+  CLEAN="true"
+fi
 
 if [[ "${CLEAN}" == "true" ]]; then
   emit_stage_marker "release-clean-started"

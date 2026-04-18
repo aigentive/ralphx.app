@@ -134,6 +134,12 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
+      - name: Checkout workflow automation support
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-support
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.metadata.outputs.source_ref }}
@@ -206,6 +212,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
+
+      - name: Overlay release automation scripts from workflow ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0755 workflow-support/scripts/build-prod-release.sh scripts/build-prod-release.sh
+          install -m 0755 workflow-support/scripts/prepare-release-runtime.sh scripts/prepare-release-runtime.sh
 
       - name: Import Apple certificate
         shell: bash
