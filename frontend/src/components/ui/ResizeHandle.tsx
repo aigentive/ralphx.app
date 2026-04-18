@@ -44,8 +44,8 @@ export const ResizeHandle = memo(function ResizeHandle({
       <div
         className={`h-full transition-all duration-150 ${
           isResizing
-            ? "w-[3px] bg-[hsl(14_100%_55%)]"
-            : "w-[2px] bg-[hsla(220_20%_100%_/_0.15)] group-hover:w-[3px] group-hover:bg-[hsl(14_100%_55%)]"
+            ? "w-[3px] bg-[var(--accent-primary)]"
+            : "w-[2px] bg-[color-mix(in_srgb,_var(--text-primary)_15%,_transparent)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
         }`}
       />
     </div>
@@ -58,6 +58,6 @@ export const ResizeHandle = memo(function ResizeHandle({
  */
 export const SeparatorLine = memo(function SeparatorLine() {
   return (
-    <div className="shrink-0 w-px bg-[hsla(220_20%_100%_/_0.04)]" />
+    <div className="shrink-0 w-px bg-[var(--overlay-faint)]" />
   );
 });

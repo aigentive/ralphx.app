@@ -203,7 +203,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ top: -3 }}
       />
 
@@ -213,7 +213,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           relative rounded-lg px-3 py-2 overflow-hidden
           transition-all duration-150 ease-out
           hover:shadow-lg
-          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[var(--accent-border)]" : ""}
         `}
         style={{
           // Fixed height for consistent graph layout (minus handle space)
@@ -349,7 +349,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ bottom: -3 }}
       />
     </div>

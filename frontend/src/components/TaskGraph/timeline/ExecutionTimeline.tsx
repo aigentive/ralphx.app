@@ -496,8 +496,8 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
     return (
       <div
         className={cn(
-          "flex flex-col h-full bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm",
-          "border-l border-[hsl(220_10%_25%)]",
+          "flex flex-col h-full bg-[color-mix(in_srgb,_var(--bg-elevated)_95%,_transparent)] backdrop-blur-sm",
+          "border-l border-[var(--border-default)]",
           className
         )}
         style={{ width: PANEL_WIDTH_COLLAPSED }}
@@ -513,7 +513,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         {/* Rotated label for collapsed state */}
         <div className="flex-1 flex items-center justify-center">
           <span
-            className="text-xs font-medium text-[hsl(220_10%_50%)] whitespace-nowrap"
+            className="text-xs font-medium text-[var(--text-muted)] whitespace-nowrap"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Execution Timeline
@@ -529,7 +529,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
       className={cn(
         "flex flex-col h-full",
         // Only apply backdrop styling when not embedded (FloatingTimeline handles it)
-        !embedded && "bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm border-l border-[hsl(220_10%_25%)]",
+        !embedded && "bg-[color-mix(in_srgb,_var(--bg-elevated)_95%,_transparent)] backdrop-blur-sm border-l border-[var(--border-default)]",
         className
       )}
       style={embedded ? undefined : { width: PANEL_WIDTH_EXPANDED }}

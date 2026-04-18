@@ -183,7 +183,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
             variant="ghost"
             size="sm"
             onClick={handleClearAll}
-            className="h-6 px-2 text-xs text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
+            className="h-6 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
             <X className="w-3 h-3 mr-1" />
             Clear all
@@ -203,7 +203,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
           <div key={category} className="space-y-1">
             <button
               onClick={() => handleCategoryToggle(category)}
-              className="flex items-center gap-2 w-full hover:bg-[hsl(220_10%_15%)] rounded px-1 py-0.5 transition-colors"
+              className="flex items-center gap-2 w-full hover:bg-[var(--bg-elevated)] rounded px-1 py-0.5 transition-colors"
             >
               <div
                 className="w-2.5 h-2.5 rounded-sm"
@@ -216,7 +216,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                 {categoryLabel}
               </span>
               {someSelected && (
-                <span className="ml-auto text-[10px] text-[hsl(220_10%_50%)]">
+                <span className="ml-auto text-[10px] text-[var(--text-muted)]">
                   {
                     items.filter((item) =>
                       filters.statuses.includes(item.status)
@@ -235,7 +235,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                 return (
                   <label
                     key={item.status}
-                    className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-[hsl(220_10%_12%)] rounded px-1 transition-colors"
+                    className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-[var(--bg-surface)] rounded px-1 transition-colors"
                   >
                     <Checkbox
                       checked={isSelected}
@@ -249,7 +249,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                         backgroundColor: style.backgroundColor,
                       }}
                     />
-                    <span className="text-xs text-[hsl(220_10%_70%)]">
+                    <span className="text-xs text-[var(--text-secondary)]">
                       {item.label}
                     </span>
                   </label>
@@ -260,14 +260,14 @@ const StatusFilterContent = memo(function StatusFilterContent({
         );
       })}
 
-      <div className="pt-2 border-t border-[hsl(220_10%_20%)]">
+      <div className="pt-2 border-t border-[var(--border-subtle)]">
         <label className="flex items-center gap-2 cursor-pointer">
           <Checkbox
             checked={filters.showArchived}
             onCheckedChange={handleShowArchivedToggle}
             className="h-3.5 w-3.5"
           />
-          <span className="text-xs text-[hsl(220_10%_70%)]">
+          <span className="text-xs text-[var(--text-secondary)]">
             Show archived tasks
           </span>
         </label>
@@ -311,22 +311,22 @@ const FilterButton = memo(function FilterButton({
       onClick={onClick}
       className={cn(
         "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
-        "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
+        "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)]",
         isCompact && "w-full h-8 p-0 justify-center",
-        activeCount && activeCount > 0 && "ring-1 ring-[hsl(14_100%_55%_/_0.5)]"
+        activeCount && activeCount > 0 && "ring-1 ring-[var(--accent-strong)]"
       )}
     >
-      <span className="text-[hsl(220_10%_50%)]">{icon}</span>
+      <span className="text-[var(--text-muted)]">{icon}</span>
       {!isCompact && (
-        <span className="text-[hsl(220_10%_70%)] flex-1 text-left">{label}</span>
+        <span className="text-[var(--text-secondary)] flex-1 text-left">{label}</span>
       )}
       {activeCount !== undefined && activeCount > 0 && !isCompact && (
-        <span className="text-[10px] text-[hsl(14_100%_55%)]">
+        <span className="text-[10px] text-[var(--accent-primary)]">
           {activeCount}
         </span>
       )}
       {isPopover && !isCompact && (
-        <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+        <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
       )}
     </button>
   );
@@ -336,7 +336,7 @@ const FilterButton = memo(function FilterButton({
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>{buttonContent}</PopoverTrigger>
         <PopoverContent
-          className="w-64 p-3 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
+          className="w-64 p-3 bg-[var(--bg-elevated)] border-[var(--border-default)]"
           align="start"
           side="right"
           sideOffset={8}
@@ -446,7 +446,7 @@ function FloatingGraphFiltersComponent({
           {/* Separator */}
           <div
             className={cn(
-              "h-px bg-[hsl(220_10%_25%)] my-1",
+              "h-px bg-[var(--border-default)] my-1",
               isCompact && "my-0.5"
             )}
           />
@@ -499,18 +499,18 @@ function FloatingGraphFiltersComponent({
                 <button
                   className={cn(
                     "flex items-center gap-1.5 w-full px-2.5 py-2 rounded-md text-xs transition-colors",
-                    "bg-[hsl(220_10%_14%)] hover:bg-[hsl(220_10%_18%)]",
+                    "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)]",
                     isCompact && "w-full h-8 p-0 justify-center"
                   )}
                 >
-                  <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+                  <Layers className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                   {!isCompact && (
-                    <span className="text-[hsl(220_10%_70%)] flex-1 text-left">
+                    <span className="text-[var(--text-secondary)] flex-1 text-left">
                       {currentGroupingLabel}
                     </span>
                   )}
                   {!isCompact && (
-                    <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+                    <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
                   )}
                 </button>
               );
@@ -533,18 +533,18 @@ function FloatingGraphFiltersComponent({
               );
             })()}
             <PopoverContent
-              className="w-36 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)] z-50"
+              className="w-36 p-1 bg-[var(--bg-elevated)] border-[var(--border-default)] z-50"
               align="start"
               side="right"
               sideOffset={8}
             >
               <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-[10px] text-[hsl(220_10%_50%)] uppercase tracking-wide">
+                <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">
                   Grouping
                 </span>
                 <button
                   onClick={() => onGroupingChange({ byPlan: false, byTier: false, showUncategorized: false })}
-                  className="text-[10px] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
+                  className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >
                   None
                 </button>
@@ -558,7 +558,7 @@ function FloatingGraphFiltersComponent({
                       key={option.key}
                       className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors cursor-pointer",
-                        "text-[hsl(220_10%_70%)] hover:bg-[hsl(220_10%_15%)]",
+                        "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]",
                         isDisabled && "opacity-50 cursor-not-allowed"
                       )}
                     >

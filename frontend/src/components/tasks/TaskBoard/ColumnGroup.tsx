@@ -68,7 +68,7 @@ export function ColumnGroup({
             className={cn(
               "w-full flex items-center gap-1.5 px-2 py-1.5 text-left",
               "transition-colors rounded-md",
-              "focus:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(14_100%_60%)]/50"
+              "focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]/50"
             )}
             style={{
               background: "transparent",

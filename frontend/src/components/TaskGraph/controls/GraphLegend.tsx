@@ -65,7 +65,7 @@ const LegendItem = memo(function LegendItem({ status, label }: LegendItemProps) 
           backgroundColor: style.backgroundColor,
         }}
       />
-      <span className="text-[10px] text-[hsl(220_10%_70%)] whitespace-nowrap">
+      <span className="text-[10px] text-[var(--text-secondary)] whitespace-nowrap">
         {label}
       </span>
     </div>
@@ -113,8 +113,8 @@ function GraphLegendComponent({
   return (
     <div
       className={`
-        bg-[hsl(220_10%_10%_/_0.9)] backdrop-blur-sm
-        border border-[hsl(220_10%_25%)] rounded-lg
+        bg-[color-mix(in_srgb,_var(--bg-elevated)_90%,_transparent)] backdrop-blur-sm
+        border border-[var(--border-default)] rounded-lg
         ${className}
       `}
       data-testid="graph-legend"
@@ -124,8 +124,8 @@ function GraphLegendComponent({
         onClick={() => setCollapsed((prev) => !prev)}
         className="
           w-full flex items-center justify-between
-          px-3 py-1.5 text-xs font-medium text-[hsl(220_10%_70%)]
-          hover:text-[hsl(220_10%_90%)] transition-colors
+          px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]
+          hover:text-[var(--text-primary)] transition-colors
         "
         aria-expanded={!collapsed}
         aria-controls="legend-content"

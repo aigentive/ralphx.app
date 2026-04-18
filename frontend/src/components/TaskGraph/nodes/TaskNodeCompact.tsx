@@ -149,7 +149,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ top: -3 }}
       />
 
@@ -159,7 +159,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           relative rounded px-2 py-1.5
           transition-all duration-150 ease-out
           hover:shadow-md
-          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[var(--accent-border)]" : ""}
           ${isHighlighted ? "animate-pulse" : ""}
         `}
         style={{
@@ -232,7 +232,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ bottom: -3 }}
       />
     </div>

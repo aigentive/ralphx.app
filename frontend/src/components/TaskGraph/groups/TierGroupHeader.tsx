@@ -20,13 +20,13 @@ const CollapseToggle = memo(function CollapseToggle({
   return (
     <button
       onClick={onClick}
-      className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
+      className="flex-shrink-0 p-0.5 rounded hover:bg-[var(--bg-surface)] transition-colors"
       aria-label={isCollapsed ? "Expand tier" : "Collapse tier"}
     >
       {isCollapsed ? (
-        <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+        <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
       ) : (
-        <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+        <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
       )}
     </button>
   );
@@ -44,7 +44,7 @@ export const TierGroupHeader = memo(function TierGroupHeader({
     <div
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 cursor-pointer",
-        "bg-[hsl(var(--bg-elevated)/0.7)]",
+        "bg-[color-mix(in_srgb,_var(--bg-elevated)_70%,_transparent)]",
         isCollapsed ? "rounded-md" : "rounded-t-md"
       )}
       onDoubleClick={(event) => {
@@ -53,11 +53,11 @@ export const TierGroupHeader = memo(function TierGroupHeader({
       }}
     >
       <CollapseToggle isCollapsed={isCollapsed} onClick={onToggleCollapse} />
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--accent-primary))]">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent-primary)]">
         Tier {tier}
       </span>
-      <span className="text-[11px] text-[hsl(var(--text-muted))] truncate">{label}</span>
-      <span className="ml-auto text-[11px] text-[hsl(var(--text-muted))]">
+      <span className="text-[11px] text-[var(--text-muted)] truncate">{label}</span>
+      <span className="ml-auto text-[11px] text-[var(--text-muted)]">
         {taskCount} tasks
       </span>
     </div>

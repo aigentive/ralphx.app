@@ -98,7 +98,7 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
               data-testid="task-creation-overlay-close"
               aria-label="Close"
               style={{ color: "var(--text-muted)" }}
-              className="hover:bg-[hsla(220_10%_100%/0.05)]"
+              className="hover:bg-[var(--overlay-weak)]"
             >
               <X className="w-4 h-4" />
             </Button>

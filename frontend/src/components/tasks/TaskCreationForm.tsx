@@ -190,7 +190,7 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => moveStepUp(index)}
                     disabled={isSubmitting || index === 0}
-                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(220_10%_100%/0.06)]"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[var(--overlay-weak)]"
                     style={{ color: "var(--text-muted)" }}
                     title="Move up"
                   >
@@ -200,7 +200,7 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => moveStepDown(index)}
                     disabled={isSubmitting || index === steps.length - 1}
-                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(220_10%_100%/0.06)]"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[var(--overlay-weak)]"
                     style={{ color: "var(--text-muted)" }}
                     title="Move down"
                   >
@@ -210,7 +210,7 @@ export function TaskCreationForm({
                     type="button"
                     onClick={() => removeStep(index)}
                     disabled={isSubmitting}
-                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[hsla(0_70%_55%/0.1)]"
+                    className="p-1 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors hover:bg-[var(--status-error-muted)]"
                     style={{ color: "var(--text-muted)" }}
                     title="Remove step"
                   >

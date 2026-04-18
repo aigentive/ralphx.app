@@ -87,7 +87,7 @@ export function TaskFormFields({
             className={selectBaseStyles}
           >
             {TASK_CATEGORIES.map((cat) => (
-              <option key={cat} value={cat} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">
+              <option key={cat} value={cat} className="bg-[var(--bg-elevated)] text-[var(--text-primary)]">
                 {cat.charAt(0).toUpperCase() + cat.slice(1)}
               </option>
             ))}
@@ -106,10 +106,10 @@ export function TaskFormFields({
             disabled={disabled}
             className={selectBaseStyles}
           >
-            <option value={1} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P1 - Critical</option>
-            <option value={2} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P2 - High</option>
-            <option value={3} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P3 - Medium</option>
-            <option value={4} className="bg-[hsl(220_10%_10%)] text-[hsl(220_10%_90%)]">P4 - Low</option>
+            <option value={1} className="bg-[var(--bg-elevated)] text-[var(--text-primary)]">P1 - Critical</option>
+            <option value={2} className="bg-[var(--bg-elevated)] text-[var(--text-primary)]">P2 - High</option>
+            <option value={3} className="bg-[var(--bg-elevated)] text-[var(--text-primary)]">P3 - Medium</option>
+            <option value={4} className="bg-[var(--bg-elevated)] text-[var(--text-primary)]">P4 - Low</option>
           </select>
         </div>
       </div>

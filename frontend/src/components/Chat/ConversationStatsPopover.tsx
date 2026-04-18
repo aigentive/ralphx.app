@@ -90,7 +90,7 @@ export function ConversationStatsPopover({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 p-0 border-white/10 bg-[hsl(220_15%_8%_/_0.96)] shadow-xl"
+        className="w-80 p-0 border-white/10 bg-[color-mix(in_srgb,_var(--bg-base)_96%,_transparent)] shadow-xl"
       >
         <div className="p-3 border-b border-white/6">
           <div className="text-sm font-medium text-text-primary/90">Conversation stats</div>

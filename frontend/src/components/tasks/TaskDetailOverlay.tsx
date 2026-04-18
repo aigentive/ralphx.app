@@ -515,7 +515,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
                   style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                  className="hover:bg-[var(--overlay-weak)]"
                 >
                   {createSession.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -533,7 +533,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
                   style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                  className="hover:bg-[var(--overlay-weak)]"
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -548,7 +548,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
                   style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                  className="hover:bg-[var(--overlay-weak)]"
                 >
                   {isArchiving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -567,7 +567,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
                   style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                  className="hover:bg-[var(--overlay-weak)]"
                 >
                   {isRestoring ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -585,7 +585,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 aria-label="Audit Trail"
                 title="Audit Trail"
                 style={{ color: "var(--text-muted)" }}
-                className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                className="hover:bg-[var(--overlay-weak)]"
               >
                 <ScrollText className="w-4 h-4" />
               </Button>
@@ -597,7 +597,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 data-testid="task-overlay-close"
                 aria-label="Close"
                 style={{ color: "var(--text-muted)" }}
-                className="hover:bg-[hsla(220_10%_100%/0.05)]"
+                className="hover:bg-[var(--overlay-weak)]"
               >
                 <X className="w-4 h-4" />
               </Button>
