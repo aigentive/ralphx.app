@@ -329,7 +329,7 @@ export function ActivityView({
             background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            borderColor: "rgba(255,255,255,0.06)",
+            borderColor: "var(--overlay-weak)",
           }}
         >
           <div className="flex items-center gap-3">
@@ -361,7 +361,7 @@ export function ActivityView({
       )}
 
       {/* Search and Filters */}
-      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: "var(--overlay-weak)" }}>
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <SearchBar value={searchQuery} onChange={setSearchQuery} onClear={handleClearSearch} />

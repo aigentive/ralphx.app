@@ -289,10 +289,10 @@ function renderHeader(content: string) {
     <div
       className="px-3 py-1 text-[11px] font-mono"
       style={{
-        backgroundColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "var(--overlay-weak)",
         color: "rgba(255,255,255,0.6)",
-        borderTop: "1px solid rgba(255,255,255,0.06)",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        borderTop: "1px solid var(--overlay-weak)",
+        borderBottom: "1px solid var(--overlay-weak)",
       }}
     >
       {content}
@@ -436,7 +436,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
         className="font-mono text-[13px] leading-[20px]"
         style={{ backgroundColor: "hsl(220 10% 8%)" }}
       >
-        <div className="px-3 py-2 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="px-3 py-2 border-b" style={{ borderColor: "var(--overlay-weak)" }}>
           <Button
             variant="ghost"
             className="h-7 px-2 text-[11px]"
@@ -455,7 +455,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
           const isExpanded = expandedGaps.has(gapId);
 
           return (
-            <div key={hunk.id} className="border-b" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            <div key={hunk.id} className="border-b" style={{ borderColor: "var(--overlay-faint)" }}>
               {gapHasLines && (
                 <div className="px-3 py-2">
                   {isExpanded ? (

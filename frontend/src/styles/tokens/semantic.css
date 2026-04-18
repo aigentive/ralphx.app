@@ -100,6 +100,42 @@
   --nav-active-text: hsl(220 10% 6%);
 
   /* ============================================================================
+   * Semantic shadow tokens — named by intent.
+   * Components reference these, not primitives, so themes can re-tune
+   * glow intensity without touching component code.
+   * (Audit/spec: Team F report 2026-04-18.)
+   * ============================================================================ */
+
+  /* Accent pulse (orange in dark, darker orange in light, yellow in HC) */
+  --shadow-pulse-accent-base:   0 0 0 0 hsla(14 100% 60% / 0.6),
+                                0 0 8px hsla(14 100% 60% / 0.3);
+  --shadow-pulse-accent-expand: 0 0 0 4px hsla(14 100% 60% / 0),
+                                0 0 12px hsla(14 100% 60% / 0.5);
+
+  /* Info pulse (reviewing state) */
+  --shadow-pulse-info-base:   0 0 0 0 hsla(217 91% 60% / 0.5),
+                              0 0 8px hsla(217 91% 60% / 0.25);
+  --shadow-pulse-info-expand: 0 0 0 4px hsla(217 91% 60% / 0),
+                              0 0 12px hsla(217 91% 60% / 0.4);
+
+  /* Success pulse (task runtime) */
+  --shadow-pulse-status-base:   0 0 0 0 hsla(160 84% 39% / 0.4);
+  --shadow-pulse-status-expand: 0 0 0 4px hsla(160 84% 39% / 0);
+
+  /* Accent soft glow (card idle ambient) */
+  --shadow-glow-accent-soft:   0 0 12px hsla(14 100% 60% / 0.08),
+                               0 0 24px hsla(14 100% 60% / 0.04),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.05);
+  --shadow-glow-accent-active: 0 0 18px hsla(14 100% 60% / 0.15),
+                               0 0 36px hsla(14 100% 60% / 0.08),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.08);
+
+  /* Drop-zone borders (dnd affordances) */
+  --shadow-drop-zone-border: inset 0 0 0 2px hsla(14 100% 60% / 0.8);
+  --shadow-drop-zone-active: inset 0 0 0 3px hsla(14 100% 60% / 1),
+                             0 0 20px hsla(14 100% 60% / 0.3);
+
+  /* ============================================================================
    * Animation keyframes — these are referenced by animation-pulse classes
    * defined in globals.css
    * ============================================================================ */

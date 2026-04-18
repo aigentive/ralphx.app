@@ -397,7 +397,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                         onBlur={(e) => handleFieldBlur(field, e.target.value)}
                         className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
                         style={{
-                          backgroundColor: "rgba(255,255,255,0.06)",
+                          backgroundColor: "var(--overlay-weak)",
                           color: "rgba(255,255,255,0.7)",
                           boxShadow: "none",
                           outline: "none",
@@ -410,7 +410,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
 
                   {/* Working days per week */}
                   <div className="flex items-center justify-between gap-2 col-span-2 pt-1"
-                    style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                    style={{ borderTop: "1px solid var(--overlay-weak)" }}
                   >
                     <div className="flex items-center gap-1">
                       <div className="flex flex-col">
@@ -450,7 +450,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                       onBlur={(e) => handleFieldBlur("workingDaysPerWeek", e.target.value)}
                       className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
                       style={{
-                        backgroundColor: "rgba(255,255,255,0.06)",
+                        backgroundColor: "var(--overlay-weak)",
                         color: "rgba(255,255,255,0.7)",
                         boxShadow: "none",
                         outline: "none",
@@ -462,7 +462,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                 </div>
 
                 {/* What this captures / doesn't capture */}
-                <div className="flex flex-col gap-1.5 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex flex-col gap-1.5 pt-1" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
                       What this captures

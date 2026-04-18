@@ -44,7 +44,7 @@ function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
       </div>
       <div
         className="h-1.5 w-full rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full transition-all duration-300"
@@ -116,7 +116,7 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
       </span>
       <div
         className="flex-1 h-1.5 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"
@@ -241,7 +241,7 @@ function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinute
       </span>
       <div
         className="flex-1 h-1.5 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"

@@ -40,7 +40,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
         {/* Header with file path and language badge */}
         <div
           className="flex items-center justify-between px-3 py-2 border-b"
-          style={{ borderColor: "rgba(255,255,255,0.06)" }}
+          style={{ borderColor: "var(--overlay-weak)" }}
         >
           <span
             className="text-sm truncate"
@@ -66,7 +66,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
           className="flex items-center gap-4 px-3 py-1.5 text-[11px]"
           style={{
             backgroundColor: "var(--overlay-faint)",
-            borderBottom: "1px solid rgba(255,255,255,0.04)",
+            borderBottom: "1px solid var(--overlay-faint)",
           }}
         >
           <span className="flex items-center gap-1.5">

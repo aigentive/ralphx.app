@@ -480,7 +480,7 @@ export function ReviewDetailModal({
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
+            borderColor: "var(--overlay-weak)",
             background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
@@ -511,7 +511,7 @@ export function ReviewDetailModal({
           {/* Left Pane: Context (300px fixed) */}
           <div
             className="w-[400px] shrink-0 flex flex-col border-r overflow-hidden"
-            style={{ borderColor: "rgba(255,255,255,0.06)", maxWidth: "400px" }}
+            style={{ borderColor: "var(--overlay-weak)", maxWidth: "400px" }}
           >
             <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-5">
@@ -547,7 +547,7 @@ export function ReviewDetailModal({
             {showActions && showFeedbackInput && (
               <div
                 className="p-3 border-t"
-                style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                style={{ borderColor: "var(--overlay-weak)" }}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <MessageSquare className="w-4 h-4 text-white/50" />
@@ -563,7 +563,7 @@ export function ReviewDetailModal({
                   className="min-h-[80px] text-[13px] resize-none"
                   style={{
                     backgroundColor: "rgba(0, 0, 0, 0.2)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    border: "1px solid var(--overlay-moderate)",
                   }}
                 />
                 <button
@@ -584,7 +584,7 @@ export function ReviewDetailModal({
             {task?.internalStatus === "merged" && (
               <div
                 className="px-4 py-2 text-[11px] text-white/55 border-b"
-                style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                style={{ borderColor: "var(--overlay-weak)" }}
               >
                 Showing merged diff against the base branch for this task.
               </div>
@@ -609,7 +609,7 @@ export function ReviewDetailModal({
           <div
             className="flex items-center justify-end gap-3 px-4 py-3 border-t shrink-0"
             style={{
-              borderColor: "rgba(255,255,255,0.06)",
+              borderColor: "var(--overlay-weak)",
               background: "var(--bg-surface)",
             }}
           >
