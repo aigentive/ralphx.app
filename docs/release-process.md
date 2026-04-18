@@ -1,6 +1,6 @@
 # RalphX Release Process
 
-This document covers the RalphX release workflow, from local build testing through GitHub Actions releases.
+This document covers the RalphX release workflow, from local build testing through public GitHub Releases and in-app updater publication.
 
 ---
 
@@ -109,39 +109,46 @@ Pushing the tag triggers the release workflow automatically:
 1. **Build**: Compiles frontend and Tauri app
 2. **Sign**: Applies Developer ID certificate
 3. **Notarize**: Submits to Apple for notarization
-4. **Package**: Creates per-architecture DMGs and checksums
-5. **Release**: Creates a draft GitHub release with artifacts
+4. **Package**: Creates per-architecture DMGs, signed updater bundles, `latest.json`, and checksums
+5. **Release**: Publishes the assets to the public binaries repo `aigentive/ralphx-releases`
 
 ### Step 6: Publish Release
 
-1. Go to GitHub → Releases
-2. Find the draft release created by the workflow
+1. Go to `aigentive/ralphx-releases` → Releases
+2. Find the release created by the workflow
 3. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
    - `RalphX_x.x.x_x86_64.dmg` - Intel
+   - `RalphX_x.x.x_aarch64.app.tar.gz` - Apple Silicon updater bundle
+   - `RalphX_x.x.x_aarch64.app.tar.gz.sig` - Apple Silicon updater signature
+   - `RalphX_x.x.x_x86_64.app.tar.gz` - Intel updater bundle
+   - `RalphX_x.x.x_x86_64.app.tar.gz.sig` - Intel updater signature
+   - `latest.json`
    - `checksums.txt`
 4. Edit release notes as needed
-5. Click **Publish release**
+5. If you dispatched the workflow with `draft=true`, click **Publish release**
 
 ## Manual Workflow Dispatch
 
 For releases without a version tag:
 
-1. Go to GitHub → Actions → Release workflow
+1. Go to `aigentive/ralphx` → Actions → Release workflow
 2. Click **Run workflow**
 3. Enter the version number (e.g., `0.2.0`)
-4. Click **Run workflow**
+4. Choose whether the public release should stay a draft
+5. Click **Run workflow**
 
 ---
 
 ## In-App Updates
 
-The current release workflow does not publish updater manifests such as `latest.json`.
+The release workflow now publishes Tauri updater artifacts to the public binaries repo.
 
-Current reality:
-- release automation produces signed/notarized DMGs plus `checksums.txt`
-- Homebrew-based public distribution is the active release path
-- direct in-app updater publication is a later step and should be treated as a separate install flavor
+Current release contract:
+- updater endpoint: `https://github.com/aigentive/ralphx-releases/releases/latest/download/latest.json`
+- published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
+- `latest.json` points the app at those public updater bundles
+- the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
 
 ---
 
@@ -176,6 +183,7 @@ cargo tauri build
 **"Secret not found"**
 - Verify all secrets are configured in repository settings
 - Secret names are case-sensitive
+- The public release job also requires `RELEASES_REPO_TOKEN`
 
 **"Certificate import failed"**
 - Re-export the certificate and base64 encode it
@@ -184,6 +192,14 @@ cargo tauri build
 **Workflow doesn't trigger**
 - Ensure tag follows pattern `v*` (e.g., `v0.2.0`)
 - Check Actions tab for workflow run status
+
+**Public release upload failed**
+- Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
+- Confirm the target repo exists and the token owner has write access to it
+
+**Updater assets missing**
+- Confirm `src-tauri/tauri.conf.json` still has `"bundle.createUpdaterArtifacts": true`
+- Confirm the build produced `.app.tar.gz` and `.app.tar.gz.sig` files under `src-tauri/target/release/bundle/macos/`
 
 ### Gatekeeper Issues
 
@@ -203,7 +219,7 @@ cargo tauri build
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI/CD workflow for automated releases |
+| `.github/workflows/release.yml` | CI/CD workflow that publishes public release assets and updater metadata |
 | `scripts/build-local-release.sh` | Local internal release-like build script |
 | `scripts/build-prod-release.sh` | Production release artifact entrypoint |
 | `scripts/bump-version.sh` | Version management script |

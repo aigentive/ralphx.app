@@ -24,6 +24,7 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PREPARE_RUNTIME_SCRIPT="${PROJECT_ROOT}/scripts/prepare-release-runtime.sh"
 
 BUILD_BUNDLE="false"
 FORCE_DB_SYNC="false"
@@ -104,6 +105,7 @@ fi
 
 if [[ "${SKIP_BUILD}" != "true" ]]; then
   echo "Building RalphX local release artifacts..."
+  "${PREPARE_RUNTIME_SCRIPT}"
   cd "${PROJECT_ROOT}/frontend"
 
   if [[ "${BUILD_BUNDLE}" == "true" ]]; then
