@@ -120,7 +120,7 @@ function CycleTimeBar({ phase, maxMinutes }: CycleTimeBarProps) {
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--accent-primary)" }}
         />
       </div>
       <span className="w-16 text-right text-[var(--text-secondary)] shrink-0 tabular-nums">
@@ -245,7 +245,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
         <div className="flex items-center gap-2 mb-3">
           <TrendingUp
             className="w-4 h-4"
-            style={{ color: "#ff6b35" }}
+            style={{ color: "var(--accent-primary)" }}
             aria-hidden="true"
           />
           <span className="text-sm font-medium text-[var(--text-primary)]">
@@ -290,7 +290,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
       <div className="flex items-center gap-2">
         <TrendingUp
           className="w-4 h-4"
-          style={{ color: "#ff6b35" }}
+          style={{ color: "var(--accent-primary)" }}
           aria-hidden="true"
         />
         <span className="text-sm font-medium text-[var(--text-primary)]">
@@ -348,7 +348,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
                   rate={safeStats.agentSuccessRate}
                   passCount={safeStats.agentSuccessCount}
                   totalCount={safeStats.agentTotalCount}
-                  color="#ff6b35"
+                  color="var(--accent-primary)"
                   testId="agent-success-rate"
                 />
               )}

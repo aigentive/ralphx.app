@@ -97,7 +97,7 @@ export function MethodologiesPanel({
                           ? "var(--accent-primary)"
                           : "var(--border-subtle)",
                         boxShadow: methodology.isActive
-                          ? "0 0 0 4px rgba(255, 107, 53, 0.1)"
+                          ? "0 0 0 4px var(--accent-muted)"
                           : undefined,
                       }}
                     />

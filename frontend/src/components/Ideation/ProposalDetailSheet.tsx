@@ -148,7 +148,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
           <div className="flex items-center gap-2.5 min-w-0">
             <div
               className="w-1 h-5 rounded-full flex-shrink-0"
-              style={{ background: "#ff6b35" }}
+              style={{ background: "var(--accent-primary)" }}
             />
             <h2
               className="text-[13px] font-semibold truncate"
@@ -290,7 +290,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                     <li key={index} className="flex items-start gap-3">
                       <span
                         className="flex-shrink-0 text-[11px] font-mono font-semibold mt-0.5 w-4 text-right"
-                        style={{ color: "#ff6b35" }}
+                        style={{ color: "var(--accent-primary)" }}
                       >
                         {index + 1}.
                       </span>

@@ -413,7 +413,7 @@ export function TaskCard({
                   <div
                     data-testid="pr-mode-indicator"
                     className="inline-flex items-center gap-1"
-                    style={{ color: "#34c759" }}
+                    style={{ color: "var(--status-success)" }}
                   >
                     <GitPullRequest className="w-3 h-3 flex-shrink-0" />
                     <span className="text-[10px]">Review PR</span>

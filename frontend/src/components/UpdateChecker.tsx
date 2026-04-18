@@ -45,7 +45,7 @@ function showUpdateNotification(update: Update) {
   toast(
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Download className="h-4 w-4 text-[#ff6b35]" />
+        <Download className="h-4 w-4 text-[var(--accent-primary)]" />
         <span className="font-medium">Update Available</span>
       </div>
       <p className="text-sm text-muted-foreground">
@@ -57,7 +57,7 @@ function showUpdateNotification(update: Update) {
           variant="default"
           onClick={() => installUpdate(update)}
           className="h-7 px-3 text-xs"
-          style={{ backgroundColor: "#ff6b35" }}
+          style={{ backgroundColor: "var(--accent-primary)" }}
         >
           Update Now
         </Button>

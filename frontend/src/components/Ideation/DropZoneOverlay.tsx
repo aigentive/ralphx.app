@@ -49,7 +49,7 @@ export function DropZoneOverlay({
         >
           <FileDown
             className="w-6 h-6"
-            style={{ color: "#ff6b35" }}
+            style={{ color: "var(--accent-primary)" }}
             strokeWidth={1.5}
           />
         </div>

@@ -31,13 +31,13 @@ const VARIANT_CONFIG: Record<BannerVariant, {
   success: {
     bgColor: "hsla(145 60% 45% / 0.12)",
     iconBg: "hsla(145 60% 45% / 0.18)",
-    iconColor: "#34c759",
+    iconColor: "var(--status-success)",
     titleColor: "#30d158",
   },
   warning: {
     bgColor: "hsla(35 100% 50% / 0.12)",
     iconBg: "hsla(35 100% 50% / 0.18)",
-    iconColor: "#ff9f0a",
+    iconColor: "var(--status-warning)",
     titleColor: "#ffd60a",
   },
   error: {
@@ -49,13 +49,13 @@ const VARIANT_CONFIG: Record<BannerVariant, {
   info: {
     bgColor: "hsla(217 90% 55% / 0.12)",
     iconBg: "hsla(217 90% 55% / 0.18)",
-    iconColor: "#0a84ff",
+    iconColor: "var(--status-info)",
     titleColor: "#64d2ff",
   },
   accent: {
     bgColor: "hsla(14 100% 60% / 0.12)",
     iconBg: "hsla(14 100% 60% / 0.18)",
-    iconColor: "#ff6b35",
+    iconColor: "var(--accent-primary)",
     titleColor: "#ff8050",
   },
   neutral: {

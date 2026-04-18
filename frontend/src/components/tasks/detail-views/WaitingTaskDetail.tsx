@@ -101,13 +101,13 @@ function WorkSummaryCard({
             className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
             style={{
               backgroundColor: allComplete
-                ? "rgba(52, 199, 89, 0.15)"
+                ? "var(--status-success-muted)"
                 : "rgba(142, 142, 147, 0.15)",
             }}
           >
             <CheckCircle2
               className="w-4 h-4"
-              style={{ color: allComplete ? "#34c759" : "#8e8e93" }}
+              style={{ color: allComplete ? "var(--status-success)" : "#8e8e93" }}
             />
           </div>
           <div>

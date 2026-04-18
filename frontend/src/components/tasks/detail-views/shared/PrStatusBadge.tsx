@@ -12,8 +12,8 @@ const STATUS_CONFIG = {
   Open: {
     label: "Open",
     icon: GitPullRequest,
-    bg: "rgba(52, 199, 89, 0.15)",
-    color: "#34c759",
+    bg: "var(--status-success-muted)",
+    color: "var(--status-success)",
   },
   Merged: {
     label: "Merged",

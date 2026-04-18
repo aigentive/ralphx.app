@@ -350,7 +350,7 @@ export function ChatInput({
                 className="p-1.5 rounded transition-colors"
                 style={{ color: "hsl(220 10% 40%)" }}
                 onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.color = "#ff6b35";
+                  e.currentTarget.style.color = "var(--accent-primary)";
                 }}
                 onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.currentTarget.style.color = "hsl(220 10% 40%)";

@@ -87,18 +87,18 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
           className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
           style={{
             backgroundColor: isAiReviewer
-              ? "rgba(10, 132, 255, 0.15)"
+              ? "var(--status-info-muted)"
               : isSystemReviewer
-              ? "rgba(255, 159, 10, 0.15)"
-              : "rgba(52, 199, 89, 0.15)",
+              ? "var(--status-warning-muted)"
+              : "var(--status-success-muted)",
           }}
         >
           {isAiReviewer ? (
-            <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
+            <Bot className="w-5 h-5" style={{ color: "var(--status-info)" }} />
           ) : isSystemReviewer ? (
-            <Settings className="w-5 h-5" style={{ color: "#ff9f0a" }} />
+            <Settings className="w-5 h-5" style={{ color: "var(--status-warning)" }} />
           ) : (
-            <User className="w-5 h-5" style={{ color: "#34c759" }} />
+            <User className="w-5 h-5" style={{ color: "var(--status-success)" }} />
           )}
         </div>
         <div className="flex-1">
@@ -122,7 +122,7 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
       {issues.length > 0 && (
         <div className="pl-12">
           <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-3.5 h-3.5" style={{ color: "#ff9f0a" }} />
+            <AlertTriangle className="w-3.5 h-3.5" style={{ color: "var(--status-warning)" }} />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
               Issues to Address
             </span>

@@ -214,7 +214,7 @@ function RadioOption({
             <span
               className="px-1.5 py-0.5 text-xs rounded"
               style={{
-                backgroundColor: "rgba(255, 107, 53, 0.15)",
+                backgroundColor: "var(--accent-muted)",
                 color: "var(--accent-primary)",
               }}
             >

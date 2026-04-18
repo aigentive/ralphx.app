@@ -23,16 +23,16 @@ const COMPLEXITY_STYLES: Record<
   { bg: string; color: string }
 > = {
   Simple: {
-    bg: "rgba(52, 199, 89, 0.12)",
-    color: "#34c759",
+    bg: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
+    color: "var(--status-success)",
   },
   Medium: {
-    bg: "rgba(255, 107, 53, 0.12)",
-    color: "#ff6b35",
+    bg: "rgba(255, 107, 53, 0.12)" /* 0.12 alpha out of table range */,
+    color: "var(--accent-primary)",
   },
   Complex: {
-    bg: "rgba(255, 159, 10, 0.12)",
-    color: "#ff9f0a",
+    bg: "rgba(255, 159, 10, 0.12)" /* 0.12 alpha out of table range */,
+    color: "var(--status-warning)",
   },
 };
 

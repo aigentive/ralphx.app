@@ -218,18 +218,18 @@ function RevisionFeedbackCard({
           className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
           style={{
             backgroundColor: isAiReviewer
-              ? "rgba(10, 132, 255, 0.15)"
+              ? "var(--status-info-muted)"
               : isSystemReviewer
-              ? "rgba(255, 159, 10, 0.15)"
-              : "rgba(52, 199, 89, 0.15)",
+              ? "var(--status-warning-muted)"
+              : "var(--status-success-muted)",
           }}
         >
           {isAiReviewer ? (
-            <Bot className="w-4 h-4" style={{ color: "#0a84ff" }} />
+            <Bot className="w-4 h-4" style={{ color: "var(--status-info)" }} />
           ) : isSystemReviewer ? (
-            <Settings className="w-4 h-4" style={{ color: "#ff9f0a" }} />
+            <Settings className="w-4 h-4" style={{ color: "var(--status-warning)" }} />
           ) : (
-            <User className="w-4 h-4" style={{ color: "#34c759" }} />
+            <User className="w-4 h-4" style={{ color: "var(--status-success)" }} />
           )}
         </div>
 

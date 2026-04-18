@@ -280,7 +280,7 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
             {entry.followup_session_id && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
                 style={{
-                  backgroundColor: "rgba(255, 107, 53, 0.08)",
+                  backgroundColor: "var(--accent-muted)",
                   border: "1px solid rgba(255,255,255,0.05)",
                 }}
               >

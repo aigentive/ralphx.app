@@ -65,7 +65,7 @@ export function PermissionsBitmask({
               "px-2.5 py-1 rounded-md text-xs font-medium transition-colors select-none",
               interactive ? "cursor-pointer" : "cursor-default",
               active
-                ? "bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[rgba(255,107,53,0.3)]"
+                ? "bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-border)]"
                 : "bg-[var(--bg-surface)] text-[var(--text-muted)] border border-[var(--border-subtle)]",
               disabled ? "opacity-50" : "",
             ].join(" ")}

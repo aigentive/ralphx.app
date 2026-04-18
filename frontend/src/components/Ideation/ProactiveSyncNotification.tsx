@@ -24,11 +24,11 @@ export function ProactiveSyncNotificationBanner({
   return (
     <div
       data-testid="proactive-sync-notification"
-      className="mb-3 p-3 rounded-lg bg-gradient-to-br from-[#ff6b35]/10 to-[#ff6b35]/5 border border-[#ff6b35]/30"
+      className="mb-3 p-3 rounded-lg bg-gradient-to-br from-[var(--accent-primary)]/10 to-[var(--accent-primary)]/5 border border-[var(--accent-primary)]/30"
     >
       <div className="flex items-start gap-2">
-        <div className="w-7 h-7 rounded-md bg-[#ff6b35]/20 flex items-center justify-center flex-shrink-0">
-          <AlertCircle className="w-3.5 h-3.5 text-[#ff6b35]" />
+        <div className="w-7 h-7 rounded-md bg-[var(--accent-primary)]/20 flex items-center justify-center flex-shrink-0">
+          <AlertCircle className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-[var(--text-primary)] mb-0.5">Plan updated</p>
@@ -41,7 +41,7 @@ export function ProactiveSyncNotificationBanner({
             variant="ghost"
             size="sm"
             onClick={onReview}
-            className="h-6 px-2 text-[11px] text-[#ff6b35] hover:bg-[#ff6b35]/10"
+            className="h-6 px-2 text-[11px] text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10"
           >
             <Eye className="w-3 h-3 mr-1" /> Review
           </Button>

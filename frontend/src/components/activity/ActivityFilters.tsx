@@ -65,10 +65,10 @@ export function ViewModeToggle({
           showPulsating && "live-receiving"
         )}
       >
-        <Radio className={cn("w-3 h-3", showPulsating && "text-[#ff6b35]")} />
+        <Radio className={cn("w-3 h-3", showPulsating && "text-[var(--accent-primary)]")} />
         Live
         {showPulsating && (
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#ff6b35] live-pulse-dot" />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent-primary)] live-pulse-dot" />
         )}
       </button>
       <button

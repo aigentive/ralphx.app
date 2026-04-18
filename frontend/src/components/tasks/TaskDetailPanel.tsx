@@ -151,17 +151,17 @@ const STATUS_CONFIG: Record<
   },
   executing: {
     label: "Executing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_refining: {
     label: "QA Refining",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_testing: {
     label: "QA Testing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_passed: {
@@ -216,17 +216,17 @@ const STATUS_CONFIG: Record<
   },
   re_executing: {
     label: "Re-executing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   pending_merge: {
     label: "Pending Merge",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   merging: {
     label: "Merging",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   merge_incomplete: {

@@ -39,12 +39,12 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skip
   if (status === "started") {
     return (
       <div className="relative">
-        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
       </div>
     );
   }
   if (status === "passed") {
-    return <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />;
+    return <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />;
   }
   if (status === "failed") {
     return <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />;
@@ -63,7 +63,7 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skip
 function phaseTextColor(status: "started" | "passed" | "failed" | "skipped" | "pending"): string {
   switch (status) {
     case "started":
-      return "#0a84ff";
+      return "var(--status-info)";
     case "passed":
       return "rgba(255, 255, 255, 0.6)";
     case "failed":

@@ -146,17 +146,17 @@ function TimelineItem({
     if (isApproved) {
       return {
         Icon: CheckCircle2,
-        color: "#34c759",
-        bgColor: "rgba(52, 199, 89, 0.15)",
-        lineColor: "rgba(52, 199, 89, 0.3)",
+        color: "var(--status-success)",
+        bgColor: "var(--status-success-muted)",
+        lineColor: "var(--status-success-border)",
       };
     }
     if (isChangesRequested) {
       return {
         Icon: RotateCcw,
-        color: "#ff9f0a",
-        bgColor: "rgba(255, 159, 10, 0.15)",
-        lineColor: "rgba(255, 159, 10, 0.3)",
+        color: "var(--status-warning)",
+        bgColor: "var(--status-warning-muted)",
+        lineColor: "var(--status-warning-border)",
       };
     }
     return {
@@ -217,7 +217,7 @@ function TimelineItem({
           <div className="flex items-center gap-2">
             <ReviewerIcon
               className="w-3.5 h-3.5"
-              style={{ color: isHuman ? "#34c759" : isSystem ? "#ff9f0a" : "#0a84ff" }}
+              style={{ color: isHuman ? "var(--status-success)" : isSystem ? "var(--status-warning)" : "var(--status-info)" }}
             />
             <span className="text-[12px] font-semibold text-white/75">
               {getLabel()}
@@ -226,7 +226,7 @@ function TimelineItem({
               <span
                 className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
-                  backgroundColor: "rgba(52, 199, 89, 0.12)",
+                  backgroundColor: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
                   color: "hsl(145 60% 45%)",
                 }}
               >
@@ -302,8 +302,8 @@ function TimelineItem({
               {entry.followup_session_id && (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"
                   style={{
-                    backgroundColor: "rgba(255, 107, 53, 0.08)",
-                    border: "1px solid rgba(255, 107, 53, 0.14)",
+                    backgroundColor: "var(--accent-muted)",
+                    border: "1px solid rgba(255, 107, 53, 0.14)" /* 0.14 alpha out of table range */,
                   }}
                 >
                   <div className="min-w-0">
@@ -320,7 +320,7 @@ function TimelineItem({
                     className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-opacity hover:opacity-80"
                     style={{
                       color: "hsl(14 100% 68%)",
-                      backgroundColor: "rgba(255, 107, 53, 0.12)",
+                      backgroundColor: "rgba(255, 107, 53, 0.12)" /* 0.12 alpha out of table range */,
                     }}
                   >
                     <ExternalLink className="w-3 h-3" />

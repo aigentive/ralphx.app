@@ -134,7 +134,7 @@ function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
     case "completed":
     case "skipped":
-      return <span style={{ color: "#34c759" }}><CheckIcon /></span>;
+      return <span style={{ color: "var(--status-success)" }}><CheckIcon /></span>;
     case "in_progress":
       return <span style={{ color: "hsl(14 100% 60%)" }}><InProgressIcon /></span>;
     case "failed":
@@ -267,7 +267,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
   // Badge color: all completed = green, otherwise accent orange
   const allCompleted = counts.completed === counts.total;
   const badgeStyle: React.CSSProperties = allCompleted
-    ? { background: "hsla(145 60% 45% / 0.10)", color: "#34c759" }
+    ? { background: "hsla(145 60% 45% / 0.10)", color: "var(--status-success)" }
     : { background: "hsla(14 100% 60% / 0.10)", color: "hsl(14 100% 60%)" };
 
   return (

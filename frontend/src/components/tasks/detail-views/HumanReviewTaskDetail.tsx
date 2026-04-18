@@ -95,9 +95,9 @@ function AIReviewCard({
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
-            style={{ backgroundColor: "rgba(10, 132, 255, 0.15)" }}
+            style={{ backgroundColor: "var(--status-info-muted)" }}
           >
-            <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
+            <Bot className="w-5 h-5" style={{ color: "var(--status-info)" }} />
           </div>
           <div>
             <span className="text-[13px] font-semibold text-white/80 block">
@@ -161,7 +161,7 @@ function AIReviewCard({
         {!summary && issues.length === 0 && (
           <div className="pl-12 mt-4">
             <div className="flex items-center gap-2 text-[13px] text-white/50">
-              <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+              <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
               <span>All automated checks passed</span>
             </div>
           </div>

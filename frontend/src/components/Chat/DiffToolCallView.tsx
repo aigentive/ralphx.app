@@ -139,7 +139,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
         {/* Stats badge */}
         <span className={`flex-shrink-0 flex items-center gap-1 ${compact ? "text-[9px]" : "text-[10px]"} font-mono`}>
           {additions > 0 && (
-            <span style={{ color: "#34c759" }}>+{additions}</span>
+            <span style={{ color: "var(--status-success)" }}>+{additions}</span>
           )}
           {deletions > 0 && (
             <span style={{ color: "#ff453a" }}>-{deletions}</span>
