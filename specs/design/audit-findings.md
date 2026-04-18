@@ -207,3 +207,56 @@ Deferred / lower priority (for future pass):
 - New: Task-detail header icon button faintness
 - New: Kanban Light Stop button flatness
 
+---
+
+## 3rd Pass — post-fix validation (2026-04-18, commit c6bdcaa70)
+
+Fresh captures at `.artifacts/theme-audit/{dark,light,high-contrast}/*.png`. Reviewed against the 2nd-pass residual list and the 9 fixes reported as landed.
+
+### Fixed
+
+- **P6b — HC Ready status stripe (blue → yellow):** resolved. `high-contrast/kanban.png` now shows Ready card with a clear yellow left stripe + yellow play-icon. `--status-info` remap to yellow-500 is visually confirmed on the Ready card, and flows through to the card stripe component without any cold-blue bleed. Executing stripe is also yellow, as expected.
+- **P7 — Chat composer send button on HC:** resolved. `high-contrast/kanban.png` bottom-right send button renders as a darker tile with a yellow paper-plane icon that inverts correctly. Disabled state flattens to bg-hover, enabled state pops. Same pattern on `high-contrast/task-detail.png` composer.
+- **P7 (Light) — Kanban + Task Detail composer send buttons:** partial → still not a crisp filled CTA. Light captures still show a peach tile with orange icon (not the "Start New Session" style filled-orange treatment). No regression, but the 2nd-pass gripe remains — see Still Broken.
+- **P8 — Feature chip icon orange bleed on HC:** resolved. All three Kanban cards in `high-contrast/kanban.png` (Backlog / Ready / Executing) now render the feature chip icon in yellow, consistent across the column. No more mixed orange-on-Backlog vs yellow-on-other inconsistency.
+- **P13 — `DEFAULT` chip on Light + Dark (Extensibility):** resolved. Both `light/extensibility.png` and `dark/extensibility.png` now show the "DEFAULT" chip with a visible border and a distinct darker/lighter fill. HC keeps its white outline. Chip contrast problem cleared across all three themes.
+- **P14 — "No steps defined yet" on Light:** resolved. `light/task-detail.png` shows the placeholder in a readable secondary-gray (muted → secondary bump is visible). Dark/HC also read normally.
+- **P15 — Reviews empty-state disc on HC:** partial → resolved. `high-contrast/reviews.png` disc now reads as a mid-gray dashed circle against black. Not bright, but unambiguously visible and no longer near-invisible. Accept as resolved.
+- **New-from-2nd — Task-detail header action icons (edit/archive/duplicate):** resolved. `dark/task-detail.png` and `light/task-detail.png` show the header icons at a clearly readable contrast now (muted → secondary + hover text-primary upgrade is visible). The close (X) still has its peach outline — intended active-state treatment.
+- **Settings dialog solidity on Light:** resolved. `light/settings.png` renders the settings modal as a solid white surface — no more see-through effect. The `var(--bg-elevated)` swap landed cleanly.
+- **Shadow scale softening on Light:** resolved. `light/ideation.png` and `light/graph.png` show the floating panels (execution control bar, graph filter stack) with subtle warm-tinted drops instead of the prior harsh near-black halos. Ideation bottom status bar edge is barely there — good.
+- **ExecutionControlBar shadow on Dark/Light:** resolved. No longer a double-overlay scrim; uses `--shadow-md` + `--border-subtle`. Reads correctly across Dark/Light/HC.
+- **Theme switching (bootstrap / data-theme attribute):** implicitly verified — captures for all three themes render distinctly. Dark is dark, Light is light, HC is black-and-yellow. No cross-theme bleed.
+- **ChatInput test fix:** out of visual scope — trust the reported fix.
+
+### Still broken
+
+- **P5 — Dark theme Settings selected nav item** (unfixed for a THIRD pass): `dark/settings.png` still shows "Execution" as a bright near-white pill with dark text — visually inverted vs every other active state in the app (orange-tinted elsewhere, solid yellow on HC, orange-filled on Light). This is the single most glaring regression left. Likely cause: the Settings sidebar button uses a shadcn default `data-state=active` token that resolves to `bg-background` (near-white) on Dark, rather than the accent-tinted pattern used in the main app nav. Next step: override `SettingsSidebar` (or equivalent) active-state class to `bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]` on Dark specifically, or switch to the shared nav-pill component that already has the correct Dark treatment.
+- **P7 (Light) — Send/composer buttons remain a peach tile with orange icon:** `light/kanban.png` and `light/task-detail.png` composer send buttons still render as a soft peach square with an orange paper-plane icon. It's legible but doesn't read as a primary CTA — the "Start New Session" orange-filled pattern sets the expectation. Lower priority than P5 but unchanged from 2nd pass. Next step: `bg-[var(--accent-primary)] text-white` on the enabled send-button state (matching the Ideation primary CTA), or keep the subtle treatment but make the icon color route through `--text-inverse` / `--bg-elevated-hover` for better contrast.
+- **P18 — Ideation Solo mode chip on Light:** unchanged. `light/ideation.png` still shows Solo as a peach-filled chip with orange outline vs the white-filled outline-only Research/Debate chips. Pattern inconsistency between selected/unselected mode chips. Low priority.
+- **P16 (Light) — floating panel shadows:** partial/accepted. Shadows are now soft enough that this is no longer jarring on Light, but still reads as a cool-ish gray halo rather than a warm-tinted drop. The shadow-scale softening helped — treating this as closed at current severity.
+
+### New issues surfaced
+
+- **Light-theme Kanban card border contrast:** `light/kanban.png` — the Backlog card ("Additional Task 1") shows only the shadow as a visual separator against the white column; there's no visible border. Compared to the Ready/Executing cards (which get their distinct left stripe), the Backlog card looks unframed. Minor — card hierarchy relies on shadow alone on Light.
+- **HC Reviews panel close/split icons (top-right of floating panel):** `high-contrast/reviews.png` — the numeric count badge "(0)" and the two small header icons (the 0-badge and the collapse-toggle) render at extremely low contrast. The panel itself is clean but those top-right affordances nearly disappear. Was marginally present in 2nd pass but more noticeable now that the panel itself is fixed.
+- **Light-theme Stop button still flatter than Pause:** `light/kanban.png` — the Stop button next to Pause reads as a slightly lighter gray chip vs Pause's clearer border. Same observation as 2nd pass, still unresolved. Could be disabled-state styling leaking into the enabled look, or a hover-state color that's too close to base.
+- **Tier/focus outlines on HC Kanban cards:** `high-contrast/kanban.png` — the Ready and Executing cards show subtle yellow outlines that could be mistaken for focus rings. Expected since status stripe → yellow, but the whole-card yellow perimeter edge reads as "keyboard-focused" — worth verifying that real focus rings don't stack with this treatment.
+- **Light theme Kanban sidebar "Task" rail on right (chat-rail empty state):** the "Start a conversation" empty-state treatment is very light gray on near-white. Legible but low-emphasis. Similar to P14 pattern — muted-gray text on light-gray background — could benefit from a small contrast bump.
+
+### Updated Priority List (top 3)
+
+1. **P5 — Dark theme Settings sidebar selected item** remains bright-white pill instead of accent-tinted. Three passes unfixed. Single highest-visibility visual regression in Dark. Fix: override shadcn sidebar `data-state=active` token specifically on Dark to use `bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]`, or route the whole item through the same shared nav-pill component used by the top bar's Ideation / Graph / Kanban active state.
+2. **P7 (Light) — Composer send button treatment** is an orange icon on a peach tile instead of a filled accent CTA. Now the last remaining "doesn't look like a button" spot on Light. Fix: filled-orange bg + white icon on enabled state (match Start New Session pattern) OR keep subtle but swap icon color to `var(--text-primary)` on Light for crisper glyph contrast.
+3. **New — HC Reviews panel top-right badge + toggle low contrast**: header chrome on the floating Reviews panel disappears on HC. Fix: route the "(0)" count badge and the collapse-toggle icon through `var(--text-secondary)` (which HC already biases toward white-ish), not the current near-black muted value.
+
+Deferred / lower priority (for next pass):
+- P16 Light floating panel shadow tint (accepted, monitor)
+- P18 Ideation Solo chip peach fill
+- New: Light Kanban Backlog card lacks visible border (shadow-only separator)
+- New: Light Kanban Stop vs Pause button weight mismatch
+- New: HC Kanban card yellow perimeter readable-as-focus-ring ambiguity
+- New: Light Kanban right rail "Start a conversation" empty state contrast
+
+
+

@@ -230,6 +230,7 @@ export function SelectSettingRow<T extends string>({
   disabled,
   onChange,
 }: SelectSettingRowProps<T>) {
+  const selected = options.find((opt) => opt.value === value);
   return (
     <SettingRow id={id} label={label} description={description} isDisabled={disabled}>
       <Select
@@ -243,7 +244,11 @@ export function SelectSettingRow<T extends string>({
           aria-describedby={`${id}-desc`}
           className="w-[200px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
         >
-          <SelectValue placeholder="Select model" />
+          {/* Styleguide §8: trigger shows label only; description is
+              dropdown-item context, never a truncated second line in the trigger. */}
+          <SelectValue placeholder="Select model">
+            <span className="text-[var(--text-primary)]">{selected?.label ?? ""}</span>
+          </SelectValue>
         </SelectTrigger>
         <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
           {options.map((opt) => (

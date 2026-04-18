@@ -251,9 +251,7 @@ export function GraphSplitLayout({
               className="flex flex-col flex-1 overflow-hidden rounded-[10px]"
               style={{
                 margin: "8px",
-                background: "color-mix(in srgb, var(--bg-surface) 92%, transparent)",
-                backdropFilter: "blur(20px) saturate(180%)",
-                WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                background: "var(--bg-elevated)",
                 border: "1px solid var(--border-subtle)",
                 boxShadow: "var(--shadow-md)",
               }}

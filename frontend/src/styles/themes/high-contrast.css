@@ -160,3 +160,12 @@
   outline: var(--border-width-focus) solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* Placeholder contrast bump — --text-muted (#B0B0B0) passes AAA numerically
+   but reads as ghost-gray on pure black. Use --text-secondary (#E0E0E0) for
+   input/textarea placeholders in HC only. */
+[data-theme="high-contrast"] input::placeholder,
+[data-theme="high-contrast"] textarea::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
