@@ -34,6 +34,7 @@ import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { api } from "@/lib/tauri";
+import { withAlpha } from "@/lib/theme-colors";
 import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
 import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
@@ -856,15 +857,12 @@ export function IntegratedChatPanel({
           style={{
             borderRadius: "10px",
             /* FLAT semi-transparent (no gradient) */
-            background: "hsla(220 10% 10% / 0.92)",
+            background: withAlpha("var(--bg-surface)", 92),
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
             /* Luminous perimeter edge */
-            border: "1px solid hsla(220 20% 100% / 0.08)",
-            boxShadow: `
-              0 4px 16px hsla(220 20% 0% / 0.4),
-              0 12px 32px hsla(220 20% 0% / 0.3)
-            `,
+            border: "1px solid var(--overlay-weak)",
+            boxShadow: "var(--shadow-lg)",
           }}
         >
           {/* Header - subtle separation within glass container */}
@@ -872,8 +870,8 @@ export function IntegratedChatPanel({
             data-testid="integrated-chat-header"
             className="flex items-center justify-between h-11 px-3 shrink-0"
             style={{
-              backgroundColor: "hsla(220 15% 5% / 0.5)",
-              borderBottom: "1px solid hsla(220 20% 100% / 0.04)",
+              backgroundColor: withAlpha("var(--bg-base)", 50),
+              borderBottom: "1px solid var(--overlay-faint)",
             }}
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
@@ -1057,8 +1055,8 @@ export function IntegratedChatPanel({
           <div
             className={inputContainerClassName ?? "shrink-0"}
             style={inputContainerClassName ? undefined : {
-              backgroundColor: "hsla(220 15% 5% / 0.5)",
-              borderTop: "1px solid hsla(220 20% 100% / 0.04)",
+              backgroundColor: withAlpha("var(--bg-base)", 50),
+              borderTop: "1px solid var(--overlay-faint)",
             }}
           >
             {/* Queued Messages - unified queue with context-aware keys */}

@@ -218,7 +218,7 @@ export function CodePreview({ lines, startLine = 1, compact = false }: CodePrevi
               display: "inline-block",
               width: 28,
               textAlign: "right",
-              color: "hsl(220 10% 28%)",
+              color: "var(--text-muted)",
               marginRight: 12,
               userSelect: "none",
             }}

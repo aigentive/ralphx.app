@@ -24,6 +24,7 @@ import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
 import { ChildSessionNavigationContext } from "./ChildSessionNavigationContext";
 import { useChildSessionStatus } from "@/hooks/useChildSessionStatus";
 import { formatRelativeTime } from "@/lib/formatters";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Helpers
@@ -62,7 +63,7 @@ function LoadingSkeleton() {
   const lineStyle: React.CSSProperties = {
     height: 12,
     borderRadius: 4,
-    backgroundColor: "hsla(220 15% 20% / 0.6)",
+    backgroundColor: withAlpha("var(--bg-hover)", 60),
     marginBottom: 8,
   };
   return (
@@ -96,7 +97,7 @@ function MessagePreviewItem({
         gap: 6,
         alignItems: "flex-start",
         padding: "4px 0",
-        borderBottom: `1px solid hsla(220 15% 20% / 0.4)`,
+        borderBottom: `1px solid ${withAlpha("var(--bg-hover)", 40)}`,
       }}
     >
       <Icon size={11} style={{ color: iconColor, flexShrink: 0, marginTop: 2 }} />
@@ -104,7 +105,7 @@ function MessagePreviewItem({
         <span
           style={{
             fontSize: 12,
-            color: "hsl(220 10% 75%)",
+            color: "var(--text-secondary)",
             lineHeight: 1.4,
             display: "block",
             wordBreak: "break-word",

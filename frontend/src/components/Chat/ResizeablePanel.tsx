@@ -4,6 +4,7 @@
 
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { MIN_WIDTH } from "./ResizeablePanel.constants";
 
 export interface ResizeablePanelProps {
@@ -44,11 +45,11 @@ export function ResizeablePanel({
         className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
         style={{
           margin: "8px",
-          background: "hsla(220 10% 10% / 0.92)",
+          background: withAlpha("var(--bg-surface)", 92),
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          border: "1px solid hsla(220 20% 100% / 0.08)",
-          boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+          border: "1px solid var(--overlay-weak)",
+          boxShadow: "0 4px 16px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.3)",
         }}
       >
         <ResizeHandle />

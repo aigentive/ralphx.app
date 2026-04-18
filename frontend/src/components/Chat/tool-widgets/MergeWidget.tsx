@@ -75,7 +75,7 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
   const detail = continuationLabel(newStatus) ?? message;
   const accentColor = continuationStatus ? colors.blue : colors.success;
   const surfaceTint = continuationStatus ? colors.blueDim : colors.successDim;
-  const detailColor = continuationStatus ? "hsl(220 60% 72%)" : "hsl(145 30% 55%)";
+  const detailColor = continuationStatus ? "var(--status-info)" : "var(--status-success)";
 
   // If tool errored, show inline error
   if (toolCall.error) {
@@ -138,7 +138,7 @@ function CompleteMergeWidget({ toolCall, compact = false }: ToolCallWidgetProps)
               padding: "1px 6px",
               borderRadius: 6,
               fontWeight: 500,
-              background: continuationStatus ? colors.blueDim : "hsla(145 60% 45% / 0.15)",
+              background: continuationStatus ? colors.blueDim : "var(--status-success-muted)",
               color: accentColor,
               flexShrink: 0,
             }}

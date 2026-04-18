@@ -4,6 +4,7 @@
 
 import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import type { ChatContext } from "@/types/chat";
 
 // ============================================================================
@@ -36,27 +37,27 @@ export function TypingIndicator() {
     >
       <Bot
         className="w-3.5 h-3.5 mt-2 shrink-0"
-        style={{ color: "hsl(220 10% 45%)" }}
+        style={{ color: "var(--text-muted)" }}
       />
       <div
         className="px-3 py-2 rounded-lg"
         style={{
           /* macOS Tahoe: flat solid color, no gradient, no border */
-          backgroundColor: "hsl(220 10% 14%)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <div className="flex items-center gap-1">
           <div
             className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
           <div
             className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
           <div
             className="typing-dot w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "hsl(220 10% 40%)" }}
+            style={{ backgroundColor: "var(--text-muted)" }}
           />
         </div>
       </div>
@@ -74,23 +75,23 @@ export function EmptyState() {
         className="w-12 h-12 rounded-lg flex items-center justify-center mb-3"
         style={{
           /* macOS Tahoe: subtle solid background, no gradient, no border */
-          backgroundColor: "hsl(220 10% 16%)",
+          backgroundColor: "var(--bg-hover)",
         }}
       >
         <MessageSquare
           className="w-5 h-5"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         />
       </div>
       <p
         className="text-[13px] font-medium"
-        style={{ color: "hsl(220 10% 85%)" }}
+        style={{ color: "var(--text-primary)" }}
       >
         Start a conversation
       </p>
       <p
         className="text-xs mt-1"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Ask questions or get help with your tasks
       </p>
@@ -107,23 +108,23 @@ export function HistoryEmptyState() {
       <div
         className="w-12 h-12 rounded-lg flex items-center justify-center mb-3"
         style={{
-          backgroundColor: "hsl(220 10% 16%)",
+          backgroundColor: "var(--bg-hover)",
         }}
       >
         <MessageSquare
           className="w-5 h-5"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         />
       </div>
       <p
         className="text-[13px] font-medium"
-        style={{ color: "hsl(220 10% 85%)" }}
+        style={{ color: "var(--text-primary)" }}
       >
         No chat for this state
       </p>
       <p
         className="text-xs mt-1"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         This historical state does not have a conversation attached.
       </p>
@@ -147,23 +148,23 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
       className="flex items-start gap-2 px-3 py-2 mb-2 rounded-lg"
       style={{
         /* macOS Tahoe: subtle solid background with error tint, no gradient, no border */
-        backgroundColor: "hsla(0 70% 55% / 0.12)",
+        backgroundColor: "var(--status-error-muted)",
       }}
     >
       <Activity
         className="w-3.5 h-3.5 mt-0.5 shrink-0"
-        style={{ color: "hsl(0 70% 60%)" }}
+        style={{ color: "var(--status-error)" }}
       />
       <div className="flex-1 min-w-0">
         <span
           className="text-[13px] font-medium block"
-          style={{ color: "hsl(0 70% 70%)" }}
+          style={{ color: "var(--status-error)" }}
         >
           Agent run failed
         </span>
         <span
           className="text-[12px] block mt-0.5 break-words"
-          style={{ color: "hsl(0 70% 60%)" }}
+          style={{ color: "var(--status-error)" }}
         >
           {errorMessage.slice(0, 200)}
           {errorMessage.length > 200 && "..."}
@@ -175,7 +176,7 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
           size="icon-sm"
           onClick={onDismiss}
           className="shrink-0"
-          style={{ color: "hsl(0 70% 60%)" }}
+          style={{ color: "var(--status-error)" }}
           aria-label="Dismiss error"
         >
           <X className="w-3.5 h-3.5" />
@@ -205,12 +206,12 @@ export function PreviousRunBanner({ agentRunStatus, contextType }: PreviousRunBa
       data-testid="previous-run-banner"
       className="px-3 py-1.5 flex items-center gap-2 shrink-0"
       style={{
-        backgroundColor: "hsla(220 10% 15% / 0.8)",
-        borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
+        backgroundColor: withAlpha("var(--bg-elevated)", 80),
+        borderBottom: "1px solid var(--overlay-weak)",
       }}
     >
-      <History className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
-      <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+      <History className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
         Previous {contextLabel} run ({statusLabel})
       </span>
     </div>
@@ -254,11 +255,11 @@ export function ContextIndicator({ context, isExecutionMode = false, isReviewMod
     <div className="flex items-center gap-2 min-w-0 flex-1">
       <Icon
         className="w-3.5 h-3.5 shrink-0"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       />
       <span
         className="text-[13px] font-medium truncate"
-        style={{ color: "hsl(220 10% 85%)" }}
+        style={{ color: "var(--text-primary)" }}
       >
         {label}
       </span>

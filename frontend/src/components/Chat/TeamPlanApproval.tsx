@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, X, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import { approveTeamPlan, rejectTeamPlan } from "@/api/team";
 import { useTeamStore } from "@/stores/teamStore";
 import type { PendingTeamPlan } from "@/stores/teamStore";
@@ -146,23 +147,23 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
       <div
         className="mx-3 my-2 rounded-lg overflow-hidden"
         style={{
-          backgroundColor: "hsl(220 10% 10%)",
-          border: "1px solid hsl(220 10% 20%)",
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--bg-hover)",
         }}
       >
         <div
           className="flex items-center gap-2 px-3 py-2.5"
-          style={{ backgroundColor: "hsl(220 10% 12%)" }}
+          style={{ backgroundColor: "var(--bg-surface)" }}
         >
-          <Users className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 40%)" }} />
-          <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+          <Users className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             Team Plan — {plan.process}
           </span>
           <span
             className="ml-auto text-[10px] px-1.5 py-0.5 rounded"
             style={{
-              backgroundColor: "hsl(220 10% 16%)",
-              color: "hsl(220 10% 45%)",
+              backgroundColor: "var(--bg-elevated)",
+              color: "var(--text-muted)",
             }}
           >
             Expired
@@ -176,27 +177,27 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
     <div
       className="mx-3 my-2 rounded-lg overflow-hidden"
       style={{
-        backgroundColor: "hsl(220 10% 10%)",
-        border: "1px solid hsl(25 80% 45% / 0.4)",
+        backgroundColor: "var(--bg-surface)",
+        border: `1px solid ${withAlpha("var(--accent-primary)", 40)}`,
       }}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-2"
         style={{
-          backgroundColor: "hsl(25 80% 45% / 0.08)",
-          borderBottom: "1px solid hsl(220 10% 14%)",
+          backgroundColor: withAlpha("var(--accent-primary)", 8),
+          borderBottom: "1px solid var(--border-subtle)",
         }}
       >
-        <Users className="w-3.5 h-3.5" style={{ color: "hsl(25 80% 55%)" }} />
-        <span className="text-[11px] font-medium" style={{ color: "hsl(25 80% 65%)" }}>
+        <Users className="w-3.5 h-3.5" style={{ color: "var(--accent-primary)" }} />
+        <span className="text-[11px] font-medium" style={{ color: "var(--accent-primary)" }}>
           Team Plan — {plan.process}
         </span>
         <span
           className="ml-auto text-[10px] px-1.5 rounded"
           style={{
-            backgroundColor: "hsl(220 10% 14%)",
-            color: "hsl(220 10% 55%)",
+            backgroundColor: "var(--bg-elevated)",
+            color: "var(--text-secondary)",
           }}
         >
           {plan.teammates.length} teammate{plan.teammates.length !== 1 ? "s" : ""}
@@ -212,16 +213,16 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
           >
             <span
               className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: "hsl(220 10% 40%)" }}
+              style={{ backgroundColor: "var(--text-muted)" }}
             />
-            <span className="text-[11px] font-medium" style={{ color: "hsl(220 10% 80%)" }}>
+            <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
               {mate.role}
             </span>
             <span
               className="text-[10px] px-1 rounded"
               style={{
-                backgroundColor: "hsl(220 10% 14%)",
-                color: "hsl(220 10% 50%)",
+                backgroundColor: "var(--bg-elevated)",
+                color: "var(--text-muted)",
               }}
             >
               {mate.model}
@@ -229,7 +230,7 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
             {mate.prompt_summary && (
               <span
                 className="text-[10px] truncate flex-1"
-                style={{ color: "hsl(220 10% 40%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {mate.prompt_summary}
               </span>
@@ -241,7 +242,7 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
       {/* Error */}
       {error && (
         <div className="px-3 pb-1">
-          <span className="text-[10px]" style={{ color: "hsl(0 84% 60%)" }}>
+          <span className="text-[10px]" style={{ color: "var(--status-error)" }}>
             {error}
           </span>
         </div>
@@ -250,10 +251,10 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
       {/* Actions */}
       <div
         className="flex items-center justify-between gap-2 px-3 py-2"
-        style={{ borderTop: "1px solid hsl(220 10% 14%)" }}
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
       >
         {/* Countdown */}
-        <span className="text-[10px]" style={{ color: "hsl(220 10% 40%)" }}>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
           Expires in {formatCountdown(remainingMs)}
         </span>
 
@@ -274,7 +275,7 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
             disabled={isApproving}
             className="text-[11px] h-7 gap-1"
             style={{
-              backgroundColor: "hsl(25 80% 45%)",
+              backgroundColor: "var(--accent-primary)",
               color: "white",
             }}
           >

@@ -43,9 +43,9 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
       style={{
         /* macOS Tahoe: flat solid colors, no gradients */
         background: isUser
-          ? "hsl(14 100% 60%)" /* Accent orange - flat */
-          : "hsl(220 10% 14%)", /* Dark surface - flat */
-        color: isUser ? "white" : "hsl(220 10% 90%)",
+          ? "var(--accent-primary)" /* Accent orange - flat */
+          : "var(--bg-elevated)", /* Dark surface - flat */
+        color: isUser ? "white" : "var(--text-primary)",
         border: "none",
         boxShadow: "none",
       }}

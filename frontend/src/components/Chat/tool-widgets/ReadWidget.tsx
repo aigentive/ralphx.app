@@ -100,7 +100,7 @@ export const ReadWidget = React.memo(function ReadWidget({
   if (!hasContent && !hasError) {
     return (
       <WidgetCard header={header} compact={compact} className={className}>
-        <div style={{ fontSize: 10.5, color: "hsl(220 10% 45%)", padding: "4px 0" }}>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "4px 0" }}>
           Reading...
         </div>
       </WidgetCard>
@@ -110,7 +110,7 @@ export const ReadWidget = React.memo(function ReadWidget({
   if (hasError) {
     return (
       <WidgetCard header={header} compact={compact} className={className}>
-        <div style={{ fontSize: 11, color: "hsl(0 70% 65%)", fontFamily: "var(--font-mono)", padding: "4px 0" }}>
+        <div style={{ fontSize: 11, color: "var(--status-error)", fontFamily: "var(--font-mono)", padding: "4px 0" }}>
           {errorText}
         </div>
       </WidgetCard>

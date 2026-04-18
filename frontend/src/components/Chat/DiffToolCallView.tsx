@@ -10,6 +10,7 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, FileEdit, FileText } from "lucide-react";
+import { withAlpha } from "@/lib/theme-colors";
 import type { ToolCall } from "./ToolCallIndicator";
 import {
   type DiffLine,
@@ -91,7 +92,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
       data-testid="diff-tool-call-view"
       className={`${compact ? "rounded-md" : "rounded-lg"} overflow-hidden max-w-full ${compact ? "mb-1" : ""} ${className}`}
       style={{
-        backgroundColor: "hsl(220 10% 14%)",
+        backgroundColor: "var(--bg-elevated)",
         border: "none",
       }}
     >
@@ -104,24 +105,24 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
       >
         {/* Chevron */}
         {isExpanded ? (
-          <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
         ) : (
-          <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220 10% 45%)" }} />
+          <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
         )}
 
         {/* Tool icon */}
         {isEdit ? (
-          <FileEdit size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
+          <FileEdit size={iconSize} className="flex-shrink-0" style={{ color: "var(--accent-primary)" }} />
         ) : (
-          <FileText size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14 100% 60%)" }} />
+          <FileText size={iconSize} className="flex-shrink-0" style={{ color: "var(--accent-primary)" }} />
         )}
 
         {/* Tool name badge */}
         <span
           className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
           style={{
-            backgroundColor: "hsl(220 10% 10%)",
-            color: "hsl(220 10% 55%)",
+            backgroundColor: "var(--bg-surface)",
+            color: "var(--text-secondary)",
             fontFamily: "var(--font-mono)",
           }}
         >
@@ -131,7 +132,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
         {/* File path */}
         <span
           className={`${compact ? "text-[11px]" : "text-xs"} truncate font-mono flex-1 min-w-0`}
-          style={{ color: "hsl(220 10% 75%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {shortenPath(filePath)}
         </span>
@@ -151,8 +152,8 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
           <span
             className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0 animate-pulse`}
             style={{
-              backgroundColor: "hsla(14 100% 60% / 0.15)",
-              color: "hsl(14 100% 60%)",
+              backgroundColor: withAlpha("var(--accent-primary)", 15),
+              color: "var(--accent-primary)",
             }}
           >
             writing...
@@ -189,7 +190,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
               left: 0,
               right: 0,
               height: `${GRADIENT_HEIGHT}px`,
-              background: "linear-gradient(transparent, hsl(220 10% 14%))",
+              background: "linear-gradient(transparent, var(--bg-elevated))",
               pointerEvents: "none",
             }}
           />
@@ -253,7 +254,7 @@ const DiffLineRow = React.memo(function DiffLineRow({ line }: { line: DiffLine }
       {/* Content */}
       <span
         className="whitespace-pre overflow-hidden text-ellipsis"
-        style={{ color: "hsl(220 10% 80%)" }}
+        style={{ color: "var(--text-primary)" }}
       >
         {line.content}
       </span>

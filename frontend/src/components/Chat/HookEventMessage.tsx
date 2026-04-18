@@ -79,11 +79,11 @@ function HookCompleted({ event }: { event: HookCompletedEvent }) {
             style={
               isSuccess
                 ? {
-                    background: "hsla(145 60% 45% / 0.10)",
+                    background: "var(--status-success-muted)",
                     color: "var(--status-success)",
                   }
                 : {
-                    background: "hsla(0 70% 55% / 0.10)",
+                    background: "var(--status-error-muted)",
                     color: "var(--status-error)",
                   }
             }
@@ -129,8 +129,8 @@ function HookBlock({ event }: { event: HookBlockEvent }) {
     <div
       className="my-1.5 rounded-r-lg px-3 py-2"
       style={{
-        background: "hsla(38 92% 55% / 0.08)",
-        borderLeft: "2px solid hsla(38 92% 55% / 0.25)",
+        background: "var(--status-warning-muted)",
+        borderLeft: "2px solid var(--status-warning-border)",
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
@@ -165,7 +165,7 @@ function escapeAndStyleCode(text: string): string {
 
   return escaped.replace(
     /`([^`]+)`/g,
-    '<code style="font-family: var(--font-mono); font-size: 11px; background: hsla(38 92% 55% / 0.08); padding: 1px 4px; border-radius: 3px; color: var(--status-warning);">$1</code>'
+    '<code style="font-family: var(--font-mono); font-size: 11px; background: var(--status-warning-muted); padding: 1px 4px; border-radius: 3px; color: var(--status-warning);">$1</code>'
   );
 }
 

@@ -85,14 +85,14 @@ export function MessageAttachments({
           onClick={() => onClick?.(attachment.id, attachment.filePath)}
           className="flex items-center gap-1.5 px-2 py-1 rounded transition-all"
           style={{
-            background: "hsl(220 10% 15%)",
-            border: "1px solid hsl(220 10% 22%)",
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--bg-hover)",
           }}
           onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-            e.currentTarget.style.background = "hsl(220 10% 18%)";
+            e.currentTarget.style.background = "var(--bg-hover)";
           }}
           onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-            e.currentTarget.style.background = "hsl(220 10% 15%)";
+            e.currentTarget.style.background = "var(--bg-elevated)";
           }}
           title={attachment.fileName}
         >
@@ -100,7 +100,7 @@ export function MessageAttachments({
           <div
             className="shrink-0"
             style={{
-              color: "hsl(220 10% 60%)",
+              color: "var(--text-secondary)",
             }}
           >
             {getFileIcon(attachment.mimeType, attachment.fileName)}
@@ -110,7 +110,7 @@ export function MessageAttachments({
           <span
             className="text-xs max-w-[180px]"
             style={{
-              color: "hsl(220 10% 90%)",
+              color: "var(--text-primary)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -124,7 +124,7 @@ export function MessageAttachments({
           <span
             className="text-[10px]"
             style={{
-              color: "hsl(220 10% 50%)",
+              color: "var(--text-muted)",
             }}
           >
             {formatFileSize(attachment.fileSize)}

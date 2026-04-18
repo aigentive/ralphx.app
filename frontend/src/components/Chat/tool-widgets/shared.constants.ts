@@ -54,25 +54,25 @@ export const GRADIENT_HEIGHT = 36;
 export const TRANSITION_SPEED = "200ms";
 
 export const colors = {
-  bgBase: "hsl(220 10% 8%)",
-  bgSurface: "hsl(220 10% 12%)",
-  bgElevated: "hsl(220 10% 14%)",
-  bgHover: "hsl(220 10% 16%)",
-  bgTerminal: "hsl(220 10% 10%)",
-  textPrimary: "hsl(220 10% 90%)",
-  textSecondary: "hsl(220 10% 60%)",
-  textMuted: "hsl(220 10% 45%)",
-  accent: "hsl(14 100% 60%)",
-  accentDim: "hsla(14 100% 60% / 0.10)",
-  accentBorder: "hsla(14 100% 60% / 0.30)",
+  bgBase: "var(--bg-base)",
+  bgSurface: "var(--bg-surface)",
+  bgElevated: "var(--bg-elevated)",
+  bgHover: "var(--bg-hover)",
+  bgTerminal: "var(--bg-surface)",
+  textPrimary: "var(--text-primary)",
+  textSecondary: "var(--text-secondary)",
+  textMuted: "var(--text-muted)",
+  accent: "var(--accent-primary)",
+  accentDim: "var(--accent-muted)",
+  accentBorder: "var(--accent-border)",
   success: "var(--status-success)",
-  successDim: "hsla(145 60% 45% / 0.10)",
+  successDim: "var(--status-success-muted)",
   error: "var(--status-error)",
-  errorDim: "hsla(0 70% 55% / 0.10)",
-  blue: "hsl(220 60% 50%)",
-  blueDim: "hsla(220 60% 50% / 0.12)",
-  border: "hsl(220 10% 18%)",
-  borderSubtle: "hsl(220 10% 15%)",
+  errorDim: "var(--status-error-muted)",
+  blue: "var(--status-info)",
+  blueDim: "var(--status-info-muted)",
+  border: "var(--bg-hover)",
+  borderSubtle: "var(--border-subtle)",
 } as const;
 
 // ============================================================================
@@ -87,7 +87,7 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
   accent: { bg: colors.accentDim, color: colors.accent },
   error: { bg: colors.errorDim, color: colors.error },
   blue: { bg: colors.blueDim, color: colors.blue },
-  warning: { bg: "hsl(38 90% 50% / 0.15)", color: "hsl(38 90% 60%)" },
+  warning: { bg: "var(--status-warning-muted)", color: "var(--status-warning)" },
 };
 
 // ============================================================================

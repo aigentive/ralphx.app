@@ -10,6 +10,7 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
+import { withAlpha } from "@/lib/theme-colors";
 import type { ToolCall } from "./tool-widgets/shared.constants";
 import {
   extractDelegationMetadata,
@@ -166,8 +167,8 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
       data-testid="task-tool-call-card"
       className={`rounded-lg overflow-hidden ${className}`}
       style={{
-        backgroundColor: hasError ? "hsla(0 70% 55% / 0.15)" : "var(--bg-elevated, hsl(220 10% 14%))",
-        border: `1px solid ${hasError ? "hsla(0 70% 55% / 0.25)" : "var(--border-subtle, hsla(220 10% 100% / 0.06))"}`,
+        backgroundColor: hasError ? "var(--status-error-muted)" : "var(--bg-elevated)",
+        border: `1px solid ${hasError ? "var(--status-error-border)" : "var(--border-subtle)"}`,
       }}
     >
       {/* Header */}
@@ -180,17 +181,17 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         {/* Expand/Collapse chevron (only if has body) */}
         {hasBody ? (
           isExpanded ? (
-            <ChevronDown size={14} className="flex-shrink-0" style={{ color: "var(--text-muted, hsl(220 10% 45%))" }} />
+            <ChevronDown size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           ) : (
-            <ChevronRight size={14} className="flex-shrink-0" style={{ color: "var(--text-muted, hsl(220 10% 45%))" }} />
+            <ChevronRight size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           )
         ) : (
-          <Bot size={14} className="flex-shrink-0" style={{ color: "var(--text-muted, hsl(220 10% 45%))" }} />
+          <Bot size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
         )}
 
         {/* Bot icon (when expandable, show alongside chevron) */}
         {hasBody && (
-          <Bot size={14} className="flex-shrink-0" style={{ color: "var(--text-muted, hsl(220 10% 45%))" }} />
+          <Bot size={14} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
         )}
 
         {/* Agent vs Task label */}
@@ -202,7 +203,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         {/* Title text */}
         <span
           className="text-xs truncate flex-1 min-w-0"
-          style={{ color: hasError ? "hsl(0 70% 75%)" : "var(--text-secondary, hsl(220 10% 75%))" }}
+          style={{ color: hasError ? "var(--status-error)" : "var(--text-secondary)" }}
         >
           {cardTitle}
         </span>
@@ -232,8 +233,8 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           <span
             className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
             style={{
-              backgroundColor: "hsla(200, 70%, 50%, 0.12)",
-              color: "hsl(200, 70%, 65%)",
+              backgroundColor: "var(--status-info-muted)",
+              color: "var(--status-info)",
             }}
           >
             {taskArgs.isolation}
@@ -245,8 +246,8 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           <span
             className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
             style={{
-              backgroundColor: "hsla(280, 50%, 50%, 0.12)",
-              color: "hsl(280, 50%, 70%)",
+              backgroundColor: withAlpha("var(--accent-primary)", 12),
+              color: "var(--accent-primary)",
             }}
           >
             bg
@@ -267,7 +268,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         >
           <span
             className="text-[11px] truncate block"
-            style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {subtitle}
           </span>
@@ -284,7 +285,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         <div
           className="px-3 py-1.5"
           style={{
-            borderTop: `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`,
+            borderTop: `1px solid ${hasError ? "var(--status-error-muted)" : "var(--border-subtle)"}`,
           }}
         >
           <TaskCardSummary
@@ -309,7 +310,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
               taskStats.totalToolUseCount != null ||
               taskStats.estimatedUsd != null
             )
-              ? `1px solid ${hasError ? "hsla(0 70% 55% / 0.15)" : "var(--border-subtle, hsla(220 10% 100% / 0.04))"}`
+              ? `1px solid ${hasError ? "var(--status-error-muted)" : "var(--border-subtle)"}`
               : undefined,
           }}
         >
@@ -318,8 +319,8 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             <pre
               className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-48"
               style={{
-                backgroundColor: "hsla(0 70% 50% / 0.1)",
-                color: "hsl(0 70% 75%)",
+                backgroundColor: "var(--status-error-muted)",
+                color: "var(--status-error)",
                 fontFamily: "var(--font-mono)",
                 wordBreak: "break-word",
                 whiteSpace: "pre-wrap",

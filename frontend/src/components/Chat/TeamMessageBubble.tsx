@@ -12,7 +12,7 @@ import { markdownComponents } from "./MessageItem.markdown";
 
 const COLLAPSED_MAX_HEIGHT = 73;
 const GRADIENT_HEIGHT = 36;
-const BG_COLOR = "hsl(220 10% 11%)";
+const BG_COLOR = "var(--bg-surface)";
 
 interface TeamMessageBubbleProps {
   from: string;
@@ -47,7 +47,7 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
         className="min-w-0 w-full rounded-lg px-3 py-2"
         style={{
           backgroundColor: BG_COLOR,
-          border: "1px solid hsl(220 10% 15%)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header: from → to */}
@@ -58,15 +58,15 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
               style={{ backgroundColor: fromColor }}
             />
           )}
-          <span className="text-[11px] font-medium" style={{ color: "hsl(220 10% 60%)" }}>
+          <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
             {from}
           </span>
-          <span className="text-[11px]" style={{ color: "hsl(220 10% 40%)" }}>→</span>
-          <span className="text-[11px] font-medium" style={{ color: "hsl(220 10% 60%)" }}>
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>→</span>
+          <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
             {to === "*" ? "all" : to}
           </span>
           {timestamp && (
-            <span className="text-[10px] ml-auto" style={{ color: "hsl(220 10% 35%)" }}>
+            <span className="text-[10px] ml-auto" style={{ color: "var(--text-muted)" }}>
               {new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
@@ -83,7 +83,7 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
           <div
             ref={contentRef}
             className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
-            style={{ color: "hsl(220 10% 70%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {content}
@@ -114,10 +114,10 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
               padding: "2px 0 0",
               cursor: "pointer",
               fontSize: 10.5,
-              color: "hsl(220 10% 45%)",
+              color: "var(--text-muted)",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "hsl(220 10% 65%)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "hsl(220 10% 45%)"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {isExpanded ? "Show less" : "Show more"}
           </button>

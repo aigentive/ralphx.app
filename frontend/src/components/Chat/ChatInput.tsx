@@ -9,6 +9,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { withAlpha } from "@/lib/theme-colors";
 import { ChatAttachmentPicker } from "./ChatAttachmentPicker";
 import { ChatAttachmentGallery, type ChatAttachment } from "./ChatAttachmentGallery";
 import type { AgentStatus } from "@/stores/chatStore";
@@ -296,10 +297,10 @@ export function ChatInput({
         <div
           className="flex-1 flex items-end rounded-lg transition-colors"
           style={{
-            background: "hsl(220 10% 12%)",
+            background: "var(--bg-surface)",
             border: isFocused
-              ? "1px solid hsla(14 100% 60% / 0.5)"
-              : "1px solid hsl(220 10% 18%)",
+              ? `1px solid ${withAlpha("var(--accent-primary)", 50)}`
+              : "1px solid var(--bg-hover)",
             minHeight: "38px",
           }}
         >
@@ -329,7 +330,7 @@ export function ChatInput({
             className="flex-1 px-3 py-2 text-[13px] resize-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
             style={{
               background: "transparent",
-              color: "hsl(220 10% 90%)",
+              color: "var(--text-primary)",
               border: "none",
               minHeight: "36px",
               maxHeight: "120px",
@@ -348,12 +349,12 @@ export function ChatInput({
                 onClick={onStop}
                 aria-label="Stop agent"
                 className="p-1.5 rounded transition-colors"
-                style={{ color: "hsl(220 10% 40%)" }}
+                style={{ color: "var(--text-muted)" }}
                 onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
                   e.currentTarget.style.color = "var(--accent-primary)";
                 }}
                 onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.color = "hsl(220 10% 40%)";
+                  e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -376,8 +377,8 @@ export function ChatInput({
             className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
             style={{
               background: canSend
-                ? "hsl(14 100% 60%)"
-                : "hsla(14 100% 60% / 0.3)",
+                ? "var(--accent-primary)"
+                : withAlpha("var(--accent-primary)", 30),
               color: "white",
               boxShadow: "none",
             }}
@@ -402,7 +403,7 @@ export function ChatInput({
       {showHelperText && (
         <p
           className="text-[10px] mt-1.5"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {questionMode
             ? "Enter to send · Type option number or custom text"
