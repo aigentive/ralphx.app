@@ -40,6 +40,7 @@ Primary project docs:
 - Rustfmt edition safety: prefer `rustfmt --edition 2021 <leaf-file.rs>` for surgical work; avoid plain `cargo fmt` unless broad formatting is intended.
 - Cargo during refactors: run one targeted Cargo job at a time.
 - Rust test runner split: use `cargo test` for selective filters/doctests and `cargo nextest run` for broad lib runs. Source: `.claude/rules/rust-test-execution.md`.
+- Worktree-safe Rust helper: use `scripts/test-rust-fast.sh {ipc|lib-1|lib-2|pr|main}` from the current checkout/worktree; `*-parallel` modes isolate `CARGO_TARGET_DIR` per lane and the script refuses cross-checkout drift.
 - Rust toolchain source of truth: `rust-toolchain.toml` is authoritative.
 - Rust std API stability (NON-NEGOTIABLE): do not ship unstable std APIs. Source: `.claude/rules/rust-stable-apis.md`.
 - Worktree safety (NON-NEGOTIABLE): worktree-mode flows must never silently fall back to the main checkout.
