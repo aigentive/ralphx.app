@@ -257,14 +257,14 @@ describe("ExecutionHarnessSection", () => {
     expect(screen.queryByText("Primary Ideation")).not.toBeInTheDocument();
   });
 
-  it("uses taller left-aligned triggers for multiline provider, model, and effort selections", () => {
+  it("uses a consistent single-line h-9 trigger height for provider, model, and effort selections", () => {
     render(<ExecutionHarnessSection />);
 
-    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("items-start");
-    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("min-h-[52px]");
-    expect(screen.getByTestId("model-execution_worker")).toHaveClass("items-start");
-    expect(screen.getByTestId("model-execution_worker")).toHaveClass("min-h-[52px]");
-    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("items-start");
-    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("min-h-[52px]");
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("h-9");
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("items-center");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("h-9");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("items-center");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("h-9");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("items-center");
   });
 });

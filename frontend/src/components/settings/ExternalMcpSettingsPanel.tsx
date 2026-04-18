@@ -22,18 +22,18 @@ import {
 } from "@/api/external-mcp";
 
 // ============================================================================
-// Restart Badge
+// Restart Notice (card-level)
 // ============================================================================
 
-function RestartBadge() {
+function RestartNotice() {
   return (
-    <span
+    <div
       data-testid="restart-required-badge"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[rgba(255,107,53,0.1)] text-[var(--accent-primary)] border border-[rgba(255,107,53,0.2)]"
+      className="mx-5 mb-2 flex items-center gap-2 rounded-md border border-[rgba(255,107,53,0.2)] bg-[rgba(255,107,53,0.08)] px-3 py-2 text-xs text-[var(--accent-primary)]"
     >
-      <RefreshCw className="w-2.5 h-2.5" />
-      Restart required
-    </span>
+      <RefreshCw className="h-3 w-3 shrink-0" />
+      <span>All fields below require an app restart to take effect.</span>
+    </div>
   );
 }
 
@@ -52,15 +52,12 @@ function FieldRow({ id, label, description, children }: FieldRowProps) {
   return (
     <div className="flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors hover:bg-[rgba(45,45,45,0.3)]">
       <div className="flex-1 min-w-0 pr-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Label
-            htmlFor={id}
-            className="text-sm font-medium text-[var(--text-primary)]"
-          >
-            {label}
-          </Label>
-          <RestartBadge />
-        </div>
+        <Label
+          htmlFor={id}
+          className="text-sm font-medium text-[var(--text-primary)]"
+        >
+          {label}
+        </Label>
         <p id={`${id}-desc`} className="text-xs text-[var(--text-muted)] mt-0.5">
           {description}
         </p>
@@ -197,6 +194,7 @@ export function ExternalMcpSettingsPanel() {
         </div>
       </div>
       <Separator className="my-4 bg-[var(--border-subtle)]" />
+      <RestartNotice />
       <div className="px-5 pb-5 space-y-1">
         {/* Enabled toggle */}
         <FieldRow
