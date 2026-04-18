@@ -1,91 +1,6 @@
 # RalphX Release Process
 
-This document covers the complete release workflow for RalphX, including prerequisites, local testing, and automated releases via GitHub Actions.
-
-## Prerequisites
-
-### Required Accounts & Certificates
-
-| Requirement | Purpose | Where to Get |
-|-------------|---------|--------------|
-| Apple Developer Program | Code signing | [developer.apple.com/programs/enroll](https://developer.apple.com/programs/enroll) ($99/year) |
-| Developer ID Application certificate | Gatekeeper-approved distribution | Keychain Access + developer.apple.com |
-| App-specific password | Notarization authentication | [appleid.apple.com](https://appleid.apple.com/account/manage) |
-| Tauri signing keys | Update signature verification | `npx @tauri-apps/cli signer generate` |
-
-### One-Time Setup
-
-#### 1. Create Developer ID Certificate
-
-1. Open **Keychain Access** on your Mac
-2. Go to Keychain Access → Certificate Assistant → **Request Certificate from CA**
-3. Enter your email, select "Saved to disk"
-4. Go to [developer.apple.com/account/resources/certificates](https://developer.apple.com/account/resources/certificates)
-5. Click "+" → Select **Developer ID Application**
-6. Upload the certificate request
-7. Download and double-click to install in Keychain
-
-#### 2. Generate App-Specific Password
-
-1. Go to [appleid.apple.com/account/manage](https://appleid.apple.com/account/manage)
-2. Navigate to Sign In & Security → App-Specific Passwords
-3. Generate a new password
-4. Save it securely (you'll need it for GitHub secrets)
-
-#### 3. Export Certificate for CI
-
-```bash
-# Find your signing identity
-security find-identity -v -p codesigning
-# Note: "Developer ID Application: Your Name (TEAM_ID)"
-
-# Export via Keychain Access:
-# - Right-click the certificate → Export
-# - Save as certificate.p12 with a strong password
-
-# Base64 encode for GitHub secret
-base64 -i certificate.p12 | pbcopy
-# Paste this into APPLE_CERTIFICATE secret
-```
-
-#### 4. Generate Tauri Signing Keys
-
-```bash
-# Generate keys for update signature verification
-npx @tauri-apps/cli signer generate -w ~/.tauri/ralphx.key
-
-# Output:
-# - Private key: ~/.tauri/ralphx.key (add to GitHub secrets)
-# - Public key: (displayed in terminal - update tauri.conf.json)
-```
-
-Update `src-tauri/tauri.conf.json` with the public key:
-```json
-{
-  "plugins": {
-    "updater": {
-      "pubkey": "YOUR_PUBLIC_KEY_HERE"
-    }
-  }
-}
-```
-
-#### 5. Configure GitHub Secrets
-
-Go to Repository → Settings → Secrets and variables → Actions
-
-Add these secrets:
-
-| Secret Name | Value |
-|-------------|-------|
-| `APPLE_CERTIFICATE` | Base64-encoded .p12 file (from step 3) |
-| `APPLE_CERTIFICATE_PASSWORD` | Password for .p12 |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Your Name (TEAM_ID)` |
-| `APPLE_ID` | Your Apple ID email |
-| `APPLE_PASSWORD` | App-specific password (from step 2) |
-| `APPLE_TEAM_ID` | Team ID from developer.apple.com |
-| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.tauri/ralphx.key` |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for signing key |
+This document covers the RalphX release workflow, from local build testing through public GitHub Releases and in-app updater publication.
 
 ---
 
@@ -102,15 +17,25 @@ Output:
 - App: `src-tauri/target/release/bundle/macos/RalphX.app`
 - DMG: `src-tauri/target/release/bundle/dmg/RalphX_*.dmg`
 
-### Build With Signing (Release)
+### Local Release-Like Build
 
-Use the provided script:
+Use the local helper when you want a release-mode build that still syncs local app data for internal testing:
 
 ```bash
-./scripts/build-release.sh
+./scripts/build-local-release.sh
 ```
 
-This builds the frontend and Tauri app in release mode. For signed builds, ensure your environment has:
+This helper may seed the app-data DB from the dev DB and refresh plugin runtime into Application Support.
+
+### Production Release Build
+
+Use the production entrypoint for distributable artifacts and CI/release automation:
+
+```bash
+./scripts/build-prod-release.sh
+```
+
+This path does not mutate local Application Support state. For signed builds, ensure your environment has:
 
 ```bash
 export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
@@ -143,71 +68,101 @@ This updates version in:
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 
-### Step 2: Commit and Tag
+### Step 2: Commit Release Prep
 
 ```bash
 git add -A
 git commit -m "chore: bump version to 0.2.0"
+```
+
+### Step 3: Draft And Review Release Notes
+
+Run this after the release code is finalized and local regression is green, but before you push the release tag if you want the reviewed notes committed into `release-notes/vX.Y.Z.md` and picked up automatically by the release workflow.
+
+```bash
+./scripts/generate-release-notes.sh 0.2.0
+```
+
+Then:
+
+1. Review and edit the draft from:
+   - `release-notes/v0.2.0.md`
+2. If draft generation fails or you want to inspect the Codex run, check the logs in:
+   - `.artifacts/release-notes/logs/`
+3. Commit that curated notes file before tagging if you want the workflow-created draft GitHub release to use it automatically:
+   - `git add release-notes/v0.2.0.md`
+   - `git commit -m "docs: add release notes for v0.2.0"`
+4. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
+   - `rm -f release-notes/v0.2.0.md`
+
+### Step 4: Create And Push The Release Tag
+
+```bash
 git tag v0.2.0
 git push origin main --tags
 ```
 
-### Step 3: GitHub Actions
+### Step 5: GitHub Actions
 
 Pushing the tag triggers the release workflow automatically:
 
 1. **Build**: Compiles frontend and Tauri app
 2. **Sign**: Applies Developer ID certificate
 3. **Notarize**: Submits to Apple for notarization
-4. **Package**: Creates DMG with update manifest
-5. **Release**: Creates draft GitHub release with artifacts
+4. **Package**: Creates per-architecture DMGs, signed updater bundles, `latest.json`, and checksums
+5. **Release**: Publishes the assets to the public binaries repo `aigentive/ralphx-releases`
+6. **Tap update**: For non-draft, non-prerelease releases, updates `aigentive/homebrew-ralphx/Casks/ralphx.rb`
 
-### Step 4: Publish Release
+### Step 6: Publish Release
 
-1. Go to GitHub → Releases
-2. Find the draft release created by the workflow
+1. Go to `aigentive/ralphx-releases` → Releases
+2. Find the release created by the workflow
 3. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
-   - `RalphX_x.x.x_x64.dmg` - Intel (if configured)
-   - `latest.json` - Update manifest
+   - `RalphX_x.x.x_x86_64.dmg` - Intel
+   - `RalphX_x.x.x_aarch64.app.tar.gz` - Apple Silicon updater bundle
+   - `RalphX_x.x.x_aarch64.app.tar.gz.sig` - Apple Silicon updater signature
+   - `RalphX_x.x.x_x86_64.app.tar.gz` - Intel updater bundle
+   - `RalphX_x.x.x_x86_64.app.tar.gz.sig` - Intel updater signature
+   - `latest.json`
+   - `checksums.txt`
 4. Edit release notes as needed
-5. Click **Publish release**
-
----
+5. If you dispatched the workflow with `draft=true`, click **Publish release**
 
 ## Manual Workflow Dispatch
 
 For releases without a version tag:
 
-1. Go to GitHub → Actions → Release workflow
+1. Go to `aigentive/ralphx` → Actions → Release workflow
 2. Click **Run workflow**
 3. Enter the version number (e.g., `0.2.0`)
-4. Click **Run workflow**
+4. Choose whether the public release should stay a draft
+5. Click **Run workflow**
 
 ---
 
-## Auto-Update Flow
+## In-App Updates
 
-Once published:
+The release workflow now publishes Tauri updater artifacts to the public binaries repo.
 
-1. Existing RalphX installations check `latest.json` on startup
-2. If a newer version exists, a toast notification appears
-3. User clicks "Update Now" to download
-4. Progress is displayed during download
-5. App relaunches with the new version
+Current release contract:
+- updater endpoint: `https://github.com/aigentive/ralphx-releases/releases/latest/download/latest.json`
+- published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
+- `latest.json` points the app at those public updater bundles
+- the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
+- the Homebrew cask declares `auto_updates true`, so RalphX can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
 
-The update endpoint is configured in `src-tauri/tauri.conf.json`:
-```json
-{
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/lazabogdan/ralphx/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
-```
+---
+
+## Homebrew Tap Publishing
+
+The release workflow also maintains the public tap repo `aigentive/homebrew-ralphx`.
+
+Current tap contract:
+- release artifacts stay in `aigentive/ralphx-releases`
+- `Casks/ralphx.rb` is rendered from the release workflow using the per-arch DMG sha256 values
+- only non-draft, non-prerelease releases update the tap automatically
+- testers install with `brew tap aigentive/ralphx` and `brew install --cask ralphx`
 
 ---
 
@@ -225,8 +180,8 @@ security find-identity -v -p codesigning
 ```
 
 **"Unable to notarize"**
-- Verify `APPLE_ID` and `APPLE_PASSWORD` (app-specific password) are correct
-- Ensure `APPLE_TEAM_ID` matches your developer account
+- Verify `APPLE_API_ISSUER`, `APPLE_API_KEY`, and `APPLE_API_KEY_P8`
+- Ensure `APPLE_TEAM_ID` matches the signing team
 - Check Apple's notarization service status at [developer.apple.com/system-status](https://developer.apple.com/system-status/)
 
 **Cargo build errors**
@@ -242,6 +197,8 @@ cargo tauri build
 **"Secret not found"**
 - Verify all secrets are configured in repository settings
 - Secret names are case-sensitive
+- The public release job also requires `RELEASES_REPO_TOKEN`
+- Homebrew tap publishing also requires `HOMEBREW_TAP_TOKEN`
 
 **"Certificate import failed"**
 - Re-export the certificate and base64 encode it
@@ -251,17 +208,17 @@ cargo tauri build
 - Ensure tag follows pattern `v*` (e.g., `v0.2.0`)
 - Check Actions tab for workflow run status
 
-### Update Issues
+**Public release upload failed**
+- Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
+- Confirm the target repo exists and the token owner has write access to it
 
-**"Update check failed"**
-- Verify `latest.json` is accessible at the endpoint URL
-- Check network connectivity
-- Ensure the pubkey in `tauri.conf.json` matches the private key used to sign
+**Homebrew tap update failed**
+- Verify `HOMEBREW_TAP_TOKEN` has `Contents: Read and write` on `aigentive/homebrew-ralphx`
+- Confirm the tap repo exists, is public, and contains a top-level `Casks/` directory
 
-**"Signature verification failed"**
-- Regenerate signing keys and update both:
-  - `TAURI_SIGNING_PRIVATE_KEY` secret
-  - `pubkey` in `tauri.conf.json`
+**Updater assets missing**
+- Confirm `src-tauri/tauri.conf.json` still has `"bundle.createUpdaterArtifacts": true`
+- Confirm the build produced `.app.tar.gz` and `.app.tar.gz.sig` files under `src-tauri/target/release/bundle/macos/`
 
 ### Gatekeeper Issues
 
@@ -281,9 +238,12 @@ cargo tauri build
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI/CD workflow for automated releases |
-| `scripts/build-release.sh` | Local release build script |
+| `.github/workflows/release.yml` | CI/CD workflow that publishes public release assets and updater metadata |
+| `scripts/build-local-release.sh` | Local internal release-like build script |
+| `scripts/build-prod-release.sh` | Production release artifact entrypoint |
 | `scripts/bump-version.sh` | Version management script |
+| `scripts/generate-release-notes.sh` | Codex-assisted release notes draft generator |
+| `release-notes/` | Curated release notes consumed automatically by the release workflow when present |
 | `src-tauri/tauri.conf.json` | Bundle config, updater config |
 | `src-tauri/Cargo.toml` | Release profile, updater dependency |
 | `src-tauri/entitlements.plist` | Hardened runtime entitlements |

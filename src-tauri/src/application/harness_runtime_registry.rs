@@ -688,6 +688,71 @@ pub(crate) async fn run_startup_harness_integration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+    use tempfile::TempDir;
+
+    const PLUGIN_DIR_ENV_NAME: &str = "RALPHX_PLUGIN_DIR";
+    const GENERATED_PLUGIN_DIR_ENV_NAME: &str = "RALPHX_GENERATED_PLUGIN_DIR";
+
+    fn plugin_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.original.as_ref() {
+                std::env::set_var(self.key, value);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn make_runtime_plugin_layout() -> (TempDir, PathBuf, PathBuf) {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().to_path_buf();
+        let plugin_dir = root.join("plugins/app");
+        let generated_dir = root.join("generated/claude-plugin");
+
+        std::fs::create_dir_all(plugin_dir.join("agents")).expect("create agents dir");
+        std::fs::write(
+            plugin_dir.join("agents/session-namer.md"),
+            "# Session Namer\n",
+        )
+        .expect("write session namer prompt");
+        std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build"))
+            .expect("create mcp build dir");
+        std::fs::create_dir_all(
+            plugin_dir.join("ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk"),
+        )
+        .expect("create mcp sdk marker dir");
+        std::fs::write(
+            plugin_dir.join("ralphx-mcp-server/build/index.js"),
+            "// fake mcp runtime\n",
+        )
+        .expect("write mcp runtime entry");
+        std::fs::write(
+            plugin_dir.join("ralphx-mcp-server/node_modules/@modelcontextprotocol/sdk/package.json"),
+            "{}\n",
+        )
+        .expect("write mcp runtime marker");
+
+        (temp, plugin_dir, generated_dir)
+    }
 
     #[test]
     fn resolve_startup_harness_integration_returns_none_for_codex() {
@@ -755,6 +820,10 @@ mod tests {
 
     #[test]
     fn resolve_default_harness_agent_bootstrap_sets_expected_defaults() {
+        let _lock = plugin_env_lock().lock().expect("lock plugin env");
+        let (_temp, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+        let _plugin_guard = EnvVarGuard::set(PLUGIN_DIR_ENV_NAME, &plugin_dir);
+        let _generated_guard = EnvVarGuard::set(GENERATED_PLUGIN_DIR_ENV_NAME, &generated_dir);
         let working_directory = PathBuf::from("/tmp/example");
         let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER;
         let bootstrap = resolve_harness_agent_bootstrap(
@@ -778,6 +847,10 @@ mod tests {
 
     #[test]
     fn resolve_harness_agent_bootstrap_uses_harness_plugin_dir_resolution() {
+        let _lock = plugin_env_lock().lock().expect("lock plugin env");
+        let (_temp, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+        let _plugin_guard = EnvVarGuard::set(PLUGIN_DIR_ENV_NAME, &plugin_dir);
+        let _generated_guard = EnvVarGuard::set(GENERATED_PLUGIN_DIR_ENV_NAME, &generated_dir);
         let working_directory = PathBuf::from("/tmp/example");
         let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER;
         let bootstrap = resolve_harness_agent_bootstrap(
@@ -797,11 +870,19 @@ mod tests {
 
     #[test]
     fn resolve_harness_plugin_dir_uses_generated_plugin_dir_for_codex() {
+        let _lock = plugin_env_lock().lock().expect("lock plugin env");
+        let (_temp, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+        let _plugin_guard = EnvVarGuard::set(PLUGIN_DIR_ENV_NAME, &plugin_dir);
+        let _generated_guard = EnvVarGuard::set(GENERATED_PLUGIN_DIR_ENV_NAME, &generated_dir);
         let working_directory = PathBuf::from("/tmp/example");
 
         assert_eq!(
             resolve_harness_plugin_dir(AgentHarnessKind::Codex, &working_directory),
-            resolve_default_harness_plugin_dir(&working_directory)
+            generated_dir
+        );
+        assert_eq!(
+            resolve_default_harness_plugin_dir(&working_directory),
+            generated_dir
         );
     }
 }

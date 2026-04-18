@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust-tests:
     name: Rust Tests
@@ -35,7 +39,7 @@ jobs:
 
       - name: Run IPC contract tests
         run: |
-          timeout 600 cargo test --lib --manifest-path src-tauri/Cargo.toml ipc_contract 2>&1
+          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--test", "task_commands", "--test", "api_key_commands", "--test", "project_commands", "--test", "unified_chat_commands", "--test", "task_step_commands", "ipc_contract"], check=True, timeout=900)'
 
       - name: Run all Rust lib tests
         run: |
@@ -43,11 +47,11 @@ jobs:
 
       - name: Run Rust doctests
         run: |
-          timeout 600 cargo test --manifest-path src-tauri/Cargo.toml --doc
+          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--doc"], check=True, timeout=600)'
 
   frontend-tests:
     name: Frontend Tests
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -62,14 +66,14 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Run frontend tests
-        run: npm run test:run
-        working-directory: frontend
-
       - name: TypeScript check
         run: npm run typecheck
         working-directory: frontend
 
       - name: Lint
         run: npm run lint
+        working-directory: frontend
+
+      - name: Run frontend tests
+        run: npm run test:run
         working-directory: frontend

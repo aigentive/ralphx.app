@@ -9,6 +9,8 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
+- `.claude/rules/openai-gpt-5.4-prompting.md` for GPT-5.4/Codex prompt-authoring and instruction-layering rules
+- `docs/ai-docs/openai/gpt-5.4-prompting.md` for the GPT-5.4-specific prompt guide and official-source links
 - `.claude/rules/ideation-verification-architecture.md` for the ideation verification feature map: parent-vs-child ownership, runtime flow, UI surfaces, debugging, and tests
 - `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
@@ -18,6 +20,7 @@ Primary project docs:
 ## Codex Rules
 
 - Read project instructions first: check `CLAUDE.md`, subtree docs, and relevant `.claude/rules/*` before substantial work.
+- For GPT-5.4/Codex prompt work, check `.claude/rules/openai-gpt-5.4-prompting.md` and `docs/ai-docs/openai/gpt-5.4-prompting.md` before substantial prompt edits.
 - When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.

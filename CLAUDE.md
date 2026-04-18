@@ -182,3 +182,4 @@ style={{ boxShadow: "none", outline: "none" }}
 - Debug logs: `scripts/find-debug-logs.sh -a "<agent-name>" -d "YYYY-MM-DD" -v` — find Claude debug logs by agent name/date/keywords
 - Slash commands: `/activate-prd <path>` — switch PRD | `/create-prd` — PRD wizard
 - Claude integration docs: `docs/ai-docs/claude-code/README.md` — lightweight local index plus official-doc stubs; fetch official Claude Code docs when current vendor behavior matters
+- OpenAI / GPT-5.4 prompting notes: `docs/ai-docs/openai/README.md` — local reference for GPT-5.4 prompt best practices, instruction layering, and official-source links
