@@ -6,22 +6,25 @@ use crate::AppState;
 use crate::infrastructure::ExternalMcpHandle;
 
 pub fn create_main_window<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> tauri::Result<()> {
-    use tauri::{
-        LogicalPosition, Position, TitleBarStyle, WebviewUrl, WebviewWindowBuilder,
-    };
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
 
-    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
         .title("")
         .inner_size(1200.0, 800.0)
         .decorations(true)
-        .hidden_title(true)
         .visible(false);
 
     #[cfg(target_os = "macos")]
     {
-        builder = builder.title_bar_style(TitleBarStyle::Overlay).traffic_light_position(
-            Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }),
-        );
+        use tauri::{LogicalPosition, Position, TitleBarStyle};
+
+        let builder = builder
+            .hidden_title(true)
+            .title_bar_style(TitleBarStyle::Overlay)
+            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
+        let webview_window = builder.build()?;
+        let _ = webview_window.show();
+        return Ok(());
     }
 
     let webview_window = builder.build()?;
