@@ -220,7 +220,7 @@ function TimelineItem({
               className="w-3.5 h-3.5"
               style={{ color: isHuman ? "var(--status-success)" : isSystem ? "var(--status-warning)" : "var(--status-info)" }}
             />
-            <span className="text-[12px] font-semibold text-white/75">
+            <span className="text-[12px] font-semibold text-text-primary/75">
               {getLabel()}
             </span>
             {isStale && (
@@ -228,13 +228,13 @@ function TimelineItem({
                 className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
                   backgroundColor: statusTint("success", 12),
-                  color: "hsl(145 60% 45%)",
+                  color: "var(--status-success)",
                 }}
               >
                 Superseded
               </span>
             )}
-            <span className="text-[11px] text-white/40 ml-auto">
+            <span className="text-[11px] text-text-primary/40 ml-auto">
               {formatRelativeTime(entry.created_at)}
             </span>
           </div>
@@ -245,7 +245,7 @@ function TimelineItem({
                 onClick={handleContentClick}
                 className={isExpandable && !isExpanded ? "cursor-pointer" : ""}
               >
-                <div className="text-[12px] text-white/50 leading-relaxed">
+                <div className="text-[12px] text-text-primary/50 leading-relaxed">
                   {hasSummary ? (
                     <div className="prose prose-sm prose-invert max-w-none">
                       <ReactMarkdown
@@ -272,7 +272,7 @@ function TimelineItem({
                 {isExpandable && !isExpanded && (
                   <div
                     className="mt-1 text-[11px] font-medium"
-                    style={{ color: "hsl(217 90% 60%)" }}
+                    style={{ color: "var(--status-info)" }}
                   >
                     Show details
                   </div>
@@ -282,7 +282,7 @@ function TimelineItem({
               {/* Expanded notes */}
               {isExpandable && isExpanded && (
                 <div className="mt-3">
-                  <div className="text-[12px] text-white/50 leading-relaxed prose prose-sm prose-invert max-w-none">
+                  <div className="text-[12px] text-text-primary/50 leading-relaxed prose prose-sm prose-invert max-w-none">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={markdownComponents}
@@ -293,7 +293,7 @@ function TimelineItem({
                   <button
                     onClick={() => setIsExpanded(false)}
                     className="mt-2 text-[11px] font-medium transition-colors hover:opacity-80"
-                    style={{ color: "hsl(217 90% 60%)" }}
+                    style={{ color: "var(--status-info)" }}
                   >
                     Show less
                   </button>
@@ -308,10 +308,10 @@ function TimelineItem({
                   }}
                 >
                   <div className="min-w-0">
-                    <div className="text-[11px] font-medium text-white/65">
+                    <div className="text-[11px] font-medium text-text-primary/65">
                       Follow-up ideation session
                     </div>
-                    <div className="mt-0.5 text-[11px] text-white/45 break-all">
+                    <div className="mt-0.5 text-[11px] text-text-primary/45 break-all">
                       {entry.followup_session_id}
                     </div>
                   </div>
@@ -338,16 +338,16 @@ function TimelineItem({
           <div className="pl-5 mt-1.5 flex items-center gap-1 flex-wrap">
             {resolutionTrail.map((item, i) => (
               <Fragment key={`${item.label}-${i}`}>
-                <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                   {item.label}{" "}
-                  <span style={{ color: "hsl(220 10% 35%)" }}>
+                  <span style={{ color: "var(--text-muted)" }}>
                     ({formatRelativeTime(item.timestamp)})
                   </span>
                 </span>
                 {i < resolutionTrail.length - 1 && (
                   <span
                     className="text-[11px]"
-                    style={{ color: "hsl(220 10% 30%)" }}
+                    style={{ color: "var(--text-muted)" }}
                   >
                     →
                   </span>
@@ -385,7 +385,7 @@ export function ReviewTimeline({
 
   if (displayedHistory.length === 0) {
     return (
-      <p className="text-[12px] text-white/35 italic py-2">
+      <p className="text-[12px] text-text-primary/35 italic py-2">
         {emptyMessage}
       </p>
     );

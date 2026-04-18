@@ -45,17 +45,17 @@ function StatusIcon({ status, className, style }: { status: TaskStepStatus; clas
 function getStatusColor(status: TaskStepStatus): string {
   switch (status) {
     case 'pending':
-      return 'hsl(220 10% 40%)';
+      return 'var(--text-muted)';
     case 'in_progress':
-      return 'hsl(14 100% 60%)'; // accent orange
+      return 'var(--accent-primary)'; // accent orange
     case 'completed':
-      return 'hsl(142 70% 45%)'; // green
+      return 'var(--status-success)'; // green
     case 'skipped':
-      return 'hsl(220 10% 40%)';
+      return 'var(--text-muted)';
     case 'failed':
-      return 'hsl(0 70% 55%)'; // red
+      return 'var(--status-error)'; // red
     case 'cancelled':
-      return 'hsl(220 10% 40%)';
+      return 'var(--text-muted)';
   }
 }
 
@@ -76,7 +76,7 @@ function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
     case 'in_progress':
       return {
         ...base,
-        backgroundColor: 'hsla(14 100% 60% / 0.06)',
+        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 6%, transparent)',
       };
     case 'completed':
       return {
@@ -92,7 +92,7 @@ function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
     case 'failed':
       return {
         ...base,
-        backgroundColor: 'hsla(0 70% 55% / 0.06)',
+        backgroundColor: 'color-mix(in srgb, var(--status-error) 6%, transparent)',
       };
     default:
       return {
@@ -141,7 +141,7 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
             style={{
               fontSize: '13px',
               fontWeight: 400,
-              color: 'hsl(220 10% 45%)',
+              color: 'var(--text-muted)',
             }}
           >
             Step {index + 1}:
@@ -150,7 +150,7 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
             style={{
               fontSize: '13px',
               fontWeight: 400,
-              color: 'hsl(220 10% 80%)',
+              color: 'var(--text-secondary)',
               marginLeft: '4px',
             }}
           >
@@ -164,7 +164,7 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
             style={{
               marginTop: '2px',
               fontSize: '12px',
-              color: 'hsl(220 10% 50%)',
+              color: 'var(--text-muted)',
               lineHeight: 1.5,
               textDecoration: isSkipped ? 'line-through' : 'none',
             }}
@@ -179,7 +179,7 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
             style={{
               marginTop: '4px',
               fontSize: '11px',
-              color: 'hsl(220 10% 45%)',
+              color: 'var(--text-muted)',
               fontStyle: 'italic',
               lineHeight: 1.5,
             }}
@@ -198,7 +198,7 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
           className="flex-shrink-0 h-7 w-7 p-0"
           aria-label="Skip step"
         >
-          <SkipForward className="h-3.5 w-3.5" style={{ color: 'hsl(220 10% 50%)' }} />
+          <SkipForward className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
         </Button>
       )}
     </div>

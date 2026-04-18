@@ -61,7 +61,7 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
         data-testid="task-creation-overlay-backdrop"
         className="absolute inset-0 z-40 flex"
         style={{
-          backgroundColor: "hsl(220 10% 8%)", /* Same as Kanban background */
+          backgroundColor: "var(--bg-base)", /* Same as Kanban background */
         }}
         onClick={handleBackdropClick}
       >
@@ -75,7 +75,7 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
           <div
             className="px-6 h-14 shrink-0 flex items-center justify-between"
             style={{
-              borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+              borderBottom: "1px solid var(--overlay-weak)",
             }}
           >
             <h2
@@ -83,7 +83,7 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
               style={{
                 fontSize: "15px",
                 fontWeight: 600,
-                color: "hsl(220 10% 90%)",
+                color: "var(--text-primary)",
                 letterSpacing: "-0.02em",
               }}
             >
@@ -97,7 +97,7 @@ export function TaskCreationOverlay({ projectId }: TaskCreationOverlayProps) {
               onClick={closeTaskCreation}
               data-testid="task-creation-overlay-close"
               aria-label="Close"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
               className="hover:bg-[hsla(220_10%_100%/0.05)]"
             >
               <X className="w-4 h-4" />

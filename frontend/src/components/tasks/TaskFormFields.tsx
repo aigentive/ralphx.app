@@ -135,12 +135,12 @@ export function TaskFormFields({
         <div
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-lg text-[13px]"
           style={{
-            backgroundColor: "hsla(0 70% 55% / 0.12)",
-            border: "1px solid hsla(0 70% 55% / 0.2)",
+            backgroundColor: "var(--status-error-muted)",
+            border: "1px solid var(--status-error-border)",
           }}
         >
-          <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "hsl(0 70% 60%)" }} />
-          <span style={{ color: "hsl(0 70% 70%)" }}>{validationError}</span>
+          <AlertCircle className="w-4 h-4 shrink-0" style={{ color: "var(--status-error)" }} />
+          <span style={{ color: "var(--status-error)" }}>{validationError}</span>
         </div>
       )}
     </div>
@@ -173,7 +173,7 @@ export function TaskFormActions({
   return (
     <div
       className="flex justify-end gap-3 pt-4 mt-auto border-t"
-      style={{ borderColor: "hsla(220 10% 100% / 0.06)" }}
+      style={{ borderColor: "var(--overlay-weak)" }}
     >
       <button
         type="button"

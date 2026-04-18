@@ -46,13 +46,13 @@ import { AuditTrailDialog } from "@/components/tasks/AuditTrailDialog";
 // ============================================================================
 
 const PRIORITY_COLORS: Record<number, { bg: string; text: string }> = {
-  1: { bg: "hsl(0 70% 55%)", text: "white" },
-  2: { bg: "hsl(14 100% 60%)", text: "white" },
-  3: { bg: "hsl(45 90% 55%)", text: "hsl(220 10% 10%)" },
-  4: { bg: "hsl(220 10% 20%)", text: "hsl(220 10% 65%)" },
+  1: { bg: "var(--status-error)", text: "white" },
+  2: { bg: "var(--accent-primary)", text: "white" },
+  3: { bg: "var(--status-warning)", text: "var(--bg-surface)" },
+  4: { bg: "var(--bg-hover)", text: "var(--text-secondary)" },
 };
 
-const DEFAULT_PRIORITY_COLOR = { bg: "hsl(220 10% 20%)", text: "hsl(220 10% 65%)" };
+const DEFAULT_PRIORITY_COLOR = { bg: "var(--bg-hover)", text: "var(--text-secondary)" };
 
 // ============================================================================
 // Status Badge Configuration (Tahoe HSL palette)
@@ -64,123 +64,123 @@ const STATUS_CONFIG: Record<
 > = {
   backlog: {
     label: "Backlog",
-    bg: "hsl(220 10% 20%)",
-    text: "hsl(220 10% 50%)",
+    bg: "var(--bg-hover)",
+    text: "var(--text-muted)",
   },
   ready: {
     label: "Ready",
-    bg: "hsla(220 80% 60% / 0.15)",
-    text: "hsl(220 80% 65%)",
+    bg: "var(--status-info-muted)",
+    text: "var(--status-info)",
   },
   blocked: {
     label: "Blocked",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   executing: {
     label: "Executing",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   qa_refining: {
     label: "QA Refining",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   qa_testing: {
     label: "QA Testing",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   qa_passed: {
     label: "QA Passed",
-    bg: "hsla(145 60% 45% / 0.15)",
-    text: "hsl(145 60% 50%)",
+    bg: "var(--status-success-muted)",
+    text: "var(--status-success)",
   },
   qa_failed: {
     label: "QA Failed",
-    bg: "hsla(0 70% 55% / 0.15)",
-    text: "hsl(0 70% 60%)",
+    bg: "var(--status-error-muted)",
+    text: "var(--status-error)",
   },
   pending_review: {
     label: "Pending Review",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   revision_needed: {
     label: "Revision Needed",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   approved: {
     label: "Approved",
-    bg: "hsla(145 60% 45% / 0.15)",
-    text: "hsl(145 60% 50%)",
+    bg: "var(--status-success-muted)",
+    text: "var(--status-success)",
   },
   failed: {
     label: "Failed",
-    bg: "hsla(0 70% 55% / 0.15)",
-    text: "hsl(0 70% 60%)",
+    bg: "var(--status-error-muted)",
+    text: "var(--status-error)",
   },
   cancelled: {
     label: "Cancelled",
-    bg: "hsl(220 10% 20%)",
-    text: "hsl(220 10% 50%)",
+    bg: "var(--bg-hover)",
+    text: "var(--text-muted)",
   },
   reviewing: {
     label: "AI Review in Progress",
-    bg: "hsla(220 80% 60% / 0.15)",
-    text: "hsl(220 80% 65%)",
+    bg: "var(--status-info-muted)",
+    text: "var(--status-info)",
   },
   review_passed: {
     label: "AI Review Passed",
-    bg: "hsla(145 60% 45% / 0.15)",
-    text: "hsl(145 60% 50%)",
+    bg: "var(--status-success-muted)",
+    text: "var(--status-success)",
   },
   escalated: {
     label: "Escalated",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   re_executing: {
     label: "Re-executing",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   pending_merge: {
     label: "Pending Merge",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   merging: {
     label: "Merging",
-    bg: "hsla(14 100% 60% / 0.15)",
-    text: "hsl(14 100% 60%)",
+    bg: "var(--accent-muted)",
+    text: "var(--accent-primary)",
   },
   merge_incomplete: {
     label: "Merge Incomplete",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   merge_conflict: {
     label: "Merge Conflict",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   merged: {
     label: "Merged",
-    bg: "hsla(145 60% 45% / 0.15)",
-    text: "hsl(145 60% 50%)",
+    bg: "var(--status-success-muted)",
+    text: "var(--status-success)",
   },
   paused: {
     label: "Paused",
-    bg: "hsla(45 90% 55% / 0.15)",
-    text: "hsl(45 90% 55%)",
+    bg: "var(--status-warning-muted)",
+    text: "var(--status-warning)",
   },
   stopped: {
     label: "Stopped",
-    bg: "hsla(0 70% 55% / 0.15)",
-    text: "hsl(0 70% 60%)",
+    bg: "var(--status-error-muted)",
+    text: "var(--status-error)",
   },
 };
 
@@ -431,7 +431,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
         data-testid="task-overlay-backdrop"
         className="absolute inset-0 z-40 flex"
         style={{
-          backgroundColor: "hsl(220 10% 8%)",
+          backgroundColor: "var(--bg-base)",
         }}
         onClick={handleBackdropClick}
       >
@@ -446,7 +446,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
           <div
             className="px-6 pt-5 pb-4 shrink-0"
             style={{
-              borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+              borderBottom: "1px solid var(--overlay-weak)",
             }}
           >
             {/* Archived Badge */}
@@ -455,12 +455,12 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 data-testid="archived-badge"
                 className="mb-3 px-2.5 py-1.5 rounded-lg flex items-center gap-2 w-fit"
                 style={{
-                  backgroundColor: "hsla(14 100% 60% / 0.1)",
-                  border: "1px solid hsla(14 100% 60% / 0.2)",
+                  backgroundColor: "var(--accent-muted)",
+                  border: "1px solid var(--accent-border)",
                 }}
               >
-                <Archive className="w-3.5 h-3.5" style={{ color: "hsl(14 100% 60%)" }} />
-                <span className="text-[12px] font-medium" style={{ color: "hsl(14 100% 60%)" }}>Archived</span>
+                <Archive className="w-3.5 h-3.5" style={{ color: "var(--accent-primary)" }} />
+                <span className="text-[12px] font-medium" style={{ color: "var(--accent-primary)" }}>Archived</span>
               </div>
             )}
             <div className="flex items-start gap-2.5 pr-28">
@@ -470,7 +470,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   data-testid="task-overlay-title"
                   className="text-base font-semibold truncate"
                   style={{
-                    color: "hsl(220 10% 90%)",
+                    color: "var(--text-primary)",
                     letterSpacing: "-0.02em",
                     lineHeight: "1.3",
                   }}
@@ -482,9 +482,9 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                     data-testid="task-overlay-category"
                     className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                     style={{
-                      backgroundColor: "hsla(220 10% 100% / 0.05)",
-                      border: "1px solid hsla(220 10% 100% / 0.08)",
-                      color: "hsl(220 10% 60%)",
+                      backgroundColor: "var(--overlay-weak)",
+                      border: "1px solid var(--overlay-moderate)",
+                      color: "var(--text-secondary)",
                     }}
                   >
                     {task.category}
@@ -514,7 +514,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={createSession.isPending}
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {createSession.isPending ? (
@@ -532,7 +532,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   onClick={() => setIsEditing(!isEditing)}
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   <Pencil className="w-4 h-4" />
@@ -547,7 +547,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isArchiving}
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {isArchiving ? (
@@ -566,7 +566,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isRestoring}
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   className="hover:bg-[hsla(220_10%_100%/0.05)]"
                 >
                   {isRestoring ? (
@@ -584,7 +584,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 data-testid="task-overlay-audit-trail-button"
                 aria-label="Audit Trail"
                 title="Audit Trail"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
                 className="hover:bg-[hsla(220_10%_100%/0.05)]"
               >
                 <ScrollText className="w-4 h-4" />
@@ -596,7 +596,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 onClick={handleClose}
                 data-testid="task-overlay-close"
                 aria-label="Close"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
                 className="hover:bg-[hsla(220_10%_100%/0.05)]"
               >
                 <X className="w-4 h-4" />
@@ -620,11 +620,11 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
               data-testid="history-mode-banner"
               className="px-4 py-1.5 flex items-center gap-2 shrink-0"
             >
-              <History className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
+              <History className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
+              <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                 Viewing: {STATUS_CONFIG[historyState.status]?.label ?? historyState.status}
               </span>
-              <span className="text-[10px]" style={{ color: "hsl(220 10% 35%)" }}>
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
                 {new Date(historyState.timestamp).toLocaleString()}
               </span>
             </div>

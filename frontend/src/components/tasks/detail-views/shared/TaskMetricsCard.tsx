@@ -71,10 +71,10 @@ function StatRow({
         <Icon className="w-3.5 h-3.5 text-text-primary/40" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+        <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
           {label}
         </span>
-        <span className="text-[13px] text-white/70 font-medium">{value}</span>
+        <span className="text-[13px] text-text-primary/70 font-medium">{value}</span>
       </div>
     </div>
   );
@@ -134,7 +134,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
       <div className="space-y-3">
         {/* Header: complexity tier */}
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider text-white/40">
+          <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
             Complexity
           </span>
           <ComplexityBadge tier={tier} />

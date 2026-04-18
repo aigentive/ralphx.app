@@ -118,15 +118,15 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
           <div className="flex items-center gap-2">
             <span
               className="text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               Stopped from
             </span>
             <span
               className="text-[13px] font-medium px-2 py-0.5 rounded"
               style={{
-                backgroundColor: "hsl(38 92% 50% / 0.15)",
-                color: "hsl(38 92% 65%)",
+                backgroundColor: "var(--status-warning-muted)",
+                color: "var(--status-warning)",
               }}
             >
               {fromStatusLabel}
@@ -138,11 +138,11 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
             <div className="mt-2">
               <span
                 className="text-[11px] font-medium uppercase tracking-wider block mb-1"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 Reason
               </span>
-              <p className="text-[13px]" style={{ color: "hsl(220 10% 80%)" }}>
+              <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
                 {stopMetadata.stopReason}
               </p>
             </div>
@@ -150,8 +150,8 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
 
           {/* Time Ago */}
           <div className="flex items-center gap-2 mt-2">
-            <Clock className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
-            <span className="text-[12px]" style={{ color: "hsl(220 10% 60%)" }}>
+            <Clock className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+            <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
               {timeAgo}
             </span>
           </div>
@@ -181,11 +181,11 @@ function AutoRetryingSection({ task, attemptCount }: { task: Task; attemptCount:
       <DetailCard>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+            <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--accent-primary)" }} />
             <span
               data-testid="auto-retry-badge"
               className="text-[13px] font-medium"
-              style={{ color: "hsl(14 100% 70%)" }}
+              style={{ color: "var(--accent-primary)" }}
             >
               Auto-retrying{attemptCount > 0 ? ` (attempt ${attemptCount})` : ""}
             </span>
@@ -196,8 +196,8 @@ function AutoRetryingSection({ task, attemptCount }: { task: Task; attemptCount:
             disabled={stopRetryMutation.isPending}
             className="h-8 px-3 gap-1.5 rounded-lg font-medium text-[12px] transition-colors"
             style={{
-              backgroundColor: "hsla(0 70% 55% / 0.15)",
-              color: "hsl(0 70% 70%)",
+              backgroundColor: "var(--status-error-muted)",
+              color: "var(--status-error)",
             }}
           >
             {stopRetryMutation.isPending ? (
@@ -234,7 +234,7 @@ function ExecutionModeSelector({
     <div className="flex items-center gap-1" data-testid="execution-mode-selector">
       <span
         className="text-[11px] font-medium mr-1.5"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Mode
       </span>
@@ -252,15 +252,15 @@ function ExecutionModeSelector({
             style={{
               backgroundColor: isSelected
                 ? m === "team"
-                  ? "hsla(14 100% 60% / 0.15)"
-                  : "hsla(220 10% 100% / 0.08)"
+                  ? "var(--accent-muted)"
+                  : "var(--overlay-moderate)"
                 : "transparent",
               color: isSelected
                 ? m === "team"
-                  ? "hsl(14 100% 60%)"
-                  : "hsl(220 10% 80%)"
-                : "hsl(220 10% 45%)",
-              border: `1px solid ${isSelected ? (m === "team" ? "hsla(14 100% 60% / 0.3)" : "hsla(220 10% 100% / 0.12)") : "transparent"}`,
+                  ? "var(--accent-primary)"
+                  : "var(--text-secondary)"
+                : "var(--text-muted)",
+              border: `1px solid ${isSelected ? (m === "team" ? "var(--accent-border)" : "color-mix(in srgb, var(--text-primary) 12%, transparent)") : "transparent"}`,
             }}
           >
             <Icon className="w-3 h-3" />
@@ -460,7 +460,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
       <div className="flex items-center justify-between">
         <span
           className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           Actions
         </span>
@@ -470,7 +470,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
           disabled={restartMutation.isPending || isResuming}
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
           style={{
-            backgroundColor: isReady ? "hsl(14 100% 60%)" : "hsl(217 90% 60%)",
+            backgroundColor: isReady ? "var(--accent-primary)" : "var(--status-info)",
             color: "white",
           }}
         >
@@ -486,7 +486,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
       </div>
 
       {/* Execution Mode Selector */}
-      <div className="mt-3 pt-3" style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}>
+      <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
         <ExecutionModeSelector
           mode={executionMode}
           onChange={setExecutionMode}
@@ -496,7 +496,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
 
       {/* Restart Note textarea (for restartable states only, not shown for start) */}
       {!isReady && (
-        <div className="mt-3 pt-3" style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}>
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
           <textarea
             data-testid="restart-note-textarea"
             value={restartNote}
@@ -506,8 +506,8 @@ function ActionButtonsCard({ task }: { task: Task }) {
             rows={3}
             className="w-full resize-none rounded-md px-3 py-2 text-[12px] transition-colors disabled:opacity-40 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
             style={{
-              backgroundColor: "hsla(220 10% 100% / 0.05)",
-              color: "hsl(220 10% 80%)",
+              backgroundColor: "var(--overlay-weak)",
+              color: "var(--text-secondary)",
               boxShadow: "none",
               outline: "none",
             }}
@@ -577,7 +577,7 @@ function UnblockWarningCard({
       <div data-testid="unblock-warning-card" className="flex items-center justify-between">
         <span
           className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           Actions
         </span>
@@ -587,7 +587,7 @@ function UnblockWarningCard({
           disabled={unblockMutation.isPending}
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
-            backgroundColor: "hsl(35 100% 50%)",
+            backgroundColor: "var(--status-warning)",
             color: "white",
           }}
         >
@@ -644,18 +644,18 @@ function FreshnessBlockedCard({
       {/* Summary banner */}
       <div
         className="rounded-xl p-4 space-y-3"
-        style={{ backgroundColor: "hsla(38 92% 50% / 0.08)" }}
+        style={{ backgroundColor: "var(--status-warning-muted)" }}
       >
         <div className="flex items-start gap-2.5">
           <GitBranch
             className="w-4 h-4 mt-0.5 shrink-0"
-            style={{ color: "hsl(38 92% 60%)" }}
+            style={{ color: "var(--status-warning)" }}
           />
           <div className="flex-1 min-w-0">
             <p
               data-testid="freshness-blocked-summary"
               className="text-[13px] font-medium"
-              style={{ color: "hsl(38 92% 75%)" }}
+              style={{ color: "var(--status-warning)" }}
             >
               Branch conflicts could not be resolved automatically after{" "}
               {info.totalAttempts} {info.totalAttempts === 1 ? "attempt" : "attempts"} over{" "}
@@ -667,7 +667,7 @@ function FreshnessBlockedCard({
               <div className="mt-2.5 space-y-1">
                 <span
                   className="text-[11px] font-semibold uppercase tracking-wider block"
-                  style={{ color: "hsl(38 92% 50%)" }}
+                  style={{ color: "var(--status-warning)" }}
                 >
                   Conflict files
                 </span>
@@ -677,7 +677,7 @@ function FreshnessBlockedCard({
                       key={file}
                       data-testid="freshness-conflict-file"
                       className="text-[12px] font-mono truncate"
-                      style={{ color: "hsl(38 92% 65% / 0.85)" }}
+                      style={{ color: "color-mix(in srgb, var(--status-warning) 85%, transparent)" }}
                     >
                       {file}
                     </li>
@@ -695,10 +695,10 @@ function FreshnessBlockedCard({
           {/* Secondary: task branch label */}
           {task.taskBranch && (
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <GitBranch className="w-3 h-3 shrink-0" style={{ color: "hsl(220 10% 40%)" }} />
+              <GitBranch className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
               <span
                 className="text-[11px] font-mono truncate"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
                 title={task.taskBranch}
               >
                 {task.taskBranch}
@@ -713,8 +713,8 @@ function FreshnessBlockedCard({
             disabled={resetMutation.isPending}
             className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] shrink-0 transition-colors"
             style={{
-              backgroundColor: "hsl(38 92% 50%)",
-              color: "hsl(220 10% 10%)",
+              backgroundColor: "var(--status-warning)",
+              color: "var(--bg-surface)",
             }}
           >
             {resetMutation.isPending ? (
@@ -923,14 +923,14 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
           <SectionTitle>Failure Details</SectionTitle>
           <div
             className="rounded-xl p-4 space-y-3"
-            style={{ backgroundColor: "hsla(0 70% 55% / 0.08)" }}
+            style={{ backgroundColor: "var(--status-error-muted)" }}
           >
             {/* Attempt count */}
             {failureInfo.attempt_count > 0 && (
               <div data-testid="attempt-count" className="flex items-center gap-2">
                 <span
                   className="text-[11px] font-semibold uppercase tracking-wider"
-                  style={{ color: "hsl(0 70% 65%)" }}
+                  style={{ color: "var(--status-error)" }}
                 >
                   Failed after {failureInfo.attempt_count}{" "}
                   {failureInfo.attempt_count === 1 ? "attempt" : "attempts"}
@@ -940,8 +940,8 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
                     data-testid="timeout-badge"
                     className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                     style={{
-                      backgroundColor: "hsla(0 70% 55% / 0.25)",
-                      color: "hsl(0 70% 75%)",
+                      backgroundColor: "var(--status-error-border)",
+                      color: "var(--status-error)",
                     }}
                   >
                     timeout
@@ -956,8 +956,8 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
                   data-testid="timeout-badge"
                   className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                   style={{
-                    backgroundColor: "hsla(0 70% 55% / 0.25)",
-                    color: "hsl(0 70% 75%)",
+                    backgroundColor: "var(--status-error-border)",
+                    color: "var(--status-error)",
                   }}
                 >
                   timeout
@@ -976,15 +976,15 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
                     className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                     style={
                       isTerminal
-                        ? { backgroundColor: "hsla(0 70% 55% / 0.25)", color: "hsl(0 70% 75%)" }
-                        : { backgroundColor: "hsla(38 92% 50% / 0.2)", color: "hsl(38 92% 65%)" }
+                        ? { backgroundColor: "var(--status-error-border)", color: "var(--status-error)" }
+                        : { backgroundColor: "var(--status-warning-muted)", color: "var(--status-warning)" }
                     }
                   >
                     {isTerminal ? "Manual retry required" : "Auto-retrying"}
                   </span>
                   <span
                     className="text-[10px]"
-                    style={{ color: "hsl(0 70% 65% / 0.65)" }}
+                    style={{ color: "color-mix(in srgb, var(--status-error) 65%, transparent)" }}
                   >
                     {label}
                   </span>
@@ -995,7 +995,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
             <p
               data-testid="failure-error-message"
               className="text-[13px]"
-              style={{ color: "hsl(0 70% 75%)" }}
+              style={{ color: "var(--status-error)" }}
             >
               {failureInfo.failure_error}
             </p>
@@ -1004,7 +1004,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
               <p
                 data-testid="failed-at-timestamp"
                 className="text-[11px]"
-                style={{ color: "hsl(0 70% 65% / 0.6)" }}
+                style={{ color: "color-mix(in srgb, var(--status-error) 60%, transparent)" }}
               >
                 Failed {getTimeAgo(failureInfo.failed_at)}
               </p>
@@ -1014,7 +1014,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
               <p
                 data-testid="failure-details"
                 className="text-[12px]"
-                style={{ color: "hsl(0 70% 65% / 0.75)" }}
+                style={{ color: "color-mix(in srgb, var(--status-error) 75%, transparent)" }}
               >
                 {failureInfo.failure_details}
               </p>
@@ -1031,16 +1031,16 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
             <div className="flex items-start gap-2.5">
               <AlertTriangle
                 className="w-4 h-4 mt-0.5 shrink-0"
-                style={{ color: "hsl(35 100% 60%)" }}
+                style={{ color: "var(--status-warning)" }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-[13px]" style={{ color: "hsl(35 100% 75%)" }}>
+                <p className="text-[13px]" style={{ color: "var(--status-warning)" }}>
                   {agentError.message}
                 </p>
                 {agentError.errorAt && (
                   <span
                     className="text-[11px] mt-1.5 block"
-                    style={{ color: "hsl(220 10% 50%)" }}
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {getTimeAgo(agentError.errorAt)}
                   </span>
@@ -1082,7 +1082,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       )}
 
       {!stepsLoading && !hasSteps && (
-        <div className="text-[13px] text-white/40 italic py-4">
+        <div className="text-[13px] text-text-primary/40 italic py-4">
           No steps defined yet
         </div>
       )}

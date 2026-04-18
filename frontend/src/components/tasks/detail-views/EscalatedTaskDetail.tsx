@@ -300,7 +300,7 @@ function DecisionButtonsCard({
       disabled={isLoading || showFeedback}
       className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
       style={{
-        backgroundColor: "hsl(142 70% 45%)",
+        backgroundColor: "var(--status-success)",
         color: "white",
       }}
     >
@@ -321,8 +321,8 @@ function DecisionButtonsCard({
       variant="ghost"
       className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
       style={{
-        color: "hsl(35 100% 55%)",
-        backgroundColor: "hsl(220 10% 16%)",
+        color: "var(--status-warning)",
+        backgroundColor: "var(--bg-elevated)",
       }}
     >
       {requestChangesMutation.isPending ? (

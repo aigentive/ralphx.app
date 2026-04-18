@@ -129,7 +129,7 @@ function ConflictFilesList({
               {isLoadingDiff ? (
                 <div
                   className="flex items-center justify-center h-full"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
@@ -138,7 +138,7 @@ function ConflictFilesList({
               ) : (
                 <div
                   className="flex items-center justify-center h-full text-text-primary/50"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   Failed to load conflict diff
                 </div>

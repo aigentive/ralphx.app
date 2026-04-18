@@ -70,7 +70,7 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
         <Popover open={isStatsOpen} onOpenChange={setIsStatsOpen}>
           <PopoverTrigger asChild>
             <button
-              className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-[var(--overlay-faint)] transition-colors"
               aria-label="Project stats"
             >
               <BarChart2 className="w-4 h-4" />

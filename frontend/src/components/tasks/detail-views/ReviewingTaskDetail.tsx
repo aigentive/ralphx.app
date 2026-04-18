@@ -413,7 +413,7 @@ export function ReviewingTaskDetail({
                     setFeedback("");
                     setActionError(null);
                   }}
-                  className="text-[12px] text-white/40 hover:text-white/60 transition-colors cursor-pointer"
+                  className="text-[12px] text-text-primary/40 hover:text-text-primary/60 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>

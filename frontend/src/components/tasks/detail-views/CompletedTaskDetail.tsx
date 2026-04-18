@@ -62,7 +62,7 @@ function ActionButtonsCard({
           onClick={onReviewCode}
           variant="ghost"
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
-          style={{ color: "hsl(217 90% 60%)" }}
+          style={{ color: "var(--status-info)" }}
         >
           <Code className="w-4 h-4" />
           Review Code
@@ -74,8 +74,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <ExternalLink className="w-4 h-4" />
@@ -87,8 +87,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <RefreshCw className="w-4 h-4" />

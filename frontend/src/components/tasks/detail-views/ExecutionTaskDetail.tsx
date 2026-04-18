@@ -124,7 +124,7 @@ function ActionButtonsCard({
         <div className="flex items-center justify-between">
           <span
             className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             Actions
           </span>
@@ -235,7 +235,7 @@ function RevisionFeedbackCard({
         {/* Feedback content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[12px] font-semibold text-white/70">
+            <span className="text-[12px] font-semibold text-text-primary/70">
               {isAiReviewer ? "AI Feedback" : isSystemReviewer ? "System Escalation" : "Human Feedback"}
             </span>
             <StatusPill
@@ -245,7 +245,7 @@ function RevisionFeedbackCard({
               size="sm"
             />
           </div>
-          <div className="text-[13px] text-white/55 leading-relaxed" style={{ wordBreak: "break-word" }}>
+          <div className="text-[13px] text-text-primary/55 leading-relaxed" style={{ wordBreak: "break-word" }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {feedback.notes || "No specific feedback provided"}
             </ReactMarkdown>
@@ -273,10 +273,10 @@ function TeamProgressSection({ teammates }: { teammates: TeammateState[] }) {
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: mate.color }}
               />
-              <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 85%)" }}>
+              <span className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
                 {mate.name}
               </span>
-              <span className="text-[10px] px-1.5 rounded" style={{ backgroundColor: "hsl(220 10% 16%)", color: "hsl(220 10% 50%)" }}>
+              <span className="text-[10px] px-1.5 rounded" style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}>
                 {mate.model}
               </span>
               <StatusPill
@@ -287,12 +287,12 @@ function TeamProgressSection({ teammates }: { teammates: TeammateState[] }) {
               />
             </div>
             {mate.roleDescription && (
-              <p className="text-[11px] mt-1 truncate" style={{ color: "hsl(220 10% 50%)" }}>
+              <p className="text-[11px] mt-1 truncate" style={{ color: "var(--text-muted)" }}>
                 {mate.roleDescription}
               </p>
             )}
             {mate.currentActivity && (
-              <p className="text-[11px] mt-0.5 truncate" style={{ color: "hsl(220 10% 45%)" }}>
+              <p className="text-[11px] mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
                 {mate.currentActivity}
               </p>
             )}
@@ -402,16 +402,16 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
             <div className="flex items-start gap-2.5">
               <AlertTriangle
                 className="w-4 h-4 mt-0.5 shrink-0"
-                style={{ color: "hsl(35 100% 60%)" }}
+                style={{ color: "var(--status-warning)" }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-[13px]" style={{ color: "hsl(35 100% 75%)" }}>
+                <p className="text-[13px]" style={{ color: "var(--status-warning)" }}>
                   {agentError.message}
                 </p>
                 {agentError.errorAt && (
                   <span
                     className="text-[11px] mt-1.5 block"
-                    style={{ color: "hsl(220 10% 50%)" }}
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {new Date(agentError.errorAt).toLocaleString()}
                   </span>

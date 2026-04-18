@@ -322,8 +322,8 @@ function ReviewCard({
       }}
     >
       <div className="flex items-center gap-2">
-        <Icon className="w-3.5 h-3.5 text-white/50" />
-        <span className="text-[13px] font-medium text-white/80">
+        <Icon className="w-3.5 h-3.5 text-text-primary/50" />
+        <span className="text-[13px] font-medium text-text-primary/80">
           {label}
         </span>
       </div>
@@ -339,7 +339,7 @@ function ReviewCard({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">
+    <h3 className="text-[13px] font-medium mb-2.5 text-text-primary/80">
       {children}
     </h3>
   );
@@ -410,7 +410,7 @@ export function TaskDetailPanel({
             <div className="flex-1 min-w-0">
               <h2
                 data-testid="task-detail-title"
-                className="text-base font-semibold text-white/90"
+                className="text-base font-semibold text-text-primary/90"
                 style={{
                   letterSpacing: "-0.02em",
                   lineHeight: "1.3",
@@ -464,7 +464,7 @@ export function TaskDetailPanel({
       {task.description ? (
         <div
           data-testid="task-detail-description"
-          className="text-[13px] text-white/60"
+          className="text-[13px] text-text-primary/60"
           style={{
             lineHeight: "1.6",
             wordBreak: "break-word",
@@ -475,7 +475,7 @@ export function TaskDetailPanel({
           </ReactMarkdown>
         </div>
       ) : (
-        <p className="text-[13px] italic text-white/35">
+        <p className="text-[13px] italic text-text-primary/35">
           No description provided
         </p>
       )}

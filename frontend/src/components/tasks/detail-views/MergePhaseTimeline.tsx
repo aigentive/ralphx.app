@@ -135,18 +135,18 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                     {config.label}
                   </span>
                   {config.command && (
-                    <span className="text-[10px] font-mono text-white/25 truncate block max-w-[200px]">
+                    <span className="text-[10px] font-mono text-text-primary/25 truncate block max-w-[200px]">
                       $ {config.command}
                     </span>
                   )}
                   {!config.command && config.description && (
-                    <span className="text-[10px] text-white/25 truncate block max-w-[280px]">
+                    <span className="text-[10px] text-text-primary/25 truncate block max-w-[280px]">
                       {config.description}
                     </span>
                   )}
                 </div>
                 {event?.message && status === "started" && (
-                  <span className="text-[11px] text-white/40 truncate max-w-[200px]">
+                  <span className="text-[11px] text-text-primary/40 truncate max-w-[200px]">
                     {event.message}
                   </span>
                 )}
@@ -156,7 +156,7 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                   </span>
                 )}
                 {status === "skipped" && (
-                  <span className="text-[11px] text-white/25 truncate max-w-[200px]">
+                  <span className="text-[11px] text-text-primary/25 truncate max-w-[200px]">
                     skipped
                   </span>
                 )}

@@ -128,27 +128,27 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       <>
         <style>{`
           .inline-task-add-collapsed {
-            border: 1.5px dashed hsla(220 10% 100% / 0.15) !important;
+            border: 1.5px dashed var(--overlay-moderate) !important;
             background-color: transparent;
             transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
           }
           .inline-task-add-collapsed:hover {
-            border-color: hsl(14 100% 60%) !important;
-            background-color: hsla(14 100% 60% / 0.04);
+            border-color: var(--accent-primary) !important;
+            background-color: color-mix(in srgb, var(--accent-primary) 4%, transparent);
           }
           .inline-task-add-collapsed .add-icon {
             background-color: transparent;
             transition: background-color 180ms ease;
           }
           .inline-task-add-collapsed:hover .add-icon {
-            background-color: hsla(14 100% 60% / 0.12);
+            background-color: color-mix(in srgb, var(--accent-primary) 12%, transparent);
           }
           .inline-task-add-collapsed .add-content {
-            color: hsl(220 10% 45%);
+            color: var(--text-muted);
             transition: color 180ms ease;
           }
           .inline-task-add-collapsed:hover .add-content {
-            color: hsl(14 100% 60%);
+            color: var(--accent-primary);
           }
         `}</style>
         <button
@@ -204,8 +204,8 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       style={{
         padding: "12px",
         borderRadius: "10px",
-        backgroundColor: "hsl(220 10% 12%)",
-        border: "1px solid hsla(220 10% 100% / 0.06)",
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--overlay-weak)",
         boxShadow: "0 2px 8px hsla(220 10% 0% / 0.2)",
         animation: "fadeInScale 180ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }}
@@ -232,7 +232,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
           disabled={createMutation.isPending}
           className="flex-1 min-w-0 bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
           style={{
-            color: "hsl(220 10% 90%)",
+            color: "var(--text-primary)",
             fontSize: "13px",
             fontWeight: 500,
             letterSpacing: "-0.01em",
@@ -248,15 +248,15 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               padding: "2px 5px",
               borderRadius: "4px",
-              backgroundColor: "hsla(220 10% 100% / 0.04)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
+              backgroundColor: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
             <span
               style={{
                 fontSize: "9px",
                 fontWeight: 600,
-                color: "hsl(220 10% 40%)",
+                color: "var(--text-muted)",
                 letterSpacing: "0.02em",
                 textTransform: "uppercase",
               }}
@@ -266,7 +266,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             <span
               style={{
                 fontSize: "9px",
-                color: "hsl(220 10% 40%)",
+                color: "var(--text-muted)",
                 opacity: 0.5,
               }}
             >
@@ -305,13 +305,13 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             rows={2}
             className="w-full bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 resize-none"
             style={{
-              color: "hsl(220 10% 65%)",
+              color: "var(--text-secondary)",
               fontSize: "12px",
               lineHeight: 1.5,
               letterSpacing: "-0.006em",
               marginTop: "8px",
               paddingTop: "8px",
-              borderTop: "1px solid hsla(220 10% 100% / 0.06)",
+              borderTop: "1px solid var(--overlay-weak)",
               boxShadow: "none",
               outline: "none",
             }}
@@ -325,7 +325,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         style={{
           marginTop: "10px",
           paddingTop: "10px",
-          borderTop: "1px solid hsla(220 10% 100% / 0.04)",
+          borderTop: "1px solid var(--overlay-faint)",
         }}
       >
         {/* Left: More options */}
@@ -346,7 +346,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             whiteSpace: "nowrap",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
+            e.currentTarget.style.backgroundColor = "var(--overlay-weak)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = "transparent";
@@ -356,7 +356,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               fontSize: "11px",
               fontWeight: 500,
-              color: "hsl(14 100% 60%)",
+              color: "var(--accent-primary)",
               letterSpacing: "-0.006em",
             }}
           >
@@ -379,17 +379,17 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
               border: "none",
               fontSize: "11px",
               fontWeight: 500,
-              color: "hsl(220 10% 50%)",
+              color: "var(--text-muted)",
               cursor: "pointer",
               transition: "all 150ms ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "hsla(220 10% 100% / 0.05)";
-              e.currentTarget.style.color = "hsl(220 10% 70%)";
+              e.currentTarget.style.backgroundColor = "var(--overlay-weak)";
+              e.currentTarget.style.color = "var(--text-secondary)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "hsl(220 10% 50%)";
+              e.currentTarget.style.color = "var(--text-muted)";
             }}
           >
             Cancel
@@ -403,23 +403,23 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
             style={{
               padding: "4px 10px",
               borderRadius: "5px",
-              backgroundColor: title.trim() ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.06)",
+              backgroundColor: title.trim() ? "var(--accent-primary)" : "var(--overlay-weak)",
               border: "none",
               fontSize: "11px",
               fontWeight: 600,
-              color: title.trim() ? "white" : "hsl(220 10% 40%)",
+              color: title.trim() ? "white" : "var(--text-muted)",
               cursor: title.trim() ? "pointer" : "default",
               transition: "all 150ms ease",
               opacity: createMutation.isPending ? 0.6 : 1,
             }}
             onMouseEnter={(e) => {
               if (title.trim() && !createMutation.isPending) {
-                e.currentTarget.style.backgroundColor = "hsl(14 100% 55%)";
+                e.currentTarget.style.backgroundColor = "var(--accent-hover)";
               }
             }}
             onMouseLeave={(e) => {
               if (title.trim()) {
-                e.currentTarget.style.backgroundColor = "hsl(14 100% 60%)";
+                e.currentTarget.style.backgroundColor = "var(--accent-primary)";
               }
             }}
           >
@@ -435,7 +435,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
                       alignItems: "center",
                       padding: "1px 3px",
                       borderRadius: "2px",
-                      backgroundColor: title.trim() ? "hsla(0 0% 100% / 0.15)" : "hsla(220 10% 100% / 0.08)",
+                      backgroundColor: title.trim() ? "hsla(0 0% 100% / 0.15)" : "var(--overlay-moderate)",
                       fontSize: "9px",
                       fontWeight: 500,
                       opacity: 0.7,

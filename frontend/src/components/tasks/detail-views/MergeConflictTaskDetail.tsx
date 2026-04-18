@@ -116,7 +116,7 @@ function ConflictFilesList({
               {isLoadingDiff ? (
                 <div
                   className="flex items-center justify-center h-full"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
@@ -125,7 +125,7 @@ function ConflictFilesList({
               ) : (
                 <div
                   className="flex items-center justify-center h-full text-text-primary/50"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   Failed to load conflict diff
                 </div>
@@ -185,8 +185,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <GitMerge className="w-4 h-4" />

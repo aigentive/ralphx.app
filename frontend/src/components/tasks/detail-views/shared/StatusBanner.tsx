@@ -108,7 +108,7 @@ export function StatusBanner({
         {subtitle && (
           <span
             className="text-[12px] mt-0.5 block truncate"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {subtitle}
           </span>

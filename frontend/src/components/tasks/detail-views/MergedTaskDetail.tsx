@@ -298,7 +298,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
             onClick={() => setShowReviewModal(true)}
             variant="ghost"
             className="h-8 px-3 gap-2 rounded-lg font-medium text-[12px]"
-            style={{ color: "hsl(217 90% 60%)" }}
+            style={{ color: "var(--status-info)" }}
           >
             <Code className="w-4 h-4" />
             Review Code
