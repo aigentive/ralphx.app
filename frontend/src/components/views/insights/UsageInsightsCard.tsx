@@ -58,7 +58,7 @@ export function UsageInsightsCard({ stats }: UsageInsightsCardProps) {
     <DetailCard>
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <BarChart2 className="w-4 h-4" style={{ color: "#ff6b35" }} />
+          <BarChart2 className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.88)" }}>
               AI Usage

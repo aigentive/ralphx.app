@@ -239,7 +239,7 @@ export function StatusActivityBadge({
               variant="ghost"
               size="sm"
               onClick={handleActivityClick}
-              className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+              className="ml-1 shrink-0 h-6 px-1.5 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
               aria-label="View activity"
             >
               <Activity className="w-3.5 h-3.5" />
@@ -261,7 +261,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="shrink-0 h-7 px-2 text-[#ff6b35] hover:text-[#ff6b35]/80"
+            className="shrink-0 h-7 px-2 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -320,7 +320,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+            className="ml-1 shrink-0 h-6 px-1.5 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -346,7 +346,7 @@ export function StatusActivityBadge({
           variant="ghost"
           size="sm"
           onClick={handleActivityClick}
-          className="shrink-0 h-7 px-2 text-[#ff6b35] hover:text-[#ff6b35]/80"
+          className="shrink-0 h-7 px-2 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
           aria-label="View activity"
         >
           <Activity className="w-3.5 h-3.5" />

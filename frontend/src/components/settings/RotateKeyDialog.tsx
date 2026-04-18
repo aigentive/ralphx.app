@@ -149,9 +149,9 @@ export function RotateKeyDialog({
               >
                 <AlertTriangle
                   className="w-4 h-4 shrink-0 mt-0.5"
-                  style={{ color: "#ff6b35" }}
+                  style={{ color: "var(--accent-primary)" }}
                 />
-                <p className="text-sm" style={{ color: "#ff6b35" }}>
+                <p className="text-sm" style={{ color: "var(--accent-primary)" }}>
                   The old key will remain valid for 60 seconds after rotation,
                   then expire. Any clients must update immediately.
                 </p>
@@ -186,9 +186,9 @@ export function RotateKeyDialog({
               >
                 <AlertTriangle
                   className="w-4 h-4 shrink-0 mt-0.5"
-                  style={{ color: "#ff6b35" }}
+                  style={{ color: "var(--accent-primary)" }}
                 />
-                <p className="text-sm" style={{ color: "#ff6b35" }}>
+                <p className="text-sm" style={{ color: "var(--accent-primary)" }}>
                   This new key will only be shown once. Copy it now and store
                   it securely.
                 </p>
@@ -241,7 +241,7 @@ export function RotateKeyDialog({
                 data-testid="confirm-rotate-button"
                 type="button"
                 onClick={() => void handleRotate()}
-                style={{ background: "#ff6b35", color: "white" }}
+                style={{ background: "var(--accent-primary)", color: "white" }}
                 className="hover:opacity-90"
               >
                 <Key className="w-3.5 h-3.5 mr-1.5" />
@@ -257,7 +257,7 @@ export function RotateKeyDialog({
               onClick={handleDone}
               disabled={!hasCopied}
               title={!hasCopied ? "Copy the key before closing" : undefined}
-              style={hasCopied ? { background: "#ff6b35", color: "white" } : undefined}
+              style={hasCopied ? { background: "var(--accent-primary)", color: "white" } : undefined}
               className={hasCopied ? "hover:opacity-90" : "opacity-60"}
             >
               Done

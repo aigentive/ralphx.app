@@ -57,7 +57,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
         {!isDefault && (
           <span
             className="ml-auto text-[10px] px-1 rounded"
-            style={{ backgroundColor: "var(--accent-muted)", color: "#ff6b35" }}
+            style={{ backgroundColor: "var(--accent-muted)", color: "var(--accent-primary)" }}
           >
             calibrated
           </span>
@@ -69,7 +69,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
           <div className="flex items-baseline gap-1.5">
             <span
               className="text-lg font-semibold tabular-nums"
-              style={{ color: "#ff6b35" }}
+              style={{ color: "var(--accent-primary)" }}
               data-testid="eme-value"
             >
               ~{eme.lowHours}–{eme.highHours}h

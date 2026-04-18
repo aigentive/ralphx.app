@@ -120,7 +120,7 @@ export function TrendChart({
         <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="rgba(255,255,255,0.06)"
+            stroke="var(--overlay-weak)"
             vertical={false}
           />
           <XAxis

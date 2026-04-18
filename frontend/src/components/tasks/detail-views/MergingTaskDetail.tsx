@@ -94,22 +94,22 @@ function ConflictFilesList({
             style={{
               backgroundColor:
                 expandedFile === file
-                  ? "rgba(255, 159, 10, 0.15)"
-                  : "rgba(255, 159, 10, 0.08)",
+                  ? "var(--status-warning-muted)"
+                  : "var(--status-warning-muted)",
             }}
           >
             {expandedFile === file ? (
               <ChevronDown
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             ) : (
               <ChevronRight
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             )}
-            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "#ff9f0a" }} />
+            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
               className="text-[13px] font-mono text-white/70 truncate text-left"
               title={file}
@@ -121,7 +121,7 @@ function ConflictFilesList({
             <div
               className="mt-2 rounded-lg overflow-hidden border"
               style={{
-                borderColor: "rgba(255, 159, 10, 0.2)",
+                borderColor: "var(--status-warning-border)",
                 height: "400px",
               }}
             >
@@ -155,12 +155,12 @@ function ConflictFilesList({
  */
 function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active" | "pending"; isHistorical?: boolean | undefined }) {
   if (status === "completed") {
-    return <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />;
+    return <CheckCircle2 className="w-5 h-5" style={{ color: "var(--status-success)" }} />;
   }
   if (status === "active" && !isHistorical) {
     return (
       <div className="relative">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#0a84ff" }} />
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--status-info)" }} />
         <div
           className="absolute inset-0 rounded-full animate-pulse"
           style={{ background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)" }}
@@ -172,7 +172,7 @@ function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active
     return (
       <div
         className="w-5 h-5 rounded-full border-2"
-        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
+        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" /* 0.35 alpha out of table range */ }}
       />
     );
   }
@@ -329,7 +329,7 @@ function PrModeCard({
         {/* PR Number + Status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
+            <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
             <span className="text-[13px] font-medium text-white/80">
               PR #{planBranch.prNumber}
             </span>
@@ -355,8 +355,8 @@ function PrModeCard({
             onClick={handleOpenInGithub}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer"
             style={{
-              backgroundColor: "rgba(52, 199, 89, 0.12)",
-              color: "#34c759",
+              backgroundColor: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
+              color: "var(--status-success)",
             }}
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -746,7 +746,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             <SectionTitle>Merge Progress</SectionTitle>
             <DetailCard>
               <div className="flex items-center gap-2.5 py-1.5">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
                 <span className="text-[13px] text-white/50">
                   Waiting for merge progress...
                 </span>
@@ -775,7 +775,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           <DetailCard variant="warning">
             {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
               <div className="flex items-center gap-2 py-2">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ff9f0a" }} />
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
                 <span className="text-[13px] text-white/50">Detecting conflicts...</span>
               </div>
             ) : (

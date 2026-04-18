@@ -64,7 +64,7 @@ function TransitionEventCard({ entry }: { entry: AuditEntry }) {
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
         style={{ backgroundColor: "var(--overlay-faint)" }}
       >
-        <ArrowRight className="w-3.5 h-3.5" style={{ color: "#0a84ff" }} />
+        <ArrowRight className="w-3.5 h-3.5" style={{ color: "var(--status-info)" }} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -141,7 +141,7 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
           <div
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
-              backgroundColor: "rgba(255, 107, 53, 0.08)",
+              backgroundColor: "var(--accent-muted)",
               border: "1px solid rgba(255,255,255,0.05)",
             }}
           >
@@ -222,7 +222,7 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
           <div
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
-              backgroundColor: "rgba(255, 107, 53, 0.08)",
+              backgroundColor: "var(--accent-muted)",
               border: "1px solid rgba(255,255,255,0.05)",
             }}
           >

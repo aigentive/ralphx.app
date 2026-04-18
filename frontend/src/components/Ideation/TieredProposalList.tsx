@@ -57,7 +57,7 @@ const TierConnector = React.memo(function TierConnector({
             y1="0"
             x2="12"
             y2="16"
-            stroke={isOnCriticalPath ? "#ff6b35" : "var(--border-subtle)"}
+            stroke={isOnCriticalPath ? "var(--accent-primary)" : "var(--border-subtle)"}
             strokeWidth={isOnCriticalPath ? "2" : "1"}
             strokeDasharray={isOnCriticalPath ? "none" : "3 4"}
             strokeLinecap="round"
@@ -68,7 +68,7 @@ const TierConnector = React.memo(function TierConnector({
           {/* Downward chevron */}
           <path
             d="M8 14L12 20L16 14"
-            stroke={isOnCriticalPath ? "#ff6b35" : "var(--overlay-moderate)"}
+            stroke={isOnCriticalPath ? "var(--accent-primary)" : "var(--overlay-moderate)"}
             strokeWidth={isOnCriticalPath ? "2" : "1"}
             strokeLinecap="round"
             strokeLinejoin="round"

@@ -371,7 +371,7 @@ export function ExecutionControlBar({
                   data-testid="ideation-count"
                   data-ideation-trigger
                   className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                  style={{ color: ideationActive > 0 ? "#ff6b35" : "hsl(220 10% 65%)" }}
+                  style={{ color: ideationActive > 0 ? "var(--accent-primary)" : "hsl(220 10% 65%)" }}
                   onClick={() => { setActiveTab("ideation"); setIsPopoverOpen(true); }}
                   aria-label={`Ideation: ${ideationActive} active, ${ideationMax} max`}
                 >
