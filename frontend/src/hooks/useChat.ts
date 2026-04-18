@@ -5,9 +5,21 @@
  * Supports conversation management, agent run status, and real-time updates.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useCallback, useRef } from "react";
-import { chatApi, type ChatMessageResponse, type SendAgentMessageResult } from "@/api/chat";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  chatApi,
+  type ChatMessageResponse,
+  type ConversationMessagesPageResponse,
+  type SendAgentMessageResult,
+} from "@/api/chat";
 import type { ChatContext } from "@/types/chat";
 import type { ChatConversation, AgentRun, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
@@ -24,6 +36,8 @@ export const chatKeys = {
   conversations: () => [...chatKeys.all, "conversations"] as const,
   conversation: (conversationId: string) =>
     [...chatKeys.conversations(), conversationId] as const,
+  conversationHistory: (conversationId: string) =>
+    [...chatKeys.conversation(conversationId), "history"] as const,
   conversationList: (contextType: ContextType, contextId: string) =>
     [...chatKeys.conversations(), contextType, contextId] as const,
   agentRun: (conversationId: string) =>
@@ -36,6 +50,76 @@ export const chatKeys = {
   taskMessages: (taskId: string) =>
     [...chatKeys.messages(), "task", taskId] as const,
 };
+
+type ConversationQueryData = {
+  conversation: ChatConversation;
+  messages: ChatMessageResponse[];
+};
+
+export type ConversationHistoryWindowData = ConversationQueryData & {
+  totalMessageCount: number;
+  loadedStartIndex: number;
+};
+
+function getConversationMessagesFromHistoryData(
+  data: InfiniteData<ConversationMessagesPageResponse> | undefined
+): ConversationHistoryWindowData | undefined {
+  if (!data || data.pages.length === 0) {
+    return undefined;
+  }
+
+  const [newestPage] = data.pages;
+  if (!newestPage) {
+    return undefined;
+  }
+  const messages = data.pages
+    .slice()
+    .reverse()
+    .flatMap((page) => page.messages);
+
+  return {
+    conversation: newestPage.conversation,
+    messages,
+    totalMessageCount: newestPage.totalMessageCount,
+    loadedStartIndex: Math.max(0, newestPage.totalMessageCount - messages.length),
+  };
+}
+
+export function getCachedConversationMessages(
+  queryClient: QueryClient,
+  conversationId: string
+): ChatMessageResponse[] {
+  const fullConversation = queryClient.getQueryData<ConversationQueryData>(
+    chatKeys.conversation(conversationId)
+  );
+  const historyConversation = getConversationMessagesFromHistoryData(
+    queryClient.getQueryData<InfiniteData<ConversationMessagesPageResponse>>(
+      chatKeys.conversationHistory(conversationId)
+    )
+  );
+
+  const mergedMessages = new Map<string, ChatMessageResponse>();
+  for (const message of fullConversation?.messages ?? []) {
+    mergedMessages.set(message.id, message);
+  }
+  for (const message of historyConversation?.messages ?? []) {
+    mergedMessages.set(message.id, message);
+  }
+
+  return Array.from(mergedMessages.values());
+}
+
+export function invalidateConversationDataQueries(
+  queryClient: QueryClient,
+  conversationId: string
+) {
+  queryClient.invalidateQueries({
+    queryKey: chatKeys.conversation(conversationId),
+  });
+  queryClient.invalidateQueries({
+    queryKey: chatKeys.conversationHistory(conversationId),
+  });
+}
 
 /**
  * Get context type and ID from ChatContext
@@ -87,9 +171,12 @@ export function useConversations(context: ChatContext) {
 /**
  * Hook to fetch a single conversation with messages
  */
-export function useConversation(conversationId: string | null) {
+export function useConversation(
+  conversationId: string | null,
+  options?: { enabled?: boolean }
+) {
   const query = useQuery<
-    { conversation: ChatConversation; messages: ChatMessageResponse[] },
+    ConversationQueryData,
     Error
   >({
     queryKey: chatKeys.conversation(conversationId ?? ""),
@@ -99,10 +186,66 @@ export function useConversation(conversationId: string | null) {
       }
       return chatApi.getConversation(conversationId);
     },
-    enabled: !!conversationId,
+    enabled: (options?.enabled ?? true) && !!conversationId,
   });
 
   return query;
+}
+
+export function useConversationHistoryWindow(
+  conversationId: string | null,
+  options?: { enabled?: boolean; pageSize?: number }
+) {
+  const pageSize = options?.pageSize ?? 40;
+  const query = useInfiniteQuery<
+    ConversationMessagesPageResponse,
+    Error,
+    InfiniteData<ConversationMessagesPageResponse>,
+    ReturnType<typeof chatKeys.conversationHistory>,
+    number
+  >({
+    queryKey: chatKeys.conversationHistory(conversationId ?? ""),
+    queryFn: ({ pageParam }) => {
+      if (!conversationId) {
+        throw new Error("Conversation ID is required");
+      }
+      return chatApi.getConversationMessagesPage(
+        conversationId,
+        pageSize,
+        pageParam
+      );
+    },
+    enabled: (options?.enabled ?? true) && !!conversationId,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.hasOlder) {
+        return undefined;
+      }
+      return lastPage.offset + lastPage.messages.length;
+    },
+    staleTime: 30 * 1000,
+  });
+
+  const data = useMemo(
+    () => getConversationMessagesFromHistoryData(query.data),
+    [query.data]
+  );
+
+  const fetchOlderMessages = useCallback(async () => {
+    if (!query.hasNextPage || query.isFetchingNextPage) {
+      return;
+    }
+    await query.fetchNextPage();
+  }, [query]);
+
+  return {
+    ...query,
+    data,
+    loadedStartIndex: data?.loadedStartIndex ?? 0,
+    hasOlderMessages: query.hasNextPage ?? false,
+    isFetchingOlderMessages: query.isFetchingNextPage,
+    fetchOlderMessages,
+  };
 }
 
 /**
@@ -153,7 +296,15 @@ export function useAgentRunStatus(conversationId: string | null) {
  * });
  * ```
  */
-export function useChat(context: ChatContext, options?: { isVisible?: boolean; storeKey?: string; disableAutoSelect?: boolean }) {
+export function useChat(
+  context: ChatContext,
+  options?: {
+    isVisible?: boolean;
+    storeKey?: string;
+    disableAutoSelect?: boolean;
+    skipActiveConversationQuery?: boolean;
+  }
+) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
   const contextKey = buildStoreKey(contextType, contextId);
@@ -172,7 +323,9 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
   const conversations = useConversations(context);
 
   // Fetch active conversation with messages
-  const activeConversation = useConversation(activeConversationId);
+  const activeConversation = useConversation(activeConversationId, {
+    enabled: !(options?.skipActiveConversationQuery ?? false),
+  });
 
   // Fetch agent run status
   const agentRunStatus = useAgentRunStatus(activeConversationId);
@@ -240,9 +393,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
     onSuccess: () => {
       // Invalidate active conversation to refetch messages
       if (activeConversationId) {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(activeConversationId),
-        });
+        invalidateConversationDataQueries(queryClient, activeConversationId);
       }
 
       // Invalidate conversations list to update message counts
@@ -287,9 +438,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
       setActiveConversation(effectiveStoreKey, conversationId);
 
       // Invalidate the conversation query to ensure fresh data is fetched
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(conversationId),
-      });
+      invalidateConversationDataQueries(queryClient, conversationId);
     },
     [setActiveConversation, queryClient, effectiveStoreKey]
   );

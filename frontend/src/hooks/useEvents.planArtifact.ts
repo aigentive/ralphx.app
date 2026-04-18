@@ -103,9 +103,11 @@ export function usePlanArtifactEvents() {
           // Update session's planArtifactId so the subsequent `updated`
           // handler can match on it (avoids stale-null race).
           const session = sessionsRef.current[sessionId];
+          const currentSeq = session?.planUpdateSeq ?? 0;
           if (session && session.planArtifactId !== artifact.id) {
             updateSessionRef.current(sessionId, {
               planArtifactId: artifact.id,
+              planUpdateSeq: currentSeq + 1,
             });
           }
 
@@ -160,8 +162,12 @@ export function usePlanArtifactEvents() {
 
           // Tier 1: sessionId match — most reliable, use when backend provides it
           if (sessionId && currentActiveSessionId === sessionId) {
+            const currentSeq = currentSessions[sessionId]?.planUpdateSeq ?? 0;
             setPlanArtifactRef.current(planArtifact);
-            updateSessionRef.current(sessionId, { planArtifactId: artifact.id });
+            updateSessionRef.current(sessionId, {
+              planArtifactId: artifact.id,
+              planUpdateSeq: currentSeq + 1,
+            });
             queryClientRef.current.invalidateQueries({
               queryKey: ideationKeys.sessionWithData(sessionId),
             });
@@ -186,12 +192,14 @@ export function usePlanArtifactEvents() {
 
             if (matchedOnOwn || matchedOnInherited) {
               tier2Matched = true;
+              const currentSeq = session.planUpdateSeq ?? 0;
               if (session.id === currentActiveSessionId) {
                 setPlanArtifactRef.current(planArtifact);
               }
               if (matchedOnOwn && session.planArtifactId !== artifact.id) {
                 updateSessionRef.current(session.id, {
                   planArtifactId: artifact.id,
+                  planUpdateSeq: currentSeq + 1,
                 });
               } else if (
                 matchedOnInherited &&
@@ -199,6 +207,7 @@ export function usePlanArtifactEvents() {
               ) {
                 updateSessionRef.current(session.id, {
                   inheritedPlanArtifactId: artifact.id,
+                  planUpdateSeq: currentSeq + 1,
                 });
               }
               queryClientRef.current.invalidateQueries({

@@ -58,6 +58,7 @@ import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useFeatureFlags, isViewEnabled } from "@/hooks/useFeatureFlags";
 import { useNavCompactBreakpoint } from "@/hooks";
 import { extractErrorMessage } from "@/lib/errors";
+import { resolveIdeationSession } from "@/lib/resolveIdeationSession";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
 import { tasksApi } from "@/api/tasks";
@@ -287,39 +288,8 @@ function AppContent() {
   const { deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
-  /**
-   * Resolved session for IdeationView.
-   *
-   * When switching sessions, there's a race between:
-   * 1. Zustand updating activeSession (instant)
-   * 2. TanStack Query fetching the new session data (async)
-   *
-   * During this window, sessionData contains stale data from the previous session.
-   * We only use sessionData.session when its ID matches the active session,
-   * otherwise we fall back to activeSession from the store.
-   *
-   * This prevents "flash" where the old session briefly appears before the new one loads.
-   */
   const resolvedSession = useMemo(() => {
-    const fetchedSession = sessionData?.session;
-    const isFetchedSessionCurrent = fetchedSession?.id === activeSession?.id;
-
-    // Base: prefer fetched data when current, fallback to store session
-    const base = (isFetchedSessionCurrent && fetchedSession) ? fetchedSession : activeSession;
-
-    // Merge store verification fields when events have fired (seq > 0).
-    // This ensures real-time Tauri events take precedence over stale React Query data.
-    // Seq resets to 0 on session switch (new session has no events yet).
-    if (base && activeSession && activeSession.id === base.id && (activeSession.verificationUpdateSeq ?? 0) > 0) {
-      return {
-        ...base,
-        verificationStatus: activeSession.verificationStatus ?? base.verificationStatus,
-        verificationInProgress: activeSession.verificationInProgress ?? base.verificationInProgress,
-        gapScore: activeSession.gapScore !== undefined ? activeSession.gapScore : base.gapScore,
-      };
-    }
-
-    return base;
+    return resolveIdeationSession(sessionData?.session, activeSession);
   }, [sessionData?.session, activeSession]);
 
   // Mirror PlanningView's isReadOnly: sessions that are not "active" are read-only

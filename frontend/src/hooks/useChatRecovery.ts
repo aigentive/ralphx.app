@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatKeys } from "@/hooks/useChat";
+import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
 import { taskKeys } from "@/hooks/useTasks";
 import type { ContextType } from "@/types/chat-conversation";
 import type { StreamingTask } from "@/types/streaming-task";
@@ -167,9 +167,7 @@ export function useChatRecovery({
     if (isGenerating) return undefined;
 
     const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(activeConversationId),
-      });
+      invalidateConversationDataQueries(queryClient, activeConversationId);
     }, 2000);
 
     return () => clearInterval(intervalId);
@@ -265,9 +263,7 @@ export function useChatRecovery({
         queryKey: chatKeys.conversationList(currentContextType, selectedTaskId),
       });
       if (activeConversationId) {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(activeConversationId),
-        });
+        invalidateConversationDataQueries(queryClient, activeConversationId);
       }
     }, 2000);
 

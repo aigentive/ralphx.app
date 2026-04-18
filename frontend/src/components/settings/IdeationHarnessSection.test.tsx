@@ -256,4 +256,15 @@ describe("ExecutionHarnessSection", () => {
     expect(screen.getByText("Execution Worker")).toBeInTheDocument();
     expect(screen.queryByText("Primary Ideation")).not.toBeInTheDocument();
   });
+
+  it("uses a consistent single-line h-9 trigger height for provider, model, and effort selections", () => {
+    render(<ExecutionHarnessSection />);
+
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("h-9");
+    expect(screen.getByTestId("harness-execution_worker")).toHaveClass("items-center");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("h-9");
+    expect(screen.getByTestId("model-execution_worker")).toHaveClass("items-center");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("h-9");
+    expect(screen.getByLabelText("Execution Worker effort")).toHaveClass("items-center");
+  });
 });

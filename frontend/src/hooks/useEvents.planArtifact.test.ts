@@ -62,7 +62,12 @@ vi.mock("./useIdeation", () => ({
 let mockActiveSessionId: string | null = null;
 let mockSessions: Record<
   string,
-  { id: string; planArtifactId: string | null; inheritedPlanArtifactId?: string | null }
+  {
+    id: string;
+    planArtifactId: string | null;
+    inheritedPlanArtifactId?: string | null;
+    planUpdateSeq?: number;
+  }
 > = {};
 const mockSetPlanArtifact = vi.fn();
 const mockUpdateSession = vi.fn();
@@ -144,6 +149,27 @@ describe("usePlanArtifactEvents", () => {
   // ==========================================================================
 
   describe("tier 1 — sessionId-based match", () => {
+    it("created event increments planUpdateSeq when linking a session to a new plan", () => {
+      mockActiveSessionId = "session-1";
+      mockSessions = {
+        "session-1": { id: "session-1", planArtifactId: null, planUpdateSeq: 0 },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:created", {
+          sessionId: "session-1",
+          artifact: makeArtifact("artifact-1", 1),
+        });
+      });
+
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-1", {
+        planArtifactId: "artifact-1",
+        planUpdateSeq: 1,
+      });
+    });
+
     it("sessionId matches active session → setPlanArtifact called and query invalidated", () => {
       mockActiveSessionId = "session-1";
 
@@ -170,7 +196,7 @@ describe("usePlanArtifactEvents", () => {
     it("tier 1 match returns early — does not also process tier 2 or 3", () => {
       mockActiveSessionId = "session-1";
       // Session has a matching planArtifactId — tier 2 would also match if tier 1 didn't return
-      mockSessions = { "session-1": { id: "session-1", planArtifactId: "artifact-1" } };
+      mockSessions = { "session-1": { id: "session-1", planArtifactId: "artifact-1", planUpdateSeq: 3 } };
 
       renderHook(() => usePlanArtifactEvents());
 
@@ -186,6 +212,29 @@ describe("usePlanArtifactEvents", () => {
       // Tier 1 returned early — only one setPlanArtifact and one invalidateQueries call
       expect(mockSetPlanArtifact).toHaveBeenCalledTimes(1);
       expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+    });
+
+    it("updated event increments planUpdateSeq when linking the session to the new version", () => {
+      mockActiveSessionId = "session-1";
+      mockSessions = {
+        "session-1": { id: "session-1", planArtifactId: "artifact-1", planUpdateSeq: 3 },
+      };
+
+      renderHook(() => usePlanArtifactEvents());
+
+      act(() => {
+        fireEvent("plan_artifact:updated", {
+          sessionId: "session-1",
+          artifactId: "artifact-2",
+          previousArtifactId: "artifact-1",
+          artifact: makeArtifact("artifact-2", 2),
+        });
+      });
+
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-1", {
+        planArtifactId: "artifact-2",
+        planUpdateSeq: 4,
+      });
     });
   });
 
@@ -214,7 +263,10 @@ describe("usePlanArtifactEvents", () => {
       expect(mockSetPlanArtifact).toHaveBeenCalledWith(
         expect.objectContaining({ id: "artifact-2" })
       );
-      expect(mockUpdateSession).toHaveBeenCalledWith("session-1", { planArtifactId: "artifact-2" });
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-1", {
+        planArtifactId: "artifact-2",
+        planUpdateSeq: 1,
+      });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["ideation", "session", "session-1", "with-data"],
       });
@@ -259,7 +311,10 @@ describe("usePlanArtifactEvents", () => {
       // Tier 2 matched session-other but it's not active — no setPlanArtifact
       expect(mockSetPlanArtifact).not.toHaveBeenCalled();
       // But updateSession and invalidateQueries still fire for the matched session
-      expect(mockUpdateSession).toHaveBeenCalledWith("session-other", { planArtifactId: "artifact-2" });
+      expect(mockUpdateSession).toHaveBeenCalledWith("session-other", {
+        planArtifactId: "artifact-2",
+        planUpdateSeq: 1,
+      });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["ideation", "session", "session-other", "with-data"],
       });
@@ -435,6 +490,7 @@ describe("usePlanArtifactEvents", () => {
 
       expect(mockUpdateSession).toHaveBeenCalledWith("session-followup", {
         inheritedPlanArtifactId: "artifact-2",
+        planUpdateSeq: 1,
       });
       expect(mockUpdateSession).not.toHaveBeenCalledWith(
         "session-followup",
@@ -487,6 +543,7 @@ describe("usePlanArtifactEvents", () => {
 
       expect(mockUpdateSession).toHaveBeenCalledWith("session-1", {
         planArtifactId: "artifact-2",
+        planUpdateSeq: 1,
       });
       expect(mockUpdateSession).not.toHaveBeenCalledWith(
         "session-1",
@@ -517,6 +574,7 @@ describe("usePlanArtifactEvents", () => {
       expect(mockSetPlanArtifact).not.toHaveBeenCalled();
       expect(mockUpdateSession).toHaveBeenCalledWith("session-followup", {
         inheritedPlanArtifactId: "artifact-2",
+        planUpdateSeq: 1,
       });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["ideation", "session", "session-followup", "with-data"],

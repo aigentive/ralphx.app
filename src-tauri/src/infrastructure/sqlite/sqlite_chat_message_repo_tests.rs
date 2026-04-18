@@ -1086,6 +1086,38 @@ async fn test_get_by_conversation_excludes_other_conversations() {
     assert_eq!(messages_a[0].content, "For A");
 }
 
+#[tokio::test]
+async fn test_get_recent_by_conversation_paginated_returns_latest_window_in_order() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test", "/test");
+    let conv_id = create_test_conversation(&db);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+
+    for content in ["First", "Second", "Third", "Fourth"] {
+        let mut message = ChatMessage::user_in_project(project_id.clone(), content);
+        message.conversation_id = Some(conv_id.clone());
+        repo.create(message).await.unwrap();
+    }
+
+    let latest_window = repo
+        .get_recent_by_conversation_paginated(&conv_id, 2, 0)
+        .await
+        .unwrap();
+    assert_eq!(latest_window.len(), 2);
+    assert_eq!(latest_window[0].content, "Third");
+    assert_eq!(latest_window[1].content, "Fourth");
+
+    let older_window = repo
+        .get_recent_by_conversation_paginated(&conv_id, 2, 2)
+        .await
+        .unwrap();
+    assert_eq!(older_window.len(), 2);
+    assert_eq!(older_window[0].content, "First");
+    assert_eq!(older_window[1].content, "Second");
+}
+
 // ==================== ROLE FILTERING TESTS (count_by_session / get_recent_by_session) ====================
 
 #[tokio::test]

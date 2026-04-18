@@ -13,7 +13,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "@/stores/chatStore";
 import { chatApi, stopAgent } from "@/api/chat";
 import { recoverTaskExecution } from "@/api/recovery";
-import { chatKeys } from "@/hooks/useChat";
+import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
 import { ideationApi } from "@/api/ideation";
 import { logger } from "@/lib/logger";
 import type { ContextType } from "@/types/chat-conversation";
@@ -88,9 +88,7 @@ export function useChatActions({
             }
 
             if (result.conversationId) {
-              queryClient.invalidateQueries({
-                queryKey: chatKeys.conversation(result.conversationId),
-              });
+              invalidateConversationDataQueries(queryClient, result.conversationId);
               if (result.isNewConversation) {
                 setActiveConversation(storeContextKey, result.conversationId);
               }

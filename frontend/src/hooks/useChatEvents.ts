@@ -18,7 +18,10 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
-import { chatKeys } from "@/hooks/useChat";
+import {
+  getCachedConversationMessages,
+  invalidateConversationDataQueries,
+} from "@/hooks/useChat";
 import { conversationStatsKey } from "@/hooks/useConversationStats";
 import { getContextConfig } from "@/lib/chat-context-registry";
 import { isProviderRole } from "@/lib/chat/provider-role";
@@ -805,11 +808,9 @@ export function useChatEvents({
           safetyTimerId = setTimeout(clearFinalizing, 3000);
 
           if (assistantMessageId) {
-            const targetKey = chatKeys.conversation(convId);
-
             // Race guard: check if the query already has the message before subscribing
-            const existing = queryClient.getQueryData<{ messages: Array<{ id: string }> }>(targetKey);
-            if (existing?.messages?.some(m => m.id === assistantMessageId)) {
+            const existing = getCachedConversationMessages(queryClient, convId);
+            if (existing.some((message) => message.id === assistantMessageId)) {
               clearFinalizing();
             } else {
               // Subscribe to query cache updates — clear isFinalizing when the new
@@ -818,8 +819,8 @@ export function useChatEvents({
                 if (event.type !== "updated") return;
                 const evKey = event.query.queryKey;
                 if (!Array.isArray(evKey) || evKey.length < 3 || evKey[2] !== convId) return;
-                const data = queryClient.getQueryData<{ messages: Array<{ id: string }> }>(targetKey);
-                if (data?.messages?.some(m => m.id === assistantMessageId)) {
+                const data = getCachedConversationMessages(queryClient, convId);
+                if (data.some((message) => message.id === assistantMessageId)) {
                   clearFinalizing();
                 }
               });
@@ -828,9 +829,7 @@ export function useChatEvents({
           // If no message_id in payload, the safety timeout alone handles cleanup
         }
 
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(payload.conversation_id),
-        });
+        invalidateConversationDataQueries(queryClient, payload.conversation_id);
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
         });
@@ -888,9 +887,7 @@ export function useChatEvents({
       }>("agent:usage_updated", (payload) => {
         if (!isRelevant(payload)) return;
 
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(payload.conversation_id),
-        });
+        invalidateConversationDataQueries(queryClient, payload.conversation_id);
         queryClient.invalidateQueries({
           queryKey: conversationStatsKey(payload.conversation_id),
         });

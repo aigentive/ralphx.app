@@ -5,6 +5,7 @@ import {
   parseToolCalls,
   listConversations,
   getConversation,
+  getConversationMessagesPage,
   getConversationStats,
   createConversation,
   getAgentRunStatus,
@@ -231,6 +232,73 @@ describe("chat api", () => {
       effectiveEffort: "high",
       inputTokens: 120,
       estimatedUsd: 0.42,
+    });
+  });
+
+  it("gets a paginated conversation message window", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation: {
+        id: "c1",
+        context_type: "project",
+        context_id: "p1",
+        claude_session_id: null,
+        provider_session_id: "thread-2",
+        provider_harness: "codex",
+        title: null,
+        message_count: 3,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+      messages: [
+        {
+          id: "m2",
+          role: "user",
+          content: "Latest tail message",
+          metadata: null,
+          tool_calls: null,
+          content_blocks: null,
+          attribution_source: "native",
+          provider_harness: "codex",
+          provider_session_id: "thread-2",
+          upstream_provider: "openai",
+          provider_profile: null,
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4",
+          logical_effort: "high",
+          effective_effort: "high",
+          input_tokens: 12,
+          output_tokens: 4,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+          estimated_usd: 0.02,
+          created_at: "2026-01-24T10:00:01Z",
+        },
+      ],
+      limit: 40,
+      offset: 0,
+      total_message_count: 3,
+      has_older: true,
+    });
+
+    const result = await getConversationMessagesPage("c1", 40, 0);
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation_messages_page", {
+      conversationId: "c1",
+      limit: 40,
+      offset: 0,
+    });
+    expect(result).toMatchObject({
+      limit: 40,
+      offset: 0,
+      totalMessageCount: 3,
+      hasOlder: true,
+    });
+    expect(result.messages[0]).toMatchObject({
+      id: "m2",
+      providerHarness: "codex",
+      providerSessionId: "thread-2",
+      effectiveModelId: "gpt-5.4",
     });
   });
 

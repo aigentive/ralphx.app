@@ -29,6 +29,19 @@ const { useChatMockState } = vi.hoisted(() => {
     messages: [] as Array<{ id: string; role: string; content: string; createdAt: string; toolCalls: null; contentBlocks: null }>,
     conversation: null as { contextType: string; contextId: string } | null,
     conversations: [] as Array<{ id: string }>,
+    historyData: undefined as {
+      conversation: {
+        id: string;
+        contextType: string;
+        contextId: string;
+        providerHarness: string | null;
+        providerSessionId: string | null;
+        upstreamProvider?: string | null;
+        providerProfile?: string | null;
+      };
+      messages: Array<{ id: string; role: string; content: string; createdAt: string; toolCalls: null; contentBlocks: null }>;
+      loadedStartIndex?: number;
+    } | undefined,
   };
   return { useChatMockState };
 });
@@ -69,6 +82,14 @@ vi.mock("@/hooks/useChat", () => ({
     data: undefined,
     isLoading: false,
     error: null,
+  }),
+  useConversationHistoryWindow: () => ({
+    data: useChatMockState.historyData,
+    isLoading: false,
+    isFetchingOlderMessages: false,
+    hasOlderMessages: false,
+    loadedStartIndex: useChatMockState.historyData?.loadedStartIndex ?? 0,
+    fetchOlderMessages: vi.fn(),
   }),
   chatKeys: {
     all: ["chat"],
@@ -220,6 +241,7 @@ describe("IntegratedChatPanel", () => {
     useChatMockState.messages = [];
     useChatMockState.conversation = null;
     useChatMockState.conversations = [];
+    useChatMockState.historyData = undefined;
 
     // Reset stores
     act(() => {
@@ -1171,6 +1193,53 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
 
       const effectiveModel = useChatStore.getState().effectiveModel[STORE_KEY];
       expect(effectiveModel).toBeUndefined();
+    });
+  });
+
+  describe("ideation history hydration", () => {
+    it("renders ideation messages from the paged history window even when the full conversation query is skipped", () => {
+      const sessionId = "ideation-session-1";
+      const conversationId = "ideation-conv-1";
+
+      mockChatPanelContext.storeContextKey = `session:${sessionId}`;
+      mockChatPanelContext.currentContextType = "ideation";
+      mockChatPanelContext.currentContextId = sessionId;
+      mockChatPanelContext.activeConversationId = conversationId;
+
+      useChatMockState.conversations = [{ id: conversationId }];
+      useChatMockState.messages = [];
+      useChatMockState.conversation = null;
+      useChatMockState.historyData = {
+        conversation: {
+          id: conversationId,
+          contextType: "ideation",
+          contextId: sessionId,
+          providerHarness: "codex",
+          providerSessionId: "provider-thread-1",
+          upstreamProvider: null,
+          providerProfile: null,
+        },
+        messages: [
+          {
+            id: "msg-1",
+            role: "user",
+            content: "latest ideation message",
+            createdAt: "2026-04-18T10:47:36.724286+00:00",
+            toolCalls: null,
+            contentBlocks: null,
+          },
+        ],
+        loadedStartIndex: 0,
+      };
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" ideationSessionId={sessionId} />
+        </TestWrapper>
+      );
+
+      expect(screen.getByText("latest ideation message")).toBeInTheDocument();
+      expect(screen.queryByText("Start the conversation")).not.toBeInTheDocument();
     });
   });
 });

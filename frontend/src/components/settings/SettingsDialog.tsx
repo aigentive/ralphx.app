@@ -16,6 +16,7 @@ import {
   SETTINGS_SECTIONS,
   type SettingsSectionId,
 } from "./settings-registry";
+import { loadActiveSection, saveActiveSection } from "./settings-ui-state";
 import { AccessibilitySection } from "./AccessibilitySection";
 import { ApiKeysSection } from "./ApiKeysSection";
 import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
@@ -52,7 +53,14 @@ export default function SettingsDialog({
 
   const isOpen = activeModal === "settings";
 
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("execution");
+  const [activeSection, setActiveSectionState] = useState<SettingsSectionId>(
+    () => loadActiveSection() ?? "execution",
+  );
+
+  const setActiveSection = (section: SettingsSectionId) => {
+    setActiveSectionState(section);
+    saveActiveSection(section);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -119,7 +127,7 @@ export default function SettingsDialog({
           <button
             type="button"
             onClick={closeModal}
-            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus:outline-none"
+            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
             aria-label="Close settings"
           >
             <X className="h-4 w-4" />
@@ -208,13 +216,7 @@ export default function SettingsDialog({
         </div>
 
         {settingsError && (
-          <div
-            className="px-4 py-2 text-sm shrink-0 border-t"
-            style={{
-              color: "var(--status-error)",
-              borderColor: "rgba(255,255,255,0.06)",
-            }}
-          >
+          <div className="px-4 py-2 text-sm shrink-0 border-t border-[var(--border-subtle)] text-[var(--status-error)]">
             {settingsError}
           </div>
         )}

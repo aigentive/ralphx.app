@@ -125,6 +125,20 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       vi.useRealTimers();
     });
+
+    it("does not render an empty footer spacer when idle", () => {
+      render(<ChatMessageList {...defaultProps} />);
+
+      const root = screen.getByTestId("integrated-chat-messages");
+      const emptyFooterSpacer = Array.from(root.children).find((child) =>
+        child instanceof HTMLElement &&
+        child.classList.contains("px-3") &&
+        child.classList.contains("pb-3") &&
+        child.classList.contains("w-full")
+      );
+
+      expect(emptyFooterSpacer).toBeUndefined();
+    });
   });
 
   describe("streaming auto-scroll", () => {

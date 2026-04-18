@@ -37,6 +37,14 @@ pub trait ChatMessageRepository: Send + Sync {
         conversation_id: &ChatConversationId,
     ) -> AppResult<Vec<ChatMessage>>;
 
+    /// Get recent messages for a conversation with pagination (limit + offset for older history)
+    async fn get_recent_by_conversation_paginated(
+        &self,
+        conversation_id: &ChatConversationId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>>;
+
     /// Delete all messages for a session
     async fn delete_by_session(&self, session_id: &IdeationSessionId) -> AppResult<()>;
 
