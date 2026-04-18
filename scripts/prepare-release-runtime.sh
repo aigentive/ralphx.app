@@ -18,6 +18,7 @@ prepare_runtime_package() {
     cd "${package_dir}"
     npm ci
     npm run build
+    npm prune --omit=dev
   )
 }
 
