@@ -70,9 +70,9 @@ function TaskContextSection({
   if (isLoading) {
     return (
       <div className="space-y-2">
-        <div className="h-5 w-3/4 rounded animate-pulse bg-white/10" />
-        <div className="h-4 w-1/2 rounded animate-pulse bg-white/10" />
-        <div className="h-16 w-full rounded animate-pulse bg-white/10" />
+        <div className="h-5 w-3/4 rounded animate-pulse bg-[var(--overlay-moderate)]" />
+        <div className="h-4 w-1/2 rounded animate-pulse bg-[var(--overlay-moderate)]" />
+        <div className="h-16 w-full rounded animate-pulse bg-[var(--overlay-moderate)]" />
       </div>
     );
   }
@@ -81,17 +81,17 @@ function TaskContextSection({
     <div className="space-y-3">
       {/* Title removed - already displayed in modal header */}
       <div className="flex items-center gap-3 text-[12px]">
-        <span className="text-white/50">
-          Priority: <span className="text-white/70">{priority}</span>
+        <span className="text-text-primary/50">
+          Priority: <span className="text-text-primary/70">{priority}</span>
         </span>
-        <span className="text-white/50">
-          Category: <span className="text-white/70">{category}</span>
+        <span className="text-text-primary/50">
+          Category: <span className="text-text-primary/70">{category}</span>
         </span>
       </div>
       {description && (
         <div
           data-testid="modal-task-description"
-          className="text-[12px] text-white/60"
+          className="text-[12px] text-text-primary/60"
           style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -122,7 +122,7 @@ function AIReviewSummary({
           border: "1px solid var(--overlay-weak)",
         }}
       >
-        <p className="text-[12px] text-white/40">No AI review yet</p>
+        <p className="text-[12px] text-text-primary/40">No AI review yet</p>
       </div>
     );
   }
@@ -151,7 +151,7 @@ function AIReviewSummary({
         >
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--status-info)" }} />
         </div>
-        <span className="text-[12px] font-medium text-white/70">
+        <span className="text-[12px] font-medium text-text-primary/70">
           AI Review Summary
         </span>
         {latestApproved && (
@@ -169,7 +169,7 @@ function AIReviewSummary({
 
       {/* Summary text - rendered as markdown */}
       {latestApproved?.notes && (
-        <div className="text-[12px] text-white/60 prose prose-sm prose-invert max-w-none">
+        <div className="text-[12px] text-text-primary/60 prose prose-sm prose-invert max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {latestApproved.notes}
           </ReactMarkdown>
@@ -201,7 +201,7 @@ function AIReviewSummary({
 function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
   if (history.length === 0) {
     return (
-      <p className="text-[12px] text-white/40 italic">No review history</p>
+      <p className="text-[12px] text-text-primary/40 italic">No review history</p>
     );
   }
 
@@ -251,13 +251,13 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               {entry.reviewer === "ai" ? (
-                <Bot className="w-3 h-3 text-white/50" />
+                <Bot className="w-3 h-3 text-text-primary/50" />
               ) : entry.reviewer === "system" ? (
-                <Settings className="w-3 h-3 text-white/50" />
+                <Settings className="w-3 h-3 text-text-primary/50" />
               ) : (
-                <User className="w-3 h-3 text-white/50" />
+                <User className="w-3 h-3 text-text-primary/50" />
               )}
-              <span className="text-[11px] font-medium text-white/60">
+              <span className="text-[11px] font-medium text-text-primary/60">
                 {entry.reviewer === "ai" ? "AI" : entry.reviewer === "system" ? "System" : "Human"}{" "}
                 {entry.outcome === "approved"
                   ? "approved"
@@ -267,13 +267,13 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                   ? "requested changes"
                   : "rejected"}
               </span>
-              <span className="text-[10px] text-white/40 ml-auto flex items-center gap-1">
+              <span className="text-[10px] text-text-primary/40 ml-auto flex items-center gap-1">
                 <Clock className="w-2.5 h-2.5" />
                 {formatDate(entry.created_at)}
               </span>
             </div>
             {entry.summary && (
-              <p className="text-[11px] text-white/40 truncate mt-0.5">
+              <p className="text-[11px] text-text-primary/40 truncate mt-0.5">
                 {entry.summary}
               </p>
             )}
@@ -284,7 +284,7 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                   border: "1px solid var(--overlay-weak)",
                 }}
               >
-                <span className="text-[10px] text-white/45 break-all min-w-0">
+                <span className="text-[10px] text-text-primary/45 break-all min-w-0">
                   Follow-up: {entry.followup_session_id}
                 </span>
                 <button
@@ -488,7 +488,7 @@ export function ReviewDetailModal({
           <div className="flex items-center gap-3">
             <h2
               data-testid="review-detail-modal-title"
-              className="text-base font-semibold text-white/90"
+              className="text-base font-semibold text-text-primary/90"
               style={{ letterSpacing: "-0.02em" }}
             >
               Review: {task?.title ?? "Loading..."}
@@ -500,7 +500,7 @@ export function ReviewDetailModal({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="w-8 h-8 text-white/50 hover:text-white/80 hover:bg-white/10"
+            className="w-8 h-8 text-text-primary/50 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             <X className="w-4 h-4" />
           </Button>
@@ -550,8 +550,8 @@ export function ReviewDetailModal({
                 style={{ borderColor: "var(--overlay-weak)" }}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <MessageSquare className="w-4 h-4 text-white/50" />
-                  <span className="text-[12px] font-medium text-white/60">
+                  <MessageSquare className="w-4 h-4 text-text-primary/50" />
+                  <span className="text-[12px] font-medium text-text-primary/60">
                     What needs to be changed?
                   </span>
                 </div>
@@ -571,7 +571,7 @@ export function ReviewDetailModal({
                     setShowFeedbackInput(false);
                     setFeedback("");
                   }}
-                  className="text-[11px] text-white/40 hover:text-white/60 mt-2"
+                  className="text-[11px] text-text-primary/40 hover:text-text-primary/60 mt-2"
                 >
                   Cancel
                 </button>
@@ -583,7 +583,7 @@ export function ReviewDetailModal({
           <div className="flex-1 min-w-0">
             {task?.internalStatus === "merged" && (
               <div
-                className="px-4 py-2 text-[11px] text-white/55 border-b"
+                className="px-4 py-2 text-[11px] text-text-primary/55 border-b"
                 style={{ borderColor: "var(--overlay-weak)" }}
               >
                 Showing merged diff against the base branch for this task.

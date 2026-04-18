@@ -112,7 +112,7 @@ function ConflictFilesList({
             )}
             <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
-              className="text-[13px] font-mono text-white/70 truncate text-left"
+              className="text-[13px] font-mono text-text-primary/70 truncate text-left"
               title={file}
             >
               {file}
@@ -131,13 +131,13 @@ function ConflictFilesList({
                   className="flex items-center justify-center h-full"
                   style={{ backgroundColor: "hsl(220 10% 8%)" }}
                 >
-                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                  <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
               ) : conflictDiff ? (
                 <ConflictDiffViewer conflictDiff={conflictDiff} />
               ) : (
                 <div
-                  className="flex items-center justify-center h-full text-white/50"
+                  className="flex items-center justify-center h-full text-text-primary/50"
                   style={{ backgroundColor: "hsl(220 10% 8%)" }}
                 >
                   Failed to load conflict diff
@@ -267,8 +267,8 @@ function MergeProgressSteps({
           {displayStep?.label ?? "Merge"}
         </span>
         {expanded
-          ? <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-white/30 shrink-0" />}
+          ? <ChevronDown className="w-4 h-4 text-text-primary/30 shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-text-primary/30 shrink-0" />}
       </button>
 
       {/* Expanded: show all steps in original style */}
@@ -326,7 +326,7 @@ function PrModeCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
-            <span className="text-[13px] font-medium text-white/80">
+            <span className="text-[13px] font-medium text-text-primary/80">
               PR #{planBranch.prNumber}
             </span>
           </div>
@@ -339,7 +339,7 @@ function PrModeCard({
             <Loader2
               className="w-3.5 h-3.5 animate-spin text-text-primary/40"
             />
-            <span className="text-[12px] text-white/40">Monitoring PR status</span>
+            <span className="text-[12px] text-text-primary/40">Monitoring PR status</span>
           </div>
         )}
 
@@ -742,7 +742,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             <DetailCard>
               <div className="flex items-center gap-2.5 py-1.5">
                 <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
-                <span className="text-[13px] text-white/50">
+                <span className="text-[13px] text-text-primary/50">
                   Waiting for merge progress...
                 </span>
               </div>
@@ -764,14 +764,14 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           <SectionTitle>
             Conflict Files ({conflictFiles.length})
             {isConflictDetectionEnabled && isLoadingConflicts && (
-              <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-white/40" />
+              <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-text-primary/40" />
             )}
           </SectionTitle>
           <DetailCard variant="warning">
             {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
               <div className="flex items-center gap-2 py-2">
                 <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
-                <span className="text-[13px] text-white/50">Detecting conflicts...</span>
+                <span className="text-[13px] text-text-primary/50">Detecting conflicts...</span>
               </div>
             ) : (
               <ConflictFilesList files={conflictFiles} taskId={task.id} />

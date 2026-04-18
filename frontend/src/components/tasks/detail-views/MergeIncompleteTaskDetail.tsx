@@ -84,11 +84,11 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
   if (!mergeError) {
     return (
       <div className="space-y-3">
-        <p className="text-[13px] text-white/60">
+        <p className="text-[13px] text-text-primary/60">
           The merge failed due to a git error that is not a merge conflict.
           This can happen when:
         </p>
-        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
+        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-text-primary/50">
           <li>The task branch was deleted or corrupted</li>
           <li>A git lock file is preventing operations</li>
           <li>Network issues interrupted a fetch operation</li>
@@ -102,14 +102,14 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
     <div className="space-y-3">
       {mergeError.error && (
         <div
-          className="rounded-md px-3 py-2 font-mono text-[12px] text-white/80 whitespace-pre-wrap"
+          className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
           style={{ backgroundColor: "var(--status-error-muted)" }}
         >
           {mergeError.error}
         </div>
       )}
       {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
-        <div className="text-[13px] text-white/60">
+        <div className="text-[13px] text-text-primary/60">
           <BranchFlow
             source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
             target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
@@ -117,7 +117,7 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
         </div>
       )}
       {mergeError.diagnosticInfo && (
-        <div className="text-[12px] text-white/50 whitespace-pre-wrap">
+        <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
           {mergeError.diagnosticInfo}
         </div>
       )}
@@ -133,54 +133,54 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
     <div className="space-y-3">
       {hasValidationFailures ? (
         <>
-          <p className="text-[13px] text-white/60">
+          <p className="text-[13px] text-text-primary/60">
             Your validation commands (build, type checks, linting) failed,
             so the merge could not be completed. To recover:
           </p>
-          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
             <li>
               Fix the build, type, or lint errors in your codebase
             </li>
             <li>
-              Click <strong className="text-white/70">Retry Merge</strong> to
+              Click <strong className="text-text-primary/70">Retry Merge</strong> to
               re-run validation and complete the merge
             </li>
             <li>
               Click{" "}
-              <strong className="text-white/70">Retry (Skip Validation)</strong>{" "}
+              <strong className="text-text-primary/70">Retry (Skip Validation)</strong>{" "}
               to complete the merge without running validation
             </li>
             <li>
               If fixed manually, click{" "}
-              <strong className="text-white/70">Mark Resolved</strong>
+              <strong className="text-text-primary/70">Mark Resolved</strong>
             </li>
           </ol>
         </>
       ) : (
         <>
-          <p className="text-[13px] text-white/60">
+          <p className="text-[13px] text-text-primary/60">
             To recover, try the following steps:
           </p>
-          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
             <li>
               Check if the branch exists:{" "}
-              <code className="text-white/70 bg-white/5 px-1 rounded">
+              <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">
                 git branch --list {branchName}
               </code>
             </li>
             <li>
               Remove any stale lock files:{" "}
-              <code className="text-white/70 bg-white/5 px-1 rounded">
+              <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">
                 rm -f .git/index.lock
               </code>
             </li>
             <li>
-              Click <strong className="text-white/70">Retry Merge</strong> to
+              Click <strong className="text-text-primary/70">Retry Merge</strong> to
               attempt the merge again
             </li>
             <li>
               If the issue is resolved manually, click{" "}
-              <strong className="text-white/70">Mark Resolved</strong>
+              <strong className="text-text-primary/70">Mark Resolved</strong>
             </li>
           </ol>
         </>
@@ -319,41 +319,41 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
               {/* Header: kind + timestamp */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[13px] font-medium text-white/90">
+                  <span className="text-[13px] font-medium text-text-primary/90">
                     {getKindLabel(event.kind)}
                   </span>
                   {getSourceBadge(event.source)}
                   {event.attempt !== undefined && (
-                    <span className="text-[11px] text-white/40">
+                    <span className="text-[11px] text-text-primary/40">
                       Attempt #{event.attempt}
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-white/40 font-mono">
+                <span className="text-[11px] text-text-primary/40 font-mono">
                   {formatTimestamp(event.at)}
                 </span>
               </div>
 
               {/* Message */}
-              <p className="text-[13px] text-white/70">{event.message}</p>
+              <p className="text-[13px] text-text-primary/70">{event.message}</p>
 
               {/* Additional metadata */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-primary/50">
                 {event.blocking_task_id && (
                   <div>
-                    <span className="text-white/40">Blocker: </span>
+                    <span className="text-text-primary/40">Blocker: </span>
                     <span className="font-mono">{event.blocking_task_id.slice(0, 8)}</span>
                   </div>
                 )}
                 {event.target_branch && (
                   <div>
-                    <span className="text-white/40">Target: </span>
+                    <span className="text-text-primary/40">Target: </span>
                     <span className="font-mono">{event.target_branch}</span>
                   </div>
                 )}
                 {event.reason_code && (
                   <div>
-                    <span className="text-white/40">Reason: </span>
+                    <span className="text-text-primary/40">Reason: </span>
                     <span>{event.reason_code.replace(/_/g, " ")}</span>
                   </div>
                 )}
@@ -679,9 +679,9 @@ export function MergeIncompleteTaskDetail({
             <DetailCard variant="warning">
               <div className="flex items-center gap-2">
                 <GitPullRequestClosed className="w-4 h-4" style={{ color: "var(--status-warning)" }} />
-                <span className="text-[13px] text-white/70">PR closed without merging</span>
+                <span className="text-[13px] text-text-primary/70">PR closed without merging</span>
                 {planBranch.prNumber != null && (
-                  <span className="text-[12px] text-white/40">PR #{planBranch.prNumber}</span>
+                  <span className="text-[12px] text-text-primary/40">PR #{planBranch.prNumber}</span>
                 )}
               </div>
             </DetailCard>
@@ -689,7 +689,7 @@ export function MergeIncompleteTaskDetail({
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
-                <span className="text-[13px] text-white/70">
+                <span className="text-[13px] text-text-primary/70">
                   PR operation failed (PR #{planBranch.prNumber})
                 </span>
               </div>
@@ -698,7 +698,7 @@ export function MergeIncompleteTaskDetail({
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
-                <span className="text-[13px] text-white/70">PR operation failed</span>
+                <span className="text-[13px] text-text-primary/70">PR operation failed</span>
               </div>
             </DetailCard>
           )}
@@ -724,7 +724,7 @@ export function MergeIncompleteTaskDetail({
           </>
         ) : (
           <DetailCard>
-            <p className="text-[13px] text-white/50 italic">
+            <p className="text-[13px] text-text-primary/50 italic">
               No recorded recovery attempts for this task.
             </p>
           </DetailCard>

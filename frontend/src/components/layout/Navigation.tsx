@@ -116,10 +116,10 @@ function NavItem({
           )}
           style={{
             background: isActive
-              ? "hsla(14 100% 60% / 0.1)"
+              ? "var(--accent-muted)"
               : "transparent",
-            border: isActive ? "1px solid hsla(14 100% 60% / 0.15)" : "1px solid transparent",
-            color: isActive ? "hsl(14 100% 60%)" : "hsl(220 10% 55%)",
+            border: isActive ? "1px solid var(--accent-border)" : "1px solid transparent",
+            color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
           }}
           data-testid={`nav-${view}`}
           aria-current={isActive ? "page" : undefined}
@@ -180,7 +180,7 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
             style={{
               background: "transparent",
               border: "1px solid transparent",
-              color: "hsl(220 10% 55%)",
+              color: "var(--text-muted)",
             }}
             data-testid="nav-settings"
           >
@@ -198,12 +198,12 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
         <div
           className="flex items-center gap-1.5 h-7 px-2.5 rounded-full ml-1"
           style={{
-            background: "hsla(14 100% 60% / 0.1)",
-            border: "1px solid hsla(14 100% 60% / 0.2)",
+            background: "var(--accent-muted)",
+            border: "1px solid var(--accent-border)",
           }}
         >
-          <Users className="w-3.5 h-3.5" style={{ color: "hsl(14 100% 60%)" }} />
-          <span className="text-xs font-medium" style={{ color: "hsl(14 100% 60%)" }}>
+          <Users className="w-3.5 h-3.5" style={{ color: "var(--accent-primary)" }} />
+          <span className="text-xs font-medium" style={{ color: "var(--accent-primary)" }}>
             {teammateCount}
           </span>
         </div>

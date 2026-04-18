@@ -61,7 +61,7 @@ function ConflictFilesList({
 
   if (files.length === 0) {
     return (
-      <p className="text-[13px] text-white/50 italic">
+      <p className="text-[13px] text-text-primary/50 italic">
         No conflict files recorded
       </p>
     );
@@ -99,7 +99,7 @@ function ConflictFilesList({
             )}
             <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
-              className="text-[13px] font-mono text-white/70 truncate text-left"
+              className="text-[13px] font-mono text-text-primary/70 truncate text-left"
               title={file}
             >
               {file}
@@ -118,13 +118,13 @@ function ConflictFilesList({
                   className="flex items-center justify-center h-full"
                   style={{ backgroundColor: "hsl(220 10% 8%)" }}
                 >
-                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                  <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
               ) : conflictDiff ? (
                 <ConflictDiffViewer conflictDiff={conflictDiff} />
               ) : (
                 <div
-                  className="flex items-center justify-center h-full text-white/50"
+                  className="flex items-center justify-center h-full text-text-primary/50"
                   style={{ backgroundColor: "hsl(220 10% 8%)" }}
                 >
                   Failed to load conflict diff
@@ -144,15 +144,15 @@ function ConflictFilesList({
 function ResolutionInstructions({ branchName }: { branchName: string }) {
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-white/60">
+      <p className="text-[13px] text-text-primary/60">
         The AI agent could not automatically resolve the merge conflicts.
         Please resolve them manually:
       </p>
-      <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+      <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
         <li>Open the conflicting files in your editor</li>
         <li>Resolve the conflicts (remove conflict markers)</li>
-        <li>Stage the resolved files: <code className="text-white/70 bg-white/5 px-1 rounded">git add .</code></li>
-        <li>Commit the merge: <code className="text-white/70 bg-white/5 px-1 rounded">git commit</code></li>
+        <li>Stage the resolved files: <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">git add .</code></li>
+        <li>Commit the merge: <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">git commit</code></li>
         <li>Click "Conflicts Resolved" below to continue</li>
       </ol>
       <div className="pt-2">
@@ -395,14 +395,14 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         <SectionTitle>
           Conflict Files ({conflictFiles.length})
           {isConflictDetectionEnabled && isLoadingConflicts && (
-            <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-white/40" />
+            <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-text-primary/40" />
           )}
         </SectionTitle>
         <DetailCard variant="warning">
           {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
             <div className="flex items-center gap-2 py-2">
               <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
-              <span className="text-[13px] text-white/50">Detecting conflicts...</span>
+              <span className="text-[13px] text-text-primary/50">Detecting conflicts...</span>
             </div>
           ) : (
             <ConflictFilesList files={conflictFiles} taskId={task.id} />

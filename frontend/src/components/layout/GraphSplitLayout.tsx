@@ -168,7 +168,7 @@ export function GraphSplitLayout({
       ref={containerRef}
       data-testid="graph-split-layout"
       className="flex h-full overflow-hidden"
-      style={{ backgroundColor: "hsl(220 10% 8%)" }}
+      style={{ backgroundColor: "var(--bg-base)" }}
     >
       <style>{overlayAnimationStyles}</style>
       {/* Left Section - Graph canvas */}
@@ -251,12 +251,11 @@ export function GraphSplitLayout({
               className="flex flex-col flex-1 overflow-hidden rounded-[10px]"
               style={{
                 margin: "8px",
-                background: "hsla(220 10% 10% / 0.92)",
+                background: "color-mix(in srgb, var(--bg-surface) 92%, transparent)",
                 backdropFilter: "blur(20px) saturate(180%)",
                 WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                border: "1px solid hsla(220 20% 100% / 0.08)",
-                boxShadow:
-                  "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+                border: "1px solid var(--border-subtle)",
+                boxShadow: "var(--shadow-md)",
               }}
             >
               {timelineContent}

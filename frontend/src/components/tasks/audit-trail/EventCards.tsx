@@ -71,11 +71,11 @@ function TransitionEventCard({ entry }: { entry: AuditEntry }) {
           {entry.fromStatus && <StatusBadge status={entry.fromStatus} />}
           <ArrowRight className="w-3 h-3 text-text-primary/30" />
           {entry.toStatus && <StatusBadge status={entry.toStatus} />}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
       </div>
     </div>
@@ -124,11 +124,11 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
               {toolName}
             </span>
           )}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && (
           <ExpandableContent
             text={entry.description}
@@ -144,7 +144,7 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
               border: "1px solid var(--overlay-weak)",
             }}
           >
-            <span className="text-[10px] text-white/45 break-all min-w-0">
+            <span className="text-[10px] text-text-primary/45 break-all min-w-0">
               Follow-up: {entry.followupSessionId}
             </span>
             <button
@@ -201,13 +201,13 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
               {entry.type}
             </span>
           ) : (
-            <span className="text-[11px] font-medium text-white/70">{entry.type}</span>
+            <span className="text-[11px] font-medium text-text-primary/70">{entry.type}</span>
           )}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
         {entry.metadata && (
           <p
@@ -225,7 +225,7 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
               border: "1px solid var(--overlay-weak)",
             }}
           >
-            <span className="text-[10px] text-white/45 break-all min-w-0">
+            <span className="text-[10px] text-text-primary/45 break-all min-w-0">
               Follow-up: {entry.followupSessionId}
             </span>
             <button
@@ -263,12 +263,12 @@ function DefaultEventCard({ entry }: { entry: AuditEntry }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium text-white/70">{entry.type}</span>
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] font-medium text-text-primary/70">{entry.type}</span>
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
       </div>
     </div>
