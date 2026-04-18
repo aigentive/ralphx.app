@@ -53,7 +53,7 @@ export function ActiveMergeCard({ task, onStop, onViewDetails }: ActiveMergeCard
       />
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-        style={{ color: "hsl(220 10% 88%)" }}
+        style={{ color: "var(--text-primary)" }}
         onClick={() => onViewDetails(task.taskId)}
       >
         {task.title}
@@ -71,7 +71,7 @@ export function ActiveMergeCard({ task, onStop, onViewDetails }: ActiveMergeCard
       )}
       <span
         className="text-[11px] shrink-0 tabular-nums"
-        style={{ color: "hsl(220 10% 42%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {elapsedTime}
       </span>

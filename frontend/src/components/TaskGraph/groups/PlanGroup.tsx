@@ -165,7 +165,7 @@ export const PlanGroup = memo(function PlanGroup({
         width,
         height: displayHeight,
         ...(isGroupSelected && {
-          outline: "2px solid hsl(14 100% 55%)",
+          outline: "2px solid var(--accent-primary)",
           outlineOffset: "-2px",
         }),
       }}

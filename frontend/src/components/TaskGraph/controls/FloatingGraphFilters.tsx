@@ -113,11 +113,11 @@ const getGroupingLabel = (grouping: GroupingState): string => {
 
 const GLASS_STYLE: React.CSSProperties = {
   borderRadius: "10px",
-  background: "hsla(220 10% 10% / 0.92)",
+  background: "var(--bg-surface)",
   backdropFilter: "blur(20px) saturate(180%)",
-  border: "1px solid hsla(220 20% 100% / 0.08)",
+  border: "1px solid var(--overlay-weak)",
   boxShadow:
-    "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+    "0 4px 16px var(--overlay-scrim), 0 12px 32px var(--overlay-scrim)",
 };
 
 // ============================================================================

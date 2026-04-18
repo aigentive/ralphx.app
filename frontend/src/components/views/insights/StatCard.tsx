@@ -17,7 +17,7 @@ export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
   return (
     <div
       className="flex flex-col gap-1 rounded-xl"
-      style={{ backgroundColor: "hsl(220 10% 12%)", padding: "14px 16px" }}
+      style={{ backgroundColor: "var(--bg-surface)", padding: "14px 16px" }}
     >
       <span
         className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"

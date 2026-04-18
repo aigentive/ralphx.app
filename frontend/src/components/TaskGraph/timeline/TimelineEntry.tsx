@@ -145,7 +145,7 @@ export const TimelineEntry = memo(function TimelineEntry({
         statusCategory === "executing" && "animate-pulse"
       )}
       style={{
-        background: isHighlighted ? "hsla(220 60% 50% / 0.15)" : "transparent",
+        background: isHighlighted ? "var(--status-info-muted)" : "transparent",
       }}
       onClick={isClickable ? handleClick : undefined}
       role={isClickable ? "button" : undefined}
@@ -162,7 +162,7 @@ export const TimelineEntry = memo(function TimelineEntry({
       }
       onMouseEnter={(e) => {
         if (isClickable && !isHighlighted) {
-          e.currentTarget.style.background = "hsl(220 10% 14%)";
+          e.currentTarget.style.background = "var(--bg-hover)";
         }
       }}
       onMouseLeave={(e) => {
@@ -194,7 +194,7 @@ export const TimelineEntry = memo(function TimelineEntry({
           style={{
             fontSize: "12px",
             fontWeight: 400,
-            color: "hsl(220 10% 88%)",
+            color: "var(--text-primary)",
             lineHeight: 1.4,
           }}
         >
@@ -208,7 +208,7 @@ export const TimelineEntry = memo(function TimelineEntry({
             style={{
               fontSize: "10px",
               fontWeight: 500,
-              color: "hsl(220 10% 45%)",
+              color: "var(--text-muted)",
             }}
           >
             {formatRelativeTime(event.timestamp)}
@@ -241,7 +241,7 @@ export const TimelineEntry = memo(function TimelineEntry({
             className="flex items-center gap-1 mt-0.5"
             style={{
               fontSize: "10px",
-              color: "hsl(220 10% 50%)",
+              color: "var(--text-muted)",
             }}
           >
             <GitMerge className="w-3 h-3" />

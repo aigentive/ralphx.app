@@ -41,17 +41,17 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
         {session.isGenerating ? (
           <Loader2
             className="w-3.5 h-3.5 animate-spin shrink-0"
-            style={{ color: "hsl(14 100% 60%)" }}
+            style={{ color: "var(--accent-primary)" }}
           />
         ) : (
           <Pause
             className="w-3.5 h-3.5 shrink-0"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           />
         )}
         <span
           className="flex-1 text-xs font-medium truncate min-w-0 text-left"
-          style={{ color: "hsl(220 10% 88%)" }}
+          style={{ color: "var(--text-primary)" }}
           title={session.title}
         >
           {session.title}
@@ -59,8 +59,8 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{
-            color: "hsl(14 100% 60%)",
-            backgroundColor: "hsla(14 100% 60% / 0.15)",
+            color: "var(--accent-primary)",
+            backgroundColor: "var(--accent-muted)",
           }}
         >
           Ideation
@@ -70,22 +70,22 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
       {/* Line 2: Elapsed · Team mode */}
       <div
         className="flex items-center gap-1.5 mt-0.5 pl-[22px] text-[11px] min-w-0"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
-        <MessageSquare className="w-3 h-3 shrink-0" style={{ color: "hsl(220 10% 40%)" }} />
+        <MessageSquare className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
         <span className="shrink-0 tabular-nums">
           {formatElapsedTime(elapsedTime)}
         </span>
         {session.teamMode && (
           <>
-            <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>
+            <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
               ·
             </span>
             <span
               className="text-[10px] font-medium px-1 rounded shrink-0"
               style={{
-                color: "hsl(220 10% 65%)",
-                backgroundColor: "hsla(220 10% 65% / 0.15)",
+                color: "var(--text-secondary)",
+                backgroundColor: "var(--overlay-moderate)",
               }}
             >
               {session.teamMode}

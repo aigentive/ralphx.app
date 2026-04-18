@@ -1655,12 +1655,12 @@ function TaskGraphViewInner({
           >
             {/* SVG marker definitions for edge arrows */}
             <EdgeMarkerDefinitions />
-            <Background color="hsl(220 10% 25%)" gap={20} />
+            <Background color="var(--text-muted)" gap={20} />
             <Controls
               showInteractive={false}
               style={{
-                background: "hsla(220 10% 12% / 0.9)",
-                border: "1px solid hsla(220 20% 100% / 0.08)",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--overlay-weak)",
                 borderRadius: 8,
               }}
             />

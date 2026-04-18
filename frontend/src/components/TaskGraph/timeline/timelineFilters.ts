@@ -58,15 +58,15 @@ export interface TimelineFilterOption {
  * Color mappings for filter categories (matching nodeStyles)
  */
 const FILTER_COLORS: Record<TimelineFilterCategory, string> = {
-  all: "hsl(220 10% 60%)",
-  execution: "hsl(14 100% 55%)",      // Executing orange
-  reviews: "hsl(220 80% 60%)",        // Review blue
-  escalations: "hsl(0 70% 55%)",      // Escalation red (alert)
-  qa: "hsl(280 60% 55%)",             // QA purple
-  merge: "hsl(180 60% 50%)",          // Merge cyan
-  completed: "hsl(145 60% 45%)",      // Complete green
-  blocked: "hsl(45 90% 55%)",         // Blocked amber
-  plans: "hsl(220 10% 60%)",          // Plan events gray
+  all: "var(--text-secondary)",
+  execution: "var(--accent-primary)",      // Executing orange
+  reviews: "var(--status-info)",           // Review blue
+  escalations: "var(--status-error)",      // Escalation red (alert)
+  qa: "var(--status-info)",                // QA purple
+  merge: "var(--status-info)",             // Merge cyan
+  completed: "var(--status-success)",      // Complete green
+  blocked: "var(--status-warning)",        // Blocked amber
+  plans: "var(--text-secondary)",          // Plan events gray
 };
 
 /**

@@ -74,7 +74,7 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
   if (!team) return null;
 
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: "hsl(220 10% 8%)" }}>
+    <div className="flex flex-col h-full" style={{ backgroundColor: "var(--bg-base)" }}>
       {/* Stats header */}
       <TeamOverviewHeader contextKey={contextKey} />
 
@@ -84,7 +84,7 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
         className="flex-1 overflow-y-auto px-3 py-2 space-y-2"
       >
         {leadMessages.length === 0 ? (
-          <p className="text-[11px] text-center py-8" style={{ color: "hsl(220 10% 40%)" }}>
+          <p className="text-[11px] text-center py-8" style={{ color: "var(--text-muted)" }}>
             No messages yet
           </p>
         ) : (
@@ -95,23 +95,23 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
                 <div className="flex items-baseline gap-1.5">
                   <span
                     className="text-[11px] font-medium"
-                    style={{ color: isFromLead ? "hsl(14 100% 60%)" : "hsl(220 10% 70%)" }}
+                    style={{ color: isFromLead ? "var(--accent-primary)" : "var(--text-secondary)" }}
                   >
                     {msg.from}
                   </span>
                   {msg.to && (
                     <>
-                      <span className="text-[10px]" style={{ color: "hsl(220 10% 35%)" }}>→</span>
-                      <span className="text-[10px]" style={{ color: "hsl(220 10% 50%)" }}>{msg.to}</span>
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>→</span>
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{msg.to}</span>
                     </>
                   )}
-                  <span className="text-[9px] ml-auto" style={{ color: "hsl(220 10% 35%)" }}>
+                  <span className="text-[9px] ml-auto" style={{ color: "var(--text-muted)" }}>
                     {formatTimestamp(msg.timestamp)}
                   </span>
                 </div>
                 <p
                   className="text-[12px] leading-relaxed"
-                  style={{ color: "hsl(220 10% 80%)" }}
+                  style={{ color: "var(--text-secondary)" }}
                 >
                   {msg.content}
                 </p>
@@ -126,7 +126,7 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
         className="flex items-center gap-2 px-3 shrink-0"
         style={{
           height: 36,
-          borderTop: "1px solid hsl(220 10% 14%)",
+          borderTop: "1px solid var(--border-subtle)",
         }}
       >
         <input
@@ -137,7 +137,7 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
           placeholder={`Message ${team.leadName}...`}
           className="flex-1 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
           style={{
-            color: "hsl(220 10% 90%)",
+            color: "var(--text-primary)",
             boxShadow: "none",
             outline: "none",
           }}
@@ -148,7 +148,7 @@ export const CoordinatorPane = React.memo(function CoordinatorPane({
           disabled={!inputValue.trim() || !onSendMessage}
           className="text-[11px] px-2 py-0.5 rounded disabled:opacity-30 transition-opacity"
           style={{
-            backgroundColor: "hsl(14 100% 60%)",
+            backgroundColor: "var(--accent-primary)",
             color: "white",
           }}
         >

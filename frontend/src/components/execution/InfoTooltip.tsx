@@ -30,7 +30,7 @@ export function InfoTooltip({ content, testId }: InfoTooltipProps) {
           aria-label="More information"
           className="inline-flex items-center justify-center transition-colors duration-150 hover:opacity-70 cursor-help"
           style={{
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-muted)",
             background: "none",
             border: "none",
             padding: 0,
@@ -45,9 +45,9 @@ export function InfoTooltip({ content, testId }: InfoTooltipProps) {
         align="center"
         className="max-w-[320px] p-3 text-[13px] leading-relaxed"
         style={{
-          backgroundColor: "hsl(220 10% 12%)",
-          border: "1px solid hsla(220 20% 100% / 0.08)",
-          color: "hsl(220 10% 85%)",
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--overlay-weak)",
+          color: "var(--text-primary)",
         }}
       >
         {content}

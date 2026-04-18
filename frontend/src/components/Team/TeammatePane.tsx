@@ -67,10 +67,10 @@ export const TeammatePane = React.memo(function TeammatePane({
         if (e.key === "Enter" || e.key === " ") handleClick();
       }}
       style={{
-        backgroundColor: isFocused ? "hsl(220 10% 9%)" : "hsl(220 10% 7%)",
+        backgroundColor: isFocused ? "var(--bg-surface)" : "var(--bg-base)",
         border: isFocused
-          ? "1px solid hsl(14 100% 60%)"
-          : "1px solid hsl(220 10% 14%)",
+          ? "1px solid var(--accent-primary)"
+          : "1px solid var(--border-subtle)",
       }}
     >
       <PaneHeader

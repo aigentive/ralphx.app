@@ -34,10 +34,8 @@ function getStatusBadgeStyle(status: string): {
 } {
   const statusConfig = getStatusIconConfig(status);
   const statusLower = status.toLowerCase();
-  const hslMatch = statusConfig.color.match(/^hsl\((.+)\)$/);
-  const bgColor = hslMatch
-    ? `hsla(${hslMatch[1]} / ${statusConfig.bgOpacity})`
-    : statusConfig.color;
+  const opacityPct = Math.round(parseFloat(statusConfig.bgOpacity) * 100);
+  const bgColor = `color-mix(in srgb, ${statusConfig.color} ${opacityPct}%, transparent)`;
 
   switch (statusLower) {
     case "executing":
@@ -100,38 +98,38 @@ function getOriginBadgeStyle(origin: string | null): {
   switch (originLower) {
     case "scheduler":
       return {
-        color: "hsl(220 10% 65%)",
-        bgColor: "hsla(220 10% 65% / 0.15)",
+        color: "var(--text-secondary)",
+        bgColor: "var(--overlay-moderate)",
         label: "Scheduled",
       };
     case "revision":
       return {
-        color: "hsl(25 90% 55%)",
-        bgColor: "hsla(25 90% 55% / 0.15)",
+        color: "var(--accent-primary)",
+        bgColor: "var(--accent-muted)",
         label: "Revision",
       };
     case "recovery":
       return {
-        color: "hsl(45 90% 55%)",
-        bgColor: "hsla(45 90% 55% / 0.15)",
+        color: "var(--status-warning)",
+        bgColor: "var(--status-warning-muted)",
         label: "Recovered",
       };
     case "retry":
       return {
-        color: "hsl(210 90% 60%)",
-        bgColor: "hsla(210 90% 60% / 0.15)",
+        color: "var(--status-info)",
+        bgColor: "var(--status-info-muted)",
         label: "Retried",
       };
     case "qa":
       return {
-        color: "hsl(270 60% 60%)",
-        bgColor: "hsla(270 60% 60% / 0.15)",
+        color: "var(--status-info)",
+        bgColor: "var(--status-info-muted)",
         label: "QA Cycle",
       };
     default:
       return {
-        color: "hsl(220 10% 65%)",
-        bgColor: "hsla(220 10% 65% / 0.15)",
+        color: "var(--text-secondary)",
+        bgColor: "var(--overlay-moderate)",
         label: origin,
       };
   }
@@ -176,7 +174,7 @@ export function ProcessCard({
         />
         <span
           className="flex-1 text-xs font-medium truncate min-w-0 text-left"
-          style={{ color: "hsl(220 10% 88%)" }}
+          style={{ color: "var(--text-primary)" }}
           title={process.title}
         >
           {process.title}
@@ -200,7 +198,7 @@ export function ProcessCard({
             onKeyDown={(e) => e.stopPropagation()}
             disabled={isLoading}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors disabled:opacity-40"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
             title="Pause task"
           >
             {isLoading ? (
@@ -218,7 +216,7 @@ export function ProcessCard({
             onKeyDown={(e) => e.stopPropagation()}
             disabled={isLoading}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors disabled:opacity-40"
-            style={{ color: "hsl(0 70% 60%)" }}
+            style={{ color: "var(--status-error)" }}
             title="Stop task"
           >
             {isLoading ? (
@@ -233,11 +231,11 @@ export function ProcessCard({
       {/* Line 2: Step · Elapsed · Origin · Branch */}
       <div
         className="flex items-center gap-1.5 mt-0.5 pl-[22px] text-[11px] min-w-0"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {stepInfo && <span className="shrink-0">{stepInfo}</span>}
         {stepInfo && (
-          <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>
+          <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
             ·
           </span>
         )}
@@ -248,7 +246,7 @@ export function ProcessCard({
           <>
             <span
               className="shrink-0"
-              style={{ color: "hsl(220 10% 30%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               ·
             </span>
@@ -267,13 +265,13 @@ export function ProcessCard({
           <>
             <span
               className="shrink-0"
-              style={{ color: "hsl(220 10% 30%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               ·
             </span>
             <span
               className="font-mono text-[10px] truncate min-w-0"
-              style={{ color: "hsl(220 10% 40%)" }}
+              style={{ color: "var(--text-muted)" }}
               title={process.taskBranch}
             >
               {process.taskBranch}

@@ -14,7 +14,7 @@ const ACCENT = "var(--accent-primary)";
 const SECONDARY_DEFAULT = withAlpha("var(--text-secondary)", 70);
 
 const tooltipStyle = {
-  backgroundColor: "hsl(220 10% 12%)",
+  backgroundColor: "var(--bg-surface)",
   border: "none",
   borderRadius: "8px",
   fontSize: "12px",

@@ -35,10 +35,10 @@ export function WaveGateIndicator({
     <div
       className="rounded-md px-2.5 py-2"
       style={{
-        backgroundColor: "hsla(220 10% 100% / 0.03)",
+        backgroundColor: "var(--overlay-faint)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
-        border: "1px solid hsla(220 10% 100% / 0.06)",
+        border: "1px solid var(--overlay-weak)",
       }}
     >
       {/* Wave header */}
@@ -46,7 +46,7 @@ export function WaveGateIndicator({
         <div className="flex items-center gap-1.5">
           <span
             className="text-[10px] font-semibold uppercase tracking-wider"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             Wave {currentWave}/{totalWaves}
           </span>
@@ -54,8 +54,8 @@ export function WaveGateIndicator({
             <span
               className="text-[9px] font-medium px-1.5 py-0.5 rounded"
               style={{
-                color: "hsl(142 70% 50%)",
-                backgroundColor: "hsla(142 70% 50% / 0.1)",
+                color: "var(--status-success)",
+                backgroundColor: "var(--status-success-muted)",
               }}
             >
               Gate Passed
@@ -75,10 +75,10 @@ export function WaveGateIndicator({
                 className="w-1.5 h-1.5 rounded-full transition-colors"
                 style={{
                   backgroundColor: isComplete
-                    ? "hsl(14 100% 60%)"
+                    ? "var(--accent-primary)"
                     : isCurrent
-                      ? "hsla(14 100% 60% / 0.5)"
-                      : "hsla(220 10% 100% / 0.1)",
+                      ? "var(--accent-strong)"
+                      : "var(--overlay-moderate)",
                 }}
               />
             );
@@ -92,11 +92,11 @@ export function WaveGateIndicator({
           <div key={t.name} className="flex items-center gap-1">
             <CheckCircle2
               className="w-2.5 h-2.5"
-              style={{ color: "hsl(142 70% 50%)" }}
+              style={{ color: "var(--status-success)" }}
             />
             <span
               className="text-[10px]"
-              style={{ color: "hsl(220 10% 55%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {t.name}
             </span>
@@ -106,11 +106,11 @@ export function WaveGateIndicator({
           <div key={t.name} className="flex items-center gap-1">
             <Loader2
               className="w-2.5 h-2.5 animate-spin"
-              style={{ color: "hsl(14 100% 60%)" }}
+              style={{ color: "var(--accent-primary)" }}
             />
             <span
               className="text-[10px]"
-              style={{ color: "hsl(220 10% 70%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {t.name}
             </span>

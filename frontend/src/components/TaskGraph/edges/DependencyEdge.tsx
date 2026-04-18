@@ -69,7 +69,7 @@ function DependencyEdgeComponent({
   // Group connector edges get a special style - solid line (dotted not visible when straight)
   const edgeStyle = isGroupConnector
     ? {
-        stroke: "hsl(220 10% 40%)",
+        stroke: "var(--text-muted)",
         strokeWidth: 1.5,
         strokeDasharray: undefined,
         animated: false,
@@ -156,7 +156,7 @@ function DependencyEdgeComponent({
               !isHovered && "opacity-40"
             )}
             style={{
-              backgroundColor: isAccentEdge ? "hsl(14 100% 55%)" : "hsl(220 10% 50%)",
+              backgroundColor: isAccentEdge ? "var(--accent-primary)" : "var(--text-muted)",
             }}
           />
 
@@ -180,23 +180,23 @@ function DependencyEdgeComponent({
                   gap: "6px",
                   padding: "5px 10px",
                   borderRadius: "6px",
-                  background: "hsl(220 10% 12%)",
-                  border: "1px solid hsla(220 10% 100% / 0.08)",
-                  boxShadow: "0 4px 12px hsla(0 0% 0% / 0.4)",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--overlay-weak)",
+                  boxShadow: "0 4px 12px var(--overlay-scrim)",
                   fontSize: "11px",
                   fontWeight: 500,
-                  color: "hsl(220 10% 85%)",
+                  color: "var(--text-primary)",
                 }}
               >
-                <span style={{ color: "hsl(220 10% 70%)" }}>{sourceLabel}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{sourceLabel}</span>
                 <ArrowRight
                   style={{
                     width: "12px",
                     height: "12px",
-                    color: "hsl(220 10% 45%)"
+                    color: "var(--text-muted)"
                   }}
                 />
-                <span style={{ color: "hsl(220 10% 70%)" }}>{targetLabel}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{targetLabel}</span>
               </div>
             </div>
           )}

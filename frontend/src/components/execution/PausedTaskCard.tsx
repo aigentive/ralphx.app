@@ -54,36 +54,36 @@ function getCategoryStyle(category: ProviderErrorMetadata["category"]): {
     case "rate_limit":
       return {
         icon: Clock,
-        color: "hsl(45 90% 55%)",
-        bgColor: "hsla(45 90% 55% / 0.15)",
+        color: "var(--status-warning)",
+        bgColor: "var(--status-warning-muted)",
         label: "Rate Limit",
       };
     case "auth_error":
       return {
         icon: ShieldAlert,
-        color: "hsl(0 70% 55%)",
-        bgColor: "hsla(0 70% 55% / 0.15)",
+        color: "var(--status-error)",
+        bgColor: "var(--status-error-muted)",
         label: "Auth Error",
       };
     case "server_error":
       return {
         icon: Server,
-        color: "hsl(0 70% 55%)",
-        bgColor: "hsla(0 70% 55% / 0.15)",
+        color: "var(--status-error)",
+        bgColor: "var(--status-error-muted)",
         label: "Server Error",
       };
     case "network_error":
       return {
         icon: WifiOff,
-        color: "hsl(25 90% 55%)",
-        bgColor: "hsla(25 90% 55% / 0.15)",
+        color: "var(--accent-primary)",
+        bgColor: "var(--accent-muted)",
         label: "Network",
       };
     case "overloaded":
       return {
         icon: AlertTriangle,
-        color: "hsl(45 90% 55%)",
-        bgColor: "hsla(45 90% 55% / 0.15)",
+        color: "var(--status-warning)",
+        bgColor: "var(--status-warning-muted)",
         label: "Overloaded",
       };
   }
@@ -178,11 +178,11 @@ function UserPauseCard({
       <div className="flex items-center gap-2">
         <PauseCircle
           className="w-3.5 h-3.5 shrink-0"
-          style={{ color: "hsl(45 90% 55%)" }}
+          style={{ color: "var(--status-warning)" }}
         />
         <button
           className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-          style={{ color: "hsl(220 10% 88%)" }}
+          style={{ color: "var(--text-primary)" }}
           title={task.title}
           onClick={onView}
         >
@@ -191,8 +191,8 @@ function UserPauseCard({
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{
-            color: "hsl(45 90% 55%)",
-            backgroundColor: "hsla(45 90% 55% / 0.15)",
+            color: "var(--status-warning)",
+            backgroundColor: "var(--status-warning-muted)",
           }}
         >
           User Paused
@@ -211,7 +211,7 @@ function UserPauseCard({
             data-testid={`view-details-button-${task.id}`}
             onClick={onView}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
             title="View details"
           >
             <ExternalLink className="w-3 h-3" />
@@ -222,12 +222,12 @@ function UserPauseCard({
       {/* Line 2: "Paused by user" · time since · previous status */}
       <div
         className="flex items-center gap-1.5 mt-0.5 pl-[22px] text-[11px] min-w-0"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <span>Paused by user</span>
-        <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>·</span>
+        <span className="shrink-0" style={{ color: "var(--text-muted)" }}>·</span>
         <span className="shrink-0 tabular-nums">{timeSince}</span>
-        <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>·</span>
+        <span className="shrink-0" style={{ color: "var(--text-muted)" }}>·</span>
         <span className="shrink-0">was {meta.previous_status}</span>
       </div>
     </div>
@@ -283,7 +283,7 @@ function ProviderErrorCard({
         />
         <button
           className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-          style={{ color: "hsl(220 10% 88%)" }}
+          style={{ color: "var(--text-primary)" }}
           title={task.title}
           onClick={onView}
         >
@@ -312,7 +312,7 @@ function ProviderErrorCard({
             data-testid={`view-details-button-${task.id}`}
             onClick={onView}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
             title="View details"
           >
             <ExternalLink className="w-3 h-3" />
@@ -323,31 +323,31 @@ function ProviderErrorCard({
       {/* Line 2: Error reason · Countdown · Resume attempts */}
       <div
         className="flex items-center gap-1.5 mt-0.5 pl-[22px] text-[11px] min-w-0"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <span className="truncate min-w-0" title={meta.message}>
           {truncatedMessage}
         </span>
         {countdown && (
           <>
-            <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>·</span>
+            <span className="shrink-0" style={{ color: "var(--text-muted)" }}>·</span>
             <span className="shrink-0 tabular-nums" style={{ color: pausedStyle.color }}>
               {countdown}
             </span>
           </>
         )}
-        <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>·</span>
+        <span className="shrink-0" style={{ color: "var(--text-muted)" }}>·</span>
         <span className="shrink-0 tabular-nums">
           {meta.resume_attempts}/{MAX_RESUME_ATTEMPTS}
         </span>
         {meta.auto_resumable && (
           <>
-            <span className="shrink-0" style={{ color: "hsl(220 10% 30%)" }}>·</span>
+            <span className="shrink-0" style={{ color: "var(--text-muted)" }}>·</span>
             <span
               className="text-[10px] font-medium px-1 rounded shrink-0"
               style={{
-                color: "hsl(145 60% 45%)",
-                backgroundColor: "hsla(145 60% 45% / 0.15)",
+                color: "var(--status-success)",
+                backgroundColor: "var(--status-success-muted)",
               }}
             >
               Auto

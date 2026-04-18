@@ -57,17 +57,17 @@ function SectionHeader({ title, count, isOpen, onToggle, highlight = false }: Se
           "w-3 h-3 transition-transform duration-150",
           isOpen && "rotate-90"
         )}
-        style={{ color: "hsl(220 10% 40%)" }}
+        style={{ color: "var(--text-muted)" }}
       />
       <span
         className="text-[10px] font-semibold uppercase tracking-wider"
-        style={{ color: highlight ? attentionStyle.color : "hsl(220 10% 50%)" }}
+        style={{ color: highlight ? attentionStyle.color : "var(--text-muted)" }}
       >
         {title}
       </span>
       <span
         className="text-[10px] tabular-nums ml-auto"
-        style={{ color: "hsl(220 10% 40%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {count}
       </span>
@@ -131,24 +131,24 @@ export function MergePipelinePopover({
         sideOffset={24}
         className="w-[420px] p-3"
         style={{
-          backgroundColor: "hsl(220 10% 11%)",
-          border: "1px solid hsla(220 20% 100% / 0.08)",
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--overlay-weak)",
           borderRadius: "10px",
           boxShadow:
-            "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+            "0 4px 16px var(--overlay-scrim), 0 12px 32px var(--overlay-scrim)",
         }}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-1.5 px-2">
           <h3
             className="text-xs font-semibold"
-            style={{ color: "hsl(220 10% 80%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             Merge Pipeline
           </h3>
           <span
             className="text-[11px] tabular-nums"
-            style={{ color: "hsl(220 10% 42%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {total} total
           </span>
@@ -159,7 +159,7 @@ export function MergePipelinePopover({
           className="max-h-[320px] overflow-y-auto -mx-1 px-1"
           style={{
             scrollbarWidth: "thin",
-            scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
+            scrollbarColor: "var(--overlay-moderate) transparent",
           }}
         >
           {/* Active */}
@@ -225,7 +225,7 @@ export function MergePipelinePopover({
           {total === 0 && (
             <div
               className="py-6 text-center text-xs"
-              style={{ color: "hsl(220 10% 42%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               No merge tasks
             </div>
@@ -236,8 +236,8 @@ export function MergePipelinePopover({
         <div
           className="mt-2 pt-2 px-2 text-[11px]"
           style={{
-            borderTop: "1px solid hsla(220 20% 100% / 0.06)",
-            color: "hsl(220 10% 42%)",
+            borderTop: "1px solid var(--overlay-weak)",
+            color: "var(--text-muted)",
           }}
         >
           Two-phase merge: programmatic first, then AI agent. One per branch.

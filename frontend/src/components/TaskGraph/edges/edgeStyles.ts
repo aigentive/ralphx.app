@@ -49,16 +49,16 @@ export const GRADIENT_IDS = {
 // ============================================================================
 
 /** Muted gray for normal dependency edges */
-export const NORMAL_STROKE = "hsl(220 10% 40%)";
+export const NORMAL_STROKE = "var(--text-muted)";
 
 /** Accent orange for critical path - matches EXECUTING_COLORS from nodeStyles */
-export const CRITICAL_STROKE = "hsl(14 100% 55%)";
+export const CRITICAL_STROKE = "var(--accent-primary)";
 
 /** Animated dotted style for edges from executing nodes */
-const ACTIVE_STROKE = "hsl(14 100% 55%)";
+const ACTIVE_STROKE = "var(--accent-primary)";
 
 /** Background color for gradient fade (near-transparent) */
-export const EDGE_FADE_COLOR = "hsl(220 10% 10%)";
+export const EDGE_FADE_COLOR = "var(--bg-surface)";
 
 // ============================================================================
 // Edge Styles
@@ -83,7 +83,7 @@ export const CRITICAL_EDGE_STYLE: EdgeStyle = {
   stroke: CRITICAL_STROKE,
   strokeWidth: 2,
   animated: false,
-  filter: "drop-shadow(0 0 4px hsla(14 100% 55% / 0.5))",
+  filter: "drop-shadow(0 0 4px color-mix(in srgb, var(--accent-primary) 50%, transparent))",
 };
 
 /**

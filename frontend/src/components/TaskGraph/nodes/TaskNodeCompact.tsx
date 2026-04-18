@@ -170,14 +170,14 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           // Border: solid orange for all selection methods (click, keyboard, timeline)
           // Use explicit borderTop/Right/Bottom instead of shorthand to prevent conflicts with borderLeft
           borderTop: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderRight: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderBottom: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           // Keep status-colored left stripe visible in all states
           borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
@@ -219,7 +219,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           className="font-medium leading-tight line-clamp-2"
           style={{
             fontSize: "12px",
-            color: "hsl(220 10% 88%)",
+            color: "var(--text-primary)",
             lineHeight: 1.35,
           }}
           title={abbreviateTitle(label)}

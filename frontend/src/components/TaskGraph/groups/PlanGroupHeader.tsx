@@ -153,10 +153,10 @@ const FeatureBranchBadge = memo(function FeatureBranchBadge({
   status: "active" | "merged" | "abandoned";
 }) {
   const statusColor = status === "active"
-    ? "hsl(145,60%,45%)"
+    ? "var(--status-success)"
     : status === "merged"
-    ? "hsl(220,80%,60%)"
-    : "hsl(var(--text-muted))";
+    ? "var(--status-info)"
+    : "var(--text-muted)";
 
   const statusIcon = status === "active"
     ? <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor }} />

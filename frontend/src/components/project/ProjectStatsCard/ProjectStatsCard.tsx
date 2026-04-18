@@ -138,7 +138,7 @@ function LoadingSkeleton() {
   return (
     <div
       className="rounded-xl p-4 space-y-4 animate-pulse"
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-loading"
     >
       {[...Array(3)].map((_, i) => (
@@ -160,7 +160,7 @@ function ErrorState({ message }: { message: string }) {
   return (
     <div
       className="rounded-xl p-4 text-sm text-[var(--text-muted)]"
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-error"
     >
       {message}
@@ -239,7 +239,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
     return (
       <div
         className={`rounded-xl p-4 ${className}`}
-        style={{ backgroundColor: "hsl(220 10% 10%)" }}
+        style={{ backgroundColor: "var(--bg-surface)" }}
         data-testid="project-stats-card"
       >
         <div className="flex items-center gap-2 mb-3">
@@ -283,7 +283,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
   return (
     <div
       className={`rounded-xl p-4 space-y-5 ${className}`}
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-card"
     >
       {/* Header */}
@@ -359,7 +359,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
                   rate={safeStats.reviewPassRate}
                   passCount={safeStats.reviewPassCount}
                   totalCount={safeStats.reviewTotalCount}
-                  color="hsl(145 60% 45%)"
+                  color="var(--status-success)"
                   testId="review-pass-rate"
                 />
               )}
@@ -417,10 +417,10 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
             <>
               <Check
                 className="w-3.5 h-3.5"
-                style={{ color: "hsl(145 60% 45%)" }}
+                style={{ color: "var(--status-success)" }}
                 aria-hidden="true"
               />
-              <span style={{ color: "hsl(145 60% 45%)" }}>Copied!</span>
+              <span style={{ color: "var(--status-success)" }}>Copied!</span>
             </>
           ) : (
             <>

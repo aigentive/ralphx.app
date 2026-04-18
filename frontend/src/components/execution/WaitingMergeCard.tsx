@@ -49,7 +49,7 @@ export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingM
       )}
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-        style={{ color: task.isMainMergeDeferred ? "hsl(220 10% 80%)" : "hsl(220 10% 70%)" }}
+        style={{ color: task.isMainMergeDeferred ? "var(--text-secondary)" : "var(--text-secondary)" }}
         onClick={() => onViewDetails(task.taskId)}
       >
         {task.title}

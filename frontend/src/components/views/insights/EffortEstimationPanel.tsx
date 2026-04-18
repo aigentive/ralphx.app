@@ -171,7 +171,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
   return (
     <div
       className="@container rounded-xl"
-      style={{ backgroundColor: "hsla(14 100% 60% / 0.08)" }}
+      style={{ backgroundColor: "color-mix(in srgb, var(--accent-primary) 8%, transparent)" }}
     >
       <div className="flex flex-col p-4 gap-3">
         {/* Header: title + customized badge */}

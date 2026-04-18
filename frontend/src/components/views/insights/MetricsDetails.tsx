@@ -170,7 +170,7 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
             rate={stats.reviewPassRate}
             passCount={stats.reviewPassCount}
             totalCount={stats.reviewTotalCount}
-            color="hsl(145 60% 45%)"
+            color="var(--status-success)"
           />
         )}
       </div>
@@ -351,13 +351,13 @@ export function CopyMarkdownButton({ stats }: CopyMarkdownButtonProps) {
       onClick={handleCopy}
       className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
       style={{
-        backgroundColor: "hsl(220 10% 14%)",
+        backgroundColor: "var(--border-subtle)",
       }}
     >
       {copied ? (
         <>
-          <Check size={13} style={{ color: "hsl(145 60% 45%)" }} />
-          <span style={{ color: "hsl(145 60% 45%)" }}>Copied!</span>
+          <Check size={13} style={{ color: "var(--status-success)" }} />
+          <span style={{ color: "var(--status-success)" }}>Copied!</span>
         </>
       ) : (
         <>
