@@ -6,13 +6,59 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  rust-tests:
-    name: Rust Tests
+  changes:
+    name: Detect CI scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_rust: ${{ steps.decide.outputs.run_rust }}
+      run_frontend: ${{ steps.decide.outputs.run_frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - '.github/workflows/**'
+              - 'src-tauri/**'
+              - 'rust-toolchain.toml'
+              - 'scripts/validate_sqlite_migrations.py'
+            frontend:
+              - '.github/workflows/**'
+              - 'frontend/**'
+
+      - name: Decide CI scope
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "run_rust=true" >> "${GITHUB_OUTPUT}"
+            echo "run_frontend=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "run_rust=${{ steps.filter.outputs.rust }}" >> "${GITHUB_OUTPUT}"
+          echo "run_frontend=${{ steps.filter.outputs.frontend }}" >> "${GITHUB_OUTPUT}"
+
+  rust-suite:
+    name: Rust Suite
+    needs: changes
+    if: needs.changes.outputs.run_rust == 'true'
     runs-on: macos-latest
     env:
       RALPHX_TEST_MODE: "1"
@@ -46,11 +92,42 @@ jobs:
           cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 
       - name: Run Rust doctests
+        if: github.event_name == 'push'
         run: |
           python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--doc"], check=True, timeout=600)'
 
-  frontend-tests:
-    name: Frontend Tests
+  rust-tests:
+    name: Rust Tests
+    needs:
+      - changes
+      - rust-suite
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize Rust status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "CI scope detection failed for Rust." >&2
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.run_rust }}" != "true" ]]; then
+            echo "No Rust-relevant changes detected for this pull request; skipping Rust suite."
+            exit 0
+          fi
+
+          if [[ "${{ needs.rust-suite.result }}" != "success" ]]; then
+            echo "Rust suite result: ${{ needs.rust-suite.result }}" >&2
+            exit 1
+          fi
+
+  frontend-quality:
+    name: Frontend Quality
+    needs: changes
+    if: needs.changes.outputs.run_frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +151,83 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
-      - name: Run frontend tests
-        run: npm run test:run
+  frontend-tests-shard-1:
+    name: Frontend Tests (Shard 1/2)
+    needs: changes
+    if: needs.changes.outputs.run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
         working-directory: frontend
+
+      - name: Run frontend tests shard 1/2
+        run: npm run test:run -- --shard=1/2
+        working-directory: frontend
+
+  frontend-tests-shard-2:
+    name: Frontend Tests (Shard 2/2)
+    needs: changes
+    if: needs.changes.outputs.run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run frontend tests shard 2/2
+        run: npm run test:run -- --shard=2/2
+        working-directory: frontend
+
+  frontend-tests:
+    name: Frontend Tests
+    needs:
+      - changes
+      - frontend-quality
+      - frontend-tests-shard-1
+      - frontend-tests-shard-2
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Finalize frontend status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "CI scope detection failed for frontend." >&2
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.run_frontend }}" != "true" ]]; then
+            echo "No frontend-relevant changes detected for this pull request; skipping frontend suite."
+            exit 0
+          fi
+
+          for job_result in \
+            "${{ needs.frontend-quality.result }}" \
+            "${{ needs.frontend-tests-shard-1.result }}" \
+            "${{ needs.frontend-tests-shard-2.result }}"; do
+            if [[ "${job_result}" != "success" ]]; then
+              echo "Frontend suite result: ${job_result}" >&2
+              exit 1
+            fi
+          done
