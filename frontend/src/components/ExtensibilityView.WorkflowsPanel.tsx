@@ -118,7 +118,15 @@ export function WorkflowsPanel() {
                       {workflow.name}
                     </span>
                     {workflow.isDefault && (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px]"
+                        style={{
+                          backgroundColor: "var(--bg-hover)",
+                          color: "var(--text-secondary)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
                         DEFAULT
                       </Badge>
                     )}

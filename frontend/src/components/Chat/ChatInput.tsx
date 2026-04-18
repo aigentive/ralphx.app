@@ -378,8 +378,8 @@ export function ChatInput({
             style={{
               background: canSend
                 ? "var(--accent-primary)"
-                : withAlpha("var(--accent-primary)", 30),
-              color: "white",
+                : "var(--bg-hover)",
+              color: canSend ? "var(--text-inverse)" : "var(--text-muted)",
               boxShadow: "none",
             }}
           >

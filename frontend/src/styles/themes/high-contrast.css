@@ -52,8 +52,9 @@
   --status-error-border:   color-mix(in srgb, var(--status-error) 50%, transparent);
   --status-error-strong:   color-mix(in srgb, var(--status-error) 80%, transparent);
 
-  --status-info:           var(--hc-sky);
-  --status-info-muted:     color-mix(in srgb, var(--status-info) 18%, transparent);
+  /* HC: remap info→yellow so Ready/Queued/etc. read on black (sky fails AAA) */
+  --status-info:           var(--yellow-500);
+  --status-info-muted:     color-mix(in srgb, var(--status-info) 20%, transparent);
   --status-info-border:    color-mix(in srgb, var(--status-info) 50%, transparent);
   --status-info-strong:    color-mix(in srgb, var(--status-info) 80%, transparent);
 

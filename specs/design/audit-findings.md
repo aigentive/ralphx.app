@@ -153,3 +153,57 @@ Source: `.artifacts/theme-audit/{dark,light,high-contrast}/*.png` captured by `f
 - **Kanban columns with many task states not captured** — only Backlog / Ready / Executing columns with 1 card each. Review, Merge-conflict, Failed, Approved states not seen.
 - **Modal/overlay variants** — Accept modal, confirm dialogs, proposal edit modal, team artifact drawer — none captured; these are high-risk for dark-on-light scrims.
 - **Task detail specialized views** (ExecutionTaskDetail, ReviewingTaskDetail, MergeConflictTaskDetail, etc.) — only BasicTaskDetail captured for a backlog task.
+
+---
+
+## 2nd Pass — post-fix validation (2026-04-18, commit 991fbe444)
+
+Fresh captures at `.artifacts/theme-audit/{dark,light,high-contrast}/*.png`. Reviewed against the 18-item Priority Fix List above.
+
+### Fixed
+
+- **P1 — Reviews floating panel (Light / HC):** resolved — panel now flips to light translucent background on Light, black with subtle border on HC, dark translucent on Dark. Tab labels, counts, and empty-state disc all legible across themes. Fix at `App.tsx:1140-1149` (`color-mix(var(--bg-surface) 92%, transparent)` + `var(--border-subtle)` + `var(--shadow-md)`) is visually confirmed.
+- **P2 — Graph floating filter stack (Light + HC):** resolved — filter pills (Status / Vertical / Standard / Plan + Tier) are readable on white in Light and black in HC. Container bg now uses `var(--bg-elevated)` family; pill dividers use `var(--border-subtle)`.
+- **P3 — Ideation left sidebar (Light):** resolved — "Plans / 0 plans" rail flips to `var(--bg-elevated)` light surface on Light, black on HC, dark on Dark. "New Plan" CTA correctly stays orange (Dark/Light) / yellow (HC). "No plans yet" empty state is legible on all themes.
+- **P4 — Execution control bar (Light / Ideation + Kanban):** resolved — bottom status bar ("Running / Queued / Ideation / Merging" + Pause/Stop) now flips to light in Light theme. On HC the bar is solid black with yellow Pause pill. No longer stuck dark.
+- **P6 — Kanban status-stripe colors in HC (Executing orange):** resolved — Executing card left border is now yellow on HC (via `status-icons.ts` mapping executing → `accent-primary` which is yellow in HC).
+- **P9 — Progress bar track / fill (Executing task, Light):** resolved — progress bar fill is orange gradient in Dark/Light and yellow in HC; track color reads correctly against the card bg on all themes.
+- **P11 — TaskGraph hardcoded `bg-[hsl(220_...)]` in 10+ subcomponents:** resolved at class level — no graph data was rendered to verify visually, but the filter container (the only visible TaskGraph surface in these captures) now flips. Given the 16-file migration mentioned in the fix wave, the underlying class-level problem is cleaned up; revisit when graph has seeded nodes.
+- **P12 — Activity loading spinner in HC:** resolved — spinner ring is yellow on HC, orange on Light, orange on Dark. All three themes correct.
+- **P17 — TaskCreation* / ConversationStatsPopover / ResizeHandle hardcoded HSL:** resolved at class level (per reported 16-file migration). Not visually verifiable from these captures (none of those surfaces were seeded); trust the code migration.
+
+### Still broken
+
+- **P5 — Dark theme Settings selected nav item:** unfixed — `dark/settings.png` still shows "Execution" as a bright white pill with dark text (visually inverted). Should be accent-tinted (`var(--accent-primary)/15` bg + accent text) or subtle elevated bg. Next step: audit `SettingsSidebar` / whatever renders `data-state=active` and override the default shadcn sidebar active state, which is leaking `bg-primary-foreground` (near-white) on Dark.
+- **P7 — Send / composer button (Light, Kanban + Task Detail):** partial — the composer "send" button is now a peach tile with orange paper-plane icon on white. It's readable at a glance but still a warm low-contrast tile rather than a crisp filled orange CTA. Next step: switch to `bg-[var(--accent-primary)] text-white` for the active/enabled state on Light so the send button mirrors the "Start New Session" CTA pattern.
+- **P8 — Feature chip icon stays orange in HC:** partial — on HC Kanban, the "Feature" chip's doc icon on the Backlog card still renders orange (see `high-contrast/kanban.png`, "Additional Task 1" card). Ready/Executing card chips appear lighter/yellowed. Suggests the feature-type icon color still has a hardcoded `#ff6b35`/orange fill rather than going through `var(--accent-primary)`. Next step: grep `Feature` / `feature` icon component (likely `TaskTypeBadge` or `TaskTypeIcon` under `components/tasks/`) for hardcoded orange.
+- **P13 — Light-theme `DEFAULT` chip invisibility:** unfixed — `light/extensibility.png` still shows "DEFAULT" text barely visible on the near-white workflow card chip. Token contrast too close to `--bg-elevated` on Light. Same issue visible on Dark (chip background is nearly invisible against the dark workflow card). Next step: add a border to the `<Badge variant="muted">` or bump `--bg-hover` contrast in `light.css` (and possibly dark too).
+- **P14 — "No steps defined yet" text in Light:** partial — still appears as very light gray on near-white in `light/task-detail.png`, though the surrounding task-detail area now flips correctly. The text itself needs `var(--text-muted)` → `var(--text-secondary)` upgrade on Light specifically.
+- **P6 — Kanban status-stripe colors in HC (Ready blue):** unfixed — Ready card still has a blue left border and blue play-icon on HC. Blue on black reads, but per HC rule the stripe should be yellow or neutral white. Status-icons migration mapped `ready → status-info` which is blue; HC override for `--status-info` needs to resolve to white or yellow. Next step: in `high-contrast.css` set `--status-info` to a HC-safe value (white or pale yellow) rather than inheriting the blue.
+- **P15 — Empty-state review disc in HC:** partial — the "No pending reviews" disc icon on HC reviews panel is still a dim gray circle that's barely distinguishable from the black panel bg. Marginally better than before but still low-contrast. Next step: the disc should use `var(--text-muted)` which on HC should be closer to `#A0A0A0`, not the current near-black.
+- **P16 — Shadow tokens (floating overlays):** partial — Reviews panel shadow now routes through `var(--shadow-md)` (good in Dark), but on Light the drop shadow under the panel is still a cool dark cast on a warm white bg (visible as a faint gray edge around the floating rectangle). HC shows no shadow, which is correct. Acceptable, low priority.
+- **P18 — Solo/Research/Debate mode chip backgrounds:** unfixed — on Light ideation, the "Solo" selected chip is peach-filled with orange outline (readable, but should likely be a more prominent `bg-[var(--accent-primary)]/10` pattern with no separate peach fill). Minor — lower priority than the others.
+
+### New issues surfaced
+
+- **`DEFAULT` chip also weak on Dark:** pre-existing but more visible now — `dark/extensibility.png` shows the DEFAULT chip almost blending into the workflow card. Same root cause as Light. Raise this as a cross-theme chip contrast problem, not just Light-only.
+- **Kanban Light bottom "Stop" button:** the Stop button next to Pause (`light/kanban.png`) has a slightly faded dark chip treatment — not broken but noticeably flatter than the Pause button next to it. Possible disabled-state styling leaking into the enabled look.
+- **Task-detail header action icons (edit/archive/duplicate/close):** on Light `task-detail.png` and Dark `task-detail.png` the inline icons in the top-right header (pencil, archive, duplicate) render as faint gray glyphs, nearly blending into the bar. The active "X" close button has a visible peach outline treatment. Consider tightening icon-button default contrast or adding hover states that flip the bg.
+- **Kanban HC Feature chip icon inconsistency:** confirmed from close inspection — feature chip icons are inconsistently colored across cards in the same view (Backlog orange, Ready/Executing near-yellow). Either a state-based color (which is wrong) or a random mix of two different components. Not previously noted.
+
+### Updated Priority List (top 5)
+
+1. **P5 — Dark theme Settings sidebar selected item** renders as bright white pill on dark bg. Clear visual regression; highest-visibility default sidebar state is wrong. Fix: override shadcn sidebar `data-state=active` token to use accent-tinted bg on Dark.
+2. **P6b — HC Ready status stripe is blue, not HC-safe.** Fix: in `high-contrast.css` set `--status-info` to white or pale yellow (or have the Kanban stripe component use `--text-primary` / `--accent-primary` specifically in HC).
+3. **P8 — Feature chip icon orange in HC (Backlog card).** Fix: locate the feature-type icon component (likely in `components/tasks/TaskTypeBadge` or similar) and route its color through `var(--accent-primary)` rather than a hardcoded orange, so HC resolves to yellow.
+4. **P7 — Light-theme send/composer button is a peach tile with orange icon, not a crisp CTA.** Fix: `bg-[var(--accent-primary)] text-white` on the send button, matching the "Start New Session" pattern.
+5. **P13 — `DEFAULT` chip invisibility in both Light and Dark** (Extensibility workflow card). Fix: add a 1px `border-[var(--border-subtle)]` + bump chip bg to `var(--bg-surface)` so it shows on both themes.
+
+Deferred / lower priority (for future pass):
+- P14 "No steps defined yet" gray-on-white
+- P16 floating panel shadow on Light
+- P15 Reviews empty-state disc on HC
+- P18 Ideation Solo chip peach fill
+- New: Task-detail header icon button faintness
+- New: Kanban Light Stop button flatness
+
