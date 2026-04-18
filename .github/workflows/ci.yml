@@ -114,7 +114,7 @@ jobs:
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install --no-install-recommends -y \
             build-essential \
             curl \
             file \
@@ -131,7 +131,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.91.0
-          components: clippy,rustfmt
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -147,7 +146,7 @@ jobs:
 
       - name: Run IPC contract tests
         run: |
-          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--test", "task_commands", "--test", "api_key_commands", "--test", "project_commands", "--test", "unified_chat_commands", "--test", "task_step_commands", "ipc_contract"], check=True, timeout=900)'
+          python3 -c 'import subprocess; subprocess.run(["cargo", "nextest", "run", "--manifest-path", "src-tauri/Cargo.toml", "--profile", "ci", "--test", "task_commands", "--test", "api_key_commands", "--test", "project_commands", "--test", "unified_chat_commands", "--test", "task_step_commands", "ipc_contract"], check=True, timeout=900)'
 
       - name: Run all Rust lib tests
         run: |
