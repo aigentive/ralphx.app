@@ -3,10 +3,10 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Build RalphX in release mode for local use.
+Build RalphX in release mode for local internal use.
 
 Usage:
-  ./scripts/build-release.sh [--bundle] [--sync-db] [--sync-plugin] [--skip-build]
+  ./scripts/build-local-release.sh [--bundle] [--sync-db] [--sync-plugin] [--skip-build]
 
 Options:
   --bundle      Create app bundle artifacts too (slower build)
@@ -14,6 +14,11 @@ Options:
   --sync-plugin Force refresh plugin runtime in app-data (redundant: plugin runtime is refreshed every run)
   --skip-build  Skip build and only run DB seed/sync logic
   -h, --help    Show this help
+
+This helper is intentionally local-only:
+- it may seed app data from the dev DB
+- it refreshes plugin runtime into Application Support
+- it is not the production release entrypoint
 EOF
 }
 
@@ -98,7 +103,7 @@ if [[ ! -d "${SOURCE_PLUGIN_DIR}" ]]; then
 fi
 
 if [[ "${SKIP_BUILD}" != "true" ]]; then
-  echo "Building RalphX release..."
+  echo "Building RalphX local release artifacts..."
   cd "${PROJECT_ROOT}/frontend"
 
   if [[ "${BUILD_BUNDLE}" == "true" ]]; then
@@ -108,7 +113,7 @@ if [[ "${SKIP_BUILD}" != "true" ]]; then
   fi
 fi
 
-echo "Preparing production DB in app data..."
+echo "Preparing local app-data DB..."
 mkdir -p "${APP_DATA_DIR}"
 
 if [[ "${FORCE_DB_SYNC}" == "true" ]]; then
@@ -121,22 +126,22 @@ if [[ "${FORCE_DB_SYNC}" == "true" ]]; then
 elif [[ ! -f "${PROD_DB}" ]]; then
   if [[ -f "${DEV_DB}" ]]; then
     cp "${DEV_DB}" "${PROD_DB}"
-    echo "Seeded production DB from dev DB: ${PROD_DB}"
+    echo "Seeded local app-data DB from dev DB: ${PROD_DB}"
   else
     create_fresh_prod_db "${PROD_DB}"
-    echo "Created fresh production DB: ${PROD_DB}"
+    echo "Created fresh local app-data DB: ${PROD_DB}"
   fi
 else
-  echo "Production DB already exists, leaving untouched: ${PROD_DB}"
+  echo "Local app-data DB already exists, leaving untouched: ${PROD_DB}"
 fi
 
-echo "Preparing production plugin runtime..."
+echo "Preparing local Application Support plugin runtime..."
 if [[ -d "${PROD_PLUGIN_DIR}" ]]; then
   rm -rf "${PROD_PLUGIN_DIR}"
 fi
 
 cp -R "${SOURCE_PLUGIN_DIR}" "${PROD_PLUGIN_DIR}"
-echo "Refreshed plugin runtime: ${PROD_PLUGIN_DIR}"
+echo "Refreshed local plugin runtime: ${PROD_PLUGIN_DIR}"
 
 ensure_runtime_package \
   "${PROD_MCP_DIR}" \
@@ -153,8 +158,8 @@ ensure_runtime_package \
 echo ""
 echo "Done."
 echo "Dev DB (source, untouched): ${DEV_DB}"
-echo "Prod DB (used by release app): ${PROD_DB}"
-echo "Prod plugin dir (used by release app): ${PROD_PLUGIN_DIR}"
+echo "Local app-data DB (used by local release-like runs): ${PROD_DB}"
+echo "Local plugin dir (used by local release-like runs): ${PROD_PLUGIN_DIR}"
 
 BIN_PATH="${PROJECT_ROOT}/src-tauri/target/release/ralphx"
 APP_PATH="${PROJECT_ROOT}/src-tauri/target/release/bundle/macos/RalphX.app"

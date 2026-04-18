@@ -3,27 +3,138 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.2.0)'
+        description: "Version to release (for example 0.2.0 or v0.2.0)"
         required: true
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: true
+        type: boolean
+        default: true
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      draft: ${{ steps.meta.outputs.draft }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            raw_version="${{ github.event.inputs.version }}"
+            raw_draft="${{ github.event.inputs.draft }}"
+            raw_prerelease="${{ github.event.inputs.prerelease }}"
+          else
+            raw_version="${GITHUB_REF_NAME}"
+            raw_draft="true"
+            if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+              raw_prerelease="true"
+            else
+              raw_prerelease="false"
+            fi
+          fi
+
+          version="${raw_version#v}"
+          if [[ -z "${version}" ]]; then
+            echo "Release version cannot be empty" >&2
+            exit 1
+          fi
+
+          tag="v${version}"
+          release_name="RalphX ${tag}"
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "release_name=${release_name}"
+            echo "draft=${raw_draft}"
+            echo "prerelease=${raw_prerelease}"
+          } >> "${GITHUB_OUTPUT}"
+
   build-macos:
-    runs-on: macos-latest
+    name: Build macOS ${{ matrix.arch }}
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate signing environment
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_vars=(
+            APPLE_CERTIFICATE
+            APPLE_CERTIFICATE_PASSWORD
+            APPLE_SIGNING_IDENTITY
+            APPLE_API_KEY
+            APPLE_API_ISSUER
+            APPLE_API_KEY_P8
+            APPLE_TEAM_ID
+          )
+
+          for name in "${required_vars[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required secret: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Materialize App Store Connect API key
+        id: api_key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_dir="${RUNNER_TEMP}/private_keys"
+          key_path="${key_dir}/AuthKey_${APPLE_API_KEY}.p8"
+          mkdir -p "${key_dir}"
+          printf '%s' "${APPLE_API_KEY_P8}" > "${key_path}"
+          chmod 600 "${key_path}"
+          echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Setup Rust
@@ -32,42 +143,104 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: "./src-tauri -> target"
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
 
-      - name: Import Apple Certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      - name: Import Apple certificate
+        shell: bash
         run: |
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+          set -euo pipefail
+          echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
           security create-keychain -p "" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
           rm certificate.p12
 
-      - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
+      - name: Build production release artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_API_KEY_PATH: ${{ steps.api_key.outputs.api_key_path }}
+        run: ./scripts/build-prod-release.sh
+
+      - name: Collect release artifacts
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ needs.metadata.outputs.version }}"
+          arch="${{ matrix.arch }}"
+          dist_dir="release-dist/${arch}"
+          mkdir -p "${dist_dir}"
+
+          dmg_path="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' | head -n 1)"
+          if [[ -z "${dmg_path}" ]]; then
+            echo "No DMG artifact found under src-tauri/target/release/bundle/dmg" >&2
+            exit 1
+          fi
+
+          target_dmg="${dist_dir}/RalphX_${version}_${arch}.dmg"
+          cp "${dmg_path}" "${target_dmg}"
+          shasum -a 256 "${target_dmg}" > "${target_dmg}.sha256"
+
+          {
+            echo "dmg=${target_dmg}"
+            echo "sha=${target_dmg}.sha256"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          projectPath: frontend
-          tagName: v__VERSION__
-          releaseName: 'RalphX v__VERSION__'
-          releaseBody: 'See CHANGELOG.md for details.'
-          releaseDraft: true
-          prerelease: false
-          args: --config ../src-tauri/tauri.conf.json --verbose
+          name: release-${{ matrix.arch }}
+          path: |
+            ${{ steps.collect.outputs.dmg }}
+            ${{ steps.collect.outputs.sha }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish draft GitHub release
+    needs:
+      - metadata
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Build release metadata files
+        shell: bash
+        run: |
+          set -euo pipefail
+          find release-assets -type f -name '*.sha256' -print0 | sort -z | xargs -0 cat > release-assets/checksums.txt
+          notes_file="release-notes/${{ needs.metadata.outputs.tag }}.md"
+          if [[ -f "${notes_file}" ]]; then
+            cp "${notes_file}" release-assets/release-notes.md
+          else
+            cat > release-assets/release-notes.md <<EOF
+            Release artifacts for ${{ needs.metadata.outputs.tag }}.
+
+            Included:
+            - macOS Apple Silicon DMG
+            - macOS Intel DMG
+            - checksums.txt
+            EOF
+          fi
+
+      - name: Create or update draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.tag }}
+          name: ${{ needs.metadata.outputs.release_name }}
+          target_commitish: ${{ github.sha }}
+          draft: ${{ needs.metadata.outputs.draft == 'true' }}
+          prerelease: ${{ needs.metadata.outputs.prerelease == 'true' }}
+          body_path: release-assets/release-notes.md
+          files: |
+            release-assets/**/*.dmg
+            release-assets/checksums.txt

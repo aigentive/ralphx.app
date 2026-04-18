@@ -26,6 +26,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../plugins/app": "plugins/app",
+      "../agents": "agents"
+    },
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
