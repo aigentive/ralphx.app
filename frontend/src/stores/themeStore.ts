@@ -83,13 +83,11 @@ function loadFontScale(): FontScale {
 
 function applyThemeAttr(theme: ThemeName): void {
   if (typeof document === "undefined") return;
-  // `dark` is the implicit default (matches `:root` tokens) — no attribute
-  // needed. `light` and `high-contrast` get explicit attributes.
-  if (theme === "dark") {
-    document.documentElement.removeAttribute("data-theme");
-  } else {
-    document.documentElement.setAttribute("data-theme", theme);
-  }
+  // Always set the attribute explicitly — including "dark" — so the visual
+  // state never drifts from React state due to partial removeAttribute calls
+  // or bootstrap re-infering from OS preference. CSS aliases :root and
+  // [data-theme="dark"] to the same token definitions.
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
 function applyMotionAttr(motion: MotionPreference): void {

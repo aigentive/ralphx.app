@@ -19,17 +19,21 @@
         try {
           var root = document.documentElement;
           var theme = localStorage.getItem('ralphx-theme');
-          if (theme === 'high-contrast' || theme === 'light') {
+          // Explicit stored choice wins.
+          if (theme === 'dark' || theme === 'light' || theme === 'high-contrast') {
             root.setAttribute('data-theme', theme);
-          } else if (!theme && window.matchMedia) {
-            // If the user hasn't chosen manually, fall back to OS signals.
+          } else if (window.matchMedia) {
+            // First run — infer from OS signals.
             // Precedence: prefers-contrast: more > prefers-color-scheme: light.
-            // Manual choice always wins on subsequent loads.
             if (window.matchMedia('(prefers-contrast: more)').matches) {
               root.setAttribute('data-theme', 'high-contrast');
             } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
               root.setAttribute('data-theme', 'light');
+            } else {
+              root.setAttribute('data-theme', 'dark');
             }
+          } else {
+            root.setAttribute('data-theme', 'dark');
           }
           var motion = localStorage.getItem('ralphx-motion');
           if (motion === 'reduce') root.setAttribute('data-motion', 'reduce');
