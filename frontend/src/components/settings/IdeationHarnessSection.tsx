@@ -1,7 +1,13 @@
-import { useState } from "react";
-import { Cpu, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Cpu,
+  Info,
+  TriangleAlert,
+} from "lucide-react";
 
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -9,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ErrorBanner, SectionCard } from "./SettingsView.shared";
 import {
   EXECUTION_LANES,
@@ -20,6 +27,14 @@ import {
 } from "@/api/ideation-harness";
 import { useAgentHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
 import { selectActiveProject, useProjectStore } from "@/stores/projectStore";
+import {
+  loadHarnessExpanded,
+  loadHarnessTab,
+  saveHarnessExpanded,
+  saveHarnessExpandedBulk,
+  saveHarnessTab,
+  type HarnessTabValue,
+} from "./settings-ui-state";
 
 // ============================================================================
 // Preset definitions
@@ -37,6 +52,62 @@ const CODEX_MODEL_PRESETS = [
   { value: "gpt-5.3-codex", display: "gpt-5.3-codex" },
   { value: "gpt-5.3-codex-spark", display: "gpt-5.3-codex-spark" },
 ] as const;
+
+const SELECT_TRIGGER_CLASS = "h-9 items-center";
+
+// ============================================================================
+// InlineNotice — soft alert card used for status and locked-policy notes
+// ============================================================================
+
+type NoticeTone = "ok" | "warn" | "info";
+
+interface InlineNoticeProps {
+  tone: NoticeTone;
+  title?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const NOTICE_STYLES: Record<
+  NoticeTone,
+  { wrapper: string; icon: React.ReactNode }
+> = {
+  ok: {
+    wrapper:
+      "bg-[rgba(255,255,255,0.03)] border-[var(--border-subtle)] text-[var(--text-muted)]",
+    icon: (
+      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--status-success)]" />
+    ),
+  },
+  warn: {
+    wrapper:
+      "bg-[rgba(251,146,60,0.06)] border-[rgba(251,146,60,0.2)] text-[var(--warning)]",
+    icon: <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />,
+  },
+  info: {
+    wrapper:
+      "bg-[rgba(255,107,53,0.05)] border-[rgba(255,107,53,0.18)] text-[var(--text-secondary)]",
+    icon: (
+      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent-primary)]" />
+    ),
+  },
+};
+
+function InlineNotice({ tone, title, children }: InlineNoticeProps) {
+  const { wrapper, icon } = NOTICE_STYLES[tone];
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] leading-relaxed ${wrapper}`}
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        {title && (
+          <div className="font-medium text-[var(--text-primary)]">{title}</div>
+        )}
+        <div className={title ? "mt-0.5" : undefined}>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 function getModelPresets(harness: string) {
   return harness === "codex" ? CODEX_MODEL_PRESETS : CLAUDE_MODEL_PRESETS;
@@ -117,6 +188,12 @@ function ModelSelect({
   const hasCustomValue =
     value != null && !presets.some((preset) => preset.value === value);
 
+  const triggerLabel = (() => {
+    if (!value) return defaultLabel;
+    const preset = presets.find((p) => p.value === value);
+    return preset ? preset.display : value;
+  })();
+
   return (
     <Select
       value={currentValue}
@@ -137,26 +214,28 @@ function ModelSelect({
         data-testid={testId}
         aria-label={`${laneLabel} model`}
         disabled={disabled}
-        className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+        className={`${SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
       >
         <SelectValue
           placeholder={harness === "codex" ? "Select Codex model" : "Select Claude model"}
-        />
+        >
+          <span className="truncate">{triggerLabel}</span>
+        </SelectValue>
       </SelectTrigger>
       <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
-        <SelectItem value={MODEL_DEFAULT_VALUE}>
+        <SelectItem value={MODEL_DEFAULT_VALUE} textValue={defaultLabel}>
           <div className="flex flex-col">
             <span className="text-[var(--text-primary)]">{defaultLabel}</span>
             <span className="text-xs text-[var(--text-muted)]">{defaultDescription}</span>
           </div>
         </SelectItem>
         {presets.map((preset) => (
-          <SelectItem key={preset.value} value={preset.value}>
+          <SelectItem key={preset.value} value={preset.value} textValue={preset.display}>
             <span className="text-[var(--text-primary)]">{preset.display}</span>
           </SelectItem>
         ))}
         {hasCustomValue && value && (
-          <SelectItem value={`${MODEL_CUSTOM_VALUE_PREFIX}${value}`}>
+          <SelectItem value={`${MODEL_CUSTOM_VALUE_PREFIX}${value}`} textValue={value}>
             <div className="flex flex-col">
               <span className="text-[var(--text-primary)]">Custom model</span>
               <span className="text-xs text-[var(--text-muted)]">{value}</span>
@@ -374,6 +453,8 @@ interface HarnessRowProps {
   globalLane: AgentHarnessLaneView | null;
   disabled: boolean;
   isGlobal: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onHarnessChange: (value: KnownHarness) => void;
   onLaneChange: (
     patch: Partial<{
@@ -383,7 +464,14 @@ interface HarnessRowProps {
       sandboxMode: string | null;
     }>,
   ) => void;
-  isLast?: boolean;
+}
+
+function SummaryPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+      {children}
+    </span>
+  );
 }
 
 function HarnessRow({
@@ -391,9 +479,10 @@ function HarnessRow({
   globalLane,
   disabled,
   isGlobal,
+  isExpanded,
+  onToggleExpanded,
   onHarnessChange,
   onLaneChange,
-  isLast = false,
 }: HarnessRowProps) {
   const meta = LANE_META[lane.lane];
   const configuredHarness = lane.configuredHarness ?? lane.effectiveHarness;
@@ -411,20 +500,48 @@ function HarnessRow({
   const showEffectiveEffort = !isGlobal && effectiveEffort !== (lane.row?.effort ?? null);
   const availabilityStatusLabel = showWarning ? "Needs attention" : "Available";
 
+  const showEffectiveHarness = lane.effectiveHarness !== configuredHarness;
+
+  // Summary values for collapsed state
+  const overrideCount = [
+    lane.row?.model,
+    lane.row?.effort,
+    lane.row?.approvalPolicy,
+    lane.row?.sandboxMode,
+  ].filter((v) => v != null).length;
+  const modelSummary = lane.row?.model ?? (isGlobal ? "Harness default" : null);
+  const effortSummary = lane.row?.effort
+    ? effortLabel(lane.row.effort)
+    : isGlobal
+      ? "Default"
+      : null;
+
   return (
-    <div className={isLast ? undefined : "border-b border-[var(--border-subtle)]"}>
-      <div className="flex items-start justify-between py-3 -mx-2 px-2 rounded-md transition-colors hover:bg-[rgba(45,45,45,0.3)]">
-        <div className="flex-1 min-w-0 pr-4">
-          <label
-            htmlFor={`harness-${lane.lane}`}
-            className="text-sm font-medium text-[var(--text-primary)]"
-          >
-            {meta.label}
-          </label>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            {meta.description}
-          </p>
-        </div>
+    <div className="py-6">
+      <div className="flex items-start justify-between gap-4">
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          aria-expanded={isExpanded}
+          aria-controls={`harness-body-${lane.lane}`}
+          className="flex flex-1 min-w-0 items-start gap-2 text-left group"
+        >
+          <span className="mt-0.5 shrink-0 text-[var(--text-secondary)] transition-transform">
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </span>
+          <div className="flex-1 min-w-0">
+            <span className="text-[15px] font-semibold text-[var(--text-primary)] leading-tight group-hover:text-[var(--accent-primary)] transition-colors">
+              {meta.label}
+            </span>
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              {meta.description}
+            </p>
+          </div>
+        </button>
         <div className="shrink-0">
           <Select
             value={configuredHarness}
@@ -435,15 +552,21 @@ function HarnessRow({
               id={`harness-${lane.lane}`}
               data-testid={`harness-${lane.lane}`}
               aria-label={`${meta.label} provider`}
-              className="w-[180px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
+              className={`w-[160px] ${SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]`}
             >
-              <SelectValue placeholder="Select provider" />
+              <SelectValue placeholder="Select provider">
+                <span className="truncate">
+                  {HARNESS_OPTIONS.find((o) => o.value === configuredHarness)?.label ??
+                    configuredHarness}
+                </span>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
               {HARNESS_OPTIONS.map((option) => (
                 <SelectItem
                   key={option.value}
                   value={option.value}
+                  textValue={option.label}
                   className="focus:bg-[var(--accent-muted)]"
                 >
                   <div className="flex flex-col">
@@ -458,14 +581,48 @@ function HarnessRow({
           </Select>
         </div>
       </div>
-      <div className="pb-3 px-2 space-y-1">
-        <p className="text-xs text-[var(--text-muted)]">
-          Effective:{" "}
-          <span className="text-[var(--text-secondary)]">{lane.effectiveHarness}</span>
-        </p>
-        <div className="grid gap-2 pt-1 md:grid-cols-2">
+      {!isExpanded && (
+        <div className="mt-3 ml-6 flex flex-wrap items-center gap-2">
+          {isGlobal || overrideCount > 0 ? (
+            <>
+              {modelSummary && <SummaryPill>{modelSummary}</SummaryPill>}
+              {effortSummary && <SummaryPill>{effortSummary}</SummaryPill>}
+              {showCodexControls && lane.row?.approvalPolicy && (
+                <SummaryPill>{lane.row.approvalPolicy}</SummaryPill>
+              )}
+              {showCodexControls && lane.row?.sandboxMode && (
+                <SummaryPill>{lane.row.sandboxMode}</SummaryPill>
+              )}
+            </>
+          ) : (
+            <span className="text-[11px] text-[var(--text-muted)] italic">
+              Inherited from global
+            </span>
+          )}
+          <span
+            className={`ml-auto inline-flex items-center gap-1 text-[11px] ${
+              showWarning
+                ? "text-[var(--warning)]"
+                : "text-[var(--status-success)]"
+            }`}
+          >
+            {showWarning ? (
+              <TriangleAlert className="w-3 h-3" />
+            ) : (
+              <CheckCircle2 className="w-3 h-3" />
+            )}
+            <span>{availabilityStatusLabel}</span>
+          </span>
+        </div>
+      )}
+      <div
+        id={`harness-body-${lane.lane}`}
+        hidden={!isExpanded}
+        className="space-y-3 mt-4 ml-6"
+      >
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+            <p className="text-xs font-medium text-[var(--text-secondary)]">
               Model
             </p>
             <ModelSelect
@@ -487,7 +644,7 @@ function HarnessRow({
             )}
           </div>
           <div className="space-y-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+            <p className="text-xs font-medium text-[var(--text-secondary)]">
               Effort
             </p>
             <Select
@@ -497,13 +654,15 @@ function HarnessRow({
             >
               <SelectTrigger
                 aria-label={`${meta.label} effort`}
-                className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                className={`${SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
               >
-                <SelectValue placeholder="Select effort" />
+                <SelectValue placeholder="Select effort">
+                  <span className="truncate">{effortLabel(lane.row?.effort)}</span>
+                </SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
                 {effortOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value} value={option.value} textValue={option.label}>
                     <div className="flex flex-col">
                       <span className="text-[var(--text-primary)]">{option.label}</span>
                       <span className="text-xs text-[var(--text-muted)]">{option.description}</span>
@@ -524,7 +683,7 @@ function HarnessRow({
           {showCodexControls && (
             <>
               <div className="space-y-1">
-                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                <p className="text-xs font-medium text-[var(--text-secondary)]">
                   Approval
                 </p>
                 <Select
@@ -537,7 +696,7 @@ function HarnessRow({
                   <SelectTrigger
                     data-testid={`approval-${lane.lane}`}
                     aria-label={`${meta.label} approval policy`}
-                    className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                    className={`${SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
                   >
                     <SelectValue placeholder="Select approval policy" />
                   </SelectTrigger>
@@ -551,7 +710,7 @@ function HarnessRow({
                 </Select>
               </div>
               <div className="space-y-1">
-                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                <p className="text-xs font-medium text-[var(--text-secondary)]">
                   Sandbox
                 </p>
                 <Select
@@ -564,7 +723,7 @@ function HarnessRow({
                   <SelectTrigger
                     data-testid={`sandbox-${lane.lane}`}
                     aria-label={`${meta.label} sandbox mode`}
-                    className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                    className={`${SELECT_TRIGGER_CLASS} bg-[var(--bg-surface)] border-[var(--border-default)]`}
                   >
                     <SelectValue placeholder="Select sandbox mode" />
                   </SelectTrigger>
@@ -577,24 +736,22 @@ function HarnessRow({
                   </SelectContent>
                 </Select>
               </div>
-              <p className="text-[11px] text-[var(--text-muted)] md:col-span-2">
-                {CODEX_MCP_REQUIREMENT_COPY}
-              </p>
             </>
           )}
         </div>
-        <p
-          className={[
-            "text-xs",
-            showWarning ? "text-[var(--warning)]" : "text-[var(--text-muted)]",
-          ].join(" ")}
+        {showCodexControls && (
+          <InlineNotice tone="info">{CODEX_MCP_REQUIREMENT_COPY}</InlineNotice>
+        )}
+        <InlineNotice
+          tone={showWarning ? "warn" : "ok"}
+          title={
+            showEffectiveHarness
+              ? `${availabilityStatusLabel} · Effective: ${lane.effectiveHarness}`
+              : availabilityStatusLabel
+          }
         >
-          {showWarning && (
-            <TriangleAlert className="inline-block w-3 h-3 mr-1 align-[-2px]" />
-          )}
-          <span className="font-medium">{`Status: ${availabilityStatusLabel}.`}</span>{" "}
           {availabilityCopy(lane)}
-        </p>
+        </InlineNotice>
       </div>
     </div>
   );
@@ -605,19 +762,19 @@ function HarnessRow({
 // ============================================================================
 
 function HarnessSubsection({
-  title,
   projectId,
   projectName,
   scope,
   globalLanes,
   isGlobal,
+  tabValue,
 }: {
-  title: string;
   projectId: string | null;
   projectName: string | null;
   scope: HarnessSectionScope;
   globalLanes: AgentHarnessLaneView[];
   isGlobal: boolean;
+  tabValue: HarnessTabValue;
 }) {
   const [showError, setShowError] = useState(false);
   const {
@@ -627,6 +784,50 @@ function HarnessSubsection({
     saveError,
   } = useAgentHarnessSettings(projectId);
   const isDisabled = !isGlobal && projectId === null;
+
+  // Progressive disclosure: persisted per-tab. Defaults = global open, project
+  // collapsed. Warnings force a lane open regardless of the stored preference.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const laneIds = lanes.map((l) => l.lane);
+    const persisted = loadHarnessExpanded(tabValue, laneIds);
+    setExpanded((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      let changed = false;
+      lanes.forEach((lane) => {
+        const hasWarning =
+          !!lane.error || lane.missingCoreExecFeatures.length > 0;
+        const current = next[lane.lane];
+        if (current === undefined) {
+          const stored = persisted[lane.lane];
+          next[lane.lane] =
+            stored !== undefined ? stored || hasWarning : isGlobal || hasWarning;
+          changed = true;
+        } else if (hasWarning && !current) {
+          next[lane.lane] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [lanes, isGlobal, tabValue]);
+
+  const toggleLane = (laneId: string) => {
+    setExpanded((prev) => {
+      const nextValue = !prev[laneId];
+      saveHarnessExpanded(tabValue, laneId, nextValue);
+      return { ...prev, [laneId]: nextValue };
+    });
+  };
+
+  const setAllExpanded = (value: boolean) => {
+    const laneIds = lanes.map((l) => l.lane);
+    saveHarnessExpandedBulk(tabValue, laneIds, value);
+    setExpanded(Object.fromEntries(laneIds.map((id) => [id, value])));
+  };
+
+  const allExpanded = lanes.length > 0 && lanes.every((l) => expanded[l.lane]);
 
   const handleHarnessChange = (lane: AgentLane, harness: KnownHarness) => {
     if (isDisabled) {
@@ -668,19 +869,27 @@ function HarnessSubsection({
 
   return (
     <div>
-      <div className="mb-3">
-        <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
-        <p className="text-xs text-[var(--text-muted)] mt-1">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <p className="text-xs text-[var(--text-muted)] flex-1">
           {isGlobal
             ? scope === "execution"
               ? "Default harness policy for execution worker, reviewer, re-executor, and merger lanes."
               : "Default harness policy for ideation leads, verification, and specialist lanes."
             : projectId !== null
-              ? `Project overrides for ${projectName ?? "the active project"}.`
+              ? `Overrides for ${projectName ?? "the active project"}. Leave blank to inherit global defaults.`
               : scope === "execution"
                 ? "Select a project to override execution-pipeline agents for a specific project."
                 : "Select a project to override ideation agents for a specific project."}
         </p>
+        {lanes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAllExpanded(!allExpanded)}
+            className="shrink-0 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-colors"
+          >
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </button>
+        )}
       </div>
 
       {showError && saveError && (
@@ -690,40 +899,36 @@ function HarnessSubsection({
         />
       )}
 
-      <div className={isDisabled ? "opacity-50 pointer-events-none" : undefined}>
-        {LANE_GROUPS.filter((group) => group.id === scope).map((group, groupIndex) => {
+      <div
+        className={isDisabled ? "opacity-50 pointer-events-none" : undefined}
+      >
+        {LANE_GROUPS.filter((group) => group.id === scope).map((group) => {
           const groupLanes = lanes.filter((lane) => group.lanes.includes(lane.lane));
           if (groupLanes.length === 0) {
             return null;
           }
 
+          const scopeKey = isGlobal ? "global" : "project";
           return (
-            <div key={`${title}-${group.id}`}>
-              {groupIndex > 0 && (
-                <Separator className="my-4 bg-[var(--border-subtle)]" />
-              )}
-              <div className="px-2 pb-2">
-                <h5 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
-                  {group.title}
-                </h5>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  {group.description}
-                </p>
-              </div>
-              {groupLanes.map((lane, index) => {
+            <div
+              key={`${scopeKey}-${group.id}`}
+              className="divide-y divide-[var(--border-default)]"
+            >
+              {groupLanes.map((lane) => {
                 const globalLane = isGlobal
                   ? null
                   : (globalLanes.find((g) => g.lane === lane.lane) ?? null);
                 return (
                   <HarnessRow
-                    key={`${title}-${lane.lane}`}
+                    key={`${scopeKey}-${lane.lane}`}
                     lane={lane}
                     globalLane={globalLane}
                     disabled={isDisabled || isPlaceholderData}
                     isGlobal={isGlobal}
+                    isExpanded={expanded[lane.lane] ?? false}
+                    onToggleExpanded={() => toggleLane(lane.lane)}
                     onHarnessChange={(value) => handleHarnessChange(lane.lane, value)}
                     onLaneChange={(patch) => handleLaneSettingsChange(lane, patch)}
-                    isLast={index === groupLanes.length - 1}
                   />
                 );
               })}
@@ -755,33 +960,60 @@ function AgentHarnessSection({
   // Fetch global lanes for effective value resolution in project rows
   const { lanes: globalLanes } = useAgentHarnessSettings(null);
 
+  const [activeTab, setActiveTabState] = useState<HarnessTabValue>(() =>
+    loadHarnessTab(scope),
+  );
+  const setActiveTab = (tab: HarnessTabValue) => {
+    setActiveTabState(tab);
+    saveHarnessTab(scope, tab);
+  };
+
   return (
     <SectionCard
       icon={<Cpu className="w-5 h-5 text-[var(--accent-primary)]" />}
       title={title}
       description={description}
     >
-      <div className="space-y-6">
-        <HarnessSubsection
-          title="Global Defaults"
-          projectId={null}
-          projectName={null}
-          scope={scope}
-          globalLanes={globalLanes}
-          isGlobal={true}
-        />
-
-        <Separator className="bg-[var(--border-subtle)]" />
-
-        <HarnessSubsection
-          title="Project Overrides"
-          projectId={projectId}
-          projectName={projectName}
-          scope={scope}
-          globalLanes={globalLanes}
-          isGlobal={false}
-        />
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as HarnessTabValue)}
+        className="w-full"
+      >
+        <TabsList className="inline-flex h-9 items-center rounded-md bg-[var(--bg-surface)] p-1 text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+          <TabsTrigger
+            value="global"
+            className="rounded-sm px-3 py-1 text-xs font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)] data-[state=active]:shadow-sm"
+          >
+            Global Defaults
+          </TabsTrigger>
+          <TabsTrigger
+            value="project"
+            className="rounded-sm px-3 py-1 text-xs font-medium data-[state=active]:bg-[var(--bg-elevated)] data-[state=active]:text-[var(--text-primary)] data-[state=active]:shadow-sm"
+          >
+            Project Overrides
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="global" className="mt-4">
+          <HarnessSubsection
+            projectId={null}
+            projectName={null}
+            scope={scope}
+            globalLanes={globalLanes}
+            isGlobal={true}
+            tabValue="global"
+          />
+        </TabsContent>
+        <TabsContent value="project" className="mt-4">
+          <HarnessSubsection
+            projectId={projectId}
+            projectName={projectName}
+            scope={scope}
+            globalLanes={globalLanes}
+            isGlobal={false}
+            tabValue="project"
+          />
+        </TabsContent>
+      </Tabs>
     </SectionCard>
   );
 }

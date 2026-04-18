@@ -92,6 +92,7 @@ export const IdeationSessionSchema = z.object({
   verificationInProgress: z.boolean().optional().default(false),
   gapScore: z.number().int().nullable().optional(),
   verificationUpdateSeq: z.number().int().optional(),
+  planUpdateSeq: z.number().int().optional(),
   sourceProjectId: z.string().nullable().optional(),
   sourceSessionId: z.string().nullable().optional(),
   sourceTaskId: z.string().nullable().optional(),

@@ -183,6 +183,36 @@ describe("MessageItem - Attachment Integration", () => {
   });
 });
 
+describe("MessageItem - list spacing", () => {
+  it("removes trailing bottom margin for the last rendered message", () => {
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content="Last message"
+        createdAt="2026-04-18T10:00:00Z"
+        isLastInList={true}
+      />
+    );
+
+    const wrapper = container.firstElementChild;
+    expect(wrapper).toHaveClass("mb-0");
+    expect(wrapper).not.toHaveClass("mb-5");
+  });
+
+  it("keeps standard bottom margin for non-terminal messages", () => {
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content="Middle message"
+        createdAt="2026-04-18T10:00:00Z"
+      />
+    );
+
+    const wrapper = container.firstElementChild;
+    expect(wrapper).toHaveClass("mb-5");
+  });
+});
+
 describe("MessageItem - Child tool call suppression for Task/Agent spawns", () => {
   const createdAt = new Date().toISOString();
 

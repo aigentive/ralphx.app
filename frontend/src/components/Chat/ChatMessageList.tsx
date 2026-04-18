@@ -29,6 +29,7 @@ import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
+import { logger } from "@/lib/logger";
 import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -158,6 +159,8 @@ interface ChatMessageListProps {
   messages: ChatMessageData[];
   /** Conversation ID - used as key to force remount on conversation switch */
   conversationId: string | null;
+  /** Absolute index of the first loaded message in the full conversation timeline */
+  firstItemIndex?: number;
   /** Show failed run banner */
   failedRun?: { id: string; errorMessage: string } | null;
   /** Callback when failed run banner is dismissed */
@@ -186,6 +189,9 @@ interface ChatMessageListProps {
   /** Provider metadata for the active conversation */
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  hasOlderMessages?: boolean;
+  isFetchingOlderMessages?: boolean;
+  onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
 }
 
 // ============================================================================
@@ -197,6 +203,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     {
       messages,
       conversationId,
+      firstItemIndex = 0,
       failedRun,
       onDismissFailedRun,
       isSending,
@@ -212,6 +219,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       contextKey,
       providerHarness,
       providerSessionId,
+      hasOlderMessages = false,
+      isFetchingOlderMessages = false,
+      onLoadOlderMessages,
     },
     ref
   ) {
@@ -285,11 +295,22 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       setCumulativeTextLength(prev => Math.max(prev, total));
     }, [normalizedStreamingContentBlocks]);
 
-    const hasFooterStreamingContent =
-      streamingToolCalls.length > 0 ||
-      totalChildCalls > 0 ||
-      (streamingTasks?.size ?? 0) > 0 ||
-      normalizedStreamingContentBlocks.length > 0;
+    const hasRenderableStreamingBlocks = useMemo(
+      () =>
+        normalizedStreamingContentBlocks.some((block) => {
+          if (block.type === "text") {
+            return block.text.trim().length > 0;
+          }
+          if (block.type === "task") {
+            return Boolean(streamingTasks?.get(block.toolUseId));
+          }
+          return true;
+        }),
+      [normalizedStreamingContentBlocks, streamingTasks],
+    );
+
+    const shouldShowFooterFallback = (isSending || isAgentRunning) && !hasRenderableStreamingBlocks;
+    const hasFooterStreamingContent = hasRenderableStreamingBlocks || shouldShowFooterFallback;
 
     useEffect(() => {
       hasFooterStreamingContentRef.current = hasFooterStreamingContent;
@@ -329,8 +350,77 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       messageCount: messages.length,
       disabled: !!scrollToTimestamp, // Disable auto-scroll in history mode
       virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
+      indexOffset: firstItemIndex,
       conversationId, // Reset isAtBottom when conversation changes
     });
+
+    // Scroll the actual DOM scroll container to its absolute bottom.
+    // This goes past Virtuoso's last list item to include any Footer (streaming
+    // indicators) + bottom padding — unlike scrollToIndex which only aligns the
+    // last row to the viewport edge and leaves 20-50px of footer/padding below.
+    const scrollToTrueBottom = useCallback(
+      (behavior: ScrollBehavior = "smooth") => {
+        const el = scrollerElRef.current;
+        if (!el) {
+          logger.debug("[ChatScroll] scrollToTrueBottom: no scroller ref yet, falling back to scrollToBottom hook");
+          scrollToBottom();
+          return;
+        }
+        const target = el.scrollHeight - el.clientHeight;
+        logger.debug("[ChatScroll] scrollToTrueBottom", {
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          currentTop: el.scrollTop,
+          target,
+          behavior,
+        });
+        el.scrollTo({ top: target, behavior });
+        // Eagerly mark atBottom=true so followOutput re-engages without waiting
+        // for scrollend.
+        if (!isAtBottomRef.current) {
+          handleAtBottomStateChange(true);
+        }
+      },
+      [scrollToBottom, handleAtBottomStateChange, isAtBottomRef]
+    );
+
+    // After any layout-changing event that should land at bottom, run two
+    // passes — first on next frame (catches most cases), second after a short
+    // delay (catches late-arriving streaming footer height growth).
+    const scheduleBottomPin = useCallback(
+      (reason: string) => {
+        logger.debug(`[ChatScroll] scheduleBottomPin: ${reason}`);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollToTrueBottom("smooth");
+            // Second pass catches footer that grows in the same tick.
+            setTimeout(() => scrollToTrueBottom("smooth"), 120);
+          });
+        });
+      },
+      [scrollToTrueBottom]
+    );
+
+    // Trigger 1: new user message appended → always jump to true bottom.
+    const prevLastUserIdRef = useRef<string | null>(null);
+    useEffect(() => {
+      if (messages.length === 0) return;
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "user") return;
+      if (prevLastUserIdRef.current === last.id) return;
+      prevLastUserIdRef.current = last.id;
+      scheduleBottomPin(`new user message id=${last.id}`);
+    }, [messages, scheduleBottomPin]);
+
+    // Trigger 2: streaming starts (transition false → true). User just-sent a
+    // message expects the agent's first tokens to appear at bottom of viewport.
+    const prevIsAgentRunningRef = useRef(false);
+    useEffect(() => {
+      if (isAgentRunning && !prevIsAgentRunningRef.current) {
+        scheduleBottomPin("streaming started");
+      }
+      prevIsAgentRunningRef.current = isAgentRunning;
+    }, [isAgentRunning, scheduleBottomPin]);
 
     // Keep scrollToTimestamp accessible via ref (avoids stale closure in ResizeObserver callback)
     const scrollToTimestampRef = useRef(scrollToTimestamp);
@@ -462,7 +552,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         // Add a small delay to ensure Virtuoso is ready
         const timeoutId = setTimeout(() => {
           virtuosoRef.current?.scrollToIndex({
-            index: targetIndex,
+            index: firstItemIndex + targetIndex,
             align: "start",
             behavior: preferredScrollBehavior,
           });
@@ -470,7 +560,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return () => clearTimeout(timeoutId);
       }
       return undefined;
-    }, [scrollToTimestamp, messages, preferredScrollBehavior]);
+    }, [scrollToTimestamp, messages, firstItemIndex, preferredScrollBehavior]);
 
     // Build timeline data for Virtuoso. Always wraps messages as TimelineItem
     // for consistent typing. When hook events exist, they're interleaved and sorted.
@@ -593,19 +683,36 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return items;
     }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastProviderMessage, attachmentsMap, teamFilter, teamMessages]);
 
+    const lastItemIndex = firstItemIndex + timeline.length - 1;
+    const startReachedHandler =
+      hasOlderMessages && onLoadOlderMessages
+        ? (_index: number) => {
+            void onLoadOlderMessages();
+          }
+        : null;
+
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
     // content has actually rendered, rather than a fixed-duration setTimeout guess.
     // Falls back to MARKDOWN_RENDER_DELAY_MS if scrollerElRef not yet available.
     useEffect(() => {
-      if (!conversationId || timeline.length === 0 || hasScrolledRef.current === conversationId) return;
+      const targetScrollKey =
+        conversationId != null && lastItemIndex >= 0
+          ? `${conversationId}:${lastItemIndex}`
+          : null;
 
-      const targetConversationId = conversationId;
+      if (!conversationId || timeline.length === 0 || hasScrolledRef.current === targetScrollKey) {
+        return;
+      }
 
       const doScroll = () => {
-        if (hasScrolledRef.current === targetConversationId) return;
-        virtuosoRef.current?.scrollToIndex({ index: timeline.length - 1, align: "end", behavior: "auto" });
-        hasScrolledRef.current = targetConversationId;
+        if (hasScrolledRef.current === targetScrollKey) return;
+        virtuosoRef.current?.scrollToIndex({
+          index: lastItemIndex,
+          align: "end",
+          behavior: "auto",
+        });
+        hasScrolledRef.current = targetScrollKey;
       };
 
       const scroller = scrollerElRef.current;
@@ -637,7 +744,89 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         clearTimeout(debounceTimer);
         clearTimeout(safetyTimer);
       };
-    }, [conversationId, timeline.length]);
+    }, [conversationId, lastItemIndex, timeline.length]);
+
+    const footerContent = useMemo(() => {
+      if (!hasFooterStreamingContent) {
+        return null;
+      }
+
+      return (
+        <>
+          {normalizedStreamingContentBlocks.map((block, idx) => {
+            if (block.type === "text") {
+              // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
+              if (!block.text.trim()) return null;
+              return (
+                <MessageItem
+                  key={`streaming-text-${idx}`}
+                  role="assistant"
+                  content={block.text}
+                  createdAt={new Date().toISOString()}
+                  toolCalls={null}
+                  contentBlocks={null}
+                  providerHarness={providerHarness}
+                  providerSessionId={providerSessionId}
+                />
+              );
+            }
+            // task position marker — renders TaskSubagentCard at its chronological position.
+            // Task metadata may not be available yet (agent:task_started fires after agent:tool_call),
+            // so render nothing gracefully when the map entry is missing.
+            if (block.type === "task") {
+              const task = streamingTasks?.get(block.toolUseId);
+              if (!task) return null;
+              return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
+            }
+            // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
+            if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
+              return (
+                <DiffToolCallView
+                  key={`streaming-tool-${idx}`}
+                  toolCall={block.toolCall}
+                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                  className="mb-2"
+                />
+              );
+            }
+            // Non-diff tool call — render inline to preserve visual ordering with text blocks
+            return (
+              <ToolCallIndicator
+                key={`streaming-tool-${idx}`}
+                toolCall={block.toolCall}
+                isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                className="mb-2"
+              />
+            );
+          })}
+
+          {/* Fallback when agent is running but no content blocks yet:
+              - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
+              - No tool calls either → show TypingIndicator (agent thinking) */}
+          {shouldShowFooterFallback && (
+            <>
+              {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
+                <ToolCallIndicator
+                  key={`pending-tool-${idx}`}
+                  toolCall={tc}
+                  isStreaming={tc.result == null && !tc.error}
+                  className="mb-2"
+                />
+              ))}
+              <TypingIndicator />
+            </>
+          )}
+        </>
+      );
+    }, [
+      hasFooterStreamingContent,
+      normalizedStreamingContentBlocks,
+      providerHarness,
+      providerSessionId,
+      shouldShowFooterFallback,
+      streamingTasks,
+      streamingToolCalls,
+    ]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -655,80 +844,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         </div>
       ),
       Footer: () => {
+        if (!footerContent) {
+          return null;
+        }
         return (
           <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {normalizedStreamingContentBlocks.map((block, idx) => {
-              if (block.type === "text") {
-                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
-                if (!block.text.trim()) return null;
-                return (
-                  <MessageItem
-                    key={`streaming-text-${idx}`}
-                    role="assistant"
-                    content={block.text}
-                    createdAt={new Date().toISOString()}
-                    toolCalls={null}
-                    contentBlocks={null}
-                    providerHarness={providerHarness}
-                    providerSessionId={providerSessionId}
-                  />
-                );
-              }
-              // task position marker — renders TaskSubagentCard at its chronological position.
-              // Task metadata may not be available yet (agent:task_started fires after agent:tool_call),
-              // so render nothing gracefully when the map entry is missing.
-              if (block.type === "task") {
-                const task = streamingTasks?.get(block.toolUseId);
-                if (!task) return null;
-                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
-              }
-              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
-              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
-                return (
-                  <DiffToolCallView
-                    key={`streaming-tool-${idx}`}
-                    toolCall={block.toolCall}
-                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                    className="mb-2"
-                  />
-                );
-              }
-              // Non-diff tool call — render inline to preserve visual ordering with text blocks
-              return (
-                <ToolCallIndicator
-                  key={`streaming-tool-${idx}`}
-                  toolCall={block.toolCall}
-                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                  className="mb-2"
-                />
-              );
-            })}
-
-            {/* Fallback when agent is running but no content blocks yet:
-                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
-                - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
-              <>
-                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
-                  <ToolCallIndicator
-                    key={`pending-tool-${idx}`}
-                    toolCall={tc}
-                    isStreaming={tc.result == null && !tc.error}
-                    className="mb-2"
-                  />
-                ))}
-                <TypingIndicator />
-              </>
-            )}
-
+            {footerContent}
           </div>
         );
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, normalizedStreamingContentBlocks,
-      isSending, isAgentRunning, handleFooterRef, providerHarness, providerSessionId,
+      footerContent, handleFooterRef,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -751,7 +878,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }, [contextKey]);
 
     // Memoize itemContent — lookup teammate info for team mode messages
-    const renderItem = useCallback((_: number, item: TimelineItem) => {
+    const renderItem = useCallback((index: number, item: TimelineItem) => {
+      const isLastTimelineItem = index === timeline.length - 1;
       if (item.kind === "hook") {
         return (
           <div className="px-3 w-full" style={contentContainerStyle}>
@@ -798,6 +926,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             role={msg.role}
             content={msg.content}
             createdAt={msg.createdAt}
+            isLastInList={isLastTimelineItem}
             toolCalls={msg.toolCalls ?? null}
             contentBlocks={msg.contentBlocks ?? null}
             {...(msg.attachments && { attachments: msg.attachments })}
@@ -819,7 +948,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           />
         </div>
       );
-    }, [getTeammateInfo, providerHarness, providerSessionId]);
+    }, [getTeammateInfo, providerHarness, providerSessionId, timeline.length]);
 
     if (isTestEnv) {
       return (
@@ -886,6 +1015,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   role={msg.role}
                   content={msg.content}
                   createdAt={msg.createdAt}
+                  isLastInList={index === timeline.length - 1}
                   toolCalls={msg.toolCalls ?? null}
                   contentBlocks={msg.contentBlocks ?? null}
                   {...(msg.attachments && { attachments: msg.attachments })}
@@ -909,71 +1039,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             );
           })}
 
-          <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-            {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {normalizedStreamingContentBlocks.map((block, idx) => {
-              if (block.type === "text") {
-                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
-                if (!block.text.trim()) return null;
-                return (
-                  <MessageItem
-                    key={`streaming-text-${idx}`}
-                    role="assistant"
-                    content={block.text}
-                    createdAt={new Date().toISOString()}
-                    toolCalls={null}
-                    contentBlocks={null}
-                    providerHarness={providerHarness}
-                    providerSessionId={providerSessionId}
-                  />
-                );
-              }
-              // task position marker — renders TaskSubagentCard at its chronological position
-              if (block.type === "task") {
-                const task = streamingTasks?.get(block.toolUseId);
-                if (!task) return null;
-                return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
-              }
-              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
-              if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
-                return (
-                  <DiffToolCallView
-                    key={`streaming-tool-${idx}`}
-                    toolCall={block.toolCall}
-                    isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                    className="mb-2"
-                  />
-                );
-              }
-              // Non-diff tool call — render inline to preserve visual ordering with text blocks
-              return (
-                <ToolCallIndicator
-                  key={`streaming-tool-${idx}`}
-                  toolCall={block.toolCall}
-                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
-                  className="mb-2"
-                />
-              );
-            })}
-
-            {/* Fallback when agent is running but no content blocks yet:
-                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
-                - No tool calls either → show TypingIndicator (agent thinking) */}
-            {(isSending || isAgentRunning) && normalizedStreamingContentBlocks.length === 0 && (
-              <>
-                {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
-                  <ToolCallIndicator
-                    key={`pending-tool-${idx}`}
-                    toolCall={tc}
-                    isStreaming={tc.result == null && !tc.error}
-                    className="mb-2"
-                  />
-                ))}
-                <TypingIndicator />
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+          {footerContent && (
+            <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
+              {footerContent}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
           {/* Scroll-to-bottom button — same position as production branch */}
           {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (
             <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
@@ -1008,17 +1079,35 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           ref={virtuosoRef}
           scrollerRef={handleScrollerRef}
           data={timeline}
+          firstItemIndex={firstItemIndex}
           context={footerContentHash}
           // Start at the last item on mount
-          initialTopMostItemIndex={timeline.length > 0 ? timeline.length - 1 : 0}
+          initialTopMostItemIndex={timeline.length > 0 ? lastItemIndex : 0}
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={AT_BOTTOM_THRESHOLD}
+          {...(startReachedHandler
+            ? { startReached: startReachedHandler }
+            : {})}
           alignToBottom
           className="h-full"
           components={virtuosoComponents}
           itemContent={renderItem}
         />
+        {isFetchingOlderMessages && (
+          <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none">
+            <span
+              className="rounded-full px-3 py-1 text-[11px]"
+              style={{
+                backgroundColor: "hsla(220 15% 12% / 0.94)",
+                border: "1px solid hsla(220 20% 100% / 0.06)",
+                color: "hsl(220 10% 72%)",
+              }}
+            >
+              Loading earlier messages...
+            </span>
+          </div>
+        )}
         {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
             isAtBottom/scrollToBottom/timeline.length are NOT in virtuosoComponents deps. */}
         {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (

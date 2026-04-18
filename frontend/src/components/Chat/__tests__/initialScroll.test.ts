@@ -51,23 +51,22 @@ const MARKDOWN_RENDER_DELAY_MS = 300;
  */
 function runInitialScrollEffect(opts: {
   conversationId: string | null;
-  timelineLength: number;
+  lastItemIndex: number;
   hasScrolledRef: { current: string | null };
   scrollToIndex: (args: { index: number; align: string; behavior: string }) => void;
   scrollerEl: HTMLElement | null;
 }): () => void {
-  const { conversationId, timelineLength, hasScrolledRef, scrollToIndex, scrollerEl } = opts;
+  const { conversationId, lastItemIndex, hasScrolledRef, scrollToIndex, scrollerEl } = opts;
+  const targetScrollKey = conversationId != null ? `${conversationId}:${lastItemIndex}` : null;
 
-  if (!conversationId || timelineLength === 0 || hasScrolledRef.current === conversationId) {
+  if (!conversationId || lastItemIndex < 0 || hasScrolledRef.current === targetScrollKey) {
     return () => {};
   }
 
-  const targetConversationId = conversationId;
-
   const doScroll = () => {
-    if (hasScrolledRef.current === targetConversationId) return;
-    scrollToIndex({ index: timelineLength - 1, align: "end", behavior: "auto" });
-    hasScrolledRef.current = targetConversationId;
+    if (hasScrolledRef.current === targetScrollKey) return;
+    scrollToIndex({ index: lastItemIndex, align: "end", behavior: "auto" });
+    hasScrolledRef.current = targetScrollKey;
   };
 
   const scroller = scrollerEl;
@@ -138,7 +137,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: null,
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -157,7 +156,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 0,
+        lastItemIndex: -1,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -171,11 +170,11 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
     it("does nothing when already scrolled to this conversation", () => {
       const scrollToIndex = vi.fn();
-      const hasScrolledRef = { current: "conv-1" };
+      const hasScrolledRef = { current: "conv-1:4" };
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -199,7 +198,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 10,
+        lastItemIndex: 9,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -224,7 +223,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 7,
+        lastItemIndex: 6,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -243,7 +242,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       runInitialScrollEffect({
         conversationId: "conv-abc",
-        timelineLength: 3,
+        lastItemIndex: 2,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -251,7 +250,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       vi.advanceTimersByTime(MARKDOWN_RENDER_DELAY_MS);
 
-      expect(hasScrolledRef.current).toBe("conv-abc");
+      expect(hasScrolledRef.current).toBe("conv-abc:2");
     });
 
     it("cleanup clears the fallback timeout before it fires", () => {
@@ -260,7 +259,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -286,7 +285,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -304,7 +303,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -321,7 +320,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 8,
+        lastItemIndex: 7,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -352,7 +351,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -376,7 +375,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -410,7 +409,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -439,7 +438,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -467,7 +466,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
       // First call — scrolls and sets ref
       runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -475,12 +474,12 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       vi.advanceTimersByTime(MARKDOWN_RENDER_DELAY_MS);
       expect(scrollToIndex).toHaveBeenCalledTimes(1);
-      expect(hasScrolledRef.current).toBe("conv-1");
+      expect(hasScrolledRef.current).toBe("conv-1:4");
 
       // Second call (re-render with same conversation) — should be a no-op
       runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 6, // even more items
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -493,12 +492,12 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
     it("allows scroll for a new conversation after already scrolled to a previous one", () => {
       const scrollToIndex = vi.fn();
-      const hasScrolledRef = { current: "conv-1" }; // Already scrolled conv-1
+      const hasScrolledRef = { current: "conv-1:4" }; // Already scrolled conv-1 at its prior last item
 
       // New conversation — should scroll
       runInitialScrollEffect({
         conversationId: "conv-2",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: null,
@@ -507,7 +506,30 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
       vi.advanceTimersByTime(MARKDOWN_RENDER_DELAY_MS);
 
       expect(scrollToIndex).toHaveBeenCalledOnce();
-      expect(hasScrolledRef.current).toBe("conv-2");
+      expect(hasScrolledRef.current).toBe("conv-2:4");
+    });
+
+    it("scrolls again when the same conversation gains newer tail items", () => {
+      const scrollToIndex = vi.fn();
+      const hasScrolledRef = { current: "conv-1:2" };
+
+      runInitialScrollEffect({
+        conversationId: "conv-1",
+        lastItemIndex: 3,
+        hasScrolledRef,
+        scrollToIndex,
+        scrollerEl: null,
+      });
+
+      vi.advanceTimersByTime(MARKDOWN_RENDER_DELAY_MS);
+
+      expect(scrollToIndex).toHaveBeenCalledOnce();
+      expect(scrollToIndex).toHaveBeenCalledWith({
+        index: 3,
+        align: "end",
+        behavior: "auto",
+      });
+      expect(hasScrolledRef.current).toBe("conv-1:3");
     });
 
     it("doScroll guard: if hasScrolledRef set between effect and async completion, does not double-scroll", () => {
@@ -518,7 +540,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
       // Start effect for conv-1
       runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -527,7 +549,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
       const observer = mockObserverInstances[0];
 
       // Simulate: between effect setup and observer callback, something else set the ref
-      hasScrolledRef.current = "conv-1";
+      hasScrolledRef.current = "conv-1:4";
 
       // Now observer fires
       observer.trigger();
@@ -550,7 +572,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,
@@ -575,7 +597,7 @@ describe("B1 initial scroll — ResizeObserver approach", () => {
 
       const cleanup = runInitialScrollEffect({
         conversationId: "conv-1",
-        timelineLength: 5,
+        lastItemIndex: 4,
         hasScrolledRef,
         scrollToIndex,
         scrollerEl: scroller,

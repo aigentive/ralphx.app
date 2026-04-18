@@ -89,6 +89,28 @@ impl ChatMessageRepository for MockChatMessageRepository {
         Ok(filtered)
     }
 
+    async fn get_recent_by_conversation_paginated(
+        &self,
+        conversation_id: &ChatConversationId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let mut filtered: Vec<_> = self
+            .messages
+            .iter()
+            .filter(|m| m.conversation_id.as_ref() == Some(conversation_id))
+            .cloned()
+            .collect();
+        filtered.sort_by_key(|m| std::cmp::Reverse(m.created_at));
+        let mut filtered: Vec<_> = filtered
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect();
+        filtered.reverse();
+        Ok(filtered)
+    }
+
     async fn delete_by_session(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
         Ok(())
     }

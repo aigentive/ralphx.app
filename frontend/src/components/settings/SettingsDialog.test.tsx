@@ -89,6 +89,7 @@ const render = (ui: React.ReactElement) =>
 describe("SettingsDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     uiState.activeModal = null;
     uiState.modalContext = undefined;
     uiState.closeModal = mockCloseModal;
