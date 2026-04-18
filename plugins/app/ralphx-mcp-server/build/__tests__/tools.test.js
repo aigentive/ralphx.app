@@ -83,11 +83,15 @@ describe('getAllowedToolNames', () => {
         expect(tools).toContain('fs_read_file');
         expect(tools).toContain('fs_grep');
     });
-    it('treats explicit empty canonical mcp_tools as canonical instead of missing', () => {
+    it('treats delegation-only canonical mcp_tools as canonical instead of missing', () => {
         setAgentType('qa-tester');
         const tools = getAllowedToolNames();
-        expect(tools).toEqual([]);
-        expect(loadCanonicalMcpTools('qa-tester')).toEqual([]);
+        expect(tools).toEqual(['delegate_start', 'delegate_wait', 'delegate_cancel']);
+        expect(loadCanonicalMcpTools('qa-tester')).toEqual([
+            'delegate_start',
+            'delegate_wait',
+            'delegate_cancel',
+        ]);
     });
 });
 describe('getToolRecoveryHint', () => {
@@ -260,11 +264,19 @@ describe('getFilteredTools', () => {
         expect(toolNames).not.toContain('run_required_verification_critic_round');
         expect(toolNames).not.toContain('await_verification_round_settlement');
     });
-    it('should expose read-only filesystem tools for qa prep', () => {
+    it('should expose qa prep filesystem tools plus delegation bridge tools', () => {
         setAgentType('qa-prep');
         const tools = getFilteredTools();
         const toolNames = tools.map((t) => t.name);
-        expect(toolNames).toEqual(['fs_read_file', 'fs_list_dir', 'fs_grep', 'fs_glob']);
+        expect(toolNames).toEqual([
+            'fs_read_file',
+            'fs_list_dir',
+            'fs_grep',
+            'fs_glob',
+            'delegate_start',
+            'delegate_wait',
+            'delegate_cancel',
+        ]);
     });
     it('should return no tools for unknown agent type', () => {
         setAgentType('unknown-agent-type');
