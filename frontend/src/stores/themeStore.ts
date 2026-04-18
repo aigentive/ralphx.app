@@ -138,6 +138,12 @@ interface ThemeState {
   toggleHighContrast: (enabled?: boolean) => void;
 }
 
+declare global {
+  interface Window {
+    __themeStore?: unknown;
+  }
+}
+
 export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: loadTheme(),
   lastBaseTheme: loadLastBaseTheme(),
@@ -189,4 +195,10 @@ export function syncThemeAttributesFromStore(): void {
   applyThemeAttr(theme);
   applyMotionAttr(motion);
   applyFontScaleAttr(fontScale);
+  // Expose for devtools debugging: `window.__themeStore.getState()` returns
+  // the current theme/lastBaseTheme/motion/fontScale. Dev only — helps when
+  // a user reports theme desync and we need to confirm the store vs DOM.
+  if (typeof window !== "undefined") {
+    window.__themeStore = useThemeStore;
+  }
 }
