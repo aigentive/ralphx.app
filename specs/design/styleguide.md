@@ -312,72 +312,73 @@ For pages with dense per-item config (e.g. harness lanes):
 
 ---
 
-## 12. Known drift — blocks High-Contrast toggle (migrate before shipping it)
+## 12. Cohesiveness state + regression guards
 
-Every row below is a hardcoded color in a component file. In the Default theme the override happens to look correct; in any other theme it breaks. Each must become a token reference before the High-Contrast toggle can ship.
+As of 2026-04-18 the token migration is **complete** for all non-excluded components. Running totals from the end-of-session sweep:
 
-### Settings surface (audited 2026-04-18)
-
-| File | Line(s) | Issue | Fix |
-|---|---|---|---|
-| `SettingsView.shared.tsx` | 284-290 | `SectionCard` uses `rgba(255,255,255,0.04)` bg + blur + `rgba(255,255,255,0.08)` border (glassmorphism) | Switch to `var(--bg-elevated)` + `var(--border-subtle)` |
-| `IdeationSettingsPanel.tsx` | 244-247 | Gradient-border trick on Card | Use shared `SectionCard` |
-| `ExternalMcpSettingsPanel.tsx` | 178-183 | Same gradient-border trick | Use shared `SectionCard` |
-| `ExternalMcpSettingsPanel.tsx` | 32 | RestartNotice: `rgba(255,107,53,0.08)` bg + `rgba(255,107,53,0.2)` border | Tokenize to `--accent-muted` + new `--accent-border` |
-| `ExternalMcpSettingsPanel.tsx` | 53 | FieldRow hover: `hover:bg-[rgba(45,45,45,0.3)]` | `hover:bg-[var(--bg-hover)]/30` |
-| `ExternalMcpSettingsPanel.tsx` | 313 | Save button: `text-white` | Use `text-[var(--text-inverse)]` so HC flips correctly |
-| `IdeationSettingsPanel.tsx` | 55 | Hover: `rgba(45,45,45,0.3)` | `var(--bg-hover)` |
-| `SettingsDialog.tsx` | 99 | DialogContent border: `rgba(255,255,255,0.08)` | `var(--border-subtle)` |
-| `SettingsDialog.tsx` | 110-113 | Header bg: `rgba(18,18,18,0.85)` + `rgba(255,255,255,0.06)` border | `var(--bg-surface)` + `var(--border-subtle)` |
-| `SettingsDialog.tsx` | 131 | Close btn hover: `rgba(255,255,255,0.06)` | `var(--bg-hover)` |
-| `SettingsDialog.tsx` | 168 | Nav hover: `rgba(255,255,255,0.04)` | `var(--bg-hover)/40` |
-| `SettingsDialog.tsx` | 172-174 | Nav active: `#ffffff` / `#0a0a0a` hardcoded | Define `--nav-active-bg` / `--nav-active-text` tokens (HC: yellow / black) |
-| `ApiKeyEntry.tsx` | 179-180 | Accent card: `rgba(255,107,53,0.08)` + `rgba(255,107,53,0.15)` | `--accent-muted` + `--accent-border` |
-| `ApiKeyEntry.tsx` | 211, 244, 271, 292, 306 | `hover:bg-[var(--bg-surface-hover)]` — token doesn't exist | Migrate to `var(--bg-hover)` |
-| `ProjectAnalysisSection.tsx` | 60-61, 217-218 | `rgba(255,107,53,0.05)` + `rgba(255,107,53,0.15)` | Tokenize |
-| `ProjectAnalysisSection.tsx` | 160, 205, 229 | `rgba(255,107,53,0.08)` hover + `bg-surface-hover` | Tokenize |
-| `ProjectMultiSelect.tsx` | 73-74 | Mix of `rgba(255,107,53,0.08)` and `bg-surface-hover` | Tokenize |
-| `EditableAnalysisEntry.tsx` | 87, 144, 153, 167, 201, 207, 308 | Hardcoded orange alpha, gray alpha, red alpha, and `bg-surface-hover` | Full tokenization pass |
-| `IdeationEffortSection.tsx` | 116 | Hover: `rgba(45,45,45,0.3)` | `var(--bg-hover)` |
-| `CreateKeyDialog.tsx` | 145-146, 261-262 | Inline `var(--bg-elevated)` + `rgba(255,255,255,0.08)` / `rgba(0,0,0,0.3)` | Use `SectionCard` + token borders |
-| `AuditLogViewer.tsx` | 94 | `bg-surface-hover` | `var(--bg-hover)` |
-
-### Cross-cutting rules
-
-| Pattern | Fix |
-|---|---|
-| Any reference to `--bg-surface-hover` | Rename callsites to `--bg-hover`. Optionally add a temporary CSS alias `--bg-surface-hover: var(--bg-hover)` in `globals.css` to de-risk the migration |
-| `rgba(255,107,53,*)` in any alpha | Use `--accent-primary` + `color-mix(in srgb, var(--accent-primary) N%, transparent)` OR tokenize the specific alpha (`--accent-muted` for 0.15) |
-| `rgba(239,68,68,*)` | Use `--status-error` with `color-mix` |
-| `rgba(255,255,255,0.04\|0.06\|0.08)` overlays | Introduce `--overlay-subtle` / `--overlay-default` tokens; never use white-alpha directly |
-| `#FFFFFF` / `#000000` as component literals | Use `--text-primary` / `--text-inverse` / theme-specific tokens |
-
-### Migration phases
-
-| Phase | Scope | Gate |
+| Check | Count | Source |
 |---|---|---|
-| 1 | Tokenize every hardcoded color in the **Settings** surface (table above) | No visual change in Default theme (snapshot tests + visual diff) |
-| 2 | Extract `globals.css` into `tokens/*.css` + `themes/default.css` | `:root` still resolves to identical values |
-| 3 | Add `themes/high-contrast.css` mirroring `themes/high-contrast.md` | All contrast pairs logged in the theme file |
-| 4 | Pre-hydration bootstrap script in `index.html` | No flash-of-wrong-theme on reload |
-| 5 | Add **Settings → Accessibility** panel (High contrast / Reduce motion / Font scale) | Manual QA pass in both themes |
-| 6 | Extend tokenization to Chat, Kanban, Task detail views | Axe-core tests pass in both themes |
+| Primitive-token leaks in components | **0** | `grep 'var\(--(gray\|orange\|amber\|yellow-\|blue-\|cvd\|hc\|alpha-)' src/components` |
+| Tailwind default-palette refs | **0** | `grep '\b(bg\|text\|border\|ring\|from\|to\|via)-(red\|green\|blue\|amber\|emerald\|rose\|yellow\|indigo\|purple\|pink\|sky\|slate\|zinc\|neutral\|stone)-[0-9]{2,3}\b' src/components` (excluding `.test.` + WelcomeScreen + BattleModeV2) |
+| Inline `rgba(…)` / `rgb(…)` literals | **0** | `grep 'rgba\(\|rgb\(' src/components` (excluding test/WelcomeScreen/BattleModeV2/`color-mix`) |
+| `bg-surface-hover` references | **0** | Deprecated alias — kept in CSS for emergency safety, not used |
+| Brand hex in live non-doc code | **0** | Docstrings/comments still mention `#ff6b35` for humans — acceptable |
+| Full test suite | **7518 / 7518** | `npx vitest run` |
 
-### Checklist: adding a new token
+### Intentional exclusions
 
-1. Declare the role (name only) in `frontend/src/styles/tokens/roles.css`.
-2. Add the default value in `frontend/src/styles/themes/default.css`.
-3. Add the high-contrast value in `frontend/src/styles/themes/high-contrast.css` **with the computed contrast ratio in the commit message**.
-4. Document the token in the appropriate table in this file and in `themes/high-contrast.md`.
-5. Use it in components via `bg-[var(--token)]` / `text-[var(--token)]` — never via Tailwind palette shortcuts.
+These paths are out of scope for token migration:
+
+| Path | Reason |
+|---|---|
+| `src/components/WelcomeScreen/**` | Marketing splash with an intentional fixed brand palette + radial gradients. Not theme-responsive by design. |
+| `src/components/TaskGraph/battle-v2/BattleModeV2Overlay.tsx` | Neon-cyberpunk game-mode canvas; colours are gameplay art, not UI surface. |
+| `*.test.tsx` / `*.test.ts` | Assertions pin expected token/class names. Update tests when source semantics change. |
+| `src/styles/**` | Token/theme sources. Hardcoded values here are intentional — that's where the values live. |
+
+### CI regression guards (recommended, not yet wired)
+
+Add to `npm run lint` as a pre-commit step or a CI job:
+
+```bash
+# Fail the build if any primitive-tier tokens leak into components
+grep -rEn 'var\(--(gray|orange|amber|yellow-[0-9]|blue-[0-9]|cvd|hc|alpha-)' \
+  frontend/src/components --include='*.tsx' --include='*.ts' \
+  | grep -v 'WelcomeScreen' \
+  && { echo "Primitive leak detected"; exit 1; }
+
+# Fail the build if any Tailwind default palette leaks into components
+grep -rEn '\b(bg|text|border|ring|from|to|via)-(red|green|blue|amber|emerald|rose|yellow|indigo|purple|pink|sky|slate|zinc|neutral|stone)-[0-9]{2,3}\b' \
+  frontend/src/components --include='*.tsx' --include='*.ts' \
+  | grep -v '\.test\.' | grep -v 'WelcomeScreen' | grep -v 'BattleModeV2' \
+  && { echo "Tailwind palette leak detected"; exit 1; }
+```
+
+### Adding a new token — canonical checklist
+
+1. Decide the tier:
+   - Raw scale value → `src/styles/tokens/primitives.css`
+   - New role the app reasons about → `src/styles/tokens/semantic.css`
+   - Reusable composite for a specific component → `src/styles/tokens/components.css`
+2. Add default (Dark) value to the correct file. If semantic, **reference a primitive** (`--bg-x: var(--gray-925)`), never a raw literal.
+3. Add override in `src/styles/themes/light.css`.
+4. Add override in `src/styles/themes/high-contrast.css` **with computed contrast ratio in the commit message**.
+5. If Tailwind needs to consume it, register in the `@theme inline` block in `globals.css` (`--color-your-token: var(--your-token);`).
+6. Document in this file's relevant section (§1 colour tokens, §3 spacing, §4 radii, §5 shadows, etc.).
+7. Use via `bg-[var(--token)]` / `text-[var(--token)]` or the Tailwind palette utility if registered. Never inline rgba/hex in components.
 
 ---
 
 ## 13. Contribution rules
 
-- **Always add new tokens to `globals.css` first.** Never hardcode rgba() or hsl() in component files.
-- **Use Tailwind arbitrary values (`bg-[var(--token)]`) for tokens.** Don't invent new class names.
-- **When introducing a new UI pattern, add it to this doc** with canonical class string under the appropriate section.
-- **When you fix drift listed in §12, remove it from the table** in the same PR.
+- **Never hardcode `rgba()`, `hsl()`, or hex in component files.** Use the semantic/component tier. If a needed value doesn't exist, add the token first (see §12 checklist).
+- **Never reference primitives directly from components.** `var(--gray-*)`, `var(--orange-*)`, `var(--cvd-*)`, `var(--hc-*)`, `var(--yellow-N)`, `var(--blue-N)`, `var(--alpha-*)` belong inside `tokens/semantic.css` or theme files, not `.tsx`.
+- **Use Tailwind semantic utilities when available** — `text-status-error`, `bg-accent-primary`, `text-text-primary/70` — before dropping to arbitrary-value syntax.
+- **When a pattern repeats 3+ times, promote it.** Either add a component token to `tokens/components.css` or (better) a shared component under `components/ui/`.
 - **One accent color only.** Orange. ❌ No purple / blue / green for decorative purposes.
 - **Prefer composition over variants.** `<SectionCard>`, `<SettingRow>`, `<InlineNotice>` — use them. Don't rebuild the card shell inline.
+- **Test assertions follow the token names.** If you migrate a source literal to a token, grep the paired test file and update `.toHaveStyle` / `.toHaveClass` assertions.
+- **Use `withAlpha(token, %)` from `@/lib/theme-colors`** for dynamic-expression alpha composition. Never concatenate hex strings (`` `${color}80` `` is the banned pattern).
+- **Shadows are tokens too.** `--shadow-xs/sm/md/lg`, `--shadow-pulse-*`, `--shadow-glow-*`, `--shadow-drop-zone-*` — pick one before inlining a new box-shadow stack.
+- **Keyframes consume tokens** so animations flip themes. See the `@keyframes executing-pulse` / `reviewing-pulse` / `status-pulse` block in `globals.css` as the pattern.
+- **Excluded paths are documented in §12.** Anything else must follow these rules.

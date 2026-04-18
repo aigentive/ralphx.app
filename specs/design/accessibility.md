@@ -55,11 +55,13 @@ Three most common conditions (covering ~8% of men, ~0.5% of women):
 
 | State | Icon (lucide) | Shape | Default color | High-contrast color | Text label (required) |
 |---|---|---|---|---|---|
-| **Success** | `CheckCircle2` | ⭕ filled-check | `--status-success` `#2EB867` | White fill, black stroke | "OK" / "Passed" / "Available" |
-| **Warning** | `TriangleAlert` | △ triangle | `--status-warning` `#F4C025` | Yellow fill `#FFDD00`, thick black stroke | "Warning" / "Attention" |
-| **Error** | `XCircle` | ⭕ filled-x | `--status-error` `#DD3C3C` | Red fill `#FF0033`, thick black stroke, bold text | "Error" / "Failed" |
-| **Info** | `Info` | ⓘ circle-i | `--status-info` `#477EEB` | Bright blue fill, thick black stroke | "Info" / "Note" |
-| **In-progress** | `Loader2` (spin) | motion | `--accent-primary` `#FF6B35` | Bright yellow `#FFDD00` ring, no spin in reduced-motion | "Loading" / "Working" |
+| **Success** | `CheckCircle2` | ⭕ filled-check | `--status-success` `#009E73` (Okabe-Ito bluish-green) | HC: `#00FF66` lime | "OK" / "Passed" / "Available" |
+| **Warning** | `TriangleAlert` | △ triangle | `--status-warning` `#F0E442` (Okabe-Ito yellow) | HC: `#FFDD00` | "Warning" / "Attention" |
+| **Error** | `XCircle` | ⭕ filled-x | `--status-error` `#D55E00` (Okabe-Ito vermillion) | HC: `#FF3344` + bold | "Error" / "Failed" |
+| **Info** | `Info` | ⓘ circle-i | `--status-info` `#0072B2` (Okabe-Ito blue) | HC: `#66CCFF` sky | "Info" / "Note" |
+| **In-progress** | `Loader2` (spin) | motion | `--accent-primary` `#FF6B35` | HC: `#FFDD00` yellow ring, no spin in reduced-motion | "Loading" / "Working" |
+
+Light theme uses darker AA-on-white variants — success `#007A58`, warning `#A87800`, error `#B24800`, info `#005A8A`, accent `#EA5A26`. See `themes/light.md` §2 for the full table.
 
 **Rule:** ❌ A green dot with no icon or text. ✅ A green `CheckCircle2` icon + "Available" label. In high-contrast, the fill changes and the text stays mandatory.
 
@@ -197,28 +199,35 @@ Settings is the densest a11y surface. It must:
 
 | Requirement | Current state | Gap |
 |---|---|---|
-| Left-rail nav is keyboard-reachable | ✅ `role="button" tabIndex={0}` with `onKeyDown` mapping Enter/Space | OK |
-| Active section indicated non-color | ❌ Currently active = white background only | **Gap** — need `aria-current="page"` + optionally an icon/marker |
-| Tabs (Global / Project Overrides) keyboard-navigable | ✅ Radix Tabs primitive handles arrows | OK |
-| Collapsible lanes announce expanded state | ✅ `aria-expanded` + `aria-controls` already wired | OK |
+| Left-rail nav is keyboard-reachable | ✅ `role="button" tabIndex={0}` with `onKeyDown` | OK |
+| Active section indicated non-color | ✅ `aria-current="page"` added + `--nav-active-bg/-text` tokens (white/dark in Default, orange/white in Light, yellow/black in HC) | OK |
+| Tabs keyboard-navigable | ✅ Radix Tabs primitive handles arrows | OK |
+| Collapsible lanes announce expanded state | ✅ `aria-expanded` + `aria-controls` wired | OK |
 | Warning lane auto-expands | ✅ Already in place | OK |
-| Status notice has text label, not color-only | ✅ "Available" / "Needs attention" text | OK — but verify icon has `aria-hidden="true"` since text conveys state |
+| Status notice has text label, not color-only | ✅ `InlineNotice` always pairs icon + text label + color | OK |
 | Modal focus trap | ✅ Radix Dialog | OK |
-| Restart-required notice has role | ❌ Visually a pill, no `role="status"` | **Gap** |
+| Restart-required notice has role | ⚠ Still visually a pill without `role="status"` | **Known gap** — wrap in `<div role="status">` next a11y sweep |
 | Form fields have labels | ✅ `<Label htmlFor>` wiring | OK |
-| Save button state | ⚠ "Saving…" copy present; needs `aria-busy` on form | **Gap** |
-
-**Action:** The gaps above are tracked in `specs/design/styleguide.md` §12 (drift) and should be cleared before the High-Contrast toggle ships.
+| Save button state | ⚠ "Saving…" copy present; needs `aria-busy` on form | **Known gap** |
 
 ---
 
-## 12. High-contrast toggle (future)
+## 12. High-contrast toggle (shipped)
 
-The toggle will live in Settings → Accessibility section with:
+Shipped in `Settings → Preferences → Accessibility`:
 
-- **High contrast mode** (switch) — applies `data-theme="high-contrast"` to `<html>`, persisted in `localStorage`
-- **Reduce motion** (switch, if beyond OS-level) — applies `data-motion="reduce"`; the CSS `prefers-reduced-motion` media query already covers most cases, but an override is useful
-- **Font size scale** (select: Default / Large / Extra large) — applies `data-font-scale="lg" | "xl"` which scales root `--font-size-base`
+- **Theme** select — Dark / Light / High contrast
+- **High contrast mode** switch — shortcut that forces `data-theme="high-contrast"` and restores the last base theme (`dark` or `light`) when toggled off
+- **Motion** select — Follow system / Always reduce (`data-motion="reduce"`)
+- **Font size** select — Default / Large (110%) / Extra large (125%) (`data-font-scale="lg|xl"`)
+
+Persistence:
+- `localStorage.ralphx-theme` — active theme
+- `localStorage.ralphx-last-base-theme` — for HC toggle-off restore
+- `localStorage.ralphx-motion`
+- `localStorage.ralphx-font-scale`
+
+Applied pre-hydration by the inline script in `index.html`; re-asserted on React mount via `syncThemeAttributesFromStore()` in `main.tsx`.
 
 Architecture: see `specs/design/theme-architecture.md`.
 
