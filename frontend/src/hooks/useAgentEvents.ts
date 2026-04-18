@@ -285,9 +285,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             chatKeys.conversation(activeConversationId),
             (oldData) => {
               if (!oldData) return oldData;
-
-              // Check if message already exists
-              if (oldData.messages.some(m => m.id === message_id)) {
+              const existingMessages = oldData.messages ?? [];
+              if (existingMessages.some(m => m.id === message_id)) {
                 return oldData;
               }
 
@@ -306,14 +305,15 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
                 contentBlocks: null,
                 sender: null,
               };
-              return { ...oldData, messages: [...oldData.messages, newMessage] };
+              return { ...oldData, messages: [...existingMessages, newMessage] };
             }
           );
           queryClient.setQueryData<ConversationHistoryWindowData>(
             chatKeys.conversationHistory(activeConversationId),
             (oldData) => {
               if (!oldData) return oldData;
-              if (oldData.messages.some((message) => message.id === message_id)) {
+              const existingMessages = oldData.messages ?? [];
+              if (existingMessages.some((message) => message.id === message_id)) {
                 return oldData;
               }
 
@@ -335,8 +335,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
               return {
                 ...oldData,
-                messages: [...oldData.messages, newMessage],
-                totalMessageCount: oldData.totalMessageCount + 1,
+                messages: [...existingMessages, newMessage],
+                totalMessageCount: (oldData.totalMessageCount ?? existingMessages.length) + 1,
               };
             }
           );

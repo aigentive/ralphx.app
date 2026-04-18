@@ -29,6 +29,7 @@ import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
+import { logger } from "@/lib/logger";
 import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -352,6 +353,74 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       indexOffset: firstItemIndex,
       conversationId, // Reset isAtBottom when conversation changes
     });
+
+    // Scroll the actual DOM scroll container to its absolute bottom.
+    // This goes past Virtuoso's last list item to include any Footer (streaming
+    // indicators) + bottom padding — unlike scrollToIndex which only aligns the
+    // last row to the viewport edge and leaves 20-50px of footer/padding below.
+    const scrollToTrueBottom = useCallback(
+      (behavior: ScrollBehavior = "smooth") => {
+        const el = scrollerElRef.current;
+        if (!el) {
+          logger.debug("[ChatScroll] scrollToTrueBottom: no scroller ref yet, falling back to scrollToBottom hook");
+          scrollToBottom();
+          return;
+        }
+        const target = el.scrollHeight - el.clientHeight;
+        logger.debug("[ChatScroll] scrollToTrueBottom", {
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          currentTop: el.scrollTop,
+          target,
+          behavior,
+        });
+        el.scrollTo({ top: target, behavior });
+        // Eagerly mark atBottom=true so followOutput re-engages without waiting
+        // for scrollend.
+        if (!isAtBottomRef.current) {
+          handleAtBottomStateChange(true);
+        }
+      },
+      [scrollToBottom, handleAtBottomStateChange, isAtBottomRef]
+    );
+
+    // After any layout-changing event that should land at bottom, run two
+    // passes — first on next frame (catches most cases), second after a short
+    // delay (catches late-arriving streaming footer height growth).
+    const scheduleBottomPin = useCallback(
+      (reason: string) => {
+        logger.debug(`[ChatScroll] scheduleBottomPin: ${reason}`);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollToTrueBottom("smooth");
+            // Second pass catches footer that grows in the same tick.
+            setTimeout(() => scrollToTrueBottom("smooth"), 120);
+          });
+        });
+      },
+      [scrollToTrueBottom]
+    );
+
+    // Trigger 1: new user message appended → always jump to true bottom.
+    const prevLastUserIdRef = useRef<string | null>(null);
+    useEffect(() => {
+      if (messages.length === 0) return;
+      const last = messages[messages.length - 1];
+      if (!last || last.role !== "user") return;
+      if (prevLastUserIdRef.current === last.id) return;
+      prevLastUserIdRef.current = last.id;
+      scheduleBottomPin(`new user message id=${last.id}`);
+    }, [messages, scheduleBottomPin]);
+
+    // Trigger 2: streaming starts (transition false → true). User just-sent a
+    // message expects the agent's first tokens to appear at bottom of viewport.
+    const prevIsAgentRunningRef = useRef(false);
+    useEffect(() => {
+      if (isAgentRunning && !prevIsAgentRunningRef.current) {
+        scheduleBottomPin("streaming started");
+      }
+      prevIsAgentRunningRef.current = isAgentRunning;
+    }, [isAgentRunning, scheduleBottomPin]);
 
     // Keep scrollToTimestamp accessible via ref (avoids stale closure in ResizeObserver callback)
     const scrollToTimestampRef = useRef(scrollToTimestamp);

@@ -634,20 +634,20 @@ export function IntegratedChatPanel({
     messageCount: messagesData.length,
   });
 
-  // Wrap handleSend to include attachment IDs, team target, and clear attachments after send
+  // Wrap handleSend to include attachment IDs, team target, and clear attachments after send.
+  // Auto-scroll on new user messages is handled by ChatMessageList (see its
+  // "new user message → scrollToBottom" effect).
   const handleSend = useCallback(async (message: string) => {
-    // Collect attachment IDs before sending
     const attachmentIds = attachments.map(a => a.id);
-
-    // Call the base handler with attachment IDs and team target
+    logger.debug("[ChatScroll] handleSend firing", {
+      hasAttachments: attachmentIds.length > 0,
+      isTeamActive,
+    });
     await handleSendBase(
       message,
       attachmentIds.length > 0 ? attachmentIds : undefined,
       isTeamActive ? sendTarget : undefined
     );
-
-    // Clear attachments after successful send
-    // Note: If send fails, attachments are preserved for retry
     if (attachmentIds.length > 0) {
       clearAttachments();
     }

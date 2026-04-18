@@ -160,7 +160,7 @@ Agent limitations mean no single plan can be trusted in full. Plans proposing co
 Full process details: `agents/ralphx-ideation-team-lead/claude/prompt.md` (Phase 4.5) | `agents/ralphx-ideation/claude/prompt.md` (Phase 3.5)
 
 ## Design System
-`specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**
+`specs/design/styleguide.md` (tokens, components, layout rules — initial spec, grows with app) | `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**
 
 Input outline removal:
 ```tsx
