@@ -157,7 +157,7 @@ function LoadingSkeleton() {
       <div>
         <div
           className="h-3 w-16 rounded mb-2"
-          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+          style={{ backgroundColor: "var(--overlay-weak)" }}
         />
         <div
           className="h-10 rounded"
@@ -167,7 +167,7 @@ function LoadingSkeleton() {
       <div>
         <div
           className="h-3 w-16 rounded mb-3"
-          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+          style={{ backgroundColor: "var(--overlay-weak)" }}
         />
         {[1, 2, 3].map((i) => (
           <div key={i} className="relative pl-6 pb-3">
@@ -177,7 +177,7 @@ function LoadingSkeleton() {
                 left: "5px",
                 top: "12px",
                 bottom: 0,
-                backgroundColor: "rgba(255,255,255,0.06)",
+                backgroundColor: "var(--overlay-weak)",
               }}
             />
             <div
@@ -215,7 +215,7 @@ export function AuditTrailSidebar({
     <div
       data-testid="audit-trail-sidebar"
       className="w-[320px] shrink-0 flex flex-col overflow-y-auto"
-      style={{ borderRight: "0.5px solid rgba(255,255,255,0.06)" }}
+      style={{ borderRight: "0.5px solid var(--overlay-weak)" }}
     >
       <div className="p-4 space-y-5">
         {/* Summary */}

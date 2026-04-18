@@ -193,10 +193,10 @@ function TextBubble({
   // Refined Studio bubble styles with gradients
   const bubbleStyle: React.CSSProperties = {
     background: isUser
-      ? "linear-gradient(135deg, #ff6b35 0%, #e85a28 100%)"
+      ? "linear-gradient(135deg, var(--accent-primary) 0%, #e85a28 100%)"
       : "linear-gradient(180deg, rgba(28,28,28,0.95) 0%, rgba(22,22,22,0.98) 100%)",
     color: isUser ? "white" : "var(--text-primary)",
-    border: isUser ? "none" : "1px solid rgba(255,255,255,0.06)",
+    border: isUser ? "none" : "1px solid var(--overlay-weak)",
     boxShadow: isUser
       ? "0 2px 8px rgba(255,107,53,0.2)"
       : "0 1px 4px rgba(0,0,0,0.15)",

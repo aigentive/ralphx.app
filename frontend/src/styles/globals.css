@@ -323,11 +323,11 @@ a:not([class*="no-underline"]):hover {
 @keyframes status-pulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    box-shadow: var(--shadow-pulse-status-base);
   }
   50% {
     transform: scale(1.15);
-    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+    box-shadow: var(--shadow-pulse-status-expand);
   }
 }
 
@@ -349,12 +349,10 @@ a:not([class*="no-underline"]):hover {
 
 @keyframes executing-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 hsla(14 100% 60% / 0.6),
-                0 0 8px hsla(14 100% 60% / 0.3);
+    box-shadow: var(--shadow-pulse-accent-base);
   }
   50% {
-    box-shadow: 0 0 0 4px hsla(14 100% 60% / 0),
-                0 0 12px hsla(14 100% 60% / 0.5);
+    box-shadow: var(--shadow-pulse-accent-expand);
   }
 }
 
@@ -365,18 +363,16 @@ a:not([class*="no-underline"]):hover {
 
 @keyframes reviewing-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 hsla(217 91% 60% / 0.5),
-                0 0 8px hsla(217 91% 60% / 0.25);
+    box-shadow: var(--shadow-pulse-info-base);
   }
   50% {
-    box-shadow: 0 0 0 4px hsla(217 91% 60% / 0),
-                0 0 12px hsla(217 91% 60% / 0.4);
+    box-shadow: var(--shadow-pulse-info-expand);
   }
 }
 
 @keyframes badge-pulse {
-  0%, 100% { background-color: rgba(59, 130, 246, 0.2); }
-  50%      { background-color: rgba(59, 130, 246, 0.35); }
+  0%, 100% { background-color: var(--status-info-muted); }
+  50%      { background-color: var(--status-info-border); }
 }
 
 @keyframes pulse-critical {

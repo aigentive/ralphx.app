@@ -98,7 +98,7 @@ function MergeInfoCard({
           <>
             <div
               className="h-px"
-              style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+              style={{ backgroundColor: "var(--overlay-weak)" }}
             />
             <div className="flex items-center gap-3">
               <div

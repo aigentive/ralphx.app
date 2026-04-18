@@ -105,7 +105,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
               {/* Calibration inputs */}
               <div
                 className="space-y-2 pt-2"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ borderTop: "1px solid var(--overlay-weak)" }}
                 data-testid="calibration-section"
               >
                 <div className="text-[10px] uppercase tracking-wide opacity-60">Calibrate</div>
@@ -135,7 +135,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
                       onBlur={(e) => handleFieldBlur(field, e.target.value)}
                       className="w-16 rounded px-1.5 py-0.5 text-xs text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
                       style={{
-                        backgroundColor: "rgba(255,255,255,0.06)",
+                        backgroundColor: "var(--overlay-weak)",
                         color: "var(--text-secondary)",
                         boxShadow: "none",
                         outline: "none",

@@ -65,7 +65,7 @@ function StatRow({
     <div className="flex items-center gap-3">
       <div
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <Icon className="w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.4)" }} />
       </div>
@@ -125,7 +125,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
   const divider = (
     <div
       className="h-px"
-      style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      style={{ backgroundColor: "var(--overlay-weak)" }}
     />
   );
 

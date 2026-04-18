@@ -82,7 +82,7 @@ function RateBar({ label, rate, passCount, totalCount, color, testId }: RateBarP
       </div>
       <div
         className="h-1.5 w-full rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -116,7 +116,7 @@ function CycleTimeBar({ phase, maxMinutes }: CycleTimeBarProps) {
       </span>
       <div
         className="flex-1 h-1 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"
@@ -145,7 +145,7 @@ function LoadingSkeleton() {
         <div
           key={i}
           className="h-10 rounded"
-          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+          style={{ backgroundColor: "var(--overlay-weak)" }}
         />
       ))}
     </div>
@@ -302,7 +302,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
       <div
         className="grid grid-cols-3 gap-4"
         style={{
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid var(--overlay-weak)",
           paddingBottom: "16px",
         }}
       >
@@ -332,7 +332,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
               className="space-y-3"
               style={{
                 borderBottom: hasCycleTimes
-                  ? "1px solid rgba(255,255,255,0.06)"
+                  ? "1px solid var(--overlay-weak)"
                   : undefined,
                 paddingBottom: hasCycleTimes ? "16px" : undefined,
               }}
@@ -391,7 +391,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
           {showEstimates && safeStats.eme && (
             <div
               style={{
-                borderTop: "1px solid rgba(255,255,255,0.06)",
+                borderTop: "1px solid var(--overlay-weak)",
                 paddingTop: "12px",
               }}
             >
@@ -404,7 +404,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
       {/* Copy as Markdown button */}
       <div
         style={{
-          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderTop: "1px solid var(--overlay-weak)",
           paddingTop: "12px",
         }}
       >

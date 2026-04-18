@@ -240,7 +240,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           backgroundColor: "rgba(30, 30, 30, 0.95)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "0.5px solid rgba(255,255,255,0.1)",
+          border: "0.5px solid var(--overlay-moderate)",
           color: "rgba(255,255,255,0.7)",
           boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
         }}
@@ -465,7 +465,7 @@ export function StateTimelineNav({
           backgroundColor: "rgba(20, 20, 20, 0.6)",
           backdropFilter: "blur(40px) saturate(150%)",
           WebkitBackdropFilter: "blur(40px) saturate(150%)",
-          borderBottom: "0.5px solid rgba(255,255,255,0.06)",
+          borderBottom: "0.5px solid var(--overlay-weak)",
         }}
       >
         {/* History icon */}

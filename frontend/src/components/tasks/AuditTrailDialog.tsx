@@ -77,7 +77,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
+            borderColor: "var(--overlay-weak)",
             background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
@@ -107,7 +107,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
           {/* Left sidebar - 320px */}
           <div
             className="w-[320px] shrink-0 border-r overflow-hidden"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            style={{ borderColor: "var(--overlay-weak)" }}
           >
             <AuditTrailSidebar
               phases={phases}
@@ -150,7 +150,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                   <div
                     className="sticky top-0 z-10 px-4 py-2.5 border-b"
                     style={{
-                      borderColor: "rgba(255,255,255,0.06)",
+                      borderColor: "var(--overlay-weak)",
                       background: "rgba(18,18,18,0.95)",
                       backdropFilter: "blur(12px)",
                     }}
@@ -232,7 +232,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
         <div
           className="flex items-center justify-between px-4 py-3 border-t shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
+            borderColor: "var(--overlay-weak)",
             background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
