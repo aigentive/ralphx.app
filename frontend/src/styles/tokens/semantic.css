@@ -40,32 +40,33 @@
   --accent-border:    hsla(14 100% 60% / 0.25); /* subtle accent-tinted borders */
 
   /* ============================================================================
-   * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md)
-   * Color is always paired with icon + text label — see §4 rule 1.
-   * Each state carries a trio: base / muted bg / border.
+   * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md).
+   * Every state carries a quartet: base / muted bg / border / strong emphasis.
+   * Muted/border/strong are derived from the base via color-mix so themes
+   * only need to re-point the base — alphas stay proportional automatically.
    * ============================================================================ */
   --status-success:        var(--cvd-bluish-green);
-  --status-success-muted:  hsla(160 100% 31% / 0.10);
-  --status-success-border: hsla(160 100% 31% / 0.30);
-  --status-success-strong: hsla(160 100% 31% / 0.50);  /* emphasis bg / active badge */
+  --status-success-muted:  color-mix(in srgb, var(--status-success) 10%, transparent);
+  --status-success-border: color-mix(in srgb, var(--status-success) 30%, transparent);
+  --status-success-strong: color-mix(in srgb, var(--status-success) 50%, transparent);
 
   --status-warning:        var(--cvd-yellow);
-  --status-warning-muted:  hsla(51 100% 57% / 0.10);
-  --status-warning-border: hsla(51 100% 57% / 0.30);
-  --status-warning-strong: hsla(51 100% 57% / 0.50);
+  --status-warning-muted:  color-mix(in srgb, var(--status-warning) 10%, transparent);
+  --status-warning-border: color-mix(in srgb, var(--status-warning) 30%, transparent);
+  --status-warning-strong: color-mix(in srgb, var(--status-warning) 50%, transparent);
 
   --status-error:          var(--cvd-vermillion);
-  --status-error-muted:    hsla(26 100% 42% / 0.10);
-  --status-error-border:   hsla(26 100% 42% / 0.30);
-  --status-error-strong:   hsla(26 100% 42% / 0.50);
+  --status-error-muted:    color-mix(in srgb, var(--status-error) 10%, transparent);
+  --status-error-border:   color-mix(in srgb, var(--status-error) 30%, transparent);
+  --status-error-strong:   color-mix(in srgb, var(--status-error) 50%, transparent);
 
   --status-info:           var(--cvd-blue);
-  --status-info-muted:     hsla(202 100% 35% / 0.10);
-  --status-info-border:    hsla(202 100% 35% / 0.30);
-  --status-info-strong:    hsla(202 100% 35% / 0.50);
+  --status-info-muted:     color-mix(in srgb, var(--status-info) 10%, transparent);
+  --status-info-border:    color-mix(in srgb, var(--status-info) 30%, transparent);
+  --status-info-strong:    color-mix(in srgb, var(--status-info) 50%, transparent);
 
   /* Accent strong tint — for emphasis backgrounds / glow edges */
-  --accent-strong:         hsla(14 100% 60% / 0.50);
+  --accent-strong:         color-mix(in srgb, var(--accent-primary) 50%, transparent);
 
   /* ============================================================================
    * Borders

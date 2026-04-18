@@ -35,27 +35,29 @@
   --accent-border:    hsla(50 100% 50% / 0.5);
 
   /* Status — bright + always paired with icons */
+  /* Base status values shift to HC brights. HC uses higher alphas on tints
+   * to punch against pure black — override the color-mix percentages here. */
   --status-success:        var(--hc-green);
-  --status-success-muted:  hsla(140 100% 50% / 0.18);
-  --status-success-border: hsla(140 100% 50% / 0.50);
-  --status-success-strong: hsla(140 100% 50% / 0.80);
+  --status-success-muted:  color-mix(in srgb, var(--status-success) 18%, transparent);
+  --status-success-border: color-mix(in srgb, var(--status-success) 50%, transparent);
+  --status-success-strong: color-mix(in srgb, var(--status-success) 80%, transparent);
 
   --status-warning:        var(--yellow-500);
-  --status-warning-muted:  hsla(50 100% 50% / 0.20);
-  --status-warning-border: hsla(50 100% 50% / 0.50);
-  --status-warning-strong: hsla(50 100% 50% / 0.80);
+  --status-warning-muted:  color-mix(in srgb, var(--status-warning) 20%, transparent);
+  --status-warning-border: color-mix(in srgb, var(--status-warning) 50%, transparent);
+  --status-warning-strong: color-mix(in srgb, var(--status-warning) 80%, transparent);
 
   --status-error:          var(--hc-red);
-  --status-error-muted:    hsla(354 100% 60% / 0.18);
-  --status-error-border:   hsla(354 100% 60% / 0.50);
-  --status-error-strong:   hsla(354 100% 60% / 0.80);
+  --status-error-muted:    color-mix(in srgb, var(--status-error) 18%, transparent);
+  --status-error-border:   color-mix(in srgb, var(--status-error) 50%, transparent);
+  --status-error-strong:   color-mix(in srgb, var(--status-error) 80%, transparent);
 
   --status-info:           var(--hc-sky);
-  --status-info-muted:     hsla(200 100% 70% / 0.18);
-  --status-info-border:    hsla(200 100% 70% / 0.50);
-  --status-info-strong:    hsla(200 100% 70% / 0.80);
+  --status-info-muted:     color-mix(in srgb, var(--status-info) 18%, transparent);
+  --status-info-border:    color-mix(in srgb, var(--status-info) 50%, transparent);
+  --status-info-strong:    color-mix(in srgb, var(--status-info) 80%, transparent);
 
-  --accent-strong:         hsla(50 100% 50% / 0.80);
+  --accent-strong:         color-mix(in srgb, var(--accent-primary) 80%, transparent);
 
   /* Borders — always solid white, thicker stroke width */
   --border-subtle:  var(--alpha-white-50);
