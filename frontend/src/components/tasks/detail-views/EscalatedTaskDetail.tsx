@@ -27,6 +27,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { statusTint } from "@/lib/theme-colors";
 import {
   Loader2,
   AlertTriangle,
@@ -390,7 +391,7 @@ function DecisionButtonsCard({
       {(approveMutation.error ||
         requestChangesMutation.error ||
         reReviewMutation.error) && (
-        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+        <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
           {approveMutation.error?.message ||
             requestChangesMutation.error?.message ||
             reReviewMutation.error?.message}
@@ -471,8 +472,8 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
                 onClick={() => navigateToIdeationSession(followupSessionId)}
                 className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
                 style={{
-                  backgroundColor: "rgba(255, 107, 53, 0.16)" /* 0.16 alpha out of table range */,
-                  color: "#ff8a5b",
+                  backgroundColor: statusTint("accent", 16),
+                  color: "var(--accent-primary)",
                 }}
               >
                 <ExternalLink className="w-4 h-4" />

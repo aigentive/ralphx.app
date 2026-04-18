@@ -48,6 +48,7 @@ import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { PrStatusBadge } from "./shared/PrStatusBadge";
+import { statusTint } from "@/lib/theme-colors";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -172,7 +173,7 @@ function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active
     return (
       <div
         className="w-5 h-5 rounded-full border-2"
-        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" /* 0.35 alpha out of table range */ }}
+        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "var(--status-warning-strong)" }}
       />
     );
   }
@@ -355,7 +356,7 @@ function PrModeCard({
             onClick={handleOpenInGithub}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer"
             style={{
-              backgroundColor: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
+              backgroundColor: statusTint("success", 12),
               color: "var(--status-success)",
             }}
           >
@@ -798,8 +799,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                 disabled={stopMutation.isPending}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 69, 58, 0.15)",
-                  color: "#ff453a",
+                  backgroundColor: statusTint("error", 15),
+                  color: "var(--status-error)",
                 }}
               >
                 <Square className="w-3.5 h-3.5" />
@@ -807,7 +808,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               </button>
             </div>
             {actionError && (
-              <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+              <p className="mt-2 text-[12px]" style={{ color: "var(--status-error)" }}>
                 {actionError}
               </p>
             )}

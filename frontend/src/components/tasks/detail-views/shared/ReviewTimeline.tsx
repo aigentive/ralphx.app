@@ -12,6 +12,7 @@ import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { statusTint } from "@/lib/theme-colors";
 
 // ============================================================================
 // Staleness Detection
@@ -226,7 +227,7 @@ function TimelineItem({
               <span
                 className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
-                  backgroundColor: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
+                  backgroundColor: statusTint("success", 12),
                   color: "hsl(145 60% 45%)",
                 }}
               >
@@ -303,7 +304,7 @@ function TimelineItem({
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"
                   style={{
                     backgroundColor: "var(--accent-muted)",
-                    border: "1px solid rgba(255, 107, 53, 0.14)" /* 0.14 alpha out of table range */,
+                    border: `1px solid ${statusTint("accent", 14)}`,
                   }}
                 >
                   <div className="min-w-0">
@@ -319,8 +320,8 @@ function TimelineItem({
                     onClick={() => navigateToIdeationSession(entry.followup_session_id!)}
                     className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-opacity hover:opacity-80"
                     style={{
-                      color: "hsl(14 100% 68%)",
-                      backgroundColor: "rgba(255, 107, 53, 0.12)" /* 0.12 alpha out of table range */,
+                      color: "var(--accent-primary)",
+                      backgroundColor: statusTint("accent", 12),
                     }}
                   >
                     <ExternalLink className="w-3 h-3" />

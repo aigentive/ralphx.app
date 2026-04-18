@@ -811,7 +811,7 @@ function AppContent() {
               Ralph
               <span
                 style={{
-                  color: "#ff6b35",
+                  color: "var(--accent-primary)",
                   textShadow: "0 0 12px rgba(255, 107, 53, 0.5)",
                 }}
               >
@@ -857,7 +857,7 @@ function AppContent() {
                           ? "rgba(255,107,53,0.1)"
                           : "transparent",
                         border: isExpanded ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                        color: isExpanded ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                        color: isExpanded ? "var(--accent-primary)" : "rgba(255,255,255,0.5)",
                       }}
                       data-testid="chat-toggle"
                     >
@@ -905,7 +905,7 @@ function AppContent() {
                       ? "rgba(255,107,53,0.1)"
                       : "transparent",
                     border: reviewsPanelOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                    color: reviewsPanelOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                    color: reviewsPanelOpen ? "var(--accent-primary)" : "rgba(255,255,255,0.5)",
                   }}
                   data-testid="reviews-toggle"
                 >
@@ -954,7 +954,7 @@ function AppContent() {
                         ? "1px solid rgba(255,107,53,0.15)"
                         : "1px solid transparent",
                       color: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
-                        ? "#ff6b35"
+                        ? "var(--accent-primary)"
                         : "rgba(255,255,255,0.5)",
                       opacity: battleModeActive ? 0.45 : 1,
                     }}

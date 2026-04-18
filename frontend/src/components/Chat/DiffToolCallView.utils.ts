@@ -184,9 +184,9 @@ export function getLinePrefix(type: DiffLine["type"]): string {
 export function getPrefixColor(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "#34c759";
+      return "var(--status-success)";
     case "deletion":
-      return "#ff453a";
+      return "var(--status-error)";
     case "header":
       return "rgba(255,255,255,0.45)";
     default:

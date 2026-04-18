@@ -358,7 +358,7 @@ function ActionButtonsCard({
 
       {/* Error display */}
       {(approveMutation.error || requestChangesMutation.error) && (
-        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+        <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
           {approveMutation.error?.message || requestChangesMutation.error?.message}
         </p>
       )}

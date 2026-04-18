@@ -116,7 +116,7 @@ function WorkSummaryCard({
             </span>
             <span
               className="text-[13px] font-medium"
-              style={{ color: allComplete ? "#30d158" : "rgba(255,255,255,0.7)" }}
+              style={{ color: allComplete ? "var(--status-success)" : "rgba(255,255,255,0.7)" }}
             >
               {totalSteps > 0
                 ? allComplete

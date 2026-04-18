@@ -1,4 +1,5 @@
 import { GitPullRequest, GitMerge, GitPullRequestClosed, Pen } from "lucide-react";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 type PrStatus = "Draft" | "Open" | "Merged" | "Closed";
 
@@ -6,8 +7,8 @@ const STATUS_CONFIG = {
   Draft: {
     label: "Draft",
     icon: Pen,
-    bg: "rgba(142, 142, 147, 0.15)",
-    color: "#8e8e93",
+    bg: withAlpha("var(--text-muted)", 15),
+    color: "var(--text-muted)",
   },
   Open: {
     label: "Open",
@@ -18,14 +19,15 @@ const STATUS_CONFIG = {
   Merged: {
     label: "Merged",
     icon: GitMerge,
+    // Violet is PR-only — the only non-palette tone we keep.
     bg: "rgba(175, 82, 222, 0.15)",
     color: "#af52de",
   },
   Closed: {
     label: "Closed",
     icon: GitPullRequestClosed,
-    bg: "rgba(255, 69, 58, 0.15)",
-    color: "#ff453a",
+    bg: statusTint("error", 15),
+    color: "var(--status-error)",
   },
 } as const;
 

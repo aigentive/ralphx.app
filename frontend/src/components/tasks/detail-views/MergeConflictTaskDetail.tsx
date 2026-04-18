@@ -36,6 +36,7 @@ import { api } from "@/lib/tauri";
 import { useConflictDetection } from "@/hooks/useConflictDetection";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
 import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
+import { statusTint } from "@/lib/theme-colors";
 
 interface MergeConflictTaskDetailProps {
   task: Task;
@@ -424,8 +425,8 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         <div
           className="p-3 rounded-lg text-[13px]"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.12)",
-            color: "#ff6961",
+            backgroundColor: statusTint("error", 12),
+            color: "var(--status-error)",
           }}
         >
           {error}

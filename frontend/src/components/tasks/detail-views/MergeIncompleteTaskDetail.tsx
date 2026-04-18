@@ -38,6 +38,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
+import { statusTint } from "@/lib/theme-colors";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
@@ -102,7 +103,7 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
       {mergeError.error && (
         <div
           className="rounded-md px-3 py-2 font-mono text-[12px] text-white/80 whitespace-pre-wrap"
-          style={{ backgroundColor: "rgba(255, 69, 58, 0.10)" }}
+          style={{ backgroundColor: "var(--status-error-muted)" }}
         >
           {mergeError.error}
         </div>
@@ -236,14 +237,14 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
   const getEventColor = (kind: string) => {
     switch (kind) {
       case "deferred":
-        return "rgba(255, 159, 10, 0.7)"; // amber
+        return statusTint("warning", 70); // amber
       case "auto_retry_triggered":
       case "manual_retry":
-        return "rgba(255, 107, 53, 0.7)"; // orange
+        return statusTint("accent", 70); // orange
       case "attempt_started":
-        return "rgba(100, 200, 255, 0.7)"; // blue
+        return statusTint("info", 70); // blue
       case "attempt_failed":
-        return "rgba(255, 69, 58, 0.7)"; // red
+        return statusTint("error", 70); // red
       case "attempt_succeeded":
         return "var(--status-success)"; // green
       default:
@@ -385,7 +386,7 @@ function RecoveryBadges({
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
             backgroundColor: "var(--accent-muted)",
-            color: "rgba(255, 107, 53, 0.9)" /* 0.9 alpha out of table */,
+            color: "var(--accent-primary)",
           }}
         >
           Auto-recovery attempted
@@ -396,7 +397,7 @@ function RecoveryBadges({
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
             backgroundColor: "var(--status-warning-muted)",
-            color: "rgba(255, 159, 10, 0.9)" /* 0.9 alpha out of table */,
+            color: "var(--status-warning)",
           }}
         >
           Deferred due to active merge
@@ -406,8 +407,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.15)",
-            color: "rgba(255, 69, 58, 0.9)",
+            backgroundColor: "var(--status-error-muted)",
+            color: "var(--status-error)",
           }}
         >
           Last attempt failed
@@ -460,7 +461,7 @@ function ActionButtons({
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
             color: "white",
-            backgroundColor: "rgba(255, 159, 10, 0.85)" /* 0.85 alpha out of table */,
+            backgroundColor: statusTint("warning", 85),
           }}
         >
           {isProcessing ? (
@@ -688,7 +689,7 @@ export function MergeIncompleteTaskDetail({
           ) : planBranch.prNumber != null ? (
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
+                <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
                 <span className="text-[13px] text-white/70">
                   PR operation failed (PR #{planBranch.prNumber})
                 </span>
@@ -697,7 +698,7 @@ export function MergeIncompleteTaskDetail({
           ) : (
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
+                <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
                 <span className="text-[13px] text-white/70">PR operation failed</span>
               </div>
             </DetailCard>
@@ -762,8 +763,8 @@ export function MergeIncompleteTaskDetail({
         <div
           className="p-3 rounded-lg text-[13px]"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.12)",
-            color: "#ff6961",
+            backgroundColor: statusTint("error", 12),
+            color: "var(--status-error)",
           }}
         >
           {error}

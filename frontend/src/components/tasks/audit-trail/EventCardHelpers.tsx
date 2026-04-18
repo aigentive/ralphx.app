@@ -15,40 +15,79 @@ import {
 } from "lucide-react";
 
 import type { AuditEntry } from "./EventCards";
+import {
+  STATUS_TOKEN_REFS,
+  statusTint,
+  withAlpha,
+  type StatusTokenKey,
+} from "@/lib/theme-colors";
 
 // ============================================================================
 // Style constants
 // ============================================================================
 
+type AuditStatusColor = StatusTokenKey | "muted";
+
+const STATUS_COLOR_KEYS: Record<string, { label: string; color: AuditStatusColor }> = {
+  backlog: { label: "Backlog", color: "muted" },
+  ready: { label: "Ready", color: "info" },
+  blocked: { label: "Blocked", color: "warning" },
+  executing: { label: "Executing", color: "accent" },
+  qa_refining: { label: "QA Refining", color: "accent" },
+  qa_testing: { label: "QA Testing", color: "accent" },
+  qa_passed: { label: "QA Passed", color: "success" },
+  qa_failed: { label: "QA Failed", color: "error" },
+  pending_review: { label: "Pending Review", color: "muted" },
+  revision_needed: { label: "Revision Needed", color: "warning" },
+  approved: { label: "Approved", color: "success" },
+  failed: { label: "Failed", color: "error" },
+  cancelled: { label: "Cancelled", color: "muted" },
+  reviewing: { label: "Reviewing", color: "info" },
+  review_passed: { label: "Review Passed", color: "success" },
+  escalated: { label: "Escalated", color: "warning" },
+  re_executing: { label: "Re-executing", color: "warning" },
+  pending_merge: { label: "Pending Merge", color: "accent" },
+  merging: { label: "Merging", color: "accent" },
+  merge_incomplete: { label: "Merge Incomplete", color: "warning" },
+  merge_conflict: { label: "Merge Conflict", color: "warning" },
+  merged: { label: "Merged", color: "success" },
+  paused: { label: "Paused", color: "warning" },
+  stopped: { label: "Stopped", color: "error" },
+};
+
+function resolveAuditStatusColor(color: AuditStatusColor): string {
+  return color === "muted" ? "var(--text-muted)" : STATUS_TOKEN_REFS[color];
+}
+
+function resolveAuditStatusTint(color: AuditStatusColor, alpha: number): string {
+  if (color === "muted") {
+    return `color-mix(in srgb, var(--text-muted) ${alpha}%, transparent)`;
+  }
+  return statusTint(color, alpha);
+}
+
 export const STATUS_COLORS: Record<
   string,
   { label: string; color: string; bgColor: string }
-> = {
-  backlog: { label: "Backlog", color: "#8e8e93", bgColor: "rgba(142,142,147,0.15)" },
-  ready: { label: "Ready", color: "#0a84ff", bgColor: "rgba(10,132,255,0.15)" },
-  blocked: { label: "Blocked", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  executing: { label: "Executing", color: "#ff6b35", bgColor: "rgba(255,107,53,0.15)" },
-  qa_refining: { label: "QA Refining", color: "#ff6b35", bgColor: "rgba(255,107,53,0.15)" },
-  qa_testing: { label: "QA Testing", color: "#ff6b35", bgColor: "rgba(255,107,53,0.15)" },
-  qa_passed: { label: "QA Passed", color: "#34c759", bgColor: "rgba(52,199,89,0.15)" },
-  qa_failed: { label: "QA Failed", color: "#ff453a", bgColor: "rgba(255,69,58,0.15)" },
-  pending_review: { label: "Pending Review", color: "#8e8e93", bgColor: "rgba(142,142,147,0.15)" },
-  revision_needed: { label: "Revision Needed", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  approved: { label: "Approved", color: "#34c759", bgColor: "rgba(52,199,89,0.15)" },
-  failed: { label: "Failed", color: "#ff453a", bgColor: "rgba(255,69,58,0.15)" },
-  cancelled: { label: "Cancelled", color: "#8e8e93", bgColor: "rgba(142,142,147,0.15)" },
-  reviewing: { label: "Reviewing", color: "#0a84ff", bgColor: "rgba(10,132,255,0.15)" },
-  review_passed: { label: "Review Passed", color: "#34c759", bgColor: "rgba(52,199,89,0.15)" },
-  escalated: { label: "Escalated", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  re_executing: { label: "Re-executing", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  pending_merge: { label: "Pending Merge", color: "#ff6b35", bgColor: "rgba(255,107,53,0.15)" },
-  merging: { label: "Merging", color: "#ff6b35", bgColor: "rgba(255,107,53,0.15)" },
-  merge_incomplete: { label: "Merge Incomplete", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  merge_conflict: { label: "Merge Conflict", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  merged: { label: "Merged", color: "#34c759", bgColor: "rgba(52,199,89,0.15)" },
-  paused: { label: "Paused", color: "#ff9f0a", bgColor: "rgba(255,159,10,0.15)" },
-  stopped: { label: "Stopped", color: "#ff453a", bgColor: "rgba(255,69,58,0.15)" },
-};
+> = Object.fromEntries(
+  Object.entries(STATUS_COLOR_KEYS).map(([key, { label, color }]) => [
+    key,
+    {
+      label,
+      color: resolveAuditStatusColor(color),
+      bgColor: resolveAuditStatusTint(color, 15),
+    },
+  ]),
+);
+
+/**
+ * Per-status helper used by <StatusBadge/> to compose a matching border alpha
+ * against the status color. Keeps border in-token for theme flippability.
+ */
+function statusBorderColor(statusKey: string): string {
+  const entry = STATUS_COLOR_KEYS[statusKey];
+  return resolveAuditStatusTint(entry?.color ?? "muted", 25);
+}
 
 export const SOURCE_STYLES: Record<
   AuditEntry["source"],
@@ -56,28 +95,28 @@ export const SOURCE_STYLES: Record<
 > = {
   transition: {
     label: "Transition",
-    bg: "rgba(10,132,255,0.12)",
-    border: "rgba(10,132,255,0.25)",
-    color: "#0a84ff",
+    bg: statusTint("info", 12),
+    border: statusTint("info", 25),
+    color: STATUS_TOKEN_REFS.info,
   },
   review: {
     label: "Review",
-    bg: "rgba(34,197,94,0.12)",
-    border: "rgba(34,197,94,0.25)",
-    color: "rgb(74,222,128)",
+    bg: statusTint("success", 12),
+    border: statusTint("success", 25),
+    color: STATUS_TOKEN_REFS.success,
   },
   activity: {
     label: "Activity",
-    bg: "rgba(255,107,53,0.12)",
-    border: "rgba(255,107,53,0.25)",
+    bg: statusTint("accent", 12),
+    border: statusTint("accent", 25),
     color: "var(--accent-primary)",
   },
 };
 
 export const REVIEW_OUTCOME_CONFIG: Record<string, { color: string; bgColor: string }> = {
-  Approved: { color: "var(--status-success)", bgColor: "rgba(52,199,89,0.12)" },
-  "Changes Requested": { color: "var(--status-warning)", bgColor: "rgba(255,159,10,0.12)" },
-  Rejected: { color: "var(--status-error)", bgColor: "rgba(255,69,58,0.12)" },
+  Approved: { color: "var(--status-success)", bgColor: statusTint("success", 12) },
+  "Changes Requested": { color: "var(--status-warning)", bgColor: statusTint("warning", 12) },
+  Rejected: { color: "var(--status-error)", bgColor: statusTint("error", 12) },
 };
 
 export const ACTIVITY_TYPE_CONFIG: Record<
@@ -100,9 +139,9 @@ export const CARD_STYLE = {
 };
 
 export const ERROR_CARD_STYLE = {
-  backgroundColor: "rgba(255,69,58,0.06)",
-  border: "1px solid rgba(255,69,58,0.15)",
-  borderLeft: "3px solid rgba(255,69,58,0.5)",
+  backgroundColor: statusTint("error", 6),
+  border: `1px solid ${statusTint("error", 15)}`,
+  borderLeft: `3px solid ${statusTint("error", 50)}`,
 };
 
 export const CONTENT_TRUNCATE_LENGTH = 200;
@@ -190,16 +229,19 @@ export function ExpandableContent({
 export function StatusBadge({ status }: { status: string }) {
   const config = STATUS_COLORS[status] ?? {
     label: status,
-    color: "#8e8e93",
-    bgColor: "rgba(142,142,147,0.15)",
+    color: "var(--text-muted)",
+    bgColor: resolveAuditStatusTint("muted", 15),
   };
+  const borderRef = STATUS_COLOR_KEYS[status]
+    ? statusBorderColor(status)
+    : withAlpha("var(--text-muted)", 25);
   return (
     <span
       className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
       style={{
         backgroundColor: config.bgColor,
         color: config.color,
-        border: `1px solid ${config.color}40`,
+        border: `1px solid ${borderRef}`,
       }}
     >
       {config.label}

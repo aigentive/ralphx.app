@@ -8,6 +8,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 type PillVariant = "success" | "warning" | "error" | "info" | "accent" | "neutral";
 
@@ -19,31 +20,31 @@ interface StatusPillProps {
   size?: "sm" | "md";
 }
 
-// macOS Tahoe system colors (dark mode)
+// Theme-token backed variants — see specs/design/styleguide.md §5
 const VARIANT_STYLES: Record<PillVariant, { bg: string; text: string }> = {
   success: {
-    bg: "rgba(52, 199, 89, 0.18)",
-    text: "#30d158",
+    bg: statusTint("success", 18),
+    text: "var(--status-success)",
   },
   warning: {
-    bg: "rgba(255, 159, 10, 0.18)",
-    text: "#ffd60a",
+    bg: statusTint("warning", 18),
+    text: "var(--status-warning)",
   },
   error: {
-    bg: "rgba(255, 69, 58, 0.18)",
-    text: "#ff6961",
+    bg: statusTint("error", 18),
+    text: "var(--status-error)",
   },
   info: {
-    bg: "rgba(10, 132, 255, 0.18)",
-    text: "#64d2ff",
+    bg: statusTint("info", 18),
+    text: "var(--status-info)",
   },
   accent: {
-    bg: "rgba(255, 107, 53, 0.18)",
-    text: "#ff8050",
+    bg: statusTint("accent", 18),
+    text: "var(--accent-primary)",
   },
   neutral: {
-    bg: "rgba(142, 142, 147, 0.18)",
-    text: "#aeaeb2",
+    bg: withAlpha("var(--text-muted)", 18),
+    text: "var(--text-muted)",
   },
 };
 

@@ -74,7 +74,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
               className="w-3 h-3 rounded"
               style={{ backgroundColor: "rgba(255, 69, 58, 0.12)" }}
             />
-            <span style={{ color: "#ff453a" }}>-</span>
+            <span style={{ color: "var(--status-error)" }}>-</span>
             <span style={{ color: "hsl(220 10% 50%)" }}>Ours (current)</span>
           </span>
           <span className="flex items-center gap-1.5">

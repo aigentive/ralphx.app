@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import { computeQuestionHeight } from "./QuestionInputBanner.utils";
 import { markdownComponents } from "./MessageItem.markdown";
+import { statusTint } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -63,7 +64,7 @@ function OptionChip({
       style={{
         padding: "5px 12px 5px 8px",
         border: selected
-          ? "1px solid rgba(255, 107, 53, 0.4)" /* 0.4 alpha out of table range */
+          ? `1px solid ${statusTint("accent", 40)}`
           : "1px solid hsla(220 10% 100% / 0.12)",
         background: selected
           ? "var(--accent-muted)"

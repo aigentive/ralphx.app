@@ -34,6 +34,7 @@ import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { statusTint } from "@/lib/theme-colors";
 
 interface ReviewingTaskDetailProps {
   task: Task;
@@ -375,8 +376,8 @@ export function ReviewingTaskDetail({
                 disabled={isActionLoading}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 69, 58, 0.15)",
-                  color: "#ff453a",
+                  backgroundColor: statusTint("error", 15),
+                  color: "var(--status-error)",
                 }}
               >
                 <Square className="w-3.5 h-3.5" />
@@ -420,7 +421,7 @@ export function ReviewingTaskDetail({
               )}
             </div>
             {actionError && (
-              <p className="mt-1 text-[12px]" style={{ color: "#ff453a" }}>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--status-error)" }}>
                 {actionError}
               </p>
             )}

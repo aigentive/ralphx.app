@@ -139,7 +139,7 @@ function StepStatusIcon({ status }: { status: string }) {
       return <span style={{ color: "hsl(14 100% 60%)" }}><InProgressIcon /></span>;
     case "failed":
     case "cancelled":
-      return <span style={{ color: "#ff453a" }}><FailedIcon /></span>;
+      return <span style={{ color: "var(--status-error)" }}><FailedIcon /></span>;
     default:
       return <span style={{ color: "hsl(220 10% 25%)" }}><PendingIcon /></span>;
   }

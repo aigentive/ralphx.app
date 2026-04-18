@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import type { WeeklyDataPoint } from "@/types/project-stats";
 
-const ACCENT = "#ff6b35";
+const ACCENT = "var(--accent-primary)";
 const SECONDARY_DEFAULT = "rgba(148, 163, 184, 0.7)";
 
 const tooltipStyle = {

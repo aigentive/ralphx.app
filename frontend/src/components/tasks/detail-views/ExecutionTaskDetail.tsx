@@ -161,7 +161,7 @@ function ActionButtonsCard({
         </div>
 
         {error && (
-          <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+          <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
             {error}
           </p>
         )}

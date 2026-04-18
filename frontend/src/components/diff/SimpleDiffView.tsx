@@ -210,9 +210,9 @@ function getLinePrefix(type: DiffLine["type"]): string {
 function getPrefixColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
-      return variant === "conflict" ? "#409cff" : "var(--status-success)";
+      return variant === "conflict" ? "var(--status-info)" : "var(--status-success)";
     case "deletion":
-      return "#ff453a";
+      return "var(--status-error)";
     case "header":
       return "rgba(255,255,255,0.45)";
     default:

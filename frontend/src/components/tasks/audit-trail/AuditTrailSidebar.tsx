@@ -5,6 +5,11 @@
 
 import type { ReactNode } from "react";
 import type { AuditPhase } from "@/hooks/useAuditTrail";
+import {
+  STATUS_TOKEN_REFS,
+  statusTint,
+  type StatusTokenKey,
+} from "@/lib/theme-colors";
 
 export interface AuditTrailSidebarProps {
   phases: AuditPhase[];
@@ -19,16 +24,26 @@ export interface AuditTrailSidebarProps {
 // Constants
 // ============================================================================
 
-const PHASE_TYPE_COLORS: Record<
-  AuditPhase["type"],
-  { color: string; bgColor: string }
-> = {
-  execution: { color: "#ff6b35", bgColor: "rgba(255, 107, 53, 0.15)" },
-  review: { color: "#0a84ff", bgColor: "rgba(10, 132, 255, 0.15)" },
-  merge: { color: "#34c759", bgColor: "rgba(52, 199, 89, 0.15)" },
-  idle: { color: "#8e8e93", bgColor: "rgba(142, 142, 147, 0.15)" },
-  qa: { color: "#ff9f0a", bgColor: "rgba(255, 159, 10, 0.15)" },
+type PhaseColorKey = StatusTokenKey | "muted";
+
+const PHASE_TYPE_COLORS: Record<AuditPhase["type"], PhaseColorKey> = {
+  execution: "accent",
+  review: "info",
+  merge: "success",
+  idle: "muted",
+  qa: "warning",
 };
+
+function resolvePhaseColor(color: PhaseColorKey): string {
+  return color === "muted" ? "var(--text-muted)" : STATUS_TOKEN_REFS[color];
+}
+
+function resolvePhaseTint(color: PhaseColorKey, alpha: number): string {
+  if (color === "muted") {
+    return `color-mix(in srgb, var(--text-muted) ${alpha}%, transparent)`;
+  }
+  return statusTint(color, alpha);
+}
 
 const REVIEW_OUTCOME_ICONS: Record<string, string> = {
   approved: "✅",
@@ -71,7 +86,12 @@ interface PhaseItemProps {
 }
 
 function PhaseItem({ phase, isSelected, isLast, onToggle }: PhaseItemProps) {
-  const config = PHASE_TYPE_COLORS[phase.type];
+  const colorKey = PHASE_TYPE_COLORS[phase.type];
+  const colorRef = resolvePhaseColor(colorKey);
+  const bgRef = resolvePhaseTint(colorKey, 15);
+  const glowRingRef = resolvePhaseTint(colorKey, 20);
+  const glowInnerRef = resolvePhaseTint(colorKey, 30);
+  const glowOuterRef = resolvePhaseTint(colorKey, 20);
 
   return (
     <div
@@ -101,9 +121,9 @@ function PhaseItem({ phase, isSelected, isLast, onToggle }: PhaseItemProps) {
           top: isSelected ? "2px" : "4px",
           width: isSelected ? "16px" : "12px",
           height: isSelected ? "16px" : "12px",
-          backgroundColor: config.color,
+          backgroundColor: colorRef,
           border: isSelected ? "none" : "2px solid var(--bg-elevated, #1a1a1a)",
-          boxShadow: isSelected ? `0 0 0 4px ${config.color}33` : undefined,
+          boxShadow: isSelected ? `0 0 0 4px ${glowRingRef}` : undefined,
         }}
       />
 
@@ -115,16 +135,16 @@ function PhaseItem({ phase, isSelected, isLast, onToggle }: PhaseItemProps) {
         aria-pressed={isSelected}
         className="w-full text-left rounded px-2 py-1.5 transition-all duration-200"
         style={{
-          backgroundColor: isSelected ? config.bgColor : "transparent",
+          backgroundColor: isSelected ? bgRef : "transparent",
           boxShadow: isSelected
-            ? `0 0 0 2px ${config.color}50, 0 2px 8px ${config.color}30`
+            ? `0 0 0 2px ${glowInnerRef}, 0 2px 8px ${glowOuterRef}`
             : undefined,
         }}
       >
         <div className="flex items-center justify-between gap-2">
           <span
             className="text-[12px] font-medium truncate"
-            style={{ color: isSelected ? config.color : "var(--text-primary)" }}
+            style={{ color: isSelected ? colorRef : "var(--text-primary)" }}
           >
             {phase.label}
           </span>

@@ -209,7 +209,7 @@ function AutoRetryingSection({ task, attemptCount }: { task: Task; attemptCount:
           </Button>
         </div>
         {stopRetryMutation.error && (
-          <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+          <p className="mt-2 text-[12px]" style={{ color: "var(--status-error)" }}>
             {stopRetryMutation.error.message}
           </p>
         )}
@@ -517,7 +517,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
 
       {/* Error display */}
       {restartMutation.error && (
-        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+        <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
           {restartMutation.error.message}
         </p>
       )}
@@ -600,7 +600,7 @@ function UnblockWarningCard({
         </Button>
       </div>
       {unblockMutation.error && (
-        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+        <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
           {unblockMutation.error.message}
         </p>
       )}
@@ -727,7 +727,7 @@ function FreshnessBlockedCard({
         </div>
 
         {resetMutation.error && (
-          <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+          <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
             {resetMutation.error.message}
           </p>
         )}

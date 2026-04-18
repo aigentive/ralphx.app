@@ -142,7 +142,7 @@ export const DiffToolCallView = React.memo(function DiffToolCallView({
             <span style={{ color: "var(--status-success)" }}>+{additions}</span>
           )}
           {deletions > 0 && (
-            <span style={{ color: "#ff453a" }}>-{deletions}</span>
+            <span style={{ color: "var(--status-error)" }}>-{deletions}</span>
           )}
         </span>
 

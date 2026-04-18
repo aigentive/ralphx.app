@@ -114,6 +114,11 @@ interface TimelineBadgeProps {
 function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
   const config = STATUS_CONFIG[entry.status];
   const isActive = isSelected || entry.isCurrent;
+  const colorRef = resolveTimelineColor(config.color);
+  const bgRef = resolveTimelineTint(config.color, 15);
+  const glowInnerRef = resolveTimelineTint(config.color, 30);
+  const glowOuterRef = resolveTimelineTint(config.color, 20);
+  const dotGlowRef = resolveTimelineTint(config.color, 40);
 
   return (
     <Tooltip delayDuration={200}>
@@ -127,9 +132,9 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           data-selected={isSelected}
           className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-200"
           style={{
-            backgroundColor: isActive ? config.bgColor : "transparent",
+            backgroundColor: isActive ? bgRef : "transparent",
             boxShadow: isSelected
-              ? `0 0 0 2px ${config.color}50, 0 2px 8px ${config.color}30`
+              ? `0 0 0 2px ${glowInnerRef}, 0 2px 8px ${glowOuterRef}`
               : undefined,
           }}
         >
@@ -137,8 +142,8 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           <div
             className="relative w-2 h-2 rounded-full shrink-0 transition-transform duration-200 group-hover:scale-125"
             style={{
-              backgroundColor: config.color,
-              boxShadow: isActive ? `0 0 8px ${config.color}60` : undefined,
+              backgroundColor: colorRef,
+              boxShadow: isActive ? `0 0 8px ${dotGlowRef}` : undefined,
             }}
           >
             {/* Pulse ring for current */}
@@ -146,7 +151,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
               <div
                 className="absolute inset-0 rounded-full animate-ping"
                 style={{
-                  backgroundColor: config.color,
+                  backgroundColor: colorRef,
                   opacity: 0.4,
                 }}
               />
@@ -157,7 +162,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           <span
             className="text-[11px] font-semibold tracking-tight transition-colors duration-200"
             style={{
-              color: isActive ? config.color : "rgba(255,255,255,0.45)",
+              color: isActive ? colorRef : "rgba(255,255,255,0.45)",
             }}
           >
             {config.label}
@@ -180,15 +185,15 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
         <div className="flex items-center gap-2">
           <div
             className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: config.color }}
+            style={{ backgroundColor: colorRef }}
           />
           <span>{formatRelativeTime(entry.timestamp)}</span>
           {entry.isCurrent && (
             <span
               className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
               style={{
-                backgroundColor: config.bgColor,
-                color: config.color,
+                backgroundColor: bgRef,
+                color: colorRef,
               }}
             >
               Current
@@ -366,7 +371,7 @@ export function StateTimelineNav({
       <div
         data-testid="timeline-error"
         className="flex items-center gap-2 px-4 py-3 text-[11px] font-medium"
-        style={{ color: "#ff453a" }}
+        style={{ color: "var(--status-error)" }}
       >
         <History className="w-4 h-4" />
         <span>Failed to load history</span>
@@ -436,7 +441,7 @@ export function StateTimelineNav({
               {nextEntry && (
                 <TimelineConnector
                   isActive={isConnectorActive}
-                  color={STATUS_CONFIG[entry.status].color}
+                  color={resolveTimelineColor(STATUS_CONFIG[entry.status].color)}
                 />
               )}
             </div>
@@ -460,7 +465,7 @@ export function StateTimelineNav({
               className="px-2 py-1 rounded-md text-[10px] font-semibold transition-colors"
               style={{
                 backgroundColor: "var(--accent-muted)",
-                color: "#ff8050",
+                color: "var(--accent-primary)",
               }}
             >
               Back to Current

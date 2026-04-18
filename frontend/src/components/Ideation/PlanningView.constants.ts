@@ -17,7 +17,7 @@ export const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string;
     label: "Critical"
   },
   high: {
-    gradient: "from-[#ff6b35]/20 to-[#ff6b35]/10",
+    gradient: "from-accent-primary/20 to-accent-primary/10",
     glow: "shadow-[0_0_12px_rgba(255,107,53,0.1)]",
     label: "High"
   },

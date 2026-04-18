@@ -47,7 +47,7 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skip
     return <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />;
   }
   if (status === "failed") {
-    return <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />;
+    return <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />;
   }
   if (status === "skipped") {
     return <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />;
@@ -67,7 +67,7 @@ function phaseTextColor(status: "started" | "passed" | "failed" | "skipped" | "p
     case "passed":
       return "rgba(255, 255, 255, 0.6)";
     case "failed":
-      return "#ff453a";
+      return "var(--status-error)";
     case "skipped":
       return "rgba(255, 255, 255, 0.3)";
     default:
@@ -151,7 +151,7 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                   </span>
                 )}
                 {status === "failed" && event?.message && (
-                  <span className="text-[11px] truncate max-w-[200px]" style={{ color: "#ff6961" }}>
+                  <span className="text-[11px] truncate max-w-[200px]" style={{ color: "var(--status-error)" }}>
                     {event.message}
                   </span>
                 )}

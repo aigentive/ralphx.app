@@ -38,7 +38,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   const statusIcon = isRunning ? (
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : isFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : isSkipped ? (
     <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : isCached ? (
@@ -99,7 +99,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
             </pre>
           )}
           {step.stderr && step.stderr.trim() && (
-            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
               {step.stderr}
             </pre>
           )}
@@ -130,7 +130,7 @@ export function StepsGroup({ steps, phase, label }: {
   const statusIcon = anyRunning ? (
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : anyFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : allSkipped ? (
     <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : (
@@ -181,7 +181,7 @@ export function StepsGroup({ steps, phase, label }: {
                   {isRunning ? (
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--status-info)" }} />
                   ) : isFailed ? (
-                    <XCircle className="w-3 h-3" style={{ color: "#ff453a" }} />
+                    <XCircle className="w-3 h-3" style={{ color: "var(--status-error)" }} />
                   ) : isSkipped ? (
                     <SkipForward className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
                   ) : (
@@ -210,7 +210,7 @@ export function StepsGroup({ steps, phase, label }: {
                       </pre>
                     )}
                     {step.stderr && step.stderr.trim() && (
-                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
                         {step.stderr}
                       </pre>
                     )}

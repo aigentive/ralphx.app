@@ -54,7 +54,7 @@ function parseIssues(result: unknown): IssueData[] {
 const DEFAULT_SEVERITY_STYLE = { bg: "hsl(220 10% 18%)", text: "hsl(220 10% 45%)" } as const;
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string }> = {
-  critical: { bg: "hsla(0 70% 55% / 0.10)", text: "#ff453a" },
+  critical: { bg: "hsla(0 70% 55% / 0.10)", text: "var(--status-error)" },
   major: { bg: "hsla(14 100% 60% / 0.10)", text: "hsl(14 100% 60%)" },
   minor: { bg: "hsla(220 60% 50% / 0.12)", text: "hsl(220 60% 50%)" },
   suggestion: DEFAULT_SEVERITY_STYLE,
@@ -168,7 +168,7 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
   const hasCritical = criticalCount > 0;
 
   const badgeStyle: React.CSSProperties = hasCritical
-    ? { background: "hsla(0 70% 55% / 0.10)", color: "#ff453a" }
+    ? { background: "hsla(0 70% 55% / 0.10)", color: "var(--status-error)" }
     : majorCount > 0
       ? { background: "hsla(14 100% 60% / 0.10)", color: "hsl(14 100% 60%)" }
       : { background: "hsl(220 10% 18%)", color: "hsl(220 10% 45%)" };

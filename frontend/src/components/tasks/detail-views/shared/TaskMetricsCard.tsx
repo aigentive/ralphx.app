@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import { useTaskMetrics } from "@/hooks/useTaskMetrics";
 import { deriveComplexityTier, type ComplexityTier } from "@/api/task-metrics";
 import { DetailCard } from "./DetailCard";
+import { statusTint } from "@/lib/theme-colors";
 
 // ── Complexity badge ─────────────────────────────────────────────────────────
 
@@ -23,15 +24,15 @@ const COMPLEXITY_STYLES: Record<
   { bg: string; color: string }
 > = {
   Simple: {
-    bg: "rgba(52, 199, 89, 0.12)" /* 0.12 alpha out of table range */,
+    bg: statusTint("success", 12),
     color: "var(--status-success)",
   },
   Medium: {
-    bg: "rgba(255, 107, 53, 0.12)" /* 0.12 alpha out of table range */,
+    bg: statusTint("accent", 12),
     color: "var(--accent-primary)",
   },
   Complex: {
-    bg: "rgba(255, 159, 10, 0.12)" /* 0.12 alpha out of table range */,
+    bg: statusTint("warning", 12),
     color: "var(--status-warning)",
   },
 };
