@@ -15,17 +15,14 @@ pub fn create_main_window<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> t
         .visible(false);
 
     #[cfg(target_os = "macos")]
-    {
+    let builder = {
         use tauri::{LogicalPosition, Position, TitleBarStyle};
 
-        let builder = builder
+        builder
             .hidden_title(true)
             .title_bar_style(TitleBarStyle::Overlay)
-            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
-        let webview_window = builder.build()?;
-        let _ = webview_window.show();
-        return Ok(());
-    }
+            .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }))
+    };
 
     let webview_window = builder.build()?;
     let _ = webview_window.show();
