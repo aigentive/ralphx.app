@@ -4,7 +4,6 @@
 
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { withAlpha } from "@/lib/theme-colors";
 import { MIN_WIDTH } from "./ResizeablePanel.constants";
 
 export interface ResizeablePanelProps {
@@ -29,15 +28,20 @@ export function ResizeablePanel({
       data-testid={testId}
       role="complementary"
       aria-label={ariaLabel}
+      // Note: no slide-in transform animation on this wrapper — a transform on
+      // a fixed element creates a new stacking context that lets same-document
+      // buttons with z-auto paint on top. Use opacity-only transitions if a
+      // slide-in is desired.
       className={cn(
         "fixed top-14 right-0 flex flex-col",
-        isExiting ? "chat-panel-exit" : "chat-panel-enter"
+        isExiting && "chat-panel-exit"
       )}
       style={{
         width: `${width + 16}px`,
         minWidth: `${MIN_WIDTH + 16}px`,
         bottom: "76px",
-        zIndex: 40,
+        zIndex: 50,
+        background: "var(--bg-elevated)",
       }}
     >
       {/* Floating panel inner container */}
@@ -45,11 +49,9 @@ export function ResizeablePanel({
         className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
         style={{
           margin: "8px",
-          background: withAlpha("var(--bg-surface)", 92),
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          border: "1px solid var(--overlay-weak)",
-          boxShadow: "0 4px 16px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.3)",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-subtle)",
+          boxShadow: "var(--shadow-md)",
         }}
       >
         <ResizeHandle />

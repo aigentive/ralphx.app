@@ -1133,8 +1133,11 @@ function AppContent() {
           {/* ReviewsPanel - floating overlay with Tahoe glass panel */}
           {reviewsPanelOpen && (
             <div
-              className="fixed top-14 right-0 w-[400px] z-40 flex flex-col animate-[slide-in-right_200ms_ease-out]"
-              style={{ bottom: "76px" }}
+              className="fixed top-14 right-0 w-[400px] z-50 flex flex-col"
+              style={{
+                bottom: "76px",
+                background: "var(--bg-elevated)",
+              }}
             >
               {/* Floating panel inner container */}
               <div
