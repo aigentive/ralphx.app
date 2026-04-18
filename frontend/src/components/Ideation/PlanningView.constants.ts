@@ -66,14 +66,10 @@ export const animationStyles = `
 
 @keyframes glowPulse {
   0%, 100% {
-    box-shadow: 0 0 12px rgba(255,107,53,0.08),
-                0 0 24px rgba(255,107,53,0.04),
-                inset 0 1px 0 rgba(255,255,255,0.05);
+    box-shadow: var(--shadow-glow-accent-soft);
   }
   50% {
-    box-shadow: 0 0 18px rgba(255,107,53,0.15),
-                0 0 36px rgba(255,107,53,0.08),
-                inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: var(--shadow-glow-accent-active);
   }
 }
 

@@ -76,9 +76,9 @@ function MergeInfoCard({
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-            style={{ backgroundColor: "rgba(52, 199, 89, 0.15)" }}
+            style={{ backgroundColor: "var(--status-success-muted)" }}
           >
-            <GitCommit className="w-4 h-4" style={{ color: "#34c759" }} />
+            <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
           </div>
           <div className="flex-1 min-w-0">
             <span className="text-[11px] uppercase tracking-wider text-white/40 block">
@@ -103,9 +103,9 @@ function MergeInfoCard({
             <div className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-                style={{ backgroundColor: "rgba(52, 199, 89, 0.15)" }}
+                style={{ backgroundColor: "var(--status-success-muted)" }}
               >
-                <GitMerge className="w-4 h-4" style={{ color: "#34c759" }} />
+                <GitMerge className="w-4 h-4" style={{ color: "var(--status-success)" }} />
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-[11px] uppercase tracking-wider text-white/40 block">
@@ -237,7 +237,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           <DetailCard variant="success">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
+                <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
                 <span className="text-[13px] text-white/80">
                   Merged via PR #{planBranch.prNumber}
                 </span>
@@ -250,7 +250,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
                     await openUrl(planBranch.prUrl!);
                   }}
                   className="flex items-center gap-1 text-[12px] cursor-pointer"
-                  style={{ color: "#34c759" }}
+                  style={{ color: "var(--status-success)" }}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   View PR

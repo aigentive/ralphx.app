@@ -467,11 +467,11 @@ export function ActivityView({
 
         @keyframes live-pulse {
           0%, 100% {
-            box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4);
+            box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-primary) 40%, transparent);
             transform: scale(1);
           }
           50% {
-            box-shadow: 0 0 8px 2px rgba(255, 107, 53, 0.3);
+            box-shadow: 0 0 8px 2px color-mix(in srgb, var(--accent-primary) 30%, transparent);
             transform: scale(1.1);
           }
         }
@@ -479,7 +479,7 @@ export function ActivityView({
           animation: live-pulse 1.5s ease-in-out infinite;
         }
         .live-receiving {
-          box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.3);
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 30%, transparent);
         }
       `}</style>
     </div>

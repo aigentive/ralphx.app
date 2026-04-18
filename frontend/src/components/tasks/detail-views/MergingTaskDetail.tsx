@@ -163,7 +163,7 @@ function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active
         <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--status-info)" }} />
         <div
           className="absolute inset-0 rounded-full animate-pulse"
-          style={{ background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)" }}
+          style={{ background: "radial-gradient(circle, var(--status-info-border) 0%, transparent 70%)" }}
         />
       </div>
     );
@@ -289,7 +289,7 @@ function MergeProgressSteps({
                   color: step.status === "completed"
                     ? "rgba(255,255,255,0.6)"
                     : step.status === "active"
-                    ? isHistorical ? "rgba(255,255,255,0.35)" : "#0a84ff"
+                    ? isHistorical ? "rgba(255,255,255,0.35)" : "var(--status-info)"
                     : "rgba(255,255,255,0.35)",
                 }}
               >

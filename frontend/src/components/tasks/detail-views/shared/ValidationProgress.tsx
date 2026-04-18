@@ -36,15 +36,15 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   const [expanded, setExpanded] = useState(isRunning || isFailed);
 
   const statusIcon = isRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : isFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
   ) : isSkipped ? (
     <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : isCached ? (
-    <Archive className="w-4 h-4" style={{ color: "#34c759" }} />
+    <Archive className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   );
 
   return (
@@ -61,7 +61,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: "rgba(255, 107, 53, 0.15)", color: "#ff6b35" }}
+          style={{ backgroundColor: "var(--accent-muted)", color: "var(--accent-primary)" }}
         >
           validate
         </span>
@@ -71,7 +71,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
         {isCached && (
           <span
             className="text-[9px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: "rgba(52, 199, 89, 0.15)", color: "#34c759" }}
+            style={{ backgroundColor: "var(--status-success-muted)", color: "var(--status-success)" }}
           >
             Cached
           </span>
@@ -123,18 +123,18 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const badgeBg = phase === "setup" ? "rgba(10, 132, 255, 0.15)" : phase === "install" ? "rgba(255, 107, 53, 0.15)" : phase === "skipped" ? "rgba(255, 255, 255, 0.08)" : "rgba(52, 199, 89, 0.15)";
-  const badgeColor = phase === "setup" ? "#64d2ff" : phase === "install" ? "#ff6b35" : phase === "skipped" ? "rgba(255, 255, 255, 0.4)" : "#34c759";
+  const badgeBg = phase === "setup" ? "var(--status-info-muted)" : phase === "install" ? "var(--accent-muted)" : phase === "skipped" ? "rgba(255, 255, 255, 0.08)" : "var(--status-success-muted)";
+  const badgeColor = phase === "setup" ? "var(--status-info)" : phase === "install" ? "var(--accent-primary)" : phase === "skipped" ? "rgba(255, 255, 255, 0.4)" : "var(--status-success)";
 
   const allSkipped = steps.every((s) => s.status === "skipped");
   const statusIcon = anyRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : anyFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
   ) : allSkipped ? (
     <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   );
 
   return (
@@ -179,13 +179,13 @@ export function StepsGroup({ steps, phase, label }: {
               <div key={`${phase}-${step.command}-${i}`} className="space-y-1">
                 <div className="flex items-center gap-2">
                   {isRunning ? (
-                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "#0a84ff" }} />
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--status-info)" }} />
                   ) : isFailed ? (
                     <XCircle className="w-3 h-3" style={{ color: "#ff453a" }} />
                   ) : isSkipped ? (
                     <SkipForward className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
                   ) : (
-                    <CheckCircle2 className="w-3 h-3" style={{ color: "#34c759" }} />
+                    <CheckCircle2 className="w-3 h-3" style={{ color: "var(--status-success)" }} />
                   )}
                   <span className="text-[11px] text-white/60 truncate flex-1" title={step.label}>
                     {step.label}

@@ -67,10 +67,10 @@ export function DropZoneOverlay({
       <style>{`
         @keyframes dropzone-pulse {
           0%, 100% {
-            box-shadow: inset 0 0 0 2px rgba(255, 107, 53, 0.8);
+            box-shadow: var(--shadow-drop-zone-border);
           }
           50% {
-            box-shadow: inset 0 0 0 3px rgba(255, 107, 53, 1), 0 0 20px rgba(255, 107, 53, 0.3);
+            box-shadow: var(--shadow-drop-zone-active);
           }
         }
       `}</style>

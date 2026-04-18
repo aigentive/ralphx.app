@@ -81,22 +81,22 @@ function ConflictFilesList({
             style={{
               backgroundColor:
                 expandedFile === file
-                  ? "rgba(255, 159, 10, 0.15)"
-                  : "rgba(255, 159, 10, 0.08)",
+                  ? "var(--status-warning-muted)"
+                  : "var(--status-warning-muted)",
             }}
           >
             {expandedFile === file ? (
               <ChevronDown
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             ) : (
               <ChevronRight
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             )}
-            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "#ff9f0a" }} />
+            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
               className="text-[13px] font-mono text-white/70 truncate text-left"
               title={file}
@@ -108,7 +108,7 @@ function ConflictFilesList({
             <div
               className="mt-2 rounded-lg overflow-hidden border"
               style={{
-                borderColor: "rgba(255, 159, 10, 0.2)",
+                borderColor: "var(--status-warning-border)",
                 height: "400px",
               }}
             >
@@ -198,7 +198,7 @@ function ActionButtonsCard({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#34c759",
+          backgroundColor: "var(--status-success)",
         }}
       >
         {isProcessing ? (
@@ -400,7 +400,7 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         <DetailCard variant="warning">
           {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
             <div className="flex items-center gap-2 py-2">
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ff9f0a" }} />
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
               <span className="text-[13px] text-white/50">Detecting conflicts...</span>
             </div>
           ) : (

@@ -245,7 +245,7 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
       case "attempt_failed":
         return "rgba(255, 69, 58, 0.7)"; // red
       case "attempt_succeeded":
-        return "#34c759"; // green
+        return "var(--status-success)"; // green
       default:
         return "rgba(255, 255, 255, 0.5)"; // white/gray
     }
@@ -272,9 +272,9 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
 
   const getSourceBadge = (source: string) => {
     const colors = {
-      system: "rgba(100, 200, 255, 0.15)",
-      auto: "rgba(255, 107, 53, 0.15)",
-      user: "rgba(52, 199, 89, 0.15)",
+      system: "rgba(100, 200, 255, 0.15)", /* color out of table */
+      auto: "var(--accent-muted)",
+      user: "var(--status-success-muted)",
     };
     return (
       <span
@@ -384,8 +384,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 107, 53, 0.15)",
-            color: "rgba(255, 107, 53, 0.9)",
+            backgroundColor: "var(--accent-muted)",
+            color: "rgba(255, 107, 53, 0.9)" /* 0.9 alpha out of table */,
           }}
         >
           Auto-recovery attempted
@@ -395,8 +395,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 159, 10, 0.15)",
-            color: "rgba(255, 159, 10, 0.9)",
+            backgroundColor: "var(--status-warning-muted)",
+            color: "rgba(255, 159, 10, 0.9)" /* 0.9 alpha out of table */,
           }}
         >
           Deferred due to active merge
@@ -442,7 +442,7 @@ function ActionButtons({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#ff6b35",
+          backgroundColor: "var(--accent-primary)",
         }}
       >
         {isProcessing ? (
@@ -460,7 +460,7 @@ function ActionButtons({
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
             color: "white",
-            backgroundColor: "rgba(255, 159, 10, 0.85)",
+            backgroundColor: "rgba(255, 159, 10, 0.85)" /* 0.85 alpha out of table */,
           }}
         >
           {isProcessing ? (
@@ -478,7 +478,7 @@ function ActionButtons({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#34c759",
+          backgroundColor: "var(--status-success)",
         }}
       >
         {isProcessing ? (
@@ -678,7 +678,7 @@ export function MergeIncompleteTaskDetail({
           {planBranch.prStatus === "Closed" ? (
             <DetailCard variant="warning">
               <div className="flex items-center gap-2">
-                <GitPullRequestClosed className="w-4 h-4" style={{ color: "#ff9f0a" }} />
+                <GitPullRequestClosed className="w-4 h-4" style={{ color: "var(--status-warning)" }} />
                 <span className="text-[13px] text-white/70">PR closed without merging</span>
                 {planBranch.prNumber != null && (
                   <span className="text-[12px] text-white/40">PR #{planBranch.prNumber}</span>

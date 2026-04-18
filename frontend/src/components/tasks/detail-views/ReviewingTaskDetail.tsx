@@ -61,25 +61,25 @@ function ReviewStepItem({
       {/* Status icon */}
       <div className="relative">
         {status === "completed" && (
-          <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
+          <CheckCircle2 className="w-5 h-5" style={{ color: "var(--status-success)" }} />
         )}
         {status === "active" && !isHistorical && (
           <div className="relative">
             <Loader2
               className="w-5 h-5 animate-spin"
-              style={{ color: "#0a84ff" }}
+              style={{ color: "var(--status-info)" }}
             />
             {/* Glow effect */}
             <div
               className="absolute inset-0 rounded-full animate-pulse"
               style={{
-                background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)",
+                background: "radial-gradient(circle, var(--status-info-border) 0%, transparent 70%)",
               }}
             />
           </div>
         )}
         {status === "active" && isHistorical && (
-          <Circle className="w-5 h-5" style={{ color: "#64d2ff" }} />
+          <Circle className="w-5 h-5" style={{ color: "var(--status-info)" }} />
         )}
         {status === "pending" && (
           <Circle
@@ -99,7 +99,7 @@ function ReviewStepItem({
               : status === "active"
               ? isHistorical
                 ? "rgba(255,255,255,0.35)"
-                : "#64d2ff"
+                : "var(--status-info)"
               : "rgba(255,255,255,0.35)",
         }}
       >
@@ -389,8 +389,8 @@ export function ReviewingTaskDetail({
                 disabled={requestChangesMutation.isPending || (showFeedback && feedback.trim().length === 0)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 159, 10, 0.15)",
-                  color: "#ff9f0a",
+                  backgroundColor: "var(--status-warning-muted)",
+                  color: "var(--status-warning)",
                 }}
               >
                 {requestChangesMutation.isPending ? (
