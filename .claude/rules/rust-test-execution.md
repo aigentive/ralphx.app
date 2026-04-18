@@ -15,6 +15,8 @@ paths:
 |---|---|
 | Run targeted Rust tests | ✅ `cargo test --manifest-path src-tauri/Cargo.toml --test <file_stem>` | ❌ full `cargo test` |
 | Use `cargo-nextest` for broad Rust runs | ✅ `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` for broad lib coverage and CI; keep `cargo test` for pinpoint filters and doctests |
+| Use the fast wrapper for CI-shaped local loops | ✅ `scripts/test-rust-fast.sh pr` / `main` / `ipc` / `lib-1` / `lib-2`; `*-parallel` modes are local-only wall-clock optimizers that isolate `CARGO_TARGET_DIR` per lane |
+| Keep helper runs checkout-local | `scripts/test-rust-fast.sh` resolves paths relative to its own checkout/worktree and refuses to run if the current cwd belongs to a different RalphX checkout |
 | `cargo test` name filters are single-filter only | `cargo test <TESTNAME>` / `cargo test --lib <FILTER>` accepts one substring filter; do not append multiple test names and expect Cargo/libtest to combine them |
 | No broad formatter runs | ❌ `cargo fmt` / broad `rustfmt` unless user explicitly asks; they can touch hundreds of files and hide the real diff |
 | Keep diffs reviewable | Use `apply_patch` for code edits, then verify `git diff` / `git diff --staged` only shows intended hunks |
@@ -54,11 +56,17 @@ paths:
 | Test layers | Keep fast repo/unit suites separate from slower integration/state-machine/git suites |
 | Large lib suites | When a lib-side test file becomes a massive orchestration suite, prefer moving it to `src-tauri/tests/` and exposing only the minimum internal-facing API with `#[doc(hidden)] pub` rather than keeping it in the giant `--lib` binary |
 | Internal support | Invest early in a thin shared test-support layer under `src-tauri/src/testing/` when setup repeats |
-| CI coverage split | CI runs broad lib coverage via `cargo nextest run --lib --profile ci` and doctests via separate `cargo test --doc` |
+| CI coverage split | PR CI = IPC contracts + 2 lib shards; `push` CI = PR stack + doctests; local mirror = `scripts/test-rust-fast.sh pr` / `main` |
 
 ## Selective Commands
 
 ```bash
+scripts/test-rust-fast.sh ipc
+scripts/test-rust-fast.sh lib-1
+scripts/test-rust-fast.sh lib-2
+scripts/test-rust-fast.sh pr
+scripts/test-rust-fast.sh pr-parallel
+scripts/test-rust-fast.sh main
 cargo test --manifest-path src-tauri/Cargo.toml db_connection --lib
 cargo test --manifest-path src-tauri/crates/ralphx-domain/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml --test research_integration --test workflow_integration --test artifact_integration --test repository_swapping --test methodology_integration --test gsd_integration
@@ -203,7 +211,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Split slow suites from narrow logic tests | Keep pure/unit logic off SQLite when possible; reserve DB fixtures for repository and integration coverage |
 | Sandbox-safe temp paths | If a test only needs “under HOME”, prefer `tempdir_in(std::env::current_dir()?)` over writing into `$HOME` root directly |
 | Discover exact libtest paths first | If a filter misses, use `-- --list` before guessing more Cargo invocations |
-| Run selective jobs sequentially | Never overlap targeted Cargo runs against the same target dir; they reproduce `Blocking waiting for file lock on build directory` and erase any speed gain |
+| Run selective jobs sequentially | Never overlap targeted Cargo runs against the same target dir; they reproduce `Blocking waiting for file lock on build directory` and erase any speed gain. If you need lower local wall-clock time, use `scripts/test-rust-fast.sh lib-parallel` / `pr-parallel`, which isolate `CARGO_TARGET_DIR` per lane |
 | When a builder repeats across files, centralize it | Move shared fixture/builders into `src-tauri/src/testing/` once multiple suites need the same seeded graph |
 
 ## Agent Guidance
@@ -211,6 +219,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Situation | Action |
 |---|---|
 | Converting an old SQLite test | Replace `open_memory_connection() + run_migrations()` with `SqliteTestDb` first, then extract shared seed helpers |
+| Reproducing Rust CI locally | Use `scripts/test-rust-fast.sh pr` for PR parity, `main` for push parity, and shard/local modes (`ipc`, `lib-1`, `lib-2`) when you know the lane you touched |
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Splitting oversized lib suites | Move them to `src-tauri/tests/<suite>.rs`, compile them as a separate integration binary, and keep the exported surface minimal and explicitly internal-facing |
 | Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` / `new_sqlite_test_with_registry()` instead of duplicating ad hoc setup |
@@ -256,6 +265,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'domain::services::running_agent
 | Are you repeating a setup graph twice? | Extract a suite helper now; promote to `src-tauri/src/testing/` once a second file needs it |
 | Do multiple integration targets need the same non-production helper? | Promote it into `src-tauri/tests/support/` rather than duplicating it or exporting it from production code |
 | Are you validating several targeted suites? | Run them sequentially; do not launch parallel Cargo jobs against the same target dir |
+| Do you need local wall-clock speed instead of target-dir reuse? | Use `scripts/test-rust-fast.sh lib-parallel` / `pr-parallel` instead of ad hoc backgrounded Cargo commands |
 
 ## Move Decision Framework
 

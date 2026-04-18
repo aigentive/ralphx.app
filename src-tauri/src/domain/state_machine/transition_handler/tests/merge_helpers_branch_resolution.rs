@@ -75,22 +75,60 @@ async fn resolve_task_base_branch_returns_feature_branch_when_branch_exists() {
     let repo_path = tmp.path();
 
     // Init git repo with an initial commit (needed for branch creation)
-    std::process::Command::new("git")
-        .args(["init"])
+    let init = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
         .current_dir(repo_path)
         .output()
         .unwrap();
-    std::process::Command::new("git")
+    assert!(
+        init.status.success(),
+        "git init should succeed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let config_email = std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    assert!(
+        config_email.status.success(),
+        "git config user.email should succeed: {}",
+        String::from_utf8_lossy(&config_email.stderr)
+    );
+
+    let config_name = std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    assert!(
+        config_name.status.success(),
+        "git config user.name should succeed: {}",
+        String::from_utf8_lossy(&config_name.stderr)
+    );
+
+    let commit = std::process::Command::new("git")
         .args(["commit", "--allow-empty", "-m", "init"])
         .current_dir(repo_path)
         .output()
         .unwrap();
+    assert!(
+        commit.status.success(),
+        "git commit should succeed: {}",
+        String::from_utf8_lossy(&commit.stderr)
+    );
     // Create the plan branch
-    std::process::Command::new("git")
+    let branch = std::process::Command::new("git")
         .args(["branch", "ralphx/test/plan-abc123"])
         .current_dir(repo_path)
         .output()
         .unwrap();
+    assert!(
+        branch.status.success(),
+        "git branch should succeed: {}",
+        String::from_utf8_lossy(&branch.stderr)
+    );
 
     let mut project = make_project(Some("main"));
     project.working_directory = repo_path.to_string_lossy().to_string();

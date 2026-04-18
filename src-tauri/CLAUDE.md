@@ -95,6 +95,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `config/ralphx.yaml`, never Rust `const` |
 | Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation and doctests; use `cargo nextest run` for broad Rust lib runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
+| Worktree-safe Rust helper | `scripts/test-rust-fast.sh` mirrors PR/`main` Rust CI locally; `*-parallel` modes isolate `src-tauri/target/rust-fast/*` per lane and refuse cross-checkout drift |
 | Workspace domain split | Low-dependency backend modules and pure entities move into `src-tauri/crates/ralphx-domain`; review logic, shared memory/team types, and pure repository traits belong there, while Tauri/SQLite-facing or root-coupled code stays in the root crate until a clean boundary exists |
 | Forward-only migration repairs | Never reuse or renumber shipped migration versions; schema repair for already-upgraded DBs must be a new forward-only migration |
 | Oversized lib suite split | Move massive orchestration/state-machine/worktree suites out of `src/**` lib tests into `src-tauri/tests/*.rs` integration binaries, and expose only the minimum internal-facing API needed for them |
@@ -135,6 +136,9 @@ New migration: `python3 scripts/new_sqlite_migration.py <description>` → `vYYY
 ❌ `cargo check` (hangs) | ❌ full broad `cargo test` | ❌ `--nocapture`
 ```bash
 cargo build                                                              # build
+scripts/test-rust-fast.sh pr                                             # local PR Rust CI parity
+scripts/test-rust-fast.sh main                                           # local push/main Rust CI parity
+scripts/test-rust-fast.sh pr-parallel                                    # local wall-clock optimized PR Rust CI parity
 cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib           # pinpoint lib tests
 cargo test --manifest-path src-tauri/Cargo.toml --test <target>          # targeted integration tests
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib             # broad Rust lib run
