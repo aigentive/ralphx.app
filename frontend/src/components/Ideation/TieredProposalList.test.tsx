@@ -506,7 +506,7 @@ describe("TieredProposalList", () => {
       // The connector SVG should use critical path color (#ff6b35)
       const connector = screen.getByTestId("tier-connector");
       const svgLine = connector.querySelector("line");
-      expect(svgLine).toHaveAttribute("stroke", "#ff6b35");
+      expect(svgLine).toHaveAttribute("stroke", "var(--accent-primary)");
     });
 
     it("uses dashed style for non-critical connector", () => {

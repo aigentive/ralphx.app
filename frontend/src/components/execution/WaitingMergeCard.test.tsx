@@ -144,10 +144,10 @@ describe("WaitingMergeCard", () => {
       });
       render(<WaitingMergeCard task={task} runningCount={2} onViewDetails={vi.fn()} />);
       const icon = screen.getByTestId("main-merge-deferred-icon");
-      expect(icon).toHaveStyle({ color: "#ff6b35" });
+      expect(icon).toHaveStyle({ color: "var(--accent-primary)" });
 
       const badge = screen.getByTestId("main-merge-deferred-badge");
-      expect(badge).toHaveStyle({ color: "#ff6b35" });
+      expect(badge).toHaveStyle({ color: "var(--accent-primary)" });
     });
 
     it("still renders task title and branch", () => {
