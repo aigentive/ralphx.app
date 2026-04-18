@@ -3,7 +3,7 @@
  *
  * Persists to localStorage and mirrors state to `<html>` data attributes so CSS
  * selectors in globals.css pick up the change:
- *   - data-theme="default" | "high-contrast"
+ *   - data-theme="dark" | "light" | "high-contrast"
  *   - data-motion="reduce" (optional override)
  *   - data-font-scale="lg" | "xl" (optional bump)
  *
@@ -19,14 +19,7 @@ export type ThemeName = "dark" | "light" | "high-contrast";
 export type MotionPreference = "system" | "reduce";
 export type FontScale = "default" | "lg" | "xl";
 
-/**
- * Non-high-contrast themes — used to remember the "last selected everyday
- * theme" so toggling high contrast off can snap back to it.
- */
-export type BaseThemeName = Exclude<ThemeName, "high-contrast">;
-
 const THEME_KEY = "ralphx-theme";
-const LAST_BASE_THEME_KEY = "ralphx-last-base-theme";
 const MOTION_KEY = "ralphx-motion";
 const FONT_SCALE_KEY = "ralphx-font-scale";
 
@@ -63,11 +56,6 @@ function loadTheme(): ThemeName {
     if (window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
   }
   return "dark";
-}
-
-function loadLastBaseTheme(): BaseThemeName {
-  const raw = safeGet(LAST_BASE_THEME_KEY);
-  return raw === "light" ? "light" : "dark";
 }
 
 function loadMotion(): MotionPreference {
@@ -119,23 +107,11 @@ function applyFontScaleAttr(scale: FontScale): void {
 
 interface ThemeState {
   theme: ThemeName;
-  /**
-   * Last non-HC theme the user chose — used when toggling HC off so they
-   * return to their preferred base theme rather than always snapping to dark.
-   */
-  lastBaseTheme: BaseThemeName;
   motion: MotionPreference;
   fontScale: FontScale;
   setTheme: (theme: ThemeName) => void;
   setMotion: (motion: MotionPreference) => void;
   setFontScale: (scale: FontScale) => void;
-  /**
-   * Toggle or explicitly set HC mode.
-   * - `toggleHighContrast()` → flip based on current state
-   * - `toggleHighContrast(true)` → force HC on (keeps current base for restore)
-   * - `toggleHighContrast(false)` → force HC off, restore lastBaseTheme
-   */
-  toggleHighContrast: (enabled?: boolean) => void;
 }
 
 declare global {
@@ -144,9 +120,8 @@ declare global {
   }
 }
 
-export const useThemeStore = create<ThemeState>((set, get) => ({
+export const useThemeStore = create<ThemeState>((set) => ({
   theme: loadTheme(),
-  lastBaseTheme: loadLastBaseTheme(),
   motion: loadMotion(),
   fontScale: loadFontScale(),
   setTheme: (theme) => {
@@ -154,13 +129,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     // doesn't re-infer from OS preference and override the user's pick.
     safeSet(THEME_KEY, theme);
     applyThemeAttr(theme);
-    // Remember the last base (non-HC) theme so toggling HC off can restore it.
-    if (theme !== "high-contrast") {
-      safeSet(LAST_BASE_THEME_KEY, theme);
-      set({ theme, lastBaseTheme: theme });
-    } else {
-      set({ theme });
-    }
+    set({ theme });
   },
   setMotion: (motion) => {
     safeSet(MOTION_KEY, motion === "system" ? null : motion);
@@ -171,17 +140,6 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     safeSet(FONT_SCALE_KEY, scale === "default" ? null : scale);
     applyFontScaleAttr(scale);
     set({ fontScale: scale });
-  },
-  toggleHighContrast: (enabled?: boolean) => {
-    const state = get();
-    // When called with an explicit boolean (Radix Switch's onCheckedChange
-    // passes the desired new value), honour that — don't re-toggle based on
-    // current state. Without an argument, flip from whatever the current
-    // state is.
-    const shouldEnable =
-      typeof enabled === "boolean" ? enabled : state.theme !== "high-contrast";
-    const next: ThemeName = shouldEnable ? "high-contrast" : state.lastBaseTheme;
-    state.setTheme(next);
   },
 }));
 
@@ -196,7 +154,7 @@ export function syncThemeAttributesFromStore(): void {
   applyMotionAttr(motion);
   applyFontScaleAttr(fontScale);
   // Expose for devtools debugging: `window.__themeStore.getState()` returns
-  // the current theme/lastBaseTheme/motion/fontScale. Dev only — helps when
+  // the current theme/motion/fontScale. Dev only — helps when
   // a user reports theme desync and we need to confirm the store vs DOM.
   if (typeof window !== "undefined") {
     window.__themeStore = useThemeStore;

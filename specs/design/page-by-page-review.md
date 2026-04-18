@@ -326,3 +326,206 @@ Ranked by visual impact × effort.
 9. **Light theme `--shadow-md` on Chat panel.** In `src/styles/themes/light.css`, the Chat panel left-edge shadow reads as slightly harsh. Reduce to `0 4px 6px hsla(0 0% 0% / 0.06)`. (Low impact, trivial effort)
 
 10. **Consolidate empty-state components.** Promote Kanban's `EmptyStates.tsx` pattern into a shared `src/components/ui/EmptyState.tsx` with `variant: neutral | info | success | warning` and consistent icon / title / description / CTA stack. Reviews / Graph / Ideation currently each rebuild the layout. (Lower visual impact, higher effort but pays off on future views)
+
+---
+
+## Design decisions audit — 2026-04-19
+
+> Focused pass on **padding · shadows · borders · layout split** across the 8 captured views (24 screenshots). Builds on the 2026-04-18 review above; does not re-flag the panel-leak / Select-trigger / placeholder / HC icon-tile items that have since been resolved (confirmed in the current screenshots and `themes/high-contrast.css` overrides).
+
+### Global patterns
+
+#### Spacing (styleguide §3 — 8 pt grid)
+
+| Observation | Where | Adheres to spec? |
+|---|---|---|
+| App header height `h-14` (56 px), left pad `pl-24` (96 px for window chrome), right pad `pr-4` (16 px) | `App.tsx:793` | ✅ Tahoe window-chrome convention |
+| Dialog header `px-4 py-3` | `SettingsDialog.tsx:113` | ✅ matches §7 dialog shell spec |
+| SettingRow `py-3 -mx-2 px-2` | `SettingsView.shared.tsx:69` | ✅ matches §7 setting row spec |
+| Section card body `p-5` (Settings) | spec'd in styleguide §6 | ✅ |
+| Right-dock panel outer container `margin: 8px` + `rounded-[10px]` inner | `App.tsx:1146`, `PlanBrowser.tsx:282`, `GraphSplitLayout.tsx:253` | ✅ consistent floating-glass rhythm |
+| Ideation Plans sidebar inner pad `px-4 pt-4 pb-3` | `PlanBrowser.tsx:292` | ≈ 16/16/12 — half-step off 8 pt but justified for visual weight under the title |
+| Review cards `p-4` (16 px) inside panel body `p-4 space-y-3` | `ReviewsPanel.tsx:86, 284` | ⚠ Drift — other cards in the app use `p-5` per §6 |
+| Activity filters row `px-4 py-3 space-y-3` | `ActivityView.tsx:365` | ✅ |
+| Extensibility tab strip trigger `px-4 py-2.5` | `ExtensibilityView.tsx:149` | ½-step — matches shadcn tabs default but the styleguide §7 tabs block specifies `px-3 py-1` for compact triggers |
+
+Overall rhythm is **strongly aligned to 8 pt**. The two noticeable half-step deviations are (a) Reviews card padding (`p-4` vs canonical `p-5`) and (b) Extensibility tab trigger (`py-2.5`), both of which are inherited component defaults rather than deliberate choices.
+
+#### Shadows (styleguide §5 — Tahoe-subtle)
+
+| Theme | Tokens shipped | Net effect in screenshots |
+|---|---|---|
+| Dark | `--shadow-xs/sm/md/lg` at 0.2 alpha range (`semantic.css`) | Cards and dock panels feel lifted; accent icon tiles use separate `--shadow-glow-accent-*` tokens (not visible at rest here) |
+| Light | Retuned to 0.05 / 0.04 / 0.05 alpha with warm blue-gray tint (`light.css:84–87`) | Very restrained — Workflow card, Graph filter island, Chat/Reviews dock all sit almost flush. Border does most of the work. |
+| High-Contrast | Heavy 0.6–0.9 alpha tokens (`high-contrast.css:104–107`) | In practice invisible on pure-black surface — elevation is carried entirely by 2 px white borders. Tokens exist as defense in depth. |
+
+**Assessment:**
+- Dark/HC shadow strategy is **considered** — HC explicitly defers to border-based separation per `themes/high-contrast.md §1`; Dark uses subtle multi-stop.
+- Light is **borderline too quiet** — in the Extensibility, Graph and Reviews screenshots the elevated card's `--shadow-xs` (2 tiny black stops at 0.03/0.05 alpha) is barely perceptible on `#F7F7F8` against `#FFFFFF`. The prior audit flagged this (item #3) and it is **not yet applied** — `--shadow-xs` is still at `0.05, 0.03`; the app reads slightly "glued" on Light. Bumping to `0.07, 0.04` is cheap.
+
+#### Borders (styleguide §1, §3.theme-specific)
+
+| Theme | `--border-subtle` / `--border-default` / width | Use pattern |
+|---|---|---|
+| Dark | `hsl(220 10% 18%)` / `hsl(220 10% 22%)` / 1 px | Card edges, dialog edges, tab underline (`--accent-primary` on active) |
+| Light | `hsl(220 10% 88%)` / `hsl(220 10% 78%)` / 1 px | Same role split — subtle vs default — visible against near-white |
+| HC | `rgba(255,255,255,0.5)` / `#FFFFFF` / **2 px** (`--border-width-default`) | Every card/input/dialog has a hard white edge; double-bump on focus to 3 px yellow |
+
+**Assessment:**
+- HC stroke-width bump is **correctly implemented** via `--border-width-default: 2px` in `high-contrast.css:67`, and `:focus-visible` uses the 3 px `--border-width-focus` yellow ring — matches `accessibility.md §4` requirement (3 px + 2 px offset for HC).
+- Light's `--border-subtle` (#E0E2E6) carries most of the separation burden (since shadow is deliberately minimal). It works, but on dense views like Extensibility the single-card list feels slightly over-bordered — a shadow lift would let the border step down.
+- Dark's "section underline" usage (bottom-bar divider, filter row divider) uses `--border-subtle`; the Activity view drops back to `--overlay-weak` in two places (`ActivityView.tsx:334, 365`) — a minor token inconsistency (`--border-subtle` vs `--overlay-weak`) on the same functional element.
+
+#### Layout split conventions
+
+The app uses **five** distinct layout archetypes, applied consistently per view intent:
+
+| Archetype | Where | Shape |
+|---|---|---|
+| A. Right-dock floating panel | Chat (`App.tsx:1163`), Reviews (`App.tsx:1134`), Graph timeline/chat (`GraphSplitLayout.tsx`) | Fixed or resizable right column; wraps contents in a `rounded-[10px]` inner panel with `margin:8px`, `--bg-elevated` bg, `--border-subtle` 1 px border, `--shadow-md`. Shares the exact same wrapper across the three components → good. |
+| B. Sidebar + main | Ideation (`PlanBrowser` 220 px + `PlanningView` flex), Settings (280 px rail + scrollable pane) | Left nav, flex-1 content. Both use the same eyebrow (`uppercase tracking-wider`) + active-row treatment. |
+| C. Centered empty state | Ideation (no session), Graph (no plan), Kanban (no plan), Reviews (0 pending) | Shared `<EmptyState variant="neutral">` in Reviews; Ideation/Kanban have bespoke versions. |
+| D. Full-width horizontal bar | Execution control bar at bottom of Kanban/Graph/Ideation | Flush, not elevated. `h-14` (~56 px) with a top hairline `--border-subtle`. |
+| E. Modal dialog | Settings (`95vw × 95vh`), proposal/review detail modals | Full-bleed modal; header `px-4 py-3`, main body split sidebar + pane. |
+
+**Responsive behaviour:** Settings dialog has an explicit `lg` breakpoint — left rail collapses to a native `<select>` (`SettingsDialog.tsx:181`); most other views rely on `isNavCompact` from `useNavCompactBreakpoint`. Chat panel has a resizable width with persisted `localStorage.ralphx-chat-panel-width`. No full-screen-width responsive pivot is attempted (Tauri desktop-first).
+
+---
+
+### Per-section analysis
+
+#### Ideation
+
+- **Layout split** — Archetype B: `PlanBrowser` sidebar (220 px, resizable) + main empty-state column + bottom `ExecutionControlBar` full-bar + right chat (opened on demand from within the view).
+- **Padding** — Sidebar card header `px-4 pt-4 pb-3`. Empty-state stack uses 16 px gaps (icon → title → description → mode selector → CTA → ghost actions → kbd hints). Executioner bar uses `px-4 py-3`.
+- **Borders** — Sidebar is a floating island with `border: 1px solid var(--overlay-weak)` + `boxShadow: var(--shadow-lg)` — distinct edge treatment vs every other sidebar in the app.
+- **Shadows** — Sidebar is the **only** view using `--shadow-lg` at rest (normally reserved for dialogs per §5). Not wrong, but inconsistent with Settings left rail (which has no shadow). Feels correct on Dark but slightly over-lifted on Light.
+- **Assessment** — Most bespoke section; every element is carefully placed. "IDEATION MODE" eyebrow + mode pill group is a strong pattern.
+- **Recommendations** —
+  - Consider aligning PlanBrowser shadow to `--shadow-md` to match the right-dock panel tier (currently `--shadow-lg`), `PlanBrowser.tsx:287`.
+  - The `px-4 pt-4 pb-3` asymmetric padding is fine but a comment explaining the intentional optical balance (title vs search) would help preserve it.
+
+#### Graph
+
+- **Layout split** — Archetype A + centered empty state. Floating filter panel (~140 px wide, rounded-lg, absolute positioned) + open canvas + right dock (timeline 320 px or chat resizable), with overlay variant for compact width.
+- **Padding** — Filter panel items ~8 px vertical/8 px horizontal. Empty-state block has strong ~220 px top padding (the floating filters push content down).
+- **Borders** — Filter panel uses `--border-subtle`; the divider between Status and Vertical rows is invisible on Light because the panel bg and the surface bg are both near-white.
+- **Shadows** — Filter panel: `--shadow-xs`. On Light this is barely perceptible — the floating affordance is carried by border alone.
+- **Assessment** — The floating filter panel layout is good; it's the **only view** using an absolutely-positioned floating control group.
+- **Recommendations** —
+  - On Light, bump filter panel shadow to `--shadow-sm` so the island feels detached.
+  - Verify the filter internal divider token (currently inconsistent between Status/Vertical blocks).
+
+#### Kanban
+
+- **Layout split** — Archetype B+A: `KanbanSplitLayout` (kanban left + integrated chat right, resizable 360–600 px) with `ExecutionControlBar` as footer.
+- **Padding** — Search row `py-2 px-4`, empty-state tile 96×96, Project chat panel header `h-11 px-3`.
+- **Borders** — No vertical divider between kanban area and chat — relies on the chat panel's own border + subtle shift in `--bg-elevated`. Works on Dark/HC; Light is subtle but intentional.
+- **Shadows** — Empty-state tile has an accent-muted fill + 1 px accent border + the `--shadow-glow-accent-soft` ambient glow (visible as orange halo on Dark). On HC it renders as yellow tint on black box with a solid border.
+- **Assessment** — The **most polished empty state** in the app. Tile dimensions (96 px) + sparkle icon + doc glyph + single-line title + CTA is a strong pattern worth promoting.
+- **Recommendations** —
+  - Promote Kanban's empty-state tile (`EmptyStates.tsx`) to shared `ui/EmptyState` with an optional `illustration` slot (Reviews already uses shared; Ideation and Graph still rebuild).
+  - The resize handle (`ResizeHandle.tsx`) between kanban and chat has no visible hairline on Light — consider a 1 px `--border-subtle` track so the dragger is discoverable.
+
+#### Activity
+
+- **Layout split** — Single-column view with a sticky filter toolbar. Header (icon tile + "Activity" title + Clear) → search row + Live/History segmented toggle → filter tab strip + 4 dropdown filters → scrollable message area.
+- **Padding** — Header `px-4 py-3`; filter row `px-4 py-3 space-y-3`. Message list `p-3 space-y-1.5`.
+- **Borders** — Uses `--overlay-weak` for the filter-row divider (`ActivityView.tsx:334, 365`) instead of the more common `--border-subtle`. The two tokens differ in hue/alpha; visually the divider is slightly fainter here than in Settings or Ideation.
+- **Shadows** — None in the header/filter row (correct; non-elevated).
+- **Assessment** — Density is correct; rhythm between the three horizontal bands (title/search/filters) is good.
+- **Recommendations** —
+  - Align the horizontal-band border to `--border-subtle` (match Extensibility tab strip and Settings dialog header) — currently `--overlay-weak`. File: `ActivityView.tsx:334, 365`.
+  - Segmented Live/History toggle renders active state as a filled pill; inactive state is flat. On Light the inactive pill is almost invisible (`History` text on `--bg-surface`). Consider adding a 1 px `--border-subtle` around both pills to match the Reviews FilterTabs pattern.
+
+#### Extensibility
+
+- **Layout split** — Full-bleed tabbed page: `<Tabs>` strip at top (h-11) + main column with section title (16/600) + right-aligned primary CTA + card list.
+- **Padding** — Tab triggers `px-4 py-2.5` (inherited shadcn default), card content `p-5` (via SectionCard equivalent), workflow list item has ~20 px internal pad.
+- **Borders** — Tab strip has a bottom `--border-subtle` divider + active trigger has a bottom `-mb-px` accent-colored `border-b-2`. Card uses `--border-subtle` 1 px.
+- **Shadows** — Workflow card uses `--shadow-xs` per spec.
+- **Assessment** — The tab + card-list pattern is the cleanest full-width pattern in the app. "+ New Workflow" CTA is tucked top-right and follows the PrimaryCTA outline style.
+- **Recommendations** —
+  - Tab trigger `py-2.5` is half-step off the 8 pt grid; align to `py-2` or `py-3` for consistency. File: `ExtensibilityView.tsx:149`.
+  - On Light, the single workflow card's shadow is imperceptible — it hangs on the 1 px border alone. Bumping Light `--shadow-xs` globally (below) resolves this in one token change.
+
+#### Settings
+
+- **Layout split** — Archetype E (modal dialog 95vw × 95vh) + Archetype B inside (280 px left rail + scrollable pane, `lg` breakpoint collapses rail to `<select>`).
+- **Padding** — Dialog header `px-4 py-3`, scrollable pane body `p-6` (24 px — the only place in the app using `p-6` at the outer layout level), `SectionCard` internal `p-5`, `SettingRow` `py-3 -mx-2 px-2`.
+- **Borders** — Rail has a right `--border-subtle` divider, section card has `--border-subtle`, row dividers use `--border-subtle` with `last:border-0`.
+- **Shadows** — Dialog uses `--shadow-lg`, section card `--shadow-xs`.
+- **Assessment** — **Reference implementation** for the rest of the app — `SectionCard` + `SettingRow` + `InlineNotice` + `SavingIndicator` is a clean composable set.
+- **Recommendations** —
+  - Scrollable pane outer pad `p-6` (24 px) is higher than every other view's content pad (`p-4`/`p-5`). Consider `p-5` to match the shared card tier and give the rail content more horizontal room on narrower windows. File: `SettingsDialog.tsx:207`.
+
+#### Chat
+
+- **Layout split** — Archetype A right-dock. `ChatPanel` wraps `ResizeablePanel` with a 11-row header (`h-11 px-3`), optional team context bar, streaming tool indicator row, queued messages list, question banner, and input area at the bottom.
+- **Padding** — Header `px-3`, messages area `flex-1` (no pad), input area `p-3` with queued messages `p-3 pb-0`.
+- **Borders** — Header has `borderColor: color-mix(--text-primary 4%, transparent)` (a hardcoded translucent variant — **not a semantic token**, though it does flip with theme via `--text-primary`). Input area uses `border-t var(--border-subtle)`.
+- **Shadows** — Panel is contained inside the floating `rounded-[10px]` wrapper with `--shadow-md`; panel itself carries no extra elevation.
+- **Assessment** — The `color-mix(var(--text-primary) 4%, transparent)` pattern for header tint works (flips theme), but it sidesteps the `--overlay-faint`/`--overlay-weak` token family that exists for exactly this purpose.
+- **Recommendations** —
+  - Replace `color-mix(in srgb, var(--text-primary) 2–4%, transparent)` calls in `ChatPanel.tsx:500, 501` with `var(--overlay-faint)` / `var(--overlay-weak)` — same visual result, aligns with styleguide §1 "never hardcode translucent values in components."
+  - Composer send-button right-edge offset (~16 px) vs composer padding (12 px / `p-3`) is a 4 px asymmetry — if intentional, document it; otherwise normalize to `p-3` on all sides.
+
+#### Reviews
+
+- **Layout split** — Archetype A right-dock, ~400 px wide, fixed position (`App.tsx:1136`). Header (h-11) + tab strip (h-auto `px-4 py-3`) + scroll area with cards.
+- **Padding** — Card `p-4` (16 px); card list outer `p-4 space-y-3`. Inner description card `p-2 rounded-sm`.
+- **Borders** — Card has `--border-subtle` 1 px + hover reveals a faint `border-white/10`. Tab strip uses the ReviewsPanel FilterTabs with data-state-active border.
+- **Shadows** — Card gains `--shadow-xs` on hover (`isHovered && "shadow-[var(--shadow-xs)]"`) — interesting micro-interaction: card only lifts on hover. On Light the lift is barely perceptible due to `--shadow-xs` being so low-alpha.
+- **Assessment** — The most notable inconsistency: **Review cards use `p-4` while every other card in the app uses `p-5` per styleguide §6**. Cards are also rendered inside a panel body that has `p-4` (16 px) — compare to Ideation's sidebar items which use a separate inner pad.
+- **Recommendations** —
+  - Align card inner pad to `p-5` per styleguide §6, `ReviewsPanel.tsx:86`.
+  - CountBadge now correctly switches between accent-muted (non-zero) and neutral (zero) — good defense against prior Light-theme invisibility. Keep as-is.
+  - The hover-only `--shadow-xs` lift is cute but inconsistent with cards in Extensibility (which carry `--shadow-xs` at rest). Pick one rule.
+
+#### Task Detail (inferred — no direct screenshot)
+
+Task detail views are overlays within Kanban/Graph (`TaskDetailOverlay.tsx:628`). The screenshots above don't capture an open task detail, so recommendations stay high-level. Per `.claude/rules/task-detail-views.md`, the registry maps 12 status-specific view components. Each should consume the same card tier (`--bg-elevated` + `p-5` + `--shadow-xs` + `--border-subtle`). A follow-up capture run with a selected task would be worth doing.
+
+---
+
+### Cross-section drift
+
+| # | Pattern | Observed | Target (per spec) |
+|---|---|---|---|
+| 1 | Card inner pad | Reviews `p-4` (`ReviewsPanel.tsx:86`) | `p-5` per styleguide §6 |
+| 2 | Horizontal-band divider token | Activity uses `--overlay-weak` (`ActivityView.tsx:334, 365`); Settings/Extensibility use `--border-subtle` | `--border-subtle` for structural dividers |
+| 3 | Right-dock panel shadow tier | Ideation sidebar uses `--shadow-lg` (`PlanBrowser.tsx:287`); Chat/Reviews/Graph dock use `--shadow-md` | Align sidebar to `--shadow-md` (reserve `--shadow-lg` for root dialogs per §5) |
+| 4 | Tab trigger vertical pad | Extensibility `py-2.5` (`ExtensibilityView.tsx:149`); Reviews FilterTabs `py-1.5`; Settings shadcn tabs `py-1` | Pick one — styleguide §7 specifies `py-1` for compact, `py-2` for default |
+| 5 | Header tint pattern | Chat uses `color-mix(var(--text-primary) 2%, transparent)` inline; everywhere else uses `var(--overlay-faint)` | Use `--overlay-faint` / `--overlay-weak` tokens |
+| 6 | Panel outer pad for Settings | Settings pane `p-6` (24 px) | Other views' content pads are `p-4`/`p-5`; consider `p-5` |
+| 7 | Light theme card elevation | `--shadow-xs` Light: `0.05, 0.03` alpha — barely visible | Consider bump to `0.07, 0.04` (still < 0.10 max) |
+| 8 | Card "lift on hover" vs resting | Reviews = hover only; Extensibility = resting | Align to resting `--shadow-xs` + hover `--shadow-sm` for affordance parity |
+
+### Priority action list (top 10)
+
+Ranked by user-visible impact × effort. Each item: **what**, where, why.
+
+| # | Action | File(s) | Why (spec/UX rationale) |
+|---|---|---|---|
+| 1 | Bump Light `--shadow-xs` to `0.07, 0.04` alpha | `src/styles/themes/light.css:84` | Many cards feel glued on Light; Extensibility / Graph filter / Reviews all improve in one token change. Still well under 0.10 max. (Carried over from 2026-04-18 review item #3; still not applied.) |
+| 2 | Align Reviews card pad to `p-5` | `src/components/reviews/ReviewsPanel.tsx:86` | Styleguide §6 card inner pad; Reviews is the only card tier at `p-4`. |
+| 3 | Drop PlanBrowser shadow from `--shadow-lg` to `--shadow-md` | `src/components/Ideation/PlanBrowser.tsx:287` | Styleguide §5 reserves `--shadow-lg` for root dialogs; sidebars should use `--shadow-md`. Unifies right-dock elevation rules. |
+| 4 | Swap Chat header `color-mix()` inlines for `--overlay-faint` / `--overlay-weak` | `src/components/Chat/ChatPanel.tsx:500, 501` | Styleguide §13 contribution rule: never hardcode translucent values in components. |
+| 5 | Normalize Activity filter row divider to `--border-subtle` | `src/components/activity/ActivityView.tsx:334, 365` | Section divider should use the same token family as Settings/Extensibility. |
+| 6 | Align Extensibility tab trigger to `py-2` (or `py-1` for compact) | `src/components/ExtensibilityView.tsx:149` | 8 pt grid; `py-2.5` is the only half-step padding in a tab strip. |
+| 7 | Settings pane outer pad `p-6` → `p-5` | `src/components/settings/SettingsDialog.tsx:207` | Content pad tier for modal bodies; gives nav rail more room at narrow viewports. |
+| 8 | Add 1 px `--border-subtle` hairline to Light Activity `Live/History` inactive pill | `src/components/activity/ActivityFilters.tsx` (ViewModeToggle) | Inactive pill currently invisible on Light. |
+| 9 | Promote Kanban empty-state tile into shared `ui/EmptyState` variant | `src/components/tasks/EmptyStates.tsx` → `src/components/ui/empty-state.tsx` | Carried over from #10 prior review. Ideation/Graph still rebuild; consolidation reduces drift. |
+| 10 | Make Reviews card `--shadow-xs` resting (not hover-only) | `src/components/reviews/ReviewsPanel.tsx:89` | Match Extensibility/Workflow card resting elevation for affordance parity. |
+
+### Known limitations / open questions
+
+| Limitation | Why |
+|---|---|
+| Hover states not captured | Screenshots are static; hover elevation / border color changes on Reviews cards, Chat toggle, and filter pills cannot be evaluated visually. |
+| Focus rings not captured | No keyboard-focused element visible; AAA 3 px yellow ring in HC + 2 px blue in Default/Light unconfirmed by screenshot (code inspection shows `--focus-ring` + `:focus-visible` rules are wired, and `high-contrast.css:159–162` enforces the 3 px HC outline globally). |
+| Task detail view not captured | No task selected in any screenshot, so `TaskDetailOverlay` + 12 state-specific detail views (`BasicTaskDetail` / `ExecutionTaskDetail` / etc.) were not visible. Recommend a follow-up capture with `selectedTaskId`. |
+| Dialog / modal stacks not captured | Proposal edit modal, finalize confirmation, verification confirm, permission dialog — all are spawned from `App.tsx` but not exercised by the theme-switch spec. |
+| Live motion / animations | Pulsing accent glow, drop-zone edges, status pulse — static screenshots can't verify the animation tokens (`--shadow-pulse-*`, keyframes). |
+| Settings dialog `lg` collapse | Mobile collapse (to a native `<select>`) was not captured — spec only fires at viewports below `lg` (1024 px); audit was at desktop widths. |
+

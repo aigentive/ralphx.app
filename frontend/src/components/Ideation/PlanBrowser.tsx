@@ -284,7 +284,7 @@ export function PlanBrowser({
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
           border: "1px solid var(--overlay-weak)",
-          boxShadow: "var(--shadow-lg)",
+          boxShadow: "var(--shadow-md)",
         }}
       >
         {/* Header */}

@@ -4,9 +4,6 @@
  *
  * UI layout:
  *   - Theme selector (Dark / Light / High contrast)
- *   - Convenience "High contrast mode" switch that forces the HC theme
- *     (equivalent to picking it from the selector) and restores the previous
- *     base theme when toggled off
  *   - Motion preference (follow system / always reduce)
  *   - Font scale (default / lg / xl)
  */
@@ -21,7 +18,6 @@ import {
 import {
   SectionCard,
   SelectSettingRow,
-  ToggleSettingRow,
   type SelectOption,
 } from "./SettingsView.shared";
 
@@ -67,7 +63,6 @@ export function AccessibilitySection() {
   const motion = useThemeStore((s) => s.motion);
   const fontScale = useThemeStore((s) => s.fontScale);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const toggleHighContrast = useThemeStore((s) => s.toggleHighContrast);
   const setMotion = useThemeStore((s) => s.setMotion);
   const setFontScale = useThemeStore((s) => s.setFontScale);
 
@@ -86,25 +81,9 @@ export function AccessibilitySection() {
         disabled={false}
         onChange={(next) => {
           if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
             console.log("[theme] dropdown onChange →", next);
           }
           setTheme(next);
-        }}
-      />
-
-      <ToggleSettingRow
-        id="theme-high-contrast"
-        label="High contrast mode"
-        description="Shortcut — forces the WCAG AAA high-contrast theme. Toggling off restores your previous theme choice."
-        checked={theme === "high-contrast"}
-        disabled={false}
-        onChange={(checked) => {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.log("[theme] HC toggle onChange →", checked);
-          }
-          toggleHighContrast(checked);
         }}
       />
 

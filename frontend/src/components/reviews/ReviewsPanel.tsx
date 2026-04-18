@@ -83,7 +83,7 @@ function TaskReviewCard({ task, onReview, isLoading = false }: TaskReviewCardPro
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={cn(
-        "p-4 border transition-all duration-150 ease-out",
+        "p-5 border transition-all duration-150 ease-out",
         "bg-[var(--bg-elevated)] border-[var(--border-subtle)]",
         "rounded-[var(--radius-md)]",
         isHovered && "shadow-[var(--shadow-xs)]",

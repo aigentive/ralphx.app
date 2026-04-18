@@ -124,6 +124,11 @@ describe("design-tokens", () => {
       expect(cssContent).toContain("--transition-fast:");
       expect(cssContent).toContain("--transition-normal:");
     });
+
+    it("should keep settings card icon tiles opaque in high contrast", () => {
+      expect(cssContent).toMatch(/--card-icon-bg:\s*var\(--color-white\)/);
+      expect(cssContent).toMatch(/--card-icon-color:\s*var\(--color-black\)/);
+    });
   });
 
   describe("anti-AI-slop guardrails", () => {

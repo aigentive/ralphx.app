@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 
-test("HC switch unchecks when Dark is picked from dropdown while in HC", async ({ page }) => {
+async function settingsCardIconTileBackground(page: import("@playwright/test").Page) {
+  return page
+    .locator('[data-testid="settings-dialog"] div.p-2.rounded-lg.shrink-0')
+    .first()
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+}
+
+test("stored HC switches to Dark via the theme selector only", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("ralphx-theme", "high-contrast");
   });
@@ -18,12 +25,8 @@ test("HC switch unchecks when Dark is picked from dropdown while in HC", async (
   await page.locator("text=Accessibility").first().click();
   await page.waitForTimeout(300);
 
-  // BEFORE: in HC — HC switch should be checked.
-  const beforeSwitchChecked = await page
-    .locator('[data-testid="theme-high-contrast"]')
-    .getAttribute("data-state");
-  console.log("HC switch before dropdown pick:", beforeSwitchChecked);
-  expect(beforeSwitchChecked).toBe("checked");
+  await expect(page.locator('[data-testid="theme-high-contrast"]')).toHaveCount(0);
+  expect(await settingsCardIconTileBackground(page)).toBe("rgb(255, 255, 255)");
 
   // Pick Dark from dropdown.
   await page.locator('[data-testid="theme-selector"]').click();
@@ -32,13 +35,6 @@ test("HC switch unchecks when Dark is picked from dropdown while in HC", async (
     .filter({ has: page.locator('span:text-is("Dark (default)")') })
     .click();
   await page.waitForTimeout(500);
-
-  // AFTER: HC switch should be UNCHECKED.
-  const afterSwitchChecked = await page
-    .locator('[data-testid="theme-high-contrast"]')
-    .getAttribute("data-state");
-  console.log("HC switch after Dark pick:", afterSwitchChecked);
-  expect(afterSwitchChecked).toBe("unchecked");
 
   // And DOM + localStorage should say Dark.
   const state = await page.evaluate(() => ({
@@ -49,7 +45,7 @@ test("HC switch unchecks when Dark is picked from dropdown while in HC", async (
   expect(state.ls).toBe("dark");
 });
 
-test("Dark→HC→Dark roundtrip leaves HC switch unchecked and theme Dark", async ({ page }) => {
+test("Dark→HC→Dark roundtrip stays dropdown-only and ends on Dark", async ({ page }) => {
   await page.goto("/");
   await page.waitForSelector('[data-testid="app-header"]', { timeout: 15000 });
 
@@ -62,6 +58,8 @@ test("Dark→HC→Dark roundtrip leaves HC switch unchecked and theme Dark", asy
   await page.waitForSelector('[data-testid="settings-dialog"]', { timeout: 10000 });
   await page.locator("text=Accessibility").first().click();
   await page.waitForTimeout(300);
+
+  await expect(page.locator('[data-testid="theme-high-contrast"]')).toHaveCount(0);
 
   // Dark → HC via dropdown
   await page.locator('[data-testid="theme-selector"]').click();
@@ -77,6 +75,7 @@ test("Dark→HC→Dark roundtrip leaves HC switch unchecked and theme Dark", asy
     .filter({ has: page.locator('span:text-is("High contrast")') })
     .click();
   await page.waitForTimeout(300);
+  expect(await settingsCardIconTileBackground(page)).toBe("rgb(255, 255, 255)");
 
   // HC → Dark via dropdown
   await page.locator('[data-testid="theme-selector"]').click();
@@ -86,14 +85,12 @@ test("Dark→HC→Dark roundtrip leaves HC switch unchecked and theme Dark", asy
     .click();
   await page.waitForTimeout(500);
 
-  const afterSwitch = await page
-    .locator('[data-testid="theme-high-contrast"]')
-    .getAttribute("data-state");
   const state = await page.evaluate(() => ({
     attr: document.documentElement.getAttribute("data-theme"),
     ls: localStorage.getItem("ralphx-theme"),
   }));
-  console.log("After roundtrip:", { afterSwitch, ...state });
-  expect(afterSwitch).toBe("unchecked");
+  console.log("After roundtrip:", state);
   expect(state.attr).toBe("dark");
+  expect(state.ls).toBe("dark");
+  expect(await settingsCardIconTileBackground(page)).not.toBe("rgb(255, 255, 255)");
 });

@@ -116,12 +116,11 @@ export function ToggleSettingRow({
   isSubSetting = false,
 }: ToggleSettingRowProps) {
   // Radix Switch can emit a stale `onCheckedChange` when its `checked` prop
-  // transitions externally (e.g., the user picks a different theme from a
-  // sibling dropdown). That spurious fire flips our controlled state right
-  // back. Guard: only honour onCheckedChange when the user has actually
-  // interacted with this switch (pointer or keyboard). The flag is cleared
-  // after each honoured fire so stale echoes during the same render cycle
-  // can't sneak through.
+  // transitions externally. That spurious fire flips our controlled state
+  // right back. Guard: only honour onCheckedChange when the user has actually
+  // activated this switch. Use click activation, not pointer-down, so aborted
+  // presses cannot leave a stale intent flag behind for the next external
+  // prop transition.
   const userIntentRef = useRef(false);
   const markUserIntent = useCallback(() => {
     userIntentRef.current = true;
@@ -147,10 +146,7 @@ export function ToggleSettingRow({
         data-testid={id}
         checked={checked}
         onCheckedChange={handleCheckedChange}
-        onPointerDown={markUserIntent}
-        onKeyDown={(e) => {
-          if (e.key === " " || e.key === "Enter") markUserIntent();
-        }}
+        onClick={markUserIntent}
         disabled={disabled}
         aria-describedby={`${id}-desc`}
         className="data-[state=checked]:bg-[var(--accent-primary)]"
@@ -310,7 +306,7 @@ export function SectionCard({ icon, title, description, children }: SectionCardP
   return (
     <Card className="rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
       <div className="flex items-start gap-3 p-5 pb-0">
-        <div className="p-2 rounded-lg shrink-0 bg-[var(--card-icon-bg)] border border-[var(--card-icon-border)]">
+        <div className="p-2 rounded-lg shrink-0 bg-[var(--card-icon-bg)] border border-[var(--card-icon-border)] [&>svg]:text-[var(--card-icon-color)]">
           {icon}
         </div>
         <div>
