@@ -24,6 +24,7 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PREPARE_RUNTIME_SCRIPT="${PROJECT_ROOT}/scripts/prepare-release-runtime.sh"
 
 CLEAN="false"
 SKIP_BUILD="false"
@@ -45,6 +46,7 @@ for arg in "$@"; do
 done
 
 APP_PATH="${PROJECT_ROOT}/src-tauri/target/release/bundle/macos/RalphX.app"
+MACOS_BUNDLE_DIR="${PROJECT_ROOT}/src-tauri/target/release/bundle/macos"
 DMG_DIR="${PROJECT_ROOT}/src-tauri/target/release/bundle/dmg"
 BIN_PATH="${PROJECT_ROOT}/src-tauri/target/release/ralphx"
 
@@ -55,6 +57,7 @@ fi
 
 if [[ "${SKIP_BUILD}" != "true" ]]; then
   echo "Building RalphX production release artifacts..."
+  "${PREPARE_RUNTIME_SCRIPT}"
   cd "${PROJECT_ROOT}/frontend"
   CI=false npm run tauri build
 fi
@@ -75,6 +78,29 @@ if [[ -d "${APP_PATH}" ]]; then
   echo "App bundle: ${APP_PATH}"
 else
   echo "App bundle not found: ${APP_PATH}" >&2
+  missing_artifacts="true"
+fi
+
+if [[ -d "${MACOS_BUNDLE_DIR}" ]]; then
+  echo "Updater bundle directory: ${MACOS_BUNDLE_DIR}"
+  updater_count=0
+  while IFS= read -r updater_path; do
+    [[ -n "${updater_path}" ]] || continue
+    echo "${updater_path}"
+    if [[ ! -f "${updater_path}.sig" ]]; then
+      echo "Updater signature not found for: ${updater_path}" >&2
+      missing_artifacts="true"
+      continue
+    fi
+    echo "${updater_path}.sig"
+    updater_count=$((updater_count + 1))
+  done < <(find "${MACOS_BUNDLE_DIR}" -maxdepth 1 -type f -name '*.app.tar.gz' -print)
+  if [[ "${updater_count}" -eq 0 ]]; then
+    echo "No updater bundles found under: ${MACOS_BUNDLE_DIR}" >&2
+    missing_artifacts="true"
+  fi
+else
+  echo "Updater bundle directory not found: ${MACOS_BUNDLE_DIR}" >&2
   missing_artifacts="true"
 fi
 
