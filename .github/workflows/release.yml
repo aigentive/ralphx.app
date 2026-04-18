@@ -183,6 +183,7 @@ jobs:
           set -euo pipefail
           echo "password=$(openssl rand -base64 24 | tr -d '\n')" >> "${GITHUB_OUTPUT}"
           echo "path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}.keychain-db" >> "${GITHUB_OUTPUT}"
+          echo "search_list_path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}-keychains.txt" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -213,6 +214,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ steps.keychain.outputs.password }}
           KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
         run: |
           set -euo pipefail
 
@@ -223,13 +225,19 @@ jobs:
           echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
           security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-          security default-keychain -s "${KEYCHAIN_PATH}"
+          security list-keychains -d user | sed 's/^[[:space:]]*\"//; s/\"$//' > "${KEYCHAIN_SEARCH_LIST_PATH}"
+          keychain_search_list=("${KEYCHAIN_PATH}")
+          while IFS= read -r keychain; do
+            if [[ -n "${keychain}" && "${keychain}" != "${KEYCHAIN_PATH}" ]]; then
+              keychain_search_list+=("${keychain}")
+            fi
+          done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+          security list-keychains -d user -s "${keychain_search_list[@]}"
           security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security set-keychain-settings -t 3600 -u "${KEYCHAIN_PATH}"
           security import developer-id-g2.cer -k "${KEYCHAIN_PATH}" -A
           security import certificate.p12 -k "${KEYCHAIN_PATH}" -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
-          security list-keychains -d user -s "${KEYCHAIN_PATH}"
           rm developer-id-g2.cer certificate.p12
 
       - name: Validate imported signing identity
@@ -366,9 +374,22 @@ jobs:
         shell: bash
         env:
           KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
         run: |
           set -euo pipefail
+          if [[ -f "${KEYCHAIN_SEARCH_LIST_PATH}" ]]; then
+            restored_keychains=()
+            while IFS= read -r keychain; do
+              if [[ -n "${keychain}" ]]; then
+                restored_keychains+=("${keychain}")
+              fi
+            done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+            if [[ "${#restored_keychains[@]}" -gt 0 ]]; then
+              security list-keychains -d user -s "${restored_keychains[@]}"
+            fi
+          fi
           security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          rm -f "${KEYCHAIN_SEARCH_LIST_PATH}"
 
   publish-release:
     name: Publish public release assets
