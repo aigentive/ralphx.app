@@ -479,8 +479,32 @@ export function IntegratedChatPanel({
     autoSelectConversation({ data: conversationsData, isLoading: conversationsLoading });
   }, [autoSelectConversation, conversationsData, conversationsLoading, isVisible]);
 
+  const {
+    messages: activeConversation,
+    sendMessage,
+    switchConversation: handleSelectConversation,
+    createConversation: handleNewConversation,
+  } = regularChatData;
+
+  // Load teammate conversation messages when on a teammate tab
+  const teammateConversation = useConversation(teammateConversationId);
+  const ideationConversationHistory = useConversationHistoryWindow(
+    ideationSessionId && !isTeammateTab ? activeConversationId : null,
+    {
+      enabled: !!ideationSessionId && !isTeammateTab,
+      pageSize: 40,
+    }
+  );
+
+  const primaryConversationData =
+    ideationSessionId && !isTeammateTab
+      ? ideationConversationHistory.data
+      : activeConversation.data;
+
   // Check if active conversation belongs to current context (needed by recovery effects below)
-  const activeConversationContext = regularChatData.messages.data?.conversation;
+  const activeConversationContext = isTeammateTab
+    ? teammateConversation.data?.conversation
+    : (primaryConversationData?.conversation ?? regularChatData.messages.data?.conversation);
   const isConversationInCurrentContext = useMemo(
     () =>
       (activeConversationContext?.contextType === currentContextType ||
@@ -530,13 +554,6 @@ export function IntegratedChatPanel({
     [showFailedBanner, failedRun]
   );
 
-  const {
-    messages: activeConversation,
-    sendMessage,
-    switchConversation: handleSelectConversation,
-    createConversation: handleNewConversation,
-  } = regularChatData;
-
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // File attachments - use activeConversationId for attachment association
@@ -547,21 +564,6 @@ export function IntegratedChatPanel({
     removeAttachment,
     clearAttachments,
   } = useChatAttachments(activeConversationId ?? "");
-
-  // Load teammate conversation messages when on a teammate tab
-  const teammateConversation = useConversation(teammateConversationId);
-  const ideationConversationHistory = useConversationHistoryWindow(
-    ideationSessionId && !isTeammateTab ? activeConversationId : null,
-    {
-      enabled: !!ideationSessionId && !isTeammateTab,
-      pageSize: 40,
-    }
-  );
-
-  const primaryConversationData =
-    ideationSessionId && !isTeammateTab
-      ? ideationConversationHistory.data
-      : activeConversation.data;
 
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
