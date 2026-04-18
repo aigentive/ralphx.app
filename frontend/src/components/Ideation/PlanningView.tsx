@@ -204,12 +204,11 @@ export function PlanningView({
   const { data: allSessionsForBreadcrumb = [] } = useIdeationSessions(projectIdForSessions);
   const { data: projectTasks = [] } = useTasks(projectIdForSessions);
 
-  const sourceTaskTitle = useMemo(() => {
-    if (!session?.sourceTaskId) return null;
-    return projectTasks.find((task) => task.id === session.sourceTaskId)?.title ?? null;
-  }, [projectTasks, session?.sourceTaskId]);
+  const sourceTaskTitle = session?.sourceTaskId
+    ? projectTasks.find((task) => task.id === session.sourceTaskId)?.title ?? null
+    : null;
 
-  const sourceContextLabel = useMemo(() => {
+  const sourceContextLabel = (() => {
     switch (session?.sourceContextType) {
       case "task_execution":
         return "Execution follow-up";
@@ -222,7 +221,7 @@ export function PlanningView({
       default:
         return session?.sourceContextType ? "Follow-up" : null;
     }
-  }, [session?.sourceContextType]);
+  })();
 
   const canReopen = isReadOnly && (session?.status === "accepted" || session?.status === "archived");
   const canResetReaccept = session?.status === "accepted";

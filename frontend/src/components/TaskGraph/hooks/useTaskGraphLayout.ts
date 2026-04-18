@@ -1077,6 +1077,7 @@ export function useTaskGraphLayout(
   const layoutCache = useRef<CachedLayout | null>(null);
 
   // Compute layout using cache when structure is unchanged
+  /* eslint-disable react-hooks/refs -- layoutCache is intentionally read during render to reuse structural dagre output and avoid graph relayout churn */
   const layout = useMemo(() => {
     if (graphNodes.length === 0) {
       return { nodes: [], edges: [], groupNodes: [] };
@@ -1116,6 +1117,7 @@ export function useTaskGraphLayout(
     onCancelAll,
     planBranchMap,
   ]);
+  /* eslint-enable react-hooks/refs */
 
   return layout;
 }
