@@ -42,11 +42,23 @@
   /* ============================================================================
    * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md)
    * Color is always paired with icon + text label — see §4 rule 1.
+   * Each state carries a trio: base / muted bg / border.
    * ============================================================================ */
-  --status-success: var(--cvd-bluish-green);
-  --status-warning: var(--cvd-yellow);
-  --status-error:   var(--cvd-vermillion);
-  --status-info:    var(--cvd-blue);
+  --status-success:        var(--cvd-bluish-green);
+  --status-success-muted:  hsla(160 100% 31% / 0.10);
+  --status-success-border: hsla(160 100% 31% / 0.30);
+
+  --status-warning:        var(--cvd-yellow);
+  --status-warning-muted:  hsla(51 100% 57% / 0.10);
+  --status-warning-border: hsla(51 100% 57% / 0.30);
+
+  --status-error:          var(--cvd-vermillion);
+  --status-error-muted:    hsla(26 100% 42% / 0.10);
+  --status-error-border:   hsla(26 100% 42% / 0.30);
+
+  --status-info:           var(--cvd-blue);
+  --status-info-muted:     hsla(202 100% 35% / 0.10);
+  --status-info-border:    hsla(202 100% 35% / 0.30);
 
   /* ============================================================================
    * Borders

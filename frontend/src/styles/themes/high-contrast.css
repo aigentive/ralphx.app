@@ -35,10 +35,21 @@
   --accent-border:    hsla(50 100% 50% / 0.5);
 
   /* Status — bright + always paired with icons */
-  --status-success: var(--hc-green);
-  --status-warning: var(--yellow-500);
-  --status-error:   var(--hc-red);
-  --status-info:    var(--hc-sky);
+  --status-success:        var(--hc-green);
+  --status-success-muted:  hsla(140 100% 50% / 0.18);
+  --status-success-border: hsla(140 100% 50% / 0.50);
+
+  --status-warning:        var(--yellow-500);
+  --status-warning-muted:  hsla(50 100% 50% / 0.20);
+  --status-warning-border: hsla(50 100% 50% / 0.50);
+
+  --status-error:          var(--hc-red);
+  --status-error-muted:    hsla(354 100% 60% / 0.18);
+  --status-error-border:   hsla(354 100% 60% / 0.50);
+
+  --status-info:           var(--hc-sky);
+  --status-info-muted:     hsla(200 100% 70% / 0.18);
+  --status-info-border:    hsla(200 100% 70% / 0.50);
 
   /* Borders — always solid white, thicker stroke width */
   --border-subtle:  var(--alpha-white-50);

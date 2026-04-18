@@ -79,11 +79,20 @@
    * hand-roll rgba() literals. */
   --alpha-black-60: hsla(0 0% 0% / 0.60);
   --alpha-black-30: hsla(0 0% 0% / 0.30);
+  --alpha-black-20: hsla(0 0% 0% / 0.20);
+  --alpha-white-70: hsla(0 0% 100% / 0.70);
+  --alpha-white-60: hsla(0 0% 100% / 0.60);
   --alpha-white-50: hsla(0 0% 100% / 0.50);
+  --alpha-white-40: hsla(0 0% 100% / 0.40);
+  --alpha-white-35: hsla(0 0% 100% / 0.35);
   --alpha-white-15: hsla(0 0% 100% / 0.15);
+  --alpha-white-10: hsla(0 0% 100% / 0.10);
   --alpha-white-8:  hsla(0 0% 100% / 0.08);
   --alpha-white-6:  hsla(0 0% 100% / 0.06);
+  --alpha-white-5:  hsla(0 0% 100% / 0.05);
   --alpha-white-4:  hsla(0 0% 100% / 0.04);
+  --alpha-white-3:  hsla(0 0% 100% / 0.03);
+  --alpha-white-2:  hsla(0 0% 100% / 0.02);
 
   /* ============================================================================
    * Typography primitives
