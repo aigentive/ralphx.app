@@ -39,12 +39,10 @@ jobs:
               - 'scripts/build-prod-release.sh'
               - 'scripts/render-homebrew-cask.sh'
             rust:
-              - '.github/workflows/ci.yml'
               - 'src-tauri/**'
               - 'rust-toolchain.toml'
               - 'scripts/validate_sqlite_migrations.py'
             frontend:
-              - '.github/workflows/ci.yml'
               - 'frontend/**'
 
       - name: Decide CI scope
