@@ -52,6 +52,8 @@ pub struct SendAgentMessageResponse {
     #[serde(default)]
     pub was_queued: bool,
     #[serde(default)]
+    pub queued_as_pending: bool,
+    #[serde(default)]
     pub queued_message_id: Option<String>,
 }
 
@@ -62,6 +64,7 @@ impl From<SendResult> for SendAgentMessageResponse {
             agent_run_id: result.agent_run_id,
             is_new_conversation: result.is_new_conversation,
             was_queued: result.was_queued,
+            queued_as_pending: result.queued_as_pending,
             queued_message_id: result.queued_message_id,
         }
     }
@@ -668,6 +671,7 @@ pub async fn send_agent_message(
                 agent_run_id: uuid::Uuid::new_v4().to_string(),
                 is_new_conversation: false,
                 was_queued: false,
+                queued_as_pending: false,
                 queued_message_id: None,
             });
         }

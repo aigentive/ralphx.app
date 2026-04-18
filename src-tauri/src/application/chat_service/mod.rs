@@ -1360,7 +1360,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         // 2. Get or create conversation (only reached when Gate 1 misses or fails).
         //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
         //    which is correct for new spawns.
-        let (mut conversation, _) = self
+        let (mut conversation, spawn_path_is_new_conversation) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
@@ -1618,7 +1618,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                                     return Ok(SendResult {
                                         conversation_id: conversation.id.as_str().to_string(),
                                         agent_run_id: agent_run_id.clone(),
-                                        is_new_conversation: false,
+                                        is_new_conversation: spawn_path_is_new_conversation,
                                         was_queued: true,
                                         queued_as_pending: true,
                                         queued_message_id: None,

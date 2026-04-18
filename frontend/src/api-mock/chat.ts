@@ -313,6 +313,7 @@ export async function mockSendAgentMessage(
     agentRunId: generateTestUuid(),
     isNewConversation: isNew,
     wasQueued: false,
+    queuedAsPending: false,
   };
 }
 

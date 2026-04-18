@@ -423,11 +423,18 @@ export function PlanningView({
   }, [session?.teamMode, session?.teamConfig?.maxTeammates, teamArtifacts.length]);
 
   // Verification tab visibility + badge state
-  const verificationStatus = session?.verificationStatus ?? "unverified";
-  const showVerificationTab = Boolean(
-    verificationStatus !== "unverified" || planArtifact
-  );
+  const rawVerificationStatus = session?.verificationStatus ?? "unverified";
+  const hasKnownPlan = Boolean(effectivePlanId ?? planArtifact);
+  const isTerminalVerificationStatus =
+    rawVerificationStatus !== "unverified" && rawVerificationStatus !== "reviewing";
   const isVerificationActive = (session?.verificationInProgress ?? false) || !!activeVerificationChildId;
+  const verificationStatus =
+    !hasKnownPlan && !isVerificationActive && isTerminalVerificationStatus
+      ? "unverified"
+      : rawVerificationStatus;
+  const showVerificationTab = Boolean(
+    verificationStatus !== "unverified" || hasKnownPlan
+  );
   const verificationBadge: "in_progress" | "verified" | "warning" | null = (() => {
     if (!session) return null;
     if (isVerificationActive) return "in_progress";

@@ -8,8 +8,12 @@ import type { ContextType } from "@/types/chat-conversation";
 // ============================================================================
 
 const mockInvalidateQueries = vi.fn();
+const mockSetQueryData = vi.fn();
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+  useQueryClient: () => ({
+    invalidateQueries: mockInvalidateQueries,
+    setQueryData: mockSetQueryData,
+  }),
 }));
 
 const mockActions = {
@@ -84,7 +88,13 @@ function setup(opts: SetupOptions = {}) {
     messageCount = 5,
   } = opts;
 
-  const mutateAsync = vi.fn().mockResolvedValue({ conversationId: "conv-1", agentRunId: "run-1", isNewConversation: false, wasQueued: false });
+  const mutateAsync = vi.fn().mockResolvedValue({
+    conversationId: "conv-1",
+    agentRunId: "run-1",
+    isNewConversation: false,
+    wasQueued: false,
+    queuedAsPending: false,
+  });
 
   const { result } = renderHook(() =>
     useChatActions({
@@ -113,6 +123,7 @@ describe("useChatActions", () => {
       agentRunId: "run-1",
       isNewConversation: false,
       wasQueued: false,
+      queuedAsPending: false,
     });
     mockDeleteQueuedAgentMessage.mockResolvedValue(true);
     mockStopAgent.mockResolvedValue(true);
@@ -224,6 +235,45 @@ describe("useChatActions", () => {
       });
 
       expect(mockSpawnSessionNamer).not.toHaveBeenCalled();
+    });
+
+    it("ideation seeds waiting-for-capacity state immediately when queued as pending", async () => {
+      const queuedAsPendingResult = {
+        conversationId: "conv-pending",
+        agentRunId: "run-pending",
+        isNewConversation: true,
+        wasQueued: true,
+        queuedAsPending: true,
+        queuedMessageId: undefined,
+      };
+      const { result, mutateAsync } = setup({
+        contextType: "ideation",
+        contextId: "session-1",
+        storeContextKey: "ideation:session-1",
+        ideationSessionId: "session-1",
+        messageCount: 0,
+      });
+      mutateAsync.mockResolvedValue(queuedAsPendingResult);
+
+      await act(async () => {
+        await result.current.handleSend("queued first prompt");
+      });
+
+      expect(mockActions.setActiveConversation).toHaveBeenCalledWith(
+        "ideation:session-1",
+        "conv-pending",
+      );
+      expect(mockSetQueryData).toHaveBeenCalledWith(
+        ["child-session-status", "session-1"],
+        {
+          session_id: "session-1",
+          title: null,
+          agent_state: { estimated_status: "idle" },
+          recent_messages: [],
+          pending_initial_prompt: "queued first prompt",
+          lastEffectiveModel: null,
+        },
+      );
     });
   });
 

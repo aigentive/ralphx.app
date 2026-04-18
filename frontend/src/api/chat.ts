@@ -718,6 +718,7 @@ export interface SendAgentMessageResult {
   agentRunId: string;
   isNewConversation: boolean;
   wasQueued: boolean;
+  queuedAsPending: boolean;
   queuedMessageId?: string | null | undefined;
 }
 
@@ -726,6 +727,7 @@ const SendAgentMessageResponseSchema = z.object({
   agent_run_id: z.string(),
   is_new_conversation: z.boolean(),
   was_queued: z.boolean().optional().default(false),
+  queued_as_pending: z.boolean().optional().default(false),
   queued_message_id: z.string().optional().nullable(),
 });
 
@@ -737,6 +739,7 @@ function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): Se
     agentRunId: raw.agent_run_id,
     isNewConversation: raw.is_new_conversation,
     wasQueued: raw.was_queued,
+    queuedAsPending: raw.queued_as_pending,
     queuedMessageId: raw.queued_message_id,
   };
 }

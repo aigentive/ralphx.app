@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Upload } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -62,6 +62,10 @@ export function PlanTabContent({
   // Read from store — efficient (Zustand only re-renders on actual changes)
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const setPlanArtifact = useIdeationStore((state) => state.setPlanArtifact);
+  const expectedPlanArtifactId =
+    session.planArtifactId ?? session.inheritedPlanArtifactId ?? null;
+  const isPlanArtifactLoading =
+    expectedPlanArtifactId != null && planArtifact?.id !== expectedPlanArtifactId;
 
   // Reset editing mode when plan changes externally
   useEffect(() => {
@@ -117,8 +121,42 @@ export function PlanTabContent({
         </div>
       )}
 
+      {isPlanArtifactLoading && (
+        <div
+          data-testid="plan-loading-state"
+          className="mb-4 rounded-xl px-4 py-5"
+          style={{
+            background: "hsla(220 10% 100% / 0.04)",
+            border: "1px solid hsla(220 10% 100% / 0.08)",
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full"
+              style={{
+                background: "hsla(14 100% 60% / 0.12)",
+                border: "1px solid hsla(14 100% 60% / 0.2)",
+              }}
+            >
+              <Loader2
+                className="h-4 w-4 animate-spin"
+                style={{ color: "hsl(14 100% 60%)" }}
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>
+                Loading plan
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+                RalphX already linked this session to a plan artifact. The plan tab will populate as soon as that artifact finishes loading.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import plan button — shown when no plan artifact but proposals exist */}
-      {!planArtifact && proposals.length > 0 && (
+      {!isPlanArtifactLoading && !planArtifact && proposals.length > 0 && (
         <Button
           variant="outline"
           onClick={onImportPlan}
@@ -144,7 +182,7 @@ export function PlanTabContent({
       )}
 
       {/* Plan display / editor */}
-      {planArtifact && (
+      {!isPlanArtifactLoading && planArtifact && (
         <div className="mb-4">
           {isEditing ? (
             <PlanEditor
@@ -188,7 +226,7 @@ export function PlanTabContent({
       />
 
       {/* Empty state — shown when no plan and no proposals */}
-      {!planArtifact && proposals.length === 0 && (
+      {!isPlanArtifactLoading && !planArtifact && proposals.length === 0 && (
         <PlanEmptyState onBrowse={onImportPlan} />
       )}
     </div>

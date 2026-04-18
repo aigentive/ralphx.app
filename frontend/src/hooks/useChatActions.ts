@@ -110,6 +110,33 @@ export function useChatActions({
           if (result.wasQueued && result.queuedMessageId != null) {
             queueMessage(storeContextKey, content, result.queuedMessageId);
           }
+          if (
+            contextType === "ideation" &&
+            ideationSessionId &&
+            !target &&
+            result.conversationId &&
+            (result.isNewConversation || result.queuedAsPending)
+          ) {
+            setActiveConversation(storeContextKey, result.conversationId);
+          }
+          if (
+            contextType === "ideation" &&
+            ideationSessionId &&
+            !target &&
+            result.queuedAsPending
+          ) {
+            queryClient.setQueryData(
+              ["child-session-status", ideationSessionId],
+              {
+                session_id: ideationSessionId,
+                title: null,
+                agent_state: { estimated_status: "idle" as const },
+                recent_messages: [],
+                pending_initial_prompt: content,
+                lastEffectiveModel: null,
+              },
+            );
+          }
         }
 
         // Trigger session auto-naming on first ideation message (fire-and-forget)

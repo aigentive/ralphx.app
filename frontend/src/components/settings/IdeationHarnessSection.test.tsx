@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -65,6 +65,39 @@ const globalLanes: AgentHarnessLaneView[] = [
 
 const updateLane = vi.fn();
 
+if (!HTMLElement.prototype.hasPointerCapture) {
+  Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", {
+    value: () => false,
+    writable: true,
+  });
+}
+
+if (!HTMLElement.prototype.setPointerCapture) {
+  Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
+    value: vi.fn(),
+    writable: true,
+  });
+}
+
+if (!HTMLElement.prototype.releasePointerCapture) {
+  Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", {
+    value: vi.fn(),
+    writable: true,
+  });
+}
+
+if (!HTMLElement.prototype.scrollIntoView) {
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    value: vi.fn(),
+    writable: true,
+  });
+}
+
+function openSelect(testId: string) {
+  const trigger = screen.getByTestId(testId);
+  fireEvent.keyDown(trigger, { key: "ArrowDown", code: "ArrowDown" });
+}
+
 describe("IdeationHarnessSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,52 +139,53 @@ describe("IdeationHarnessSection", () => {
     expect(screen.queryByText("Execution Worker")).not.toBeInTheDocument();
   });
 
-  it("saves merged lane settings when a model field changes", () => {
+  it("allows switching model presets without clearing the current value first", async () => {
     render(<IdeationHarnessSection />);
 
-    const modelInput = screen.getByDisplayValue("gpt-5.4");
-    fireEvent.change(modelInput, { target: { value: "gpt-5.4.1" } });
-    fireEvent.blur(modelInput);
+    openSelect("model-ideation_primary");
+    fireEvent.click(screen.getByRole("option", { name: "gpt-5.4-mini" }));
 
-    expect(updateLane).toHaveBeenCalledWith(
-      {
-        lane: "ideation_primary",
-        harness: "codex",
-        model: "gpt-5.4.1",
-        effort: "xhigh",
-        approvalPolicy: "never",
-        sandboxMode: "danger-full-access",
-      },
-      { onError: expect.any(Function) },
-    );
+    await waitFor(() => {
+      expect(updateLane).toHaveBeenCalledWith(
+        {
+          lane: "ideation_primary",
+          harness: "codex",
+          model: "gpt-5.4-mini",
+          effort: "xhigh",
+          approvalPolicy: "never",
+          sandboxMode: "danger-full-access",
+        },
+        { onError: expect.any(Function) },
+      );
+    });
   });
 
-  it("shows Codex model presets in dropdown when input is cleared and focused", () => {
+  it("shows Codex model presets in the model select", async () => {
     render(<IdeationHarnessSection />);
 
-    const modelInput = screen.getByDisplayValue("gpt-5.4");
-    // Clear the input to see all presets
-    fireEvent.change(modelInput, { target: { value: "" } });
-    fireEvent.focus(modelInput);
+    openSelect("model-ideation_primary");
 
-    expect(screen.getByText("gpt-5.4 (Current)")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.3-codex")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.3-codex-spark")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gpt-5.4 (Current)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gpt-5.4-mini" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gpt-5.3-codex" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gpt-5.3-codex-spark" })).toBeInTheDocument();
   });
 
-  it("shows Claude model presets for Claude harness lanes", () => {
+  it("shows Claude model presets for Claude harness lanes", async () => {
     render(<IdeationHarnessSection />);
 
-    // ideation_verifier is Claude harness with null model
-    const claudeModelInput = screen.getByPlaceholderText("sonnet");
-    expect(claudeModelInput).toBeInTheDocument();
-    fireEvent.change(claudeModelInput, { target: { value: "" } });
-    fireEvent.focus(claudeModelInput);
+    openSelect("model-ideation_verifier");
 
-    expect(screen.getByText("sonnet")).toBeInTheDocument();
-    expect(screen.getByText("opus")).toBeInTheDocument();
-    expect(screen.getByText("haiku")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "sonnet" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "opus" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "haiku" })).toBeInTheDocument();
+  });
+
+  it("exposes explicit accessible labels for provider and model controls", () => {
+    render(<IdeationHarnessSection />);
+
+    expect(screen.getByLabelText("Primary Ideation provider")).toBeInTheDocument();
+    expect(screen.getByLabelText("Primary Ideation model")).toBeInTheDocument();
   });
 
   it("shows effort options with clearer labels including Default and Maximum", () => {

@@ -722,7 +722,7 @@ describe("PlanningView", () => {
       render(
         <PlanningView
           {...defaultProps}
-          session={{ ...mockSession, verificationStatus: "verified" }}
+          session={{ ...mockSession, verificationStatus: "verified", planArtifactId: "plan-1" }}
         />
       );
       expect(screen.getByTestId("tab-verification")).toBeInTheDocument();
@@ -732,7 +732,7 @@ describe("PlanningView", () => {
       render(
         <PlanningView
           {...defaultProps}
-          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+          session={{ ...mockSession, verificationStatus: "needs_revision", planArtifactId: "plan-1" }}
         />
       );
       expect(screen.getByTestId("tab-verification")).toBeInTheDocument();
@@ -767,17 +767,33 @@ describe("PlanningView", () => {
       render(
         <PlanningView
           {...defaultProps}
-          session={{ ...mockSession, verificationStatus: "verified" }}
+          session={{ ...mockSession, verificationStatus: "verified", planArtifactId: "plan-1" }}
         />
       );
       expect(screen.getByTestId("verification-badge-verified")).toBeInTheDocument();
+    });
+
+    it("does not show a verified badge when no plan exists and verification is not active", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{
+            ...mockSession,
+            verificationStatus: "verified",
+            planArtifactId: null,
+            inheritedPlanArtifactId: null,
+            verificationInProgress: false,
+          }}
+        />
+      );
+      expect(screen.queryByTestId("verification-badge-verified")).not.toBeInTheDocument();
     });
 
     it("shows warning badge when verificationStatus is needs_revision", () => {
       render(
         <PlanningView
           {...defaultProps}
-          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+          session={{ ...mockSession, verificationStatus: "needs_revision", planArtifactId: "plan-1" }}
         />
       );
       expect(screen.getByTestId("verification-badge-warning")).toBeInTheDocument();
@@ -787,7 +803,7 @@ describe("PlanningView", () => {
       render(
         <PlanningView
           {...defaultProps}
-          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+          session={{ ...mockSession, verificationStatus: "needs_revision", planArtifactId: "plan-1" }}
         />
       );
       // Plan tab is active by default — badge should still be visible in the tab bar
@@ -851,7 +867,11 @@ describe("PlanningView", () => {
 
     it("preserves verification child routing across session switches", async () => {
       const user = userEvent.setup();
-      const verificationSession = { ...mockSession, verificationStatus: "verified" as const };
+      const verificationSession = {
+        ...mockSession,
+        verificationStatus: "verified" as const,
+        planArtifactId: "plan-1",
+      };
       useIdeationStore.setState({
         lastVerificationChildId: { "session-1": "child-session-99" },
         activeVerificationChildId: { "session-1": null },
@@ -909,7 +929,7 @@ describe("PlanningView", () => {
         render(
           <PlanningView
             {...defaultProps}
-            session={{ ...mockSession, verificationStatus: "verified" }}
+            session={{ ...mockSession, verificationStatus: "verified", planArtifactId: "plan-1" }}
           />
         );
       });
