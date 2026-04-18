@@ -1,115 +1,76 @@
-/**
- * Dark theme — activated by `data-theme="dark"` on <html>.
- *
- * RalphX's canonical / default theme. Defined here as an explicit theme
- * override (same shape as light.css / high-contrast.css) so Vite/Tailwind
- * treats it predictably across HMR reloads. Previously these tokens lived
- * on `:root` in semantic.css, but the Vite+Tailwind v4 dev pipeline was
- * intermittently dropping that block while still loading primitives.css
- * and light.css — leaving Dark UIs unstyled. Being explicit here removes
- * the ambiguity.
- *
- * Spec: specs/design/styleguide.md, specs/design/theme-architecture.md
- */
-
 [data-theme="dark"] {
-  /* Backgrounds */
-  --bg-base:          var(--gray-975);
-  --bg-surface:       var(--gray-950);
-  --bg-elevated:      var(--gray-925);
-  --bg-hover:         var(--gray-850);
-  --bg-surface-hover: var(--bg-hover);
-
-  /* Text */
-  --text-primary:   hsl(220 10% 90%);
+  --bg-base: var(--gray-975);
+  --bg-surface: var(--gray-950);
+  --bg-elevated: var(--gray-925);
+  --bg-hover: var(--gray-850);
+  --bg-surface-hover: var(--gray-850);
+  --text-primary: hsl(220 10% 90%);
   --text-secondary: var(--gray-500);
-  --text-muted:     var(--gray-600);
-  --text-inverse:   hsl(220 10% 6%);
-
-  /* Accent */
-  --accent-primary:   var(--orange-500);
+  --text-muted: var(--gray-600);
+  --text-inverse: hsl(220 10% 6%);
+  --accent-primary: var(--orange-500);
   --accent-secondary: var(--amber-500);
-  --accent-hover:     var(--orange-600);
-  --accent-muted:     hsla(14 100% 60% / 0.15);
-  --accent-border:    hsla(14 100% 60% / 0.25);
-  --accent-strong:    color-mix(in srgb, var(--accent-primary) 50%, transparent);
-
-  /* Status */
-  --status-success:        var(--cvd-bluish-green);
-  --status-success-muted:  color-mix(in srgb, var(--status-success) 10%, transparent);
-  --status-success-border: color-mix(in srgb, var(--status-success) 30%, transparent);
-  --status-success-strong: color-mix(in srgb, var(--status-success) 50%, transparent);
-
-  --status-warning:        var(--cvd-yellow);
-  --status-warning-muted:  color-mix(in srgb, var(--status-warning) 10%, transparent);
-  --status-warning-border: color-mix(in srgb, var(--status-warning) 30%, transparent);
-  --status-warning-strong: color-mix(in srgb, var(--status-warning) 50%, transparent);
-
-  --status-error:          var(--cvd-vermillion);
-  --status-error-muted:    color-mix(in srgb, var(--status-error) 10%, transparent);
-  --status-error-border:   color-mix(in srgb, var(--status-error) 30%, transparent);
-  --status-error-strong:   color-mix(in srgb, var(--status-error) 50%, transparent);
-
-  --status-info:           var(--cvd-blue);
-  --status-info-muted:     color-mix(in srgb, var(--status-info) 10%, transparent);
-  --status-info-border:    color-mix(in srgb, var(--status-info) 30%, transparent);
-  --status-info-strong:    color-mix(in srgb, var(--status-info) 50%, transparent);
-
-  /* Borders */
-  --border-subtle:  var(--gray-900);
+  --accent-hover: var(--orange-600);
+  --accent-muted: hsla(14 100% 60% / 0.15);
+  --accent-border: hsla(14 100% 60% / 0.25);
+  --accent-strong: hsla(14 100% 60% / 0.5);
+  --status-success: var(--cvd-bluish-green);
+  --status-success-muted: hsla(164 100% 31% / 0.15);
+  --status-success-border: hsla(164 100% 31% / 0.35);
+  --status-success-strong: hsla(164 100% 31% / 0.55);
+  --status-warning: var(--cvd-yellow);
+  --status-warning-muted: hsla(55 85% 60% / 0.15);
+  --status-warning-border: hsla(55 85% 60% / 0.35);
+  --status-warning-strong: hsla(55 85% 60% / 0.55);
+  --status-error: var(--cvd-vermillion);
+  --status-error-muted: hsla(27 100% 42% / 0.15);
+  --status-error-border: hsla(27 100% 42% / 0.35);
+  --status-error-strong: hsla(27 100% 42% / 0.55);
+  --status-info: var(--cvd-blue);
+  --status-info-muted: hsla(202 100% 35% / 0.15);
+  --status-info-border: hsla(202 100% 35% / 0.35);
+  --status-info-strong: hsla(202 100% 35% / 0.55);
+  --border-subtle: var(--gray-900);
   --border-default: var(--gray-800);
-  --border-focus:   var(--blue-500);
+  --border-focus: var(--blue-500);
   --border-width-default: 1px;
-  --border-width-focus:   2px;
-
-  /* Overlays */
-  --overlay-faint:     var(--alpha-white-4);
-  --overlay-weak:      var(--alpha-white-6);
-  --overlay-moderate:  var(--alpha-white-10);
-  --overlay-scrim:     var(--alpha-black-30);
+  --border-width-focus: 2px;
+  --overlay-faint: hsla(0 0% 100% / 0.04);
+  --overlay-weak: hsla(0 0% 100% / 0.06);
+  --overlay-moderate: hsla(0 0% 100% / 0.10);
+  --overlay-scrim: hsla(0 0% 0% / 0.30);
   --overlay-scrim-med: hsla(0 0% 0% / 0.50);
-  --overlay-scrim-deep: var(--alpha-black-60);
-
-  /* Focus + selection */
+  --overlay-scrim-deep: hsla(0 0% 0% / 0.60);
   --focus-ring: hsla(220 80% 60% / 0.5);
-  --selection-bg:   hsla(220 60% 50% / 0.20);
+  --selection-bg: hsla(220 60% 50% / 0.20);
   --selection-text: hsl(220 80% 70%);
-
-  /* Nav active */
-  --nav-active-bg:   var(--color-white);
+  --nav-active-bg: var(--color-white);
   --nav-active-text: hsl(220 10% 6%);
-
-  /* shadcn bridge */
-  --background:         var(--bg-base);
-  --foreground:         var(--text-primary);
-  --card:               var(--bg-elevated);
-  --card-foreground:    var(--text-primary);
-  --popover:            var(--bg-elevated);
-  --popover-foreground: var(--text-primary);
-  --primary:            var(--accent-primary);
+  --background: var(--gray-975);
+  --foreground: hsl(220 10% 90%);
+  --card: var(--gray-925);
+  --card-foreground: hsl(220 10% 90%);
+  --popover: var(--gray-925);
+  --popover-foreground: hsl(220 10% 90%);
+  --primary: var(--orange-500);
   --primary-foreground: var(--color-white);
-  --secondary:            var(--bg-surface);
-  --secondary-foreground: var(--text-primary);
-  --muted:            var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-  --accent:            var(--bg-hover);
-  --accent-foreground: var(--text-primary);
-  --destructive:            var(--status-error);
+  --secondary: var(--gray-950);
+  --secondary-foreground: hsl(220 10% 90%);
+  --muted: var(--gray-950);
+  --muted-foreground: var(--gray-600);
+  --accent: var(--gray-850);
+  --accent-foreground: hsl(220 10% 90%);
+  --destructive: var(--cvd-vermillion);
   --destructive-foreground: var(--color-white);
-  --border: var(--border-default);
-  --input:  var(--border-default);
-  --ring:   var(--accent-primary);
-  --chart-1: var(--accent-primary);
-  --chart-2: var(--status-success);
-  --chart-3: var(--status-info);
-  --chart-4: var(--accent-secondary);
-  --chart-5: var(--status-warning);
-  --sidebar:                       var(--bg-surface);
-  --sidebar-foreground:            var(--text-primary);
-  --sidebar-primary:               var(--accent-primary);
-  --sidebar-primary-foreground:    var(--color-white);
-  --sidebar-accent:                var(--bg-hover);
-  --sidebar-accent-foreground:     var(--text-primary);
-  --sidebar-border:                var(--border-subtle);
-  --sidebar-ring:                  var(--accent-primary);
+  --border: var(--gray-800);
+  --input: var(--gray-800);
+  --ring: var(--orange-500);
+  --sidebar: var(--gray-950);
+  --sidebar-foreground: hsl(220 10% 90%);
+  --sidebar-primary: var(--orange-500);
+  --sidebar-primary-foreground: var(--color-white);
+  --sidebar-accent: var(--gray-850);
+  --sidebar-accent-foreground: hsl(220 10% 90%);
+  --sidebar-border: var(--gray-900);
+  --sidebar-ring: var(--orange-500);
 }
