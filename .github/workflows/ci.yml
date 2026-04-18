@@ -39,7 +39,7 @@ jobs:
 
       - name: Run IPC contract tests
         run: |
-          timeout 600 cargo test --lib --manifest-path src-tauri/Cargo.toml ipc_contract 2>&1
+          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--lib", "--manifest-path", "src-tauri/Cargo.toml", "ipc_contract"], check=True, timeout=600)'
 
       - name: Run all Rust lib tests
         run: |
@@ -47,7 +47,7 @@ jobs:
 
       - name: Run Rust doctests
         run: |
-          timeout 600 cargo test --manifest-path src-tauri/Cargo.toml --doc
+          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--doc"], check=True, timeout=600)'
 
   frontend-tests:
     name: Frontend Tests
