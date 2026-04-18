@@ -72,13 +72,13 @@ export function MethodologiesPanel({
               className="cursor-pointer transition-all duration-180 hover:-translate-y-px"
               style={{
                 background: methodology.isActive
-                  ? "rgba(255,107,53,0.08)"
-                  : "rgba(255,255,255,0.04)",
+                  ? "var(--accent-muted)"
+                  : "var(--alpha-white-4)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
                 border: methodology.isActive
-                  ? "1px solid rgba(255,107,53,0.25)"
-                  : "1px solid rgba(255,255,255,0.08)",
+                  ? "1px solid var(--accent-border)"
+                  : "1px solid var(--border-subtle)",
                 boxShadow: methodology.isActive
                   ? "0 0 0 1px rgba(255,107,53,0.15), 0 2px 8px rgba(0,0,0,0.15)"
                   : "0 1px 3px rgba(0,0,0,0.12)",

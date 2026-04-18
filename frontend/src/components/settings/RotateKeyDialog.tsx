@@ -107,7 +107,7 @@ export function RotateKeyDialog({
         className="max-w-md"
         style={{
           background: "var(--bg-elevated)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
@@ -116,8 +116,8 @@ export function RotateKeyDialog({
             <div
               className="p-2 rounded-lg shrink-0"
               style={{
-                background: "rgba(255,107,53,0.1)",
-                border: "1px solid rgba(255,107,53,0.2)",
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent-border)",
               }}
             >
               <RotateCcw className="h-5 w-5 text-[var(--accent-primary)]" />
@@ -143,8 +143,8 @@ export function RotateKeyDialog({
               <div
                 className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
                 style={{
-                  background: "rgba(255,107,53,0.08)",
-                  border: "1px solid rgba(255,107,53,0.25)",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-border)",
                 }}
               >
                 <AlertTriangle
@@ -180,8 +180,8 @@ export function RotateKeyDialog({
               <div
                 className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
                 style={{
-                  background: "rgba(255,107,53,0.08)",
-                  border: "1px solid rgba(255,107,53,0.25)",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-border)",
                 }}
               >
                 <AlertTriangle
@@ -199,8 +199,8 @@ export function RotateKeyDialog({
                 <div
                   className="flex-1 px-3 py-2 rounded-md font-mono text-sm text-[var(--text-primary)] break-all select-all"
                   style={{
-                    background: "rgba(0,0,0,0.3)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "var(--alpha-black-30)",
+                    border: "1px solid var(--border-subtle)",
                   }}
                 >
                   {rawKey}
@@ -210,7 +210,7 @@ export function RotateKeyDialog({
                   size="icon"
                   onClick={handleCopy}
                   data-testid="copy-rotated-key-button"
-                  className="shrink-0 h-9 w-9 hover:bg-[var(--bg-surface-hover)]"
+                  className="shrink-0 h-9 w-9 hover:bg-[var(--bg-hover)]"
                   title="Copy to clipboard"
                 >
                   {copied ? (

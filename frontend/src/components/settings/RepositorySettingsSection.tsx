@@ -60,7 +60,7 @@ function SubsectionLabel({
       {hint && (
         <span
           className="text-[9px] uppercase tracking-wider text-[var(--text-muted)] rounded px-1.5 py-0.5"
-          style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ border: "1px solid var(--border-subtle)" }}
         >
           {hint}
         </span>
@@ -115,7 +115,7 @@ function TextSettingRow({
             size="sm"
             onClick={onAction}
             disabled={disabled || actionLoading}
-            className="h-8 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="h-8 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             title={actionLabel}
           >
             {actionLoading ? (
@@ -331,7 +331,7 @@ export function RepositorySettingsSection() {
       <div
         className="rounded-md -mx-2 px-2"
         style={{
-          background: "rgba(255,255,255,0.02)",
+          background: "var(--alpha-white-4)",
           border: "1px solid rgba(255,255,255,0.05)",
         }}
       >

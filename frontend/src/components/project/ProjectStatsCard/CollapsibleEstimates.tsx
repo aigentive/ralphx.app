@@ -57,7 +57,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
         {!isDefault && (
           <span
             className="ml-auto text-[10px] px-1 rounded"
-            style={{ backgroundColor: "rgba(255,107,53,0.15)", color: "#ff6b35" }}
+            style={{ backgroundColor: "var(--accent-muted)", color: "#ff6b35" }}
           >
             calibrated
           </span>
@@ -89,7 +89,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
           {showFormula && (
             <div
               className="rounded-lg p-2.5 space-y-3 text-xs text-[var(--text-muted)]"
-              style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+              style={{ backgroundColor: "var(--alpha-white-4)" }}
               data-testid="formula-content"
             >
               {/* Formula display */}

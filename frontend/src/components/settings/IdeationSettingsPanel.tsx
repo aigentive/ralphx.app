@@ -51,7 +51,7 @@ function SettingRow({
     <div
       className={cn(
         "flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors",
-        !isDisabled && "hover:bg-[rgba(45,45,45,0.3)]",
+        !isDisabled && "hover:bg-[var(--bg-hover)]",
         isDisabled && "opacity-50"
       )}
     >

@@ -161,7 +161,7 @@ function LoadingSkeleton() {
         />
         <div
           className="h-10 rounded"
-          style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+          style={{ backgroundColor: "var(--alpha-white-4)" }}
         />
       </div>
       <div>
@@ -186,7 +186,7 @@ function LoadingSkeleton() {
             />
             <div
               className="h-8 rounded"
-              style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+              style={{ backgroundColor: "var(--alpha-white-4)" }}
             />
           </div>
         ))}
@@ -283,8 +283,8 @@ export function AuditTrailSidebar({
             style={{
               backgroundColor:
                 selectedPhaseId === null
-                  ? "rgba(255, 107, 53, 0.15)"
-                  : "rgba(255,255,255,0.04)",
+                  ? "var(--accent-muted)"
+                  : "var(--alpha-white-4)",
               color:
                 selectedPhaseId === null
                   ? "var(--accent-primary)"

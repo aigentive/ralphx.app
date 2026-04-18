@@ -65,7 +65,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
         <div
           className="flex items-center gap-4 px-3 py-1.5 text-[11px]"
           style={{
-            backgroundColor: "rgba(255,255,255,0.02)",
+            backgroundColor: "var(--alpha-white-4)",
             borderBottom: "1px solid rgba(255,255,255,0.04)",
           }}
         >

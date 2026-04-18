@@ -85,7 +85,7 @@ const NOTICE_STYLES: Record<
   },
   info: {
     wrapper:
-      "bg-[rgba(255,107,53,0.05)] border-[rgba(255,107,53,0.18)] text-[var(--text-secondary)]",
+      "bg-[var(--accent-muted)] border-[rgba(255,107,53,0.18)] text-[var(--text-secondary)]",
     icon: (
       <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent-primary)]" />
     ),

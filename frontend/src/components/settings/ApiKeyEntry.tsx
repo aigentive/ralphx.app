@@ -176,8 +176,8 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
           <div
             className="p-1.5 rounded-md shrink-0 mt-0.5"
             style={{
-              background: "rgba(255,107,53,0.08)",
-              border: "1px solid rgba(255,107,53,0.15)",
+              background: "var(--accent-muted)",
+              border: "1px solid var(--accent-border)",
             }}
           >
             <Key className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
@@ -208,7 +208,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
           onClick={() => setExpanded((v) => !v)}
           data-testid={`expand-key-${apiKey.id}`}
           aria-expanded={expanded}
-          className="h-7 w-7 p-0 ml-2 shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+          className="h-7 w-7 p-0 ml-2 shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
         >
           {expanded ? (
             <ChevronUp className="w-3.5 h-3.5" />
@@ -241,7 +241,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               onClick={handleSaveProjects}
               disabled={updateProjectsMutation.isPending}
               data-testid={`save-projects-${apiKey.id}`}
-              className="mt-2 h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1"
+              className="mt-2 h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] gap-1"
             >
               <Save className="w-3 h-3" />
               {updateProjectsMutation.isPending ? "Saving…" : "Save Projects"}
@@ -268,7 +268,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               onClick={handleSavePermissions}
               disabled={updatePermsMutation.isPending}
               data-testid={`save-permissions-${apiKey.id}`}
-              className="mt-2 h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1"
+              className="mt-2 h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] gap-1"
             >
               <Save className="w-3 h-3" />
               {updatePermsMutation.isPending ? "Saving…" : "Save Permissions"}
@@ -289,7 +289,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
               size="sm"
               onClick={() => setRotateOpen(true)}
               data-testid={`rotate-key-${apiKey.id}`}
-              className="h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1"
+              className="h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] gap-1"
             >
               <RotateCcw className="w-3 h-3" />
               Rotate Key
@@ -303,7 +303,7 @@ export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
                 variant="ghost"
                 size="sm"
                 onClick={handleCancelConfirm}
-                className="h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                className="h-7 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
               >
                 Cancel
               </Button>

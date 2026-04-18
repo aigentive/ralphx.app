@@ -471,7 +471,7 @@ export function StateTimelineNav({
         {/* History icon */}
         <div
           className="flex items-center gap-2 mr-2 pr-3"
-          style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ borderRight: "1px solid var(--border-subtle)" }}
         >
           <History
             className="w-4 h-4"
@@ -515,7 +515,7 @@ export function StateTimelineNav({
         {selectedState && (
           <div
             className="ml-auto pl-3 flex items-center gap-2"
-            style={{ borderLeft: "1px solid rgba(255,255,255,0.08)" }}
+            style={{ borderLeft: "1px solid var(--border-subtle)" }}
           >
             <span
               className="text-[10px] font-medium"

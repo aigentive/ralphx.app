@@ -57,8 +57,8 @@ function TemplateVariablesInfo() {
         <div
           className="mt-2 rounded-md px-3 py-2 space-y-1"
           style={{
-            background: "rgba(255,107,53,0.05)",
-            border: "1px solid rgba(255,107,53,0.15)",
+            background: "var(--accent-muted)",
+            border: "1px solid var(--accent-border)",
           }}
         >
           <div className="flex items-start gap-2">
@@ -157,7 +157,7 @@ export function ProjectAnalysisSection() {
           size="sm"
           onClick={handleReanalyze}
           disabled={isAnalyzing}
-          className="h-7 px-2.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+          className="h-7 px-2.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
         >
           {isAnalyzing ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
@@ -202,7 +202,7 @@ export function ProjectAnalysisSection() {
           variant="ghost"
           size="sm"
           onClick={() => editor.addEntry()}
-          className="mt-2 h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[rgba(255,107,53,0.08)]"
+          className="mt-2 h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[var(--accent-muted)]"
         >
           <Plus className="w-3.5 h-3.5 mr-1" />
           Add Entry
@@ -214,8 +214,8 @@ export function ProjectAnalysisSection() {
         <div
           className="mt-3 px-3 py-2 rounded-md flex items-center justify-between"
           style={{
-            background: "rgba(255,107,53,0.05)",
-            border: "1px solid rgba(255,107,53,0.15)",
+            background: "var(--accent-muted)",
+            border: "1px solid var(--accent-border)",
           }}
         >
           <span className="text-xs text-[var(--text-muted)]">Analysis settings have unsaved changes</span>
@@ -226,7 +226,7 @@ export function ProjectAnalysisSection() {
               size="sm"
               onClick={() => editor.resetAll()}
               disabled={editor.isSaving}
-              className="h-7 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+              className="h-7 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             >
               Reset All
             </Button>
@@ -235,7 +235,7 @@ export function ProjectAnalysisSection() {
               size="sm"
               onClick={() => editor.save()}
               disabled={editor.isSaving}
-              className="h-7 px-2 text-xs bg-[var(--accent-primary)] text-white hover:bg-[#ff5922]"
+              className="h-7 px-2 text-xs bg-[var(--accent-primary)] text-[var(--text-inverse)] hover:bg-[#ff5922]"
             >
               {editor.isSaving ? (
                 <Loader2 className="w-3 h-3 animate-spin mr-1" />

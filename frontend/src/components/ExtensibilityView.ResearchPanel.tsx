@@ -58,10 +58,10 @@ export function ResearchPanel() {
       <Card
         className="max-w-xl mx-auto"
         style={{
-          background: "rgba(255,255,255,0.04)",
+          background: "var(--alpha-white-4)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
           boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
         }}
       >
@@ -304,10 +304,10 @@ export function ResearchPanel() {
               data-testid="session-card"
               className="cursor-pointer transition-all duration-180 hover:-translate-y-px"
               style={{
-                background: "rgba(255,255,255,0.04)",
+                background: "var(--alpha-white-4)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                border: "1px solid var(--border-subtle)",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
               }}
             >

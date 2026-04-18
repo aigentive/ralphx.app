@@ -326,7 +326,7 @@ export function ActivityView({
         <div
           className="flex items-center justify-between px-4 py-3 border-b"
           style={{
-            background: "rgba(18,18,18,0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
             borderColor: "rgba(255,255,255,0.06)",
@@ -335,7 +335,7 @@ export function ActivityView({
           <div className="flex items-center gap-3">
             <div
               className="p-1.5 rounded-lg"
-              style={{ background: "rgba(255,107,53,0.1)", border: "1px solid rgba(255,107,53,0.2)" }}
+              style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-border)" }}
             >
               <Activity className="w-5 h-5 text-[var(--accent-primary)]" />
             </div>

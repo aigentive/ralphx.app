@@ -423,7 +423,7 @@ export function TaskDetailPanel({
                   className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   style={{
                     backgroundColor: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    border: "1px solid var(--border-subtle)",
                     color: "rgba(255,255,255,0.6)",
                   }}
                 >

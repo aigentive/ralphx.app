@@ -184,7 +184,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
           {!isDefault && (
             <span
               className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: "rgba(255,107,53,0.15)", color: ACCENT }}
+              style={{ backgroundColor: "var(--accent-muted)", color: ACCENT }}
             >
               customized
             </span>
@@ -223,7 +223,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
             <div className="flex flex-col gap-1">
               <div
                 className="w-full rounded-full overflow-hidden"
-                style={{ height: "6px", backgroundColor: "rgba(255,255,255,0.08)" }}
+                style={{ height: "6px", backgroundColor: "var(--border-subtle)" }}
               >
                 <div
                   className="h-full rounded-full"
@@ -263,7 +263,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                   {showCompression && (
                     <span
                       className="text-[10px] font-medium px-1.5 py-0.5 rounded-full ml-1"
-                      style={{ backgroundColor: "rgba(255,107,53,0.15)", color: ACCENT }}
+                      style={{ backgroundColor: "var(--accent-muted)", color: ACCENT }}
                     >
                       ~{compressionRatio}x compression
                     </span>
@@ -297,8 +297,8 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                     className="flex-1 flex flex-col items-center rounded-md px-2 py-1.5 transition-colors"
                     style={{
                       backgroundColor: isActive
-                        ? "rgba(255,107,53,0.15)"
-                        : "rgba(255,255,255,0.04)",
+                        ? "var(--accent-muted)"
+                        : "var(--alpha-white-4)",
                       color: isActive
                         ? ACCENT
                         : "rgba(255,255,255,0.5)",

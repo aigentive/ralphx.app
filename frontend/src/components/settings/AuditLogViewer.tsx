@@ -91,7 +91,7 @@ export function AuditLogViewer({ keyId }: AuditLogViewerProps) {
               <tr
                 key={entry.id}
                 data-testid={`audit-entry-${entry.id}`}
-                className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-surface-hover)] transition-colors"
+                className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors"
               >
                 {/* Tool name */}
                 <td className="py-1.5 pr-3 font-mono text-[var(--text-primary)] truncate max-w-[160px]">

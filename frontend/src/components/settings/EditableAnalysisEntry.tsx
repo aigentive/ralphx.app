@@ -84,7 +84,7 @@ function EditableField({
             size="sm"
             onClick={() => onChange(null)}
             disabled={disabled}
-            className="h-8 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="h-8 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             title="Clear"
           >
             <X className="w-3.5 h-3.5" />
@@ -150,7 +150,7 @@ function ArrayField({
               size="sm"
               onClick={() => onRemoveItem(i)}
               disabled={disabled}
-              className="h-8 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--status-error)] hover:bg-[rgba(239,68,68,0.08)]"
+              className="h-8 px-2 text-xs text-[var(--text-muted)] hover:text-[var(--status-error)] hover:bg-[var(--accent-muted)]"
               title="Remove"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -164,7 +164,7 @@ function ArrayField({
         size="sm"
         onClick={onAddItem}
         disabled={disabled}
-        className="h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[rgba(255,107,53,0.08)]"
+        className="h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[var(--accent-muted)]"
       >
         + Add {label === "Validate" ? "Command" : "Setup"}
       </Button>
@@ -198,13 +198,13 @@ export function EditableAnalysisEntry({
   return (
     <div
       className="rounded-md border border-[var(--border-subtle)] overflow-hidden"
-      style={{ background: "rgba(255,255,255,0.02)" }}
+      style={{ background: "var(--alpha-white-4)" }}
     >
       {/* Header */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[rgba(45,45,45,0.3)] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--bg-hover)] transition-colors"
       >
         {expanded ? (
           <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
@@ -305,7 +305,7 @@ export function EditableAnalysisEntry({
                 variant="ghost"
                 size="sm"
                 onClick={onResetEntry}
-                className="h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[rgba(255,107,53,0.08)]"
+                className="h-7 px-2 text-xs text-[var(--accent-primary)] hover:bg-[var(--accent-muted)]"
               >
                 Reset Entry
               </Button>

@@ -83,7 +83,7 @@ export function ApiKeysSection() {
               size="sm"
               onClick={() => setDialogOpen(true)}
               data-testid="create-api-key-button"
-              className="h-8 px-3 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1.5"
+              className="h-8 px-3 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] gap-1.5"
             >
               <Plus className="w-3.5 h-3.5" />
               Create API Key

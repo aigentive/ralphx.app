@@ -779,7 +779,7 @@ export function PlanningView({
                 position: "fixed",
                 inset: 0,
                 top: 56,
-                background: "rgba(0,0,0,0.3)",
+                background: "var(--alpha-black-30)",
                 zIndex: 34,
               }}
             />

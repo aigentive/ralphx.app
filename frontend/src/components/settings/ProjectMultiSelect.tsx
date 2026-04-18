@@ -70,8 +70,8 @@ export function ProjectMultiSelect({
               "flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors",
               disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
               isSelected
-                ? "bg-[rgba(255,107,53,0.08)] text-[var(--text-primary)]"
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]",
+                ? "bg-[var(--accent-muted)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
             ].join(" ")}
           >
             {/* Checkbox */}

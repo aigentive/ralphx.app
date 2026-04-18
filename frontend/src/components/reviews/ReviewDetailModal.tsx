@@ -473,7 +473,7 @@ export function ReviewDetailModal({
         )}
         style={{
           backgroundColor: "var(--bg-surface)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
@@ -481,7 +481,7 @@ export function ReviewDetailModal({
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{
             borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
         >
@@ -610,7 +610,7 @@ export function ReviewDetailModal({
             className="flex items-center justify-end gap-3 px-4 py-3 border-t shrink-0"
             style={{
               borderColor: "rgba(255,255,255,0.06)",
-              background: "rgba(18,18,18,0.85)",
+              background: "var(--bg-surface)",
             }}
           >
             {/* Error display */}
