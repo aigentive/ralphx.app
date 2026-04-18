@@ -1,0 +1,173 @@
+/**
+ * Tier 2 — Semantic tokens (aka system / alias tokens)
+ *
+ * Maps primitives to intent-based roles. This is the layer components
+ * consume via `bg-[var(--bg-surface)]` etc. Theme files override these same
+ * names for Light / High-Contrast variants.
+ *
+ * The values here are the DARK theme (RalphX default) — no theme attribute
+ * required. Light + HC themes live in `themes/*.css` and override via
+ * `[data-theme="..."]` selectors.
+ *
+ * Spec: specs/design/styleguide.md §1
+ */
+
+:root {
+  /* ============================================================================
+   * Backgrounds
+   * ============================================================================ */
+  --bg-base:          var(--gray-975);  /* app root */
+  --bg-surface:       var(--gray-950);  /* panels, sidebars */
+  --bg-elevated:      var(--gray-925);  /* cards, dropdowns */
+  --bg-hover:         var(--gray-850);  /* row hover */
+  --bg-surface-hover: var(--bg-hover);  /* deprecated alias — migrate callsites to --bg-hover */
+
+  /* ============================================================================
+   * Text
+   * ============================================================================ */
+  --text-primary:   hsl(220 10% 90%);
+  --text-secondary: var(--gray-500);
+  --text-muted:     var(--gray-600);
+  --text-inverse:   hsl(220 10% 6%); /* on accent/light surfaces (e.g. HC yellow btn) */
+
+  /* ============================================================================
+   * Accent (brand) — warm orange used sparingly
+   * ============================================================================ */
+  --accent-primary:   var(--orange-500);
+  --accent-secondary: var(--amber-500);
+  --accent-hover:     var(--orange-600);
+  --accent-muted:     hsla(14 100% 60% / 0.15); /* tinted bg for icon boxes */
+  --accent-border:    hsla(14 100% 60% / 0.25); /* subtle accent-tinted borders */
+
+  /* ============================================================================
+   * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md)
+   * Color is always paired with icon + text label — see §4 rule 1.
+   * ============================================================================ */
+  --status-success: var(--cvd-bluish-green);
+  --status-warning: var(--cvd-yellow);
+  --status-error:   var(--cvd-vermillion);
+  --status-info:    var(--cvd-blue);
+
+  /* ============================================================================
+   * Borders
+   * ============================================================================ */
+  --border-subtle:  var(--gray-900);
+  --border-default: var(--gray-800);
+  --border-focus:   var(--blue-500);
+
+  /* Theme-adjustable stroke widths — HC overrides to thicker values */
+  --border-width-default: 1px;
+  --border-width-focus:   2px;
+
+  /* ============================================================================
+   * Interactive / focus
+   * ============================================================================ */
+  --focus-ring: hsla(220 80% 60% / 0.5);
+
+  --selection-bg:   hsla(220 60% 50% / 0.20);
+  --selection-text: hsl(220 80% 70%);
+
+  /* ============================================================================
+   * Nav active surface — tokenised so each theme can pick its own flavour
+   *   Dark: white bg + dark text
+   *   Light: orange bg + white text
+   *   HC:    yellow bg + black text
+   * ============================================================================ */
+  --nav-active-bg:   var(--color-white);
+  --nav-active-text: hsl(220 10% 6%);
+
+  /* ============================================================================
+   * Animation keyframes — these are referenced by animation-pulse classes
+   * defined in globals.css
+   * ============================================================================ */
+  --animation-executing-pulse: executing-pulse 2s ease-in-out infinite;
+  --animation-attention-pulse: attention-pulse 1.5s ease-in-out infinite;
+  --animation-reviewing-pulse: reviewing-pulse 2s ease-in-out infinite;
+
+  /* ============================================================================
+   * shadcn/ui bridging — maps our semantic tokens to shadcn variable names.
+   * Components imported from shadcn read `--background`, `--primary` etc.
+   * ============================================================================ */
+  --radius: 0.5rem;
+
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--color-white);
+
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--color-white);
+
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+
+  --sidebar:                       var(--bg-surface);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent-primary);
+  --sidebar-primary-foreground:    var(--color-white);
+  --sidebar-accent:                var(--bg-hover);
+  --sidebar-accent-foreground:     var(--text-primary);
+  --sidebar-border:                var(--border-subtle);
+  --sidebar-ring:                  var(--accent-primary);
+}
+
+/* shadcn compatibility: .dark class and dark theme map to the same :root
+ * tokens — RalphX's default is dark. Present so any shadcn component wrapped
+ * in `<body class="dark">` still works. */
+.dark {
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--color-white);
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--color-white);
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+  --sidebar:                       var(--bg-surface);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent-primary);
+  --sidebar-primary-foreground:    var(--color-white);
+  --sidebar-accent:                var(--bg-hover);
+  --sidebar-accent-foreground:     var(--text-primary);
+  --sidebar-border:                var(--border-subtle);
+  --sidebar-ring:                  var(--accent-primary);
+}

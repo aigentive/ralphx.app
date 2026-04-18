@@ -1,12 +1,13 @@
-# RalphX Styleguide — Default Theme
+# RalphX Styleguide
 
-> **Initial spec — this will grow.** Single source of truth for tokens, components, and layout patterns across the app. Tokens live in `frontend/src/styles/globals.css`; this doc documents them with hex values + canonical usage.
+> **Single source of truth** for the design system — token architecture, component patterns, layout primitives, and contribution rules.
 >
-> **Theme note:** The values here describe the **Default** theme. A future **High-Contrast** theme remaps the same tokens — see `specs/design/themes/high-contrast.md` and `specs/design/theme-architecture.md`. Components must consume tokens, never hardcode hex/rgba, so a single component works in both themes.
+> **Themes:** Dark (default) · Light · High-Contrast. Components consume semantic tokens and stay theme-agnostic. See `specs/design/theme-architecture.md` and `specs/design/themes/high-contrast.md`.
 
 **Related docs:**
 - `specs/DESIGN.md` — product design spec
 - `specs/design/accessibility.md` — mandatory a11y rules
+- `specs/design/color-blind-design.md` — CVD rules + Okabe-Ito palette
 - `specs/design/theme-architecture.md` — multi-theme architecture
 - `specs/design/themes/high-contrast.md` — High-Contrast theme spec
 - `specs/design/macos-tahoe-style-guide.md` — aesthetic reference
@@ -16,9 +17,39 @@
 
 ---
 
+## 0. Token architecture (3 tiers)
+
+| Tier | File | Purpose | Named by | Consumers |
+|---|---|---|---|---|
+| **1. Primitives** | `src/styles/tokens/primitives.css` | Raw palette scales, spacing, radii, shadows, typography | **Value** (`--gray-925`, `--orange-500`, `--cvd-bluish-green`) | Semantic layer only — never by components |
+| **2. Semantic** | `src/styles/tokens/semantic.css` | Role names mapped to primitives; `:root` = Dark theme | **Role** (`--bg-surface`, `--text-primary`, `--status-success`) | Components consume these |
+| **3. Components** | `src/styles/tokens/components.css` | Per-component composite tokens | **Component-context** (`--dialog-bg`, `--notice-ok-bg`, `--input-border-focus`) | Specific components |
+| **Themes** | `src/styles/themes/{light,high-contrast}.css` | Override semantic + component tokens per `data-theme` | Same role names | Cascade — components don't change |
+
+**Rule of thumb for adding tokens:**
+- New raw color / size → `primitives.css`
+- New role the app reasons about → `semantic.css`
+- Reusable composite for a component → `components.css`
+- Theme-specific override → corresponding `themes/*.css`
+
+**Component rule:** never reference primitives directly. Always consume the semantic layer (or component-tier tokens). This keeps theme switching a one-file change.
+
+```css
+/* ❌ bad — component references primitive directly */
+.my-card { background: var(--gray-925); }
+
+/* ✅ good — semantic role */
+.my-card { background: var(--bg-elevated); }
+
+/* ✅ good — component-tier composite when multiple props vary together */
+.my-card { background: var(--card-bg); }
+```
+
+---
+
 ## 1. Color tokens
 
-All values source from `frontend/src/styles/globals.css`. Hex columns are computed from HSL — HSL is the source of truth.
+Values below describe the **Dark theme** (the `:root` defaults). Light + High-Contrast values appear in each theme file and are tabulated in `themes/*.md`.
 
 ### Backgrounds
 

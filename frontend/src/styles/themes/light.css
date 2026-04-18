@@ -1,0 +1,81 @@
+/**
+ * Light theme — activated by `data-theme="light"` on <html>.
+ *
+ * Overrides the semantic layer only. Primitives stay the same; components
+ * stay the same. The theme speaks through role tokens.
+ *
+ * Spec: specs/design/styleguide.md, specs/design/themes/light.md (TBD)
+ */
+
+[data-theme="light"] {
+  /* Backgrounds — near-white with faint warm tint */
+  --bg-base:          var(--gray-50);
+  --bg-surface:       var(--gray-100);
+  --bg-elevated:      var(--color-white);
+  --bg-hover:         var(--gray-200);
+  --bg-surface-hover: var(--gray-200);
+
+  /* Text — dark enough to meet WCAG AA on the above */
+  --text-primary:   var(--gray-990);
+  --text-secondary: var(--gray-700);
+  --text-muted:     var(--gray-600);
+  --text-inverse:   var(--color-white);
+
+  /* Accent — darker orange that meets 4.5:1 on white */
+  --accent-primary:   var(--orange-700);
+  --accent-secondary: var(--amber-600);
+  --accent-hover:     var(--orange-800);
+  --accent-muted:     hsla(14 100% 60% / 0.12);
+  --accent-border:    hsla(14 100% 60% / 0.30);
+
+  /* Status — Okabe-Ito tuned for AA on white */
+  --status-success: var(--cvd-bluish-green-dark);
+  --status-warning: var(--cvd-yellow-dark);
+  --status-error:   var(--cvd-vermillion-dark);
+  --status-info:    var(--cvd-blue-dark);
+
+  /* Borders — light grays */
+  --border-subtle:  var(--gray-300);
+  --border-default: var(--gray-400);
+  --border-focus:   var(--blue-600);
+  --border-width-default: 1px;
+  --border-width-focus:   2px;
+
+  --focus-ring: var(--blue-600);
+
+  --selection-bg:   hsla(14 100% 50% / 0.20);
+  --selection-text: var(--gray-990);
+
+  /* Nav active on light bg — orange accent with white text */
+  --nav-active-bg:   var(--orange-700);
+  --nav-active-text: var(--color-white);
+
+  /* shadcn bridging */
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--text-inverse);
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--text-inverse);
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+  --sidebar:                    var(--bg-surface);
+  --sidebar-foreground:         var(--text-primary);
+  --sidebar-primary:            var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-inverse);
+  --sidebar-accent:             var(--bg-hover);
+  --sidebar-accent-foreground:  var(--text-primary);
+  --sidebar-border:             var(--border-subtle);
+  --sidebar-ring:               var(--accent-primary);
+}

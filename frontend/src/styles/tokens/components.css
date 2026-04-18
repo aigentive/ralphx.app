@@ -1,0 +1,72 @@
+/**
+ * Tier 3 — Component tokens
+ *
+ * Per-component overrides that reference the semantic layer. Only introduce
+ * a new component token when the component needs to deviate from a pure
+ * semantic role in a way a future theme might want to tweak independently.
+ *
+ * ❌ Don't create a component token just to rename a semantic one — consume
+ * the semantic token directly.
+ * ✅ Do create one when (1) multiple places need the same composite value,
+ * (2) a theme will need to override just this component, or (3) the value
+ * is a combination (e.g. bg + border + shadow) worth naming together.
+ *
+ * Spec: specs/design/styleguide.md §7
+ */
+
+:root {
+  /* ============================================================================
+   * Dialog / modal
+   * ============================================================================ */
+  --dialog-overlay-bg:     var(--alpha-black-60);
+  --dialog-bg:             var(--bg-elevated);
+  --dialog-border-color:   var(--border-subtle);
+  --dialog-shadow:         var(--shadow-lg);
+
+  /* ============================================================================
+   * Input / form field
+   * ============================================================================ */
+  --input-bg:              var(--bg-surface);
+  --input-border:          var(--border-default);
+  --input-border-focus:    var(--accent-primary);
+  --input-ring:            var(--accent-primary);
+
+  /* ============================================================================
+   * Button variants — text on accent button stays light on Dark/Light,
+   * but flips to dark on HC (yellow button). The primary-foreground in the
+   * semantic layer already handles the flip via --text-inverse in HC. */
+  --button-primary-bg:        var(--accent-primary);
+  --button-primary-bg-hover:  var(--accent-hover);
+  --button-primary-text:      var(--primary-foreground);
+  --button-ghost-bg-hover:    var(--bg-hover);
+
+  /* ============================================================================
+   * Card — used by SectionCard + most content blocks
+   * ============================================================================ */
+  --card-bg:       var(--bg-elevated);
+  --card-border:   var(--border-subtle);
+  --card-shadow:   var(--shadow-xs);
+
+  /* ============================================================================
+   * Notice / alert — three tones (ok / warn / info) composed from status
+   * and accent tokens so HC gets the correct bright palette automatically.
+   * ============================================================================ */
+  --notice-ok-bg:        var(--alpha-white-4);
+  --notice-ok-border:    var(--border-subtle);
+  --notice-ok-icon:      var(--status-success);
+  --notice-warn-bg:      hsla(45 90% 55% / 0.06);
+  --notice-warn-border:  hsla(45 90% 55% / 0.2);
+  --notice-warn-icon:    var(--status-warning);
+  --notice-info-bg:      var(--accent-muted);
+  --notice-info-border:  var(--accent-border);
+  --notice-info-icon:    var(--accent-primary);
+
+  /* ============================================================================
+   * Diff viewer — used by @git-diff-view/react overrides in globals.css
+   * The +/- glyph is always present (CVD rule §6 diffs) — color is redundant.
+   * ============================================================================ */
+  --diff-add-bg:       hsla(145 60% 45% / 0.10);
+  --diff-add-strong:   hsla(145 60% 45% / 0.25);
+  --diff-del-bg:       hsla(14 90% 45% / 0.10);
+  --diff-del-strong:   hsla(14 90% 45% / 0.25);
+}

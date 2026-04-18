@@ -1,0 +1,95 @@
+/**
+ * High-Contrast theme — activated by `data-theme="high-contrast"` on <html>.
+ *
+ * Targets WCAG 2.1 AAA (7:1 normal / 4.5:1 large / UI). Overrides:
+ *   - All backgrounds → pure black
+ *   - All text → pure white + graduated grays
+ *   - Accent → yellow (orange fails AAA on black)
+ *   - Status → bright, shape-paired (icons mandatory — see
+ *     color-blind-design.md rule §4)
+ *   - Borders → thicker + always solid white
+ *   - Focus rings → 3px bright yellow + offset
+ *
+ * Spec: specs/design/themes/high-contrast.md
+ */
+
+[data-theme="high-contrast"] {
+  /* Backgrounds — pure black on every surface */
+  --bg-base:          var(--color-black);
+  --bg-surface:       var(--color-black);
+  --bg-elevated:      var(--color-black);
+  --bg-hover:         hsl(0 0% 15%);
+  --bg-surface-hover: hsl(0 0% 15%);
+
+  /* Text — pure white + graduated grays */
+  --text-primary:   var(--color-white);
+  --text-secondary: var(--color-white-dim-1);
+  --text-muted:     var(--color-white-dim-2);
+  --text-inverse:   var(--color-black);
+
+  /* Accent — yellow (orange fails AAA on black) */
+  --accent-primary:   var(--yellow-500);
+  --accent-secondary: var(--yellow-400);
+  --accent-hover:     var(--yellow-300);
+  --accent-muted:     hsla(50 100% 50% / 0.2);
+  --accent-border:    hsla(50 100% 50% / 0.5);
+
+  /* Status — bright + always paired with icons */
+  --status-success: var(--hc-green);
+  --status-warning: var(--yellow-500);
+  --status-error:   var(--hc-red);
+  --status-info:    var(--hc-sky);
+
+  /* Borders — always solid white, thicker stroke width */
+  --border-subtle:  var(--alpha-white-50);
+  --border-default: var(--color-white);
+  --border-focus:   var(--yellow-500);
+  --border-width-default: 2px;
+  --border-width-focus:   3px;
+
+  /* Focus ring — bright yellow */
+  --focus-ring: var(--yellow-500);
+
+  /* Selection — yellow highlight with black text */
+  --selection-bg:   hsla(50 100% 50% / 0.5);
+  --selection-text: var(--color-black);
+
+  /* Nav active — yellow with black text */
+  --nav-active-bg:   var(--yellow-500);
+  --nav-active-text: var(--color-black);
+
+  /* shadcn bridging */
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--text-inverse);
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--text-primary);
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+  --sidebar:                    var(--bg-surface);
+  --sidebar-foreground:         var(--text-primary);
+  --sidebar-primary:            var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-inverse);
+  --sidebar-accent:             var(--bg-hover);
+  --sidebar-accent-foreground:  var(--text-primary);
+  --sidebar-border:             var(--border-default);
+  --sidebar-ring:               var(--accent-primary);
+}
+
+/* Thicker focus ring in HC — applied globally */
+[data-theme="high-contrast"] :focus-visible {
+  outline: var(--border-width-focus) solid var(--focus-ring);
+  outline-offset: 2px;
+}

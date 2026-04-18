@@ -1,497 +1,131 @@
+/**
+ * RalphX Design System — entry point.
+ *
+ * 3-tier token architecture (ref: specs/design/styleguide.md):
+ *   1. Primitives — raw scales    → tokens/primitives.css
+ *   2. Semantic   — role tokens   → tokens/semantic.css (default = Dark)
+ *   3. Components — per-component → tokens/components.css
+ *   Theme overrides                → themes/light.css, themes/high-contrast.css
+ *
+ * Only base/body styles, global overrides (diff viewer, scrollbar), and
+ * animation keyframes live here. New token work goes in tokens/*; new theme
+ * values go in themes/*.
+ */
+
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/*
- * RalphX Design System Tokens
- * Style: macOS Tahoe (2025) - Clean, flat, minimal
- * Reference: specs/design/macos-tahoe-style-guide.md
- */
+/* ─── Tier 1: Primitives ─────────────────────────────────────────────────── */
+@import "./tokens/primitives.css";
 
-:root {
-  /* ============================================================================
-   * macOS Tahoe Color System
-   * All grays use 220 hue, 10% saturation for subtle blue-gray tint
-   * ============================================================================ */
+/* ─── Tier 2: Semantic (:root = Dark theme) ──────────────────────────────── */
+@import "./tokens/semantic.css";
 
-  /* Backgrounds - blue-gray tinted, NOT pure black */
-  --bg-base: hsl(220 10% 8%);
-  --bg-surface: hsl(220 10% 12%);
-  --bg-elevated: hsl(220 10% 16%);
-  --bg-hover: hsl(220 10% 20%);
+/* ─── Tier 3: Components ─────────────────────────────────────────────────── */
+@import "./tokens/components.css";
 
-  /* Text - blue-gray tinted */
-  --text-primary: hsl(220 10% 90%);
-  --text-secondary: hsl(220 10% 60%);
-  --text-muted: hsl(220 10% 45%);
-
-  /* Selection - blue tint (like Finder) */
-  --selection-bg: hsla(220 60% 50% / 0.20);
-  --selection-text: hsl(220 80% 70%);
-
-  /* Focus - blue ring */
-  --focus-ring: hsla(220 80% 60% / 0.5);
-
-  /* Accent - warm orange (use sparingly, primary actions only) */
-  --accent-primary: hsl(14 100% 60%);      /* Warm orange #ff6b35 */
-  --accent-secondary: hsl(32 100% 65%);    /* Soft amber #ffa94d */
-  --accent-hover: hsl(14 100% 55%);        /* Darker orange for hover */
-
-  /* Status colors - for badges/indicators only */
-  /* Status colors — Okabe-Ito CVD-safe palette
-   * (see specs/design/color-blind-design.md §5). Still ships alongside
-   * mandatory icons + text labels per rule §4 — color is redundant not primary. */
-  --status-success: #009e73; /* Okabe-Ito Bluish Green — distinct from yellow under deuteranopia */
-  --status-warning: #f0e442; /* Okabe-Ito Yellow */
-  --status-error: #d55e00;   /* Okabe-Ito Vermillion — reads distinctly under protanopia */
-  --status-info: #0072b2;    /* Okabe-Ito Blue — CVD-safe saturated blue */
-
-  /* Borders - minimal, only for inputs */
-  --border-subtle: hsl(220 10% 18%);
-  --border-default: hsl(220 10% 22%);
-  --border-focus: hsl(220 80% 60%);
-
-  /* Typography - system fonts, NOT Inter */
-  --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-body: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
-
-  /* Spacing (8pt Grid System) */
-  --space-0: 0;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
-
-  /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-full: 9999px;
-
-  /* Accent muted - for subtle tinted backgrounds */
-  --accent-muted: hsla(14 100% 60% / 0.15);
-  --accent-border: hsla(14 100% 60% / 0.25);
-
-  /* Text inverse - for use on light/accent backgrounds (e.g. yellow button in HC) */
-  --text-inverse: hsl(220 10% 6%);
-
-  /* Theme-specific size/shape tokens - overridden by high-contrast */
-  --border-width-default: 1px;
-  --border-width-focus: 2px;
-  --focus-ring: hsla(220 80% 60% / 0.5);
-
-  /* Nav active surface - lifted to tokens so high-contrast can swap */
-  --nav-active-bg: #ffffff;
-  --nav-active-text: #0a0a0a;
-
-  /* Deprecated alias — some files still reference --bg-surface-hover */
-  --bg-surface-hover: var(--bg-hover);
-
-  /* Layered Shadows (multiple values for realistic depth) */
-  --shadow-xs: 0 1px 2px hsla(0 0% 0% / 0.2), 0 1px 3px hsla(0 0% 0% / 0.1);
-  --shadow-sm: 0 1px 2px hsla(0 0% 0% / 0.3), 0 2px 4px hsla(0 0% 0% / 0.2);
-  --shadow-md: 0 4px 6px hsla(0 0% 0% / 0.3), 0 8px 16px hsla(0 0% 0% / 0.2);
-  --shadow-lg: 0 10px 15px hsla(0 0% 0% / 0.3), 0 20px 40px hsla(0 0% 0% / 0.25);
-  --shadow-glow: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent-primary);
-
-  /* Letter spacing */
-  --tracking-tight: -0.02em;
-  --tracking-normal: 0;
-  --tracking-wide: 0.05em;
-
-  /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-normal: 200ms ease;
-  --transition-slow: 300ms ease;
-
-  /* Execution animations */
-  --animation-executing-pulse: executing-pulse 2s ease-in-out infinite;
-  --animation-attention-pulse: attention-pulse 1.5s ease-in-out infinite;
-
-  /* ============================================================================
-   * shadcn/ui CSS Variables - Mapped to RalphX Design Tokens
-   * Using our dark theme as default (RalphX is dark-only)
-   * ============================================================================ */
-
-  /* Base radius for shadcn calculations */
-  --radius: 0.5rem;
-
-  /* Core colors mapped from RalphX tokens */
-  --background: var(--bg-base);
-  --foreground: var(--text-primary);
-
-  --card: var(--bg-elevated);
-  --card-foreground: var(--text-primary);
-
-  --popover: var(--bg-elevated);
-  --popover-foreground: var(--text-primary);
-
-  /* Primary = our warm orange accent */
-  --primary: var(--accent-primary);
-  --primary-foreground: hsl(0 0% 100%);
-
-  /* Secondary = elevated background for subtle actions */
-  --secondary: var(--bg-surface);
-  --secondary-foreground: var(--text-primary);
-
-  /* Muted = surface with muted text */
-  --muted: var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-
-  /* Accent = hover state */
-  --accent: var(--bg-hover);
-  --accent-foreground: var(--text-primary);
-
-  /* Destructive = error red */
-  --destructive: var(--status-error);
-  --destructive-foreground: hsl(0 0% 100%);
-
-  /* Border and input */
-  --border: var(--border-default);
-  --input: var(--border-default);
-  --ring: var(--accent-primary);
-
-  /* Chart colors - using status colors and accent */
-  --chart-1: var(--accent-primary);
-  --chart-2: var(--status-success);
-  --chart-3: var(--status-info);
-  --chart-4: var(--accent-secondary);
-  --chart-5: var(--status-warning);
-
-  /* Sidebar - using our dark theme colors */
-  --sidebar: var(--bg-surface);
-  --sidebar-foreground: var(--text-primary);
-  --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: var(--bg-hover);
-  --sidebar-accent-foreground: var(--text-primary);
-  --sidebar-border: var(--border-subtle);
-  --sidebar-ring: var(--accent-primary);
-}
+/* ─── Themes (override semantic + component tokens) ─────────────────────── */
+@import "./themes/light.css";
+@import "./themes/high-contrast.css";
 
 /* ============================================================================
- * Light Theme
- * Activated by `data-theme="light"` on <html>.
- * Keeps the same semantic tokens; inverts background/foreground luminance.
- * Accent stays warm orange — adequate contrast on near-white surfaces.
- * ============================================================================ */
-
-[data-theme="light"] {
-  /* Backgrounds — near-white with subtle warm tint */
-  --bg-base: hsl(220 10% 99%);
-  --bg-surface: hsl(220 10% 97%);
-  --bg-elevated: hsl(0 0% 100%);
-  --bg-hover: hsl(220 10% 92%);
-  --bg-surface-hover: hsl(220 10% 92%);
-
-  /* Text — dark enough to meet AA on any of the above */
-  --text-primary: hsl(220 15% 10%);
-  --text-secondary: hsl(220 10% 35%);
-  --text-muted: hsl(220 10% 45%);
-  --text-inverse: hsl(0 0% 100%);
-
-  /* Accent stays orange — keep identity consistent */
-  --accent-primary: hsl(14 90% 50%);    /* Slightly darker #ea5a26 — 4.5:1 on white */
-  --accent-secondary: hsl(32 90% 50%);
-  --accent-hover: hsl(14 90% 45%);
-  --accent-muted: hsla(14 100% 60% / 0.12);
-  --accent-border: hsla(14 100% 60% / 0.3);
-
-  /* Status — Okabe-Ito palette, tuned slightly for light-bg contrast */
-  --status-success: #007a58; /* darker bluish-green for AA on white */
-  --status-warning: #a87800; /* darker amber for AA on white */
-  --status-error: #b24800;   /* darker vermillion */
-  --status-info: #005a8a;    /* darker blue */
-
-  /* Borders — gentle grays */
-  --border-subtle: hsl(220 10% 88%);
-  --border-default: hsl(220 10% 78%);
-  --border-focus: hsl(220 80% 50%);
-  --border-width-default: 1px;
-  --border-width-focus: 2px;
-
-  /* Focus ring stays visible on light bg */
-  --focus-ring: hsl(220 80% 50%);
-
-  /* Selection */
-  --selection-bg: hsla(14 100% 50% / 0.2);
-  --selection-text: hsl(220 15% 10%);
-
-  /* Nav active stays orange accent with white text */
-  --nav-active-bg: hsl(14 90% 50%);
-  --nav-active-text: hsl(0 0% 100%);
-
-  /* shadcn mappings */
-  --background: var(--bg-base);
-  --foreground: var(--text-primary);
-  --card: var(--bg-elevated);
-  --card-foreground: var(--text-primary);
-  --popover: var(--bg-elevated);
-  --popover-foreground: var(--text-primary);
-  --primary: var(--accent-primary);
-  --primary-foreground: var(--text-inverse);
-  --secondary: var(--bg-surface);
-  --secondary-foreground: var(--text-primary);
-  --muted: var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-  --accent: var(--bg-hover);
-  --accent-foreground: var(--text-primary);
-  --destructive: var(--status-error);
-  --destructive-foreground: var(--text-inverse);
-  --border: var(--border-default);
-  --input: var(--border-default);
-  --ring: var(--accent-primary);
-  --sidebar: var(--bg-surface);
-  --sidebar-foreground: var(--text-primary);
-  --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: var(--text-inverse);
-  --sidebar-accent: var(--bg-hover);
-  --sidebar-accent-foreground: var(--text-primary);
-  --sidebar-border: var(--border-subtle);
-  --sidebar-ring: var(--accent-primary);
-}
-
-/* ============================================================================
- * High-Contrast Theme (WCAG 2.1 AAA)
- * Activated by `data-theme="high-contrast"` on <html>.
- * See specs/design/themes/high-contrast.md for full rationale + contrast math.
- * ============================================================================ */
-
-[data-theme="high-contrast"] {
-  /* Backgrounds — pure black on every surface */
-  --bg-base: #000000;
-  --bg-surface: #000000;
-  --bg-elevated: #000000;
-  --bg-hover: hsl(0 0% 15%); /* used for row hover — slight lift */
-  --bg-surface-hover: hsl(0 0% 15%);
-
-  /* Text — pure white, graduated grays for secondary levels */
-  --text-primary: #ffffff;
-  --text-secondary: #e0e0e0;
-  --text-muted: #b0b0b0;
-  --text-inverse: #000000;
-
-  /* Accent — yellow (orange fails AAA on black) */
-  --accent-primary: #ffdd00;
-  --accent-secondary: #ffee33;
-  --accent-hover: #ffee66;
-  --accent-muted: hsla(50 100% 50% / 0.2);
-  --accent-border: hsla(50 100% 50% / 0.5);
-
-  /* Status — shape + color combined (icons are mandatory in HC; see spec) */
-  --status-success: #00ff66;
-  --status-warning: #ffdd00;
-  --status-error: #ff3344;
-  --status-info: #66ccff;
-
-  /* Borders — always visible, always solid */
-  --border-subtle: hsla(0 0% 100% / 0.5);
-  --border-default: #ffffff;
-  --border-focus: #ffdd00;
-  --border-width-default: 2px;
-  --border-width-focus: 3px;
-
-  /* Focus ring — bright yellow, thick */
-  --focus-ring: #ffdd00;
-
-  /* Selection — inverted (yellow highlight) */
-  --selection-bg: hsla(50 100% 50% / 0.5);
-  --selection-text: #000000;
-
-  /* Nav active — yellow with black text */
-  --nav-active-bg: #ffdd00;
-  --nav-active-text: #000000;
-
-  /* shadcn mapping overrides */
-  --background: var(--bg-base);
-  --foreground: var(--text-primary);
-  --card: var(--bg-elevated);
-  --card-foreground: var(--text-primary);
-  --popover: var(--bg-elevated);
-  --popover-foreground: var(--text-primary);
-  --primary: var(--accent-primary);
-  --primary-foreground: var(--text-inverse);
-  --secondary: var(--bg-surface);
-  --secondary-foreground: var(--text-primary);
-  --muted: var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-  --accent: var(--bg-hover);
-  --accent-foreground: var(--text-primary);
-  --destructive: var(--status-error);
-  --destructive-foreground: var(--text-primary);
-  --border: var(--border-default);
-  --input: var(--border-default);
-  --ring: var(--accent-primary);
-  --sidebar: var(--bg-surface);
-  --sidebar-foreground: var(--text-primary);
-  --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: var(--text-inverse);
-  --sidebar-accent: var(--bg-hover);
-  --sidebar-accent-foreground: var(--text-primary);
-  --sidebar-border: var(--border-default);
-  --sidebar-ring: var(--accent-primary);
-}
-
-/* Thicker focus ring in HC — applied globally so every focusable element benefits */
-[data-theme="high-contrast"] :focus-visible {
-  outline: var(--border-width-focus) solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-/* Dark mode - same as default since RalphX is dark-only */
-.dark {
-  --background: var(--bg-base);
-  --foreground: var(--text-primary);
-
-  --card: var(--bg-elevated);
-  --card-foreground: var(--text-primary);
-
-  --popover: var(--bg-elevated);
-  --popover-foreground: var(--text-primary);
-
-  --primary: var(--accent-primary);
-  --primary-foreground: hsl(0 0% 100%);
-
-  --secondary: var(--bg-surface);
-  --secondary-foreground: var(--text-primary);
-
-  --muted: var(--bg-surface);
-  --muted-foreground: var(--text-muted);
-
-  --accent: var(--bg-hover);
-  --accent-foreground: var(--text-primary);
-
-  --destructive: var(--status-error);
-  --destructive-foreground: hsl(0 0% 100%);
-
-  --border: var(--border-default);
-  --input: var(--border-default);
-  --ring: var(--accent-primary);
-
-  --chart-1: var(--accent-primary);
-  --chart-2: var(--status-success);
-  --chart-3: var(--status-info);
-  --chart-4: var(--accent-secondary);
-  --chart-5: var(--status-warning);
-
-  --sidebar: var(--bg-surface);
-  --sidebar-foreground: var(--text-primary);
-  --sidebar-primary: var(--accent-primary);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: var(--bg-hover);
-  --sidebar-accent-foreground: var(--text-primary);
-  --sidebar-border: var(--border-subtle);
-  --sidebar-ring: var(--accent-primary);
-}
-
-/* ============================================================================
- * shadcn/ui Theme Mapping
+ * Tailwind @theme inline — exposes semantic tokens as Tailwind utilities so
+ * components can write `bg-bg-surface`, `text-text-primary` etc.
  * ============================================================================ */
 
 @theme inline {
-  /* Spacing tokens for Tailwind utilities (gap-*, p-*, m-*, etc.) */
-  --spacing-0: 0px;
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 12px;
-  --spacing-4: 16px;
-  --spacing-5: 20px;
-  --spacing-6: 24px;
-  --spacing-8: 32px;
-  --spacing-10: 40px;
-  --spacing-12: 48px;
-  --spacing-16: 64px;
-  --spacing-px: 1px;
+  /* Spacing */
+  --spacing-0:   0px;
+  --spacing-1:   4px;
+  --spacing-2:   8px;
+  --spacing-3:   12px;
+  --spacing-4:   16px;
+  --spacing-5:   20px;
+  --spacing-6:   24px;
+  --spacing-8:   32px;
+  --spacing-10:  40px;
+  --spacing-12:  48px;
+  --spacing-16:  64px;
+  --spacing-px:  1px;
   --spacing-0_5: 2px;
   --spacing-1_5: 6px;
   --spacing-2_5: 10px;
   --spacing-3_5: 14px;
 
-  /* Font size tokens for Tailwind utilities (text-xs, text-sm, etc.) */
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
+  /* Font sizes */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
   --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
 
-  /* Background colors for Tailwind utilities (bg-*) */
-  --color-bg-base: var(--bg-base);
-  --color-bg-surface: var(--bg-surface);
-  --color-bg-elevated: var(--bg-elevated);
-  --color-bg-hover: var(--bg-hover);
+  /* Semantic colors — exposed for Tailwind bg-*/text-*/border-* utilities */
+  --color-bg-base:      var(--bg-base);
+  --color-bg-surface:   var(--bg-surface);
+  --color-bg-elevated:  var(--bg-elevated);
+  --color-bg-hover:     var(--bg-hover);
 
-  /* Text colors */
-  --color-text-primary: var(--text-primary);
+  --color-text-primary:   var(--text-primary);
   --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
+  --color-text-muted:     var(--text-muted);
 
-  /* Accent colors */
-  --color-accent-primary: var(--accent-primary);
+  --color-accent-primary:   var(--accent-primary);
   --color-accent-secondary: var(--accent-secondary);
 
-  /* Status colors */
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);
-  --color-status-error: var(--status-error);
+  --color-status-error:   var(--status-error);
 
-  /* Border colors */
   --color-border-default: var(--border-default);
-  --color-border-subtle: var(--border-subtle);
+  --color-border-subtle:  var(--border-subtle);
 
-  /* Radius tokens for shadcn components */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Radii */
+  --radius-sm:  calc(var(--radius) - 4px);
+  --radius-md:  calc(var(--radius) - 2px);
+  --radius-lg:  var(--radius);
+  --radius-xl:  calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
 
-  /* Color mappings for Tailwind */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
+  /* shadcn bridging */
+  --color-background:         var(--background);
+  --color-foreground:         var(--foreground);
+  --color-card:               var(--card);
+  --color-card-foreground:    var(--card-foreground);
+  --color-popover:            var(--popover);
   --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
+  --color-primary:            var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
+  --color-secondary:            var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
+  --color-muted:            var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-accent:            var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-input:  var(--input);
+  --color-ring:   var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar:                       var(--sidebar);
+  --color-sidebar-foreground:            var(--sidebar-foreground);
+  --color-sidebar-primary:               var(--sidebar-primary);
+  --color-sidebar-primary-foreground:    var(--sidebar-primary-foreground);
+  --color-sidebar-accent:                var(--sidebar-accent);
+  --color-sidebar-accent-foreground:     var(--sidebar-accent-foreground);
+  --color-sidebar-border:                var(--sidebar-border);
+  --color-sidebar-ring:                  var(--sidebar-ring);
 }
 
 /* ============================================================================
- * Base Layer Styles
+ * Base Layer — root html/body + body tokens + focus + motion + font-scale
  * ============================================================================ */
 
 @layer base {
@@ -503,7 +137,6 @@
   }
 }
 
-/* Base body styles - RalphX specific */
 html, body {
   height: 100%;
   overflow: hidden;
@@ -519,7 +152,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Root element full height - no scroll */
 #root {
   height: 100%;
   display: flex;
@@ -527,9 +159,9 @@ body {
   overflow: hidden;
 }
 
-/* Link underlines — WCAG 1.4.1: links must be distinguishable by more than color.
- * Global default underlines every <a>; nav/menu items opt out via .no-underline
- * or the shadcn button classes (they already style as buttons, not links). */
+/* Link underlines — WCAG 1.4.1: links must be distinguishable by more than
+ * color. Nav/button-styled links opt out via no-underline class or
+ * btn/role="button". */
 a:not([class*="no-underline"]):not([class*="btn"]):not([role="button"]) {
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -539,19 +171,17 @@ a:not([class*="no-underline"]):hover {
   text-decoration-thickness: 2px;
 }
 
-/* Selection styling */
 ::selection {
   background-color: var(--accent-primary);
   color: var(--text-primary);
 }
 
-/* Focus visible styling for accessibility */
 :focus-visible {
   outline: var(--border-width-focus) solid var(--accent-primary);
   outline-offset: 2px;
 }
 
-/* Reduce motion — respect OS setting AND app-level data-motion="reduce" override */
+/* Reduce motion — OS setting OR app-level override */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -569,60 +199,52 @@ a:not([class*="no-underline"]):hover {
   scroll-behavior: auto !important;
 }
 
-/* Font scale — data-font-scale on <html> cascades via rem */
+/* Font scale — data-font-scale cascades via rem */
 [data-font-scale="lg"] { font-size: 110%; }
 [data-font-scale="xl"] { font-size: 125%; }
 
-/* Scrollbar styling (WebKit) - macOS Tahoe style */
+/* Scrollbar (WebKit) — macOS Tahoe style */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   background: hsl(220 10% 25%);
   border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(220 10% 35%);
 }
 
-/* Kanban columns - thin scrollbar */
+/* Kanban columns — thinner scrollbar */
 [data-testid^="drop-zone-"]::-webkit-scrollbar {
   width: 6px;
 }
-
 [data-testid^="drop-zone-"]::-webkit-scrollbar-thumb {
   background: hsl(220 10% 20%);
   border-radius: 3px;
 }
 
 /* ============================================================================
- * DiffViewer Styles - Override @git-diff-view/react for dark theme
+ * Third-party overrides — @git-diff-view/react diff viewer
+ * Drives through component-tier tokens (--diff-add-*, --diff-del-*).
  * ============================================================================ */
 
 .diff-viewer-container {
-  /* Ensure the diff view uses our dark theme */
   --diff-view-bg: var(--bg-base);
   --diff-view-line-bg: var(--bg-surface);
-  --diff-view-add-line-bg: rgba(16, 185, 129, 0.15);
-  --diff-view-del-line-bg: rgba(239, 68, 68, 0.15);
-  --diff-view-add-content-bg: rgba(16, 185, 129, 0.25);
-  --diff-view-del-content-bg: rgba(239, 68, 68, 0.25);
+  --diff-view-add-line-bg: var(--diff-add-bg);
+  --diff-view-del-line-bg: var(--diff-del-bg);
+  --diff-view-add-content-bg: var(--diff-add-strong);
+  --diff-view-del-content-bg: var(--diff-del-strong);
 }
-
-/* Override diff view container backgrounds */
 .diff-viewer-container .diff-view {
   background-color: var(--bg-base) !important;
   font-family: var(--font-mono) !important;
 }
-
-/* Override line number styling */
 .diff-viewer-container .diff-view-line-num {
   color: var(--text-muted) !important;
   background-color: var(--bg-surface) !important;
@@ -631,55 +253,41 @@ a:not([class*="no-underline"]):hover {
   font-size: 12px !important;
   user-select: none;
 }
-
-/* Override content line styling */
 .diff-viewer-container .diff-view-line {
   border-bottom: none !important;
 }
-
 .diff-viewer-container .diff-view-line-content {
   color: var(--text-primary) !important;
   font-size: 13px !important;
   line-height: 1.5 !important;
   padding: 0 16px !important;
 }
-
-/* Addition lines (green-ish) */
 .diff-viewer-container .diff-view-line.diff-add .diff-view-line-num,
 .diff-viewer-container .diff-view-line.add .diff-view-line-num {
-  background-color: rgba(16, 185, 129, 0.1) !important;
+  background-color: var(--diff-add-bg) !important;
   color: var(--status-success) !important;
 }
-
 .diff-viewer-container .diff-view-line.diff-add .diff-view-line-content,
 .diff-viewer-container .diff-view-line.add .diff-view-line-content {
-  background-color: rgba(16, 185, 129, 0.1) !important;
+  background-color: var(--diff-add-bg) !important;
 }
-
-/* Deletion lines (red-ish) */
 .diff-viewer-container .diff-view-line.diff-del .diff-view-line-num,
 .diff-viewer-container .diff-view-line.del .diff-view-line-num {
-  background-color: rgba(239, 68, 68, 0.1) !important;
+  background-color: var(--diff-del-bg) !important;
   color: var(--status-error) !important;
 }
-
 .diff-viewer-container .diff-view-line.diff-del .diff-view-line-content,
 .diff-viewer-container .diff-view-line.del .diff-view-line-content {
-  background-color: rgba(239, 68, 68, 0.1) !important;
+  background-color: var(--diff-del-bg) !important;
 }
-
-/* Word-level diff highlighting */
 .diff-viewer-container .diff-add-content-highlight {
-  background-color: rgba(16, 185, 129, 0.3) !important;
+  background-color: var(--diff-add-strong) !important;
   border-radius: 2px;
 }
-
 .diff-viewer-container .diff-del-content-highlight {
-  background-color: rgba(239, 68, 68, 0.3) !important;
+  background-color: var(--diff-del-strong) !important;
   border-radius: 2px;
 }
-
-/* Hunk header styling */
 .diff-viewer-container .diff-view-hunk-header {
   background-color: var(--bg-elevated) !important;
   color: var(--text-secondary) !important;
@@ -688,40 +296,29 @@ a:not([class*="no-underline"]):hover {
   border-top: 1px solid var(--border-subtle) !important;
   border-bottom: 1px solid var(--border-subtle) !important;
 }
-
-/* Syntax highlighting overrides for dark theme */
-.diff-viewer-container .token.keyword { color: #ff79c6 !important; }
-.diff-viewer-container .token.string { color: #f1fa8c !important; }
-.diff-viewer-container .token.number { color: #bd93f9 !important; }
-.diff-viewer-container .token.comment { color: #6272a4 !important; }
-.diff-viewer-container .token.function { color: #50fa7b !important; }
+/* Syntax highlighting — dark-theme tokens (Prism's Dracula style). TODO:
+ * replace with a pair of syntax-color token variables that flip per theme. */
+.diff-viewer-container .token.keyword    { color: #ff79c6 !important; }
+.diff-viewer-container .token.string     { color: #f1fa8c !important; }
+.diff-viewer-container .token.number     { color: #bd93f9 !important; }
+.diff-viewer-container .token.comment    { color: #6272a4 !important; }
+.diff-viewer-container .token.function   { color: #50fa7b !important; }
 .diff-viewer-container .token.class-name { color: #8be9fd !important; }
-.diff-viewer-container .token.operator { color: #ff79c6 !important; }
-.diff-viewer-container .token.punctuation { color: var(--text-secondary) !important; }
-
-/* Empty lines should have consistent background */
+.diff-viewer-container .token.operator   { color: #ff79c6 !important; }
+.diff-viewer-container .token.punctuation{ color: var(--text-secondary) !important; }
 .diff-viewer-container .diff-view-line.empty {
   background-color: var(--bg-surface) !important;
 }
 
 /* ============================================================================
- * Kanban Drag-Drop Animations (macOS Tahoe - minimal)
+ * Animation keyframes — referenced by utility classes below + component
+ * `animation: var(--animation-*)` declarations.
  * ============================================================================ */
 
 @keyframes card-pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
-
-/* ============================================================================
- * Execution Control Bar Animations
- * ============================================================================ */
 
 @keyframes status-pulse {
   0%, 100% {
@@ -735,55 +332,21 @@ a:not([class*="no-underline"]):hover {
 }
 
 @keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes slide-in-from-right {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
 }
 
-/* Badge pop animation for review count changes */
 @keyframes badge-pop {
-  0% {
-    transform: scale(0.5);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
+  0%   { transform: scale(0.5); }
+  50%  { transform: scale(1.1); }
+  100% { transform: scale(1); }
 }
 
-.animate-badge-pop {
-  animation: badge-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.status-indicator-running {
-  animation: status-pulse 2s ease-in-out infinite;
-}
-
-.task-name-enter {
-  animation: slide-in-right 200ms ease-out;
-}
-
-/* ============================================================================
- * Task Execution State Animations
- * ============================================================================ */
-
-/* Executing pulse - subtle glow effect for executing tasks */
 @keyframes executing-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 hsla(14 100% 60% / 0.6),
@@ -795,34 +358,11 @@ a:not([class*="no-underline"]):hover {
   }
 }
 
-/* Attention pulse - opacity animation for tasks needing attention */
 @keyframes attention-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
 }
 
-/* Task card executing state - static border only (step indicators show progress) */
-.task-card-executing {
-  border-color: var(--accent-primary);
-  border-width: 2px;
-}
-
-/* Task card attention state - subtle pulse */
-.task-card-attention {
-  animation: var(--animation-attention-pulse);
-  border-color: var(--status-warning);
-  border-width: 2px;
-}
-
-/* ============================================================================
- * Review State Animations
- * ============================================================================ */
-
-/* Reviewing pulse - subtle blue glow effect for tasks being reviewed by AI */
 @keyframes reviewing-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 hsla(217 91% 60% / 0.5),
@@ -834,164 +374,54 @@ a:not([class*="no-underline"]):hover {
   }
 }
 
-:root {
-  --animation-reviewing-pulse: reviewing-pulse 2s ease-in-out infinite;
+@keyframes badge-pulse {
+  0%, 100% { background-color: rgba(59, 130, 246, 0.2); }
+  50%      { background-color: rgba(59, 130, 246, 0.35); }
 }
 
-/* Task card reviewing state - blue border with pulse */
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* Utility class hooks tied to the keyframes above */
+.animate-badge-pop { animation: badge-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.animate-pulse-critical { animation: pulse-critical 2s ease-in-out infinite; }
+.status-indicator-running { animation: status-pulse 2s ease-in-out infinite; }
+.task-name-enter { animation: slide-in-right 200ms ease-out; }
+
+/* Task card state highlights — consume semantic status tokens */
+.task-card-executing {
+  border-color: var(--accent-primary);
+  border-width: 2px;
+}
+.task-card-attention {
+  animation: var(--animation-attention-pulse);
+  border-color: var(--status-warning);
+  border-width: 2px;
+}
 .task-card-reviewing {
   animation: var(--animation-reviewing-pulse);
   border-color: var(--status-info);
   border-width: 2px;
 }
-
-/* Task card revision state - orange/warning left border accent */
 .task-card-revision {
   border-left: 3px solid var(--status-warning) !important;
 }
-
-/* Task card review passed state - green/success accent */
 .task-card-review-passed {
   border-color: var(--status-success);
   border-width: 2px;
 }
-
-/* Badge reviewing animation - subtle background pulse */
 .badge-reviewing {
   animation: badge-pulse 2s ease-in-out infinite;
 }
 
-@keyframes badge-pulse {
-  0%, 100% {
-    background-color: rgba(59, 130, 246, 0.2);
-  }
-  50% {
-    background-color: rgba(59, 130, 246, 0.35);
-  }
-}
-
-/* ============================================================================
- * Chat Input Placeholder - macOS Tahoe muted style
- * ============================================================================ */
+/* Chat input placeholder — muted tone */
 [data-testid="chat-input-textarea"]::placeholder {
   color: hsl(220 10% 40%);
-}
-
-/* ============================================================================
- * Priority Badge Animations
- * ============================================================================ */
-
-/* Critical priority pulse - subtle opacity and scale animation */
-@keyframes pulse-critical {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.02);
-  }
-}
-
-.animate-pulse-critical {
-  animation: pulse-critical 2s ease-in-out infinite;
-}
-
-/* Tool call widget step indicator pulse */
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-/* ============================================================================
- * React Flow Task Graph - Node Animations
- * ============================================================================ */
-
-/* Smooth node position transitions when graph layout changes */
-.react-flow__node {
-  transition: transform 300ms ease-out;
-}
-
-/* Override React Flow's default blue selection outline — selection is handled
-   via inline orange border in TaskNode.tsx */
-.react-flow__node.selected {
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-/* Disable position transition during drag to prevent lag */
-.react-flow__node.dragging {
-  transition: none;
-}
-
-/* Scale 115% for compact highlighted nodes (Tailwind doesn't have scale-115) */
-.scale-115 {
-  transform: scale(1.15);
-}
-
-/* ============================================================================
- * React Flow Controls - Dark Mode Styling
- * ============================================================================ */
-
-/* Dark mode styling for React Flow control buttons */
-.react-flow__controls-button {
-  background: hsla(220 10% 18% / 0.95) !important;
-  border: 1px solid hsl(220 10% 30%) !important;
-  fill: hsl(220 10% 70%) !important;
-}
-
-.react-flow__controls-button:hover {
-  background: hsla(220 10% 25% / 0.95) !important;
-  fill: hsl(220 10% 90%) !important;
-}
-
-.react-flow__controls-button svg {
-  fill: inherit !important;
-}
-
-/* ============================================================================
- * Ideation Sidebar Overlay Animations
- * ============================================================================ */
-
-@keyframes planBrowserSlideIn {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes planBrowserSlideOut {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-100%);
-  }
-}
-
-.plan-browser-slide-in {
-  animation: planBrowserSlideIn 220ms ease-out;
-}
-
-.plan-browser-slide-out {
-  animation: planBrowserSlideOut 220ms ease-in;
-}
-
-/* ============================================================================
- * Reduced Motion Support
- * ============================================================================ */
-
-@media (prefers-reduced-motion: reduce) {
-  .plan-browser-slide-in,
-  .plan-browser-slide-out {
-    animation-duration: 0s;
-  }
-
-  .sidebar-overlay,
-  .sidebar-panel {
-    transition-duration: 0s;
-    animation-duration: 0s;
-  }
 }
