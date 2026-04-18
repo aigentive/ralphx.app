@@ -74,6 +74,22 @@
 
   /* Accent muted - for subtle tinted backgrounds */
   --accent-muted: hsla(14 100% 60% / 0.15);
+  --accent-border: hsla(14 100% 60% / 0.25);
+
+  /* Text inverse - for use on light/accent backgrounds (e.g. yellow button in HC) */
+  --text-inverse: hsl(220 10% 6%);
+
+  /* Theme-specific size/shape tokens - overridden by high-contrast */
+  --border-width-default: 1px;
+  --border-width-focus: 2px;
+  --focus-ring: hsla(220 80% 60% / 0.5);
+
+  /* Nav active surface - lifted to tokens so high-contrast can swap */
+  --nav-active-bg: #ffffff;
+  --nav-active-text: #0a0a0a;
+
+  /* Deprecated alias — some files still reference --bg-surface-hover */
+  --bg-surface-hover: var(--bg-hover);
 
   /* Layered Shadows (multiple values for realistic depth) */
   --shadow-xs: 0 1px 2px hsla(0 0% 0% / 0.2), 0 1px 3px hsla(0 0% 0% / 0.1);
@@ -155,6 +171,93 @@
   --sidebar-accent-foreground: var(--text-primary);
   --sidebar-border: var(--border-subtle);
   --sidebar-ring: var(--accent-primary);
+}
+
+/* ============================================================================
+ * High-Contrast Theme (WCAG 2.1 AAA)
+ * Activated by `data-theme="high-contrast"` on <html>.
+ * See specs/design/themes/high-contrast.md for full rationale + contrast math.
+ * ============================================================================ */
+
+[data-theme="high-contrast"] {
+  /* Backgrounds — pure black on every surface */
+  --bg-base: #000000;
+  --bg-surface: #000000;
+  --bg-elevated: #000000;
+  --bg-hover: hsl(0 0% 15%); /* used for row hover — slight lift */
+  --bg-surface-hover: hsl(0 0% 15%);
+
+  /* Text — pure white, graduated grays for secondary levels */
+  --text-primary: #ffffff;
+  --text-secondary: #e0e0e0;
+  --text-muted: #b0b0b0;
+  --text-inverse: #000000;
+
+  /* Accent — yellow (orange fails AAA on black) */
+  --accent-primary: #ffdd00;
+  --accent-secondary: #ffee33;
+  --accent-hover: #ffee66;
+  --accent-muted: hsla(50 100% 50% / 0.2);
+  --accent-border: hsla(50 100% 50% / 0.5);
+
+  /* Status — shape + color combined (icons are mandatory in HC; see spec) */
+  --status-success: #00ff66;
+  --status-warning: #ffdd00;
+  --status-error: #ff3344;
+  --status-info: #66ccff;
+
+  /* Borders — always visible, always solid */
+  --border-subtle: hsla(0 0% 100% / 0.5);
+  --border-default: #ffffff;
+  --border-focus: #ffdd00;
+  --border-width-default: 2px;
+  --border-width-focus: 3px;
+
+  /* Focus ring — bright yellow, thick */
+  --focus-ring: #ffdd00;
+
+  /* Selection — inverted (yellow highlight) */
+  --selection-bg: hsla(50 100% 50% / 0.5);
+  --selection-text: #000000;
+
+  /* Nav active — yellow with black text */
+  --nav-active-bg: #ffdd00;
+  --nav-active-text: #000000;
+
+  /* shadcn mapping overrides */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  --card: var(--bg-elevated);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent-primary);
+  --primary-foreground: var(--text-inverse);
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--status-error);
+  --destructive-foreground: var(--text-primary);
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+  --sidebar: var(--bg-surface);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-inverse);
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-default);
+  --sidebar-ring: var(--accent-primary);
+}
+
+/* Thicker focus ring in HC — applied globally so every focusable element benefits */
+[data-theme="high-contrast"] :focus-visible {
+  outline: var(--border-width-focus) solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Dark mode - same as default since RalphX is dark-only */
@@ -347,9 +450,31 @@ body {
 
 /* Focus visible styling for accessibility */
 :focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: var(--border-width-focus) solid var(--accent-primary);
   outline-offset: 2px;
 }
+
+/* Reduce motion — respect OS setting AND app-level data-motion="reduce" override */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+[data-motion="reduce"] *,
+[data-motion="reduce"] *::before,
+[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Font scale — data-font-scale on <html> cascades via rem */
+[data-font-scale="lg"] { font-size: 110%; }
+[data-font-scale="xl"] { font-size: 125%; }
 
 /* Scrollbar styling (WebKit) - macOS Tahoe style */
 ::-webkit-scrollbar {

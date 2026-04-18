@@ -11,8 +11,6 @@
 
 import { useState } from "react";
 import { ShieldCheck, ChevronDown, ChevronRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useIdeationSettings } from "@/hooks/useIdeationSettings";
 import { useUiStore } from "@/stores/uiStore";
 import type { ExternalIdeationOverrides } from "@/types/ideation-config";
+import { SectionCard } from "./SettingsView.shared";
 
 // ============================================================================
 // Setting Row Component
@@ -239,29 +238,12 @@ export function IdeationSettingsPanel() {
   };
 
   return (
-    <Card
-      className={cn(
-        "bg-[var(--bg-elevated)] border-[var(--border-default)] shadow-[var(--shadow-xs)]",
-        // Gradient border technique
-        "border border-transparent",
-        "[background:linear-gradient(var(--bg-elevated),var(--bg-elevated))_padding-box,linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)_border-box]"
-      )}
+    <SectionCard
+      icon={<ShieldCheck className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      title="Planning & Verification"
+      description="Configure acceptance and verification gates"
     >
-      <div className="flex items-start gap-3 p-5 pb-0">
-        <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
-          <ShieldCheck className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
-            Planning & Verification
-          </h3>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-            Configure acceptance and verification gates
-          </p>
-        </div>
-      </div>
-      <Separator className="my-4 bg-[var(--border-subtle)]" />
-      <div className="px-5 pb-5 space-y-1">
+      <>
         {/* Require agent confirmation before finalizing proposals */}
         <CheckboxSettingRow
           id="require-accept-for-finalize"
@@ -352,7 +334,7 @@ export function IdeationSettingsPanel() {
             </div>
           )}
         </div>
-      </div>
-    </Card>
+      </>
+    </SectionCard>
   );
 }

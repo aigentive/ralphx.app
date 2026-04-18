@@ -29,7 +29,7 @@ function RestartBadge() {
   return (
     <span
       data-testid="restart-required-badge"
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[rgba(255,107,53,0.1)] text-[var(--accent-primary)] border border-[rgba(255,107,53,0.2)]"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-border)]"
     >
       <RefreshCw className="w-2.5 h-2.5" />
       Restart required
@@ -50,7 +50,7 @@ interface FieldRowProps {
 
 function FieldRow({ id, label, description, children }: FieldRowProps) {
   return (
-    <div className="flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors hover:bg-[rgba(45,45,45,0.3)]">
+    <div className="flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors hover:bg-[var(--bg-hover)]">
       <div className="flex-1 min-w-0 pr-4">
         <div className="flex items-center gap-2 flex-wrap">
           <Label
@@ -178,9 +178,7 @@ export function ExternalMcpSettingsPanel() {
   return (
     <Card
       className={cn(
-        "bg-[var(--bg-elevated)] border-[var(--border-default)] shadow-[var(--shadow-xs)]",
-        "border border-transparent",
-        "[background:linear-gradient(var(--bg-elevated),var(--bg-elevated))_padding-box,linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)_border-box]"
+        "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-[var(--shadow-xs)]"
       )}
     >
       <div className="flex items-start gap-3 p-5 pb-0">
@@ -310,7 +308,7 @@ export function ExternalMcpSettingsPanel() {
             onClick={() => void handleSave()}
             disabled={isSaving}
             size="sm"
-            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-white"
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--text-inverse)]"
           >
             {isSaving ? "Saving..." : "Save"}
           </Button>

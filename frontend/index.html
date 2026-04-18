@@ -8,6 +8,28 @@
   </head>
 
   <body>
+    <script>
+      // Pre-hydration theme bootstrap — applies persisted settings before React
+      // mounts so there is no flash-of-wrong-theme. See
+      // specs/design/theme-architecture.md.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem('ralphx-theme');
+          if (theme === 'high-contrast') {
+            root.setAttribute('data-theme', 'high-contrast');
+          } else if (!theme && window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches) {
+            // User hasn't chosen manually and the OS asks for more contrast —
+            // default to HC. Manual choice always wins on next load.
+            root.setAttribute('data-theme', 'high-contrast');
+          }
+          var motion = localStorage.getItem('ralphx-motion');
+          if (motion === 'reduce') root.setAttribute('data-motion', 'reduce');
+          var scale = localStorage.getItem('ralphx-font-scale');
+          if (scale === 'lg' || scale === 'xl') root.setAttribute('data-font-scale', scale);
+        } catch (_) { /* no-op */ }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

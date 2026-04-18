@@ -66,7 +66,7 @@ export function SettingRow({
     <div
       className={cn(
         "flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors",
-        !isDisabled && "hover:bg-[rgba(45,45,45,0.3)]",
+        !isDisabled && "hover:bg-[var(--bg-hover)]",
         isDisabled && "opacity-50"
       )}
     >
@@ -279,24 +279,9 @@ export interface SectionCardProps {
 
 export function SectionCard({ icon, title, description, children }: SectionCardProps) {
   return (
-    <Card
-      className="rounded-lg"
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-      }}
-    >
+    <Card className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-[var(--shadow-xs)]">
       <div className="flex items-start gap-3 p-5 pb-0">
-        <div
-          className="p-2 rounded-lg shrink-0"
-          style={{
-            background: "rgba(255,107,53,0.1)",
-            border: "1px solid rgba(255,107,53,0.2)",
-          }}
-        >
+        <div className="p-2 rounded-lg shrink-0 bg-[var(--accent-muted)] border border-[var(--accent-border)]">
           {icon}
         </div>
         <div>
