@@ -61,7 +61,7 @@
   --text-2xl:  1.5rem;
   --text-3xl:  1.875rem;
 
-  /* Semantic colors — exposed for Tailwind bg-*/text-*/border-* utilities */
+  /* Semantic colors exposed as Tailwind utilities (bg, text, border) */
   --color-bg-base:      var(--bg-base);
   --color-bg-surface:   var(--bg-surface);
   --color-bg-elevated:  var(--bg-elevated);
