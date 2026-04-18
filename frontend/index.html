@@ -20,20 +20,29 @@
           var root = document.documentElement;
           var theme = localStorage.getItem('ralphx-theme');
           // Explicit stored choice wins.
+          var resolved;
           if (theme === 'dark' || theme === 'light' || theme === 'high-contrast') {
-            root.setAttribute('data-theme', theme);
+            resolved = theme;
           } else if (window.matchMedia) {
             // First run — infer from OS signals.
             // Precedence: prefers-contrast: more > prefers-color-scheme: light.
             if (window.matchMedia('(prefers-contrast: more)').matches) {
-              root.setAttribute('data-theme', 'high-contrast');
+              resolved = 'high-contrast';
             } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-              root.setAttribute('data-theme', 'light');
+              resolved = 'light';
             } else {
-              root.setAttribute('data-theme', 'dark');
+              resolved = 'dark';
             }
           } else {
-            root.setAttribute('data-theme', 'dark');
+            resolved = 'dark';
+          }
+          root.setAttribute('data-theme', resolved);
+          // Keep shadcn's `.dark` class compat in sync with the resolved theme
+          // so a stale class never leaks Dark shadcn tokens into Light/HC.
+          if (resolved === 'dark') {
+            root.classList.add('dark');
+          } else {
+            root.classList.remove('dark');
           }
           var motion = localStorage.getItem('ralphx-motion');
           if (motion === 'reduce') root.setAttribute('data-motion', 'reduce');

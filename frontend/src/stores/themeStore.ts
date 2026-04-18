@@ -83,11 +83,20 @@ function loadFontScale(): FontScale {
 
 function applyThemeAttr(theme: ThemeName): void {
   if (typeof document === "undefined") return;
+  const root = document.documentElement;
   // Always set the attribute explicitly — including "dark" — so the visual
   // state never drifts from React state due to partial removeAttribute calls
   // or bootstrap re-infering from OS preference. CSS aliases :root and
   // [data-theme="dark"] to the same token definitions.
-  document.documentElement.setAttribute("data-theme", theme);
+  root.setAttribute("data-theme", theme);
+  // Defensive cleanup — shadcn's compatibility block keys off a `.dark`
+  // class. If another library/extension set it we ensure it only sticks
+  // when the active theme is "dark" so CSS cascade stays deterministic.
+  if (theme === "dark") {
+    root.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+  }
 }
 
 function applyMotionAttr(motion: MotionPreference): void {
@@ -120,7 +129,13 @@ interface ThemeState {
   setTheme: (theme: ThemeName) => void;
   setMotion: (motion: MotionPreference) => void;
   setFontScale: (scale: FontScale) => void;
-  toggleHighContrast: () => void;
+  /**
+   * Toggle or explicitly set HC mode.
+   * - `toggleHighContrast()` → flip based on current state
+   * - `toggleHighContrast(true)` → force HC on (keeps current base for restore)
+   * - `toggleHighContrast(false)` → force HC off, restore lastBaseTheme
+   */
+  toggleHighContrast: (enabled?: boolean) => void;
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
@@ -151,10 +166,15 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     applyFontScaleAttr(scale);
     set({ fontScale: scale });
   },
-  toggleHighContrast: () => {
+  toggleHighContrast: (enabled?: boolean) => {
     const state = get();
-    const next: ThemeName =
-      state.theme === "high-contrast" ? state.lastBaseTheme : "high-contrast";
+    // When called with an explicit boolean (Radix Switch's onCheckedChange
+    // passes the desired new value), honour that — don't re-toggle based on
+    // current state. Without an argument, flip from whatever the current
+    // state is.
+    const shouldEnable =
+      typeof enabled === "boolean" ? enabled : state.theme !== "high-contrast";
+    const next: ThemeName = shouldEnable ? "high-contrast" : state.lastBaseTheme;
     state.setTheme(next);
   },
 }));
