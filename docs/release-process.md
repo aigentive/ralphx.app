@@ -111,6 +111,7 @@ Pushing the tag triggers the release workflow automatically:
 3. **Notarize**: Submits to Apple for notarization
 4. **Package**: Creates per-architecture DMGs, signed updater bundles, `latest.json`, and checksums
 5. **Release**: Publishes the assets to the public binaries repo `aigentive/ralphx-releases`
+6. **Tap update**: For non-draft, non-prerelease releases, updates `aigentive/homebrew-ralphx/Casks/ralphx.rb`
 
 ### Step 6: Publish Release
 
@@ -149,6 +150,19 @@ Current release contract:
 - published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
 - `latest.json` points the app at those public updater bundles
 - the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
+- the Homebrew cask declares `auto_updates true`, so RalphX can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
+
+---
+
+## Homebrew Tap Publishing
+
+The release workflow also maintains the public tap repo `aigentive/homebrew-ralphx`.
+
+Current tap contract:
+- release artifacts stay in `aigentive/ralphx-releases`
+- `Casks/ralphx.rb` is rendered from the release workflow using the per-arch DMG sha256 values
+- only non-draft, non-prerelease releases update the tap automatically
+- testers install with `brew tap aigentive/ralphx` and `brew install --cask ralphx`
 
 ---
 
@@ -184,6 +198,7 @@ cargo tauri build
 - Verify all secrets are configured in repository settings
 - Secret names are case-sensitive
 - The public release job also requires `RELEASES_REPO_TOKEN`
+- Homebrew tap publishing also requires `HOMEBREW_TAP_TOKEN`
 
 **"Certificate import failed"**
 - Re-export the certificate and base64 encode it
@@ -196,6 +211,10 @@ cargo tauri build
 **Public release upload failed**
 - Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
 - Confirm the target repo exists and the token owner has write access to it
+
+**Homebrew tap update failed**
+- Verify `HOMEBREW_TAP_TOKEN` has `Contents: Read and write` on `aigentive/homebrew-ralphx`
+- Confirm the tap repo exists, is public, and contains a top-level `Casks/` directory
 
 **Updater assets missing**
 - Confirm `src-tauri/tauri.conf.json` still has `"bundle.createUpdaterArtifacts": true`
