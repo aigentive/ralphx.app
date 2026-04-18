@@ -180,6 +180,14 @@
 [data-theme="high-contrast"] {
   --card-icon-bg: transparent;
   --card-icon-border: var(--accent-primary);
+
+  /* Dialog/modal cohesion on HC — pure-black modal on pure-black canvas
+     has zero surface distinction. Bump the modal body to a subtle gray
+     and the sidebar rail a shade lighter, so the modal reads as a lifted
+     surface with clear header → body → rail layering. The 90% scrim +
+     1px white-alpha border on the DialogContent still frame the edges. */
+  --dialog-bg:      hsl(0 0% 8%);
+  --dialog-rail-bg: hsl(0 0% 12%);
 }
 
 /* HC button affordance — styleguide mandates visible borders on interactive

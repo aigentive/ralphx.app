@@ -102,7 +102,7 @@ export default function SettingsDialog({
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
         data-testid="settings-dialog"
-        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"
+        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--dialog-bg)] border border-[var(--dialog-border-color)]"
         hideCloseButton={true}
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
@@ -110,7 +110,7 @@ export default function SettingsDialog({
           Configure execution, ideation, workspace, and access settings.
         </DialogDescription>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--dialog-border-color)] bg-[var(--dialog-bg)] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text-primary)]">
               Settings
@@ -137,7 +137,7 @@ export default function SettingsDialog({
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left rail — hidden below lg breakpoint */}
-          <nav className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--border-subtle)] py-3">
+          <nav className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--dialog-border-color)] py-3 bg-[var(--dialog-rail-bg)]">
             {SETTINGS_GROUPS.map((group) => {
               const groupSections = SETTINGS_SECTIONS.filter(
                 (s) => s.groupId === group.id

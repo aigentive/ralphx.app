@@ -26,9 +26,16 @@
 
   /* ============================================================================
    * Dialog / modal (shadcn consumers also wire through --background/--card)
+   *
+   * --dialog-bg        — main content pane (brighter / primary surface)
+   * --dialog-rail-bg   — left rail / sidebar inside the modal (tonal shift
+   *                      from the body so the user reads nav vs content
+   *                      without relying purely on a 1px divider)
+   * Themes override both so the relationship holds per palette.
    * ============================================================================ */
   --dialog-overlay-bg:   var(--overlay-scrim-deep);
   --dialog-bg:           var(--bg-elevated);
+  --dialog-rail-bg:      var(--bg-surface);
   --dialog-border-color: var(--border-subtle);
   --dialog-shadow:       var(--shadow-lg);
 
