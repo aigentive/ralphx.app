@@ -31,7 +31,6 @@
   --gray-990:  hsl(220 15% 10%);
 
   /* Brand orange scale — warm, use sparingly. hsl(14°, 100%). */
-  --orange-400: hsl(14 100% 65%);
   --orange-500: hsl(14 100% 60%); /* canonical brand #ff6b35 */
   --orange-600: hsl(14 100% 55%);
   --orange-700: hsl(14 90% 50%);  /* light-theme tweak for AA on white */
@@ -75,24 +74,17 @@
   --color-white-dim-1: #e0e0e0;
   --color-white-dim-2: #b0b0b0;
 
-  /* Alpha overlays — expose common translucent values so components don't
-   * hand-roll rgba() literals. */
-  --alpha-black-60: hsla(0 0% 0% / 0.60);
-  --alpha-black-30: hsla(0 0% 0% / 0.30);
-  --alpha-black-20: hsla(0 0% 0% / 0.20);
-  --alpha-white-70: hsla(0 0% 100% / 0.70);
-  --alpha-white-60: hsla(0 0% 100% / 0.60);
-  --alpha-white-50: hsla(0 0% 100% / 0.50);
-  --alpha-white-40: hsla(0 0% 100% / 0.40);
-  --alpha-white-35: hsla(0 0% 100% / 0.35);
-  --alpha-white-15: hsla(0 0% 100% / 0.15);
-  --alpha-white-10: hsla(0 0% 100% / 0.10);
-  --alpha-white-8:  hsla(0 0% 100% / 0.08);
-  --alpha-white-6:  hsla(0 0% 100% / 0.06);
-  --alpha-white-5:  hsla(0 0% 100% / 0.05);
-  --alpha-white-4:  hsla(0 0% 100% / 0.04);
-  --alpha-white-3:  hsla(0 0% 100% / 0.03);
-  --alpha-white-2:  hsla(0 0% 100% / 0.02);
+  /* Alpha overlays — common translucent values so components don't hand-roll
+   * rgba() literals. Ladder tracks the --overlay-* semantic ladder + a few
+   * reserved strong variants for borders/scrims. */
+  --alpha-black-60: hsla(0 0% 0% / 0.60); /* → --overlay-scrim-deep */
+  --alpha-black-30: hsla(0 0% 0% / 0.30); /* → --overlay-scrim */
+  --alpha-white-50: hsla(0 0% 100% / 0.50); /* HC --border-subtle */
+  --alpha-white-15: hsla(0 0% 100% / 0.15); /* reserved */
+  --alpha-white-10: hsla(0 0% 100% / 0.10); /* → --overlay-moderate */
+  --alpha-white-8:  hsla(0 0% 100% / 0.08); /* reserved */
+  --alpha-white-6:  hsla(0 0% 100% / 0.06); /* → --overlay-weak */
+  --alpha-white-4:  hsla(0 0% 100% / 0.04); /* → --overlay-faint */
 
   /* ============================================================================
    * Typography primitives
@@ -102,7 +94,6 @@
   --font-body:    'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
 
-  --tracking-tight:  -0.02em;
   --tracking-normal: 0;
   --tracking-wide:   0.05em;
 
@@ -110,7 +101,9 @@
    * Spacing — 8pt grid
    * ============================================================================ */
 
-  --space-0:  0;
+  /* Note: Tailwind spacing utilities (p-1/p-2/...) resolve through the
+   * --spacing-* block in globals.css @theme inline. These --space-* tokens
+   * are kept for direct-CSS consumption if needed; prefer Tailwind utilities. */
   --space-1:  4px;
   --space-2:  8px;
   --space-3:  12px;
@@ -118,9 +111,6 @@
   --space-5:  20px;
   --space-6:  24px;
   --space-8:  32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
 
   /* ============================================================================
    * Border radius
@@ -130,7 +120,7 @@
   --radius-md:   8px;
   --radius-lg:   12px;
   --radius-xl:   16px;
-  --radius-full: 9999px;
+  /* Tailwind's rounded-full = 9999px is preferred over a --radius-full token. */
 
   /* ============================================================================
    * Shadows — layered for realistic depth on dark theme

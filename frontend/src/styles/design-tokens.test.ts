@@ -86,13 +86,16 @@ describe("design-tokens", () => {
 
   describe("spacing (8pt grid)", () => {
     it("should define spacing scale", () => {
+      // --space-* primitives are the direct-CSS scale (1-8). Tailwind's wider
+      // 1-16 scale resolves via --spacing-* in the @theme inline block.
       expect(cssContent).toContain("--space-1:");
       expect(cssContent).toContain("--space-2:");
       expect(cssContent).toContain("--space-3:");
       expect(cssContent).toContain("--space-4:");
       expect(cssContent).toContain("--space-6:");
       expect(cssContent).toContain("--space-8:");
-      expect(cssContent).toContain("--space-12:");
+      // Tailwind-scale entries available as --spacing-* for utility classes
+      expect(cssContent).toContain("--spacing-12:");
     });
 
     it("should use 8pt grid values", () => {
