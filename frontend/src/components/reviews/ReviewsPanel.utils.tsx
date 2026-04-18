@@ -77,8 +77,8 @@ export function EmptyState() {
       className="flex flex-col items-center justify-center p-12 text-center"
     >
       <CheckCircle2
-        className="w-12 h-12 mb-3 opacity-50"
-        style={{ color: "var(--text-muted)" }}
+        className="w-12 h-12 mb-3"
+        style={{ color: "var(--text-secondary)" }}
         strokeDasharray="4 4"
       />
       <p className="text-sm font-medium text-[var(--text-secondary)]">

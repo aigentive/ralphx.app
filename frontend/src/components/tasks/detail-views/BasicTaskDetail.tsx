@@ -1082,7 +1082,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       )}
 
       {!stepsLoading && !hasSteps && (
-        <div className="text-[13px] text-text-primary/40 italic py-4">
+        <div className="text-[13px] text-text-secondary italic py-4">
           No steps defined yet
         </div>
       )}

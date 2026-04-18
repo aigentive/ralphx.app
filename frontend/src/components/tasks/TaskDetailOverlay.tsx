@@ -514,8 +514,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={createSession.isPending}
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
-                  style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[var(--overlay-weak)]"
+                  style={{ color: "var(--text-secondary)" }}
+                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
                   {createSession.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -532,8 +532,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   onClick={() => setIsEditing(!isEditing)}
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
-                  style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[var(--overlay-weak)]"
+                  style={{ color: "var(--text-secondary)" }}
+                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -547,8 +547,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isArchiving}
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
-                  style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[var(--overlay-weak)]"
+                  style={{ color: "var(--text-secondary)" }}
+                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
                   {isArchiving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -566,8 +566,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isRestoring}
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
-                  style={{ color: "var(--text-muted)" }}
-                  className="hover:bg-[var(--overlay-weak)]"
+                  style={{ color: "var(--text-secondary)" }}
+                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
                   {isRestoring ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -584,8 +584,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 data-testid="task-overlay-audit-trail-button"
                 aria-label="Audit Trail"
                 title="Audit Trail"
-                style={{ color: "var(--text-muted)" }}
-                className="hover:bg-[var(--overlay-weak)]"
+                style={{ color: "var(--text-secondary)" }}
+                className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
               >
                 <ScrollText className="w-4 h-4" />
               </Button>
@@ -596,8 +596,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 onClick={handleClose}
                 data-testid="task-overlay-close"
                 aria-label="Close"
-                style={{ color: "var(--text-muted)" }}
-                className="hover:bg-[var(--overlay-weak)]"
+                style={{ color: "var(--text-secondary)" }}
+                className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
               >
                 <X className="w-4 h-4" />
               </Button>
