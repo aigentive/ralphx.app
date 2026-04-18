@@ -318,7 +318,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 0,
           color: getLineNumColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         {line.oldLineNum ?? ""}
@@ -330,8 +330,8 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 48,
           color: getLineNumColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
-          borderColor: "hsl(220 10% 15%)",
+          backgroundColor: "var(--bg-surface)",
+          borderColor: "var(--border-subtle)",
         }}
       >
         {line.newLineNum ?? ""}
@@ -343,7 +343,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 96,
           color: getPrefixColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         {getLinePrefix(line.type)}
@@ -356,8 +356,8 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
         style={{
           color:
             line.type === "deletion"
-              ? "hsl(220 10% 60%)"
-              : "hsl(220 10% 80%)",
+              ? "var(--text-muted)"
+              : "var(--text-secondary)",
         }}
       >
         {line.content || " "}
@@ -403,7 +403,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     return (
       <div
         className="flex flex-col items-center justify-center h-full gap-3 px-6"
-        style={{ color: "hsl(220 10% 55%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <div className="text-sm">Diff too large to render quickly</div>
         <div className="text-xs text-white/50">
@@ -424,7 +424,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     return (
       <div
         className="flex items-center justify-center h-full"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <p className="text-sm">No changes</p>
       </div>
@@ -435,7 +435,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     <div className="h-full overflow-y-auto">
       <div
         className="font-mono text-[13px] leading-[20px]"
-        style={{ backgroundColor: "hsl(220 10% 8%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
         <div className="px-3 py-2 border-b" style={{ borderColor: "var(--overlay-weak)" }}>
           <Button

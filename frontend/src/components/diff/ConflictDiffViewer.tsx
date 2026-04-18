@@ -35,7 +35,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
     <div className="h-full flex flex-col">
       <div
         className="font-mono text-[13px] leading-[20px]"
-        style={{ backgroundColor: "hsl(220 10% 8%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
         {/* Header with file path and language badge */}
         <div
@@ -44,7 +44,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
         >
           <span
             className="text-sm truncate"
-            style={{ color: "hsl(220 10% 80%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {filePath}
           </span>
@@ -75,7 +75,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
               style={{ backgroundColor: "var(--status-error-muted)" }}
             />
             <span style={{ color: "var(--status-error)" }}>-</span>
-            <span style={{ color: "hsl(220 10% 50%)" }}>Ours (current)</span>
+            <span style={{ color: "var(--text-muted)" }}>Ours (current)</span>
           </span>
           <span className="flex items-center gap-1.5">
             <span
@@ -83,7 +83,7 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
               style={{ backgroundColor: "var(--status-info-muted)" }}
             />
             <span style={{ color: "var(--status-info)" }}>+</span>
-            <span style={{ color: "hsl(220 10% 50%)" }}>Theirs (incoming)</span>
+            <span style={{ color: "var(--text-muted)" }}>Theirs (incoming)</span>
           </span>
         </div>
       </div>

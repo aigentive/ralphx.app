@@ -17,23 +17,53 @@ export function getSubagentTypeColor(subagentType: string): { bg: string; text: 
   const type = subagentType.toLowerCase();
   switch (type) {
     case "explore":
-      return { bg: "hsla(200, 70%, 50%, 0.15)", text: "hsl(200, 70%, 65%)" };
+      return {
+        bg: "color-mix(in srgb, var(--status-info) 15%, transparent)",
+        text: "var(--status-info)",
+      };
     case "plan":
-      return { bg: "hsla(280, 60%, 50%, 0.15)", text: "hsl(280, 60%, 70%)" };
+      return {
+        bg: "color-mix(in srgb, var(--accent-primary) 15%, transparent)",
+        text: "var(--accent-primary)",
+      };
     case "bash":
-      return { bg: "hsla(140, 60%, 40%, 0.15)", text: "hsl(140, 60%, 65%)" };
+      return {
+        bg: "color-mix(in srgb, var(--status-success) 15%, transparent)",
+        text: "var(--status-success)",
+      };
     case "general-purpose":
-      return { bg: "hsla(220, 60%, 50%, 0.15)", text: "hsl(220, 60%, 70%)" };
+      return {
+        bg: "color-mix(in srgb, var(--status-info) 15%, transparent)",
+        text: "var(--status-info)",
+      };
     default:
-      return { bg: "hsla(220, 10%, 50%, 0.15)", text: "hsl(220, 10%, 65%)" };
+      return {
+        bg: "color-mix(in srgb, var(--text-muted) 15%, transparent)",
+        text: "var(--text-secondary)",
+      };
   }
 }
 
 /** Get model badge color */
 export function getModelColor(model: string): { bg: string; text: string } {
   const m = model.toLowerCase();
-  if (m.includes("opus")) return { bg: "hsla(14, 100%, 60%, 0.15)", text: "hsl(14, 100%, 65%)" };
-  if (m.includes("sonnet")) return { bg: "hsla(40, 80%, 50%, 0.15)", text: "hsl(40, 80%, 65%)" };
-  if (m.includes("haiku")) return { bg: "hsla(160, 60%, 45%, 0.15)", text: "hsl(160, 60%, 65%)" };
-  return { bg: "hsla(220, 10%, 50%, 0.15)", text: "hsl(220, 10%, 65%)" };
+  if (m.includes("opus"))
+    return {
+      bg: "color-mix(in srgb, var(--accent-primary) 15%, transparent)",
+      text: "var(--accent-primary)",
+    };
+  if (m.includes("sonnet"))
+    return {
+      bg: "color-mix(in srgb, var(--status-warning) 15%, transparent)",
+      text: "var(--status-warning)",
+    };
+  if (m.includes("haiku"))
+    return {
+      bg: "color-mix(in srgb, var(--status-success) 15%, transparent)",
+      text: "var(--status-success)",
+    };
+  return {
+    bg: "color-mix(in srgb, var(--text-muted) 15%, transparent)",
+    text: "var(--text-secondary)",
+  };
 }

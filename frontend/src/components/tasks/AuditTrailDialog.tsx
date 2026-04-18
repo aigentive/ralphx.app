@@ -86,7 +86,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
           <div className="flex items-center gap-3">
             <ScrollText className="w-5 h-5" style={{ color: "var(--accent-primary)" }} />
             <DialogTitle
-              className="text-base font-semibold text-white/90"
+              className="text-base font-semibold text-text-primary/90"
               style={{ letterSpacing: "-0.02em" }}
             >
               Audit Trail
@@ -97,7 +97,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="w-8 h-8 text-white/50 hover:text-white/80 hover:bg-white/10"
+            className="w-8 h-8 text-text-primary/50 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             <X className="w-4 h-4" />
           </Button>
@@ -137,8 +137,8 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                   className="w-8 h-8 mb-2"
                   style={{ color: "var(--text-muted)", opacity: 0.5 }}
                 />
-                <p className="text-sm text-white/50">No audit events recorded yet</p>
-                <p className="text-xs mt-1 text-white/30">
+                <p className="text-sm text-text-primary/50">No audit events recorded yet</p>
+                <p className="text-xs mt-1 text-text-primary/30">
                   State transitions and activity events will appear here
                 </p>
               </div>
@@ -156,10 +156,10 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                       backdropFilter: "blur(12px)",
                     }}
                   >
-                    <span className="text-[12px] font-semibold text-white/80">
+                    <span className="text-[12px] font-semibold text-text-primary/80">
                       {selectedPhase.label}
                     </span>
-                    <span className="text-[11px] text-white/40 ml-2">
+                    <span className="text-[11px] text-text-primary/40 ml-2">
                       {filteredEntries.length} events
                     </span>
                   </div>
@@ -238,14 +238,14 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
             backdropFilter: "blur(20px)",
           }}
         >
-          <span className="text-[12px] text-white/50">
+          <span className="text-[12px] text-text-primary/50">
             {entries.length} {entries.length === 1 ? "event" : "events"}
             {selectedPhase && ` \u00B7 Showing: ${selectedPhase.label}`}
           </span>
           <Button
             variant="ghost"
             onClick={onClose}
-            className="text-[13px] text-white/60 hover:text-white/80 hover:bg-white/10"
+            className="text-[13px] text-text-primary/60 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             Close
           </Button>

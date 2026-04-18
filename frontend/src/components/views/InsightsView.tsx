@@ -71,7 +71,7 @@ function WeekStartToggle({
   return (
     <div
       className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
-      style={{ backgroundColor: "hsl(220 10% 14%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
     >
       <Calendar size={13} className="text-text-primary/50" />
       {[
@@ -307,7 +307,7 @@ function InsightsContent({
   return (
     <div
       className="flex flex-col flex-1 overflow-auto"
-      style={{ backgroundColor: "hsl(220 10% 8%)" }}
+      style={{ backgroundColor: "var(--bg-base)" }}
     >
       <div className="flex flex-col gap-6 p-6 max-w-[1400px] w-full mx-auto">
         {/* Header with export buttons */}
@@ -330,7 +330,7 @@ function InsightsContent({
               onClick={() => exportJSON(stats, trends)}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
               style={{
-                backgroundColor: "hsl(220 10% 14%)",
+                backgroundColor: "var(--bg-surface)",
               }}
               title="Download JSON"
             >
@@ -341,7 +341,7 @@ function InsightsContent({
               onClick={() => exportCSV(trends)}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
               style={{
-                backgroundColor: "hsl(220 10% 14%)",
+                backgroundColor: "var(--bg-surface)",
               }}
               title="Download CSV"
             >

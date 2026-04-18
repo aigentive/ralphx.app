@@ -41,17 +41,17 @@ export function TaskCardKindBadge({ toolName }: { toolName: string }) {
   const style =
     kind === "Delegate"
       ? {
-          backgroundColor: "hsla(150, 55%, 45%, 0.12)",
-          color: "hsl(150, 55%, 63%)",
+          backgroundColor: "color-mix(in srgb, var(--status-success) 12%, transparent)",
+          color: "var(--status-success)",
         }
       : kind === "Agent"
         ? {
-            backgroundColor: "hsla(14, 100%, 60%, 0.12)",
-            color: "hsl(14, 100%, 65%)",
+            backgroundColor: "color-mix(in srgb, var(--accent-primary) 12%, transparent)",
+            color: "var(--accent-primary)",
           }
         : {
-            backgroundColor: "hsla(220, 10%, 50%, 0.12)",
-            color: "hsl(220, 10%, 60%)",
+            backgroundColor: "color-mix(in srgb, var(--text-muted) 12%, transparent)",
+            color: "var(--text-secondary)",
           };
 
   return (
@@ -168,12 +168,12 @@ export function TaskCardStatusBadge({
   const style =
     tone === "error"
       ? {
-          backgroundColor: "hsla(0 70% 50% / 0.18)",
-          color: "hsl(0 70% 70%)",
+          backgroundColor: "color-mix(in srgb, var(--status-error) 18%, transparent)",
+          color: "var(--status-error)",
         }
       : {
-          backgroundColor: "hsla(38 90% 50% / 0.15)",
-          color: "hsl(38 90% 60%)",
+          backgroundColor: "color-mix(in srgb, var(--status-warning) 15%, transparent)",
+          color: "var(--status-warning)",
         };
 
   return (
@@ -198,7 +198,7 @@ export function TaskCardSummary({
   return (
     <span
       className={`text-xs ${className}`.trim()}
-      style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}
+      style={{ color: "var(--text-muted)" }}
     >
       {parts.join(" \u00B7 ")}
     </span>

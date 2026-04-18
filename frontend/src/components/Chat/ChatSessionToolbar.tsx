@@ -132,7 +132,7 @@ export function ChatSessionToolbar({
   return (
     <div
       className="px-3 py-1.5 shrink-0"
-      style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
+      style={{ borderBottom: "1px solid var(--border-subtle)" }}
     >
       <div
         className="flex min-w-0 items-center gap-2"
@@ -142,7 +142,7 @@ export function ChatSessionToolbar({
           <button
             data-testid="back-to-plan-button"
             onClick={backAction.onClick}
-            className="flex shrink-0 items-center gap-1 text-xs text-white/50 hover:text-white/80 transition-colors"
+            className="flex shrink-0 items-center gap-1 text-xs text-text-primary/50 hover:text-text-primary/80 transition-colors"
           >
             {backAction.icon}
             <span>{backAction.label}</span>

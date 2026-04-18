@@ -27,7 +27,7 @@ export function EffortChip({ effort }: EffortChipProps) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-xs text-white/32 shrink-0 cursor-default select-none">
+          <span className="text-xs text-text-primary/32 shrink-0 cursor-default select-none">
             {label}
           </span>
         </TooltipTrigger>

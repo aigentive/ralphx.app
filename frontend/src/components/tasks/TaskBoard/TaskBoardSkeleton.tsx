@@ -15,7 +15,7 @@ export function TaskBoardSkeleton() {
     <div
       data-testid="task-board-skeleton"
       className="flex gap-3 overflow-x-auto p-4 flex-1"
-      style={{ background: "hsl(220 10% 8%)" }}
+      style={{ background: "var(--bg-base)" }}
     >
       {/* Left spacer */}
       <div className="w-4 flex-shrink-0" aria-hidden="true" />
@@ -37,7 +37,7 @@ export function TaskBoardSkeleton() {
                 paddingLeft: "6px",
                 paddingRight: "6px",
                 borderRight: index < COLUMN_COUNT - 1
-                  ? "1px solid hsla(220 10% 100% / 0.06)"
+                  ? "1px solid var(--border-subtle)"
                   : undefined,
               }}
             >
@@ -47,7 +47,7 @@ export function TaskBoardSkeleton() {
                 style={{
                   width: "8px",
                   height: "60px",
-                  background: "hsl(220 10% 15%)",
+                  background: "var(--bg-elevated)",
                 }}
               />
               {/* Count placeholder */}
@@ -56,7 +56,7 @@ export function TaskBoardSkeleton() {
                 style={{
                   width: "12px",
                   height: "8px",
-                  background: "hsl(220 10% 13%)",
+                  background: "var(--bg-surface)",
                 }}
               />
             </div>
@@ -77,11 +77,11 @@ export function TaskBoardSkeleton() {
             >
               <div
                 className="h-2.5 flex-1 rounded animate-pulse"
-                style={{ background: "hsl(220 10% 18%)", maxWidth: "70px" }}
+                style={{ background: "var(--overlay-weak)", maxWidth: "70px" }}
               />
               <div
                 className="h-2.5 w-4 rounded animate-pulse"
-                style={{ background: "hsl(220 10% 15%)" }}
+                style={{ background: "var(--bg-elevated)" }}
               />
             </div>
 
@@ -93,15 +93,15 @@ export function TaskBoardSkeleton() {
                   key={cardIndex}
                   data-testid={`skeleton-card-${index}-${cardIndex}`}
                   className="p-2.5 rounded-lg animate-pulse"
-                  style={{ background: "hsl(220 10% 12%)" }}
+                  style={{ background: "var(--bg-surface)" }}
                 >
                   <div
                     className="h-3 w-4/5 rounded mb-2"
-                    style={{ background: "hsl(220 10% 18%)" }}
+                    style={{ background: "var(--bg-elevated)" }}
                   />
                   <div
                     className="h-2.5 w-3/5 rounded"
-                    style={{ background: "hsl(220 10% 16%)" }}
+                    style={{ background: "var(--overlay-weak)" }}
                   />
                 </div>
               ))}

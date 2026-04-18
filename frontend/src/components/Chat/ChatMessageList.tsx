@@ -955,7 +955,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
           {isFilteredTabEmpty && (
             <div className="flex-1 flex items-center justify-center h-full" data-testid="teammate-tab-empty">
-              <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>
                 No messages from {emptyTabLabel} yet
               </span>
             </div>
@@ -1068,7 +1068,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
         {isFilteredTabEmpty && (
           <div className="absolute inset-0 flex items-center justify-center" data-testid="teammate-tab-empty">
-            <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
+            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
               No messages from {emptyTabLabel} yet
             </span>
           </div>
@@ -1099,9 +1099,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             <span
               className="rounded-full px-3 py-1 text-[11px]"
               style={{
-                backgroundColor: "hsla(220 15% 12% / 0.94)",
-                border: "1px solid hsla(220 20% 100% / 0.06)",
-                color: "hsl(220 10% 72%)",
+                backgroundColor: "color-mix(in srgb, var(--bg-surface) 94%, transparent)",
+                border: "1px solid var(--border-subtle)",
+                color: "var(--text-secondary)",
               }}
             >
               Loading earlier messages...

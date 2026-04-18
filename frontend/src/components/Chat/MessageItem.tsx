@@ -184,7 +184,7 @@ export const MessageItem = React.memo(function MessageItem({
     >
       {/* Agent indicator for assistant messages */}
       {!isUser && !teammateName && (
-        <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
+        <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-text-primary/40" />
       )}
       {/* Teammate name badge */}
       {!isUser && teammateName && (
@@ -192,7 +192,7 @@ export const MessageItem = React.memo(function MessageItem({
           {teammateColor && (
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: teammateColor }} />
           )}
-          <span className="text-[10px] font-medium" style={{ color: teammateColor ?? "hsl(220 10% 50%)" }}>
+          <span className="text-[10px] font-medium" style={{ color: teammateColor ?? "var(--text-muted)" }}>
             {teammateName}
           </span>
         </div>

@@ -66,7 +66,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
         >
           validate
         </span>
-        <span className="text-[12px] text-white/80 font-mono truncate flex-1" title={step.label}>
+        <span className="text-[12px] text-text-primary/80 font-mono truncate flex-1" title={step.label}>
           {step.label}
         </span>
         {isCached && (
@@ -78,15 +78,15 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
           </span>
         )}
         {step.duration_ms != null && (
-          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+          <span className="flex items-center gap-1 text-[11px] text-text-primary/40 shrink-0">
             <Clock className="w-3 h-3" />
             {formatDuration(step.duration_ms)}
           </span>
         )}
         {hasOutput && (
           expanded
-            ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-            : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />
+            ? <ChevronDown className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
+            : <ChevronRight className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
         )}
       </button>
       {expanded && hasOutput && (
@@ -95,7 +95,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
           style={{ scrollbarWidth: "thin" }}
         >
           {step.stdout && step.stdout.trim() && (
-            <pre className="text-[11px] font-mono text-white/50 whitespace-pre-wrap break-all leading-relaxed">
+            <pre className="text-[11px] font-mono text-text-primary/50 whitespace-pre-wrap break-all leading-relaxed">
               {step.stdout}
             </pre>
           )}
@@ -155,18 +155,18 @@ export function StepsGroup({ steps, phase, label }: {
         >
           {phase}
         </span>
-        <span className="text-[12px] text-white/80 flex-1">
+        <span className="text-[12px] text-text-primary/80 flex-1">
           {label}
         </span>
         {totalMs > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+          <span className="flex items-center gap-1 text-[11px] text-text-primary/40 shrink-0">
             <Clock className="w-3 h-3" />
             {formatDuration(totalMs)}
           </span>
         )}
         {expanded
-          ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-          : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+          ? <ChevronDown className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
+          : <ChevronRight className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />}
       </button>
       {expanded && (
         <div className="px-3 pb-2.5 space-y-2">
@@ -188,16 +188,16 @@ export function StepsGroup({ steps, phase, label }: {
                   ) : (
                     <CheckCircle2 className="w-3 h-3" style={{ color: "var(--status-success)" }} />
                   )}
-                  <span className="text-[11px] text-white/60 truncate flex-1" title={step.label}>
+                  <span className="text-[11px] text-text-primary/60 truncate flex-1" title={step.label}>
                     {step.label}
                   </span>
                   {step.duration_ms != null && (
-                    <span className="text-[10px] text-white/30 shrink-0">
+                    <span className="text-[10px] text-text-primary/30 shrink-0">
                       {formatDuration(step.duration_ms)}
                     </span>
                   )}
                 </div>
-                <code className="block text-[10px] font-mono text-white/40 pl-5 truncate" title={step.command}>
+                <code className="block text-[10px] font-mono text-text-primary/40 pl-5 truncate" title={step.command}>
                   $ {step.command}
                 </code>
                 {hasOutput && (
@@ -206,7 +206,7 @@ export function StepsGroup({ steps, phase, label }: {
                     style={{ scrollbarWidth: "thin" }}
                   >
                     {step.stdout && step.stdout.trim() && (
-                      <pre className="text-[10px] font-mono text-white/40 whitespace-pre-wrap break-all leading-relaxed">
+                      <pre className="text-[10px] font-mono text-text-primary/40 whitespace-pre-wrap break-all leading-relaxed">
                         {step.stdout}
                       </pre>
                     )}
@@ -297,7 +297,7 @@ export function ValidationProgress({
       <SectionTitle>
         {title}
         {source === "live" && (
-          <span className="ml-2 text-[10px] font-normal text-white/30">(live)</span>
+          <span className="ml-2 text-[10px] font-normal text-text-primary/30">(live)</span>
         )}
       </SectionTitle>
       <div className="space-y-1.5">

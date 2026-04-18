@@ -497,8 +497,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           data-testid="chat-panel-header"
           className="flex items-center justify-between h-11 px-3 border-b shrink-0"
           style={{
-            borderColor: "hsla(220 10% 100% / 0.04)",
-            background: "hsla(220 10% 100% / 0.02)",
+            borderColor: "color-mix(in srgb, var(--text-primary) 4%, transparent)",
+            background: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
           }}
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />

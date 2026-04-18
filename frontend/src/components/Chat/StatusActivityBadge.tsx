@@ -217,7 +217,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="shrink-0 h-7 px-2 text-white/40 hover:text-white/60"
+            className="shrink-0 h-7 px-2 text-text-primary/40 hover:text-text-primary/60"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -231,8 +231,8 @@ export function StatusActivityBadge({
   if (isWaiting) {
     if (isInlineLayout) {
       return (
-        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55">
-          <CirclePause className="h-3 w-3 shrink-0 text-white/45" />
+        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-text-primary/55">
+          <CirclePause className="h-3 w-3 shrink-0 text-text-primary/45" />
           <span className="truncate">Awaiting input</span>
           {showActivityButton && (
             <Button
@@ -253,7 +253,7 @@ export function StatusActivityBadge({
       <div className="flex items-center gap-1.5 shrink-0">
         {showModelChip && modelDisplay && <ModelChip model={modelDisplay} />}
         <Badge variant="secondary" className="shrink-0">
-          <CirclePause className="w-3 h-3 mr-1.5 text-white/50" />
+          <CirclePause className="w-3 h-3 mr-1.5 text-text-primary/50" />
           Awaiting input
         </Badge>
         {showActivityButton && (
@@ -305,10 +305,10 @@ export function StatusActivityBadge({
   if (isInlineLayout) {
     return (
       <div
-        className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55"
+        className="flex items-center gap-1.5 min-w-0 text-[11px] text-text-primary/55"
         data-testid="chat-session-status-inline"
       >
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-white/55" />
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-text-primary/55" />
         <span className={badgeColorClass ? `${badgeColorClass} truncate` : "truncate"}>
           {badgeLabel}
         </span>

@@ -74,7 +74,7 @@ export function ColumnGroup({
               background: "transparent",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+              e.currentTarget.style.background = "var(--overlay-faint)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
@@ -86,12 +86,12 @@ export function ColumnGroup({
                 "w-3 h-3 flex-shrink-0 transition-transform duration-200",
                 collapsed && "-rotate-90"
               )}
-              style={{ color: "hsl(220 10% 45%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
 
             {/* Optional icon */}
             {icon && (
-              <span className="flex-shrink-0" style={{ color: "hsl(220 10% 50%)" }}>
+              <span className="flex-shrink-0" style={{ color: "var(--text-secondary)" }}>
                 {icon}
               </span>
             )}
@@ -102,7 +102,7 @@ export function ColumnGroup({
               style={{
                 fontSize: "11px",
                 fontWeight: 500,
-                color: "hsl(220 10% 50%)",
+                color: "var(--text-secondary)",
               }}
             >
               {label}
@@ -113,7 +113,7 @@ export function ColumnGroup({
               style={{
                 fontSize: "10px",
                 fontWeight: 500,
-                color: "hsl(220 10% 40%)",
+                color: "var(--text-muted)",
                 fontVariantNumeric: "tabular-nums",
               }}
             >

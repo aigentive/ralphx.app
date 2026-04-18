@@ -17,12 +17,12 @@ interface TeammateCardProps {
 }
 
 const STATUS_CONFIG: Record<TeammateStatus, { label: string; dotColor: string }> = {
-  spawning: { label: "Spawning", dotColor: "hsl(220 10% 50%)" },
-  running: { label: "Running", dotColor: "hsl(142 71% 45%)" },
-  idle: { label: "Idle", dotColor: "hsl(48 96% 53%)" },
-  completed: { label: "Done", dotColor: "hsl(220 10% 40%)" },
-  failed: { label: "Failed", dotColor: "hsl(0 84% 60%)" },
-  shutdown: { label: "Stopped", dotColor: "hsl(220 10% 30%)" },
+  spawning: { label: "Spawning", dotColor: "var(--text-muted)" },
+  running: { label: "Running", dotColor: "var(--status-success)" },
+  idle: { label: "Idle", dotColor: "var(--status-warning)" },
+  completed: { label: "Done", dotColor: "var(--text-muted)" },
+  failed: { label: "Failed", dotColor: "var(--status-error)" },
+  shutdown: { label: "Stopped", dotColor: "var(--text-muted)" },
 };
 
 function formatCost(usd: number): string {
@@ -48,8 +48,8 @@ export const TeammateCard = React.memo(function TeammateCard({
     <div
       className="rounded-lg px-3 py-2.5"
       style={{
-        backgroundColor: isShutdown ? "hsl(220 10% 10%)" : "hsl(220 10% 12%)",
-        border: `1px solid hsl(220 10% ${isShutdown ? "13" : "16"}%)`,
+        backgroundColor: isShutdown ? "var(--bg-base)" : "var(--bg-surface)",
+        border: `1px solid ${isShutdown ? "var(--border-subtle)" : "var(--border-default)"}`,
         opacity: isShutdown ? 0.6 : 1,
       }}
     >
@@ -59,14 +59,14 @@ export const TeammateCard = React.memo(function TeammateCard({
           className="w-2 h-2 rounded-full shrink-0"
           style={{ backgroundColor: color }}
         />
-        <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 85%)" }}>
+        <span className="text-[12px] font-medium" style={{ color: "var(--text-secondary)" }}>
           {name}
         </span>
         <span
           className="text-[10px] px-1.5 py-0 rounded"
           style={{
-            backgroundColor: "hsl(220 10% 16%)",
-            color: "hsl(220 10% 50%)",
+            backgroundColor: "var(--bg-elevated)",
+            color: "var(--text-muted)",
           }}
         >
           {model}
@@ -76,7 +76,7 @@ export const TeammateCard = React.memo(function TeammateCard({
             className="w-1.5 h-1.5 rounded-full"
             style={{ backgroundColor: statusConfig.dotColor }}
           />
-          <span className="text-[10px]" style={{ color: "hsl(220 10% 50%)" }}>
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
             {statusConfig.label}
           </span>
         </div>
@@ -84,21 +84,21 @@ export const TeammateCard = React.memo(function TeammateCard({
 
       {/* Role description */}
       {roleDescription && (
-        <p className="text-[11px] mb-1 truncate" style={{ color: "hsl(220 10% 50%)" }}>
+        <p className="text-[11px] mb-1 truncate" style={{ color: "var(--text-muted)" }}>
           {roleDescription}
         </p>
       )}
 
       {/* Current activity */}
       {currentActivity && status !== "shutdown" && (
-        <p className="text-[11px] mb-1 truncate" style={{ color: "hsl(220 10% 45%)" }}>
+        <p className="text-[11px] mb-1 truncate" style={{ color: "var(--text-muted)" }}>
           {currentActivity}
         </p>
       )}
 
       {/* Cost */}
       <div className="flex items-center justify-between mt-1.5">
-        <span className="text-[10px]" style={{ color: "hsl(220 10% 40%)" }}>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
           {formatTokens(tokensUsed)} tokens | {formatCost(estimatedCostUsd)}
         </span>
 

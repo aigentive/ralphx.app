@@ -76,8 +76,8 @@ export function ChildSessionNotification({
       data-testid="verification-started-notification"
       className="mx-4 mb-2 p-3 rounded-lg animate-[slide-in-bottom_300ms_ease-out]"
       style={{
-        background: "hsla(220 10% 14% / 0.8)",
-        border: "1px solid hsla(220 20% 100% / 0.08)",
+        background: "color-mix(in srgb, var(--bg-surface) 80%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--text-primary) 8%, transparent)",
         backdropFilter: "blur(8px)",
       }}
     >
@@ -85,11 +85,11 @@ export function ChildSessionNotification({
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <ShieldCheck
             className="w-3.5 h-3.5 shrink-0"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-secondary)" }}
           />
           <p
             className="text-sm font-medium"
-            style={{ color: "hsl(220 10% 90%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             Verification started
           </p>
@@ -101,15 +101,15 @@ export function ChildSessionNotification({
             data-testid="view-verification-button"
             className="gap-2 h-7 text-xs"
             style={{
-              background: "hsla(14 100% 60% / 0.12)",
-              border: "1px solid hsla(14 100% 60% / 0.2)",
-              color: "hsl(14 100% 60%)",
+              background: "color-mix(in srgb, var(--accent-primary) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent-primary) 20%, transparent)",
+              color: "var(--accent-primary)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsla(14 100% 60% / 0.18)";
+              e.currentTarget.style.background = "color-mix(in srgb, var(--accent-primary) 18%, transparent)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "hsla(14 100% 60% / 0.12)";
+              e.currentTarget.style.background = "color-mix(in srgb, var(--accent-primary) 12%, transparent)";
             }}
           >
             View
@@ -118,7 +118,7 @@ export function ChildSessionNotification({
             onClick={() => clearVerificationNotification(sessionId)}
             data-testid="dismiss-verification-button"
             className="w-5 h-5 flex items-center justify-center rounded opacity-50 hover:opacity-100 transition-opacity"
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
             aria-label="Dismiss verification notification"
           >
             <X className="w-3 h-3" />
