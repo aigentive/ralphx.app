@@ -279,9 +279,9 @@ export interface SectionCardProps {
 
 export function SectionCard({ icon, title, description, children }: SectionCardProps) {
   return (
-    <Card className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] shadow-[var(--shadow-xs)]">
+    <Card className="rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
       <div className="flex items-start gap-3 p-5 pb-0">
-        <div className="p-2 rounded-lg shrink-0 bg-[var(--accent-muted)] border border-[var(--accent-border)]">
+        <div className="p-2 rounded-lg shrink-0 bg-[var(--card-icon-bg)] border border-[var(--card-icon-border)]">
           {icon}
         </div>
         <div>
