@@ -19,6 +19,14 @@ on:
         required: true
         type: boolean
         default: false
+      arm_runner:
+        description: "Runner to use for the macOS ARM release build"
+        required: true
+        type: choice
+        default: self-hosted
+        options:
+          - self-hosted
+          - github-hosted
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ jobs:
       draft: ${{ steps.meta.outputs.draft }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
+      build_matrix: ${{ steps.meta.outputs.build_matrix }}
     steps:
       - name: Resolve release metadata
         id: meta
@@ -54,6 +63,7 @@ jobs:
           raw_version="${{ github.event.inputs.version }}"
           raw_draft="${{ github.event.inputs.draft }}"
           raw_prerelease="${{ github.event.inputs.prerelease }}"
+          raw_arm_runner="${{ github.event.inputs.arm_runner }}"
 
           version="${raw_version#v}"
           if [[ -z "${version}" ]]; then
@@ -70,6 +80,33 @@ jobs:
             exit 1
           fi
 
+          arm_runs_on='"macos-15"'
+          if [[ "${raw_arm_runner}" == "self-hosted" ]]; then
+            arm_runs_on='["self-hosted","macOS","ARM64","ralphx-release"]'
+          fi
+
+          build_matrix="$(
+            jq -cn \
+              --arg arm_arch "aarch64" \
+              --arg arm_runs_on "${arm_runs_on}" \
+              --arg arm_runner_kind "${raw_arm_runner}" \
+              --arg intel_arch "x86_64" \
+              --arg intel_runs_on '"macos-15-intel"' \
+              --arg intel_runner_kind "github-hosted" \
+              '{include: [
+                {
+                  arch: $arm_arch,
+                  runs_on: $arm_runs_on,
+                  runner_kind: $arm_runner_kind
+                },
+                {
+                  arch: $intel_arch,
+                  runs_on: $intel_runs_on,
+                  runner_kind: $intel_runner_kind
+                }
+              ]}'
+          )"
+
           {
             echo "version=${version}"
             echo "tag=${tag}"
@@ -77,6 +114,7 @@ jobs:
             echo "draft=${raw_draft}"
             echo "prerelease=${raw_prerelease}"
             echo "source_ref=refs/tags/${tag}"
+            echo "build_matrix=${build_matrix}"
           } >> "${GITHUB_OUTPUT}"
 
   build-macos:
@@ -85,13 +123,8 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: aarch64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+      matrix: ${{ fromJSON(needs.metadata.outputs.build_matrix) }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
     env:
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
