@@ -10,7 +10,7 @@ import { useMetricsConfig, useSaveMetricsConfig } from "@/hooks/useMetricsConfig
 import { DEFAULT_METRICS_CONFIG } from "@/types/project-stats";
 import type { MetricsConfig } from "@/types/project-stats";
 
-const ACCENT = "#ff6b35";
+const ACCENT = "var(--accent-primary)";
 const HOURS_PER_MONTH_FTE = 160;
 
 type ExperienceLevel = "junior" | "mid" | "senior" | "staff" | "custom";

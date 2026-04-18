@@ -120,7 +120,7 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--accent-primary)" }}
         />
       </div>
       <span
@@ -163,7 +163,7 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
             rate={stats.agentSuccessRate}
             passCount={stats.agentSuccessCount}
             totalCount={stats.agentTotalCount}
-            color="#ff6b35"
+            color="var(--accent-primary)"
           />
         )}
         {stats.reviewTotalCount > 0 && (

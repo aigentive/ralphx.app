@@ -361,8 +361,8 @@ export function ReviewingTaskDetail({
                   disabled={requestChangesMutation.isPending}
                   className="min-h-[100px] text-[13px] resize-none rounded-xl"
                   style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.3)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    backgroundColor: "var(--overlay-scrim)",
+                    border: "1px solid var(--overlay-moderate)",
                   }}
                 />
               </div>

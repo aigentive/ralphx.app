@@ -182,7 +182,7 @@ function LoadingSkeleton() {
             />
             <div
               className="absolute w-3 h-3 rounded-full"
-              style={{ left: 0, top: "4px", backgroundColor: "rgba(255,255,255,0.1)" }}
+              style={{ left: 0, top: "4px", backgroundColor: "var(--overlay-moderate)" }}
             />
             <div
               className="h-8 rounded"
@@ -289,7 +289,7 @@ export function AuditTrailSidebar({
                 selectedPhaseId === null
                   ? "var(--accent-primary)"
                   : "var(--text-secondary)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
             View All Events

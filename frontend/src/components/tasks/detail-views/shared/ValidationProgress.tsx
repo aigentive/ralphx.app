@@ -50,7 +50,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   return (
     <div
       className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+      style={{ backgroundColor: "var(--overlay-scrim)" }}
     >
       <button
         type="button"
@@ -140,7 +140,7 @@ export function StepsGroup({ steps, phase, label }: {
   return (
     <div
       className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+      style={{ backgroundColor: "var(--overlay-scrim)" }}
     >
       <button
         type="button"

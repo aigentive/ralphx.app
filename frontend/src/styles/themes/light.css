@@ -62,6 +62,33 @@
   --overlay-scrim:      hsla(0 0% 0% / 0.25);
   --overlay-scrim-deep: hsla(0 0% 0% / 0.50);
 
+  /* Shadow pulses — retuned for white-surface contrast (lower alpha) */
+  --shadow-pulse-accent-base:   0 0 0 0 hsla(14 90% 50% / 0.4),
+                                0 0 8px hsla(14 90% 50% / 0.2);
+  --shadow-pulse-accent-expand: 0 0 0 4px hsla(14 90% 50% / 0),
+                                0 0 12px hsla(14 90% 50% / 0.35);
+  --shadow-pulse-info-base:   0 0 0 0 hsla(202 100% 27% / 0.35),
+                              0 0 8px hsla(202 100% 27% / 0.15);
+  --shadow-pulse-info-expand: 0 0 0 4px hsla(202 100% 27% / 0),
+                              0 0 12px hsla(202 100% 27% / 0.3);
+  --shadow-pulse-status-base:   0 0 0 0 hsla(164 100% 24% / 0.3);
+  --shadow-pulse-status-expand: 0 0 0 4px hsla(164 100% 24% / 0);
+  --shadow-glow-accent-soft:   0 0 12px hsla(14 90% 50% / 0.05),
+                               0 0 24px hsla(14 90% 50% / 0.02),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.4);
+  --shadow-glow-accent-active: 0 0 18px hsla(14 90% 50% / 0.10),
+                               0 0 36px hsla(14 90% 50% / 0.05),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.6);
+  --shadow-drop-zone-border: inset 0 0 0 2px hsla(14 90% 50% / 0.7);
+  --shadow-drop-zone-active: inset 0 0 0 3px hsla(14 90% 50% / 1),
+                             0 0 20px hsla(14 90% 50% / 0.2);
+
+  /* Card/dialog shadows retuned for white bg — lighter alphas */
+  --shadow-xs: 0 1px 2px hsla(0 0% 0% / 0.05), 0 1px 3px  hsla(0 0% 0% / 0.03);
+  --shadow-sm: 0 1px 2px hsla(0 0% 0% / 0.08), 0 2px 4px  hsla(0 0% 0% / 0.05);
+  --shadow-md: 0 4px 6px hsla(0 0% 0% / 0.08), 0 8px 16px hsla(0 0% 0% / 0.06);
+  --shadow-lg: 0 10px 15px hsla(0 0% 0% / 0.1), 0 20px 40px hsla(0 0% 0% / 0.08);
+
   --selection-bg:   hsla(14 100% 50% / 0.20);
   --selection-text: var(--gray-990);
 

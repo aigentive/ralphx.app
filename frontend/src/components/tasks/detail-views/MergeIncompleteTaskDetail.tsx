@@ -280,7 +280,7 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
       <span
         className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
         style={{
-          backgroundColor: colors[source as keyof typeof colors] ?? "rgba(255, 255, 255, 0.1)",
+          backgroundColor: colors[source as keyof typeof colors] ?? "var(--overlay-moderate)",
           color: "rgba(255, 255, 255, 0.7)",
         }}
       >

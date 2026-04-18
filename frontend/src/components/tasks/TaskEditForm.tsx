@@ -149,7 +149,7 @@ export function TaskEditForm({
         className="rounded-lg p-4 mt-5"
         style={{
           background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <div className="flex items-center justify-between mb-3">

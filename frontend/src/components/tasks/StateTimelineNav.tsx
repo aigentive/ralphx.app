@@ -527,7 +527,7 @@ export function StateTimelineNav({
               onClick={() => onStateSelect(null)}
               className="px-2 py-1 rounded-md text-[10px] font-semibold transition-colors"
               style={{
-                backgroundColor: "rgba(255, 107, 53, 0.15)",
+                backgroundColor: "var(--accent-muted)",
                 color: "#ff8050",
               }}
             >
