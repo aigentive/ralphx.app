@@ -7,6 +7,7 @@
 import React, { useEffect, useCallback, useState } from "react";
 import { X, FileEdit, Trash2, ExternalLink, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,14 +51,14 @@ function MetadataChip({ label, value, accent }: { label: string; value: string; 
     <div
       className="flex flex-col gap-0.5 px-3 py-2 rounded-lg"
       style={{
-        background: accent ? "hsla(14 100% 60% / 0.08)" : "hsla(220 10% 100% / 0.04)",
-        border: accent ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid hsla(220 10% 100% / 0.06)",
+        background: accent ? withAlpha("var(--accent-primary)", 8) : "var(--overlay-faint)",
+        border: accent ? "1px solid var(--accent-border)" : "1px solid var(--overlay-weak)",
       }}
     >
-      <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+      <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
         {label}
       </span>
-      <span className="text-[12px] font-medium" style={{ color: accent ? "hsl(14 100% 65%)" : "hsl(220 10% 85%)" }}>
+      <span className="text-[12px] font-medium" style={{ color: accent ? "var(--accent-primary)" : "var(--text-primary)" }}>
         {value}
       </span>
     </div>
@@ -98,10 +99,10 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
   const config = PRIORITY_CONFIG[effectivePriority];
 
   const priorityColors = {
-    critical: { bg: "hsla(0 85% 60% / 0.08)", border: "hsla(0 85% 60% / 0.2)", text: "hsl(0 85% 60%)" },
-    high: { bg: "hsla(14 100% 60% / 0.08)", border: "hsla(14 100% 60% / 0.2)", text: "hsl(14 100% 60%)" },
-    medium: { bg: "hsla(45 93% 50% / 0.08)", border: "hsla(45 93% 50% / 0.2)", text: "hsl(45 93% 55%)" },
-    low: { bg: "hsla(220 10% 50% / 0.08)", border: "hsla(220 10% 50% / 0.2)", text: "hsl(220 10% 50%)" },
+    critical: { bg: "var(--status-error-muted)", border: "var(--status-error-border)", text: "var(--status-error)" },
+    high: { bg: withAlpha("var(--accent-primary)", 8), border: "var(--accent-border)", text: "var(--accent-primary)" },
+    medium: { bg: "var(--status-warning-muted)", border: "var(--status-warning-border)", text: "var(--status-warning)" },
+    low: { bg: withAlpha("var(--text-muted)", 8), border: withAlpha("var(--text-muted)", 20), text: "var(--text-muted)" },
   };
   const priorityColor = priorityColors[effectivePriority] || priorityColors.medium;
 
@@ -129,11 +130,11 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
         className="fixed top-0 right-0 h-full z-50 flex flex-col"
         style={{
           width: "420px",
-          background: "hsla(220 10% 8% / 0.96)",
+          background: withAlpha("var(--bg-base)", 96),
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          borderLeft: "1px solid hsla(220 20% 100% / 0.08)",
-          boxShadow: "-4px 0 24px hsla(220 20% 0% / 0.5), -12px 0 48px hsla(220 20% 0% / 0.3)",
+          borderLeft: "1px solid var(--overlay-weak)",
+          boxShadow: "-4px 0 24px var(--overlay-scrim-med), -12px 0 48px var(--overlay-scrim)",
           animation: "slide-in-from-right 200ms ease-out both",
         }}
         role="dialog"
@@ -143,7 +144,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
         {/* Header */}
         <div
           className="flex items-center justify-between px-5 py-4 flex-shrink-0"
-          style={{ borderBottom: "1px solid hsla(220 10% 100% / 0.06)" }}
+          style={{ borderBottom: "1px solid var(--overlay-weak)" }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div
@@ -152,7 +153,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             />
             <h2
               className="text-[13px] font-semibold truncate"
-              style={{ color: "hsl(220 10% 90%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               Proposal Details
             </h2>
@@ -164,9 +165,9 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 rounded-lg"
-                style={{ color: "hsl(220 10% 55%)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)"; e.currentTarget.style.color = "hsl(220 10% 80%)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "hsl(220 10% 55%)"; }}
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--overlay-weak)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
                 onClick={() => onEdit(proposal.id)}
                 title="Edit proposal"
               >
@@ -179,9 +180,9 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 rounded-lg"
-                style={{ color: "hsl(220 10% 55%)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 85% 60% / 0.08)"; e.currentTarget.style.color = "hsl(0 85% 60%)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "hsl(220 10% 55%)"; }}
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--status-error-muted)"; e.currentTarget.style.color = "var(--status-error)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
                 onClick={() => setDeleteDialogOpen(true)}
                 title="Delete proposal"
               >
@@ -193,9 +194,9 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-lg"
-              style={{ color: "hsl(220 10% 55%)" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)"; e.currentTarget.style.color = "hsl(220 10% 80%)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "hsl(220 10% 55%)"; }}
+              style={{ color: "var(--text-muted)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--overlay-weak)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
               onClick={onClose}
               title="Close"
             >
@@ -211,7 +212,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             <div>
               <h3
                 className="text-[15px] font-semibold leading-snug tracking-[-0.01em]"
-                style={{ color: "hsl(220 10% 92%)" }}
+                style={{ color: "var(--text-primary)" }}
               >
                 {proposal.title}
               </h3>
@@ -219,9 +220,9 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 <span
                   className="inline-block mt-1.5 px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
                   style={{
-                    background: "hsla(14 100% 60% / 0.1)",
-                    border: "1px solid hsla(14 100% 60% / 0.25)",
-                    color: "hsl(14 100% 60%)",
+                    background: withAlpha("var(--accent-primary)", 10),
+                    border: "1px solid var(--accent-border)",
+                    color: "var(--accent-primary)",
                   }}
                 >
                   Critical Path
@@ -232,12 +233,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             {/* Description */}
             {proposal.description && (
               <div className="space-y-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Description
                 </span>
                 <p
                   className="text-[13px] leading-relaxed"
-                  style={{ color: "hsl(220 10% 70%)" }}
+                  style={{ color: "var(--text-secondary)" }}
                 >
                   {proposal.description}
                 </p>
@@ -253,7 +254,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                   border: `1px solid ${priorityColor.border}`,
                 }}
               >
-                <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Priority
                 </span>
                 <span className="text-[12px] font-semibold" style={{ color: priorityColor.text }}>
@@ -267,12 +268,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             {/* Priority Reason */}
             {proposal.priorityReason && (
               <div className="space-y-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Priority Rationale
                 </span>
                 <p
                   className="text-[12px] leading-relaxed italic"
-                  style={{ color: "hsl(220 10% 60%)" }}
+                  style={{ color: "var(--text-secondary)" }}
                 >
                   "{proposal.priorityReason}"
                 </p>
@@ -282,7 +283,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             {/* Implementation Steps */}
             {proposal.steps.length > 0 && (
               <div className="space-y-2">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Implementation Steps
                 </span>
                 <ol className="space-y-2">
@@ -294,7 +295,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                       >
                         {index + 1}.
                       </span>
-                      <span className="text-[13px] leading-snug" style={{ color: "hsl(220 10% 75%)" }}>
+                      <span className="text-[13px] leading-snug" style={{ color: "var(--text-secondary)" }}>
                         {step}
                       </span>
                     </li>
@@ -306,7 +307,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             {/* Acceptance Criteria */}
             {proposal.acceptanceCriteria.length > 0 && (
               <div className="space-y-2">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Acceptance Criteria
                 </span>
                 <ul className="space-y-1.5">
@@ -314,9 +315,9 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                     <li key={index} className="flex items-start gap-2.5">
                       <CheckSquare
                         className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
-                        style={{ color: "hsla(14 100% 60% / 0.5)" }}
+                        style={{ color: withAlpha("var(--accent-primary)", 50) }}
                       />
-                      <span className="text-[13px] leading-snug" style={{ color: "hsl(220 10% 75%)" }}>
+                      <span className="text-[13px] leading-snug" style={{ color: "var(--text-secondary)" }}>
                         {criterion}
                       </span>
                     </li>
@@ -328,7 +329,7 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
             {/* Dependencies */}
             {enrichment && enrichment.dependsOnDetails.length > 0 && (
               <div className="space-y-2">
-                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "hsl(220 10% 45%)" }}>
+                <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
                   Depends On ({enrichment.dependsOnDetails.length})
                 </span>
                 <ul className="space-y-1.5">
@@ -337,15 +338,15 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                       key={dep.proposalId}
                       className="px-3 py-2 rounded-lg"
                       style={{
-                        background: "hsla(220 10% 100% / 0.03)",
-                        border: "1px solid hsla(220 10% 100% / 0.06)",
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-weak)",
                       }}
                     >
-                      <div className="text-[12px] font-medium" style={{ color: "hsl(220 10% 75%)" }}>
+                      <div className="text-[12px] font-medium" style={{ color: "var(--text-secondary)" }}>
                         {dep.title}
                       </div>
                       {dep.reason && (
-                        <div className="text-[11px] mt-0.5 italic" style={{ color: "hsl(220 10% 50%)" }}>
+                        <div className="text-[11px] mt-0.5 italic" style={{ color: "var(--text-muted)" }}>
                           {dep.reason}
                         </div>
                       )}
@@ -360,14 +361,14 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
               <div
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg"
                 style={{
-                  background: "hsla(14 100% 60% / 0.06)",
-                  border: "1px solid hsla(14 100% 60% / 0.15)",
+                  background: withAlpha("var(--accent-primary)", 6),
+                  border: "1px solid var(--accent-muted)",
                 }}
               >
-                <span className="text-[12px] font-semibold" style={{ color: "hsl(14 100% 65%)" }}>
+                <span className="text-[12px] font-semibold" style={{ color: "var(--accent-primary)" }}>
                   →{enrichment.blocksCount}
                 </span>
-                <span className="text-[12px]" style={{ color: "hsl(220 10% 60%)" }}>
+                <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
                   Blocks {enrichment.blocksCount} proposal{enrichment.blocksCount !== 1 ? "s" : ""}
                 </span>
               </div>
@@ -380,12 +381,12 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 onClick={() => onNavigateToTask(proposal.createdTaskId!)}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150"
                 style={{
-                  background: "hsla(14 100% 60% / 0.08)",
-                  border: "1px solid hsla(14 100% 60% / 0.2)",
-                  color: "hsl(14 100% 60%)",
+                  background: withAlpha("var(--accent-primary)", 8),
+                  border: "1px solid var(--accent-border)",
+                  color: "var(--accent-primary)",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(14 100% 60% / 0.12)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "hsla(14 100% 60% / 0.08)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = withAlpha("var(--accent-primary)", 12); }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = withAlpha("var(--accent-primary)", 8); }}
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 View Task →

@@ -129,8 +129,8 @@ function ContextIndicator({ context, isExecutionMode = false }: ContextIndicator
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
-      <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
-      <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
+      <Icon className="w-3.5 h-3.5 shrink-0 text-text-primary/50" />
+      <span className="text-[13px] font-medium truncate text-text-primary/80">{label}</span>
     </div>
   );
 }

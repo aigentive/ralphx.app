@@ -406,7 +406,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
         style={{ color: "var(--text-muted)" }}
       >
         <div className="text-sm">Diff too large to render quickly</div>
-        <div className="text-xs text-white/50">
+        <div className="text-xs text-text-primary/50">
           {totalLines.toLocaleString()} total lines in this file.
         </div>
         <Button
@@ -474,7 +474,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
                       )}
                       <button
                         type="button"
-                        className="mt-2 text-[11px] text-white/50 hover:text-white/70"
+                        className="mt-2 text-[11px] text-text-primary/50 hover:text-text-primary/70"
                         onClick={() => toggleGap(gapId)}
                       >
                         Hide unchanged lines
@@ -483,7 +483,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
                   ) : (
                     <button
                       type="button"
-                      className="text-[11px] text-white/50 hover:text-white/70"
+                      className="text-[11px] text-text-primary/50 hover:text-text-primary/70"
                       onClick={() => toggleGap(gapId)}
                     >
                       Show {gapLines.length} unchanged lines

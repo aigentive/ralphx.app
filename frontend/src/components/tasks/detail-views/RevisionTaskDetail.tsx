@@ -102,16 +102,16 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
           )}
         </div>
         <div className="flex-1">
-          <span className="text-[13px] font-semibold text-white/80 block">
+          <span className="text-[13px] font-semibold text-text-primary/80 block">
             {isAiReviewer ? "AI Review Feedback" : isSystemReviewer ? "System Escalation" : "Human Review Feedback"}
           </span>
-          <span className="text-[11px] text-white/40">{timeAgo}</span>
+          <span className="text-[11px] text-text-primary/40">{timeAgo}</span>
         </div>
       </div>
 
       {/* Main feedback text (show notes only if no structured issues) */}
       {issues.length === 0 && review.notes && (
-        <div className="text-[13px] text-white/55 leading-relaxed mb-4 pl-12" style={{ wordBreak: "break-word" }}>
+        <div className="text-[13px] text-text-primary/55 leading-relaxed mb-4 pl-12" style={{ wordBreak: "break-word" }}>
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {review.notes}
           </ReactMarkdown>
@@ -123,7 +123,7 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
         <div className="pl-12">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-3.5 h-3.5" style={{ color: "var(--status-warning)" }} />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-primary/50">
               Issues to Address
             </span>
           </div>
