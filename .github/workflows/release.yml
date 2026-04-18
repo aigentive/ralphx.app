@@ -172,26 +172,39 @@ jobs:
           set -euo pipefail
 
           identities="$(security find-identity -v -p codesigning build.keychain)"
-          echo "${identities}"
-
           identity_count="$(
             awk '/[0-9]+\) [0-9A-F]{40} / { count += 1 } END { print count + 0 }' <<< "${identities}"
           )"
 
           if [[ "${identity_count}" -ne 1 ]]; then
+            echo "Imported codesigning identities:" >&2
+            echo "${identities}" >&2
             echo "Expected exactly 1 codesigning identity after importing APPLE_CERTIFICATE; found ${identity_count}. Export a single-identity .p12." >&2
             exit 1
           fi
 
           if ! grep -Fq "\"${APPLE_SIGNING_IDENTITY}\"" <<< "${identities}"; then
+            echo "Imported codesigning identities:" >&2
+            echo "${identities}" >&2
             echo "Imported signing identity does not match APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY}" >&2
             exit 1
           fi
 
+          echo "Validated imported signing identity."
+
       - name: Build production release artifacts
         env:
           APPLE_API_KEY_PATH: ${{ steps.api_key.outputs.api_key_path }}
+          RALPHX_RELEASE_TRACE_DIR: release-trace/${{ matrix.arch }}
         run: ./scripts/build-prod-release.sh
+
+      - name: Upload release trace logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-trace-${{ matrix.arch }}
+          path: release-trace/${{ matrix.arch }}/*
+          if-no-files-found: warn
 
       - name: Collect release artifacts
         shell: bash
