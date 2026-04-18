@@ -627,18 +627,23 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // content has actually rendered, rather than a fixed-duration setTimeout guess.
     // Falls back to MARKDOWN_RENDER_DELAY_MS if scrollerElRef not yet available.
     useEffect(() => {
-      if (!conversationId || timeline.length === 0 || hasScrolledRef.current === conversationId) return;
+      const targetScrollKey =
+        conversationId != null && lastItemIndex >= 0
+          ? `${conversationId}:${lastItemIndex}`
+          : null;
 
-      const targetConversationId = conversationId;
+      if (!conversationId || timeline.length === 0 || hasScrolledRef.current === targetScrollKey) {
+        return;
+      }
 
       const doScroll = () => {
-        if (hasScrolledRef.current === targetConversationId) return;
+        if (hasScrolledRef.current === targetScrollKey) return;
         virtuosoRef.current?.scrollToIndex({
           index: lastItemIndex,
           align: "end",
           behavior: "auto",
         });
-        hasScrolledRef.current = targetConversationId;
+        hasScrolledRef.current = targetScrollKey;
       };
 
       const scroller = scrollerElRef.current;
