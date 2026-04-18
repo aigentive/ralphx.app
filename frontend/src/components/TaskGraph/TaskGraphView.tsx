@@ -1247,6 +1247,7 @@ function TaskGraphViewInner({
   // The ref reads inside useMemo are a well-known React stabilization pattern.
 
   // Build task-to-group lookup for injecting groupInfo into task node context menus
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- depends on plan-group shape plus injected action handlers for stable task menu wiring
   const taskGroupInfoMap = useMemo(() => {
     const map = new Map<string, GroupInfo>();
     if (!filteredGraphData?.planGroups) return map;
