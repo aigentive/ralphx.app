@@ -136,8 +136,8 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
           className="absolute inset-0 opacity-[0.015]"
           style={{
             backgroundImage: `
-              linear-gradient(var(--alpha-white-50) 1px, transparent 1px),
-              linear-gradient(90deg, var(--alpha-white-50) 1px, transparent 1px)
+              linear-gradient(var(--overlay-moderate) 1px, transparent 1px),
+              linear-gradient(90deg, var(--overlay-moderate) 1px, transparent 1px)
             `,
             backgroundSize: "48px 48px",
           }}

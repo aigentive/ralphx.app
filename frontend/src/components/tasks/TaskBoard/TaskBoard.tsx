@@ -28,6 +28,7 @@ import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
 import { usePlanStore, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Archive, BarChart2, GitMerge, FileText, Sparkles } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
@@ -532,50 +533,54 @@ export function TaskBoard({
           {/* Show no plan state when no active plan is selected */}
           {showNoPlanState ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="flex flex-col items-center justify-center py-24 max-w-md text-center">
-                <div className="relative mb-5 h-24 w-32">
-                  <div
-                    className="absolute left-2 top-5 h-14 w-20 rounded-xl"
-                    style={{
-                      background: "var(--overlay-faint)",
-                      border: "1px solid var(--overlay-moderate)",
-                    }}
-                  />
-                  <div
-                    className="absolute right-2 top-5 h-14 w-20 rounded-xl"
-                    style={{
-                      background: "var(--overlay-faint)",
-                      border: "1px solid var(--overlay-moderate)",
-                    }}
-                  />
-                  <div
-                    className="absolute left-1/2 top-1 -translate-x-1/2 h-20 w-24 rounded-2xl flex items-center justify-center"
-                    style={{
-                      background:
-                        "linear-gradient(160deg, color-mix(in srgb, var(--accent-primary) 18%, transparent), color-mix(in srgb, var(--status-warning) 10%, transparent))",
-                      border: "1px solid var(--accent-border)",
-                      boxShadow: "0 12px 30px color-mix(in srgb, var(--accent-primary) 18%, transparent)",
-                    }}
-                  >
-                    <FileText className="h-8 w-8" style={{ color: "var(--accent-primary)" }} />
+              <EmptyState
+                iconBleed
+                icon={
+                  <div className="relative h-24 w-32">
+                    <div
+                      className="absolute left-2 top-5 h-14 w-20 rounded-xl"
+                      style={{
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-moderate)",
+                      }}
+                    />
+                    <div
+                      className="absolute right-2 top-5 h-14 w-20 rounded-xl"
+                      style={{
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-moderate)",
+                      }}
+                    />
+                    <div
+                      className="absolute left-1/2 top-1 -translate-x-1/2 h-20 w-24 rounded-2xl flex items-center justify-center"
+                      style={{
+                        background:
+                          "linear-gradient(160deg, color-mix(in srgb, var(--accent-primary) 18%, transparent), color-mix(in srgb, var(--status-warning) 10%, transparent))",
+                        border: "1px solid var(--accent-border)",
+                        boxShadow: "0 12px 30px color-mix(in srgb, var(--accent-primary) 18%, transparent)",
+                      }}
+                    >
+                      <FileText className="h-8 w-8" style={{ color: "var(--accent-primary)" }} />
+                    </div>
+                    <div className="absolute right-1 top-0">
+                      <Sparkles className="h-4 w-4" style={{ color: "var(--status-warning)" }} />
+                    </div>
                   </div>
-                  <div className="absolute right-1 top-0">
-                    <Sparkles className="h-4 w-4" style={{ color: "var(--status-warning)" }} />
+                }
+                title="No plan selected"
+                description="Select a plan to view work on the Kanban board."
+                action={
+                  <div className="flex flex-col items-center gap-2">
+                    <PlanSelectorInline
+                      projectId={projectId}
+                      source="kanban_inline"
+                      onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                    />
+                    <p className="text-xs text-[var(--text-muted)]">or press Cmd+Shift+P</p>
                   </div>
-                </div>
-                <h3 className="text-xl font-medium mb-2">No plan selected</h3>
-                <p className="text-gray-400 mb-6">
-                  Select a plan to view work on the Kanban board.
-                </p>
-                <div className="space-y-2">
-                  <PlanSelectorInline
-                    projectId={projectId}
-                    source="kanban_inline"
-                    onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
-                  />
-                  <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
-                </div>
-              </div>
+                }
+                className="max-w-md"
+              />
             </div>
           ) : /* Show empty search state when search has no results */
           showEmptyState ? (

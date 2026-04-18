@@ -26,6 +26,12 @@ export interface EmptyStateProps {
   /** Optional CTA (button, link, etc.) rendered below the description. */
   action?: ReactNode;
   variant?: EmptyStateVariant;
+  /**
+   * Render the icon as-is (skip the default 64×64 rounded container).
+   * Use when a view has a bespoke icon treatment (gradient tile, sparkle
+   * overlay, animated glyph) that shouldn't be wrapped.
+   */
+  iconBleed?: boolean;
   /** Pass through test id for targeted e2e selection. */
   "data-testid"?: string;
   className?: string;
@@ -51,6 +57,7 @@ export function EmptyState({
   description,
   action,
   variant = "neutral",
+  iconBleed = false,
   "data-testid": testId,
   className,
 }: EmptyStateProps) {
@@ -62,17 +69,21 @@ export function EmptyState({
         className,
       )}
     >
-      <div
-        className={cn(
-          "w-16 h-16 mb-4 rounded-xl flex items-center justify-center",
-          "[&>svg]:w-8 [&>svg]:h-8",
-          ICON_CONTAINER_VARIANT[variant],
-          ICON_COLOR_VARIANT[variant],
-        )}
-        aria-hidden
-      >
-        {icon}
-      </div>
+      {iconBleed ? (
+        <div className="mb-4" aria-hidden>{icon}</div>
+      ) : (
+        <div
+          className={cn(
+            "w-16 h-16 mb-4 rounded-xl flex items-center justify-center",
+            "[&>svg]:w-8 [&>svg]:h-8",
+            ICON_CONTAINER_VARIANT[variant],
+            ICON_COLOR_VARIANT[variant],
+          )}
+          aria-hidden
+        >
+          {icon}
+        </div>
+      )}
       <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
       {description && (
         <p className="mt-1 text-xs text-[var(--text-muted)]">{description}</p>

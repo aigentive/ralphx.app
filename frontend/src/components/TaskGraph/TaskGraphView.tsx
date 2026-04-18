@@ -67,6 +67,7 @@ import { api } from "@/lib/tauri";
 import { toast } from "sonner";
 import { AlertCircle, Filter, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { buildTierGroups, UNGROUPED_PLAN_ID } from "./groups/tierGroupUtils";
 import type { GroupInfo } from "@/lib/task-actions";
 import { BattleModeV2Overlay } from "./battle-v2/BattleModeV2Overlay";
@@ -1608,33 +1609,37 @@ function TaskGraphViewInner({
         {/* Show empty state when no plan is selected */}
         {!activePlanId ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No plan selected</h3>
-              <p className="text-muted-foreground mb-6">
-                Select a plan to view work on the Graph.
-              </p>
-              <PlanSelectorInline
-                projectId={projectId}
-                source="graph_inline"
-                onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
-              />
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<AlertCircle />}
+              title="No plan selected"
+              description="Select a plan to view work on the Graph."
+              action={
+                <PlanSelectorInline
+                  projectId={projectId}
+                  source="graph_inline"
+                  onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                />
+              }
+            />
           </div>
         ) : filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Filter className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground mb-2">No tasks match current filters</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setFilters(DEFAULT_GRAPH_FILTERS)}
-              >
-                <X className="w-3 h-3 mr-1" />
-                Clear filters
-              </Button>
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<Filter />}
+              title="No tasks match current filters"
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(DEFAULT_GRAPH_FILTERS)}
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Clear filters
+                </Button>
+              }
+            />
           </div>
         ) : (
           <ReactFlow

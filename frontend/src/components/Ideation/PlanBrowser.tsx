@@ -11,6 +11,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   ChevronLeft,
   MessageSquare,
@@ -429,41 +430,21 @@ export function PlanBrowser({
         {/* Plan List */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {!hasAnySessions && !isSearchActive ? (
-            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-                style={{
-                  background: "var(--overlay-faint)",
-                  border: "1px solid var(--overlay-faint)",
-                }}
-              >
-                <MessageSquare className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
-              </div>
-              <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-                No plans yet
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
-                Start your first brainstorm
-              </p>
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<MessageSquare />}
+              title="No plans yet"
+              description="Start your first brainstorm"
+              className="h-full"
+            />
           ) : isEmptySearchResult ? (
-            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-                style={{
-                  background: "var(--overlay-faint)",
-                  border: "1px solid var(--overlay-faint)",
-                }}
-              >
-                <Search className="w-5 h-5" style={{ color: "var(--text-muted)" }} />
-              </div>
-              <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-                No sessions match
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
-                Try a different search term
-              </p>
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<Search />}
+              title="No sessions match"
+              description="Try a different search term"
+              className="h-full"
+            />
           ) : (
             <>
               {GROUP_CONFIG.map(({ key, label, icon, accentColor }) => {

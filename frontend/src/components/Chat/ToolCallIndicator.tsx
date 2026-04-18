@@ -134,7 +134,7 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
             className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
             style={{
               /* macOS Tahoe: subtle solid background */
-              backgroundColor: hasError ? "rgb(0 0 0 / 0.2)" : "var(--bg-surface)",
+              backgroundColor: hasError ? "var(--status-error-muted)" : "var(--bg-surface)",
               color: hasError ? "var(--text-primary)" : "var(--text-secondary)",
               fontFamily: "var(--font-mono)",
             }}
