@@ -15,6 +15,7 @@ use tracing::warn;
 
 const GENERATED_PLUGIN_DIR_REL_DEBUG: &str = ".artifacts/generated/claude-plugin";
 const GENERATED_PLUGIN_DIR_REL_PROD: &str = "generated/claude-plugin";
+const GENERATED_PLUGIN_DIR_ENV: &str = "RALPHX_GENERATED_PLUGIN_DIR";
 const INTERNAL_MCP_SERVER_DIR: &str = "ralphx-mcp-server";
 const EXTERNAL_MCP_SERVER_DIR: &str = "ralphx-external-mcp";
 const MCP_RUNTIME_ENTRY_REL: &str = "ralphx-mcp-server/build/index.js";
@@ -133,6 +134,18 @@ pub(crate) fn resolve_runtime_entries_source_plugin_dir(
 }
 
 fn generated_plugin_dir_for_base(base_plugin_dir: &Path) -> PathBuf {
+    let override_dir = std::env::var_os(GENERATED_PLUGIN_DIR_ENV).map(PathBuf::from);
+    generated_plugin_dir_for_base_with_override(base_plugin_dir, override_dir.as_deref())
+}
+
+fn generated_plugin_dir_for_base_with_override(
+    base_plugin_dir: &Path,
+    override_dir: Option<&Path>,
+) -> PathBuf {
+    if let Some(override_dir) = override_dir {
+        return override_dir.to_path_buf();
+    }
+
     let repo_root = plugin_repo_root(base_plugin_dir);
     if cfg!(debug_assertions) {
         repo_root.join(GENERATED_PLUGIN_DIR_REL_DEBUG)
@@ -521,4 +534,21 @@ fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
             source.display()
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generated_plugin_dir_for_base_with_override;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn generated_plugin_dir_uses_override_when_present() {
+        let override_dir = PathBuf::from("/tmp/custom-generated-plugin-dir");
+        let resolved = generated_plugin_dir_for_base_with_override(
+            Path::new("/tmp/ralphx/plugins/app"),
+            Some(&override_dir),
+        );
+
+        assert_eq!(resolved, PathBuf::from(&override_dir));
+    }
 }
