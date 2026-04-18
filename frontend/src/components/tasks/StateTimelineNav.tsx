@@ -20,133 +20,65 @@ import {
 } from "@/components/ui/tooltip";
 import type { InternalStatus } from "@/types/task";
 import { isTerminalStatus } from "@/types/status";
+import {
+  STATUS_TOKEN_REFS,
+  statusTint,
+  type StatusTokenKey,
+} from "@/lib/theme-colors";
+
+type TimelineStatusKey = StatusTokenKey | "muted";
 
 // macOS Tahoe system colors (dark mode)
 const STATUS_CONFIG: Record<
   InternalStatus,
-  { label: string; color: string; bgColor: string }
+  { label: string; color: TimelineStatusKey }
 > = {
-  backlog: {
-    label: "Backlog",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  ready: {
-    label: "Ready",
-    color: "#0a84ff",
-    bgColor: "rgba(10, 132, 255, 0.15)",
-  },
-  blocked: {
-    label: "Blocked",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  executing: {
-    label: "Executing",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_refining: {
-    label: "QA Refining",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_testing: {
-    label: "QA Testing",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_passed: {
-    label: "QA Passed",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  qa_failed: {
-    label: "QA Failed",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
-  pending_review: {
-    label: "Pending Review",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  revision_needed: {
-    label: "Revision Needed",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  approved: {
-    label: "Approved",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  failed: {
-    label: "Failed",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
-  cancelled: {
-    label: "Cancelled",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  reviewing: {
-    label: "Reviewing",
-    color: "#0a84ff",
-    bgColor: "rgba(10, 132, 255, 0.15)",
-  },
-  review_passed: {
-    label: "Review Passed",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  escalated: {
-    label: "Escalated",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  re_executing: {
-    label: "Re-executing",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  pending_merge: {
-    label: "Pending Merge",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  merging: {
-    label: "Merging",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  merge_incomplete: {
-    label: "Merge Incomplete",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  merge_conflict: {
-    label: "Merge Conflict",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  merged: {
-    label: "Merged",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  paused: {
-    label: "Paused",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  stopped: {
-    label: "Stopped",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
+  backlog: { label: "Backlog", color: "muted" },
+  ready: { label: "Ready", color: "info" },
+  blocked: { label: "Blocked", color: "warning" },
+  executing: { label: "Executing", color: "accent" },
+  qa_refining: { label: "QA Refining", color: "accent" },
+  qa_testing: { label: "QA Testing", color: "accent" },
+  qa_passed: { label: "QA Passed", color: "success" },
+  qa_failed: { label: "QA Failed", color: "error" },
+  pending_review: { label: "Pending Review", color: "muted" },
+  revision_needed: { label: "Revision Needed", color: "warning" },
+  approved: { label: "Approved", color: "success" },
+  failed: { label: "Failed", color: "error" },
+  cancelled: { label: "Cancelled", color: "muted" },
+  reviewing: { label: "Reviewing", color: "info" },
+  review_passed: { label: "Review Passed", color: "success" },
+  escalated: { label: "Escalated", color: "warning" },
+  re_executing: { label: "Re-executing", color: "warning" },
+  pending_merge: { label: "Pending Merge", color: "accent" },
+  merging: { label: "Merging", color: "accent" },
+  merge_incomplete: { label: "Merge Incomplete", color: "warning" },
+  merge_conflict: { label: "Merge Conflict", color: "warning" },
+  merged: { label: "Merged", color: "success" },
+  paused: { label: "Paused", color: "warning" },
+  stopped: { label: "Stopped", color: "error" },
 };
+
+/**
+ * Resolve a timeline status key to its CSS var reference. The "muted" key
+ * returns `var(--text-muted)` since the Okabe palette does not carry a
+ * dedicated neutral status tone.
+ */
+function resolveTimelineColor(color: TimelineStatusKey): string {
+  return color === "muted" ? "var(--text-muted)" : STATUS_TOKEN_REFS[color];
+}
+
+/**
+ * Resolve a timeline status key + alpha-percent into a translucent color
+ * expression. Uses statusTint for known status keys and withAlpha-equivalent
+ * color-mix for the muted neutral.
+ */
+function resolveTimelineTint(color: TimelineStatusKey, alpha: number): string {
+  if (color === "muted") {
+    return `color-mix(in srgb, var(--text-muted) ${alpha}%, transparent)`;
+  }
+  return statusTint(color, alpha);
+}
 
 interface TimelineEntry {
   status: InternalStatus;
