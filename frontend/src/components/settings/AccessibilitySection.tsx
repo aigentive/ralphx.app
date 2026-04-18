@@ -84,7 +84,13 @@ export function AccessibilitySection() {
         value={theme}
         options={THEME_OPTIONS}
         disabled={false}
-        onChange={setTheme}
+        onChange={(next) => {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.log("[theme] dropdown onChange →", next);
+          }
+          setTheme(next);
+        }}
       />
 
       <ToggleSettingRow
@@ -93,7 +99,13 @@ export function AccessibilitySection() {
         description="Shortcut — forces the WCAG AAA high-contrast theme. Toggling off restores your previous theme choice."
         checked={theme === "high-contrast"}
         disabled={false}
-        onChange={toggleHighContrast}
+        onChange={(checked) => {
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.log("[theme] HC toggle onChange →", checked);
+          }
+          toggleHighContrast(checked);
+        }}
       />
 
       <SelectSettingRow
