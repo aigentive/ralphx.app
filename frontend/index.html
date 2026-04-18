@@ -10,18 +10,26 @@
   <body>
     <script>
       // Pre-hydration theme bootstrap — applies persisted settings before React
-      // mounts so there is no flash-of-wrong-theme. See
-      // specs/design/theme-architecture.md.
+      // mounts so there is no flash-of-wrong-theme. Supports three themes:
+      //   - "dark" (implicit default — no attribute, matches :root)
+      //   - "light"
+      //   - "high-contrast"
+      // See specs/design/theme-architecture.md.
       (function () {
         try {
           var root = document.documentElement;
           var theme = localStorage.getItem('ralphx-theme');
-          if (theme === 'high-contrast') {
-            root.setAttribute('data-theme', 'high-contrast');
-          } else if (!theme && window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches) {
-            // User hasn't chosen manually and the OS asks for more contrast —
-            // default to HC. Manual choice always wins on next load.
-            root.setAttribute('data-theme', 'high-contrast');
+          if (theme === 'high-contrast' || theme === 'light') {
+            root.setAttribute('data-theme', theme);
+          } else if (!theme && window.matchMedia) {
+            // If the user hasn't chosen manually, fall back to OS signals.
+            // Precedence: prefers-contrast: more > prefers-color-scheme: light.
+            // Manual choice always wins on subsequent loads.
+            if (window.matchMedia('(prefers-contrast: more)').matches) {
+              root.setAttribute('data-theme', 'high-contrast');
+            } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+              root.setAttribute('data-theme', 'light');
+            }
           }
           var motion = localStorage.getItem('ralphx-motion');
           if (motion === 'reduce') root.setAttribute('data-motion', 'reduce');

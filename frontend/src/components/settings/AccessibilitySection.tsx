@@ -1,17 +1,47 @@
 /**
  * AccessibilitySection — user-facing controls for theme, reduced motion, and
  * font scale. Spec: specs/design/accessibility.md
+ *
+ * UI layout:
+ *   - Theme selector (Dark / Light / High contrast)
+ *   - Convenience "High contrast mode" switch that forces the HC theme
+ *     (equivalent to picking it from the selector) and restores the previous
+ *     base theme when toggled off
+ *   - Motion preference (follow system / always reduce)
+ *   - Font scale (default / lg / xl)
  */
 
 import { Accessibility } from "lucide-react";
-import { useThemeStore, type FontScale, type MotionPreference } from "@/stores/themeStore";
+import {
+  useThemeStore,
+  type FontScale,
+  type MotionPreference,
+  type ThemeName,
+} from "@/stores/themeStore";
 import {
   SectionCard,
-  SettingRow,
-  ToggleSettingRow,
   SelectSettingRow,
+  ToggleSettingRow,
   type SelectOption,
 } from "./SettingsView.shared";
+
+const THEME_OPTIONS: SelectOption<ThemeName>[] = [
+  {
+    value: "dark",
+    label: "Dark (default)",
+    description: "Warm-orange accent on blue-gray surfaces",
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "Near-white surfaces with dark text — same accent family",
+  },
+  {
+    value: "high-contrast",
+    label: "High contrast",
+    description: "WCAG AAA palette — yellow accent on pure black, thicker borders, shape-based status",
+  },
+];
 
 const MOTION_OPTIONS: SelectOption<MotionPreference>[] = [
   {
@@ -36,6 +66,7 @@ export function AccessibilitySection() {
   const theme = useThemeStore((s) => s.theme);
   const motion = useThemeStore((s) => s.motion);
   const fontScale = useThemeStore((s) => s.fontScale);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const toggleHighContrast = useThemeStore((s) => s.toggleHighContrast);
   const setMotion = useThemeStore((s) => s.setMotion);
   const setFontScale = useThemeStore((s) => s.setFontScale);
@@ -44,12 +75,22 @@ export function AccessibilitySection() {
     <SectionCard
       icon={<Accessibility className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
       title="Accessibility"
-      description="Contrast, motion, and typography preferences that apply across the entire app"
+      description="Theme, motion, and typography preferences that apply across the entire app"
     >
+      <SelectSettingRow
+        id="theme-selector"
+        label="Theme"
+        description="Pick a base look for the app"
+        value={theme}
+        options={THEME_OPTIONS}
+        disabled={false}
+        onChange={setTheme}
+      />
+
       <ToggleSettingRow
         id="theme-high-contrast"
         label="High contrast mode"
-        description="Maximum-contrast palette with thicker borders, shape-based status icons, and bright focus rings. Meets WCAG 2.1 AAA."
+        description="Shortcut — forces the WCAG AAA high-contrast theme. Toggling off restores your previous theme choice."
         checked={theme === "high-contrast"}
         disabled={false}
         onChange={toggleHighContrast}
@@ -74,14 +115,6 @@ export function AccessibilitySection() {
         disabled={false}
         onChange={setFontScale}
       />
-
-      <SettingRow
-        id="theme-reference"
-        label="Theme reference"
-        description="See specs/design/themes/high-contrast.md for the full spec including contrast ratios and shape-over-color rules."
-      >
-        <span className="text-xs text-[var(--text-muted)]" />
-      </SettingRow>
     </SectionCard>
   );
 }

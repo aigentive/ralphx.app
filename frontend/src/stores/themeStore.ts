@@ -15,11 +15,18 @@
 
 import { create } from "zustand";
 
-export type ThemeName = "default" | "high-contrast";
+export type ThemeName = "dark" | "light" | "high-contrast";
 export type MotionPreference = "system" | "reduce";
 export type FontScale = "default" | "lg" | "xl";
 
+/**
+ * Non-high-contrast themes — used to remember the "last selected everyday
+ * theme" so toggling high contrast off can snap back to it.
+ */
+export type BaseThemeName = Exclude<ThemeName, "high-contrast">;
+
 const THEME_KEY = "ralphx-theme";
+const LAST_BASE_THEME_KEY = "ralphx-last-base-theme";
 const MOTION_KEY = "ralphx-motion";
 const FONT_SCALE_KEY = "ralphx-font-scale";
 
@@ -44,8 +51,17 @@ function safeSet(key: string, value: string | null): void {
 }
 
 function loadTheme(): ThemeName {
-  const v = safeGet(THEME_KEY);
-  return v === "high-contrast" ? "high-contrast" : "default";
+  const raw = safeGet(THEME_KEY);
+  // Migration: previous releases stored "default" — treat as the canonical
+  // dark theme. Any unrecognised value also falls back to dark.
+  if (raw === "high-contrast") return "high-contrast";
+  if (raw === "light") return "light";
+  return "dark";
+}
+
+function loadLastBaseTheme(): BaseThemeName {
+  const raw = safeGet(LAST_BASE_THEME_KEY);
+  return raw === "light" ? "light" : "dark";
 }
 
 function loadMotion(): MotionPreference {
@@ -61,7 +77,9 @@ function loadFontScale(): FontScale {
 
 function applyThemeAttr(theme: ThemeName): void {
   if (typeof document === "undefined") return;
-  if (theme === "default") {
+  // `dark` is the implicit default (matches `:root` tokens) — no attribute
+  // needed. `light` and `high-contrast` get explicit attributes.
+  if (theme === "dark") {
     document.documentElement.removeAttribute("data-theme");
   } else {
     document.documentElement.setAttribute("data-theme", theme);
@@ -88,6 +106,11 @@ function applyFontScaleAttr(scale: FontScale): void {
 
 interface ThemeState {
   theme: ThemeName;
+  /**
+   * Last non-HC theme the user chose — used when toggling HC off so they
+   * return to their preferred base theme rather than always snapping to dark.
+   */
+  lastBaseTheme: BaseThemeName;
   motion: MotionPreference;
   fontScale: FontScale;
   setTheme: (theme: ThemeName) => void;
@@ -98,12 +121,20 @@ interface ThemeState {
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   theme: loadTheme(),
+  lastBaseTheme: loadLastBaseTheme(),
   motion: loadMotion(),
   fontScale: loadFontScale(),
   setTheme: (theme) => {
-    safeSet(THEME_KEY, theme === "default" ? null : theme);
+    // Persist theme — `dark` is the implicit default, keep key empty for it.
+    safeSet(THEME_KEY, theme === "dark" ? null : theme);
     applyThemeAttr(theme);
-    set({ theme });
+    // Remember the last base (non-HC) theme so toggling HC off can restore it.
+    if (theme !== "high-contrast") {
+      safeSet(LAST_BASE_THEME_KEY, theme === "dark" ? null : theme);
+      set({ theme, lastBaseTheme: theme });
+    } else {
+      set({ theme });
+    }
   },
   setMotion: (motion) => {
     safeSet(MOTION_KEY, motion === "system" ? null : motion);
@@ -116,8 +147,10 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ fontScale: scale });
   },
   toggleHighContrast: () => {
-    const next: ThemeName = get().theme === "high-contrast" ? "default" : "high-contrast";
-    get().setTheme(next);
+    const state = get();
+    const next: ThemeName =
+      state.theme === "high-contrast" ? state.lastBaseTheme : "high-contrast";
+    state.setTheme(next);
   },
 }));
 

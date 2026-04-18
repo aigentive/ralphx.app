@@ -177,6 +177,88 @@
 }
 
 /* ============================================================================
+ * Light Theme
+ * Activated by `data-theme="light"` on <html>.
+ * Keeps the same semantic tokens; inverts background/foreground luminance.
+ * Accent stays warm orange — adequate contrast on near-white surfaces.
+ * ============================================================================ */
+
+[data-theme="light"] {
+  /* Backgrounds — near-white with subtle warm tint */
+  --bg-base: hsl(220 10% 99%);
+  --bg-surface: hsl(220 10% 97%);
+  --bg-elevated: hsl(0 0% 100%);
+  --bg-hover: hsl(220 10% 92%);
+  --bg-surface-hover: hsl(220 10% 92%);
+
+  /* Text — dark enough to meet AA on any of the above */
+  --text-primary: hsl(220 15% 10%);
+  --text-secondary: hsl(220 10% 35%);
+  --text-muted: hsl(220 10% 45%);
+  --text-inverse: hsl(0 0% 100%);
+
+  /* Accent stays orange — keep identity consistent */
+  --accent-primary: hsl(14 90% 50%);    /* Slightly darker #ea5a26 — 4.5:1 on white */
+  --accent-secondary: hsl(32 90% 50%);
+  --accent-hover: hsl(14 90% 45%);
+  --accent-muted: hsla(14 100% 60% / 0.12);
+  --accent-border: hsla(14 100% 60% / 0.3);
+
+  /* Status — Okabe-Ito palette, tuned slightly for light-bg contrast */
+  --status-success: #007a58; /* darker bluish-green for AA on white */
+  --status-warning: #a87800; /* darker amber for AA on white */
+  --status-error: #b24800;   /* darker vermillion */
+  --status-info: #005a8a;    /* darker blue */
+
+  /* Borders — gentle grays */
+  --border-subtle: hsl(220 10% 88%);
+  --border-default: hsl(220 10% 78%);
+  --border-focus: hsl(220 80% 50%);
+  --border-width-default: 1px;
+  --border-width-focus: 2px;
+
+  /* Focus ring stays visible on light bg */
+  --focus-ring: hsl(220 80% 50%);
+
+  /* Selection */
+  --selection-bg: hsla(14 100% 50% / 0.2);
+  --selection-text: hsl(220 15% 10%);
+
+  /* Nav active stays orange accent with white text */
+  --nav-active-bg: hsl(14 90% 50%);
+  --nav-active-text: hsl(0 0% 100%);
+
+  /* shadcn mappings */
+  --background: var(--bg-base);
+  --foreground: var(--text-primary);
+  --card: var(--bg-elevated);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent-primary);
+  --primary-foreground: var(--text-inverse);
+  --secondary: var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--status-error);
+  --destructive-foreground: var(--text-inverse);
+  --border: var(--border-default);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+  --sidebar: var(--bg-surface);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: var(--text-inverse);
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-primary);
+}
+
+/* ============================================================================
  * High-Contrast Theme (WCAG 2.1 AAA)
  * Activated by `data-theme="high-contrast"` on <html>.
  * See specs/design/themes/high-contrast.md for full rationale + contrast math.
