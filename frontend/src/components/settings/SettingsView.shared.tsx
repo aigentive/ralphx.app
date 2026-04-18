@@ -8,6 +8,7 @@
  * react-refresh/only-export-components lint rule.
  */
 
+import { useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
@@ -101,7 +102,7 @@ export interface ToggleSettingRowProps {
   description: string;
   checked: boolean;
   disabled: boolean;
-  onChange: () => void;
+  onChange: (checked: boolean) => void;
   isSubSetting?: boolean;
 }
 
@@ -114,6 +115,25 @@ export function ToggleSettingRow({
   onChange,
   isSubSetting = false,
 }: ToggleSettingRowProps) {
+  // Radix Switch can emit a stale `onCheckedChange` when its `checked` prop
+  // transitions externally (e.g., the user picks a different theme from a
+  // sibling dropdown). That spurious fire flips our controlled state right
+  // back. Guard: only honour onCheckedChange when the user has actually
+  // interacted with this switch (pointer or keyboard). The flag is cleared
+  // after each honoured fire so stale echoes during the same render cycle
+  // can't sneak through.
+  const userIntentRef = useRef(false);
+  const markUserIntent = useCallback(() => {
+    userIntentRef.current = true;
+  }, []);
+  const handleCheckedChange = useCallback(
+    (next: boolean) => {
+      if (!userIntentRef.current) return;
+      userIntentRef.current = false;
+      onChange(next);
+    },
+    [onChange],
+  );
   return (
     <SettingRow
       id={id}
@@ -126,7 +146,11 @@ export function ToggleSettingRow({
         id={id}
         data-testid={id}
         checked={checked}
-        onCheckedChange={onChange}
+        onCheckedChange={handleCheckedChange}
+        onPointerDown={markUserIntent}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") markUserIntent();
+        }}
         disabled={disabled}
         aria-describedby={`${id}-desc`}
         className="data-[state=checked]:bg-[var(--accent-primary)]"
