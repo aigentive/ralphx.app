@@ -312,7 +312,7 @@ describe("ChatInput", () => {
       render(<ChatInput {...defaultProps} />);
       await user.type(screen.getByTestId("chat-input-textarea"), "Hello");
       const sendButton = screen.getByTestId("chat-input-send");
-      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      expect(sendButton).toHaveStyle({ background: "var(--accent-primary)" });
     });
 
     it("applies reduced opacity when send button is disabled", async () => {
@@ -608,8 +608,8 @@ describe("ChatInput", () => {
       await user.type(textarea, "answer");
 
       const sendButton = screen.getByTestId("chat-input-send");
-      // Should have the orange accent color when enabled
-      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      // Should have the orange accent color when enabled (design token)
+      expect(sendButton).toHaveStyle({ background: "var(--accent-primary)" });
     });
 
     it("calls onSend when Send button clicked in question mode", async () => {

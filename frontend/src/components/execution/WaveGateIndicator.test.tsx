@@ -73,9 +73,9 @@ describe("WaveGateIndicator", () => {
         />
       );
       const dots = container.querySelectorAll(".w-1\\.5.h-1\\.5.rounded-full.transition-colors");
-      // Wave 1 and 2 are completed (< currentWave=3)
-      expect(dots[0]).toHaveStyle({ backgroundColor: "hsl(14 100% 60%)" });
-      expect(dots[1]).toHaveStyle({ backgroundColor: "hsl(14 100% 60%)" });
+      // Wave 1 and 2 are completed (< currentWave=3) — design token
+      expect(dots[0]).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
+      expect(dots[1]).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
     });
 
     it("colors current wave with semi-transparent orange", () => {
@@ -87,8 +87,8 @@ describe("WaveGateIndicator", () => {
         />
       );
       const dots = container.querySelectorAll(".w-1\\.5.h-1\\.5.rounded-full.transition-colors");
-      // Wave 2 is current (index 1)
-      expect(dots[1]).toHaveStyle({ backgroundColor: "hsla(14 100% 60% / 0.5)" });
+      // Wave 2 is current (index 1) — design token
+      expect(dots[1]).toHaveStyle({ backgroundColor: "var(--accent-strong)" });
     });
 
     it("colors future waves with dim grey", () => {
@@ -100,9 +100,9 @@ describe("WaveGateIndicator", () => {
         />
       );
       const dots = container.querySelectorAll(".w-1\\.5.h-1\\.5.rounded-full.transition-colors");
-      // Waves 2 and 3 are future (index 1, 2)
-      expect(dots[1]).toHaveStyle({ backgroundColor: "hsla(220 10% 100% / 0.1)" });
-      expect(dots[2]).toHaveStyle({ backgroundColor: "hsla(220 10% 100% / 0.1)" });
+      // Waves 2 and 3 are future (index 1, 2) — design token
+      expect(dots[1]).toHaveStyle({ backgroundColor: "var(--overlay-moderate)" });
+      expect(dots[2]).toHaveStyle({ backgroundColor: "var(--overlay-moderate)" });
     });
   });
 

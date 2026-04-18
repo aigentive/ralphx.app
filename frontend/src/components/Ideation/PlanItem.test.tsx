@@ -249,7 +249,7 @@ describe("PlanItem", () => {
       useIdeationStore.setState({ activeVerificationChildId: { "session-1": "child-session-1" } });
       renderItem({ group: "drafts" });
       const label = screen.getByText("Verifying...");
-      expect(label).toHaveStyle({ color: "hsl(217 91% 60%)" });
+      expect(label).toHaveStyle({ color: "var(--status-info)" });
     });
 
     it("shows 'Agent working...' (orange) when generating but no verification child", () => {
@@ -257,7 +257,7 @@ describe("PlanItem", () => {
       renderItem({ group: "drafts" });
       expect(screen.getByText("Agent working...")).toBeInTheDocument();
       const label = screen.getByText("Agent working...");
-      expect(label).toHaveStyle({ color: "hsl(14 100% 60%)" });
+      expect(label).toHaveStyle({ color: "var(--accent-primary)" });
     });
 
     it("child session (different session id) shows standard 'Agent working...' — not 'Verifying...'", () => {
@@ -276,7 +276,7 @@ describe("PlanItem", () => {
       renderItem({ group: "drafts" });
       const spinner = document.querySelector(".animate-spin");
       expect(spinner).toBeInTheDocument();
-      expect(spinner).toHaveStyle({ color: "hsl(217 91% 60%)" });
+      expect(spinner).toHaveStyle({ color: "var(--status-info)" });
     });
 
     it("shows orange spinner when generating without verification child", () => {
@@ -284,7 +284,7 @@ describe("PlanItem", () => {
       renderItem({ group: "drafts" });
       const spinner = document.querySelector(".animate-spin");
       expect(spinner).toBeInTheDocument();
-      expect(spinner).toHaveStyle({ color: "hsl(14 100% 60%)" });
+      expect(spinner).toHaveStyle({ color: "var(--accent-primary)" });
     });
 
     it("shows 'Verifying...' when verificationInProgress=true even with agent idle (DB-backed signal)", () => {
@@ -304,7 +304,7 @@ describe("PlanItem", () => {
       });
       const spinner = document.querySelector(".animate-spin");
       expect(spinner).toBeInTheDocument();
-      expect(spinner).toHaveStyle({ color: "hsl(217 91% 60%)" });
+      expect(spinner).toHaveStyle({ color: "var(--status-info)" });
     });
 
     it("shows 'Verifying...' for in-progress group with null progress when verificationInProgress=true", () => {
@@ -409,7 +409,7 @@ describe("PlanItem", () => {
         plan: createSession({ hasPendingPrompt: true }),
       });
       const label = screen.getByText("Queued");
-      expect(label).toHaveStyle({ color: "hsl(45 93% 55%)" });
+      expect(label).toHaveStyle({ color: "var(--status-warning)" });
     });
 
     it("active wins: isActive=true + hasPendingPrompt=true renders 'Agent working...' not 'Queued'", () => {

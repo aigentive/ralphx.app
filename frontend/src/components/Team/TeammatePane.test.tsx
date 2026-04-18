@@ -70,8 +70,8 @@ describe("TeammatePane", () => {
       <TeammatePane contextKey="test" teammateName="worker-1" />,
     );
     const pane = container.firstChild as HTMLElement;
-    // jsdom converts HSL to RGB: hsl(14 100% 60%) → rgb(255, 99, 51)
-    expect(pane.style.border).toContain("rgb(255, 99, 51)");
+    // Source uses design token var(--accent-primary)
+    expect(pane.style.border).toContain("var(--accent-primary)");
   });
 
   it("shows dim border when not focused", () => {
@@ -81,8 +81,8 @@ describe("TeammatePane", () => {
       <TeammatePane contextKey="test" teammateName="worker-1" />,
     );
     const pane = container.firstChild as HTMLElement;
-    // jsdom converts HSL to RGB: hsl(220 10% 14%) → rgb(32, 35, 39)
-    expect(pane.style.border).toContain("rgb(32, 35, 39)");
+    // Source uses design token var(--border-subtle)
+    expect(pane.style.border).toContain("var(--border-subtle)");
   });
 
   it("calls onStop with teammate name", () => {

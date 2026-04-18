@@ -306,8 +306,8 @@ describe("ToolCallIndicator", () => {
       render(<ToolCallIndicator toolCall={toolCall} />);
 
       const indicator = screen.getByTestId("tool-call-indicator");
-      // Error state uses a red-tinted background
-      expect(indicator).toHaveStyle({ backgroundColor: "hsla(0 70% 55% / 0.15)" });
+      // Error state uses a red-tinted background (design token)
+      expect(indicator).toHaveStyle({ backgroundColor: "var(--status-error-muted)" });
     });
   });
 

@@ -334,9 +334,9 @@ describe("TieredProposalList", () => {
         />
       );
 
-      // Card should have highlight styling via inline border color
+      // Card should have highlight styling via inline border color (design token)
       const card = screen.getByTestId("proposal-card-p1");
-      expect(card.getAttribute("style")).toContain("246, 187, 9");
+      expect(card.getAttribute("style")).toContain("var(--status-warning)");
     });
   });
 
