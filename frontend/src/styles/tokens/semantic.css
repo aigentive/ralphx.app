@@ -12,8 +12,11 @@
  * Spec: specs/design/styleguide.md §1
  */
 
-:root,
-[data-theme="dark"] {
+/* Dark is the base — `:root` always matches regardless of data-theme value.
+   Light and High-Contrast override via `[data-theme="..."]` selectors loaded
+   after this file. Do NOT add `, [data-theme="dark"]` to this list — some
+   browsers cache compound :root selectors strangely across HMR reloads. */
+:root {
   /* ============================================================================
    * Backgrounds
    * ============================================================================ */
