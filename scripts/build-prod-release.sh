@@ -25,9 +25,109 @@ EOF
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PREPARE_RUNTIME_SCRIPT="${PROJECT_ROOT}/scripts/prepare-release-runtime.sh"
+TRACE_DIR="${RALPHX_RELEASE_TRACE_DIR:-${PROJECT_ROOT}/.artifacts/release-trace}"
+RAW_TRACE_LOG="${TRACE_DIR}/tauri-build.log"
+STAGE_TRACE_LOG="${TRACE_DIR}/release-stages.log"
 
 CLEAN="false"
 SKIP_BUILD="false"
+
+timestamp_utc() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+emit_stage_marker() {
+  local message="$1"
+  local timestamp
+  timestamp="$(timestamp_utc)"
+  printf '[release-stage] %s %s\n' "${timestamp}" "${message}" | tee -a "${STAGE_TRACE_LOG}"
+}
+
+prepare_trace_dir() {
+  mkdir -p "${TRACE_DIR}"
+  : > "${RAW_TRACE_LOG}"
+  : > "${STAGE_TRACE_LOG}"
+}
+
+stream_tauri_build_output() {
+  local line
+  local saw_binary_built=0
+  local saw_bundling=0
+  local saw_identity=0
+  local saw_signing=0
+  local saw_notarize=0
+  local saw_staple=0
+  local saw_bundle_output=0
+
+  while IFS= read -r line; do
+    printf '%s\n' "${line}"
+
+    if [[ "${saw_binary_built}" -eq 0 && "${line}" == *"Built application at:"* ]]; then
+      emit_stage_marker "rust-binary-built"
+      saw_binary_built=1
+    fi
+
+    if [[ "${saw_bundling}" -eq 0 && "${line}" == *"Bundling "* ]]; then
+      emit_stage_marker "bundle-generation-started"
+      saw_bundling=1
+    fi
+
+    if [[ "${saw_identity}" -eq 0 && "${line}" == *"found cert "* ]]; then
+      emit_stage_marker "signing-identity-selected"
+      saw_identity=1
+    fi
+
+    if [[ "${saw_signing}" -eq 0 && "${line}" == *"Signing with identity "* ]]; then
+      emit_stage_marker "codesign-started"
+      saw_signing=1
+    fi
+
+    if [[ "${saw_notarize}" -eq 0 ]]; then
+      case "${line}" in
+        *"notar"*|*"Notar"*)
+          emit_stage_marker "notarization-activity"
+          saw_notarize=1
+          ;;
+      esac
+    fi
+
+    if [[ "${saw_staple}" -eq 0 ]]; then
+      case "${line}" in
+        *"staple"*|*"Staple"*|*"stapling"*|*"Stapling"*)
+          emit_stage_marker "stapling-activity"
+          saw_staple=1
+          ;;
+      esac
+    fi
+
+    if [[ "${saw_bundle_output}" -eq 0 ]]; then
+      case "${line}" in
+        *".app.tar.gz"*|*"Finished 1 bundle at:"*|*"Finished 2 bundles at:"*|*"Finished bundle at:"*)
+          emit_stage_marker "bundle-output-generated"
+          saw_bundle_output=1
+          ;;
+      esac
+    fi
+  done
+}
+
+run_tauri_release_build() {
+  local tauri_status=0
+
+  emit_stage_marker "frontend-tauri-build-started"
+
+  (
+    cd "${PROJECT_ROOT}/frontend"
+    CI=false npm run tauri build -- --verbose
+  ) > >(tee "${RAW_TRACE_LOG}" | stream_tauri_build_output) 2>&1 || tauri_status=$?
+
+  if [[ "${tauri_status}" -ne 0 ]]; then
+    emit_stage_marker "frontend-tauri-build-failed exit_code=${tauri_status}"
+    return "${tauri_status}"
+  fi
+
+  emit_stage_marker "frontend-tauri-build-completed"
+}
 
 for arg in "$@"; do
   case "${arg}" in
@@ -50,16 +150,25 @@ MACOS_BUNDLE_DIR="${PROJECT_ROOT}/src-tauri/target/release/bundle/macos"
 DMG_DIR="${PROJECT_ROOT}/src-tauri/target/release/bundle/dmg"
 BIN_PATH="${PROJECT_ROOT}/src-tauri/target/release/ralphx"
 
+prepare_trace_dir
+
 if [[ "${CLEAN}" == "true" ]]; then
+  emit_stage_marker "release-clean-started"
   echo "Cleaning previous release bundle artifacts..."
   rm -rf "${PROJECT_ROOT}/src-tauri/target/release/bundle"
+  emit_stage_marker "release-clean-completed"
 fi
 
+emit_stage_marker "release-script-started"
+
 if [[ "${SKIP_BUILD}" != "true" ]]; then
+  emit_stage_marker "runtime-preparation-started"
   echo "Building RalphX production release artifacts..."
   "${PREPARE_RUNTIME_SCRIPT}"
-  cd "${PROJECT_ROOT}/frontend"
-  CI=false npm run tauri build
+  emit_stage_marker "runtime-preparation-completed"
+  run_tauri_release_build
+else
+  emit_stage_marker "release-build-skipped"
 fi
 
 missing_artifacts="false"
@@ -69,6 +178,9 @@ echo "Production release artifact summary"
 echo "---------------------------------"
 echo "Local app data was not modified."
 echo "Application Support plugin/runtime sync was not performed."
+echo "Release trace log: ${RAW_TRACE_LOG}"
+echo "Release stage log: ${STAGE_TRACE_LOG}"
+emit_stage_marker "artifact-summary-started"
 
 if [[ -x "${BIN_PATH}" ]]; then
   echo "Binary: ${BIN_PATH}"
@@ -125,5 +237,8 @@ echo "Next step:"
 echo "  Validate the packaged app outside the source checkout before publishing."
 
 if [[ "${missing_artifacts}" == "true" ]]; then
+  emit_stage_marker "artifact-summary-failed"
   exit 1
 fi
+
+emit_stage_marker "release-script-completed"

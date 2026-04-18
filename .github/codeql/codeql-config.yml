@@ -1,0 +1,33 @@
+name: RalphX CodeQL config
+
+threat-models: local
+
+queries:
+  - uses: security-and-quality
+
+paths:
+  - .github/workflows
+  - frontend/src
+  - plugins/app/ralphx-external-mcp/src
+  - plugins/app/ralphx-mcp-server/src
+  - src-tauri/crates
+  - src-tauri/src
+  - src-tauri/build.rs
+
+paths-ignore:
+  - .artifacts/**
+  - docs/**
+  - frontend/dist/**
+  - frontend/node_modules/**
+  - frontend/src/**/*.test.ts
+  - frontend/src/**/*.test.tsx
+  - frontend/src/**/__tests__/**
+  - plugins/app/**/build/**
+  - plugins/app/**/node_modules/**
+  - plugins/app/ralphx-external-mcp/tests/**
+  - plugins/app/ralphx-mcp-server/src/**/__tests__/**
+  - specs/**
+  - src-tauri/gen/**
+  - src-tauri/src/tests/**
+  - src-tauri/target/**
+  - src-tauri/tests/**

@@ -67,8 +67,8 @@ async fn test_validate_task_without_branch() {
 
 #[tokio::test]
 async fn test_cleanup_orphan_agents_no_agents() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
-    let validator = ResumeValidator::new(Arc::clone(&registry));
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let validator = ResumeValidator::new(registry.clone());
     let task = create_test_task();
 
     let result = validator.cleanup_orphan_agents(&task).await;
@@ -79,22 +79,13 @@ async fn test_cleanup_orphan_agents_no_agents() {
 
 #[tokio::test]
 async fn test_cleanup_orphan_agents_with_running_agent() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
-    let validator = ResumeValidator::new(Arc::clone(&registry));
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let validator = ResumeValidator::new(registry.clone());
     let task = create_test_task();
 
-    // Register a running agent
+    // Use the test helper's pid=0 placeholder so cleanup never targets a real OS process.
     let key = RunningAgentKey::new("task_execution", task.id.as_str());
-    registry
-        .register(
-            key.clone(),
-            12345,
-            "conv-123".to_string(),
-            "run-123".to_string(),
-            None,
-            None,
-        )
-        .await;
+    registry.set_running(key.clone()).await;
 
     let result = validator.cleanup_orphan_agents(&task).await;
 
@@ -108,23 +99,14 @@ async fn test_cleanup_orphan_agents_with_running_agent() {
 
 #[tokio::test]
 async fn test_cleanup_multiple_orphan_agents() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
-    let validator = ResumeValidator::new(Arc::clone(&registry));
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let validator = ResumeValidator::new(registry.clone());
     let task = create_test_task();
 
-    // Register multiple agents for different contexts
+    // Use pid=0 placeholder entries so cleanup stays hermetic on shared CI hosts.
     for context_type in &["task_execution", "review"] {
         let key = RunningAgentKey::new(*context_type, task.id.as_str());
-        registry
-            .register(
-                key,
-                12345,
-                "conv-123".to_string(),
-                "run-123".to_string(),
-                None,
-                None,
-            )
-            .await;
+        registry.set_running(key).await;
     }
 
     let result = validator.cleanup_orphan_agents(&task).await;
@@ -170,24 +152,15 @@ async fn create_test_stdin() -> (tokio::process::ChildStdin, tokio::process::Chi
 /// Verify: after cleanup, both IPR and registry are clean.
 #[tokio::test]
 async fn test_cleanup_orphan_agents_with_ipr_removes_ipr_entries() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
     let ipr = Arc::new(InteractiveProcessRegistry::new());
-    let validator = ResumeValidator::new(Arc::clone(&registry))
+    let validator = ResumeValidator::new(registry.clone())
         .with_interactive_process_registry(Arc::clone(&ipr));
     let task = create_test_task();
 
     // Register agent in both running registry and IPR
     let key = RunningAgentKey::new("task_execution", task.id.as_str());
-    registry
-        .register(
-            key.clone(),
-            12345,
-            "conv-123".to_string(),
-            "run-123".to_string(),
-            None,
-            None,
-        )
-        .await;
+    registry.set_running(key.clone()).await;
 
     let (stdin, _child) = create_test_stdin().await;
     let ipr_key = InteractiveProcessKey::new("task_execution", task.id.as_str());
@@ -216,26 +189,17 @@ async fn test_cleanup_orphan_agents_with_ipr_removes_ipr_entries() {
 /// (task_execution, review, merge).
 #[tokio::test]
 async fn test_cleanup_orphan_agents_with_ipr_handles_multiple_context_types() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
     let ipr = Arc::new(InteractiveProcessRegistry::new());
-    let validator = ResumeValidator::new(Arc::clone(&registry))
+    let validator = ResumeValidator::new(registry.clone())
         .with_interactive_process_registry(Arc::clone(&ipr));
     let task = create_test_task();
 
     // Register agents in multiple context types
     let context_types = ["task_execution", "review"];
-    for (idx, context_type) in context_types.iter().enumerate() {
+    for context_type in &context_types {
         let key = RunningAgentKey::new(*context_type, task.id.as_str());
-        registry
-            .register(
-                key,
-                12345 + idx as u32,
-                format!("conv-{}", idx),
-                format!("run-{}", idx),
-                None,
-                None,
-            )
-            .await;
+        registry.set_running(key).await;
 
         let (stdin, _child) = create_test_stdin().await;
         let ipr_key = InteractiveProcessKey::new(*context_type, task.id.as_str());
@@ -264,22 +228,13 @@ async fn test_cleanup_orphan_agents_with_ipr_handles_multiple_context_types() {
 /// Without IPR set on validator, cleanup still works (backward compat).
 #[tokio::test]
 async fn test_cleanup_orphan_agents_without_ipr_still_cleans_registry() {
-    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
     // No IPR set — validator.interactive_process_registry = None
-    let validator = ResumeValidator::new(Arc::clone(&registry));
+    let validator = ResumeValidator::new(registry.clone());
     let task = create_test_task();
 
     let key = RunningAgentKey::new("task_execution", task.id.as_str());
-    registry
-        .register(
-            key.clone(),
-            12345,
-            "conv-123".to_string(),
-            "run-123".to_string(),
-            None,
-            None,
-        )
-        .await;
+    registry.set_running(key.clone()).await;
 
     let result = validator.cleanup_orphan_agents(&task).await;
 

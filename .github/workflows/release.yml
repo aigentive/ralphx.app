@@ -1,11 +1,11 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
+      ref:
+        description: "Git tag ref to build from (for example v0.2.0 or refs/tags/v0.2.0)"
+        required: true
       version:
         description: "Version to release (for example 0.2.0 or v0.2.0)"
         required: true
@@ -23,6 +23,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.event.inputs.version }}
+  cancel-in-progress: true
+
 env:
   PUBLIC_RELEASES_REPO: aigentive/ralphx-releases
   PUBLIC_RELEASES_BASE_URL: https://github.com/aigentive/ralphx-releases/releases/download
@@ -38,6 +42,7 @@ jobs:
       release_name: ${{ steps.meta.outputs.release_name }}
       draft: ${{ steps.meta.outputs.draft }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
     steps:
       - name: Resolve release metadata
         id: meta
@@ -45,15 +50,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            raw_version="${{ github.event.inputs.version }}"
-            raw_draft="${{ github.event.inputs.draft }}"
-            raw_prerelease="${{ github.event.inputs.prerelease }}"
-          else
-            raw_version="${GITHUB_REF_NAME}"
-            raw_draft="false"
-            raw_prerelease="false"
-          fi
+          raw_ref="${{ github.event.inputs.ref }}"
+          raw_version="${{ github.event.inputs.version }}"
+          raw_draft="${{ github.event.inputs.draft }}"
+          raw_prerelease="${{ github.event.inputs.prerelease }}"
 
           version="${raw_version#v}"
           if [[ -z "${version}" ]]; then
@@ -63,6 +63,12 @@ jobs:
 
           tag="v${version}"
           release_name="RalphX ${tag}"
+          normalized_ref="${raw_ref#refs/tags/}"
+
+          if [[ "${normalized_ref}" != "${tag}" ]]; then
+            echo "Release ref must match the requested version tag. Expected ${tag}, got ${raw_ref}." >&2
+            exit 1
+          fi
 
           {
             echo "version=${version}"
@@ -70,11 +76,13 @@ jobs:
             echo "release_name=${release_name}"
             echo "draft=${raw_draft}"
             echo "prerelease=${raw_prerelease}"
+            echo "source_ref=refs/tags/${tag}"
           } >> "${GITHUB_OUTPUT}"
 
   build-macos:
     name: Build macOS ${{ matrix.arch }}
     needs: metadata
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +103,9 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
 
       - name: Validate signing environment
         shell: bash
@@ -133,7 +143,7 @@ jobs:
           echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -166,10 +176,45 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
           rm certificate.p12
 
+      - name: Validate imported signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          identities="$(security find-identity -v -p codesigning build.keychain)"
+          identity_count="$(
+            awk '/[0-9]+\) [0-9A-F]{40} / { count += 1 } END { print count + 0 }' <<< "${identities}"
+          )"
+
+          if [[ "${identity_count}" -ne 1 ]]; then
+            echo "Imported codesigning identities:" >&2
+            echo "${identities}" >&2
+            echo "Expected exactly 1 codesigning identity after importing APPLE_CERTIFICATE; found ${identity_count}. Export a single-identity .p12." >&2
+            exit 1
+          fi
+
+          if ! grep -Fq "\"${APPLE_SIGNING_IDENTITY}\"" <<< "${identities}"; then
+            echo "Imported codesigning identities:" >&2
+            echo "${identities}" >&2
+            echo "Imported signing identity does not match APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY}" >&2
+            exit 1
+          fi
+
+          echo "Validated imported signing identity."
+
       - name: Build production release artifacts
         env:
           APPLE_API_KEY_PATH: ${{ steps.api_key.outputs.api_key_path }}
+          RALPHX_RELEASE_TRACE_DIR: release-trace/${{ matrix.arch }}
         run: ./scripts/build-prod-release.sh
+
+      - name: Upload release trace logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-trace-${{ matrix.arch }}
+          path: release-trace/${{ matrix.arch }}/*
+          if-no-files-found: warn
 
       - name: Collect release artifacts
         shell: bash
@@ -205,7 +250,7 @@ jobs:
           cp "${sig_path}" "${dist_dir}/RalphX_${version}_${arch}.app.tar.gz.sig"
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.arch }}
           path: release-dist/${{ matrix.arch }}/*
@@ -217,10 +262,13 @@ jobs:
       - metadata
       - build-macos
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
 
       - name: Validate publishing environment
         shell: bash
@@ -232,7 +280,7 @@ jobs:
           fi
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
@@ -369,10 +417,13 @@ jobs:
       - metadata
       - publish-release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.metadata.outputs.source_ref }}
 
       - name: Validate tap publishing environment
         shell: bash
@@ -384,7 +435,7 @@ jobs:
           fi
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 

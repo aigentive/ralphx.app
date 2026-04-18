@@ -1,0 +1,139 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Bucharest
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore
+      include: scope
+    rebase-strategy: auto
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:15"
+      timezone: Europe/Bucharest
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: deps
+      include: scope
+    rebase-strategy: auto
+    open-pull-requests-limit: 8
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Bucharest
+    labels:
+      - dependencies
+      - frontend
+    commit-message:
+      prefix: deps
+      include: scope
+    rebase-strategy: auto
+    open-pull-requests-limit: 8
+    groups:
+      frontend-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /plugins/app/ralphx-mcp-server
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:45"
+      timezone: Europe/Bucharest
+    labels:
+      - dependencies
+      - plugins
+    commit-message:
+      prefix: deps
+      include: scope
+    rebase-strategy: auto
+    open-pull-requests-limit: 5
+    groups:
+      mcp-server-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      mcp-server-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /plugins/app/ralphx-external-mcp
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Bucharest
+    labels:
+      - dependencies
+      - plugins
+    commit-message:
+      prefix: deps
+      include: scope
+    rebase-strategy: auto
+    open-pull-requests-limit: 5
+    groups:
+      external-mcp-minor-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      external-mcp-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
