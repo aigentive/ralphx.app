@@ -100,12 +100,12 @@ jobs:
           bash -n scripts/build-prod-release.sh
           bash -n scripts/render-homebrew-cask.sh
 
-  rust-suite:
-    name: Rust Suite
+  rust-ipc-contracts:
+    name: Rust IPC Contracts
     needs: changes
     if: needs.changes.outputs.run_rust == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       RALPHX_TEST_MODE: "1"
     steps:
@@ -146,22 +146,116 @@ jobs:
 
       - name: Run IPC contract tests
         run: |
-          python3 -c 'import subprocess; subprocess.run(["cargo", "nextest", "run", "--manifest-path", "src-tauri/Cargo.toml", "--profile", "ci", "--test", "task_commands", "--test", "api_key_commands", "--test", "project_commands", "--test", "unified_chat_commands", "--test", "task_step_commands", "ipc_contract"], check=True, timeout=900)'
+          cargo nextest run \
+            --manifest-path src-tauri/Cargo.toml \
+            --profile ci \
+            --test task_commands \
+            --test api_key_commands \
+            --test project_commands \
+            --test unified_chat_commands \
+            --test task_step_commands \
+            ipc_contract
 
-      - name: Run all Rust lib tests
+  rust-lib-tests:
+    name: Rust Lib Tests (Shard ${{ matrix.partition }})
+    needs: changes
+    if: needs.changes.outputs.run_rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: ["1/2", "2/2"]
+    env:
+      RALPHX_TEST_MODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
         run: |
-          cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            pkg-config \
+            wget
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Run Rust lib tests shard ${{ matrix.partition }}
+        run: |
+          cargo nextest run \
+            --manifest-path src-tauri/Cargo.toml \
+            --lib \
+            --profile ci \
+            --partition hash:${{ matrix.partition }}
+
+  rust-doctests:
+    name: Rust Doctests
+    needs: changes
+    if: needs.changes.outputs.run_rust == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RALPHX_TEST_MODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            pkg-config \
+            wget
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.91.0
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: Run Rust doctests
-        if: github.event_name == 'push'
         run: |
-          python3 -c 'import subprocess; subprocess.run(["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml", "--doc"], check=True, timeout=600)'
+          cargo test --manifest-path src-tauri/Cargo.toml --doc
 
   rust-tests:
     name: Rust Tests
     needs:
       - changes
-      - rust-suite
+      - rust-ipc-contracts
+      - rust-lib-tests
+      - rust-doctests
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -180,10 +274,15 @@ jobs:
             exit 0
           fi
 
-          if [[ "${{ needs.rust-suite.result }}" != "success" ]]; then
-            echo "Rust suite result: ${{ needs.rust-suite.result }}" >&2
-            exit 1
-          fi
+          for job_result in \
+            "${{ needs.rust-ipc-contracts.result }}" \
+            "${{ needs.rust-lib-tests.result }}" \
+            "${{ needs.rust-doctests.result }}"; do
+            if [[ "${job_result}" != "success" && "${job_result}" != "skipped" ]]; then
+              echo "Rust suite result: ${job_result}" >&2
+              exit 1
+            fi
+          done
 
   frontend-quality:
     name: Frontend Quality
