@@ -139,7 +139,7 @@ function AIReviewSummary({
       className="rounded-lg p-3 space-y-3"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(16, 185, 129, 0.2)",
+        border: "1px solid var(--status-success-border)",
       }}
     >
       {/* Header */}
@@ -157,7 +157,7 @@ function AIReviewSummary({
           <span
             className="ml-auto text-[11px] px-2 py-0.5 rounded-full"
             style={{
-              backgroundColor: "rgba(16, 185, 129, 0.15)",
+              backgroundColor: "var(--status-success-muted)",
               color: "var(--status-success)",
             }}
           >

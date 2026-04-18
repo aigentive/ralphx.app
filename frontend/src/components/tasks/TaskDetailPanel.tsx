@@ -146,7 +146,7 @@ const STATUS_CONFIG: Record<
   },
   blocked: {
     label: "Blocked",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   executing: {
@@ -166,32 +166,32 @@ const STATUS_CONFIG: Record<
   },
   qa_passed: {
     label: "QA Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   qa_failed: {
     label: "QA Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
   pending_review: {
     label: "Pending Review",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   revision_needed: {
     label: "Revision Needed",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   approved: {
     label: "Approved",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   failed: {
     label: "Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
   cancelled: {
@@ -206,12 +206,12 @@ const STATUS_CONFIG: Record<
   },
   review_passed: {
     label: "AI Review Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   escalated: {
     label: "Escalated",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   re_executing: {
@@ -231,27 +231,27 @@ const STATUS_CONFIG: Record<
   },
   merge_incomplete: {
     label: "Merge Incomplete",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   merge_conflict: {
     label: "Merge Conflict",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   merged: {
     label: "Merged",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   paused: {
     label: "Paused",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   stopped: {
     label: "Stopped",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
 };
@@ -299,14 +299,14 @@ function ReviewCard({
   const statusColors: Record<string, { bg: string; text: string }> = {
     pending: defaultStatusColor,
     approved: {
-      bg: "rgba(16, 185, 129, 0.15)",
+      bg: "var(--status-success-muted)",
       text: "var(--status-success)",
     },
     changes_requested: {
-      bg: "rgba(245, 158, 11, 0.15)",
+      bg: "var(--status-warning-muted)",
       text: "var(--status-warning)",
     },
-    rejected: { bg: "rgba(239, 68, 68, 0.15)", text: "var(--status-error)" },
+    rejected: { bg: "var(--status-error-muted)", text: "var(--status-error)" },
   };
 
   const statusColor = statusColors[status] ?? defaultStatusColor;

@@ -345,14 +345,14 @@ export interface ErrorBannerProps {
 
 export function ErrorBanner({ error, onDismiss }: ErrorBannerProps) {
   return (
-    <div className="mx-6 mt-4 p-3 rounded-lg bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] flex items-center gap-3">
+    <div className="mx-6 mt-4 p-3 rounded-lg bg-[var(--status-error-muted)] border border-[var(--status-error-border)] flex items-center gap-3">
       <AlertCircle className="w-4 h-4 text-[var(--status-error)] shrink-0" />
       <p className="text-sm text-[var(--status-error)] flex-1">{error}</p>
       <Button
         variant="ghost"
         size="icon"
         onClick={onDismiss}
-        className="h-6 w-6 hover:bg-[rgba(239,68,68,0.2)]"
+        className="h-6 w-6 hover:bg-[var(--status-error-border)]"
       >
         <X className="w-4 h-4 text-[var(--status-error)]" />
       </Button>

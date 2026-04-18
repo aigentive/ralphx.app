@@ -46,8 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
             padding: "20px",
             margin: "20px",
             borderRadius: "8px",
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
+            backgroundColor: "var(--status-error-muted)",
+            border: "1px solid var(--status-error-border)",
             fontFamily: "SF Pro, system-ui, sans-serif",
           }}
         >

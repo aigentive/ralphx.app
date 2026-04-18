@@ -117,7 +117,7 @@ export function StopReasonDialog({
             <div
               className="p-2 rounded-full"
               style={{
-                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                backgroundColor: "var(--status-error-muted)",
               }}
             >
               <Square

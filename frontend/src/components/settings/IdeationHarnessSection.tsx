@@ -80,7 +80,7 @@ const NOTICE_STYLES: Record<
   },
   warn: {
     wrapper:
-      "bg-[rgba(251,146,60,0.06)] border-[rgba(251,146,60,0.2)] text-[var(--warning)]",
+      "bg-[var(--status-warning-muted)] border-[var(--status-warning-border)] text-[var(--warning)]",
     icon: <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />,
   },
   info: {

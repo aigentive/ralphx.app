@@ -91,7 +91,7 @@ export function BlockReasonDialog({
             <div
               className="p-2 rounded-full"
               style={{
-                backgroundColor: "rgba(245, 158, 11, 0.15)",
+                backgroundColor: "var(--status-warning-muted)",
               }}
             >
               <Ban

@@ -113,7 +113,7 @@ export function DependencyVisualization({
           role="alert"
           className="flex items-center gap-2 mb-3 px-3 py-2 rounded text-sm"
           style={{
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            backgroundColor: "var(--status-error-muted)",
             color: "var(--status-error)",
           }}
         >
