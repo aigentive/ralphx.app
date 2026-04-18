@@ -141,7 +141,7 @@ const STATUS_CONFIG: Record<
   },
   ready: {
     label: "Ready",
-    bg: "rgba(59, 130, 246, 0.15)",
+    bg: "var(--status-info-muted)",
     text: "var(--status-info)",
   },
   blocked: {
@@ -201,7 +201,7 @@ const STATUS_CONFIG: Record<
   },
   reviewing: {
     label: "AI Review in Progress",
-    bg: "rgba(59, 130, 246, 0.15)",
+    bg: "var(--status-info-muted)",
     text: "var(--status-info)",
   },
   review_passed: {

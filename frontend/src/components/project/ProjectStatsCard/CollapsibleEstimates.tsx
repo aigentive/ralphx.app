@@ -89,7 +89,7 @@ export function CollapsibleEstimates({ eme, projectId }: CollapsibleEstimatesPro
           {showFormula && (
             <div
               className="rounded-lg p-2.5 space-y-3 text-xs text-[var(--text-muted)]"
-              style={{ backgroundColor: "var(--alpha-white-4)" }}
+              style={{ backgroundColor: "var(--overlay-faint)" }}
               data-testid="formula-content"
             >
               {/* Formula display */}

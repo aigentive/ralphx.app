@@ -94,7 +94,7 @@ export function WorkflowsPanel() {
               data-testid="workflow-card"
               className="group transition-all duration-180 hover:-translate-y-px"
               style={{
-                background: "var(--alpha-white-4)",
+                background: "var(--overlay-faint)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
                 border: "1px solid var(--border-subtle)",

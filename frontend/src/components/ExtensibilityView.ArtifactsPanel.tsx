@@ -87,7 +87,7 @@ export function ArtifactsPanel() {
           background: "rgba(255,255,255,0.03)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <h3
@@ -213,7 +213,7 @@ export function ArtifactsPanel() {
                   data-testid="artifact-card"
                   className="group cursor-pointer transition-all duration-180 hover:-translate-y-px"
                   style={{
-                    background: "var(--alpha-white-4)",
+                    background: "var(--overlay-faint)",
                     backdropFilter: "blur(20px)",
                     WebkitBackdropFilter: "blur(20px)",
                     border: "1px solid var(--border-subtle)",

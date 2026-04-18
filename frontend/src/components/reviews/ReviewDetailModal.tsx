@@ -146,7 +146,7 @@ function AIReviewSummary({
       <div className="flex items-center gap-2">
         <div
           className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: "rgba(59, 130, 246, 0.15)" }}
+          style={{ backgroundColor: "var(--status-info-muted)" }}
         >
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--status-info)" }} />
         </div>

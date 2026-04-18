@@ -62,7 +62,7 @@ function TransitionEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "var(--alpha-white-4)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <ArrowRight className="w-3.5 h-3.5" style={{ color: "#0a84ff" }} />
       </div>
@@ -105,7 +105,7 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "var(--alpha-white-4)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
       </div>
@@ -181,7 +181,7 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "var(--alpha-white-4)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <ReviewerIcon
           className="w-3.5 h-3.5"
@@ -258,7 +258,7 @@ function DefaultEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "var(--alpha-white-4)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <MessageSquare className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
       </div>

@@ -199,7 +199,7 @@ export function RotateKeyDialog({
                 <div
                   className="flex-1 px-3 py-2 rounded-md font-mono text-sm text-[var(--text-primary)] break-all select-all"
                   style={{
-                    background: "var(--alpha-black-30)",
+                    background: "var(--overlay-scrim)",
                     border: "1px solid var(--border-subtle)",
                   }}
                 >

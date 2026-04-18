@@ -58,7 +58,7 @@ export function ResearchPanel() {
       <Card
         className="max-w-xl mx-auto"
         style={{
-          background: "var(--alpha-white-4)",
+          background: "var(--overlay-faint)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           border: "1px solid var(--border-subtle)",
@@ -304,7 +304,7 @@ export function ResearchPanel() {
               data-testid="session-card"
               className="cursor-pointer transition-all duration-180 hover:-translate-y-px"
               style={{
-                background: "var(--alpha-white-4)",
+                background: "var(--overlay-faint)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
                 border: "1px solid var(--border-subtle)",

@@ -198,7 +198,7 @@ export function EditableAnalysisEntry({
   return (
     <div
       className="rounded-md border border-[var(--border-subtle)] overflow-hidden"
-      style={{ background: "var(--alpha-white-4)" }}
+      style={{ background: "var(--overlay-faint)" }}
     >
       {/* Header */}
       <button

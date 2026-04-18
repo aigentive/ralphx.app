@@ -779,7 +779,7 @@ export function PlanningView({
                 position: "fixed",
                 inset: 0,
                 top: 56,
-                background: "var(--alpha-black-30)",
+                background: "var(--overlay-scrim)",
                 zIndex: 34,
               }}
             />

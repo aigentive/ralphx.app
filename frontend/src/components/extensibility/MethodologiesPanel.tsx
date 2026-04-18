@@ -73,7 +73,7 @@ export function MethodologiesPanel({
               style={{
                 background: methodology.isActive
                   ? "var(--accent-muted)"
-                  : "var(--alpha-white-4)",
+                  : "var(--overlay-faint)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
                 border: methodology.isActive

@@ -161,7 +161,7 @@ function LoadingSkeleton() {
         />
         <div
           className="h-10 rounded"
-          style={{ backgroundColor: "var(--alpha-white-4)" }}
+          style={{ backgroundColor: "var(--overlay-faint)" }}
         />
       </div>
       <div>
@@ -186,7 +186,7 @@ function LoadingSkeleton() {
             />
             <div
               className="h-8 rounded"
-              style={{ backgroundColor: "var(--alpha-white-4)" }}
+              style={{ backgroundColor: "var(--overlay-faint)" }}
             />
           </div>
         ))}
@@ -284,7 +284,7 @@ export function AuditTrailSidebar({
               backgroundColor:
                 selectedPhaseId === null
                   ? "var(--accent-muted)"
-                  : "var(--alpha-white-4)",
+                  : "var(--overlay-faint)",
               color:
                 selectedPhaseId === null
                   ? "var(--accent-primary)"

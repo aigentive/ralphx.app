@@ -298,7 +298,7 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                     style={{
                       backgroundColor: isActive
                         ? "var(--accent-muted)"
-                        : "var(--alpha-white-4)",
+                        : "var(--overlay-faint)",
                       color: isActive
                         ? ACCENT
                         : "rgba(255,255,255,0.5)",
