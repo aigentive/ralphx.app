@@ -10,7 +10,9 @@ paths:
   - frontend/src
   - plugins/app/ralphx-external-mcp/src
   - plugins/app/ralphx-mcp-server/src
+  - src-tauri/crates
   - src-tauri/src
+  - src-tauri/build.rs
 
 paths-ignore:
   - .artifacts/**
