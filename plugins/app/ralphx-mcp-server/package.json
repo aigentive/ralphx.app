@@ -28,7 +28,7 @@
     "@types/node": "^22.10.2",
     "@types/picomatch": "^4.0.3",
     "@vitest/ui": "^4.1.4",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   }
 }
