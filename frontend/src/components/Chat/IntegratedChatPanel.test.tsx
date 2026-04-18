@@ -70,6 +70,14 @@ vi.mock("@/hooks/useChat", () => ({
     isLoading: false,
     error: null,
   }),
+  useConversationHistoryWindow: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetchingOlderMessages: false,
+    hasOlderMessages: false,
+    loadedStartIndex: 0,
+    fetchOlderMessages: vi.fn(),
+  }),
   chatKeys: {
     all: ["chat"],
     conversationList: (type: string, id: string) => ["chat", "conversations", type, id],

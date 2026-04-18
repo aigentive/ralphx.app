@@ -176,12 +176,14 @@ pub use team_commands::{
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{
     create_agent_conversation, delete_queued_agent_message, get_agent_conversation,
-    get_agent_run_status_unified, get_queued_agent_messages, is_agent_running,
-    is_chat_service_available, list_agent_conversations, queue_agent_message, send_agent_message,
-    stop_agent, AgentConversationResponse, AgentConversationWithMessagesResponse,
-    AgentMessageResponse, AgentRunStatusResponse, CreateAgentConversationInput,
-    QueueAgentMessageInput, QueuedMessageResponse as UnifiedQueuedMessageResponse,
-    SendAgentMessageInput, SendAgentMessageResponse,
+    get_agent_conversation_messages_page, get_agent_run_status_unified,
+    get_queued_agent_messages, is_agent_running, is_chat_service_available,
+    list_agent_conversations, queue_agent_message, send_agent_message, stop_agent,
+    AgentConversationMessagesPageResponse, AgentConversationResponse,
+    AgentConversationWithMessagesResponse, AgentMessageResponse, AgentRunStatusResponse,
+    CreateAgentConversationInput, QueueAgentMessageInput,
+    QueuedMessageResponse as UnifiedQueuedMessageResponse, SendAgentMessageInput,
+    SendAgentMessageResponse,
 };
 // Plan branch commands (Phase 85 - Feature branch for plan groups)
 pub use plan_branch_commands::{

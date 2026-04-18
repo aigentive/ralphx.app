@@ -390,6 +390,15 @@ export interface ConversationStatsResponse {
   byEffort: UsageBucketResponse[];
 }
 
+export interface ConversationMessagesPageResponse {
+  conversation: ChatConversation;
+  messages: ChatMessageResponse[];
+  limit: number;
+  offset: number;
+  totalMessageCount: number;
+  hasOlder: boolean;
+}
+
 const UsageTotalsResponseSchema = z.object({
   input_tokens: z.number(),
   output_tokens: z.number(),
@@ -530,6 +539,19 @@ const AgentMessageSchema = z.object({
 
 type RawAgentMessage = z.infer<typeof AgentMessageSchema>;
 
+const ConversationMessagesPageResponseSchema = z.object({
+  conversation: ChatConversationResponseSchema,
+  messages: z.array(AgentMessageSchema),
+  limit: z.number().int().nonnegative(),
+  offset: z.number().int().nonnegative(),
+  total_message_count: z.number().int().nonnegative(),
+  has_older: z.boolean(),
+});
+
+type RawConversationMessagesPage = z.infer<
+  typeof ConversationMessagesPageResponseSchema
+>;
+
 function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
   return {
     id: raw.id,
@@ -560,6 +582,19 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     toolCalls: parseToolCalls(raw.tool_calls),
     contentBlocks: parseContentBlocks(raw.content_blocks),
     createdAt: raw.created_at,
+  };
+}
+
+function transformConversationMessagesPage(
+  raw: RawConversationMessagesPage
+): ConversationMessagesPageResponse {
+  return {
+    conversation: transformConversation(raw.conversation),
+    messages: raw.messages.map(transformAgentMessage),
+    limit: raw.limit,
+    offset: raw.offset,
+    totalMessageCount: raw.total_message_count,
+    hasOlder: raw.has_older,
   };
 }
 
@@ -602,6 +637,24 @@ export async function getConversation(
     conversation: transformConversation(raw.conversation),
     messages: raw.messages.map(transformAgentMessage),
   };
+}
+
+/**
+ * Get a tail-first page of conversation messages.
+ * `offset` counts how many newest messages to skip before loading older history.
+ */
+export async function getConversationMessagesPage(
+  conversationId: string,
+  limit: number,
+  offset = 0
+): Promise<ConversationMessagesPageResponse> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_messages_page",
+    { conversationId, limit, offset },
+    ConversationMessagesPageResponseSchema
+  );
+
+  return transformConversationMessagesPage(raw);
 }
 
 export async function getConversationStats(
@@ -687,6 +740,7 @@ export const chatApi = {
   // Conversation management
   listConversations,
   getConversation,
+  getConversationMessagesPage,
   getConversationStats,
   createConversation,
   getAgentRunStatus,

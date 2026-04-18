@@ -158,6 +158,8 @@ interface ChatMessageListProps {
   messages: ChatMessageData[];
   /** Conversation ID - used as key to force remount on conversation switch */
   conversationId: string | null;
+  /** Absolute index of the first loaded message in the full conversation timeline */
+  firstItemIndex?: number;
   /** Show failed run banner */
   failedRun?: { id: string; errorMessage: string } | null;
   /** Callback when failed run banner is dismissed */
@@ -186,6 +188,9 @@ interface ChatMessageListProps {
   /** Provider metadata for the active conversation */
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  hasOlderMessages?: boolean;
+  isFetchingOlderMessages?: boolean;
+  onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
 }
 
 // ============================================================================
@@ -197,6 +202,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     {
       messages,
       conversationId,
+      firstItemIndex = 0,
       failedRun,
       onDismissFailedRun,
       isSending,
@@ -212,6 +218,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       contextKey,
       providerHarness,
       providerSessionId,
+      hasOlderMessages = false,
+      isFetchingOlderMessages = false,
+      onLoadOlderMessages,
     },
     ref
   ) {
@@ -329,6 +338,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       messageCount: messages.length,
       disabled: !!scrollToTimestamp, // Disable auto-scroll in history mode
       virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
+      indexOffset: firstItemIndex,
       conversationId, // Reset isAtBottom when conversation changes
     });
 
@@ -462,7 +472,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         // Add a small delay to ensure Virtuoso is ready
         const timeoutId = setTimeout(() => {
           virtuosoRef.current?.scrollToIndex({
-            index: targetIndex,
+            index: firstItemIndex + targetIndex,
             align: "start",
             behavior: preferredScrollBehavior,
           });
@@ -470,7 +480,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return () => clearTimeout(timeoutId);
       }
       return undefined;
-    }, [scrollToTimestamp, messages, preferredScrollBehavior]);
+    }, [scrollToTimestamp, messages, firstItemIndex, preferredScrollBehavior]);
 
     // Build timeline data for Virtuoso. Always wraps messages as TimelineItem
     // for consistent typing. When hook events exist, they're interleaved and sorted.
@@ -593,6 +603,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return items;
     }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastProviderMessage, attachmentsMap, teamFilter, teamMessages]);
 
+    const lastItemIndex = firstItemIndex + timeline.length - 1;
+    const startReachedHandler =
+      hasOlderMessages && onLoadOlderMessages
+        ? (_index: number) => {
+            void onLoadOlderMessages();
+          }
+        : null;
+
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
     // content has actually rendered, rather than a fixed-duration setTimeout guess.
@@ -604,7 +622,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
       const doScroll = () => {
         if (hasScrolledRef.current === targetConversationId) return;
-        virtuosoRef.current?.scrollToIndex({ index: timeline.length - 1, align: "end", behavior: "auto" });
+        virtuosoRef.current?.scrollToIndex({
+          index: lastItemIndex,
+          align: "end",
+          behavior: "auto",
+        });
         hasScrolledRef.current = targetConversationId;
       };
 
@@ -637,7 +659,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         clearTimeout(debounceTimer);
         clearTimeout(safetyTimer);
       };
-    }, [conversationId, timeline.length]);
+    }, [conversationId, lastItemIndex, timeline.length]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -1008,17 +1030,35 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           ref={virtuosoRef}
           scrollerRef={handleScrollerRef}
           data={timeline}
+          firstItemIndex={firstItemIndex}
           context={footerContentHash}
           // Start at the last item on mount
-          initialTopMostItemIndex={timeline.length > 0 ? timeline.length - 1 : 0}
+          initialTopMostItemIndex={timeline.length > 0 ? lastItemIndex : 0}
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={AT_BOTTOM_THRESHOLD}
+          {...(startReachedHandler
+            ? { startReached: startReachedHandler }
+            : {})}
           alignToBottom
           className="h-full"
           components={virtuosoComponents}
           itemContent={renderItem}
         />
+        {isFetchingOlderMessages && (
+          <div className="absolute top-2 left-0 right-0 flex justify-center pointer-events-none">
+            <span
+              className="rounded-full px-3 py-1 text-[11px]"
+              style={{
+                backgroundColor: "hsla(220 15% 12% / 0.94)",
+                border: "1px solid hsla(220 20% 100% / 0.06)",
+                color: "hsl(220 10% 72%)",
+              }}
+            >
+              Loading earlier messages...
+            </span>
+          </div>
+        )}
         {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
             isAtBottom/scrollToBottom/timeline.length are NOT in virtuosoComponents deps. */}
         {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (
