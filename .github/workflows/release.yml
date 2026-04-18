@@ -93,8 +93,6 @@ jobs:
             arch: x86_64
     runs-on: ${{ matrix.runner }}
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -109,6 +107,9 @@ jobs:
 
       - name: Validate signing environment
         shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           required_vars=(
@@ -142,6 +143,13 @@ jobs:
           chmod 600 "${key_path}"
           echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
+      - name: Generate temporary signing keychain password
+        id: keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "password=$(openssl rand -base64 24 | tr -d '\n')" >> "${GITHUB_OUTPUT}"
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -166,14 +174,20 @@ jobs:
 
       - name: Import Apple certificate
         shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ steps.keychain.outputs.password }}
         run: |
           set -euo pipefail
           echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
-          security create-keychain -p "" build.keychain
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
           security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
           security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" build.keychain
+          security list-keychains -d user -s build.keychain
           rm certificate.p12
 
       - name: Validate imported signing identity
@@ -223,6 +237,11 @@ jobs:
               printf '[release-heartbeat] %s build step still running for %s\n' \
                 "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
                 "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+              ps -axo pid,ppid,etime,stat,command \
+                | grep -E 'codesign|notarytool|xcrun|cargo-tauri|cargo tauri|cargo build|node .*tauri|ralphx' \
+                | grep -v 'grep -E' \
+                | sed 's/^/[release-heartbeat] process /' \
+                | tee -a "${heartbeat_log}" || true
               sleep 60
             done
           }
@@ -238,6 +257,11 @@ jobs:
           printf '[release-heartbeat] %s starting build script for %s\n' \
             "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
             "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+
+          echo "[release-heartbeat] ${{
+            matrix.arch
+          }} using pre-imported build.keychain; clearing APPLE_CERTIFICATE env to avoid duplicate Tauri keychain import" | tee -a "${heartbeat_log}"
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
 
           ./scripts/build-prod-release.sh 2>&1 | tee -a "${build_log}"
 
