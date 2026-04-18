@@ -25,6 +25,7 @@
 @import "./tokens/components.css";
 
 /* ─── Themes (override semantic + component tokens) ─────────────────────── */
+@import "./themes/dark.css";
 @import "./themes/light.css";
 @import "./themes/high-contrast.css";
 
