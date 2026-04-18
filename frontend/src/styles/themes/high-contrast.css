@@ -61,6 +61,14 @@
   /* Focus ring — bright yellow */
   --focus-ring: var(--yellow-500);
 
+  /* Overlay surfaces — HC uses higher-contrast separation (thicker borders
+   * do most of the work). Overlay still available but less subtle. */
+  --overlay-faint:      hsla(0 0% 100% / 0.06);
+  --overlay-weak:       hsla(0 0% 100% / 0.10);
+  --overlay-moderate:   hsla(0 0% 100% / 0.20);
+  --overlay-scrim:      hsla(0 0% 0% / 0.70);
+  --overlay-scrim-deep: hsla(0 0% 0% / 0.90);
+
   /* Selection — yellow highlight with black text */
   --selection-bg:   hsla(50 100% 50% / 0.5);
   --selection-text: var(--color-black);

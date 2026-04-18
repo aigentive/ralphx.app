@@ -72,6 +72,17 @@
   --border-width-focus:   2px;
 
   /* ============================================================================
+   * Overlay surfaces — translucent whites/blacks for subtle layering where
+   * the underlying surface should show through. Components should consume
+   * these instead of reaching for --alpha-white-* primitives directly.
+   * ============================================================================ */
+  --overlay-faint:     var(--alpha-white-4);  /* 4%  — subtle card / nested row */
+  --overlay-weak:      var(--alpha-white-6);  /* 6%  — hover emphasis */
+  --overlay-moderate:  var(--alpha-white-10); /* 10% — section highlight */
+  --overlay-scrim:     var(--alpha-black-30); /* 30% — dialog scrim, hero dim */
+  --overlay-scrim-deep:var(--alpha-black-60); /* 60% — modal backdrop */
+
+  /* ============================================================================
    * Interactive / focus
    * ============================================================================ */
   --focus-ring: hsla(220 80% 60% / 0.5);
