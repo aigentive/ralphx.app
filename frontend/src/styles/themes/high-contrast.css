@@ -180,3 +180,13 @@
   --card-icon-bg: transparent;
   --card-icon-border: var(--accent-primary);
 }
+
+/* HC button affordance — styleguide mandates visible borders on interactive
+   controls in high contrast. shadcn's "secondary" and default variants
+   render bg-[color] without a border; on HC those surfaces are only 15%
+   brighter than pure-black base, so buttons read as text-only. Add a
+   1px outline to secondary/outline buttons that don't already carry a
+   border utility class. */
+[data-theme="high-contrast"] button.bg-secondary:not(.border-0):not([class*="border-2"]) {
+  border: 1px solid var(--border-default);
+}
