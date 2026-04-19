@@ -494,3 +494,31 @@
 [data-theme="high-contrast"] [role="switch"] {
   border-color: var(--border-default) !important;
 }
+
+/* ============================================================================
+ * Phase 5 — Audit gap closure.
+ * Plan: specs/design/themes/hc-border-layout-plan.md §6 Phase 5.
+ * Covers blocks that still read as loose color puddles on pure black:
+ * Kanban column headers, Insights cards, and the graph floating timeline.
+ * ============================================================================ */
+
+/* Kanban column header — separate title row from the task list below. */
+[data-theme="high-contrast"] [data-testid="column-header"] {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Insights cards (StatCard / UsageInsightsCard) — bg-surface and overlay
+   fills resolve to pure black on HC, so the cards disappear into the
+   canvas. Add a 1px --subtle perimeter so every card reads as a
+   contained tile. DetailCard already has a border utility; this covers
+   the StatCard variant that only had a rounded bg. */
+[data-theme="high-contrast"] [data-testid="insights-card"] {
+  border: 1px solid var(--border-subtle);
+}
+
+/* Graph floating timeline — uses `--overlay-weak` (10% white) for its
+   perimeter which on HC reads as nearly invisible. Bump to --subtle so
+   it matches FloatingGraphFilters and reads as a fenced overlay. */
+[data-theme="high-contrast"] [data-testid="floating-timeline"] > div {
+  border-color: var(--border-subtle) !important;
+}

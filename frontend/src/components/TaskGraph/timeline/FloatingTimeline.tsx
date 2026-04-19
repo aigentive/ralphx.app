@@ -24,6 +24,7 @@ export const FloatingTimeline = memo(function FloatingTimeline({
 }: FloatingTimelineProps) {
   return (
     <div
+      data-testid="floating-timeline"
       className={className}
       style={{
         height: "100%",

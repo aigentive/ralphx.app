@@ -461,7 +461,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
       }}
     >
       {/* Column header - macOS Tahoe: small, gray, understated like Finder section headers */}
-      <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+      <div data-testid="column-header" className="flex items-center gap-2 px-2 py-1.5 mb-1">
         {/* Column title - small caps style like Finder */}
         <h3
           className="flex-1 m-0 truncate"

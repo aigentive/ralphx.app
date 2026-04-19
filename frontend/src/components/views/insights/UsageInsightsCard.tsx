@@ -35,6 +35,7 @@ function MiniStat({
 }) {
   return (
     <div
+      data-testid="insights-card"
       className="rounded-lg p-3 flex flex-col gap-1"
       style={{ backgroundColor: "var(--overlay-faint)" }}
     >

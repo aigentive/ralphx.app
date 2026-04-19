@@ -16,6 +16,7 @@ interface StatCardProps {
 export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
   return (
     <div
+      data-testid="insights-card"
       className="flex flex-col gap-1 rounded-xl"
       style={{ backgroundColor: "var(--bg-surface)", padding: "14px 16px" }}
     >
