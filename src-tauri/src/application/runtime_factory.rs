@@ -4,8 +4,8 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::application::chat_service::{AppChatService, StreamingStateCache};
 use crate::application::{
-    AgentClientBundle, AppState, InteractiveProcessRegistry, TaskSchedulerService,
-    TaskTransitionService,
+    AgentClientBundle, AppState, InteractiveProcessRegistry, PrPollerRegistry,
+    TaskSchedulerService, TaskTransitionService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
@@ -17,7 +17,7 @@ use crate::domain::repositories::{
     ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{GithubServiceTrait, MessageQueue, RunningAgentRegistry};
 use crate::infrastructure::memory::MemoryDelegatedSessionRepository;
 
 #[derive(Clone)]
@@ -40,6 +40,8 @@ pub(crate) struct RuntimeFactoryDeps {
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    pub pr_poller_registry: Option<Arc<PrPollerRegistry>>,
 }
 
 impl RuntimeFactoryDeps {
@@ -77,6 +79,8 @@ impl RuntimeFactoryDeps {
             agent_lane_settings_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
+            github_service: None,
+            pr_poller_registry: None,
         }
     }
 
@@ -110,6 +114,16 @@ impl RuntimeFactoryDeps {
         self
     }
 
+    pub(crate) fn with_github_runtime_support(
+        mut self,
+        github_service: Option<Arc<dyn GithubServiceTrait>>,
+        pr_poller_registry: Option<Arc<PrPollerRegistry>>,
+    ) -> Self {
+        self.github_service = github_service;
+        self.pr_poller_registry = pr_poller_registry;
+        self
+    }
+
     pub(crate) fn from_app_state(state: &AppState) -> Self {
         Self::from_core(
             Arc::clone(&state.task_repo),
@@ -132,6 +146,10 @@ impl RuntimeFactoryDeps {
             Some(Arc::clone(&state.agent_lane_settings_repo)),
             Some(Arc::clone(&state.plan_branch_repo)),
             Some(Arc::clone(&state.interactive_process_registry)),
+        )
+        .with_github_runtime_support(
+            state.github_service.as_ref().map(Arc::clone),
+            Some(Arc::clone(&state.pr_poller_registry)),
         )
     }
 }
@@ -506,6 +524,12 @@ pub(crate) fn build_transition_service_from_deps<R: Runtime>(
     if let Some(ipr) = deps.interactive_process_registry.as_ref() {
         service = service.with_interactive_process_registry(Arc::clone(ipr));
     }
+    if let Some(registry) = deps.pr_poller_registry.as_ref() {
+        service = service.with_pr_poller_registry(Arc::clone(registry));
+    }
+    if let Some(github) = deps.github_service.as_ref() {
+        service = service.with_github_service(Arc::clone(github));
+    }
     service
 }
 
@@ -561,6 +585,12 @@ pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
     }
     if let Some(ipr) = deps.interactive_process_registry.as_ref() {
         scheduler = scheduler.with_interactive_process_registry(Arc::clone(ipr));
+    }
+    if let Some(registry) = deps.pr_poller_registry.as_ref() {
+        scheduler = scheduler.with_pr_poller_registry(Arc::clone(registry));
+    }
+    if let Some(github) = deps.github_service.as_ref() {
+        scheduler = scheduler.with_github_service(Arc::clone(github));
     }
     scheduler
 }

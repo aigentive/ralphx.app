@@ -473,6 +473,8 @@ async fn execute_merge_retry_background(
         agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
         plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
         interactive_process_registry: Some(Arc::clone(&interactive_process_registry)),
+        github_service: None,
+        pr_poller_registry: None,
     };
 
     // Create transition service with all necessary dependencies

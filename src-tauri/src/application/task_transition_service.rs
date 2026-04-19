@@ -1082,6 +1082,16 @@ impl<R: Runtime> TaskTransitionService<R> {
         *self.self_arc.lock().unwrap() = Some(arc as Arc<dyn std::any::Any + Send + Sync>);
     }
 
+    /// Wrap the service in an Arc and wire self_arc so PR-mode pollers can call back into it.
+    pub fn into_arc(self) -> Arc<TaskTransitionService<R>>
+    where
+        R: 'static,
+    {
+        let arc = Arc::new(self);
+        arc.set_self_arc(Arc::clone(&arc));
+        arc
+    }
+
     /// Set the task scheduler for auto-scheduling Ready tasks (builder pattern).
     ///
     /// When set, the scheduler is passed to TaskServices so that TransitionHandler

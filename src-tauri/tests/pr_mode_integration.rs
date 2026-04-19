@@ -18,10 +18,16 @@ use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionServ
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId, Project, Task,
+    TaskCategory,
 };
-use ralphx_lib::domain::repositories::PlanBranchRepository;
-use ralphx_lib::domain::services::github_service::PrStatus;
-use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
+use ralphx_lib::domain::repositories::{
+    PlanBranchRepository, ProjectRepository, TaskRepository,
+};
+use ralphx_lib::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use ralphx_lib::domain::state_machine::services::TaskScheduler;
+use ralphx_lib::infrastructure::memory::{
+    MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
+};
 
 use common::MockGithubService;
 
@@ -112,6 +118,79 @@ fn make_pr_plan_branch(
     pb.pr_polling_active = pr_polling_active;
     pb.last_polled_at = last_polled_at;
     pb
+}
+
+#[tokio::test]
+async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let mut app_state = AppState::with_repos(task_repo.clone(), project_repo.clone());
+    app_state.plan_branch_repo = plan_branch_repo.clone();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_trait: Arc<dyn GithubServiceTrait> = mock_github.clone();
+    app_state.github_service = Some(Arc::clone(&github_trait));
+    app_state.pr_poller_registry = Arc::new(PrPollerRegistry::new(
+        Some(github_trait),
+        plan_branch_repo.clone(),
+    ));
+
+    let working_dir = tempfile::tempdir().unwrap();
+    let mut project = Project::new(
+        "PR Scheduler".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    project.github_pr_enabled = true;
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge ready plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Ready;
+    let merge_task_id = merge_task.id.clone();
+    task_repo.create(merge_task).await.unwrap();
+
+    let mut plan_branch = PlanBranch::new(
+        ArtifactId::from_string("sched-artifact".to_string()),
+        IdeationSessionId::from_string("sched-session".to_string()),
+        project.id.clone(),
+        "ralphx/test/plan-scheduler".to_string(),
+        "main".to_string(),
+    );
+    plan_branch.merge_task_id = Some(merge_task_id.clone());
+    plan_branch.pr_eligible = true;
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let execution_state = Arc::new(ExecutionState::new());
+    let scheduler = Arc::new(
+        app_state.build_task_scheduler_for_runtime(
+            Arc::clone(&execution_state),
+            Option::<tauri::AppHandle>::None,
+        ),
+    );
+    scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    scheduler.try_schedule_ready_tasks().await;
+
+    let task_after = task_repo.get_by_id(&merge_task_id).await.unwrap().unwrap();
+    assert_eq!(
+        task_after.internal_status,
+        InternalStatus::Merging,
+        "plan merge should take the PR-mode PendingMerge path"
+    );
+    assert!(
+        mock_github.push_calls() > 0,
+        "PR-mode merge should push the plan branch"
+    );
+    assert!(
+        mock_github.create_calls() > 0,
+        "PR-mode merge should create a PR when one does not already exist"
+    );
+    assert!(
+        app_state.pr_poller_registry.is_polling(&merge_task_id),
+        "Merging PR-mode task should start the PR poller"
+    );
 }
 
 // ============================================================================

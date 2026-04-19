@@ -115,6 +115,14 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         Ok(())
     }
 
+    async fn update_pr_eligible(&self, id: &PlanBranchId, enabled: bool) -> AppResult<()> {
+        let mut branches = self.branches.write().await;
+        if let Some(branch) = branches.get_mut(id.as_str()) {
+            branch.pr_eligible = enabled;
+        }
+        Ok(())
+    }
+
     async fn set_merge_task_id(&self, id: &PlanBranchId, task_id: &TaskId) -> AppResult<()> {
         let mut branches = self.branches.write().await;
         if let Some(branch) = branches.get_mut(id.as_str()) {

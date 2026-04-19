@@ -50,6 +50,9 @@ pub trait PlanBranchRepository: Send + Sync {
     /// Update plan branch status
     async fn update_status(&self, id: &PlanBranchId, status: PlanBranchStatus) -> AppResult<()>;
 
+    /// Update whether the plan branch is eligible for PR mode.
+    async fn update_pr_eligible(&self, id: &PlanBranchId, enabled: bool) -> AppResult<()>;
+
     /// Set the merge task ID for a plan branch
     async fn set_merge_task_id(&self, id: &PlanBranchId, task_id: &TaskId) -> AppResult<()>;
 
