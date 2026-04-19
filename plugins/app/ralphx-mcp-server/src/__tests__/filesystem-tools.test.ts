@@ -9,14 +9,10 @@ import {
 
 describe("filesystem tools", () => {
   const tempDirs: string[] = [];
-  const originalWorkingDirectory = process.env.RALPHX_WORKING_DIRECTORY;
+  const originalCwd = process.cwd();
 
   afterEach(() => {
-    if (originalWorkingDirectory === undefined) {
-      delete process.env.RALPHX_WORKING_DIRECTORY;
-    } else {
-      process.env.RALPHX_WORKING_DIRECTORY = originalWorkingDirectory;
-    }
+    process.chdir(originalCwd);
 
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -25,9 +21,10 @@ describe("filesystem tools", () => {
 
   function makeWorkspace(): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-tools-"));
+    const canonicalDir = fs.realpathSync(dir);
     tempDirs.push(dir);
-    process.env.RALPHX_WORKING_DIRECTORY = dir;
-    return dir;
+    process.chdir(canonicalDir);
+    return canonicalDir;
   }
 
   it("reads a relative file within the allowed root", async () => {
@@ -80,6 +77,41 @@ describe("filesystem tools", () => {
     await expect(
       handleFilesystemToolCall("fs_read_file", {
         path: path.relative(root, outsideFile),
+      })
+    ).rejects.toThrow("outside the allowed filesystem roots");
+  });
+
+  it("rejects symlinked file paths that escape the allowed root", async () => {
+    const root = makeWorkspace();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-link-outside-"));
+    tempDirs.push(outsideDir);
+    const outsideFile = path.join(outsideDir, "secret.txt");
+    fs.writeFileSync(outsideFile, "secret\n");
+
+    const symlinkPath = path.join(root, "src", "escape.txt");
+    fs.mkdirSync(path.dirname(symlinkPath), { recursive: true });
+    fs.symlinkSync(outsideFile, symlinkPath);
+
+    await expect(
+      handleFilesystemToolCall("fs_read_file", {
+        path: "src/escape.txt",
+      })
+    ).rejects.toThrow("outside the allowed filesystem roots");
+  });
+
+  it("rejects symlinked base paths that escape the allowed root", async () => {
+    const root = makeWorkspace();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-base-outside-"));
+    tempDirs.push(outsideDir);
+    fs.writeFileSync(path.join(outsideDir, "secret.ts"), "export const secret = true;\n");
+
+    const symlinkPath = path.join(root, "linked");
+    fs.symlinkSync(outsideDir, symlinkPath);
+
+    await expect(
+      handleFilesystemToolCall("fs_glob", {
+        base_path: "linked",
+        pattern: "**/*.ts",
       })
     ).rejects.toThrow("outside the allowed filesystem roots");
   });
