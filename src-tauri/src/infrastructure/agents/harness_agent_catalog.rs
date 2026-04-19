@@ -180,8 +180,35 @@ fn find_project_root_with_canonical_agents(start: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+fn find_project_root_via_resolved_plugin_targets(plugin_dir: &Path) -> Option<PathBuf> {
+    if let Ok(canonical_plugin_dir) = plugin_dir.canonicalize() {
+        if canonical_plugin_dir != plugin_dir {
+            if let Some(project_root) = find_project_root_with_canonical_agents(&canonical_plugin_dir)
+            {
+                return Some(project_root);
+            }
+        }
+    }
+
+    let entries = std::fs::read_dir(plugin_dir).ok()?;
+    for entry in entries.filter_map(Result::ok) {
+        let Ok(canonical_entry_path) = entry.path().canonicalize() else {
+            continue;
+        };
+        if let Some(project_root) = find_project_root_with_canonical_agents(&canonical_entry_path) {
+            return Some(project_root);
+        }
+    }
+
+    None
+}
+
 pub fn resolve_project_root_from_plugin_dir(plugin_dir: &Path) -> PathBuf {
     if let Some(project_root) = find_project_root_with_canonical_agents(plugin_dir) {
+        return project_root;
+    }
+
+    if let Some(project_root) = find_project_root_via_resolved_plugin_targets(plugin_dir) {
         return project_root;
     }
 

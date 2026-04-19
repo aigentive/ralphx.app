@@ -6,6 +6,7 @@ use super::{
 use crate::infrastructure::agents::claude::get_agent_config;
 use std::fs;
 use std::path::PathBuf;
+use tempfile::tempdir;
 
 const PILOT_AGENTS: &[(&str, &str, &str)] = &[
     (
@@ -408,7 +409,10 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
 ];
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .expect("canonical repo root")
 }
 
 #[test]
@@ -1271,6 +1275,40 @@ fn resolve_project_root_from_generated_plugin_dir_finds_repo_agents_tree() {
 }
 
 #[test]
+fn resolve_project_root_from_symlinked_base_plugin_dir_finds_repo_agents_tree() {
+    let root = project_root();
+    let temp = tempdir().expect("tempdir");
+    let plugin_dir = temp.path().join("plugins/app");
+    fs::create_dir_all(plugin_dir.parent().expect("plugin dir parent"))
+        .expect("create temp plugins parent");
+    symlink_dir(root.join("plugins/app"), &plugin_dir);
+
+    assert_eq!(
+        resolve_project_root_from_plugin_dir(&plugin_dir),
+        root,
+        "symlinked plugin dirs should resolve back to the RalphX repo root so canonical agent definitions load outside the source checkout"
+    );
+}
+
+#[test]
+fn resolve_project_root_from_external_generated_plugin_dir_follows_runtime_symlinks() {
+    let root = project_root();
+    let temp = tempdir().expect("tempdir");
+    let generated_plugin_dir = temp.path().join("generated/claude-plugin");
+    fs::create_dir_all(&generated_plugin_dir).expect("create generated plugin dir");
+    symlink_dir(
+        root.join("plugins/app/ralphx-mcp-server"),
+        generated_plugin_dir.join("ralphx-mcp-server"),
+    );
+
+    assert_eq!(
+        resolve_project_root_from_plugin_dir(&generated_plugin_dir),
+        root,
+        "external generated plugin dirs should resolve through symlinked runtime entries back to the RalphX repo root"
+    );
+}
+
+#[test]
 fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
     let root = project_root();
     let banned_terms = [
@@ -1377,6 +1415,16 @@ fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
             );
         }
     }
+}
+
+#[cfg(unix)]
+fn symlink_dir(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path::Path>) {
+    std::os::unix::fs::symlink(source, target).expect("create directory symlink");
+}
+
+#[cfg(windows)]
+fn symlink_dir(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path::Path>) {
+    std::os::windows::fs::symlink_dir(source, target).expect("create directory symlink");
 }
 
 #[test]
