@@ -112,21 +112,20 @@ jobs:
             echo "build_matrix=${build_matrix}"
           } >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ steps.meta.outputs.source_ref }}
-          sparse-checkout: |
-            release-notes
-
       - name: Write release notes artifact
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           mkdir -p release-metadata
           notes_file="release-notes/${{ steps.meta.outputs.tag }}.md"
-          if [[ -f "${notes_file}" ]]; then
-            cp "${notes_file}" release-metadata/release-notes.md
+          if notes_content="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/${GITHUB_REPOSITORY}/contents/${notes_file}?ref=${{ steps.meta.outputs.tag }}" \
+            --jq '.content' 2>/dev/null)"; then
+            printf '%s' "${notes_content}" | tr -d '\n' | base64 --decode > release-metadata/release-notes.md
           else
             {
               printf 'Release artifacts for %s.\n\n' "${{ steps.meta.outputs.tag }}"
