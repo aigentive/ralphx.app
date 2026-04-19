@@ -112,12 +112,39 @@ jobs:
             echo "build_matrix=${build_matrix}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Write release metadata artifact
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.meta.outputs.source_ref }}
+          sparse-checkout: |
+            release-notes
+
+      - name: Write release notes artifact
         shell: bash
         run: |
           set -euo pipefail
 
           mkdir -p release-metadata
+          notes_file="release-notes/${{ steps.meta.outputs.tag }}.md"
+          if [[ -f "${notes_file}" ]]; then
+            cp "${notes_file}" release-metadata/release-notes.md
+          else
+            {
+              printf 'Release artifacts for %s.\n\n' "${{ steps.meta.outputs.tag }}"
+              printf 'Included:\n'
+              printf '%s\n' \
+                '- macOS Apple Silicon DMG' \
+                '- macOS Intel DMG' \
+                '- macOS Apple Silicon updater bundle' \
+                '- macOS Intel updater bundle' \
+                '- latest.json' \
+                '- checksums.txt'
+            } > release-metadata/release-notes.md
+          fi
+
+      - name: Write release metadata artifact
+        shell: bash
+        run: |
+          set -euo pipefail
           jq -n \
             --arg version "${{ steps.meta.outputs.version }}" \
             --arg tag "${{ steps.meta.outputs.tag }}" \
@@ -138,7 +165,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: release-metadata
-          path: release-metadata/release-metadata.json
+          path: |
+            release-metadata/release-metadata.json
+            release-metadata/release-notes.md
           if-no-files-found: error
 
   build-macos:
