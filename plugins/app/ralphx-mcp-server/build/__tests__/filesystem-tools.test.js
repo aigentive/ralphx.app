@@ -5,23 +5,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { formatFilesystemToolError, handleFilesystemToolCall, } from "../filesystem-tools.js";
 describe("filesystem tools", () => {
     const tempDirs = [];
-    const originalWorkingDirectory = process.env.RALPHX_WORKING_DIRECTORY;
+    const originalCwd = process.cwd();
     afterEach(() => {
-        if (originalWorkingDirectory === undefined) {
-            delete process.env.RALPHX_WORKING_DIRECTORY;
-        }
-        else {
-            process.env.RALPHX_WORKING_DIRECTORY = originalWorkingDirectory;
-        }
+        process.chdir(originalCwd);
         for (const dir of tempDirs.splice(0)) {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
     function makeWorkspace() {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-tools-"));
+        const canonicalDir = fs.realpathSync(dir);
         tempDirs.push(dir);
-        process.env.RALPHX_WORKING_DIRECTORY = dir;
-        return dir;
+        process.chdir(canonicalDir);
+        return canonicalDir;
     }
     it("reads a relative file within the allowed root", async () => {
         const root = makeWorkspace();
