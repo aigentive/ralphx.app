@@ -27,6 +27,7 @@ Primary project docs:
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - PR branch freshness (NON-NEGOTIABLE): before opening, updating, or handing off a PR, fetch the base branch, rebase onto the latest `origin/<base>`, and push the rebased branch so GitHub does not show it as behind.
 - Existing PR fixes (NON-NEGOTIABLE): when patching an open PR, land the fix on that PR branch, then rebase it onto current `origin/<base>` before asking for checks or review.
+- PR/commit naming (NON-NEGOTIABLE): do not prefix PR titles or commit subjects with `[codex]`.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.
 - Minimal diffs: avoid formatter churn and opportunistic refactors.
 - Agent tool alignment: keep prompt frontmatter, canonical agent metadata, `config/ralphx.yaml`, and MCP allowlists aligned. Source: `.claude/rules/agent-mcp-tools.md`.
