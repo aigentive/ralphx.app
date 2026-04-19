@@ -158,9 +158,13 @@ html[data-theme="high-contrast"] main {
   --accent-foreground: var(--text-primary);
   --destructive:            var(--status-error);
   --destructive-foreground: var(--text-primary);
-  --border: var(--border-default);
-  --input:  var(--border-default);
-  --ring:   var(--accent-primary);
+  /* Literals — chained var() drops on WKWebView inheritance (see
+     .claude/rules/wkwebview-css-vars.md). --border + --input in
+     particular feed Radix SelectTrigger / Input border-color, which
+     had been rendering transparent inside the Settings modal. */
+  --border: #ffffff;
+  --input:  #ffffff;
+  --ring:   #ffdd00;
   --sidebar:                    var(--bg-surface);
   --sidebar-foreground:         var(--text-primary);
   --sidebar-primary:            var(--accent-primary);
