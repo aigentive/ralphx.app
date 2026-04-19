@@ -22,13 +22,18 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_run:
+    workflows:
+      - Release Build
+    types:
+      - completed
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: release-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_run_id || github.run_id }}
+  group: release-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_run_id || github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -39,6 +44,7 @@ env:
 jobs:
   metadata:
     name: Resolve publish metadata
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     outputs:
       source_run_id: ${{ steps.meta.outputs.source_run_id }}
@@ -49,44 +55,82 @@ jobs:
       prerelease: ${{ steps.meta.outputs.prerelease }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
     steps:
-      - name: Resolve manual publish metadata
+      - name: Download release metadata artifact from completed build
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: release-metadata
+          path: release-metadata
+
+      - name: Resolve publish metadata
         id: meta
         shell: bash
         run: |
           set -euo pipefail
 
-          raw_ref="${{ github.event.inputs.ref }}"
-          raw_version="${{ github.event.inputs.version }}"
-          raw_draft="${{ github.event.inputs.draft }}"
-          raw_prerelease="${{ github.event.inputs.prerelease }}"
-          source_run_id="${{ github.event.inputs.source_run_id }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            raw_ref="${{ github.event.inputs.ref }}"
+            raw_version="${{ github.event.inputs.version }}"
+            raw_draft="${{ github.event.inputs.draft }}"
+            raw_prerelease="${{ github.event.inputs.prerelease }}"
+            source_run_id="${{ github.event.inputs.source_run_id }}"
 
-          if [[ -z "${source_run_id}" ]]; then
-            echo "Release build run ID cannot be empty" >&2
-            exit 1
-          fi
+            if [[ -z "${source_run_id}" ]]; then
+              echo "Release build run ID cannot be empty" >&2
+              exit 1
+            fi
 
-          version="${raw_version#v}"
-          if [[ -z "${version}" ]]; then
-            echo "Release version cannot be empty" >&2
-            exit 1
-          fi
+            version="${raw_version#v}"
+            if [[ -z "${version}" ]]; then
+              echo "Release version cannot be empty" >&2
+              exit 1
+            fi
 
-          tag="v${version}"
-          normalized_ref="${raw_ref#refs/tags/}"
-          if [[ "${normalized_ref}" != "${tag}" ]]; then
-            echo "Release ref must match the requested version tag. Expected ${tag}, got ${raw_ref}." >&2
-            exit 1
+            tag="v${version}"
+            normalized_ref="${raw_ref#refs/tags/}"
+            if [[ "${normalized_ref}" != "${tag}" ]]; then
+              echo "Release ref must match the requested version tag. Expected ${tag}, got ${raw_ref}." >&2
+              exit 1
+            fi
+
+            release_name="RalphX ${tag}"
+            draft="${raw_draft}"
+            prerelease="${raw_prerelease}"
+            source_ref="refs/tags/${tag}"
+          else
+            source_run_id="${{ github.event.workflow_run.id }}"
+            data_file="release-metadata/release-metadata.json"
+
+            if [[ ! -f "${data_file}" ]]; then
+              echo "Release metadata artifact missing from build run ${source_run_id}" >&2
+              exit 1
+            fi
+
+            version="$(jq -r '.version' "${data_file}")"
+            tag="$(jq -r '.tag' "${data_file}")"
+            release_name="$(jq -r '.release_name' "${data_file}")"
+            draft="$(jq -r '.draft' "${data_file}")"
+            prerelease="$(jq -r '.prerelease' "${data_file}")"
+            source_ref="$(jq -r '.source_ref' "${data_file}")"
+
+            for value_name in version tag release_name draft prerelease source_ref; do
+              if [[ -z "${!value_name:-}" || "${!value_name}" == "null" ]]; then
+                echo "Release metadata field ${value_name} is missing in ${data_file}" >&2
+                exit 1
+              fi
+            done
           fi
 
           {
             echo "source_run_id=${source_run_id}"
             echo "version=${version}"
             echo "tag=${tag}"
-            echo "release_name=RalphX ${tag}"
-            echo "draft=${raw_draft}"
-            echo "prerelease=${raw_prerelease}"
-            echo "source_ref=refs/tags/${tag}"
+            echo "release_name=${release_name}"
+            echo "draft=${draft}"
+            echo "prerelease=${prerelease}"
+            echo "source_ref=${source_ref}"
           } >> "${GITHUB_OUTPUT}"
 
   publish-release:
@@ -124,6 +168,7 @@ jobs:
 
           version="${{ needs.metadata.outputs.version }}"
           tag="${{ needs.metadata.outputs.tag }}"
+          release_name="${{ needs.metadata.outputs.release_name }}"
           release_base="${PUBLIC_RELEASES_BASE_URL}/${tag}"
 
           notes_file="release-notes/${tag}.md"
@@ -141,6 +186,20 @@ jobs:
                 '- latest.json' \
                 '- checksums.txt'
             } > release-assets/release-notes.md
+          fi
+
+          first_nonempty="$(awk 'NF { print; exit }' release-assets/release-notes.md)"
+          if [[ "${first_nonempty}" == "# ${release_name}" || "${first_nonempty}" == "# ${tag}" ]]; then
+            tmp_notes="$(mktemp)"
+            EXPECTED_RELEASE_HEADING="# ${release_name}" EXPECTED_TAG_HEADING="# ${tag}" \
+              awk '
+                BEGIN {dropping=1; heading_removed=0}
+                dropping && !heading_removed && $0 ~ /^[[:space:]]*$/ {next}
+                dropping && !heading_removed && ($0 == ENVIRON["EXPECTED_RELEASE_HEADING"] || $0 == ENVIRON["EXPECTED_TAG_HEADING"]) {heading_removed=1; next}
+                dropping && heading_removed && $0 ~ /^[[:space:]]*$/ {next}
+                {dropping=0; print}
+              ' release-assets/release-notes.md > "${tmp_notes}"
+            mv "${tmp_notes}" release-assets/release-notes.md
           fi
 
           aarch64_updater="release-assets/release-aarch64/RalphX_${version}_aarch64.app.tar.gz"

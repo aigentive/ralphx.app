@@ -1,6 +1,6 @@
 # RalphX Release Process
 
-This document covers the RalphX release workflow, from local build testing through public GitHub Releases and in-app updater publication.
+This document covers the RalphX release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
 
 ---
 
@@ -102,22 +102,37 @@ git tag v0.2.0
 git push origin main --tags
 ```
 
-### Step 5: GitHub Actions
+### Step 5: Run The Release Build Workflow
 
-Pushing the tag triggers the release workflow automatically:
+After the tag is on `origin`, trigger `Release Build` manually from `main`:
+
+1. Go to `aigentive/ralphx` → Actions → `Release Build`
+2. Click **Run workflow**
+3. Use:
+   - `ref`: `v0.2.0`
+   - `version`: `0.2.0`
+   - `draft`: choose whether the public release should stay a draft
+   - `prerelease`: choose whether the release should be marked as a prerelease
+   - `arm_runner`: `self-hosted` or `github-hosted`
+
+What `Release Build` does:
 
 1. **Build**: Compiles frontend and Tauri app
 2. **Sign**: Applies Developer ID certificate
 3. **Notarize**: Submits to Apple for notarization
-4. **Package**: Creates per-architecture DMGs, signed updater bundles, `latest.json`, and checksums
-5. **Release**: Publishes the assets to the public binaries repo `aigentive/ralphx-releases`
-6. **Tap update**: For non-draft, non-prerelease releases, updates `aigentive/homebrew-ralphx/Casks/ralphx.rb`
+4. **Package**: Creates per-architecture DMGs and signed updater bundles
+5. **Artifacts**: Uploads `release-aarch64`, `release-x86_64`, trace logs, and `release-metadata`
+6. **Trigger**: A successful `Release Build` on `main` automatically triggers `Release Publish`
 
-### Step 6: Publish Release
+### Step 6: Verify The Publish Workflow
 
-1. Go to `aigentive/ralphx-releases` → Releases
-2. Find the release created by the workflow
-3. Review the artifacts:
+`Release Publish` reuses the successful build artifacts instead of rebuilding.
+
+1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+2. Confirm the auto-triggered run finished successfully
+3. Then go to `aigentive/ralphx-releases` → Releases
+4. Find the release created or updated by the workflow
+5. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
    - `RalphX_x.x.x_x86_64.dmg` - Intel
    - `RalphX_x.x.x_aarch64.app.tar.gz` - Apple Silicon updater bundle
@@ -126,18 +141,21 @@ Pushing the tag triggers the release workflow automatically:
    - `RalphX_x.x.x_x86_64.app.tar.gz.sig` - Intel updater signature
    - `latest.json`
    - `checksums.txt`
-4. Edit release notes as needed
-5. If you dispatched the workflow with `draft=true`, click **Publish release**
+6. Edit release notes as needed
+7. If you dispatched the build with `draft=true`, click **Publish release**
 
 ## Manual Workflow Dispatch
 
-For releases without a version tag:
+For recovery publishing after a successful build run, use `Release Publish` manually instead of rebuilding:
 
-1. Go to `aigentive/ralphx` → Actions → Release workflow
+1. Go to `aigentive/ralphx` → Actions → `Release Publish`
 2. Click **Run workflow**
-3. Enter the version number (e.g., `0.2.0`)
-4. Choose whether the public release should stay a draft
-5. Click **Run workflow**
+3. Provide:
+   - `source_run_id`: the successful `Release Build` run ID
+   - `ref`: `v0.2.0`
+   - `version`: `0.2.0`
+   - `draft` / `prerelease` flags to match the release you want
+4. Click **Run workflow**
 
 ---
 
@@ -206,7 +224,8 @@ cargo tauri build
 
 **Workflow doesn't trigger**
 - Ensure tag follows pattern `v*` (e.g., `v0.2.0`)
-- Check Actions tab for workflow run status
+- `Release Publish` auto-triggers only after a successful `Release Build` run from `main`
+- Check the Actions tab for `Release Build` and `Release Publish`
 
 **Public release upload failed**
 - Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
@@ -238,7 +257,8 @@ cargo tauri build
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI/CD workflow that publishes public release assets and updater metadata |
+| `.github/workflows/release.yml` | Build-only release workflow: sign, notarize, package, and upload release artifacts |
+| `.github/workflows/release-publish.yml` | Publish workflow: consume release artifacts, publish public assets, and update Homebrew |
 | `scripts/build-local-release.sh` | Local internal release-like build script |
 | `scripts/build-prod-release.sh` | Production release artifact entrypoint |
 | `scripts/bump-version.sh` | Version management script |
