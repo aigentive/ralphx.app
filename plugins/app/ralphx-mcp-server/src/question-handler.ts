@@ -14,7 +14,32 @@ import {
 } from "./human-wait.js";
 import { safeError } from "./redact.js";
 
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const RAW_TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+
+function getValidatedTauriApiUrl(rawUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error("Invalid TAURI_API_URL");
+  }
+
+  if (parsed.protocol !== "http:") {
+    throw new Error("TAURI_API_URL must use http protocol");
+  }
+
+  if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+    throw new Error("TAURI_API_URL host must be loopback");
+  }
+
+  if (parsed.port !== "" && parsed.port !== "3847") {
+    throw new Error("TAURI_API_URL port must be 3847");
+  }
+
+  return parsed.origin;
+}
+
+const TAURI_API_URL = getValidatedTauriApiUrl(RAW_TAURI_API_URL);
 
 interface QuestionOption {
   label: string;
@@ -109,13 +134,14 @@ export async function handleAskUserQuestion(
   const waitStartedAt = Date.now();
 
   try {
-    const answerResponse = await fetch(
-      `${TAURI_API_URL}/api/question/await/${request_id}`,
-      {
-        method: "GET",
-        signal: controller.signal,
-      }
-    );
+    const answerUrl = new URL(
+      `/api/question/await/${encodeURIComponent(request_id)}`,
+      TAURI_API_URL
+    ).toString();
+    const answerResponse = await fetch(answerUrl, {
+      method: "GET",
+      signal: controller.signal,
+    });
 
     clearTimeout(timeoutId);
 
