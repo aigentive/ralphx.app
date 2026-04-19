@@ -445,3 +445,52 @@
 [data-theme="high-contrast"] [data-testid="settings-dialog"] [role="button"][tabindex="0"] {
   border-bottom: 1px solid var(--border-subtle);
 }
+
+/* ============================================================================
+ * Phase 4 — Inline control chrome.
+ * Plan: specs/design/themes/hc-border-layout-plan.md §3.4.
+ * ============================================================================ */
+
+/* Text inputs, search inputs, textareas, and contenteditable surfaces —
+   shadcn already ships `border-input` which maps to --border-default
+   (white on HC), so the resting stroke is pure white. Bump to 2px on
+   focus so the focus ring reads from a distance. Combined with the
+   global HC yellow focus ring (outline) this gives double-emphasis on
+   active fields — matches the reference's "active input fence" look. */
+[data-theme="high-contrast"] input:where(:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"])):focus,
+[data-theme="high-contrast"] textarea:focus {
+  border-width: 2px;
+}
+
+/* Chips, badges, and count pills — shadcn's Badge default/secondary/
+   destructive variants all use `border-transparent`. On HC that erases
+   the perimeter and leaves a filled rectangle floating on black. Give
+   every border-transparent chip a 1px --border-inline stroke so the
+   shape is defined whatever its fill. */
+[data-theme="high-contrast"] .border-transparent {
+  border-color: var(--border-inline) !important;
+}
+
+/* Radix checkbox/radio unchecked state — Radix renders these with no
+   fill at rest and only a focus ring. On HC that's invisible until the
+   user tabs to them. Add a 1px --border-inline stroke at rest, keep the
+   yellow accent fill on checked, and drop the stroke to
+   --border-default on `data-state="checked"` so the tick contrasts
+   against the accent-colored box. */
+[data-theme="high-contrast"] [role="checkbox"][data-state="unchecked"],
+[data-theme="high-contrast"] [role="radio"][data-state="unchecked"] {
+  border: 1px solid var(--border-inline);
+}
+[data-theme="high-contrast"] [role="checkbox"][data-state="checked"],
+[data-theme="high-contrast"] [role="radio"][data-state="checked"] {
+  border-color: var(--border-default);
+}
+
+/* Radix switch — track uses `bg-input` (= white on HC) when unchecked,
+   `bg-primary` (= yellow) when checked. The 2px transparent border
+   drops the shape when the track color matches adjacent text. Keep the
+   track filled but add a visible perimeter ring so the switch keeps its
+   shape on any background. */
+[data-theme="high-contrast"] [role="switch"] {
+  border-color: var(--border-default) !important;
+}
