@@ -303,6 +303,42 @@ html[data-theme="high-contrast"] main {
   border-radius: 0;
 }
 
+/* Execution Agents tab list — TabsList has an explicit border on the
+   wrapper that makes "Global Defaults / Project Overrides" read as a
+   pill inside the flat-section context. Drop the wrapper border and
+   bg so only the active trigger's yellow fill signals selection. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [role="tablist"] {
+  border: none !important;
+  background: transparent !important;
+}
+
+/* Execution Agents collapsible rows — the toggle button sits at the
+   top of each lane block. Our global HC button-border rule (Phase 1)
+   strokes it as if it were a button, which reads as double-borders
+   inside the bordered lane block. Strip the stroke for aria-expanded
+   buttons (they're headers, not buttons). */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-expanded] {
+  border: none !important;
+}
+
+/* InlineNotice tones on HC — default tokens resolve to ~6% white (ok)
+   and yellow-muted (info), both of which read as ghost rectangles next
+   to the white-bordered inputs. Punch up the bg/border so alerts are
+   visually distinct from input fields. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] {
+  --notice-ok-bg:     hsla(140 100% 50% / 0.12);
+  --notice-ok-border: hsla(140 100% 50% / 0.40);
+  --notice-ok-text:   #ffffff;
+
+  --notice-info-bg:     hsla(50 100% 50% / 0.18);
+  --notice-info-border: hsla(50 100% 50% / 0.50);
+  --notice-info-text:   #ffffff;
+
+  --notice-warn-bg:     hsla(50 100% 50% / 0.22);
+  --notice-warn-border: hsla(50 100% 50% / 0.55);
+  --notice-warn-text:   #ffffff;
+}
+
 /* HC dialog backdrop — the overlay reads `--dialog-overlay-bg` which in
    turn chains through `--overlay-scrim-deep`. WKWebView drops chained
    var() on inheritance (see .claude/rules/wkwebview-css-vars.md), leaving
