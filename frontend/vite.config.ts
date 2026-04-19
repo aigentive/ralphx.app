@@ -22,7 +22,7 @@ export default defineConfig(async ({ mode }) => {
     ),
     "@dagrejs/graphlib": path.resolve(
       __dirname,
-      "./node_modules/@dagrejs/graphlib/index.js"
+      "./node_modules/@dagrejs/graphlib/dist/graphlib.cjs.js"
     ),
   };
 
@@ -124,12 +124,16 @@ export default defineConfig(async ({ mode }) => {
     // Handle mixed ESM/CJS dependencies (dagre uses require() in its ESM build)
     optimizeDeps: {
       include: ["@dagrejs/dagre", "@dagrejs/graphlib"],
-      esbuildOptions: {
-        // Suppress dependency sourcemap generation in dev pre-bundles.
-        // This avoids noisy *.js.map access-control warnings in the Tauri webview.
-        sourcemap: false,
-        // Force CommonJS for dagre packages
-        mainFields: ["main", "module"],
+      rolldownOptions: {
+        output: {
+          // Suppress dependency sourcemap generation in dev pre-bundles.
+          // This avoids noisy *.js.map access-control warnings in the Tauri webview.
+          sourcemap: false,
+        },
+        resolve: {
+          // Force CommonJS for dagre packages
+          mainFields: ["main", "module"],
+        },
       },
     },
     build: {
