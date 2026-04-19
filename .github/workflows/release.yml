@@ -1,4 +1,4 @@
-name: Release
+name: Release Build
 
 on:
   workflow_dispatch:
@@ -19,18 +19,21 @@ on:
         required: true
         type: boolean
         default: false
+      arm_runner:
+        description: "Runner to use for the macOS ARM release build"
+        required: true
+        type: choice
+        default: self-hosted
+        options:
+          - self-hosted
+          - github-hosted
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.inputs.version }}
+  group: release-build-${{ github.event.inputs.version }}
   cancel-in-progress: true
-
-env:
-  PUBLIC_RELEASES_REPO: aigentive/ralphx-releases
-  PUBLIC_RELEASES_BASE_URL: https://github.com/aigentive/ralphx-releases/releases/download
-  HOMEBREW_TAP_REPO: aigentive/homebrew-ralphx
 
 jobs:
   metadata:
@@ -43,6 +46,7 @@ jobs:
       draft: ${{ steps.meta.outputs.draft }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
+      build_matrix: ${{ steps.meta.outputs.build_matrix }}
     steps:
       - name: Resolve release metadata
         id: meta
@@ -54,6 +58,7 @@ jobs:
           raw_version="${{ github.event.inputs.version }}"
           raw_draft="${{ github.event.inputs.draft }}"
           raw_prerelease="${{ github.event.inputs.prerelease }}"
+          raw_arm_runner="${{ github.event.inputs.arm_runner }}"
 
           version="${raw_version#v}"
           if [[ -z "${version}" ]]; then
@@ -70,6 +75,33 @@ jobs:
             exit 1
           fi
 
+          arm_runs_on='"macos-15"'
+          if [[ "${raw_arm_runner}" == "self-hosted" ]]; then
+            arm_runs_on='["self-hosted","macOS","ARM64","ralphx-release"]'
+          fi
+
+          build_matrix="$(
+            jq -cn \
+              --arg arm_arch "aarch64" \
+              --arg arm_runs_on "${arm_runs_on}" \
+              --arg arm_runner_kind "${raw_arm_runner}" \
+              --arg intel_arch "x86_64" \
+              --arg intel_runs_on '"macos-15-intel"' \
+              --arg intel_runner_kind "github-hosted" \
+              '{include: [
+                {
+                  arch: $arm_arch,
+                  runs_on: $arm_runs_on,
+                  runner_kind: $arm_runner_kind
+                },
+                {
+                  arch: $intel_arch,
+                  runs_on: $intel_runs_on,
+                  runner_kind: $intel_runner_kind
+                }
+              ]}'
+          )"
+
           {
             echo "version=${version}"
             echo "tag=${tag}"
@@ -77,24 +109,75 @@ jobs:
             echo "draft=${raw_draft}"
             echo "prerelease=${raw_prerelease}"
             echo "source_ref=refs/tags/${tag}"
+            echo "build_matrix=${build_matrix}"
           } >> "${GITHUB_OUTPUT}"
+
+      - name: Write release notes artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-metadata
+          notes_file="release-notes/${{ steps.meta.outputs.tag }}.md"
+          if notes_content="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/${GITHUB_REPOSITORY}/contents/${notes_file}?ref=${{ steps.meta.outputs.tag }}" \
+            --jq '.content' 2>/dev/null)"; then
+            printf '%s' "${notes_content}" | tr -d '\n' | base64 --decode > release-metadata/release-notes.md
+          else
+            {
+              printf 'Release artifacts for %s.\n\n' "${{ steps.meta.outputs.tag }}"
+              printf 'Included:\n'
+              printf '%s\n' \
+                '- macOS Apple Silicon DMG' \
+                '- macOS Intel DMG' \
+                '- macOS Apple Silicon updater bundle' \
+                '- macOS Intel updater bundle' \
+                '- latest.json' \
+                '- checksums.txt'
+            } > release-metadata/release-notes.md
+          fi
+
+      - name: Write release metadata artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg version "${{ steps.meta.outputs.version }}" \
+            --arg tag "${{ steps.meta.outputs.tag }}" \
+            --arg release_name "${{ steps.meta.outputs.release_name }}" \
+            --arg draft "${{ steps.meta.outputs.draft }}" \
+            --arg prerelease "${{ steps.meta.outputs.prerelease }}" \
+            --arg source_ref "${{ steps.meta.outputs.source_ref }}" \
+            '{
+              version: $version,
+              tag: $tag,
+              release_name: $release_name,
+              draft: $draft,
+              prerelease: $prerelease,
+              source_ref: $source_ref
+            }' > release-metadata/release-metadata.json
+
+      - name: Upload release metadata artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-metadata
+          path: |
+            release-metadata/release-metadata.json
+            release-metadata/release-notes.md
+          if-no-files-found: error
 
   build-macos:
     name: Build macOS ${{ matrix.arch }}
     needs: metadata
-    timeout-minutes: 50
+    timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: aarch64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+      matrix: ${{ fromJSON(needs.metadata.outputs.build_matrix) }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -109,6 +192,9 @@ jobs:
 
       - name: Validate signing environment
         shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           required_vars=(
@@ -142,6 +228,15 @@ jobs:
           chmod 600 "${key_path}"
           echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
+      - name: Generate temporary signing keychain password
+        id: keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "password=$(openssl rand -base64 24 | tr -d '\n')" >> "${GITHUB_OUTPUT}"
+          echo "path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}.keychain-db" >> "${GITHUB_OUTPUT}"
+          echo "search_list_path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}-keychains.txt" >> "${GITHUB_OUTPUT}"
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -164,24 +259,60 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Import Apple certificate
+      - name: Checkout workflow automation support
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-support
+
+      - name: Overlay release automation scripts from workflow ref
         shell: bash
         run: |
           set -euo pipefail
+          install -m 0755 workflow-support/scripts/build-prod-release.sh scripts/build-prod-release.sh
+          install -m 0755 workflow-support/scripts/prepare-release-runtime.sh scripts/prepare-release-runtime.sh
+
+      - name: Import Apple certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ steps.keychain.outputs.password }}
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
+        run: |
+          set -euo pipefail
+
+          curl -L --fail --silent --show-error \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            --output developer-id-g2.cer
+
           echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
-          rm certificate.p12
+          security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user | sed 's/^[[:space:]]*\"//; s/\"$//' > "${KEYCHAIN_SEARCH_LIST_PATH}"
+          keychain_search_list=("${KEYCHAIN_PATH}")
+          while IFS= read -r keychain; do
+            if [[ -n "${keychain}" && "${keychain}" != "${KEYCHAIN_PATH}" ]]; then
+              keychain_search_list+=("${keychain}")
+            fi
+          done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+          security list-keychains -d user -s "${keychain_search_list[@]}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -t 3600 -u "${KEYCHAIN_PATH}"
+          security import developer-id-g2.cer -k "${KEYCHAIN_PATH}" -A
+          security import certificate.p12 -k "${KEYCHAIN_PATH}" -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          rm developer-id-g2.cer certificate.p12
 
       - name: Validate imported signing identity
         shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
         run: |
           set -euo pipefail
 
-          identities="$(security find-identity -v -p codesigning build.keychain)"
+          identities="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}")"
           identity_count="$(
             awk '/[0-9]+\) [0-9A-F]{40} / { count += 1 } END { print count + 0 }' <<< "${identities}"
           )"
@@ -203,10 +334,57 @@ jobs:
           echo "Validated imported signing identity."
 
       - name: Build production release artifacts
+        shell: bash
         env:
           APPLE_API_KEY_PATH: ${{ steps.api_key.outputs.api_key_path }}
           RALPHX_RELEASE_TRACE_DIR: release-trace/${{ matrix.arch }}
-        run: ./scripts/build-prod-release.sh
+        run: |
+          set -euo pipefail
+
+          trace_dir="release-trace/${{ matrix.arch }}"
+          build_log="${trace_dir}/workflow-build.log"
+          heartbeat_log="${trace_dir}/workflow-heartbeat.log"
+
+          mkdir -p "${trace_dir}"
+          : > "${build_log}"
+          : > "${heartbeat_log}"
+
+          heartbeat() {
+            while true; do
+              printf '[release-heartbeat] %s build step still running for %s\n' \
+                "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+              ps -axo pid,ppid,etime,stat,command \
+                | grep -E 'codesign|notarytool|xcrun|cargo-tauri|cargo tauri|cargo build|node .*tauri|ralphx' \
+                | grep -v 'grep -E' \
+                | sed 's/^/[release-heartbeat] process /' \
+                | tee -a "${heartbeat_log}" || true
+              sleep 60
+            done
+          }
+
+          heartbeat &
+          heartbeat_pid=$!
+
+          cleanup() {
+            kill "${heartbeat_pid}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          printf '[release-heartbeat] %s starting build script for %s\n' \
+            "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+
+          echo "[release-heartbeat] ${{
+            matrix.arch
+          }} using pre-imported build.keychain; clearing APPLE_CERTIFICATE env to avoid duplicate Tauri keychain import" | tee -a "${heartbeat_log}"
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
+
+          ./scripts/build-prod-release.sh 2>&1 | tee -a "${build_log}"
+
+          printf '[release-heartbeat] %s build script completed for %s\n' \
+            "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
 
       - name: Upload release trace logs
         if: always()
@@ -256,230 +434,24 @@ jobs:
           path: release-dist/${{ matrix.arch }}/*
           if-no-files-found: error
 
-  publish-release:
-    name: Publish public release assets
-    needs:
-      - metadata
-      - build-macos
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
-      - name: Validate publishing environment
+      - name: Delete temporary signing keychain
+        if: always()
         shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
         run: |
           set -euo pipefail
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "Missing required secret: RELEASES_REPO_TOKEN" >&2
-            exit 1
-          fi
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: release-assets
-
-      - name: Build release metadata files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${{ needs.metadata.outputs.version }}"
-          tag="${{ needs.metadata.outputs.tag }}"
-          release_base="${PUBLIC_RELEASES_BASE_URL}/${tag}"
-
-          notes_file="release-notes/${tag}.md"
-          if [[ -f "${notes_file}" ]]; then
-            cp "${notes_file}" release-assets/release-notes.md
-          else
-            cat > release-assets/release-notes.md <<EOF
-            Release artifacts for ${tag}.
-
-            Included:
-            - macOS Apple Silicon DMG
-            - macOS Intel DMG
-            - macOS Apple Silicon updater bundle
-            - macOS Intel updater bundle
-            - latest.json
-            - checksums.txt
-            EOF
-          fi
-
-          aarch64_updater="release-assets/release-aarch64/RalphX_${version}_aarch64.app.tar.gz"
-          aarch64_sig="${aarch64_updater}.sig"
-          x86_updater="release-assets/release-x86_64/RalphX_${version}_x86_64.app.tar.gz"
-          x86_sig="${x86_updater}.sig"
-
-          for path in \
-            "${aarch64_updater}" \
-            "${aarch64_sig}" \
-            "${x86_updater}" \
-            "${x86_sig}"; do
-            if [[ ! -f "${path}" ]]; then
-              echo "Required release asset missing: ${path}" >&2
-              exit 1
+          if [[ -f "${KEYCHAIN_SEARCH_LIST_PATH}" ]]; then
+            restored_keychains=()
+            while IFS= read -r keychain; do
+              if [[ -n "${keychain}" ]]; then
+                restored_keychains+=("${keychain}")
+              fi
+            done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+            if [[ "${#restored_keychains[@]}" -gt 0 ]]; then
+              security list-keychains -d user -s "${restored_keychains[@]}"
             fi
-          done
-
-          find release-assets -type f \( -name '*.dmg' -o -name '*.app.tar.gz' \) -print0 \
-            | sort -z \
-            | xargs -0 shasum -a 256 > release-assets/checksums.txt
-
-          jq -n \
-            --arg version "${tag}" \
-            --rawfile notes release-assets/release-notes.md \
-            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --arg aarch64_url "${release_base}/RalphX_${version}_aarch64.app.tar.gz" \
-            --arg aarch64_signature "$(tr -d '\n' < "${aarch64_sig}")" \
-            --arg x86_url "${release_base}/RalphX_${version}_x86_64.app.tar.gz" \
-            --arg x86_signature "$(tr -d '\n' < "${x86_sig}")" \
-            '{
-              version: $version,
-              notes: $notes,
-              pub_date: $pub_date,
-              platforms: {
-                "darwin-aarch64": {
-                  url: $aarch64_url,
-                  signature: $aarch64_signature
-                },
-                "darwin-x86_64": {
-                  url: $x86_url,
-                  signature: $x86_signature
-                }
-              }
-            }' > release-assets/latest.json
-
-      - name: Create or update public release
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          tag="${{ needs.metadata.outputs.tag }}"
-          release_name="${{ needs.metadata.outputs.release_name }}"
-          draft="${{ needs.metadata.outputs.draft }}"
-          prerelease="${{ needs.metadata.outputs.prerelease }}"
-
-          mapfile -t asset_files < <(
-            find release-assets -type f \
-              \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name 'checksums.txt' -o -name 'latest.json' \) \
-              | sort
-          )
-
-          if [[ "${#asset_files[@]}" -eq 0 ]]; then
-            echo "No release assets prepared" >&2
-            exit 1
           fi
-
-          if gh release view "${tag}" --repo "${PUBLIC_RELEASES_REPO}" >/dev/null 2>&1; then
-            gh release edit "${tag}" \
-              --repo "${PUBLIC_RELEASES_REPO}" \
-              --title "${release_name}" \
-              --notes-file release-assets/release-notes.md \
-              --draft="${draft}" \
-              --prerelease="${prerelease}" \
-              --latest="$([[ "${draft}" == "true" || "${prerelease}" == "true" ]] && echo false || echo true)"
-
-            gh release upload "${tag}" \
-              --repo "${PUBLIC_RELEASES_REPO}" \
-              --clobber \
-              "${asset_files[@]}"
-            exit 0
-          fi
-
-          create_args=(
-            gh release create "${tag}"
-            --repo "${PUBLIC_RELEASES_REPO}"
-            --title "${release_name}"
-            --notes-file release-assets/release-notes.md
-            --latest="$([[ "${draft}" == "true" || "${prerelease}" == "true" ]] && echo false || echo true)"
-          )
-
-          if [[ "${draft}" == "true" ]]; then
-            create_args+=(--draft)
-          fi
-
-          if [[ "${prerelease}" == "true" ]]; then
-            create_args+=(--prerelease)
-          fi
-
-          create_args+=("${asset_files[@]}")
-          "${create_args[@]}"
-
-  update-homebrew-tap:
-    name: Update Homebrew tap
-    if: ${{ needs.metadata.outputs.draft != 'true' && needs.metadata.outputs.prerelease != 'true' }}
-    needs:
-      - metadata
-      - publish-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
-      - name: Validate tap publishing environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
-            echo "Missing required secret: HOMEBREW_TAP_TOKEN" >&2
-            exit 1
-          fi
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: release-assets
-
-      - name: Clone Homebrew tap
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" tap-repo
-
-      - name: Render cask
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${{ needs.metadata.outputs.version }}"
-          arm_dmg="release-assets/release-aarch64/RalphX_${version}_aarch64.dmg"
-          intel_dmg="release-assets/release-x86_64/RalphX_${version}_x86_64.dmg"
-
-          for path in "${arm_dmg}" "${intel_dmg}"; do
-            if [[ ! -f "${path}" ]]; then
-              echo "Required DMG missing for Homebrew tap update: ${path}" >&2
-              exit 1
-            fi
-          done
-
-          arm_sha="$(shasum -a 256 "${arm_dmg}" | awk '{print $1}')"
-          intel_sha="$(shasum -a 256 "${intel_dmg}" | awk '{print $1}')"
-
-          mkdir -p tap-repo/Casks
-          ./scripts/render-homebrew-cask.sh "${version}" "${arm_sha}" "${intel_sha}" > tap-repo/Casks/ralphx.rb
-
-      - name: Commit and push tap update
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd tap-repo
-          if [[ -z "$(git status --short -- Casks/ralphx.rb)" ]]; then
-            echo "Homebrew cask already up to date"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/ralphx.rb
-          git commit -m "chore: update ralphx cask to v${{ needs.metadata.outputs.version }}"
-          git push origin HEAD:main
+          security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          rm -f "${KEYCHAIN_SEARCH_LIST_PATH}"

@@ -12,6 +12,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const TRACE_ROOT_DIR = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+
+function isWithinDir(rootDir: string, candidatePath: string): boolean {
+  const root = path.resolve(rootDir);
+  const candidate = path.resolve(candidatePath);
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
 interface RedactPattern {
   regex: RegExp;
   replacement: string;
@@ -101,10 +109,20 @@ function buildTraceFilename(): string {
 
 function resolveTraceDir(): string {
   const override = process.env.RALPHX_MCP_TRACE_DIR?.trim();
-  if (override) {
-    return override;
+  if (!override) {
+    return TRACE_ROOT_DIR;
   }
-  return path.join(process.cwd(), ".artifacts/logs/mcp-proxy");
+
+  if (path.isAbsolute(override)) {
+    return TRACE_ROOT_DIR;
+  }
+
+  const resolved = path.resolve(TRACE_ROOT_DIR, override);
+  if (!isWithinDir(TRACE_ROOT_DIR, resolved)) {
+    return TRACE_ROOT_DIR;
+  }
+
+  return resolved;
 }
 
 export function getTraceLogPath(): string {

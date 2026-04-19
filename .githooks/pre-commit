@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # RalphX pre-commit hook
 #
-# Two guards:
+# Three guards:
 #   1. Reject node_modules paths (worktree agents create symlinks that must
 #      never be committed).
-#   2. Design-token guards + typecheck + lint on staged frontend changes.
+#   2. Tauri version alignment (frontend/package.json, src-tauri/Cargo.toml
+#      and their lockfiles must stay in sync).
+#   3. Design-token guards + typecheck + lint on staged frontend changes.
 #
 # Install: `npm --prefix frontend run hooks:install` (sets core.hooksPath)
 # Bypass with `git commit --no-verify` only when absolutely necessary.
 
 set -euo pipefail
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 # ----------------------------------------------------------------------------
 # Guard 1 — node_modules in staged paths
 # ----------------------------------------------------------------------------
-staged=$(git diff --cached --name-only --diff-filter=ACR)
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
 bad=$(echo "$staged" | grep -E '(^|/)node_modules(/|$)' || true)
 if [ -n "$bad" ]; then
   echo "ERROR: Refusing to commit node_modules paths:"
@@ -29,7 +32,22 @@ if [ -n "$bad" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# Guard 2 — frontend design-system + typecheck + lint
+# Guard 2 — Tauri version alignment
+# ----------------------------------------------------------------------------
+tauri_version_files=$(echo "$staged" | grep -E '^(frontend/package\.json|frontend/package-lock\.json|src-tauri/Cargo\.toml|src-tauri/Cargo\.lock)$' || true)
+
+if [ -n "$tauri_version_files" ]; then
+    if ! mismatch_report="$(node "$HOOK_DIR/../scripts/check-tauri-package-alignment.mjs" "$REPO_ROOT")"; then
+        echo "ERROR: Refusing to commit Tauri version drift:"
+        echo "$mismatch_report" | sed 's/^/  /'
+        echo ""
+        echo "Align the staged Tauri manifest and lockfile updates before committing."
+        exit 1
+    fi
+fi
+
+# ----------------------------------------------------------------------------
+# Guard 3 — frontend design-system + typecheck + lint
 # Only runs when frontend files are staged (keeps backend/docs commits fast).
 # ----------------------------------------------------------------------------
 staged_frontend=$(echo "$staged" | grep -E '^frontend/(src|scripts|tests)/' || true)

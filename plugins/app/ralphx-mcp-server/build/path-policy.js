@@ -13,17 +13,10 @@ export function isWithin(root, candidate) {
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 export function getPrimaryFilesystemRoot() {
-    return normalizePathLike(process.env.RALPHX_WORKING_DIRECTORY ?? process.env.PWD ?? process.cwd());
+    return normalizePathLike(process.cwd());
 }
 export function getAllowedFilesystemRoots() {
-    const roots = new Set();
-    roots.add(getPrimaryFilesystemRoot());
-    const pwd = process.env.PWD;
-    if (pwd) {
-        roots.add(normalizePathLike(pwd));
-    }
-    roots.add(normalizePathLike(process.cwd()));
-    return [...roots];
+    return [getPrimaryFilesystemRoot()];
 }
 export function resolveScopedFilesystemPath(inputPath, basePath) {
     const baseRoot = normalizePathLike(basePath ?? getPrimaryFilesystemRoot());

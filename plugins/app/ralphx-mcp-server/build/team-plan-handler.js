@@ -10,7 +10,27 @@
  * Backend always fires first, returning a structured 408 response.
  */
 import { safeError } from "./redact.js";
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const DEFAULT_TAURI_API_URL = "http://127.0.0.1:3847";
+function resolveTauriApiBaseUrl() {
+    const raw = process.env.TAURI_API_URL || DEFAULT_TAURI_API_URL;
+    try {
+        const parsed = new URL(raw);
+        const isAllowedProtocol = parsed.protocol === "http:";
+        const isAllowedHost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+        if (isAllowedProtocol && isAllowedHost) {
+            return parsed;
+        }
+        safeError(`[RalphX MCP] Invalid TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`);
+    }
+    catch {
+        safeError(`[RalphX MCP] Failed to parse TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`);
+    }
+    return new URL(DEFAULT_TAURI_API_URL);
+}
+const TAURI_API_BASE_URL = resolveTauriApiBaseUrl();
+function buildTauriApiUrl(pathname) {
+    return new URL(pathname, TAURI_API_BASE_URL).toString();
+}
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
 const TEAM_PLAN_TIMEOUT_MS = 15 * 60 * 1000;
 /**
@@ -67,7 +87,7 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
     // Phase 1: Register plan with Tauri backend
     let plan_id;
     try {
-        const registerResponse = await fetch(`${TAURI_API_URL}/api/team/plan/request`, {
+        const registerResponse = await fetch(buildTauriApiUrl("/api/team/plan/request"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -122,7 +142,7 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TEAM_PLAN_TIMEOUT_MS);
     try {
-        const awaitResponse = await fetch(`${TAURI_API_URL}/api/team/plan/await/${plan_id}`, {
+        const awaitResponse = await fetch(buildTauriApiUrl(`/api/team/plan/await/${encodeURIComponent(plan_id)}`), {
             method: "GET",
             signal: controller.signal,
         });

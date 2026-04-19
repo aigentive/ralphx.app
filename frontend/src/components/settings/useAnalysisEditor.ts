@@ -10,6 +10,8 @@
  * - Handles project:analysis_complete event to refresh baseline
  */
 
+/* eslint-disable react-hooks/preserve-manual-memoization -- this hook intentionally exposes stable command callbacks to consumers; the upgraded React Compiler lint now flags these setter wrappers even though their runtime contract is deliberate */
+
 import { useState, useCallback, useEffect } from "react";
 import { api } from "@/lib/tauri";
 import { useEventBus } from "@/providers/EventProvider";

@@ -16,22 +16,11 @@ export function isWithin(root: string, candidate: string): boolean {
 }
 
 export function getPrimaryFilesystemRoot(): string {
-  return normalizePathLike(
-    process.env.RALPHX_WORKING_DIRECTORY ?? process.env.PWD ?? process.cwd()
-  );
+  return normalizePathLike(process.cwd());
 }
 
 export function getAllowedFilesystemRoots(): string[] {
-  const roots = new Set<string>();
-  roots.add(getPrimaryFilesystemRoot());
-
-  const pwd = process.env.PWD;
-  if (pwd) {
-    roots.add(normalizePathLike(pwd));
-  }
-
-  roots.add(normalizePathLike(process.cwd()));
-  return [...roots];
+  return [getPrimaryFilesystemRoot()];
 }
 
 export function resolveScopedFilesystemPath(inputPath: string, basePath?: string): string {

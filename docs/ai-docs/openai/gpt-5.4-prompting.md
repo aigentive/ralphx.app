@@ -142,7 +142,7 @@ RalphX implication:
 
 ## Current RalphX Application
 
-Current adopted practice for the release-notes generator:
+Current adopted practice for the release proposal and release-notes generators:
 - XML-like prompt structure
 - prompt file passed via `model_instructions_file`
 - lightweight `developer_instructions` guardrail

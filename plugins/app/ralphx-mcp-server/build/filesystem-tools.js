@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import ignore from "ignore";
 import picomatch from "picomatch";
-import { getPrimaryFilesystemRoot, normalizePathLike, resolveScopedFilesystemPath, } from "./path-policy.js";
+import { getAllowedFilesystemRoots, getPrimaryFilesystemRoot, isWithin, normalizePathLike, } from "./path-policy.js";
 const DEFAULT_MAX_READ_BYTES = 64 * 1024;
 const MAX_READ_BYTES_CAP = 256 * 1024;
 const DEFAULT_MAX_LIST_ENTRIES = 200;
@@ -215,19 +215,36 @@ function clampPositive(value, fallback, cap) {
     }
     return normalized;
 }
-function clampNonNegative(value, fallback, cap) {
+function clampNonNegative(value, fallback) {
     const normalized = Number.isFinite(value) && value >= 0 ? Math.trunc(value) : fallback;
-    if (cap !== undefined) {
-        return Math.min(normalized, cap);
-    }
     return normalized;
 }
-function toPosixRelative(root, target) {
-    const relative = path.relative(root, target);
-    if (relative.length === 0) {
-        return ".";
+async function canonicalizeAllowedRoot(root) {
+    try {
+        return await fs.realpath(root);
     }
-    return relative.split(path.sep).join("/");
+    catch {
+        return normalizePathLike(root);
+    }
+}
+async function resolveAllowedExistingPath(inputPath, basePath) {
+    const baseRoot = normalizePathLike(basePath ?? getPrimaryFilesystemRoot());
+    const displayPath = path.isAbsolute(inputPath) || inputPath.startsWith("~")
+        ? normalizePathLike(inputPath)
+        : path.resolve(baseRoot, inputPath);
+    const allowedRoots = getAllowedFilesystemRoots();
+    if (!allowedRoots.some((root) => isWithin(root, displayPath))) {
+        throw new Error(`Path "${inputPath}" resolves outside the allowed filesystem roots.`);
+    }
+    const safePath = await fs.realpath(displayPath);
+    const canonicalAllowedRoots = await Promise.all(allowedRoots.map((root) => canonicalizeAllowedRoot(root)));
+    if (!canonicalAllowedRoots.some((root) => isWithin(root, safePath))) {
+        throw new Error(`Path "${inputPath}" resolves outside the allowed filesystem roots.`);
+    }
+    return {
+        displayPath,
+        safePath,
+    };
 }
 function formatPathForIgnore(relativePath, isDirectory) {
     if (relativePath === ".") {
@@ -281,7 +298,7 @@ async function loadDirectoryIgnorePatterns(absoluteDir, relativeDir) {
     const ignoreFiles = [".gitignore", ".ignore"];
     const patterns = [];
     for (const ignoreFile of ignoreFiles) {
-        const absolutePath = path.join(absoluteDir, ignoreFile);
+        const absolutePath = path.resolve(absoluteDir, ignoreFile);
         try {
             const content = await fs.readFile(absolutePath, "utf8");
             for (const line of content.split(/\r?\n/)) {
@@ -314,7 +331,7 @@ async function buildDirectoryScan(absoluteDir, relativeDir, inheritedIgnorePatte
     dirEntries.sort((a, b) => a.name.localeCompare(b.name));
     const entries = [];
     for (const dirent of dirEntries) {
-        const absolutePath = path.join(absoluteDir, dirent.name);
+        const absolutePath = path.resolve(absoluteDir, dirent.name);
         const relativePath = relativeDir === "."
             ? dirent.name
             : `${relativeDir}/${dirent.name}`;
@@ -419,12 +436,12 @@ async function handleReadFile(args) {
         throw new Error("fs_read_file requires a non-empty path.");
     }
     const maxBytes = clampPositive(getIntegerArg(args, "max_bytes", DEFAULT_MAX_READ_BYTES), DEFAULT_MAX_READ_BYTES, MAX_READ_BYTES_CAP);
-    const absolutePath = resolveScopedFilesystemPath(requestedPath);
-    const stat = await fs.stat(absolutePath);
+    const { displayPath, safePath } = await resolveAllowedExistingPath(requestedPath);
+    const stat = await fs.stat(safePath);
     if (!stat.isFile()) {
         throw new Error(`Path "${requestedPath}" is not a file.`);
     }
-    const { content, truncated } = await readTextFile(absolutePath, maxBytes);
+    const { content, truncated } = await readTextFile(safePath, maxBytes);
     const lines = content.split("\n");
     const totalLines = lines.length;
     const startLine = clampPositive(getIntegerArg(args, "start_line", 1), 1);
@@ -435,7 +452,7 @@ async function handleReadFile(args) {
         .map((line, index) => `${startLine + index}| ${line}`)
         .join("\n");
     const response = [
-        `FILE: ${absolutePath}`,
+        `FILE: ${displayPath}`,
         `LINES: ${startLine}-${endLine}/${totalLines}`,
         truncated ? `TRUNCATED: true (max_bytes=${maxBytes})` : "TRUNCATED: false",
         "",
@@ -447,8 +464,8 @@ async function handleReadFile(args) {
 }
 async function handleListDir(args) {
     const requestedPath = getStringArg(args, "path") ?? ".";
-    const absolutePath = resolveScopedFilesystemPath(requestedPath);
-    const stat = await fs.stat(absolutePath);
+    const { displayPath, safePath } = await resolveAllowedExistingPath(requestedPath);
+    const stat = await fs.stat(safePath);
     if (!stat.isDirectory()) {
         throw new Error(`Path "${requestedPath}" is not a directory.`);
     }
@@ -456,7 +473,7 @@ async function handleListDir(args) {
     const directoriesOnly = getBooleanArg(args, "directories_only", false);
     const maxEntries = clampPositive(getIntegerArg(args, "max_entries", DEFAULT_MAX_LIST_ENTRIES), DEFAULT_MAX_LIST_ENTRIES, MAX_LIST_ENTRIES_CAP);
     const relativeRoot = ".";
-    const scan = await buildDirectoryScan(absolutePath, relativeRoot, [], { ...options, maxWalkEntries: maxEntries });
+    const scan = await buildDirectoryScan(safePath, relativeRoot, [], { ...options, maxWalkEntries: maxEntries });
     const lines = [];
     for (const entry of scan.entries) {
         if (entry.dirent.isSymbolicLink()) {
@@ -477,7 +494,7 @@ async function handleListDir(args) {
         }
     }
     const response = [
-        `DIRECTORY: ${absolutePath}`,
+        `DIRECTORY: ${displayPath}`,
         `ENTRIES: ${lines.length}`,
         `DIRECTORIES_ONLY: ${directoriesOnly}`,
         `INCLUDE_HIDDEN: ${options.includeHidden}`,
@@ -495,8 +512,8 @@ async function handleGlob(args) {
         throw new Error("fs_glob requires a non-empty pattern.");
     }
     const basePath = getStringArg(args, "base_path") ?? ".";
-    const root = resolveScopedFilesystemPath(basePath);
-    const rootStat = await fs.stat(root);
+    const { displayPath: displayRoot, safePath: safeRoot } = await resolveAllowedExistingPath(basePath);
+    const rootStat = await fs.stat(safeRoot);
     if (!rootStat.isDirectory()) {
         throw new Error(`Base path "${basePath}" is not a directory.`);
     }
@@ -506,7 +523,7 @@ async function handleGlob(args) {
         dot: options.includeHidden,
     });
     const matches = [];
-    await walkFiles(root, options, async ({ relativePath }) => {
+    await walkFiles(safeRoot, options, async ({ relativePath }) => {
         if (matcher(relativePath)) {
             matches.push(relativePath);
             if (matches.length >= maxResults) {
@@ -516,7 +533,7 @@ async function handleGlob(args) {
         return true;
     });
     const response = [
-        `ROOT: ${root}`,
+        `ROOT: ${displayRoot}`,
         `PATTERN: ${pattern}`,
         `MATCHES: ${matches.length}`,
         `INCLUDE_HIDDEN: ${options.includeHidden}`,
@@ -540,8 +557,8 @@ async function handleGrep(args) {
     const options = readOnlyTraversalOptions(args);
     const maxResults = clampPositive(getIntegerArg(args, "max_results", DEFAULT_MAX_GREP_RESULTS), DEFAULT_MAX_GREP_RESULTS, MAX_GREP_RESULTS_CAP);
     const maxFileBytes = clampPositive(getIntegerArg(args, "max_file_bytes", DEFAULT_MAX_FILE_BYTES_FOR_SEARCH), DEFAULT_MAX_FILE_BYTES_FOR_SEARCH, MAX_FILE_BYTES_FOR_SEARCH_CAP);
-    const root = resolveScopedFilesystemPath(basePath);
-    const rootStat = await fs.stat(root);
+    const { displayPath: displayRoot, safePath: safeRoot } = await resolveAllowedExistingPath(basePath);
+    const rootStat = await fs.stat(safeRoot);
     if (!rootStat.isDirectory()) {
         throw new Error(`Base path "${basePath}" is not a directory.`);
     }
@@ -553,7 +570,7 @@ async function handleGrep(args) {
         : null;
     const literalNeedle = caseSensitive ? pattern : pattern.toLowerCase();
     const matches = [];
-    await walkFiles(root, options, async ({ absolutePath, relativePath }) => {
+    await walkFiles(safeRoot, options, async ({ absolutePath, relativePath }) => {
         if (!fileMatcher(relativePath)) {
             return true;
         }
@@ -585,7 +602,7 @@ async function handleGrep(args) {
         return true;
     });
     const response = [
-        `ROOT: ${root}`,
+        `ROOT: ${displayRoot}`,
         `PATTERN: ${pattern}`,
         `FILE_PATTERN: ${filePattern}`,
         `MATCHES: ${matches.length}`,

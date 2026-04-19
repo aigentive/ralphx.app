@@ -1,6 +1,6 @@
 # RalphX Release Process
 
-This document covers the RalphX release workflow, from local build testing through public GitHub Releases and in-app updater publication.
+This document covers the RalphX release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
 
 ---
 
@@ -27,20 +27,6 @@ Use the local helper when you want a release-mode build that still syncs local a
 
 This helper may seed the app-data DB from the dev DB and refresh plugin runtime into Application Support.
 
-### Production Release Build
-
-Use the production entrypoint for distributable artifacts and CI/release automation:
-
-```bash
-./scripts/build-prod-release.sh
-```
-
-This path does not mutate local Application Support state. For signed builds, ensure your environment has:
-
-```bash
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
-```
-
 ### Testing the Build
 
 ```bash
@@ -55,9 +41,84 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 
 ---
 
+## Release Versioning Policy
+
+RalphX is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
+
+Current policy while RalphX remains on `0.x`:
+
+| Bump | Use It When | Do Not Use It Just Because |
+|---|---|---|
+| `patch` | Fixes, polish, dependency churn, release/build/CI work, and internal changes that do not materially expand the shipped product surface | There were many commits, many changed files, a large diff stat, or a lot of release automation churn |
+| `minor` | A release delivers a meaningful new user-visible capability or a meaningful expansion of an existing workflow | The product is still volatile or the team shipped a lot of internal work quickly |
+| `major` | An explicit `1.0.0` milestone or a deliberate compatibility reset that deserves a public stability-contract change | Early-stage churn, broad refactors, or high release pressure |
+
+Practical rules:
+
+1. Public versioning tracks shipped behavior, install/update surface, and workflow shape.
+2. Raw commit count, file count, diff size, dependency bump volume, and CI churn are supporting context only.
+3. Frequent `minor` releases are acceptable in `0.x` if each release moves the visible product forward in a meaningful way.
+4. `1.0.0` is a deliberate product milestone, not an automatic consequence of high velocity.
+
+---
+
 ## Creating a Release
 
-### Step 1: Bump Version
+### Preferred Flow: Guided Wrapper
+
+Run the guided wrapper after the release code is finalized and local regression is green:
+
+```bash
+./scripts/release.sh
+```
+
+What it does:
+
+1. Generates the release proposal
+2. Pauses so you can review the proposal and accept or reject the suggested version
+3. Stores the accepted version in `.artifacts/release-notes/.version`
+4. Runs `./scripts/bump-version.sh`
+5. Runs `./scripts/generate-release-notes.sh`
+6. Pauses again so you can review and edit the generated artifacts before continuing to the manual git/tag/workflow steps
+
+Primary review artifacts:
+
+- proposal draft: `.artifacts/release-notes/proposal-from-v0.1.0.md`
+- accepted version file: `.artifacts/release-notes/.version` (local/gitignored)
+- release notes: `release-notes/vX.Y.Z.md`
+- Codex logs: `.artifacts/release-notes/logs/`
+
+Use `--from`, `--to`, `--current-version`, `--model`, or `--reasoning-effort` when you need to customize the compare range or Codex run.
+
+### Manual Flow
+
+Use this when you want finer control than the wrapper gives you.
+
+### Step 1: Propose The Version First
+
+```bash
+./scripts/propose-release.sh
+```
+
+Then:
+
+1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version.
+2. Accept the proposal at the prompt if you want RalphX to store that version in `.artifacts/release-notes/.version`.
+3. If you do not want the prompt, use:
+   - `./scripts/propose-release.sh --accept`
+4. If you reject the proposal, rerun with a different range or override the version manually in the next step.
+
+Use `--from`, `--to`, or `--current-version` when you need to analyze a non-default compare range or when the current released version cannot be inferred from the start ref.
+
+### Step 2: Bump The Chosen Version
+
+If you accepted the proposal, you can omit the version:
+
+```bash
+./scripts/bump-version.sh
+```
+
+Or pass an explicit version if you are overriding:
 
 ```bash
 ./scripts/bump-version.sh 0.2.0
@@ -68,16 +129,26 @@ This updates version in:
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 
-### Step 2: Commit Release Prep
+### Step 3: Commit Release Prep
 
 ```bash
-git add -A
+git add frontend/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
 git commit -m "chore: bump version to 0.2.0"
 ```
 
-### Step 3: Draft And Review Release Notes
+Do not commit `.artifacts/release-notes/.version`; it is local state for the no-arg release helpers.
 
-Run this after the release code is finalized and local regression is green, but before you push the release tag if you want the reviewed notes committed into `release-notes/vX.Y.Z.md` and picked up automatically by the release workflow.
+### Step 4: Draft And Review Release Notes
+
+Run this after the version has been chosen and bumped, but before you push the release tag if you want the reviewed notes committed into `release-notes/vX.Y.Z.md` and picked up automatically by the release workflow.
+
+If you accepted the proposal, you can omit the version here too:
+
+```bash
+./scripts/generate-release-notes.sh
+```
+
+Or pass an explicit version:
 
 ```bash
 ./scripts/generate-release-notes.sh 0.2.0
@@ -95,29 +166,44 @@ Then:
 4. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
    - `rm -f release-notes/v0.2.0.md`
 
-### Step 4: Create And Push The Release Tag
+### Step 5: Create And Push The Release Tag
 
 ```bash
 git tag v0.2.0
 git push origin main --tags
 ```
 
-### Step 5: GitHub Actions
+### Step 6: Run The Release Build Workflow
 
-Pushing the tag triggers the release workflow automatically:
+After the tag is on `origin`, trigger `Release Build` manually from `main`:
+
+1. Go to `aigentive/ralphx` → Actions → `Release Build`
+2. Click **Run workflow**
+3. Use:
+   - `ref`: `v0.2.0`
+   - `version`: `0.2.0`
+   - `draft`: choose whether the public release should stay a draft
+   - `prerelease`: choose whether the release should be marked as a prerelease
+   - `arm_runner`: `self-hosted` or `github-hosted`
+
+What `Release Build` does:
 
 1. **Build**: Compiles frontend and Tauri app
 2. **Sign**: Applies Developer ID certificate
 3. **Notarize**: Submits to Apple for notarization
-4. **Package**: Creates per-architecture DMGs, signed updater bundles, `latest.json`, and checksums
-5. **Release**: Publishes the assets to the public binaries repo `aigentive/ralphx-releases`
-6. **Tap update**: For non-draft, non-prerelease releases, updates `aigentive/homebrew-ralphx/Casks/ralphx.rb`
+4. **Package**: Creates per-architecture DMGs and signed updater bundles
+5. **Artifacts**: Uploads `release-aarch64`, `release-x86_64`, trace logs, and `release-metadata`
+6. **Trigger**: A successful `Release Build` on `main` automatically triggers `Release Publish`
 
-### Step 6: Publish Release
+### Step 7: Verify The Publish Workflow
 
-1. Go to `aigentive/ralphx-releases` → Releases
-2. Find the release created by the workflow
-3. Review the artifacts:
+`Release Publish` reuses the successful build artifacts instead of rebuilding.
+
+1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+2. Confirm the auto-triggered run finished successfully
+3. Then go to `aigentive/ralphx-releases` → Releases
+4. Find the release created or updated by the workflow
+5. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
    - `RalphX_x.x.x_x86_64.dmg` - Intel
    - `RalphX_x.x.x_aarch64.app.tar.gz` - Apple Silicon updater bundle
@@ -126,18 +212,21 @@ Pushing the tag triggers the release workflow automatically:
    - `RalphX_x.x.x_x86_64.app.tar.gz.sig` - Intel updater signature
    - `latest.json`
    - `checksums.txt`
-4. Edit release notes as needed
-5. If you dispatched the workflow with `draft=true`, click **Publish release**
+6. Edit release notes as needed
+7. If you dispatched the build with `draft=true`, click **Publish release**
 
 ## Manual Workflow Dispatch
 
-For releases without a version tag:
+For recovery publishing after a successful build run, use `Release Publish` manually instead of rebuilding:
 
-1. Go to `aigentive/ralphx` → Actions → Release workflow
+1. Go to `aigentive/ralphx` → Actions → `Release Publish`
 2. Click **Run workflow**
-3. Enter the version number (e.g., `0.2.0`)
-4. Choose whether the public release should stay a draft
-5. Click **Run workflow**
+3. Provide:
+   - `source_run_id`: the successful `Release Build` run ID
+   - `ref`: `v0.2.0`
+   - `version`: `0.2.0`
+   - `draft` / `prerelease` flags to match the release you want
+4. Click **Run workflow**
 
 ---
 
@@ -206,7 +295,8 @@ cargo tauri build
 
 **Workflow doesn't trigger**
 - Ensure tag follows pattern `v*` (e.g., `v0.2.0`)
-- Check Actions tab for workflow run status
+- `Release Publish` auto-triggers only after a successful `Release Build` run from `main`
+- Check the Actions tab for `Release Build` and `Release Publish`
 
 **Public release upload failed**
 - Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
@@ -238,9 +328,13 @@ cargo tauri build
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI/CD workflow that publishes public release assets and updater metadata |
+| `.github/workflows/release.yml` | Build-only release workflow: sign, notarize, package, and upload release artifacts |
+| `.github/workflows/release-publish.yml` | Publish workflow: consume release artifacts, publish public assets, and update Homebrew |
 | `scripts/build-local-release.sh` | Local internal release-like build script |
-| `scripts/build-prod-release.sh` | Production release artifact entrypoint |
+| `scripts/build-prod-release.sh` | Internal CI release artifact entrypoint |
+| `scripts/release.sh` | Guided local release-prep wrapper that orchestrates proposal, version bump, and release-note generation |
+| `scripts/propose-release.sh` | Codex-assisted version recommendation generator |
+| `scripts/release-analysis-common.sh` | Shared release evidence and Codex logging helper used by the proposal and notes scripts |
 | `scripts/bump-version.sh` | Version management script |
 | `scripts/generate-release-notes.sh` | Codex-assisted release notes draft generator |
 | `release-notes/` | Curated release notes consumed automatically by the release workflow when present |
