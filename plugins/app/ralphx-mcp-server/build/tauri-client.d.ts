@@ -2,6 +2,7 @@
  * HTTP client for calling RalphX Tauri backend
  * All MCP tools forward to these endpoints (proxy pattern)
  */
+export declare function buildTauriApiUrl(endpoint: string): string;
 export interface TauriApiError {
     error: string;
     details?: string;

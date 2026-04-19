@@ -69,6 +69,25 @@ function SubsectionLabel({
   );
 }
 
+function isGithubRemoteUrl(remoteUrl: string | null | undefined): boolean {
+  if (!remoteUrl) return false;
+
+  const trimmed = remoteUrl.trim();
+  if (trimmed.startsWith("git@github.com:")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      parsed.hostname === "github.com" &&
+      (parsed.protocol === "https:" || parsed.protocol === "ssh:")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function TextSettingRow({
   id,
   label,
@@ -266,7 +285,7 @@ export function RepositorySettingsSection() {
   const worktreeParentDirectory =
     pendingWorktreeDir ?? project.worktreeParentDirectory ?? "~/ralphx-worktrees";
 
-  const isGithubRemote = !!remoteUrl && remoteUrl.includes("github.com");
+  const isGithubRemote = isGithubRemoteUrl(remoteUrl);
   const isToggleDisabled = !isGithubRemote || updatePrEnabled.isPending;
   const isSaving = isUpdating || updatePrEnabled.isPending;
 

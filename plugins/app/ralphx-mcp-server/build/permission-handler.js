@@ -10,12 +10,11 @@
  * The Tauri backend emits a Tauri event that triggers the PermissionDialog
  * in the frontend, allowing the user to approve or deny the tool call.
  */
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { safeError } from "./redact.js";
+import { buildTauriApiUrl } from "./tauri-client.js";
 import { isWithin, normalizePathLike, } from "./path-policy.js";
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 const SAFE_READONLY_BASH_COMMANDS = new Set([
     "ls",
     "cat",
@@ -71,27 +70,6 @@ function isSensitivePath(targetPath) {
         basename.startsWith(".env.") ||
         parts.includes(".git"));
 }
-function findGitRepoRoot(targetPath) {
-    let current = normalizePathLike(targetPath);
-    while (!fs.existsSync(current)) {
-        const parent = path.dirname(current);
-        if (parent === current)
-            return null;
-        current = parent;
-    }
-    if (!fs.statSync(current).isDirectory()) {
-        current = path.dirname(current);
-    }
-    while (true) {
-        if (fs.existsSync(path.join(current, ".git"))) {
-            return current;
-        }
-        const parent = path.dirname(current);
-        if (parent === current)
-            return null;
-        current = parent;
-    }
-}
 function trustedRoots() {
     const roots = new Set();
     const pwd = process.env.PWD;
@@ -105,11 +83,13 @@ function isTrustedReadPath(targetPath) {
     const normalized = normalizePathLike(targetPath);
     if (isSensitivePath(normalized))
         return false;
+    if (isTrustedClaudeProjectMemoryPath(normalized))
+        return true;
     for (const root of trustedRoots()) {
         if (isWithin(root, normalized))
             return true;
     }
-    return findGitRepoRoot(normalized) !== null;
+    return false;
 }
 function isTrustedClaudeProjectMemoryPath(targetPath) {
     const normalized = normalizePathLike(targetPath);
@@ -321,7 +301,7 @@ export async function handlePermissionRequest(args) {
             body.context_type = contextType;
         if (contextId)
             body.context_id = contextId;
-        const registerResponse = await fetch(`${TAURI_API_URL}/api/permission/request`, {
+        const registerResponse = await fetch(buildTauriApiUrl("permission/request"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -351,7 +331,7 @@ export async function handlePermissionRequest(args) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
     try {
-        const decisionResponse = await fetch(`${TAURI_API_URL}/api/permission/await/${request_id}`, {
+        const decisionResponse = await fetch(buildTauriApiUrl(`permission/await/${encodeURIComponent(request_id)}`), {
             method: "GET",
             signal: controller.signal,
         });

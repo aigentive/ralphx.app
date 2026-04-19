@@ -12,16 +12,14 @@
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { safeError } from "./redact.js";
+import { buildTauriApiUrl } from "./tauri-client.js";
 import {
   isWithin,
   normalizePathLike,
 } from "./path-policy.js";
-
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 const SAFE_READONLY_BASH_COMMANDS = new Set([
   "ls",
   "cat",
@@ -92,29 +90,6 @@ function isSensitivePath(targetPath: string): boolean {
   );
 }
 
-function findGitRepoRoot(targetPath: string): string | null {
-  let current = normalizePathLike(targetPath);
-
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-
-  if (!fs.statSync(current).isDirectory()) {
-    current = path.dirname(current);
-  }
-
-  while (true) {
-    if (fs.existsSync(path.join(current, ".git"))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
-}
-
 function trustedRoots(): string[] {
   const roots = new Set<string>();
   const pwd = process.env.PWD;
@@ -127,12 +102,13 @@ function trustedRoots(): string[] {
 function isTrustedReadPath(targetPath: string): boolean {
   const normalized = normalizePathLike(targetPath);
   if (isSensitivePath(normalized)) return false;
+  if (isTrustedClaudeProjectMemoryPath(normalized)) return true;
 
   for (const root of trustedRoots()) {
     if (isWithin(root, normalized)) return true;
   }
 
-  return findGitRepoRoot(normalized) !== null;
+  return false;
 }
 
 function isTrustedClaudeProjectMemoryPath(targetPath: string): boolean {
@@ -389,7 +365,7 @@ export async function handlePermissionRequest(
     if (contextId) body.context_id = contextId;
 
     const registerResponse = await fetch(
-      `${TAURI_API_URL}/api/permission/request`,
+      buildTauriApiUrl("permission/request"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -432,7 +408,7 @@ export async function handlePermissionRequest(
 
   try {
     const decisionResponse = await fetch(
-      `${TAURI_API_URL}/api/permission/await/${request_id}`,
+      buildTauriApiUrl(`permission/await/${encodeURIComponent(request_id)}`),
       {
         method: "GET",
         signal: controller.signal,

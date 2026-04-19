@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TauriClientError, callTauri, callTauriGet } from "../tauri-client.js";
+import { TauriClientError, buildTauriApiUrl, callTauri, callTauriGet } from "../tauri-client.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -159,6 +159,32 @@ describe("callTauri — retry on network errors", () => {
     await vi.runAllTimersAsync();
     expect(await result).toEqual({ ok: true });
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("buildTauriApiUrl", () => {
+  afterEach(() => {
+    delete process.env.TAURI_API_URL;
+  });
+
+  it("builds localhost API URLs for safe endpoints", () => {
+    expect(buildTauriApiUrl("question/request")).toBe(
+      "http://127.0.0.1:3847/api/question/request"
+    );
+  });
+
+  it("rejects non-local TAURI_API_URL values", () => {
+    process.env.TAURI_API_URL = "https://example.com";
+
+    expect(() => buildTauriApiUrl("question/request")).toThrow(
+      "Invalid TAURI_API_URL protocol"
+    );
+  });
+
+  it("rejects traversal in endpoints", () => {
+    expect(() => buildTauriApiUrl("../question/request")).toThrow(
+      "Invalid endpoint traversal sequence"
+    );
   });
 });
 

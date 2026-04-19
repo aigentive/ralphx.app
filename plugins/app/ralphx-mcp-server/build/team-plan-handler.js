@@ -9,30 +9,31 @@
  * Timeout staggering: backend timeout = 840s (14 min), client AbortController = 900,000ms (15 min).
  * Backend always fires first, returning a structured 408 response.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { safeError } from "./redact.js";
-const DEFAULT_TAURI_API_URL = "http://127.0.0.1:3847";
-function resolveTauriApiBaseUrl() {
-    const raw = process.env.TAURI_API_URL || DEFAULT_TAURI_API_URL;
-    try {
-        const parsed = new URL(raw);
-        const isAllowedProtocol = parsed.protocol === "http:";
-        const isAllowedHost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-        if (isAllowedProtocol && isAllowedHost) {
-            return parsed;
-        }
-        safeError(`[RalphX MCP] Invalid TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`);
-    }
-    catch {
-        safeError(`[RalphX MCP] Failed to parse TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`);
-    }
-    return new URL(DEFAULT_TAURI_API_URL);
-}
-const TAURI_API_BASE_URL = resolveTauriApiBaseUrl();
-function buildTauriApiUrl(pathname) {
-    return new URL(pathname, TAURI_API_BASE_URL).toString();
-}
+import { buildTauriApiUrl } from "./tauri-client.js";
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
 const TEAM_PLAN_TIMEOUT_MS = 15 * 60 * 1000;
+const SAFE_TEAM_NAME = /^[A-Za-z0-9._-]{1,128}$/;
+const SAFE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
+function resolveTeamConfigPath(teamName) {
+    if (!SAFE_TEAM_NAME.test(teamName)) {
+        return null;
+    }
+    return path.join(os.homedir(), ".claude", "teams", teamName, "config.json");
+}
+function sanitizeLeadSessionId(value) {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const trimmed = value.trim();
+    if (!SAFE_SESSION_ID.test(trimmed)) {
+        return undefined;
+    }
+    return trimmed;
+}
 /**
  * Handle a request_team_plan tool call.
  *
@@ -56,10 +57,16 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
         };
     }
     // Validate team exists in Claude Code's registry
-    const os = await import("os");
-    const fs = await import("fs");
-    const path = await import("path");
-    const configPath = path.join(os.homedir(), ".claude", "teams", teamName, "config.json");
+    const configPath = resolveTeamConfigPath(teamName);
+    if (!configPath) {
+        return {
+            content: [{
+                    type: "text",
+                    text: `ERROR: Team name '${teamName}' contains unsupported characters.`,
+                }],
+            isError: true,
+        };
+    }
     if (!fs.existsSync(configPath)) {
         return {
             content: [{
@@ -74,9 +81,13 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
     if (!resolvedLeadSessionId) {
         try {
             const configContent = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-            if (configContent.leadSessionId) {
-                resolvedLeadSessionId = configContent.leadSessionId;
+            const configLeadSessionId = sanitizeLeadSessionId(configContent.leadSessionId);
+            if (configLeadSessionId) {
+                resolvedLeadSessionId = configLeadSessionId;
                 safeError(`[RalphX MCP] lead_session_id resolved from team config: ${resolvedLeadSessionId}`);
+            }
+            else if (configContent.leadSessionId !== undefined) {
+                safeError("[RalphX MCP] Ignoring invalid lead_session_id in team config");
             }
         }
         catch (e) {
@@ -87,7 +98,7 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
     // Phase 1: Register plan with Tauri backend
     let plan_id;
     try {
-        const registerResponse = await fetch(buildTauriApiUrl("/api/team/plan/request"), {
+        const registerResponse = await fetch(buildTauriApiUrl("team/plan/request"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -142,7 +153,7 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TEAM_PLAN_TIMEOUT_MS);
     try {
-        const awaitResponse = await fetch(buildTauriApiUrl(`/api/team/plan/await/${encodeURIComponent(plan_id)}`), {
+        const awaitResponse = await fetch(buildTauriApiUrl(`team/plan/await/${encodeURIComponent(plan_id)}`), {
             method: "GET",
             signal: controller.signal,
         });

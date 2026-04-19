@@ -42,10 +42,13 @@ describe("normalizePermissionToolInput", () => {
 });
 describe("shouldAutoApprovePermission", () => {
     const tempDirs = [];
+    const originalPwd = process.env.PWD;
     afterEach(() => {
+        process.env.PWD = originalPwd;
         for (const dir of tempDirs.splice(0)) {
             fs.rmSync(dir, { recursive: true, force: true });
         }
+        vi.restoreAllMocks();
     });
     function makeTempGitRepo() {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-perm-"));
@@ -57,6 +60,7 @@ describe("shouldAutoApprovePermission", () => {
     it("auto-approves Read for files inside a git repo", () => {
         const repo = makeTempGitRepo();
         const file = path.join(repo, "package.json");
+        process.env.PWD = repo;
         expect(shouldAutoApprovePermission("Read", {
             path: file,
         })).toBe(true);
@@ -70,12 +74,14 @@ describe("shouldAutoApprovePermission", () => {
     });
     it("auto-approves Glob for patterns rooted inside a git repo", () => {
         const repo = makeTempGitRepo();
+        process.env.PWD = repo;
         expect(shouldAutoApprovePermission("Glob", {
             pattern: `${repo}/**/*.{ts,js,py}`,
         })).toBe(true);
     });
     it("auto-approves Grep when its target path is inside a git repo", () => {
         const repo = makeTempGitRepo();
+        process.env.PWD = repo;
         expect(shouldAutoApprovePermission("Grep", {
             pattern: "permission",
             path: repo,
@@ -83,12 +89,14 @@ describe("shouldAutoApprovePermission", () => {
     });
     it("auto-approves read-only repo inspection Bash commands", () => {
         const repo = makeTempGitRepo();
+        process.env.PWD = repo;
         expect(shouldAutoApprovePermission("Bash", {
             command: `cat ${path.join(repo, "package.json")} 2>/dev/null || echo 'FILE NOT FOUND'; ls -la ${repo}/`,
         })).toBe(true);
     });
     it("does not auto-approve mutating Bash commands", () => {
         const repo = makeTempGitRepo();
+        process.env.PWD = repo;
         expect(shouldAutoApprovePermission("Bash", {
             command: `rm -rf ${repo}`,
         })).toBe(false);
@@ -122,6 +130,14 @@ describe("shouldAutoApprovePermission", () => {
         expect(shouldAutoApprovePermission("Write", {
             filePath: path.join(repo, "feedback.md"),
             content: "---\nname: test\n---\n",
+        })).toBe(false);
+    });
+    it("does not auto-approve Read for a different git repo outside trusted roots", () => {
+        const trustedRepo = makeTempGitRepo();
+        const otherRepo = makeTempGitRepo();
+        process.env.PWD = trustedRepo;
+        expect(shouldAutoApprovePermission("Read", {
+            path: path.join(otherRepo, "package.json"),
         })).toBe(false);
     });
 });

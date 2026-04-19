@@ -46,7 +46,7 @@ function normalizeEndpoint(endpoint) {
     }
     return trimmed.replace(/^\/+/, "");
 }
-function buildTauriApiUrl(endpoint) {
+export function buildTauriApiUrl(endpoint) {
     const base = resolveTauriApiBaseUrl();
     const safeEndpoint = normalizeEndpoint(endpoint);
     return new URL(`/api/${safeEndpoint}`, `${base}/`).toString();

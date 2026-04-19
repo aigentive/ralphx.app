@@ -55,11 +55,14 @@ describe("normalizePermissionToolInput", () => {
 
 describe("shouldAutoApprovePermission", () => {
   const tempDirs: string[] = [];
+  const originalPwd = process.env.PWD;
 
   afterEach(() => {
+    process.env.PWD = originalPwd;
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+    vi.restoreAllMocks();
   });
 
   function makeTempGitRepo(): string {
@@ -73,6 +76,7 @@ describe("shouldAutoApprovePermission", () => {
   it("auto-approves Read for files inside a git repo", () => {
     const repo = makeTempGitRepo();
     const file = path.join(repo, "package.json");
+    process.env.PWD = repo;
 
     expect(
       shouldAutoApprovePermission("Read", {
@@ -94,6 +98,7 @@ describe("shouldAutoApprovePermission", () => {
 
   it("auto-approves Glob for patterns rooted inside a git repo", () => {
     const repo = makeTempGitRepo();
+    process.env.PWD = repo;
 
     expect(
       shouldAutoApprovePermission("Glob", {
@@ -104,6 +109,7 @@ describe("shouldAutoApprovePermission", () => {
 
   it("auto-approves Grep when its target path is inside a git repo", () => {
     const repo = makeTempGitRepo();
+    process.env.PWD = repo;
 
     expect(
       shouldAutoApprovePermission("Grep", {
@@ -115,6 +121,7 @@ describe("shouldAutoApprovePermission", () => {
 
   it("auto-approves read-only repo inspection Bash commands", () => {
     const repo = makeTempGitRepo();
+    process.env.PWD = repo;
 
     expect(
       shouldAutoApprovePermission("Bash", {
@@ -125,6 +132,7 @@ describe("shouldAutoApprovePermission", () => {
 
   it("does not auto-approve mutating Bash commands", () => {
     const repo = makeTempGitRepo();
+    process.env.PWD = repo;
 
     expect(
       shouldAutoApprovePermission("Bash", {
@@ -180,6 +188,18 @@ describe("shouldAutoApprovePermission", () => {
       shouldAutoApprovePermission("Write", {
         filePath: path.join(repo, "feedback.md"),
         content: "---\nname: test\n---\n",
+      })
+    ).toBe(false);
+  });
+
+  it("does not auto-approve Read for a different git repo outside trusted roots", () => {
+    const trustedRepo = makeTempGitRepo();
+    const otherRepo = makeTempGitRepo();
+    process.env.PWD = trustedRepo;
+
+    expect(
+      shouldAutoApprovePermission("Read", {
+        path: path.join(otherRepo, "package.json"),
       })
     ).toBe(false);
   });

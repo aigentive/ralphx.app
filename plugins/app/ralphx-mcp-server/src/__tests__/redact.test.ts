@@ -165,10 +165,8 @@ describe("safeError — integration", () => {
 });
 
 describe("safeTrace — file logging", () => {
-  it("writes redacted trace records to a relative subdirectory under the safe trace root", () => {
-    const traceSubdir = "unit-test-traces";
-    const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy", traceSubdir);
-    process.env.RALPHX_MCP_TRACE_DIR = traceSubdir;
+  it("writes redacted trace records under the safe trace root", () => {
+    const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
     process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
     process.env.RALPHX_CONTEXT_TYPE = "ideation";
     process.env.RALPHX_CONTEXT_ID = "session-123";
@@ -185,7 +183,7 @@ describe("safeTrace — file logging", () => {
     expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
   });
 
-  it("falls back to the safe trace root when the override is absolute", () => {
+  it("ignores trace dir overrides and keeps traces under the safe root", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
     const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
     process.env.RALPHX_MCP_TRACE_DIR = tempDir;

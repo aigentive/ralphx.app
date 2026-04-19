@@ -83,6 +83,9 @@ describe('getAllowedToolNames', () => {
         expect(tools).toContain('fs_read_file');
         expect(tools).toContain('fs_grep');
     });
+    it('rejects canonical agent path traversal attempts', () => {
+        expect(loadCanonicalMcpTools('../secrets')).toBeUndefined();
+    });
     it('treats delegation-only canonical mcp_tools as canonical instead of missing', () => {
         setAgentType('qa-tester');
         const tools = getAllowedToolNames();

@@ -8,7 +8,7 @@
  */
 import { createHumanWaitAbortController, HUMAN_WAIT_CLIENT_TIMEOUT_MS, isHumanWaitTimeoutError, } from "./human-wait.js";
 import { safeError } from "./redact.js";
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+import { buildTauriApiUrl } from "./tauri-client.js";
 /**
  * Handle an ask_user_question tool call.
  *
@@ -22,7 +22,7 @@ export async function handleAskUserQuestion(args) {
     // 1. Register question with Tauri backend
     let request_id;
     try {
-        const registerResponse = await fetch(`${TAURI_API_URL}/api/question/request`, {
+        const registerResponse = await fetch(buildTauriApiUrl("question/request"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -65,7 +65,7 @@ export async function handleAskUserQuestion(args) {
     const { controller, timeoutId } = createHumanWaitAbortController();
     const waitStartedAt = Date.now();
     try {
-        const answerResponse = await fetch(`${TAURI_API_URL}/api/question/await/${request_id}`, {
+        const answerResponse = await fetch(buildTauriApiUrl(`question/await/${encodeURIComponent(request_id)}`), {
             method: "GET",
             signal: controller.signal,
         });
