@@ -3,7 +3,11 @@
 # Worktree agents create node_modules symlinks for performance; this hook
 # prevents those symlinks from being accidentally committed.
 
-staged=$(git diff --cached --name-only --diff-filter=ACR)
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
 
 bad=$(echo "$staged" | grep -E '(^|/)node_modules(/|$)' || true)
 
@@ -14,4 +18,16 @@ if [ -n "$bad" ]; then
     echo "These are likely worktree symlinks. Remove them from staging:"
     echo "  git reset HEAD <path>"
     exit 1
+fi
+
+tauri_version_files=$(echo "$staged" | grep -E '^(frontend/package\.json|frontend/package-lock\.json|src-tauri/Cargo\.toml|src-tauri/Cargo\.lock)$' || true)
+
+if [ -n "$tauri_version_files" ]; then
+    if ! mismatch_report="$(node "$HOOK_DIR/../scripts/check-tauri-package-alignment.mjs" "$REPO_ROOT")"; then
+        echo "ERROR: Refusing to commit Tauri version drift:"
+        echo "$mismatch_report" | sed 's/^/  /'
+        echo ""
+        echo "Align the staged Tauri manifest and lockfile updates before committing."
+        exit 1
+    fi
 fi

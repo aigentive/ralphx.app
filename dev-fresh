@@ -45,98 +45,11 @@ verify_tauri_package_alignment() {
   local mismatch_report
 
   if ! mismatch_report="$(
-    node - "$PROJECT_ROOT" <<'NODE'
-const fs = require("node:fs");
-const path = require("node:path");
-
-const root = process.argv[2];
-const frontendPackagePath = path.join(root, "frontend", "package.json");
-const frontendLockPath = path.join(root, "frontend", "package-lock.json");
-const cargoLockPath = path.join(root, "src-tauri", "Cargo.lock");
-
-const dependencyPairs = [
-  ["@tauri-apps/api", "tauri"],
-  ["@tauri-apps/plugin-dialog", "tauri-plugin-dialog"],
-  ["@tauri-apps/plugin-fs", "tauri-plugin-fs"],
-  ["@tauri-apps/plugin-global-shortcut", "tauri-plugin-global-shortcut"],
-  ["@tauri-apps/plugin-opener", "tauri-plugin-opener"],
-  ["@tauri-apps/plugin-process", "tauri-plugin-process"],
-  ["@tauri-apps/plugin-updater", "tauri-plugin-updater"],
-];
-
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function majorMinor(version) {
-  const normalized = String(version).replace(/^[~^]/, "");
-  const match = normalized.match(/^(\d+)\.(\d+)/);
-  return match ? `${match[1]}.${match[2]}` : null;
-}
-
-function readFrontendVersions() {
-  const packageJson = JSON.parse(fs.readFileSync(frontendPackagePath, "utf8"));
-  const packageLock = fs.existsSync(frontendLockPath)
-    ? JSON.parse(fs.readFileSync(frontendLockPath, "utf8"))
-    : null;
-  const resolvedVersions = new Map();
-
-  for (const [frontendPackage] of dependencyPairs) {
-    const lockVersion =
-      packageLock?.packages?.[`node_modules/${frontendPackage}`]?.version ?? null;
-    const manifestVersion =
-      packageJson.dependencies?.[frontendPackage] ??
-      packageJson.devDependencies?.[frontendPackage] ??
-      null;
-    resolvedVersions.set(frontendPackage, lockVersion ?? manifestVersion);
-  }
-
-  return resolvedVersions;
-}
-
-function readCargoVersions() {
-  const cargoLock = fs.readFileSync(cargoLockPath, "utf8");
-  const resolvedVersions = new Map();
-
-  for (const [, cargoPackage] of dependencyPairs) {
-    const match = cargoLock.match(
-      new RegExp(`name = "${escapeRegex(cargoPackage)}"\\nversion = "([^"]+)"`)
-    );
-    resolvedVersions.set(cargoPackage, match ? match[1] : null);
-  }
-
-  return resolvedVersions;
-}
-
-const frontendVersions = readFrontendVersions();
-const cargoVersions = readCargoVersions();
-const mismatches = [];
-
-for (const [frontendPackage, cargoPackage] of dependencyPairs) {
-  const frontendVersion = frontendVersions.get(frontendPackage);
-  const cargoVersion = cargoVersions.get(cargoPackage);
-
-  if (!frontendVersion || !cargoVersion) {
-    continue;
-  }
-
-  const frontendMajorMinor = majorMinor(frontendVersion);
-  const cargoMajorMinor = majorMinor(cargoVersion);
-
-  if (frontendMajorMinor && cargoMajorMinor && frontendMajorMinor !== cargoMajorMinor) {
-    mismatches.push(`${cargoPackage} (${cargoVersion}) : ${frontendPackage} (${frontendVersion})`);
-  }
-}
-
-if (mismatches.length > 0) {
-  console.log(mismatches.join("\n"));
-  process.exit(2);
-}
-NODE
+    node "$PROJECT_ROOT/scripts/check-tauri-package-alignment.mjs" "$PROJECT_ROOT"
   )"; then
     cat >&2 <<EOF
 dev-fresh found Tauri dependency version drift before starting the app.
-The frontend lockfile and Rust lockfile must agree on Tauri major/minor versions.
+The frontend and Rust Tauri manifests/lockfiles must agree on Tauri major/minor versions.
 
 Mismatches:
 $mismatch_report
