@@ -22,13 +22,18 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_run:
+    workflows:
+      - Release Build
+    types:
+      - completed
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: release-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_run_id || github.run_id }}
+  group: release-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_run_id || github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -39,54 +44,108 @@ env:
 jobs:
   metadata:
     name: Resolve publish metadata
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     outputs:
-      source_run_id: ${{ steps.meta.outputs.source_run_id }}
+      source_run_id: ${{ steps.run_id.outputs.source_run_id }}
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
       draft: ${{ steps.meta.outputs.draft }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
-      source_ref: ${{ steps.meta.outputs.source_ref }}
     steps:
-      - name: Resolve manual publish metadata
-        id: meta
+      - name: Resolve source build run ID
+        id: run_id
         shell: bash
         run: |
           set -euo pipefail
-
-          raw_ref="${{ github.event.inputs.ref }}"
-          raw_version="${{ github.event.inputs.version }}"
-          raw_draft="${{ github.event.inputs.draft }}"
-          raw_prerelease="${{ github.event.inputs.prerelease }}"
-          source_run_id="${{ github.event.inputs.source_run_id }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            source_run_id="${{ github.event.inputs.source_run_id }}"
+          else
+            source_run_id="${{ github.event.workflow_run.id }}"
+          fi
 
           if [[ -z "${source_run_id}" ]]; then
             echo "Release build run ID cannot be empty" >&2
             exit 1
           fi
 
-          version="${raw_version#v}"
-          if [[ -z "${version}" ]]; then
-            echo "Release version cannot be empty" >&2
+          echo "source_run_id=${source_run_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download release metadata artifact
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.run_id.outputs.source_run_id }}
+          name: release-metadata
+          path: release-metadata
+
+      - name: Resolve publish metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          data_file="release-metadata/release-metadata.json"
+          if [[ ! -f "${data_file}" ]]; then
+            echo "Release metadata artifact missing from build run ${{ steps.run_id.outputs.source_run_id }}" >&2
             exit 1
           fi
 
-          tag="v${version}"
-          normalized_ref="${raw_ref#refs/tags/}"
-          if [[ "${normalized_ref}" != "${tag}" ]]; then
-            echo "Release ref must match the requested version tag. Expected ${tag}, got ${raw_ref}." >&2
-            exit 1
+          version="$(jq -r '.version' "${data_file}")"
+          tag="$(jq -r '.tag' "${data_file}")"
+          release_name="$(jq -r '.release_name' "${data_file}")"
+
+          for value_name in version tag release_name; do
+            if [[ -z "${!value_name:-}" || "${!value_name}" == "null" ]]; then
+              echo "Release metadata field ${value_name} is missing in ${data_file}" >&2
+              exit 1
+            fi
+          done
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            raw_ref="${{ github.event.inputs.ref }}"
+            raw_version="${{ github.event.inputs.version }}"
+            raw_draft="${{ github.event.inputs.draft }}"
+            raw_prerelease="${{ github.event.inputs.prerelease }}"
+            requested_version="${raw_version#v}"
+            if [[ -z "${requested_version}" ]]; then
+              echo "Release version cannot be empty" >&2
+              exit 1
+            fi
+
+            requested_tag="v${requested_version}"
+            normalized_ref="${raw_ref#refs/tags/}"
+            if [[ "${normalized_ref}" != "${requested_tag}" ]]; then
+              echo "Release ref must match the requested version tag. Expected ${requested_tag}, got ${raw_ref}." >&2
+              exit 1
+            fi
+
+            if [[ "${requested_tag}" != "${tag}" || "${requested_version}" != "${version}" ]]; then
+              echo "Requested release ${requested_tag} does not match build metadata ${tag} from run ${{ steps.run_id.outputs.source_run_id }}." >&2
+              exit 1
+            fi
+
+            draft="${raw_draft}"
+            prerelease="${raw_prerelease}"
+          else
+            draft="$(jq -r '.draft' "${data_file}")"
+            prerelease="$(jq -r '.prerelease' "${data_file}")"
+
+            for value_name in draft prerelease; do
+              if [[ -z "${!value_name:-}" || "${!value_name}" == "null" ]]; then
+                echo "Release metadata field ${value_name} is missing in ${data_file}" >&2
+                exit 1
+              fi
+            done
           fi
 
           {
-            echo "source_run_id=${source_run_id}"
             echo "version=${version}"
             echo "tag=${tag}"
-            echo "release_name=RalphX ${tag}"
-            echo "draft=${raw_draft}"
-            echo "prerelease=${raw_prerelease}"
-            echo "source_ref=refs/tags/${tag}"
+            echo "release_name=${release_name}"
+            echo "draft=${draft}"
+            echo "prerelease=${prerelease}"
           } >> "${GITHUB_OUTPUT}"
 
   publish-release:
@@ -97,10 +156,6 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.metadata.outputs.source_ref }}
-
       - name: Validate publishing environment
         shell: bash
         run: |
@@ -117,6 +172,14 @@ jobs:
           run-id: ${{ needs.metadata.outputs.source_run_id }}
           path: release-assets
 
+      - name: Download release metadata artifact
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.metadata.outputs.source_run_id }}
+          name: release-metadata
+          path: release-metadata
+
       - name: Build release metadata files
         shell: bash
         run: |
@@ -124,23 +187,27 @@ jobs:
 
           version="${{ needs.metadata.outputs.version }}"
           tag="${{ needs.metadata.outputs.tag }}"
+          release_name="${{ needs.metadata.outputs.release_name }}"
           release_base="${PUBLIC_RELEASES_BASE_URL}/${tag}"
 
-          notes_file="release-notes/${tag}.md"
-          if [[ -f "${notes_file}" ]]; then
-            cp "${notes_file}" release-assets/release-notes.md
-          else
-            {
-              printf 'Release artifacts for %s.\n\n' "${tag}"
-              printf 'Included:\n'
-              printf '%s\n' \
-                '- macOS Apple Silicon DMG' \
-                '- macOS Intel DMG' \
-                '- macOS Apple Silicon updater bundle' \
-                '- macOS Intel updater bundle' \
-                '- latest.json' \
-                '- checksums.txt'
-            } > release-assets/release-notes.md
+          if [[ ! -f release-metadata/release-notes.md ]]; then
+            echo "Release notes artifact missing from build run ${{ needs.metadata.outputs.source_run_id }}" >&2
+            exit 1
+          fi
+          cp release-metadata/release-notes.md release-assets/release-notes.md
+
+          first_nonempty="$(awk 'NF { print; exit }' release-assets/release-notes.md)"
+          if [[ "${first_nonempty}" == "# ${release_name}" || "${first_nonempty}" == "# ${tag}" ]]; then
+            tmp_notes="$(mktemp)"
+            EXPECTED_RELEASE_HEADING="# ${release_name}" EXPECTED_TAG_HEADING="# ${tag}" \
+              awk '
+                BEGIN {dropping=1; heading_removed=0}
+                dropping && !heading_removed && $0 ~ /^[[:space:]]*$/ {next}
+                dropping && !heading_removed && ($0 == ENVIRON["EXPECTED_RELEASE_HEADING"] || $0 == ENVIRON["EXPECTED_TAG_HEADING"]) {heading_removed=1; next}
+                dropping && heading_removed && $0 ~ /^[[:space:]]*$/ {next}
+                {dropping=0; print}
+              ' release-assets/release-notes.md > "${tmp_notes}"
+            mv "${tmp_notes}" release-assets/release-notes.md
           fi
 
           aarch64_updater="release-assets/release-aarch64/RalphX_${version}_aarch64.app.tar.gz"
@@ -254,8 +321,6 @@ jobs:
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
-
       - name: Validate tap publishing environment
         shell: bash
         run: |
@@ -298,7 +363,29 @@ jobs:
           intel_sha="$(shasum -a 256 "${intel_dmg}" | awk '{print $1}')"
 
           mkdir -p tap-repo/Casks
-          ./scripts/render-homebrew-cask.sh "${version}" "${arm_sha}" "${intel_sha}" > tap-repo/Casks/ralphx.rb
+          {
+            printf 'cask "ralphx" do\n'
+            printf '  arch arm: "aarch64", intel: "x86_64"\n\n'
+            printf '  version "%s"\n' "${version}"
+            printf '  sha256 arm:   "%s",\n' "${arm_sha}"
+            printf '         intel: "%s"\n\n' "${intel_sha}"
+            printf '  url "https://github.com/aigentive/ralphx-releases/releases/download/v#{version}/RalphX_#{version}_#{arch}.dmg"\n'
+            printf '  name "RalphX"\n'
+            printf '  desc "Native Mac GUI for autonomous AI development"\n'
+            printf '  homepage "https://github.com/aigentive/ralphx-releases"\n'
+            printf '  auto_updates true\n\n'
+            printf '  depends_on formula: "node"\n'
+            printf '  depends_on macos: ">= :ventura"\n\n'
+            printf '  app "RalphX.app"\n\n'
+            printf '  caveats do\n'
+            printf '    <<~EOS\n'
+            printf '      Install at least one supported AI harness CLI after install.\n'
+            printf '      RalphX can update itself in-app after install.\n'
+            printf '      To force a Homebrew-managed refresh, run: brew upgrade --cask ralphx\n'
+            printf '    EOS\n'
+            printf '  end\n'
+            printf 'end\n'
+          } > tap-repo/Casks/ralphx.rb
 
       - name: Commit and push tap update
         shell: bash

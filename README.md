@@ -168,6 +168,20 @@ Harness controls are exposed directly in the desktop app:
 
 ### Install
 
+Homebrew:
+
+```bash
+brew tap aigentive/ralphx
+brew install --cask ralphx
+```
+
+Direct download:
+
+- Apple Silicon: [RalphX_0.1.0_aarch64.dmg](https://github.com/aigentive/ralphx-releases/releases/download/v0.1.0/RalphX_0.1.0_aarch64.dmg)
+- Intel: [RalphX_0.1.0_x86_64.dmg](https://github.com/aigentive/ralphx-releases/releases/download/v0.1.0/RalphX_0.1.0_x86_64.dmg)
+
+Build from source:
+
 ```bash
 git clone https://github.com/lazabogdan/ralphx.git
 cd ralphx
