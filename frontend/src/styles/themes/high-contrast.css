@@ -235,9 +235,11 @@
 /* HC settings-dialog inversion — pure-black-on-black modal made dense
    settings surfaces unreadable at a glance. Inside the dialog we flip to a
    LIGHT-theme palette (white surfaces, dark text, orange accent). Scoped
-   strictly to [data-testid="modal-content"] so rest of the HC shell stays
-   pure-black. CSS custom props inherit, so every child picks these up. */
-[data-theme="high-contrast"] [data-testid="modal-content"] {
+   to the dialog root (default testid OR the Settings-dialog override) so
+   rest of the HC shell stays pure-black. CSS custom props inherit, so
+   every child picks these up. */
+[data-theme="high-contrast"] [data-testid="modal-content"],
+[data-theme="high-contrast"] [data-testid="settings-dialog"] {
   --bg-base:        var(--color-white);
   --bg-surface:     hsl(35 12% 95%);
   --bg-elevated:    var(--color-white);
@@ -297,7 +299,8 @@
 
 /* Neutralise HC-global focus outline inside the light-scoped dialog so
    the yellow ring doesn't clash with the white surface. */
-[data-theme="high-contrast"] [data-testid="modal-content"] :focus-visible {
+[data-theme="high-contrast"] [data-testid="modal-content"] :focus-visible,
+[data-theme="high-contrast"] [data-testid="settings-dialog"] :focus-visible {
   outline-color: var(--blue-600);
   outline-width: 2px;
 }
