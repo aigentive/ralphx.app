@@ -13,6 +13,13 @@ export interface ResizeablePanelProps {
   testId?: string;
   ariaLabel?: string;
   ResizeHandle: React.ComponentType;
+  /**
+   * Bottom offset in px. Set to 76 when the ExecutionControlBar renders below
+   * this panel (Kanban/Graph), 0 elsewhere (Activity/Extensibility/Reviews/
+   * Settings). Hardcoding 76 everywhere leaves ~84px of wasted empty space
+   * below the composer on views that don't render the execution bar.
+   */
+  bottomOffset?: number;
 }
 
 export function ResizeablePanel({
@@ -22,6 +29,7 @@ export function ResizeablePanel({
   testId = "resizeable-panel",
   ariaLabel = "Resizeable panel",
   ResizeHandle,
+  bottomOffset = 0,
 }: ResizeablePanelProps) {
   return (
     <aside
@@ -39,16 +47,15 @@ export function ResizeablePanel({
       style={{
         width: `${width + 16}px`,
         minWidth: `${MIN_WIDTH + 16}px`,
-        bottom: "76px",
+        bottom: `${bottomOffset}px`,
         zIndex: 50,
         background: "var(--bg-elevated)",
       }}
     >
-      {/* Floating panel inner container */}
+      {/* Inner rounded container — borders + shadow do the framing. */}
       <div
-        className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
+        className="flex flex-col flex-1 rounded-[10px] overflow-hidden m-2"
         style={{
-          margin: "8px",
           background: "var(--bg-elevated)",
           border: "1px solid var(--border-subtle)",
           boxShadow: "var(--shadow-md)",

@@ -45,7 +45,7 @@ export const ResizeHandle = memo(function ResizeHandle({
         className={`h-full transition-all duration-150 ${
           isResizing
             ? "w-[3px] bg-[var(--accent-primary)]"
-            : "w-[2px] bg-[color-mix(in_srgb,_var(--text-primary)_15%,_transparent)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
+            : "w-[2px] bg-[var(--border-subtle)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
         }`}
       />
     </div>

@@ -374,11 +374,12 @@ export function ChatInput({
             disabled={!canSend}
             aria-label="Send message"
             aria-busy={isSending}
-            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110 border"
             style={{
               background: canSend
                 ? "var(--accent-primary)"
-                : "var(--bg-hover)",
+                : "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+              borderColor: canSend ? "transparent" : "var(--border-subtle)",
               color: canSend ? "var(--text-inverse)" : "var(--text-muted)",
               boxShadow: "none",
             }}

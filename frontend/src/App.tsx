@@ -1130,12 +1130,15 @@ function AppContent() {
             </div>
         </div>
 
-          {/* ReviewsPanel - floating overlay with Tahoe glass panel */}
+          {/* ReviewsPanel - floating overlay with Tahoe glass panel.
+              bottomOffset 76 when ExecutionControlBar is visible below this
+              panel (kanban/graph/ideation), 0 elsewhere so the panel fills
+              the viewport instead of leaving a ~84px void. */}
           {reviewsPanelOpen && (
             <div
               className="fixed top-14 right-0 w-[400px] z-50 flex flex-col"
               style={{
-                bottom: "76px",
+                bottom: (currentView === "kanban" || currentView === "graph" || currentView === "ideation") ? "76px" : "0px",
                 background: "var(--bg-elevated)",
               }}
             >
