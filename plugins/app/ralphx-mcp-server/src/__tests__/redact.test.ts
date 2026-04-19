@@ -165,7 +165,7 @@ describe("safeError — integration", () => {
 });
 
 describe("safeTrace — file logging", () => {
-  it("writes redacted trace records under the safe trace root", () => {
+  it("writes trace metadata under the safe trace root without persisting payload contents", () => {
     const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
     process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
     process.env.RALPHX_CONTEXT_TYPE = "ideation";
@@ -179,8 +179,9 @@ describe("safeTrace — file logging", () => {
     const contents = fs.readFileSync(logPath, "utf8");
     expect(logPath.startsWith(expectedRoot)).toBe(true);
     expect(contents).toContain("\"event\":\"tool.request\"");
-    expect(contents).toContain("sk-ant-***REDACTED***");
+    expect(contents).toContain("\"has_payload\":true");
     expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
+    expect(contents).not.toContain("sk-ant-***REDACTED***");
   });
 
   it("ignores trace dir overrides and keeps traces under the safe root", () => {

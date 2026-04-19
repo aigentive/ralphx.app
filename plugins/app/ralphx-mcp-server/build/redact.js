@@ -105,7 +105,7 @@ export function safeTrace(event, payload) {
         context_id: process.env.RALPHX_CONTEXT_ID ?? null,
     };
     if (payload !== undefined) {
-        record.payload = redactSecrets(stringify(payload));
+        record.has_payload = true;
     }
     try {
         fs.appendFileSync(getTraceLogPath(), `${JSON.stringify(record)}\n`, "utf8");

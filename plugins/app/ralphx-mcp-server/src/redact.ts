@@ -117,7 +117,7 @@ type TraceRecord = {
   project_id: string | null;
   context_type: string | null;
   context_id: string | null;
-  payload?: string;
+  has_payload?: boolean;
 };
 
 export function safeTrace(event: string, payload?: unknown): void {
@@ -133,7 +133,7 @@ export function safeTrace(event: string, payload?: unknown): void {
   };
 
   if (payload !== undefined) {
-    record.payload = redactSecrets(stringify(payload));
+    record.has_payload = true;
   }
 
   try {
