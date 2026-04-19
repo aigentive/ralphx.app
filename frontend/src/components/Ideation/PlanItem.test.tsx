@@ -124,29 +124,29 @@ describe("PlanItem", () => {
       expect(screen.getByText("1 task")).toBeInTheDocument();
     });
 
-    it("done: shows Completed text", () => {
+    it("done: hides completion subtitle when no recent activity", () => {
       renderItem({
         group: "done",
         plan: createSession({ status: "accepted", progress: createProgress({ done: 5, total: 5 }) }),
       });
-      expect(screen.getByText("Completed")).toBeInTheDocument();
+      // Subtitle removed per UX polish — header row still renders
+      expect(screen.queryByText("Completed")).not.toBeInTheDocument();
     });
 
-    it("archived: shows archived date when available", () => {
+    it("archived: no 'Archived {date}' subtitle under title", () => {
       renderItem({
         group: "archived",
         plan: createSession({ status: "archived", archivedAt: "2026-01-15T10:00:00Z" }),
       });
-      expect(screen.getByText(/Archived/)).toBeInTheDocument();
-      expect(screen.getByText(/Jan/)).toBeInTheDocument();
+      expect(screen.queryByText(/Archived/)).not.toBeInTheDocument();
     });
 
-    it("archived: shows 'Archived' without date when archivedAt is null", () => {
+    it("archived: no 'Archived' text when archivedAt is null", () => {
       renderItem({
         group: "archived",
         plan: createSession({ status: "archived", archivedAt: null }),
       });
-      expect(screen.getByText("Archived")).toBeInTheDocument();
+      expect(screen.queryByText("Archived")).not.toBeInTheDocument();
     });
   });
 

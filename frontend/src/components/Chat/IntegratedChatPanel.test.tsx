@@ -415,7 +415,7 @@ describe("IntegratedChatPanel", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByTestId("chat-session-provider-context")).toBeInTheDocument();
+        expect(screen.getByTestId("chat-session-chips")).toBeInTheDocument();
       });
 
       const badge = screen.getByTestId("chat-session-provider-badge");

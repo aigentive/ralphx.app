@@ -283,18 +283,19 @@ describe("ChatAttachmentPicker", () => {
       render(<ChatAttachmentPicker {...defaultProps} disabled={true} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should have reduced opacity background (design token)
-      expect(button).toHaveStyle({
-        background: "color-mix(in srgb, var(--accent-primary) 30%, transparent)",
-      });
+      // Neutral muted chrome — disabled attribute + shared CSS opacity-40 class
+      expect(button).toBeDisabled();
+      expect(button.className).toContain("disabled:opacity-40");
     });
 
     it("applies enabled styling when not disabled", () => {
       render(<ChatAttachmentPicker {...defaultProps} disabled={false} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should have full opacity background (design token)
-      expect(button).toHaveStyle({ background: "var(--accent-primary)" });
+      // Muted gray chrome (matches Send button's disabled baseline)
+      expect(button).toHaveStyle({
+        background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+      });
     });
   });
 
@@ -367,13 +368,15 @@ describe("ChatAttachmentPicker", () => {
   // ============================================================================
 
   describe("styling", () => {
-    it("applies accent color to enabled button", () => {
+    it("applies muted neutral chrome to enabled button", () => {
       render(<ChatAttachmentPicker {...defaultProps} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should use orange accent color (design token)
-      expect(button).toHaveStyle({ background: "var(--accent-primary)" });
-      expect(button).toHaveStyle({ color: "rgb(255, 255, 255)" });
+      // Neutral control — not a primary CTA (per 2026-04-19 UX pass)
+      expect(button).toHaveStyle({
+        background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+      });
+      expect(button).toHaveStyle({ color: "var(--text-muted)" });
     });
 
     it("has compact size to fit in chat footer", () => {

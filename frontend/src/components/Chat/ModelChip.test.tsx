@@ -41,7 +41,7 @@ describe("ModelChip", () => {
   it("applies muted text styling", () => {
     renderWithProvider(<ModelChip model={{ id: "claude-sonnet-4-6", label: "Sonnet 4.6" }} />);
     const el = screen.getByText("Sonnet 4.6");
-    expect(el.className).toContain("text-white/40");
+    expect(el.className).toContain("text-[var(--text-muted)]");
     expect(el.className).toContain("text-xs");
   });
 

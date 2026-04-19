@@ -201,10 +201,11 @@ html[data-theme="high-contrast"] main {
    stays legible (nav yellow-fill > card yellow-border > body white).
    See themes/high-contrast.md §3 — avoid color-only overloading. */
 [data-theme="high-contrast"] {
-  /* Component tokens — literals per WKWebView rule. */
+  /* Component tokens — 1-hop var() to accent primitive (which is the
+     literal #ff8855). Safe per WKWebView rule. */
   --card-icon-bg: transparent;
-  --card-icon-border: #ff8855;
-  --card-icon-color: #ffffff;
+  --card-icon-border: var(--accent-primary);
+  --card-icon-color: var(--color-white);
 
   /* Dialog/modal design in HC uses the HC language: pure-black everywhere,
      WHITE borders do the separation work. No tonal ramps — surfaces are
