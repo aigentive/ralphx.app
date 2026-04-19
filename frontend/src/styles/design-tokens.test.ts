@@ -125,9 +125,13 @@ describe("design-tokens", () => {
       expect(cssContent).toContain("--transition-normal:");
     });
 
-    it("should keep settings card icon tiles opaque in high contrast", () => {
-      expect(cssContent).toMatch(/--card-icon-bg:\s*var\(--color-white\)/);
-      expect(cssContent).toMatch(/--card-icon-color:\s*var\(--color-black\)/);
+    it("should keep settings card icon tiles legible in high contrast", () => {
+      // HC icon tile pattern: transparent fill + yellow outline + white glyph.
+      // Avoids the yellow-on-yellow collision that happens when tinted bg
+      // meets accent-colored glyphs. See themes/high-contrast.md §3.
+      expect(cssContent).toMatch(/--card-icon-bg:\s*transparent/);
+      expect(cssContent).toMatch(/--card-icon-border:\s*var\(--accent-primary\)/);
+      expect(cssContent).toMatch(/--card-icon-color:\s*var\(--color-white\)/);
     });
   });
 

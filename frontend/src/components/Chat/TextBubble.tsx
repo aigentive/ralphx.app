@@ -35,6 +35,7 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
 
   return (
     <div
+      data-testid={isUser ? "text-bubble-user" : "text-bubble-assistant"}
       className={cn(
         "relative group px-3 py-2 text-[13px] leading-relaxed",
         /* macOS Tahoe: uniform rounded corners */
