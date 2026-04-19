@@ -316,7 +316,7 @@ export function IdeationEffortSection() {
   return (
     <SectionCard
       icon={
-        <Gauge className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+        <Gauge className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
       }
       title="Ideation Effort"
       description="Configure the --effort level for ideation and verification agents"

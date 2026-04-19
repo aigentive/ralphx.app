@@ -26,7 +26,7 @@ export function ApiKeysSection() {
     <>
       <SectionCard
         icon={
-          <KeyRound className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+          <KeyRound className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
         }
         title="API Keys"
         description="Manage external API keys for accessing RalphX programmatically"

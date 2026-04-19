@@ -68,7 +68,7 @@ export function AccessibilitySection() {
 
   return (
     <SectionCard
-      icon={<Accessibility className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<Accessibility className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Accessibility"
       description="Theme, motion, and typography preferences that apply across the entire app"
     >

@@ -143,7 +143,7 @@ export function ProjectAnalysisSection() {
 
   return (
     <SectionCard
-      icon={<Search className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<Search className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Setup & Validation"
       description="Build system detection and validation commands"
     >

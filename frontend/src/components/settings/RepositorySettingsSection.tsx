@@ -272,7 +272,7 @@ export function RepositorySettingsSection() {
 
   return (
     <SectionCard
-      icon={<GitBranch className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<GitBranch className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Repository"
       description="Version control and GitHub integration"
     >

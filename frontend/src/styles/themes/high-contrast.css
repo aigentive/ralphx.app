@@ -170,16 +170,16 @@
   opacity: 1;
 }
 
-/* Icon-tile contrast in HC. --card-icon-bg resolves to --accent-muted which
-   is yellow at 15% alpha (dim yellow on black) and the icon inside is
-   --accent-primary (bright yellow) — the tile reads as yellow-on-yellow and
-   the glyph nearly disappears. Override: drop the tint, keep a 2px accent
-   border so the tile still reads as a distinct affordance with the glyph
-   clearly visible on pure black. Matches HC's yellow-outline language
-   used elsewhere (nav pills, status chips). */
+/* Icon-tile contrast in HC. Yellow-on-yellow (accent-muted bg + accent-primary
+   glyph) collapses visually. Restrict yellow to PRIMARY/ACTIVE emphasis only
+   (nav pills, CTAs, active tabs). Section-card icon tiles are SECONDARY
+   emphasis — use a white glyph in a yellow-outlined frame so the hierarchy
+   stays legible (nav yellow-fill > card yellow-border > body white).
+   See themes/high-contrast.md §3 — avoid color-only overloading. */
 [data-theme="high-contrast"] {
   --card-icon-bg: transparent;
   --card-icon-border: var(--accent-primary);
+  --card-icon-color: var(--color-white);
 
   /* Dialog/modal design in HC uses the HC language: pure-black everywhere,
      WHITE borders do the separation work. No tonal ramps — surfaces are

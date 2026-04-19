@@ -182,7 +182,7 @@ export function ExternalMcpSettingsPanel() {
     >
       <div className="flex items-start gap-3 p-5 pb-0">
         <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
-          <Server className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+          <Server className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
         </div>
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">

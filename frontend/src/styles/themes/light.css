@@ -8,12 +8,15 @@
  */
 
 [data-theme="light"] {
-  /* Backgrounds — near-white with faint warm tint */
-  --bg-base:          var(--gray-50);
-  --bg-surface:       var(--gray-100);
-  --bg-elevated:      var(--color-white);
-  --bg-hover:         var(--gray-200);
-  --bg-surface-hover: var(--gray-200);
+  /* Backgrounds — warm off-white hierarchy. Cool gray-50 reads as "blank"
+     on large empty canvases (Activity, Graph, Kanban, Reviews). Slight
+     warm hue shift (35°, 5% sat) gives the shell a deliberate feel while
+     staying well above 97% lightness. */
+  --bg-base:          hsl(35 12% 97%);     /* shell canvas — slight warm cast */
+  --bg-surface:       hsl(35 12% 95%);     /* rails, nested panels — one notch down */
+  --bg-elevated:      var(--color-white);  /* cards / modal body — cleanest white */
+  --bg-hover:         hsl(220 10% 90%);    /* hover pills, segmented bg */
+  --bg-surface-hover: hsl(220 10% 90%);
 
   /* Text — dark enough to meet WCAG AA on the above */
   --text-primary:   var(--gray-990);
@@ -25,8 +28,11 @@
   --accent-primary:   var(--orange-700);
   --accent-secondary: var(--amber-600);
   --accent-hover:     var(--orange-800);
-  --accent-muted:     hsla(14 100% 60% / 0.12);
-  --accent-border:    hsla(14 100% 60% / 0.30);
+  /* Bumped muted/border densities so empty-state icon blocks and badge
+     tints feel opaque and confident on near-white canvases instead of
+     peach-pale. Still well below the full accent token for hierarchy. */
+  --accent-muted:     hsla(14 100% 50% / 0.15);
+  --accent-border:    hsla(14 100% 50% / 0.40);
 
   /* Status — Okabe-Ito tuned for AA on white */
   /* Base status values shift to AA-on-white darker Okabe-Ito variants.
@@ -38,9 +44,12 @@
   --status-info:    var(--cvd-blue-dark);
   /* Accent strong auto-derives via color-mix against --accent-primary */
 
-  /* Borders — light grays */
-  --border-subtle:  var(--gray-300);
-  --border-default: var(--gray-400);
+  /* Borders — darkened one notch so controls read precise against the
+     large white canvases (form fields, tab underlines, dividers). The
+     contrast-bump helps without looking heavy because the bg shift is
+     also deeper (warm off-white instead of pure near-white). */
+  --border-subtle:  var(--gray-400);   /* was gray-300 */
+  --border-default: var(--gray-500);   /* was gray-400 */
   --border-focus:   var(--blue-600);
   --border-width-default: 1px;
   --border-width-focus:   2px;
@@ -77,14 +86,15 @@
   --shadow-drop-zone-active: inset 0 0 0 3px hsla(14 90% 50% / 1),
                              0 0 20px hsla(14 90% 50% / 0.2);
 
-  /* Softer on Light — pure-black shadows at dark-theme intensity read as
-     harsh "sticker halos" on near-white surfaces. Warm blue-gray tint
-     matches the surface family, and alphas are tuned down so floating
-     panels feel elevated without a cool cast. */
-  --shadow-xs: 0 1px 2px hsla(220 10% 20% / 0.09), 0 2px 4px  hsla(220 10% 20% / 0.05);
-  --shadow-sm: 0 1px 2px hsla(220 10% 20% / 0.08), 0 2px 4px  hsla(220 10% 20% / 0.05);
-  --shadow-md: 0 2px 4px hsla(220 10% 20% / 0.05), 0 8px 16px hsla(220 10% 20% / 0.06);
-  --shadow-lg: 0 4px 8px hsla(220 10% 20% / 0.06), 0 16px 32px hsla(220 10% 20% / 0.07);
+  /* Crisper on Light — tight close-in drops with stronger darker alpha
+     read as "precise" rather than "fuzzy halo". Pairs with the darker
+     borders above; elevation now comes from edge + short shadow, not
+     from a wide blurry gradient. Warm blue-gray tint keeps shadows
+     feeling of the same family as the surfaces. */
+  --shadow-xs: 0 1px 1px hsla(220 15% 25% / 0.10);
+  --shadow-sm: 0 1px 2px hsla(220 15% 25% / 0.10), 0 1px 2px hsla(220 15% 25% / 0.06);
+  --shadow-md: 0 2px 4px hsla(220 15% 25% / 0.09), 0 4px 8px hsla(220 15% 25% / 0.05);
+  --shadow-lg: 0 4px 8px hsla(220 15% 25% / 0.10), 0 12px 20px hsla(220 15% 25% / 0.06);
 
   --selection-bg:   hsla(14 100% 50% / 0.20);
   --selection-text: var(--gray-990);

@@ -114,7 +114,7 @@ export default function GlobalExecutionSection() {
   if (isLoading) {
     return (
       <SectionCard
-        icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+        icon={<Globe className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
         title="Global Capacity"
         description="Cross-project concurrency limits"
       >
@@ -127,7 +127,7 @@ export default function GlobalExecutionSection() {
 
   return (
     <SectionCard
-      icon={<Globe className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<Globe className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Global Capacity"
       description="Cross-project concurrency limits"
     >
