@@ -13,11 +13,22 @@
  * Spec: specs/design/themes/high-contrast.md
  */
 
+/* Defensive canvas paint — some WebKit builds fail to resolve chained
+   `var(--color-black)` references on the document canvas, leaving body/main
+   transparent and showing the webview's native white. Hardcode the paint
+   here so HC always lands on pure black regardless of custom-prop state.
+   Light/Dark are unaffected — the rule only matches on HC. */
+html[data-theme="high-contrast"],
+html[data-theme="high-contrast"] body,
+html[data-theme="high-contrast"] main {
+  background-color: #000000 !important;
+}
+
 [data-theme="high-contrast"] {
   /* Backgrounds — pure black on every surface */
-  --bg-base:          var(--color-black);
-  --bg-surface:       var(--color-black);
-  --bg-elevated:      var(--color-black);
+  --bg-base:          #000000;
+  --bg-surface:       #000000;
+  --bg-elevated:      #000000;
   --bg-hover:         hsl(0 0% 15%);
   --bg-surface-hover: hsl(0 0% 15%);
 
