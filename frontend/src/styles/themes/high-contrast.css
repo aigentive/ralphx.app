@@ -383,3 +383,39 @@
 [data-theme="high-contrast"] [data-testid="plan-browser"] {
   border-right: 1px solid var(--border-default);
 }
+
+/* ============================================================================
+ * Phase 2 — Zone separators within multi-zone regions.
+ * Plan: specs/design/themes/hc-border-layout-plan.md §4.
+ * ============================================================================ */
+
+/* Ideation plan detail header — session title + metadata strip sits above
+   the tab bar. Bump its bottom stroke to --default so the handoff from
+   header to tabs reads as a region boundary. */
+[data-theme="high-contrast"] [data-testid="ideation-header"] {
+  border-bottom: 1px solid var(--border-default) !important;
+}
+
+/* Ideation tab bar (Plan · Verification · Proposals · Research) — the list
+   already has an inline border-bottom; bump its color to --default so the
+   tab row fences off tab content. Individual tab triggers still carry the
+   yellow 2px bottom indicator from the earlier HC tablist rule. */
+[data-theme="high-contrast"] [data-testid="content-tab-bar"] {
+  border-bottom-color: var(--border-default) !important;
+  border-bottom-width: 1px !important;
+}
+
+/* Ideation footer strip (accept / verify / etc. action row) — fence it
+   off from the scrollable plan body above. */
+[data-theme="high-contrast"] [data-testid="ideation-footer"] {
+  border-top: 1px solid var(--border-default);
+}
+
+/* Activity view header — houses mode toggle + search + filters. The
+   existing `border-b` utility carries a dynamic color; override to
+   --default so the toolbar reads as a fenced zone above the message
+   list. */
+[data-theme="high-contrast"] [data-testid="activity-view"] > div:first-of-type {
+  border-bottom-color: var(--border-default) !important;
+  border-bottom-width: 1px !important;
+}
