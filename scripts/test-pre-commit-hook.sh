@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for .githooks/pre-commit
-# Verifies the hook rejects node_modules paths and allows normal files.
+# Verifies the hook rejects node_modules paths, rejects staged Tauri version drift,
+# and allows normal files.
 
 set -uo pipefail
 
@@ -22,6 +23,100 @@ setup_repo() {
 
 pass() { echo "  PASS: $1"; ((PASS++)); }
 fail() { echo "  FAIL: $1"; ((FAIL++)); }
+
+write_aligned_tauri_files() {
+  local dir="$1"
+
+  mkdir -p "$dir/frontend" "$dir/src-tauri"
+
+  cat > "$dir/frontend/package.json" <<'EOF'
+{
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-fs": "^2.5.0",
+    "@tauri-apps/plugin-global-shortcut": "^2.3.1",
+    "@tauri-apps/plugin-opener": "^2.5.3",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1"
+  }
+}
+EOF
+
+  cat > "$dir/frontend/package-lock.json" <<'EOF'
+{
+  "name": "test",
+  "packages": {
+    "": {
+      "dependencies": {
+        "@tauri-apps/api": "^2.10.1",
+        "@tauri-apps/plugin-dialog": "^2.7.0",
+        "@tauri-apps/plugin-fs": "^2.5.0",
+        "@tauri-apps/plugin-global-shortcut": "^2.3.1",
+        "@tauri-apps/plugin-opener": "^2.5.3",
+        "@tauri-apps/plugin-process": "^2.3.1",
+        "@tauri-apps/plugin-updater": "^2.10.1"
+      }
+    },
+    "node_modules/@tauri-apps/api": { "version": "2.10.1" },
+    "node_modules/@tauri-apps/plugin-dialog": { "version": "2.7.0" },
+    "node_modules/@tauri-apps/plugin-fs": { "version": "2.5.0" },
+    "node_modules/@tauri-apps/plugin-global-shortcut": { "version": "2.3.1" },
+    "node_modules/@tauri-apps/plugin-opener": { "version": "2.5.3" },
+    "node_modules/@tauri-apps/plugin-process": { "version": "2.3.1" },
+    "node_modules/@tauri-apps/plugin-updater": { "version": "2.10.1" }
+  }
+}
+EOF
+
+  cat > "$dir/src-tauri/Cargo.toml" <<'EOF'
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.10.3", features = ["devtools"] }
+tauri-plugin-dialog = "2.7.0"
+tauri-plugin-fs = "2.5.0"
+tauri-plugin-global-shortcut = "2.3.1"
+tauri-plugin-opener = "2.5.3"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-window-state = "2.4.1"
+EOF
+
+  cat > "$dir/src-tauri/Cargo.lock" <<'EOF'
+[[package]]
+name = "tauri"
+version = "2.10.3"
+
+[[package]]
+name = "tauri-build"
+version = "2.5.6"
+
+[[package]]
+name = "tauri-plugin-dialog"
+version = "2.7.0"
+
+[[package]]
+name = "tauri-plugin-fs"
+version = "2.5.0"
+
+[[package]]
+name = "tauri-plugin-global-shortcut"
+version = "2.3.1"
+
+[[package]]
+name = "tauri-plugin-opener"
+version = "2.5.3"
+
+[[package]]
+name = "tauri-plugin-updater"
+version = "2.10.1"
+
+[[package]]
+name = "tauri-plugin-window-state"
+version = "2.4.1"
+EOF
+}
 
 # ─── Test 1: REJECT — top-level node_modules/package.json ───────────────────
 
@@ -74,6 +169,40 @@ else
   fail "Test 4: should have allowed node_modules_guide.md"
 fi
 rm -rf "$T4"
+
+# ─── Test 5: REJECT — staged Tauri version drift ────────────────────────────
+
+T5=$(setup_repo)
+write_aligned_tauri_files "$T5"
+python3 - <<'PY' "$T5/frontend/package.json"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["dependencies"]["@tauri-apps/api"] = "^2.11.0"
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+git -C "$T5" add frontend/package.json frontend/package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+if git -C "$T5" commit -m "test" 2>/dev/null; then
+  fail "Test 5: should have rejected staged Tauri version drift"
+else
+  pass "Test 5: rejects staged Tauri version drift"
+fi
+rm -rf "$T5"
+
+# ─── Test 6: ALLOW — aligned staged Tauri version files ─────────────────────
+
+T6=$(setup_repo)
+write_aligned_tauri_files "$T6"
+git -C "$T6" add frontend/package.json frontend/package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+if git -C "$T6" commit -m "test" 2>/dev/null; then
+  pass "Test 6: allows aligned staged Tauri version files"
+else
+  fail "Test 6: should have allowed aligned staged Tauri version files"
+fi
+rm -rf "$T6"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 
