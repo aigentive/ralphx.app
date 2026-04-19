@@ -5,7 +5,62 @@
 
 import { safeTrace } from "./redact.js";
 
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const DEFAULT_TAURI_API_URL = "http://127.0.0.1:3847";
+const ALLOWED_TAURI_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+const ALLOWED_TAURI_PORT = "3847";
+
+function resolveTauriApiBaseUrl(): string {
+  const raw = process.env.TAURI_API_URL || DEFAULT_TAURI_API_URL;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`Invalid TAURI_API_URL: ${raw}`);
+  }
+
+  if (parsed.protocol !== "http:") {
+    throw new Error(`Invalid TAURI_API_URL protocol: ${parsed.protocol}`);
+  }
+
+  if (!ALLOWED_TAURI_HOSTS.has(parsed.hostname)) {
+    throw new Error(`Invalid TAURI_API_URL host: ${parsed.hostname}`);
+  }
+
+  const effectivePort = parsed.port || "80";
+  if (effectivePort !== ALLOWED_TAURI_PORT) {
+    throw new Error(`Invalid TAURI_API_URL port: ${effectivePort}`);
+  }
+
+  parsed.pathname = "";
+  parsed.search = "";
+  parsed.hash = "";
+
+  return parsed.toString().replace(/\/$/, "");
+}
+
+function normalizeEndpoint(endpoint: string): string {
+  const trimmed = endpoint.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Endpoint must not be empty.");
+  }
+  if (trimmed.includes("://") || trimmed.startsWith("//")) {
+    throw new Error(`Invalid endpoint: ${endpoint}`);
+  }
+  if (trimmed.includes("..")) {
+    throw new Error(`Invalid endpoint traversal sequence: ${endpoint}`);
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error(`Invalid endpoint control characters: ${endpoint}`);
+  }
+  return trimmed.replace(/^\/+/, "");
+}
+
+function buildTauriApiUrl(endpoint: string): string {
+  const base = resolveTauriApiBaseUrl();
+  const safeEndpoint = normalizeEndpoint(endpoint);
+  return new URL(`/api/${safeEndpoint}`, `${base}/`).toString();
+}
 
 const MAX_RETRIES = 3;
 const BACKOFF_DELAYS_MS = [500, 1000, 2000];
@@ -210,7 +265,7 @@ export async function callTauri(
   args: Record<string, unknown>,
   options?: TauriCallOptions,
 ): Promise<unknown> {
-  const url = `${TAURI_API_URL}/api/${endpoint}`;
+  const url = buildTauriApiUrl(endpoint);
   return executeFetch(
     url,
     {
@@ -235,7 +290,7 @@ export async function callTauriGet(
   endpoint: string,
   options?: TauriCallOptions,
 ): Promise<unknown> {
-  const url = `${TAURI_API_URL}/api/${endpoint}`;
+  const url = buildTauriApiUrl(endpoint);
   return executeFetch(
     url,
     {
