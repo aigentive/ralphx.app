@@ -409,7 +409,7 @@ The MCP HTTP server starts automatically on `http://127.0.0.1:3847` when the Tau
 | Mode | Command | Frontend Port | Backend | Use Case |
 |---|---|---|---|---|
 | Native | `cd frontend && npm run tauri dev` | 1420 | Real Rust/Tauri | Full-stack development |
-| Native (fresh clean) | `./dev-fresh` | 1420 | Real Rust/Tauri after `cargo clean` | Large-artifact fresh starts |
+| Native (fresh clean) | `./dev-fresh` | 1420 | Real Rust/Tauri after `cargo clean`, with frontend install self-repair and Tauri version drift checks | Large-artifact fresh starts |
 | Web | `cd frontend && npm run dev:web` | 5173 | Mocked via `frontend/src/api-mock/` | UI-only work |
 
 Core commands:

@@ -2,28 +2,219 @@
 
 set -euo pipefail
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
+SRC_TAURI_DIR="$PROJECT_ROOT/src-tauri"
+VITE_PORT=1420
+TAURI_BACKEND_PORT=3847
+
+print_help() {
   cat <<'EOF'
 Usage: ./dev-fresh
 
 From repo root:
-1. cleans the Rust build artifacts under src-tauri/
-2. clears Vite optimized dependency cache under frontend/
-3. verifies no stale Tauri/Vite dev server is already occupying the dev ports
-4. starts the native Tauri dev app from frontend/
+1. verifies Tauri JS/Rust packages are on the same major/minor release
+2. repairs a missing or invalid frontend install with `npm ci` when safe
+3. cleans the Rust build artifacts under src-tauri/
+4. clears Vite optimized dependency cache under frontend/
+5. verifies no stale Tauri/Vite dev server is already occupying the dev ports
+6. starts the native Tauri dev app from frontend/
 
 Equivalent to:
+  verify frontend/package-lock.json vs src-tauri/Cargo.lock Tauri major/minor versions
+  cd frontend && npm ci   # only when node_modules is missing or invalid
   cd src-tauri && cargo clean
   rm -rf frontend/node_modules/.vite
-  cd ../frontend && npm run tauri dev
+  cd frontend && npm run tauri dev
 EOF
+}
+
+repair_frontend_install() {
+  local reason="$1"
+
+  echo "dev-fresh: $reason"
+  echo "dev-fresh: running npm ci in frontend/ to rebuild node_modules..."
+  (
+    cd "$FRONTEND_DIR"
+    npm ci
+  )
+}
+
+verify_tauri_package_alignment() {
+  local mismatch_report
+
+  if ! mismatch_report="$(
+    node - "$PROJECT_ROOT" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = process.argv[2];
+const frontendPackagePath = path.join(root, "frontend", "package.json");
+const frontendLockPath = path.join(root, "frontend", "package-lock.json");
+const cargoLockPath = path.join(root, "src-tauri", "Cargo.lock");
+
+const dependencyPairs = [
+  ["@tauri-apps/api", "tauri"],
+  ["@tauri-apps/plugin-dialog", "tauri-plugin-dialog"],
+  ["@tauri-apps/plugin-fs", "tauri-plugin-fs"],
+  ["@tauri-apps/plugin-global-shortcut", "tauri-plugin-global-shortcut"],
+  ["@tauri-apps/plugin-opener", "tauri-plugin-opener"],
+  ["@tauri-apps/plugin-process", "tauri-plugin-process"],
+  ["@tauri-apps/plugin-updater", "tauri-plugin-updater"],
+];
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function majorMinor(version) {
+  const normalized = String(version).replace(/^[~^]/, "");
+  const match = normalized.match(/^(\d+)\.(\d+)/);
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
+function readFrontendVersions() {
+  const packageJson = JSON.parse(fs.readFileSync(frontendPackagePath, "utf8"));
+  const packageLock = fs.existsSync(frontendLockPath)
+    ? JSON.parse(fs.readFileSync(frontendLockPath, "utf8"))
+    : null;
+  const resolvedVersions = new Map();
+
+  for (const [frontendPackage] of dependencyPairs) {
+    const lockVersion =
+      packageLock?.packages?.[`node_modules/${frontendPackage}`]?.version ?? null;
+    const manifestVersion =
+      packageJson.dependencies?.[frontendPackage] ??
+      packageJson.devDependencies?.[frontendPackage] ??
+      null;
+    resolvedVersions.set(frontendPackage, lockVersion ?? manifestVersion);
+  }
+
+  return resolvedVersions;
+}
+
+function readCargoVersions() {
+  const cargoLock = fs.readFileSync(cargoLockPath, "utf8");
+  const resolvedVersions = new Map();
+
+  for (const [, cargoPackage] of dependencyPairs) {
+    const match = cargoLock.match(
+      new RegExp(`name = "${escapeRegex(cargoPackage)}"\\nversion = "([^"]+)"`)
+    );
+    resolvedVersions.set(cargoPackage, match ? match[1] : null);
+  }
+
+  return resolvedVersions;
+}
+
+const frontendVersions = readFrontendVersions();
+const cargoVersions = readCargoVersions();
+const mismatches = [];
+
+for (const [frontendPackage, cargoPackage] of dependencyPairs) {
+  const frontendVersion = frontendVersions.get(frontendPackage);
+  const cargoVersion = cargoVersions.get(cargoPackage);
+
+  if (!frontendVersion || !cargoVersion) {
+    continue;
+  }
+
+  const frontendMajorMinor = majorMinor(frontendVersion);
+  const cargoMajorMinor = majorMinor(cargoVersion);
+
+  if (frontendMajorMinor && cargoMajorMinor && frontendMajorMinor !== cargoMajorMinor) {
+    mismatches.push(`${cargoPackage} (${cargoVersion}) : ${frontendPackage} (${frontendVersion})`);
+  }
+}
+
+if (mismatches.length > 0) {
+  console.log(mismatches.join("\n"));
+  process.exit(2);
+}
+NODE
+  )"; then
+    cat >&2 <<EOF
+dev-fresh found Tauri dependency version drift before starting the app.
+The frontend lockfile and Rust lockfile must agree on Tauri major/minor versions.
+
+Mismatches:
+$mismatch_report
+
+Auto-reinstalling node_modules will not fix this. Align the versions in:
+  - frontend/package.json
+  - frontend/package-lock.json
+  - src-tauri/Cargo.toml
+  - src-tauri/Cargo.lock
+
+Then rerun ./dev-fresh.
+EOF
+    exit 1
+  fi
+}
+
+ensure_frontend_install() {
+  if [[ ! -d "$FRONTEND_DIR/node_modules" ]]; then
+    repair_frontend_install "frontend/node_modules is missing."
+    return
+  fi
+
+  local npm_ls_output
+  if ! npm_ls_output="$(
+    cd "$FRONTEND_DIR" &&
+      npm ls --depth=0 2>&1
+  )"; then
+    cat <<EOF
+dev-fresh: frontend install check failed. Rebuilding node_modules with npm ci.
+$npm_ls_output
+EOF
+    repair_frontend_install "frontend/node_modules is out of sync with frontend/package-lock.json."
+  fi
+}
+
+failure_looks_like_broken_frontend_install() {
+  local log_file="$1"
+
+  grep -Eq \
+    "ENOENT: no such file or directory, open '.*node_modules/|Cannot find module '.*node_modules/|ERR_MODULE_NOT_FOUND.*node_modules/|Error: Cannot find package '.*' imported from .*/node_modules/" \
+    "$log_file"
+}
+
+start_tauri_dev() {
+  local repair_attempted="${1:-0}"
+  local launch_log
+  launch_log="$(mktemp -t dev-fresh-tauri)"
+
+  set +e
+  (
+    cd "$FRONTEND_DIR"
+    npm run tauri dev
+  ) 2>&1 | tee "$launch_log"
+  local dev_status=${PIPESTATUS[0]}
+  set -e
+
+  if [[ $dev_status -eq 0 ]]; then
+    rm -f "$launch_log"
+    return 0
+  fi
+
+  if [[ "$repair_attempted" -eq 0 ]] && failure_looks_like_broken_frontend_install "$launch_log"; then
+    echo "dev-fresh: dev launch failed because node_modules looks incomplete or corrupted."
+    repair_frontend_install "Attempting one automatic frontend reinstall before retrying."
+    rm -f "$launch_log"
+    echo "dev-fresh: retrying npm run tauri dev after npm ci..."
+    start_tauri_dev 1
+    return $?
+  fi
+
+  rm -f "$launch_log"
+  return "$dev_status"
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  print_help
   exit 0
 fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
-VITE_PORT=1420
-TAURI_BACKEND_PORT=3847
 
 if lsof -ti tcp:"$VITE_PORT" >/dev/null 2>&1 || lsof -ti tcp:"$TAURI_BACKEND_PORT" >/dev/null 2>&1; then
   cat >&2 <<EOF
@@ -37,11 +228,15 @@ EOF
   exit 1
 fi
 
+verify_tauri_package_alignment
+ensure_frontend_install
+
 (
-  cd "$PROJECT_ROOT/src-tauri"
+  cd "$SRC_TAURI_DIR"
   cargo clean
 
-  cd "$PROJECT_ROOT/frontend"
+  cd "$FRONTEND_DIR"
   rm -rf node_modules/.vite
-  npm run tauri dev
 )
+
+start_tauri_dev
