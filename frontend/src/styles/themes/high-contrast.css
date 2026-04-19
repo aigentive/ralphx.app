@@ -32,54 +32,57 @@ html[data-theme="high-contrast"] main {
   --bg-hover:         hsl(0 0% 15%);
   --bg-surface-hover: hsl(0 0% 15%);
 
-  /* Text — pure white + graduated grays */
-  --text-primary:   var(--color-white);
-  --text-secondary: var(--color-white-dim-1);
-  --text-muted:     var(--color-white-dim-2);
-  --text-inverse:   var(--color-black);
+  /* Text — pure white + graduated grays. Literals, not var(--color-*).
+     WKWebView drops chained var() on these too. See
+     .claude/rules/wkwebview-css-vars.md. */
+  --text-primary:   #ffffff;
+  --text-secondary: #e0e0e0;
+  --text-muted:     #b0b0b0;
+  --text-inverse:   #000000;
 
-  /* Accent — yellow (orange fails AAA on black) */
-  --accent-primary:   var(--yellow-500);
-  --accent-secondary: var(--yellow-400);
-  --accent-hover:     var(--yellow-300);
+  /* Accent — yellow (orange fails AAA on black). Literals per WKWebView
+     rule — inheritance breaks on chained var() for color-bearing props. */
+  --accent-primary:   #ffdd00;
+  --accent-secondary: #ffee33;
+  --accent-hover:     #ffee66;
   --accent-muted:     hsla(50 100% 50% / 0.2);
   --accent-border:    hsla(50 100% 50% / 0.5);
 
-  /* Status — bright + always paired with icons */
-  /* Base status values shift to HC brights. HC uses higher alphas on tints
-   * to punch against pure black — override the color-mix percentages here. */
-  --status-success:        var(--hc-green);
-  --status-success-muted:  color-mix(in srgb, var(--status-success) 18%, transparent);
-  --status-success-border: color-mix(in srgb, var(--status-success) 50%, transparent);
-  --status-success-strong: color-mix(in srgb, var(--status-success) 80%, transparent);
+  /* Status — bright + always paired with icons. Literals per WKWebView
+     rule; color-mix against the same literal keeps the alpha ladder. */
+  --status-success:        #00ff66;
+  --status-success-muted:  color-mix(in srgb, #00ff66 18%, transparent);
+  --status-success-border: color-mix(in srgb, #00ff66 50%, transparent);
+  --status-success-strong: color-mix(in srgb, #00ff66 80%, transparent);
 
-  --status-warning:        var(--yellow-500);
-  --status-warning-muted:  color-mix(in srgb, var(--status-warning) 20%, transparent);
-  --status-warning-border: color-mix(in srgb, var(--status-warning) 50%, transparent);
-  --status-warning-strong: color-mix(in srgb, var(--status-warning) 80%, transparent);
+  --status-warning:        #ffdd00;
+  --status-warning-muted:  color-mix(in srgb, #ffdd00 20%, transparent);
+  --status-warning-border: color-mix(in srgb, #ffdd00 50%, transparent);
+  --status-warning-strong: color-mix(in srgb, #ffdd00 80%, transparent);
 
-  --status-error:          var(--hc-red);
-  --status-error-muted:    color-mix(in srgb, var(--status-error) 18%, transparent);
-  --status-error-border:   color-mix(in srgb, var(--status-error) 50%, transparent);
-  --status-error-strong:   color-mix(in srgb, var(--status-error) 80%, transparent);
+  --status-error:          #ff3344;
+  --status-error-muted:    color-mix(in srgb, #ff3344 18%, transparent);
+  --status-error-border:   color-mix(in srgb, #ff3344 50%, transparent);
+  --status-error-strong:   color-mix(in srgb, #ff3344 80%, transparent);
 
   /* HC: remap info→yellow so Ready/Queued/etc. read on black (sky fails AAA) */
-  --status-info:           var(--yellow-500);
-  --status-info-muted:     color-mix(in srgb, var(--status-info) 20%, transparent);
-  --status-info-border:    color-mix(in srgb, var(--status-info) 50%, transparent);
-  --status-info-strong:    color-mix(in srgb, var(--status-info) 80%, transparent);
+  --status-info:           #ffdd00;
+  --status-info-muted:     color-mix(in srgb, #ffdd00 20%, transparent);
+  --status-info-border:    color-mix(in srgb, #ffdd00 50%, transparent);
+  --status-info-strong:    color-mix(in srgb, #ffdd00 80%, transparent);
 
-  --accent-strong:         color-mix(in srgb, var(--accent-primary) 80%, transparent);
+  --accent-strong:         color-mix(in srgb, #ffdd00 80%, transparent);
 
-  /* Borders — always solid white, thicker stroke width */
-  --border-subtle:  var(--alpha-white-50);
-  --border-default: var(--color-white);
-  --border-focus:   var(--yellow-500);
+  /* Borders — always solid white, thicker stroke width. Literals for the
+     same WKWebView reason as the bg/text tokens above. */
+  --border-subtle:  hsla(0 0% 100% / 0.50);
+  --border-default: #ffffff;
+  --border-focus:   #ffdd00;
   --border-width-default: 2px;
   --border-width-focus:   3px;
 
-  /* Focus ring — bright yellow */
-  --focus-ring: var(--yellow-500);
+  /* Focus ring — bright yellow. Literal per WKWebView rule. */
+  --focus-ring: #ffdd00;
 
   /* Overlay surfaces — HC uses higher-contrast separation (thicker borders
    * do most of the work). Overlay still available but less subtle. */
@@ -121,11 +124,11 @@ html[data-theme="high-contrast"] main {
 
   /* Selection — yellow highlight with black text */
   --selection-bg:   hsla(50 100% 50% / 0.5);
-  --selection-text: var(--color-black);
+  --selection-text: #000000;
 
-  /* Nav active — yellow with black text */
-  --nav-active-bg:   var(--yellow-500);
-  --nav-active-text: var(--color-black);
+  /* Nav active — yellow with black text. Literals per WKWebView rule. */
+  --nav-active-bg:   #ffdd00;
+  --nav-active-text: #000000;
 
   /* Syntax palette — HC code surface. Bright saturated hues with high
    * luminance contrast against pure black. */
@@ -134,7 +137,7 @@ html[data-theme="high-contrast"] main {
   --syntax-number:      #bd93f9; /* bright lavender */
   --syntax-comment:     #b0b0b0; /* gray (secondary on black) */
   --syntax-function:    #8be9fd; /* bright cyan */
-  --syntax-class-name:  var(--yellow-500); /* yellow — main accent */
+  --syntax-class-name:  #ffdd00; /* yellow — main accent (literal per WKWebView rule) */
   --syntax-operator:    var(--syntax-keyword);
   --syntax-punctuation: var(--text-secondary);
 
@@ -190,20 +193,21 @@ html[data-theme="high-contrast"] main {
    stays legible (nav yellow-fill > card yellow-border > body white).
    See themes/high-contrast.md §3 — avoid color-only overloading. */
 [data-theme="high-contrast"] {
+  /* Component tokens — literals per WKWebView rule. */
   --card-icon-bg: transparent;
-  --card-icon-border: var(--accent-primary);
-  --card-icon-color: var(--color-white);
+  --card-icon-border: #ffdd00;
+  --card-icon-color: #ffffff;
 
   /* Dialog/modal design in HC uses the HC language: pure-black everywhere,
      WHITE borders do the separation work. No tonal ramps — surfaces are
      all pure black, and strong white strokes frame the modal, its rail,
      and each card. Matches theme-architecture.md §6 (HC favours shape
      and stroke over luminance). */
-  --dialog-bg:           var(--color-black);
-  --dialog-rail-bg:      var(--color-black);
-  --dialog-border-color: var(--color-white);
-  --card-bg:             var(--color-black);
-  --card-border:         var(--color-white);
+  --dialog-bg:           #000000;
+  --dialog-rail-bg:      #000000;
+  --dialog-border-color: #ffffff;
+  --card-bg:             #000000;
+  --card-border:         #ffffff;
 }
 
 /* HC button affordance — styleguide §3 bans color-only affordances, so every
