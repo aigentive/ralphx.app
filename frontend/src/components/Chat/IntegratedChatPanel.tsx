@@ -865,13 +865,17 @@ export function IntegratedChatPanel({
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          {/* Header - subtle separation within glass container */}
+          {/* Header — theme-agnostic subtle tint matches ChatPanel overlay.
+             Previous bg-base@50 produced visible seam on Dark (lum=25 vs
+             body lum=30) and collapsed to pure black on HC. Using a tint
+             derived from text-primary keeps a consistent 2% brighter band
+             across all three themes. */}
           <div
             data-testid="integrated-chat-header"
             className="flex items-center justify-between h-11 px-3 shrink-0"
             style={{
-              backgroundColor: withAlpha("var(--bg-base)", 50),
-              borderBottom: "1px solid var(--overlay-faint)",
+              backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
+              borderBottom: "1px solid var(--border-subtle)",
             }}
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
@@ -1051,12 +1055,14 @@ export function IntegratedChatPanel({
             />
           )}
 
-          {/* Input Area - subtle separation within glass container */}
+          {/* Input Area — same theme-agnostic tint as header for symmetric
+             chrome rhythm. Previous bg-base@50 collapsed on HC and shaded
+             darker than body on Dark, producing a three-tier sandwich. */}
           <div
             className={inputContainerClassName ?? "shrink-0"}
             style={inputContainerClassName ? undefined : {
-              backgroundColor: withAlpha("var(--bg-base)", 50),
-              borderTop: "1px solid var(--overlay-faint)",
+              backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
+              borderTop: "1px solid var(--border-subtle)",
             }}
           >
             {/* Queued Messages - unified queue with context-aware keys */}
