@@ -41,9 +41,84 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 
 ---
 
+## Release Versioning Policy
+
+RalphX is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
+
+Current policy while RalphX remains on `0.x`:
+
+| Bump | Use It When | Do Not Use It Just Because |
+|---|---|---|
+| `patch` | Fixes, polish, dependency churn, release/build/CI work, and internal changes that do not materially expand the shipped product surface | There were many commits, many changed files, a large diff stat, or a lot of release automation churn |
+| `minor` | A release delivers a meaningful new user-visible capability or a meaningful expansion of an existing workflow | The product is still volatile or the team shipped a lot of internal work quickly |
+| `major` | An explicit `1.0.0` milestone or a deliberate compatibility reset that deserves a public stability-contract change | Early-stage churn, broad refactors, or high release pressure |
+
+Practical rules:
+
+1. Public versioning tracks shipped behavior, install/update surface, and workflow shape.
+2. Raw commit count, file count, diff size, dependency bump volume, and CI churn are supporting context only.
+3. Frequent `minor` releases are acceptable in `0.x` if each release moves the visible product forward in a meaningful way.
+4. `1.0.0` is a deliberate product milestone, not an automatic consequence of high velocity.
+
+---
+
 ## Creating a Release
 
-### Step 1: Bump Version
+### Preferred Flow: Guided Wrapper
+
+Run the guided wrapper after the release code is finalized and local regression is green:
+
+```bash
+./scripts/release.sh
+```
+
+What it does:
+
+1. Generates the release proposal
+2. Pauses so you can review the proposal and accept or reject the suggested version
+3. Stores the accepted version in `.artifacts/release-notes/.version`
+4. Runs `./scripts/bump-version.sh`
+5. Runs `./scripts/generate-release-notes.sh`
+6. Pauses again so you can review and edit the generated artifacts before continuing to the manual git/tag/workflow steps
+
+Primary review artifacts:
+
+- proposal draft: `.artifacts/release-notes/proposal-from-v0.1.0.md`
+- accepted version file: `.artifacts/release-notes/.version` (local/gitignored)
+- release notes: `release-notes/vX.Y.Z.md`
+- Codex logs: `.artifacts/release-notes/logs/`
+
+Use `--from`, `--to`, `--current-version`, `--model`, or `--reasoning-effort` when you need to customize the compare range or Codex run.
+
+### Manual Flow
+
+Use this when you want finer control than the wrapper gives you.
+
+### Step 1: Propose The Version First
+
+```bash
+./scripts/propose-release.sh
+```
+
+Then:
+
+1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version.
+2. Accept the proposal at the prompt if you want RalphX to store that version in `.artifacts/release-notes/.version`.
+3. If you do not want the prompt, use:
+   - `./scripts/propose-release.sh --accept`
+4. If you reject the proposal, rerun with a different range or override the version manually in the next step.
+
+Use `--from`, `--to`, or `--current-version` when you need to analyze a non-default compare range or when the current released version cannot be inferred from the start ref.
+
+### Step 2: Bump The Chosen Version
+
+If you accepted the proposal, you can omit the version:
+
+```bash
+./scripts/bump-version.sh
+```
+
+Or pass an explicit version if you are overriding:
 
 ```bash
 ./scripts/bump-version.sh 0.2.0
@@ -54,16 +129,26 @@ This updates version in:
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 
-### Step 2: Commit Release Prep
+### Step 3: Commit Release Prep
 
 ```bash
-git add -A
+git add frontend/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
 git commit -m "chore: bump version to 0.2.0"
 ```
 
-### Step 3: Draft And Review Release Notes
+Do not commit `.artifacts/release-notes/.version`; it is local state for the no-arg release helpers.
 
-Run this after the release code is finalized and local regression is green, but before you push the release tag if you want the reviewed notes committed into `release-notes/vX.Y.Z.md` and picked up automatically by the release workflow.
+### Step 4: Draft And Review Release Notes
+
+Run this after the version has been chosen and bumped, but before you push the release tag if you want the reviewed notes committed into `release-notes/vX.Y.Z.md` and picked up automatically by the release workflow.
+
+If you accepted the proposal, you can omit the version here too:
+
+```bash
+./scripts/generate-release-notes.sh
+```
+
+Or pass an explicit version:
 
 ```bash
 ./scripts/generate-release-notes.sh 0.2.0
@@ -81,14 +166,14 @@ Then:
 4. If you decide not to keep the draft in git, leave it uncommitted or remove it locally:
    - `rm -f release-notes/v0.2.0.md`
 
-### Step 4: Create And Push The Release Tag
+### Step 5: Create And Push The Release Tag
 
 ```bash
 git tag v0.2.0
 git push origin main --tags
 ```
 
-### Step 5: Run The Release Build Workflow
+### Step 6: Run The Release Build Workflow
 
 After the tag is on `origin`, trigger `Release Build` manually from `main`:
 
@@ -110,7 +195,7 @@ What `Release Build` does:
 5. **Artifacts**: Uploads `release-aarch64`, `release-x86_64`, trace logs, and `release-metadata`
 6. **Trigger**: A successful `Release Build` on `main` automatically triggers `Release Publish`
 
-### Step 6: Verify The Publish Workflow
+### Step 7: Verify The Publish Workflow
 
 `Release Publish` reuses the successful build artifacts instead of rebuilding.
 
@@ -247,6 +332,9 @@ cargo tauri build
 | `.github/workflows/release-publish.yml` | Publish workflow: consume release artifacts, publish public assets, and update Homebrew |
 | `scripts/build-local-release.sh` | Local internal release-like build script |
 | `scripts/build-prod-release.sh` | Internal CI release artifact entrypoint |
+| `scripts/release.sh` | Guided local release-prep wrapper that orchestrates proposal, version bump, and release-note generation |
+| `scripts/propose-release.sh` | Codex-assisted version recommendation generator |
+| `scripts/release-analysis-common.sh` | Shared release evidence and Codex logging helper used by the proposal and notes scripts |
 | `scripts/bump-version.sh` | Version management script |
 | `scripts/generate-release-notes.sh` | Codex-assisted release notes draft generator |
 | `release-notes/` | Curated release notes consumed automatically by the release workflow when present |
