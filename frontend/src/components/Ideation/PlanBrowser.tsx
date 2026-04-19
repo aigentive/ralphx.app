@@ -275,16 +275,15 @@ export function PlanBrowser({
         flexShrink: 0,
       }}
     >
-      {/* Floating panel inner container */}
+      {/* Panel inner container — fills to layout edges. Phase 1 region
+         border on the outer plan-browser element separates the rail
+         from main content, so no card stroke/gap needed here. */}
       <div
-        className="flex flex-col h-full rounded-[10px]"
+        className="flex flex-col h-full"
         style={{
-          margin: "8px",
           background: withAlpha("var(--bg-surface)", 92),
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          border: "1px solid var(--overlay-weak)",
-          boxShadow: "var(--shadow-md)",
         }}
       >
         {/* Header */}

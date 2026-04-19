@@ -842,27 +842,20 @@ export function IntegratedChatPanel({
     <>
       <style>{animationStyles}</style>
       <RecoveryPromptDialog surface="chat" taskId={selectedTaskId ?? undefined} />
-      {/* Outer container - matches main content bg for unified surface */}
+      {/* Outer container — fills to layout edges. Phase 1 region border
+         on [data-testid="integrated-chat-panel"] separates chat from
+         main content, so no floating-card chrome needed here. */}
       <div
         data-testid="integrated-chat-panel"
         className="h-full flex flex-col overflow-hidden"
-        style={{
-          backgroundColor: "transparent", /* Let parent bg show through */
-          padding: "8px", /* Equal padding all sides - floating glass element */
-        }}
       >
-        {/* Inner rounded container - flat with blur */}
+        {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
           className="flex-1 flex flex-col overflow-hidden"
           style={{
-            borderRadius: "10px",
-            /* FLAT semi-transparent (no gradient) */
             background: withAlpha("var(--bg-surface)", 92),
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
-            /* Luminous perimeter edge */
-            border: "1px solid var(--overlay-weak)",
-            boxShadow: "var(--shadow-lg)",
           }}
         >
           {/* Header — theme-agnostic subtle tint matches ChatPanel overlay.
