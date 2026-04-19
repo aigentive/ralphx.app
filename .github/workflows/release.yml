@@ -445,17 +445,17 @@ jobs:
           if [[ -f "${notes_file}" ]]; then
             cp "${notes_file}" release-assets/release-notes.md
           else
-            cat > release-assets/release-notes.md <<EOF
-            Release artifacts for ${tag}.
-
-            Included:
-            - macOS Apple Silicon DMG
-            - macOS Intel DMG
-            - macOS Apple Silicon updater bundle
-            - macOS Intel updater bundle
-            - latest.json
-            - checksums.txt
-            EOF
+            {
+              printf 'Release artifacts for %s.\n\n' "${tag}"
+              printf 'Included:\n'
+              printf '%s\n' \
+                '- macOS Apple Silicon DMG' \
+                '- macOS Intel DMG' \
+                '- macOS Apple Silicon updater bundle' \
+                '- macOS Intel updater bundle' \
+                '- latest.json' \
+                '- checksums.txt'
+            } > release-assets/release-notes.md
           fi
 
           aarch64_updater="release-assets/release-aarch64/RalphX_${version}_aarch64.app.tar.gz"
