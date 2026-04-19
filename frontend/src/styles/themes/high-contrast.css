@@ -247,78 +247,11 @@ html[data-theme="high-contrast"] main {
   color: var(--text-primary) !important;
 }
 
-/* HC settings-dialog inversion — pure-black-on-black modal made dense
-   settings surfaces unreadable at a glance. Inside the dialog we flip to a
-   LIGHT-theme palette (white surfaces, dark text, orange accent). Scoped
-   to the dialog root (default testid OR the Settings-dialog override) so
-   rest of the HC shell stays pure-black. CSS custom props inherit, so
-   every child picks these up. */
-[data-theme="high-contrast"] [data-testid="modal-content"],
-[data-theme="high-contrast"] [data-testid="settings-dialog"] {
-  --bg-base:        var(--color-white);
-  --bg-surface:     hsl(35 12% 95%);
-  --bg-elevated:    var(--color-white);
-  --bg-hover:       hsl(220 10% 90%);
-  --bg-surface-hover: hsl(220 10% 90%);
-
-  --text-primary:   var(--gray-990);
-  --text-secondary: var(--gray-700);
-  --text-muted:     var(--gray-600);
-  --text-inverse:   var(--color-white);
-
-  --accent-primary: var(--orange-700);
-  --accent-secondary: var(--amber-600);
-  --accent-hover:   var(--orange-800);
-  --accent-muted:   hsla(14 100% 50% / 0.15);
-  --accent-border:  hsla(14 100% 50% / 0.40);
-
-  --border-subtle:  var(--gray-400);
-  --border-default: var(--gray-500);
-  --border-focus:   var(--blue-600);
-  --border-width-default: 1px;
-  --border-width-focus:   2px;
-
-  --focus-ring: var(--blue-600);
-
-  --dialog-bg:           var(--color-white);
-  --dialog-rail-bg:      hsl(35 12% 95%);
-  --dialog-border-color: var(--gray-500);
-  --card-bg:             var(--color-white);
-  --card-border:         var(--gray-400);
-  --card-icon-bg:        hsla(14 100% 50% / 0.15);
-  --card-icon-border:    hsla(14 100% 50% / 0.40);
-  --card-icon-color:     var(--orange-700);
-
-  /* shadcn bridge — scoped so components inside read light surfaces */
-  --background:         var(--color-white);
-  --foreground:         var(--gray-990);
-  --card:               var(--color-white);
-  --card-foreground:    var(--gray-990);
-  --popover:            var(--color-white);
-  --popover-foreground: var(--gray-990);
-  --primary:            var(--orange-700);
-  --primary-foreground: var(--color-white);
-  --secondary:          hsl(35 12% 95%);
-  --secondary-foreground: var(--gray-990);
-  --muted:              hsl(35 12% 95%);
-  --muted-foreground:   var(--gray-600);
-  --accent:             hsl(220 10% 90%);
-  --accent-foreground:  var(--gray-990);
-  --border:             var(--gray-500);
-  --input:              var(--gray-500);
-  --ring:               var(--orange-700);
-
-  background: var(--color-white);
-  color: var(--gray-990);
-}
-
-/* Neutralise HC-global focus outline inside the light-scoped dialog so
-   the yellow ring doesn't clash with the white surface. */
-[data-theme="high-contrast"] [data-testid="modal-content"] :focus-visible,
-[data-theme="high-contrast"] [data-testid="settings-dialog"] :focus-visible {
-  outline-color: var(--blue-600);
-  outline-width: 2px;
-}
+/* Settings / dialog on HC — the modal uses the standard HC palette
+   (pure-black surfaces, pure-white text, yellow accent, white borders).
+   Previously scoped a light palette here as an exception; reverted per
+   user request 2026-04-19 — consistency with the rest of the shell wins
+   over density-compensation. */
 
 /* HC sidebar / list-row separation — on pure-black rails the default hover
    tint (15% white) is subtle. Add a bottom divider between adjacent rows so
