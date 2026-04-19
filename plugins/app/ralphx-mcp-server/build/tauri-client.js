@@ -3,7 +3,54 @@
  * All MCP tools forward to these endpoints (proxy pattern)
  */
 import { safeTrace } from "./redact.js";
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const DEFAULT_TAURI_API_URL = "http://127.0.0.1:3847";
+const ALLOWED_TAURI_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+const ALLOWED_TAURI_PORT = "3847";
+function resolveTauriApiBaseUrl() {
+    const raw = process.env.TAURI_API_URL || DEFAULT_TAURI_API_URL;
+    let parsed;
+    try {
+        parsed = new URL(raw);
+    }
+    catch {
+        throw new Error(`Invalid TAURI_API_URL: ${raw}`);
+    }
+    if (parsed.protocol !== "http:") {
+        throw new Error(`Invalid TAURI_API_URL protocol: ${parsed.protocol}`);
+    }
+    if (!ALLOWED_TAURI_HOSTS.has(parsed.hostname)) {
+        throw new Error(`Invalid TAURI_API_URL host: ${parsed.hostname}`);
+    }
+    const effectivePort = parsed.port || "80";
+    if (effectivePort !== ALLOWED_TAURI_PORT) {
+        throw new Error(`Invalid TAURI_API_URL port: ${effectivePort}`);
+    }
+    parsed.pathname = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+}
+function normalizeEndpoint(endpoint) {
+    const trimmed = endpoint.trim();
+    if (trimmed.length === 0) {
+        throw new Error("Endpoint must not be empty.");
+    }
+    if (trimmed.includes("://") || trimmed.startsWith("//")) {
+        throw new Error(`Invalid endpoint: ${endpoint}`);
+    }
+    if (trimmed.includes("..")) {
+        throw new Error(`Invalid endpoint traversal sequence: ${endpoint}`);
+    }
+    if (/[\r\n]/.test(trimmed)) {
+        throw new Error(`Invalid endpoint control characters: ${endpoint}`);
+    }
+    return trimmed.replace(/^\/+/, "");
+}
+function buildTauriApiUrl(endpoint) {
+    const base = resolveTauriApiBaseUrl();
+    const safeEndpoint = normalizeEndpoint(endpoint);
+    return new URL(`/api/${safeEndpoint}`, `${base}/`).toString();
+}
 const MAX_RETRIES = 3;
 const BACKOFF_DELAYS_MS = [500, 1000, 2000];
 export class TauriClientError extends Error {
@@ -166,7 +213,7 @@ async function executeFetch(url, init, label) {
  * @throws TauriClientError on HTTP errors
  */
 export async function callTauri(endpoint, args, options) {
-    const url = `${TAURI_API_URL}/api/${endpoint}`;
+    const url = buildTauriApiUrl(endpoint);
     return executeFetch(url, {
         method: "POST",
         headers: {
@@ -183,7 +230,7 @@ export async function callTauri(endpoint, args, options) {
  * @throws TauriClientError on HTTP errors
  */
 export async function callTauriGet(endpoint, options) {
-    const url = `${TAURI_API_URL}/api/${endpoint}`;
+    const url = buildTauriApiUrl(endpoint);
     return executeFetch(url, {
         method: "GET",
         headers: {
