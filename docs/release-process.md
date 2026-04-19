@@ -27,20 +27,6 @@ Use the local helper when you want a release-mode build that still syncs local a
 
 This helper may seed the app-data DB from the dev DB and refresh plugin runtime into Application Support.
 
-### Production Release Build
-
-Use the production entrypoint for distributable artifacts and CI/release automation:
-
-```bash
-./scripts/build-prod-release.sh
-```
-
-This path does not mutate local Application Support state. For signed builds, ensure your environment has:
-
-```bash
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
-```
-
 ### Testing the Build
 
 ```bash
@@ -260,7 +246,7 @@ cargo tauri build
 | `.github/workflows/release.yml` | Build-only release workflow: sign, notarize, package, and upload release artifacts |
 | `.github/workflows/release-publish.yml` | Publish workflow: consume release artifacts, publish public assets, and update Homebrew |
 | `scripts/build-local-release.sh` | Local internal release-like build script |
-| `scripts/build-prod-release.sh` | Production release artifact entrypoint |
+| `scripts/build-prod-release.sh` | Internal CI release artifact entrypoint |
 | `scripts/bump-version.sh` | Version management script |
 | `scripts/generate-release-notes.sh` | Codex-assisted release notes draft generator |
 | `release-notes/` | Curated release notes consumed automatically by the release workflow when present |
