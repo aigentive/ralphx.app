@@ -203,6 +203,16 @@
   border: 1px solid var(--border-default);
 }
 
+/* HC ghost-button affordance — shadcn variant="ghost" renders transparent
+   bg + hover:bg-accent. On HC that's invisible until hover. Spec §3 "No
+   color-only affordances" — give ghost buttons a subtle border so they
+   read as interactive. Excludes buttons that already carry an explicit
+   border utility class to avoid double-stroke. */
+[data-theme="high-contrast"] button[class*="hover:bg-accent"]:not([class*="border"]):not(.bg-secondary),
+[data-theme="high-contrast"] a[class*="hover:bg-accent"]:not([class*="border"]) {
+  border: 1px solid var(--border-subtle);
+}
+
 /* HC segmented-tab active state — spec §4 Tabs:
    Trigger active: yellow bg, black text, 2px bottom border.
    Applies to Radix Tabs + ARIA tablist + data-state=active patterns. */
@@ -218,4 +228,13 @@
    (doesn't rely on color alone for state signalling). */
 [data-theme="high-contrast"] [aria-current="page"] {
   border-left: 4px solid var(--color-black);
+}
+
+/* HC count-badge neutrality — when count is zero, render as a transparent
+   white-outlined chip instead of the accent-tinted fallback (which on HC
+   ends up as dim yellow-on-black and reads as active). */
+[data-theme="high-contrast"] [data-count-state="zero"] {
+  background: transparent !important;
+  border: var(--border-width-default) solid var(--border-default) !important;
+  color: var(--text-primary) !important;
 }

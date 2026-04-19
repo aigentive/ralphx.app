@@ -96,6 +96,7 @@ export function CountBadge({ count }: { count: number }) {
   return (
     <Badge
       variant="outline"
+      data-count-state={isNonZero ? "active" : "zero"}
       className={cn(
         "inline-flex items-center justify-center min-w-[24px] px-2 py-0.5",
         "text-xs font-medium rounded-full",
