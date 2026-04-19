@@ -232,9 +232,13 @@ async function resolveAllowedExistingPath(inputPath, basePath) {
     const displayPath = path.isAbsolute(inputPath) || inputPath.startsWith("~")
         ? normalizePathLike(inputPath)
         : path.resolve(baseRoot, inputPath);
+    const allowedRoots = getAllowedFilesystemRoots();
+    if (!allowedRoots.some((root) => isWithin(root, displayPath))) {
+        throw new Error(`Path "${inputPath}" resolves outside the allowed filesystem roots.`);
+    }
     const safePath = await fs.realpath(displayPath);
-    const allowedRoots = await Promise.all(getAllowedFilesystemRoots().map((root) => canonicalizeAllowedRoot(root)));
-    if (!allowedRoots.some((root) => isWithin(root, safePath))) {
+    const canonicalAllowedRoots = await Promise.all(allowedRoots.map((root) => canonicalizeAllowedRoot(root)));
+    if (!canonicalAllowedRoots.some((root) => isWithin(root, safePath))) {
         throw new Error(`Path "${inputPath}" resolves outside the allowed filesystem roots.`);
     }
     return {
