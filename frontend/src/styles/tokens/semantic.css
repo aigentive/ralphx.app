@@ -78,6 +78,7 @@
   --border-subtle:  var(--gray-900);
   --border-default: var(--gray-800);
   --border-focus:   var(--blue-500);
+  --border-inline:  var(--border-subtle); /* field/chip chrome — HC overrides to 30% white */
 
   /* Theme-adjustable stroke widths — HC overrides to thicker values */
   --border-width-default: 1px;

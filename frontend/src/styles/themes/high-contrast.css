@@ -341,3 +341,45 @@
 [data-theme="high-contrast"] [data-testid^="text-bubble"] {
   border: 1px solid var(--border-subtle) !important;
 }
+
+/* ============================================================================
+ * Phase 1 — Region perimeters (border-driven layout).
+ * Plan: specs/design/themes/hc-border-layout-plan.md §4 Top-level chrome.
+ * ============================================================================ */
+
+/* Inline-chrome token — used by Phase 4 (fields/chips/toggles). Defined here
+   so later phases don't have to re-scope. 30% white reads as micro-control
+   vs 50% divider (subtle) and 100% region fence (default). */
+[data-theme="high-contrast"] {
+  --border-inline: hsla(0 0% 100% / 0.30);
+}
+
+/* App header — strong white rule under the top nav bar. Header already has
+   `border-b` utility + inline borderColor var; we bump the color to --default
+   so it reads as a region fence, not a row divider. */
+[data-theme="high-contrast"] [data-testid="app-header"] {
+  border-bottom-color: var(--border-default) !important;
+  border-bottom-width: 1px !important;
+}
+
+/* Bottom execution bar — the inner floating container already has a 1px
+   perimeter via `--border-subtle`. Bump to `--border-default` on HC so the
+   bar reads as a fenced region on pure black. */
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] {
+  border-color: var(--border-default) !important;
+}
+
+/* Right-side chat panels — left fence separates chat from main content.
+   Covers both ResizeablePanel (ChatPanel on Graph/Insights/…) and the
+   integrated variant (Kanban/Ideation). */
+[data-theme="high-contrast"] [data-testid="chat-panel"],
+[data-theme="high-contrast"] [data-testid="integrated-chat-panel"] {
+  border-left: 1px solid var(--border-default);
+}
+
+/* Ideation plan browser rail — right fence separates rail from main. The
+   floating inner container keeps its subtle stroke; the outer gets the
+   default stroke as the region boundary. */
+[data-theme="high-contrast"] [data-testid="plan-browser"] {
+  border-right: 1px solid var(--border-default);
+}
