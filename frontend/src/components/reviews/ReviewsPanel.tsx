@@ -88,7 +88,7 @@ function TaskReviewCard({ task, onReview, isLoading = false }: TaskReviewCardPro
         "rounded-[var(--radius-md)]",
         isHovered && "shadow-[var(--shadow-xs)]",
         isHovered && "-translate-y-[1px]",
-        isHovered && "border-white/10"
+        isHovered && "border-[var(--border-default)]"
       )}
     >
       {/* Task Title */}
