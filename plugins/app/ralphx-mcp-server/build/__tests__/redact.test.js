@@ -133,9 +133,10 @@ describe("safeError — integration", () => {
     });
 });
 describe("safeTrace — file logging", () => {
-    it("writes redacted trace records to the configured trace dir", () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
-        process.env.RALPHX_MCP_TRACE_DIR = tempDir;
+    it("writes redacted trace records to a relative subdirectory under the safe trace root", () => {
+        const traceSubdir = "unit-test-traces";
+        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy", traceSubdir);
+        process.env.RALPHX_MCP_TRACE_DIR = traceSubdir;
         process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
         process.env.RALPHX_CONTEXT_TYPE = "ideation";
         process.env.RALPHX_CONTEXT_ID = "session-123";
@@ -144,10 +145,21 @@ describe("safeTrace — file logging", () => {
         });
         const logPath = getTraceLogPath();
         const contents = fs.readFileSync(logPath, "utf8");
-        expect(logPath.startsWith(tempDir)).toBe(true);
+        expect(logPath.startsWith(expectedRoot)).toBe(true);
         expect(contents).toContain("\"event\":\"tool.request\"");
         expect(contents).toContain("sk-ant-***REDACTED***");
         expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
+    });
+    it("falls back to the safe trace root when the override is absolute", () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
+        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+        process.env.RALPHX_MCP_TRACE_DIR = tempDir;
+        safeTrace("tool.request", {
+            api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
+        });
+        const logPath = getTraceLogPath();
+        expect(logPath.startsWith(expectedRoot)).toBe(true);
+        expect(logPath.startsWith(tempDir)).toBe(false);
     });
 });
 //# sourceMappingURL=redact.test.js.map
