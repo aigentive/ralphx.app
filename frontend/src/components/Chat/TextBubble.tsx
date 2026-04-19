@@ -46,7 +46,7 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
         background: isUser
           ? "var(--accent-primary)" /* Accent orange - flat */
           : "var(--bg-elevated)", /* Dark surface - flat */
-        color: isUser ? "white" : "var(--text-primary)",
+        color: isUser ? "var(--text-inverse)" : "var(--text-primary)",
         border: "none",
         boxShadow: "none",
       }}
