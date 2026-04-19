@@ -5,9 +5,10 @@ import ignore, { type Ignore } from "ignore";
 import picomatch from "picomatch";
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
+  getAllowedFilesystemRoots,
   getPrimaryFilesystemRoot,
+  isWithin,
   normalizePathLike,
-  resolveScopedFilesystemPath,
 } from "./path-policy.js";
 
 const DEFAULT_MAX_READ_BYTES = 64 * 1024;
@@ -242,6 +243,11 @@ type DirectoryScan = {
   entries: FileEntry[];
 };
 
+type ResolvedExistingPath = {
+  displayPath: string;
+  safePath: string;
+};
+
 function isFilesystemToolName(name: string): name is FilesystemToolName {
   return FILESYSTEM_TOOL_NAMES.includes(name as FilesystemToolName);
 }
@@ -272,20 +278,41 @@ function clampPositive(value: number, fallback: number, cap?: number): number {
   return normalized;
 }
 
-function clampNonNegative(value: number, fallback: number, cap?: number): number {
+function clampNonNegative(value: number, fallback: number): number {
   const normalized = Number.isFinite(value) && value >= 0 ? Math.trunc(value) : fallback;
-  if (cap !== undefined) {
-    return Math.min(normalized, cap);
-  }
   return normalized;
 }
 
-function toPosixRelative(root: string, target: string): string {
-  const relative = path.relative(root, target);
-  if (relative.length === 0) {
-    return ".";
+async function canonicalizeAllowedRoot(root: string): Promise<string> {
+  try {
+    return await fs.realpath(root);
+  } catch {
+    return normalizePathLike(root);
   }
-  return relative.split(path.sep).join("/");
+}
+
+async function resolveAllowedExistingPath(
+  inputPath: string,
+  basePath?: string
+): Promise<ResolvedExistingPath> {
+  const baseRoot = normalizePathLike(basePath ?? getPrimaryFilesystemRoot());
+  const displayPath =
+    path.isAbsolute(inputPath) || inputPath.startsWith("~")
+      ? normalizePathLike(inputPath)
+      : path.resolve(baseRoot, inputPath);
+  const safePath = await fs.realpath(displayPath);
+  const allowedRoots = await Promise.all(
+    getAllowedFilesystemRoots().map((root) => canonicalizeAllowedRoot(root))
+  );
+
+  if (!allowedRoots.some((root) => isWithin(root, safePath))) {
+    throw new Error(`Path "${inputPath}" resolves outside the allowed filesystem roots.`);
+  }
+
+  return {
+    displayPath,
+    safePath,
+  };
 }
 
 function formatPathForIgnore(relativePath: string, isDirectory: boolean): string {
@@ -351,7 +378,7 @@ async function loadDirectoryIgnorePatterns(
   const patterns: string[] = [];
 
   for (const ignoreFile of ignoreFiles) {
-    const absolutePath = path.join(absoluteDir, ignoreFile);
+    const absolutePath = path.resolve(absoluteDir, ignoreFile);
     try {
       const content = await fs.readFile(absolutePath, "utf8");
       for (const line of content.split(/\r?\n/)) {
@@ -393,7 +420,7 @@ async function buildDirectoryScan(
 
   const entries: FileEntry[] = [];
   for (const dirent of dirEntries) {
-    const absolutePath = path.join(absoluteDir, dirent.name);
+    const absolutePath = path.resolve(absoluteDir, dirent.name);
     const relativePath =
       relativeDir === "."
         ? dirent.name
@@ -544,13 +571,13 @@ async function handleReadFile(args: Record<string, unknown>): Promise<ToolResult
     DEFAULT_MAX_READ_BYTES,
     MAX_READ_BYTES_CAP
   );
-  const absolutePath = resolveScopedFilesystemPath(requestedPath);
-  const stat = await fs.stat(absolutePath);
+  const { displayPath, safePath } = await resolveAllowedExistingPath(requestedPath);
+  const stat = await fs.stat(safePath);
   if (!stat.isFile()) {
     throw new Error(`Path "${requestedPath}" is not a file.`);
   }
 
-  const { content, truncated } = await readTextFile(absolutePath, maxBytes);
+  const { content, truncated } = await readTextFile(safePath, maxBytes);
   const lines = content.split("\n");
   const totalLines = lines.length;
   const startLine = clampPositive(getIntegerArg(args, "start_line", 1), 1);
@@ -562,7 +589,7 @@ async function handleReadFile(args: Record<string, unknown>): Promise<ToolResult
     .join("\n");
 
   const response = [
-    `FILE: ${absolutePath}`,
+    `FILE: ${displayPath}`,
     `LINES: ${startLine}-${endLine}/${totalLines}`,
     truncated ? `TRUNCATED: true (max_bytes=${maxBytes})` : "TRUNCATED: false",
     "",
@@ -576,8 +603,8 @@ async function handleReadFile(args: Record<string, unknown>): Promise<ToolResult
 
 async function handleListDir(args: Record<string, unknown>): Promise<ToolResult> {
   const requestedPath = getStringArg(args, "path") ?? ".";
-  const absolutePath = resolveScopedFilesystemPath(requestedPath);
-  const stat = await fs.stat(absolutePath);
+  const { displayPath, safePath } = await resolveAllowedExistingPath(requestedPath);
+  const stat = await fs.stat(safePath);
   if (!stat.isDirectory()) {
     throw new Error(`Path "${requestedPath}" is not a directory.`);
   }
@@ -592,7 +619,7 @@ async function handleListDir(args: Record<string, unknown>): Promise<ToolResult>
 
   const relativeRoot = ".";
   const scan = await buildDirectoryScan(
-    absolutePath,
+    safePath,
     relativeRoot,
     [],
     { ...options, maxWalkEntries: maxEntries }
@@ -622,7 +649,7 @@ async function handleListDir(args: Record<string, unknown>): Promise<ToolResult>
   }
 
   const response = [
-    `DIRECTORY: ${absolutePath}`,
+    `DIRECTORY: ${displayPath}`,
     `ENTRIES: ${lines.length}`,
     `DIRECTORIES_ONLY: ${directoriesOnly}`,
     `INCLUDE_HIDDEN: ${options.includeHidden}`,
@@ -643,8 +670,9 @@ async function handleGlob(args: Record<string, unknown>): Promise<ToolResult> {
   }
 
   const basePath = getStringArg(args, "base_path") ?? ".";
-  const root = resolveScopedFilesystemPath(basePath);
-  const rootStat = await fs.stat(root);
+  const { displayPath: displayRoot, safePath: safeRoot } =
+    await resolveAllowedExistingPath(basePath);
+  const rootStat = await fs.stat(safeRoot);
   if (!rootStat.isDirectory()) {
     throw new Error(`Base path "${basePath}" is not a directory.`);
   }
@@ -660,7 +688,7 @@ async function handleGlob(args: Record<string, unknown>): Promise<ToolResult> {
   });
 
   const matches: string[] = [];
-  await walkFiles(root, options, async ({ relativePath }) => {
+  await walkFiles(safeRoot, options, async ({ relativePath }) => {
     if (matcher(relativePath)) {
       matches.push(relativePath);
       if (matches.length >= maxResults) {
@@ -671,7 +699,7 @@ async function handleGlob(args: Record<string, unknown>): Promise<ToolResult> {
   });
 
   const response = [
-    `ROOT: ${root}`,
+    `ROOT: ${displayRoot}`,
     `PATTERN: ${pattern}`,
     `MATCHES: ${matches.length}`,
     `INCLUDE_HIDDEN: ${options.includeHidden}`,
@@ -707,8 +735,9 @@ async function handleGrep(args: Record<string, unknown>): Promise<ToolResult> {
     MAX_FILE_BYTES_FOR_SEARCH_CAP
   );
 
-  const root = resolveScopedFilesystemPath(basePath);
-  const rootStat = await fs.stat(root);
+  const { displayPath: displayRoot, safePath: safeRoot } =
+    await resolveAllowedExistingPath(basePath);
+  const rootStat = await fs.stat(safeRoot);
   if (!rootStat.isDirectory()) {
     throw new Error(`Base path "${basePath}" is not a directory.`);
   }
@@ -722,7 +751,7 @@ async function handleGrep(args: Record<string, unknown>): Promise<ToolResult> {
   const literalNeedle = caseSensitive ? pattern : pattern.toLowerCase();
   const matches: string[] = [];
 
-  await walkFiles(root, options, async ({ absolutePath, relativePath }) => {
+  await walkFiles(safeRoot, options, async ({ absolutePath, relativePath }) => {
     if (!fileMatcher(relativePath)) {
       return true;
     }
@@ -761,7 +790,7 @@ async function handleGrep(args: Record<string, unknown>): Promise<ToolResult> {
   });
 
   const response = [
-    `ROOT: ${root}`,
+    `ROOT: ${displayRoot}`,
     `PATTERN: ${pattern}`,
     `FILE_PATTERN: ${filePattern}`,
     `MATCHES: ${matches.length}`,

@@ -84,6 +84,41 @@ describe("filesystem tools", () => {
     ).rejects.toThrow("outside the allowed filesystem roots");
   });
 
+  it("rejects symlinked file paths that escape the allowed root", async () => {
+    const root = makeWorkspace();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-link-outside-"));
+    tempDirs.push(outsideDir);
+    const outsideFile = path.join(outsideDir, "secret.txt");
+    fs.writeFileSync(outsideFile, "secret\n");
+
+    const symlinkPath = path.join(root, "src", "escape.txt");
+    fs.mkdirSync(path.dirname(symlinkPath), { recursive: true });
+    fs.symlinkSync(outsideFile, symlinkPath);
+
+    await expect(
+      handleFilesystemToolCall("fs_read_file", {
+        path: "src/escape.txt",
+      })
+    ).rejects.toThrow("outside the allowed filesystem roots");
+  });
+
+  it("rejects symlinked base paths that escape the allowed root", async () => {
+    const root = makeWorkspace();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-fs-base-outside-"));
+    tempDirs.push(outsideDir);
+    fs.writeFileSync(path.join(outsideDir, "secret.ts"), "export const secret = true;\n");
+
+    const symlinkPath = path.join(root, "linked");
+    fs.symlinkSync(outsideDir, symlinkPath);
+
+    await expect(
+      handleFilesystemToolCall("fs_glob", {
+        base_path: "linked",
+        pattern: "**/*.ts",
+      })
+    ).rejects.toThrow("outside the allowed filesystem roots");
+  });
+
   it("greps within the allowed root using a file pattern", async () => {
     const root = makeWorkspace();
     const rustFile = path.join(root, "src-tauri", "src", "main.rs");
