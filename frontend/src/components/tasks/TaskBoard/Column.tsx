@@ -79,8 +79,8 @@ function InvalidDropIcon() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
-      <Inbox className="w-8 h-8" style={{ color: "hsl(220 10% 35%)" }} />
-      <p style={{ fontSize: "12px", color: "hsl(220 10% 45%)" }}>
+      <Inbox className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
+      <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
         No tasks
       </p>
     </div>
@@ -91,10 +91,10 @@ function TaskSkeleton() {
   return (
     <div
       className="rounded-lg p-2.5 space-y-2"
-      style={{ background: "hsl(220 10% 12%)" }}
+      style={{ background: "var(--bg-surface)" }}
     >
-      <Skeleton className="h-3 w-3/4 rounded" style={{ background: "hsl(220 10% 18%)" }} />
-      <Skeleton className="h-2.5 w-1/2 rounded" style={{ background: "hsl(220 10% 16%)" }} />
+      <Skeleton className="h-3 w-3/4 rounded" style={{ background: "var(--bg-elevated)" }} />
+      <Skeleton className="h-2.5 w-1/2 rounded" style={{ background: "var(--overlay-weak)" }} />
     </div>
   );
 }
@@ -298,13 +298,13 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
   const getDropZoneStyles = (): React.CSSProperties => {
     if (isOver && isInvalid) {
       return {
-        background: "hsla(0 70% 50% / 0.08)",
+        background: "var(--status-error-muted)",
         borderRadius: "10px",
       };
     }
     if (isOver) {
       return {
-        background: "hsla(220 60% 50% / 0.1)",
+        background: "var(--status-info-muted)",
         borderRadius: "10px",
       };
     }
@@ -392,14 +392,14 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           paddingTop: "8px",
           scrollSnapAlign: "start",
           transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
-          ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
+          ...(!isLast && { borderRight: "1px solid var(--border-subtle)" }),
           // Drop zone highlight when dragging over collapsed column
           ...(isOver && !isInvalid && {
-            background: "hsla(220 60% 50% / 0.1)",
+            background: "var(--status-info-muted)",
             borderRadius: "10px",
           }),
           ...(isOver && isInvalid && {
-            background: "hsla(0 70% 50% / 0.08)",
+            background: "var(--status-error-muted)",
             borderRadius: "10px",
           }),
         }}
@@ -412,7 +412,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
             transform: "rotate(180deg)",
             fontSize: "11px",
             fontWeight: 600,
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-secondary)",
             textTransform: "uppercase",
             letterSpacing: "0.02em",
             whiteSpace: "nowrap",
@@ -430,7 +430,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           style={{
             fontSize: "10px",
             fontWeight: 500,
-            color: "hsl(220 10% 40%)",
+            color: "var(--text-muted)",
             fontVariantNumeric: "tabular-nums",
           }}
         >
@@ -457,18 +457,18 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         paddingLeft: "12px",
         paddingRight: "12px",
         transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
-        ...(!isLast && { borderRight: "1px solid hsla(220 10% 100% / 0.06)" }),
+        ...(!isLast && { borderRight: "1px solid var(--border-subtle)" }),
       }}
     >
       {/* Column header - macOS Tahoe: small, gray, understated like Finder section headers */}
-      <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+      <div data-testid="column-header" className="flex items-center gap-2 px-2 py-1.5 mb-1">
         {/* Column title - small caps style like Finder */}
         <h3
           className="flex-1 m-0 truncate"
           style={{
             fontSize: "11px",
             fontWeight: 600,
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-secondary)",
             textTransform: "uppercase",
             letterSpacing: "0.02em",
           }}
@@ -481,7 +481,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           style={{
             fontSize: "11px",
             fontWeight: 500,
-            color: "hsl(220 10% 40%)",
+            color: "var(--text-muted)",
             fontVariantNumeric: "tabular-nums",
           }}
         >
@@ -496,7 +496,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
             style={{
               fontSize: "10px",
               fontWeight: 500,
-              color: "hsl(220 10% 35%)",
+              color: "var(--text-muted)",
               fontVariantNumeric: "tabular-nums",
               letterSpacing: "0.01em",
             }}
@@ -564,7 +564,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
                 {/* Loading spinner when fetching next page - simple */}
                 {isFetchingNextPage && (
                   <div className="flex items-center justify-center py-3">
-                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--text-muted)" }} />
                   </div>
                 )}
               </>
@@ -587,7 +587,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
                 {/* Loading spinner when fetching next page - simple */}
                 {isFetchingNextPage && (
                   <div className="flex items-center justify-center py-3">
-                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(220 10% 40%)" }} />
+                    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--text-muted)" }} />
                   </div>
                 )}
               </>

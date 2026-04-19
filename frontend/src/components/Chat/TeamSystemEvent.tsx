@@ -20,8 +20,8 @@ export const TeamSystemEvent = React.memo(function TeamSystemEvent({
       <div
         className="text-[11px] px-3 py-1 rounded-full"
         style={{
-          color: "hsl(220 10% 50%)",
-          backgroundColor: "hsl(220 10% 12%)",
+          color: "var(--text-muted)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         {message}

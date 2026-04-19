@@ -22,9 +22,9 @@ export function getBaseCardStyles(
     cursor: isDraggable ? "grab" : "default",
     transition: "background 150ms ease, transform 150ms ease, box-shadow 150ms ease",
     borderRadius: "8px",
-    background: "hsl(220 10% 11%)",
-    border: "1px solid hsla(220 20% 100% / 0.08)",
-    boxShadow: "0 4px 16px hsla(220 20% 0% / 0.28)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--overlay-moderate)",
+    boxShadow: "var(--shadow-xs)",
     borderLeft: `3px solid ${getStatusBorderColor(status, isArchived)}`,
   };
 }
@@ -46,8 +46,8 @@ export function getCardStyles(
       ...baseStyles,
       cursor: "grabbing",
       transform: "scale(1.02)",
-      background: "hsl(220 10% 13%)",
-      boxShadow: "0 8px 24px hsla(220 20% 0% / 0.38), 0 2px 10px hsla(220 20% 0% / 0.3)",
+      background: "var(--bg-elevated)",
+      boxShadow: "var(--shadow-lg)",
       zIndex: 50,
     };
   }
@@ -56,8 +56,8 @@ export function getCardStyles(
   if (isSelected) {
     return {
       ...baseStyles,
-      background: "hsla(220 60% 36% / 0.24)",
-      border: "1px solid hsla(220 70% 62% / 0.34)",
+      background: "color-mix(in srgb, var(--status-info) 24%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--status-info) 34%, transparent)",
     };
   }
 

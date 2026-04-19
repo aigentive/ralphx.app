@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Archive,
   Loader2,
-  Sparkles,
   RotateCcw,
   RefreshCw,
   ArrowLeft,
@@ -30,6 +29,7 @@ import type {
 } from "@/types/ideation";
 import type { ApplyProposalsInput, ApplyProposalsResultResponse } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { getTeamArtifacts } from "@/api/team";
 import type { TeamArtifactSummary } from "@/api/team";
@@ -111,15 +111,15 @@ export function AnalysisBanner() {
       data-testid="analysis-banner"
       className="flex items-center gap-2 px-4 py-2 shrink-0"
       style={{
-        background: "hsla(14 100% 60% / 0.06)",
-        borderBottom: "1px solid hsla(14 100% 60% / 0.15)",
+        background: withAlpha("var(--accent-primary)", 6),
+        borderBottom: "1px solid var(--accent-border)",
       }}
     >
       <Loader2
         className="w-3.5 h-3.5 animate-spin shrink-0"
-        style={{ color: "hsl(14 100% 60%)" }}
+        style={{ color: "var(--accent-primary)" }}
       />
-      <span className="text-[12px]" style={{ color: "hsl(14 100% 65%)" }}>
+      <span className="text-[12px]" style={{ color: "var(--accent-primary)" }}>
         Analyzing dependencies — accept will be available when complete
       </span>
     </div>
@@ -729,7 +729,7 @@ export function PlanningView({
         ref={containerRef}
         data-testid="ideation-view"
         className="flex flex-col h-full relative"
-        style={{ background: "hsl(220 10% 8%)" }}
+        style={{ background: "var(--bg-base)" }}
         role="main"
       >
         <div className="flex flex-1 overflow-hidden">
@@ -752,17 +752,17 @@ export function PlanningView({
               className="flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-150"
               style={{
                 width: 36,
-                background: "hsla(220 10% 10% / 0.5)",
-                borderRight: "1px solid hsla(220 10% 100% / 0.06)",
-                color: "hsl(220 10% 50%)",
+                background: withAlpha("var(--bg-surface)", 50),
+                borderRight: "1px solid var(--overlay-faint)",
+                color: "var(--text-muted)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                e.currentTarget.style.color = "hsl(220 10% 80%)";
+                e.currentTarget.style.background = "var(--overlay-weak)";
+                e.currentTarget.style.color = "var(--text-primary)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(220 10% 10% / 0.5)";
-                e.currentTarget.style.color = "hsl(220 10% 50%)";
+                e.currentTarget.style.background = withAlpha("var(--bg-surface)", 50);
+                e.currentTarget.style.color = "var(--text-muted)";
               }}
             >
               <Menu className="w-4 h-4" />
@@ -778,7 +778,7 @@ export function PlanningView({
                 position: "fixed",
                 inset: 0,
                 top: 56,
-                background: "rgba(0,0,0,0.3)",
+                background: "var(--overlay-scrim)",
                 zIndex: 34,
               }}
             />
@@ -862,10 +862,10 @@ export function PlanningView({
             {session && (
             <header
               data-testid="ideation-header"
-              className="flex items-center justify-between h-11 px-4 border-b"
+              className="flex items-center justify-between h-14 px-4 border-b"
               style={{
-                borderColor: "hsla(220 10% 100% / 0.06)",
-                background: "hsla(220 10% 12% / 0.85)",
+                borderColor: "var(--overlay-faint)",
+                background: withAlpha("var(--bg-surface)", 85),
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
               }}
@@ -880,18 +880,18 @@ export function PlanningView({
                         onClick={() => onSelectSession(session.parentSessionId!)}
                         className="flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors duration-150"
                         style={{
-                          background: "hsla(220 10% 100% / 0.04)",
-                          border: "1px solid hsla(220 10% 100% / 0.08)",
+                          background: "var(--overlay-faint)",
+                          border: "1px solid var(--overlay-weak)",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
+                          e.currentTarget.style.background = "var(--overlay-weak)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+                          e.currentTarget.style.background = "var(--overlay-faint)";
                         }}
                       >
-                        <ArrowLeft className="w-3 h-3" style={{ color: "hsl(220 10% 60%)" }} />
-                        <span className="text-[11px]" style={{ color: "hsl(220 10% 70%)" }}>
+                        <ArrowLeft className="w-3 h-3" style={{ color: "var(--text-secondary)" }} />
+                        <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
                           {parentSession.title || "Untitled"}
                         </span>
                       </button>
@@ -899,32 +899,23 @@ export function PlanningView({
                   }
                   return null;
                 })()}
-                <div
-                  className="w-6 h-6 rounded-md flex items-center justify-center"
-                  style={{
-                    background: "hsla(14 100% 60% / 0.1)",
-                    border: "1px solid hsla(14 100% 60% / 0.2)",
-                  }}
-                >
-                  <Sparkles className="w-3 h-3" style={{ color: "hsl(14 100% 60%)" }} />
-                </div>
                 <div>
                   <h1
-                    className="text-xs font-semibold tracking-tight"
-                    style={{ color: "hsl(220 10% 90%)" }}
+                    className="text-[14px] font-semibold tracking-tight leading-tight"
+                    style={{ color: "var(--text-primary)" }}
                   >
                     {session.title || "New Session"}
                   </h1>
                   <p
-                    className="text-[10px]"
-                    style={{ color: "hsl(220 10% 50%)" }}
+                    className="text-[12px]"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
                   </p>
                   {(session.sourceTaskId || session.spawnReason || session.sourceProjectId || session.sourceSessionId) && (
                     <div
                       className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px]"
-                      style={{ color: "hsl(220 10% 58%)" }}
+                      style={{ color: "var(--text-secondary)" }}
                     >
                       {session.sourceTaskId && (
                         <span>
@@ -951,13 +942,13 @@ export function PlanningView({
                     size="sm"
                     onClick={() => handleOpenReopenDialog("reopen")}
                     className="h-7 gap-1.5 text-xs transition-colors duration-150"
-                    style={{ color: "hsl(220 10% 60%)" }}
+                    style={{ color: "var(--text-secondary)" }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 90%)";
-                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                      e.currentTarget.style.background = "var(--overlay-weak)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.color = "var(--text-secondary)";
                       e.currentTarget.style.background = "transparent";
                     }}
                   >
@@ -971,13 +962,13 @@ export function PlanningView({
                     size="sm"
                     onClick={() => handleOpenReopenDialog("reset")}
                     className="h-7 gap-1.5 text-xs transition-colors duration-150"
-                    style={{ color: "hsl(220 10% 60%)" }}
+                    style={{ color: "var(--text-secondary)" }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 90%)";
-                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                      e.currentTarget.style.background = "var(--overlay-weak)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.color = "var(--text-secondary)";
                       e.currentTarget.style.background = "transparent";
                     }}
                   >
@@ -991,13 +982,13 @@ export function PlanningView({
                     size="sm"
                     onClick={handleArchive}
                     className="h-7 gap-1.5 text-xs transition-colors duration-150"
-                    style={{ color: "hsl(220 10% 60%)" }}
+                    style={{ color: "var(--text-secondary)" }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 90%)";
-                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                      e.currentTarget.style.color = "var(--text-primary)";
+                      e.currentTarget.style.background = "var(--overlay-weak)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "hsl(220 10% 60%)";
+                      e.currentTarget.style.color = "var(--text-secondary)";
                       e.currentTarget.style.background = "transparent";
                     }}
                   >
@@ -1019,8 +1010,8 @@ export function PlanningView({
                 className="flex flex-col relative flex-1 min-h-0"
                 style={{
                   minWidth: "360px",
-                  borderRight: "1px solid hsla(220 10% 100% / 0.06)",
-                  background: "hsl(220 10% 8%)",
+                  borderRight: "1px solid var(--overlay-faint)",
+                  background: "var(--bg-base)",
                 }}
                 {...(session ? dropProps : {})}
               >
@@ -1035,13 +1026,15 @@ export function PlanningView({
                 {/* Active-Session State */}
                 {session && (
                   <>
-                    {/* Tab bar — Plan | Proposals | Team Research (conditional) */}
+                    {/* Tab bar — Plan | Proposals | Team Research (conditional).
+                        Height matches the right-side chat header (h-11 = 44px) so
+                        the horizontal divider unites across the split pane. */}
                     <div
                       className="flex items-center gap-0 px-4 shrink-0"
                       style={{
-                        height: "36px",
-                        borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
-                        background: "hsla(220 10% 12% / 0.6)",
+                        height: "44px",
+                        borderBottom: "1px solid var(--overlay-faint)",
+                        background: withAlpha("var(--bg-surface)", 60),
                         backdropFilter: "blur(12px)",
                         WebkitBackdropFilter: "blur(12px)",
                       }}
@@ -1052,8 +1045,8 @@ export function PlanningView({
                         className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150"
                         style={{
                           color: activeTab === "plan"
-                            ? "hsl(220 10% 90%)"
-                            : "hsl(220 10% 50%)",
+                            ? "var(--text-primary)"
+                            : "var(--text-muted)",
                         }}
                         data-testid="tab-plan"
                       >
@@ -1061,7 +1054,7 @@ export function PlanningView({
                         {activeTab === "plan" && (
                           <span
                             className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                            style={{ background: "hsl(14 100% 60%)" }}
+                            style={{ background: "var(--accent-primary)" }}
                           />
                         )}
                       </button>
@@ -1071,8 +1064,8 @@ export function PlanningView({
                           className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
                           style={{
                             color: activeTab === "verification"
-                              ? "hsl(220 10% 90%)"
-                              : "hsl(220 10% 50%)",
+                              ? "var(--text-primary)"
+                              : "var(--text-muted)",
                           }}
                           data-testid="tab-verification"
                         >
@@ -1081,27 +1074,27 @@ export function PlanningView({
                             <span
                               data-testid="verification-badge-in-progress"
                               className="w-2 h-2 rounded-full animate-pulse shrink-0"
-                              style={{ background: "hsl(38 100% 60%)" }}
+                              style={{ background: "var(--status-warning)" }}
                             />
                           )}
                           {verificationBadge === "verified" && (
                             <CheckCircle
                               data-testid="verification-badge-verified"
                               className="w-3 h-3 shrink-0"
-                              style={{ color: "hsl(142 71% 45%)" }}
+                              style={{ color: "var(--status-success)" }}
                             />
                           )}
                           {verificationBadge === "warning" && (
                             <AlertTriangle
                               data-testid="verification-badge-warning"
                               className="w-3 h-3 shrink-0"
-                              style={{ color: "hsl(38 100% 60%)" }}
+                              style={{ color: "var(--status-warning)" }}
                             />
                           )}
                           {activeTab === "verification" && (
                             <span
                               className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                              style={{ background: "hsl(14 100% 60%)" }}
+                              style={{ background: "var(--accent-primary)" }}
                             />
                           )}
                         </button>
@@ -1111,8 +1104,8 @@ export function PlanningView({
                         className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
                         style={{
                           color: activeTab === "proposals"
-                            ? "hsl(220 10% 90%)"
-                            : "hsl(220 10% 50%)",
+                            ? "var(--text-primary)"
+                            : "var(--text-muted)",
                         }}
                         data-testid="tab-proposals"
                       >
@@ -1122,11 +1115,11 @@ export function PlanningView({
                             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             style={{
                               background: activeTab === "proposals"
-                                ? "hsla(14 100% 60% / 0.15)"
-                                : "hsla(220 10% 100% / 0.06)",
+                                ? withAlpha("var(--accent-primary)", 15)
+                                : "var(--overlay-weak)",
                               color: activeTab === "proposals"
-                                ? "hsl(14 100% 65%)"
-                                : "hsl(220 10% 50%)",
+                                ? "var(--accent-primary)"
+                                : "var(--text-muted)",
                             }}
                           >
                             {proposals.length}
@@ -1135,7 +1128,7 @@ export function PlanningView({
                         {activeTab === "proposals" && (
                           <span
                             className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                            style={{ background: "hsl(14 100% 60%)" }}
+                            style={{ background: "var(--accent-primary)" }}
                           />
                         )}
                       </button>
@@ -1145,8 +1138,8 @@ export function PlanningView({
                           className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
                           style={{
                             color: activeTab === "research"
-                              ? "hsl(220 10% 90%)"
-                              : "hsl(220 10% 50%)",
+                              ? "var(--text-primary)"
+                              : "var(--text-muted)",
                           }}
                           data-testid="tab-research"
                         >
@@ -1155,11 +1148,11 @@ export function PlanningView({
                             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             style={{
                               background: activeTab === "research"
-                                ? "hsla(14 100% 60% / 0.15)"
-                                : "hsla(220 10% 100% / 0.06)",
+                                ? withAlpha("var(--accent-primary)", 15)
+                                : "var(--overlay-weak)",
                               color: activeTab === "research"
-                                ? "hsl(14 100% 65%)"
-                                : "hsl(220 10% 50%)",
+                                ? "var(--accent-primary)"
+                                : "var(--text-muted)",
                             }}
                           >
                             {teamArtifacts.length}
@@ -1167,7 +1160,7 @@ export function PlanningView({
                           {activeTab === "research" && (
                             <span
                               className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                              style={{ background: "hsl(14 100% 60%)" }}
+                              style={{ background: "var(--accent-primary)" }}
                             />
                           )}
                         </button>
@@ -1271,8 +1264,8 @@ export function PlanningView({
                   isVisible={!isVerificationTabActive || !verificationChatSessionId}
                   headerContent={
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
-                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                      <span className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>Conversation</span>
                     </div>
                   }
                 />
@@ -1283,7 +1276,7 @@ export function PlanningView({
                   className="flex flex-col flex-1"
                   style={{
                     display: isVerificationTabActive ? 'flex' : 'none',
-                    borderLeft: '2px solid hsla(38 100% 60% / 0.25)',
+                    borderLeft: '2px solid var(--status-warning-border)',
                   }}
                 >
                   <IntegratedChatPanel
@@ -1296,12 +1289,12 @@ export function PlanningView({
                     toolbarBackAction={{ label: 'Plan', icon: <ArrowLeft className="w-3 h-3" />, onClick: () => setActiveIdeationTab(session.id, 'plan') }}
                     headerContent={
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(38 100% 60%)" }} />
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--status-warning)" }} />
                         <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[11px] font-semibold leading-tight truncate" style={{ color: "hsl(38 100% 65%)" }}>
+                          <span className="text-[11px] font-semibold leading-tight truncate" style={{ color: "var(--status-warning)" }}>
                             Verification
                           </span>
-                          <span className="text-[10px] leading-tight truncate" style={{ color: "hsl(220 10% 50%)" }}>
+                          <span className="text-[10px] leading-tight truncate" style={{ color: "var(--text-muted)" }}>
                             {session.title || "Untitled"}
                           </span>
                         </div>

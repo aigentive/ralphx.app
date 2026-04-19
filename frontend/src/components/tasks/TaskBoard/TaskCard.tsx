@@ -66,8 +66,8 @@ function CheckpointIndicator() {
       data-testid="checkpoint-indicator"
       className="text-[9px] px-1.5 py-px"
       style={{
-        backgroundColor: "rgba(255, 169, 77, 0.2)",
-        color: "#ffa94d",
+        backgroundColor: "var(--status-warning-muted)",
+        color: "var(--status-warning)",
         border: "none",
       }}
     >
@@ -242,7 +242,7 @@ export function TaskCard({
           onClick={() => {
             handleViewDetails();
           }}
-          className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
+          className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
           style={{ ...cardStyles, ...dragStyle }}
           title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
@@ -262,7 +262,7 @@ export function TaskCard({
           data-testid="drag-handle"
           className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
         >
-          <GripVertical className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 40%)" }} />
+          <GripVertical className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
         </div>
       )}
 
@@ -275,7 +275,7 @@ export function TaskCard({
           style={{
             fontSize: "12px",
             fontWeight: 500,
-            color: "hsl(220 10% 88%)",
+            color: "var(--text-primary)",
             lineHeight: 1.35,
           }}
         >
@@ -288,7 +288,7 @@ export function TaskCard({
             className="mt-1 line-clamp-2 [&_*]:!mb-0 [&_*]:!mt-0"
             style={{
               fontSize: "11px",
-              color: "hsl(220 10% 50%)",
+              color: "var(--text-secondary)",
               lineHeight: 1.4,
             }}
           >
@@ -307,8 +307,8 @@ export function TaskCard({
                   data-testid="blocked-reason-indicator"
                   className="flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded-full text-xs max-w-full"
                   style={{
-                    backgroundColor: "hsla(45, 90%, 55%, 0.15)",
-                    color: "hsl(45 90% 55%)",
+                    backgroundColor: "var(--status-warning-muted)",
+                    color: "var(--status-warning)",
                   }}
                 >
                   <Ban className="w-3 h-3 flex-shrink-0" />
@@ -328,7 +328,7 @@ export function TaskCard({
             style={{
               fontSize: "10px",
               fontWeight: 500,
-              color: "hsl(220 10% 42%)",
+              color: "var(--text-muted)",
               textTransform: "capitalize",
             }}
           >
@@ -385,7 +385,7 @@ export function TaskCard({
                   <div
                     data-testid="branch-indicator"
                     className="inline-flex items-center gap-1"
-                    style={{ color: "hsl(220 10% 50%)" }}
+                    style={{ color: "var(--text-secondary)" }}
                   >
                     <GitBranch className="w-3 h-3 flex-shrink-0" />
                     <span
@@ -413,7 +413,7 @@ export function TaskCard({
                   <div
                     data-testid="pr-mode-indicator"
                     className="inline-flex items-center gap-1"
-                    style={{ color: "#34c759" }}
+                    style={{ color: "var(--status-success)" }}
                   >
                     <GitPullRequest className="w-3 h-3 flex-shrink-0" />
                     <span className="text-[10px]">Review PR</span>
@@ -445,7 +445,7 @@ export function TaskCard({
             {(task.internalStatus === "executing" || task.internalStatus === "re_executing") && executionState.duration !== null && (
               <div
                 className="flex items-center gap-1 text-[11px]"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-secondary)" }}
               >
                 <Clock className="w-3 h-3" />
                 <span>{formatDuration(executionState.duration)}</span>

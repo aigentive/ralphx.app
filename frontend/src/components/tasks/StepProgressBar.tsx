@@ -94,19 +94,19 @@ export function StepProgressBar({ taskId, compact = false, internalStatus }: Ste
         <div className="flex items-center gap-2">
           <div
             className="flex-1 h-1 rounded-full overflow-hidden"
-            style={{ backgroundColor: "hsl(220 10% 14%)" }}
+            style={{ backgroundColor: "var(--bg-elevated)" }}
           >
             <div
               className="h-full rounded-full transition-all duration-300"
               style={{
                 width: `${percentComplete}%`,
-                backgroundColor: "hsl(220 10% 35%)",
+                backgroundColor: "var(--text-muted)",
               }}
             />
           </div>
           <span
             className="text-[10px] tabular-nums shrink-0"
-            style={{ color: "hsl(220 10% 40%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {percentComplete}%
           </span>
@@ -130,7 +130,7 @@ export function StepProgressBar({ taskId, compact = false, internalStatus }: Ste
           {hiddenDotCount > 0 && (
             <span
               className="text-[10px] shrink-0"
-              style={{ color: "hsl(220 10% 45%)" }}
+              style={{ color: "var(--text-muted)" }}
               aria-label={`${hiddenDotCount} more steps`}
             >
               +{hiddenDotCount} more

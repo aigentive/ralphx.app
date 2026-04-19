@@ -205,15 +205,19 @@ export function ChatAttachmentPicker({
           }
           style={
             subtle
-              ? { background: "transparent", color: "hsl(220 10% 45%)", boxShadow: "none" }
+              ? { background: "transparent", color: "var(--text-muted)", boxShadow: "none" }
               : {
-                  background: disabled ? "hsla(14 100% 60% / 0.3)" : "hsl(14 100% 60%)",
-                  color: "white",
+                  /* Muted gray chrome matching the Send button's disabled
+                     baseline so the attachment picker reads as a neutral
+                     control, not a primary CTA. Per 2026-04-19 feedback. */
+                  background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-muted)",
                   boxShadow: "none",
                 }
           }
-          onMouseEnter={subtle && !disabled ? (e) => { e.currentTarget.style.color = "hsl(14 100% 60%)"; } : undefined}
-          onMouseLeave={subtle ? (e) => { e.currentTarget.style.color = "hsl(220 10% 45%)"; } : undefined}
+          onMouseEnter={subtle && !disabled ? (e) => { e.currentTarget.style.color = "var(--accent-primary)"; } : undefined}
+          onMouseLeave={subtle ? (e) => { e.currentTarget.style.color = "var(--text-muted)"; } : undefined}
         >
           <Paperclip size={subtle ? 15 : 16} />
         </button>
@@ -224,11 +228,11 @@ export function ChatAttachmentPicker({
             data-testid="attachment-drop-overlay"
             className="absolute inset-0 rounded-lg flex items-center justify-center pointer-events-none"
             style={{
-              background: "hsla(14 100% 60% / 0.1)",
-              border: "2px dashed hsl(14 100% 60%)",
+              background: "color-mix(in srgb, var(--accent-primary) 10%, transparent)",
+              border: "2px dashed var(--accent-primary)",
             }}
           >
-            <span className="text-[13px] font-medium" style={{ color: "hsl(14 100% 60%)" }}>
+            <span className="text-[13px] font-medium" style={{ color: "var(--accent-primary)" }}>
               Drop files here
             </span>
           </div>

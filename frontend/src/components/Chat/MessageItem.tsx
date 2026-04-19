@@ -184,7 +184,7 @@ export const MessageItem = React.memo(function MessageItem({
     >
       {/* Agent indicator for assistant messages */}
       {!isUser && !teammateName && (
-        <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-white/40" />
+        <Bot className={cn("w-3.5 h-3.5 mr-2 shrink-0 text-text-primary/40", showProviderMeta ? "mt-0.5" : "mt-2")} />
       )}
       {/* Teammate name badge */}
       {!isUser && teammateName && (
@@ -192,7 +192,7 @@ export const MessageItem = React.memo(function MessageItem({
           {teammateColor && (
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: teammateColor }} />
           )}
-          <span className="text-[10px] font-medium" style={{ color: teammateColor ?? "hsl(220 10% 50%)" }}>
+          <span className="text-[10px] font-medium" style={{ color: teammateColor ?? "var(--text-muted)" }}>
             {teammateName}
           </span>
         </div>
@@ -215,8 +215,7 @@ export const MessageItem = React.memo(function MessageItem({
             </span>
             {modelEffortLabel && (
               <span
-                className="text-[10px] min-w-0 truncate"
-                style={{ color: "rgba(255,255,255,0.48)" }}
+                className="text-[10px] min-w-0 truncate text-text-primary/50"
                 title={providerTooltip ?? undefined}
                 data-testid="message-model-effort"
               >
@@ -275,10 +274,9 @@ export const MessageItem = React.memo(function MessageItem({
 
         <span
           className={cn(
-            "text-[10px] mt-1 px-1",
+            "text-[10px] mt-1 px-1 text-text-primary/40",
             isUser ? "text-right" : "text-left"
           )}
-          style={{ color: "rgba(255,255,255,0.4)" }}
         >
           {formatTimestamp(createdAt)}
         </span>

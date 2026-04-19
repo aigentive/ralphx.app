@@ -19,11 +19,11 @@ export const PaneStream = React.memo(function PaneStream({
   return (
     <div
       className="flex-1 overflow-y-auto px-2.5 py-2 flex items-center justify-center"
-      style={{ backgroundColor: "hsl(220 10% 6%)" }}
+      style={{ backgroundColor: "var(--bg-base)" }}
     >
       <p
         className="text-[11px] text-center py-4"
-        style={{ color: "hsl(220 10% 35%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         View {teammateName}&apos;s output in the teammate tab
       </p>

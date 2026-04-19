@@ -34,11 +34,11 @@ export const TeamSplitGrid = React.memo(function TeamSplitGrid({
       {/* Coordinator Pane (left / top when stacked) */}
       <div
         className="team-split-grid__coordinator overflow-hidden"
-        style={{ backgroundColor: "hsl(220 10% 6%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
         {coordinatorSlot ?? (
           <div className="flex items-center justify-center h-full">
-            <span className="text-[12px]" style={{ color: "hsl(220 10% 35%)" }}>
+            <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
               Coordinator
             </span>
           </div>
@@ -48,11 +48,11 @@ export const TeamSplitGrid = React.memo(function TeamSplitGrid({
       {/* Teammates Pane (right / bottom when stacked) */}
       <div
         className="team-split-grid__teammates overflow-hidden"
-        style={{ backgroundColor: "hsl(220 10% 6%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
         {teammatesSlot ?? (
           <div className="flex items-center justify-center h-full">
-            <span className="text-[12px]" style={{ color: "hsl(220 10% 35%)" }}>
+            <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
               Teammates
             </span>
           </div>
@@ -62,7 +62,7 @@ export const TeamSplitGrid = React.memo(function TeamSplitGrid({
       <style>{`
         /* Desktop: side-by-side with vertical separator */
         .team-split-grid__coordinator {
-          border-right: 1px solid hsl(220 10% 14%);
+          border-right: 1px solid var(--border-subtle);
         }
 
         /* Below 1024px: stack coordinator on top, teammates below */
@@ -73,7 +73,7 @@ export const TeamSplitGrid = React.memo(function TeamSplitGrid({
           }
           .team-split-grid__coordinator {
             border-right: none;
-            border-bottom: 1px solid hsl(220 10% 14%);
+            border-bottom: 1px solid var(--border-subtle);
           }
         }
       `}</style>

@@ -45,7 +45,7 @@ export function TaskCardTranscriptView({
           {entry.speakerLabel && (
             <div
               className="text-[10px] uppercase tracking-[0.08em]"
-              style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {entry.speakerLabel}
             </div>
@@ -80,7 +80,7 @@ export function TaskCardTranscriptView({
                   data-testid="task-card-transcript-activity"
                 >
                   <ActivityDots />
-                  <span style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}>
+                  <span style={{ color: "var(--text-muted)" }}>
                     {block.label}
                   </span>
                 </div>

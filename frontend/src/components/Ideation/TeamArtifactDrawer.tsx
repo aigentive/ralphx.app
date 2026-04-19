@@ -22,6 +22,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import type { Artifact } from "@/types/artifact";
 import type { TeamArtifactSummary } from "@/api/team";
 
@@ -340,8 +341,8 @@ export function TeamArtifactDrawer({
       ref={panelRef}
       className="flex flex-col h-full overflow-hidden"
       style={{
-        borderLeft: "2px solid hsla(14 100% 60% / 0.3)",
-        background: "hsl(220 10% 10%)",
+        borderLeft: `2px solid ${withAlpha("var(--accent-primary)", 30)}`,
+        background: "var(--bg-surface)",
         transform: isVisible && !isClosing ? "translateX(0)" : "translateX(100%)",
         transition: isClosing
           ? "transform 150ms ease-in"
@@ -353,8 +354,8 @@ export function TeamArtifactDrawer({
       <header
         className="flex items-center gap-3 px-4 h-12 shrink-0 border-b"
         style={{
-          borderColor: "hsla(220 10% 100% / 0.06)",
-          background: "hsla(220 10% 12% / 0.85)",
+          borderColor: "var(--overlay-faint)",
+          background: withAlpha("var(--bg-surface)", 85),
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
         }}
@@ -363,14 +364,14 @@ export function TeamArtifactDrawer({
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
           style={{
-            background: "hsla(14 100% 60% / 0.12)",
-            border: "1px solid hsla(14 100% 60% / 0.2)",
+            background: withAlpha("var(--accent-primary)", 12),
+            border: "1px solid var(--accent-border)",
           }}
         >
           <ArtifactTypeIcon
             type={currentSummary?.artifact_type ?? "default"}
             className="w-3.5 h-3.5"
-            style={{ color: "hsl(14 100% 60%)" }}
+            style={{ color: "var(--accent-primary)" }}
           />
         </div>
 
@@ -378,7 +379,7 @@ export function TeamArtifactDrawer({
         <div className="flex-1 min-w-0">
           <h2
             className="text-[13px] font-medium truncate tracking-[-0.01em]"
-            style={{ color: "hsl(220 10% 90%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             {currentSummary?.name ?? "Artifact"}
           </h2>
@@ -386,7 +387,7 @@ export function TeamArtifactDrawer({
             {currentSummary && (
               <span
                 className="text-[10px] font-medium"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {formatArtifactType(currentSummary.artifact_type)}
               </span>
@@ -395,11 +396,11 @@ export function TeamArtifactDrawer({
               <span className="flex items-center gap-1">
                 <User
                   className="w-2.5 h-2.5"
-                  style={{ color: "hsl(220 10% 45%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 />
                 <span
                   className="text-[10px]"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   {artifact.metadata.createdBy}
                 </span>
@@ -413,9 +414,9 @@ export function TeamArtifactDrawer({
           <span
             className="text-[10px] font-medium px-1.5 py-0.5 rounded-md shrink-0"
             style={{
-              background: "hsla(220 10% 100% / 0.04)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
-              color: "hsl(220 10% 50%)",
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-faint)",
+              color: "var(--text-muted)",
             }}
           >
             v{currentSummary.version}
@@ -426,7 +427,7 @@ export function TeamArtifactDrawer({
         {currentSummary && (
           <span
             className="text-[10px] shrink-0 hidden sm:inline"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {formatTimestamp(currentSummary.created_at)}
           </span>
@@ -436,14 +437,14 @@ export function TeamArtifactDrawer({
         <button
           onClick={handleClose}
           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors duration-150"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-            e.currentTarget.style.color = "hsl(220 10% 90%)";
+            e.currentTarget.style.background = "var(--overlay-weak)";
+            e.currentTarget.style.color = "var(--text-primary)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "hsl(220 10% 50%)";
+            e.currentTarget.style.color = "var(--text-muted)";
           }}
           aria-label="Close drawer"
         >
@@ -458,11 +459,11 @@ export function TeamArtifactDrawer({
             <div className="flex flex-col items-center gap-3">
               <Loader2
                 className="w-6 h-6 animate-spin"
-                style={{ color: "hsl(14 100% 60%)" }}
+                style={{ color: "var(--accent-primary)" }}
               />
               <span
                 className="text-[12px]"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 Loading artifact...
               </span>
@@ -480,7 +481,7 @@ export function TeamArtifactDrawer({
         ) : (
           <p
             className="text-[13px] italic py-8 text-center"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             No content available
           </p>
@@ -492,8 +493,8 @@ export function TeamArtifactDrawer({
         <footer
           className="flex items-center justify-between px-4 h-10 shrink-0 border-t"
           style={{
-            borderColor: "hsla(220 10% 100% / 0.06)",
-            background: "hsla(220 10% 12% / 0.85)",
+            borderColor: "var(--overlay-faint)",
+            background: withAlpha("var(--bg-surface)", 85),
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
           }}
@@ -511,19 +512,19 @@ export function TeamArtifactDrawer({
                 : "cursor-not-allowed opacity-30",
             )}
             style={{
-              color: hasPrev ? "hsl(220 10% 70%)" : "hsl(220 10% 40%)",
+              color: hasPrev ? "var(--text-secondary)" : "var(--text-muted)",
             }}
             onMouseEnter={(e) => {
               if (hasPrev) {
-                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                e.currentTarget.style.color = "hsl(220 10% 90%)";
+                e.currentTarget.style.background = "var(--overlay-weak)";
+                e.currentTarget.style.color = "var(--text-primary)";
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
               e.currentTarget.style.color = hasPrev
-                ? "hsl(220 10% 70%)"
-                : "hsl(220 10% 40%)";
+                ? "var(--text-secondary)"
+                : "var(--text-muted)";
             }}
             aria-label="Previous artifact"
           >
@@ -533,7 +534,7 @@ export function TeamArtifactDrawer({
 
           <span
             className="text-[10px] font-medium"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {selectedIndex + 1} / {allArtifacts.length}
           </span>
@@ -551,19 +552,19 @@ export function TeamArtifactDrawer({
                 : "cursor-not-allowed opacity-30",
             )}
             style={{
-              color: hasNext ? "hsl(220 10% 70%)" : "hsl(220 10% 40%)",
+              color: hasNext ? "var(--text-secondary)" : "var(--text-muted)",
             }}
             onMouseEnter={(e) => {
               if (hasNext) {
-                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                e.currentTarget.style.color = "hsl(220 10% 90%)";
+                e.currentTarget.style.background = "var(--overlay-weak)";
+                e.currentTarget.style.color = "var(--text-primary)";
               }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
               e.currentTarget.style.color = hasNext
-                ? "hsl(220 10% 70%)"
-                : "hsl(220 10% 40%)";
+                ? "var(--text-secondary)"
+                : "var(--text-muted)";
             }}
             aria-label="Next artifact"
           >

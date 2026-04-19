@@ -27,6 +27,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { statusTint } from "@/lib/theme-colors";
 import {
   Loader2,
   AlertTriangle,
@@ -159,15 +160,15 @@ function EscalationReasonCard({
       <div className="flex items-center gap-3 mb-4">
         <div
           className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
-          style={{ backgroundColor: "rgba(255, 159, 10, 0.2)" }}
+          style={{ backgroundColor: "var(--status-warning-border)" }}
         >
-          <Icon className="w-5 h-5" style={{ color: "#ff9f0a" }} />
+          <Icon className="w-5 h-5" style={{ color: "var(--status-warning)" }} />
         </div>
         <div>
-          <span className="text-[13px] font-semibold text-white/80 block">
+          <span className="text-[13px] font-semibold text-text-primary/80 block">
             Escalation Reason
           </span>
-          <span className="text-[11px] text-white/45">
+          <span className="text-[11px] text-text-primary/45">
             {escalationInfo.subtitle}
           </span>
         </div>
@@ -176,7 +177,7 @@ function EscalationReasonCard({
       {/* Reason text */}
       {escalationInfo.reason ? (
         <div
-          className="text-[13px] text-white/55 leading-relaxed pl-12"
+          className="text-[13px] text-text-primary/55 leading-relaxed pl-12"
           style={{ wordBreak: "break-word" }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -184,7 +185,7 @@ function EscalationReasonCard({
           </ReactMarkdown>
         </div>
       ) : (
-        <p className="text-[13px] text-white/35 italic pl-12">
+        <p className="text-[13px] text-text-primary/35 italic pl-12">
           No escalation reason provided
         </p>
       )}
@@ -279,7 +280,7 @@ function DecisionButtonsCard({
       disabled={isLoading || showFeedback}
       className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
       style={{
-        backgroundColor: "#ff6b35",
+        backgroundColor: "var(--accent-primary)",
         color: "white",
       }}
     >
@@ -299,7 +300,7 @@ function DecisionButtonsCard({
       disabled={isLoading || showFeedback}
       className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
       style={{
-        backgroundColor: "hsl(142 70% 45%)",
+        backgroundColor: "var(--status-success)",
         color: "white",
       }}
     >
@@ -320,8 +321,8 @@ function DecisionButtonsCard({
       variant="ghost"
       className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
       style={{
-        color: "hsl(35 100% 55%)",
-        backgroundColor: "hsl(220 10% 16%)",
+        color: "var(--status-warning)",
+        backgroundColor: "var(--bg-elevated)",
       }}
     >
       {requestChangesMutation.isPending ? (
@@ -339,8 +340,8 @@ function DecisionButtonsCard({
       {showFeedback && (
         <div className="mb-4 space-y-3">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-white/40" />
-            <span className="text-[12px] font-semibold text-white/60">
+            <MessageSquare className="w-4 h-4 text-text-primary/40" />
+            <span className="text-[12px] font-semibold text-text-primary/60">
               What needs to be changed?
             </span>
           </div>
@@ -351,8 +352,8 @@ function DecisionButtonsCard({
             placeholder="Describe the changes needed..."
             className="min-h-[100px] text-[13px] resize-none rounded-xl"
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.3)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              backgroundColor: "var(--overlay-scrim)",
+              border: "1px solid var(--overlay-moderate)",
             }}
           />
         </div>
@@ -381,7 +382,7 @@ function DecisionButtonsCard({
             setShowFeedback(false);
             setFeedback("");
           }}
-          className="mt-3 text-[12px] text-white/40 hover:text-white/60 transition-colors"
+          className="mt-3 text-[12px] text-text-primary/40 hover:text-text-primary/60 transition-colors"
         >
           Cancel
         </button>
@@ -390,7 +391,7 @@ function DecisionButtonsCard({
       {(approveMutation.error ||
         requestChangesMutation.error ||
         reReviewMutation.error) && (
-        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+        <p className="mt-3 text-[12px]" style={{ color: "var(--status-error)" }}>
           {approveMutation.error?.message ||
             requestChangesMutation.error?.message ||
             reReviewMutation.error?.message}
@@ -419,8 +420,7 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2
-          className="w-6 h-6 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-6 h-6 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -459,10 +459,10 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
           <DetailCard>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-white/80">
+                <div className="text-[13px] font-semibold text-text-primary/80">
                   AI spawned a follow-up ideation session
                 </div>
-                <div className="mt-1 text-[12px] text-white/45 break-all">
+                <div className="mt-1 text-[12px] text-text-primary/45 break-all">
                   {followupSessionId}
                 </div>
               </div>
@@ -471,8 +471,8 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
                 onClick={() => navigateToIdeationSession(followupSessionId)}
                 className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
                 style={{
-                  backgroundColor: "rgba(255, 107, 53, 0.16)",
-                  color: "#ff8a5b",
+                  backgroundColor: statusTint("accent", 16),
+                  color: "var(--accent-primary)",
                 }}
               >
                 <ExternalLink className="w-4 h-4" />

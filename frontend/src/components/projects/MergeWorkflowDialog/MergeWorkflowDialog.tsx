@@ -447,7 +447,7 @@ export function MergeWorkflowDialog({
           {error && (
             <div
               data-testid="dialog-error"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--status-error-muted)] text-[var(--status-error)]"
             >
               <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">{error}</span>
@@ -458,7 +458,7 @@ export function MergeWorkflowDialog({
           {showDiscardConfirm && (
             <div
               data-testid="discard-confirmation"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(239,68,68,0.1)] text-[var(--status-error)]"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--status-error-muted)] text-[var(--status-error)]"
             >
               <AlertTriangle className="h-3.5 w-3.5" />
               <span className="text-sm">

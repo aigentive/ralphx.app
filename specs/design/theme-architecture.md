@@ -137,22 +137,30 @@ The token layer defines **roles**, not raw colors. Each token must be usable acr
 
 ---
 
-## 4. File layout
+## 4. File layout (shipped — 2026-04-18)
 
 ```
 frontend/src/styles/
-├── globals.css              # imports all tokens + themes
+├── globals.css              entry — imports + Tailwind @theme inline,
+│                            base body/scrollbar/motion/font-scale,
+│                            diff-viewer overrides, keyframes
 ├── tokens/
-│   ├── roles.css            # semantic role names (declared, no values)
-│   ├── spacing.css          # 8pt grid
-│   ├── typography.css       # font tokens
-│   └── radius-shadow.css    # radii + shadows
+│   ├── primitives.css       Tier 1 — raw scales (gray 50-975, orange,
+│   │                        amber, yellow, blue, Okabe-Ito CVD-safe,
+│   │                        HC brights, alphas 2-70, spacing,
+│   │                        radii, shadows, typography)
+│   ├── semantic.css         Tier 2 — role tokens + shadcn bridge
+│   │                        (:root = Dark theme default)
+│   └── components.css       Tier 3 — per-component composites
+│                            (dialog, input, button, card, notice,
+│                            diff, overlay ladder, shadow-pulse)
 └── themes/
-    ├── default.css          # :root + [data-theme="default"] overrides
-    └── high-contrast.css    # [data-theme="high-contrast"] overrides
+    ├── light.css            [data-theme="light"] overrides
+    └── high-contrast.css    [data-theme="high-contrast"] overrides
 ```
 
-**Migration plan:** Current `globals.css` is monolithic. Phase 1 splits it into `themes/default.css` + `tokens/*` without changing any values; Phase 2 adds `themes/high-contrast.css`.
+Tier rule: primitives → semantic → components → themes override semantic+component.
+Components consume Tier 2 + 3 only, never Tier 1.
 
 ---
 
@@ -197,42 +205,43 @@ Components keep rendering the same markup; theme sheets add the override.
 
 ---
 
-## 8. Future themes (out of scope but planned for)
+## 8. Themes shipped + planned
 
-| Candidate theme | Use case |
-|---|---|
-| **Light mode** | Users who prefer it or need it for photosensitive conditions |
-| **Sepia / low blue** | Night-time reading |
-| **Custom brand themes** | Per-workspace branding (long horizon) |
+| Theme | `data-theme` | Status |
+|---|---|---|
+| **Dark** | (none — matches `:root`) | ✅ shipped |
+| **Light** | `data-theme="light"` | ✅ shipped |
+| **High-Contrast** | `data-theme="high-contrast"` | ✅ shipped |
+| **Sepia / low-blue** | TBD | 🗒 considered |
+| **Custom brand themes** | TBD | 🗒 long horizon |
 
-Architecture must allow any of these to slot in by adding a new `data-theme` value + CSS file. No component changes required.
-
----
-
-## 9. Settings UI for theme toggle (future shape)
-
-```
-Settings → Accessibility
- ├─ [Switch] High contrast mode
- │    "Maximum contrast colors, thicker borders, shape-based status indicators."
- ├─ [Switch] Reduce motion
- │    "Disable animations beyond OS-level setting."
- └─ [Select] Font scale
-        Default / Large (110%) / Extra large (125%)
-```
-
-Persistence: `localStorage.ralphx-theme`, `localStorage.ralphx-motion`, `localStorage.ralphx-font-scale`. All three apply as `data-*` attrs on `<html>` and are read by the bootstrap script pre-hydration.
+Adding a new theme = one new file under `themes/<name>.css` with the `[data-theme="<name>"]` selector, overrides for the semantic tokens that need to change, and registration in `themeStore.ts` + `AccessibilitySection.tsx`. No component changes required.
 
 ---
 
-## 10. Checklist before shipping the toggle
+## 9. Settings UI for theme toggle (shipped)
 
-- [ ] `globals.css` split into tokens + themes
-- [ ] Every hardcoded color in `frontend/src/components/**` migrated to a token (drift table in `styleguide.md` §12)
-- [ ] `themes/high-contrast.css` values match `themes/high-contrast.md` spec exactly
-- [ ] Pre-hydration bootstrap added to `index.html`
-- [ ] `Settings → Accessibility` panel added with the toggle UI
-- [ ] Axe-core tests pass in both themes for Settings + Chat panels
-- [ ] All interactive elements have visible focus in both themes
-- [ ] Manual keyboard sweep passes in both themes
-- [ ] Manual VoiceOver sweep on Settings + Chat in both themes
+```
+Settings → Preferences → Accessibility
+ ├─ [Select] Theme                   Dark (default) / Light / High contrast
+ ├─ [Switch] High contrast mode      shortcut — forces HC; restores last base on off
+ ├─ [Select] Motion                  Follow system / Always reduce
+ └─ [Select] Font size               Default / Large (110%) / Extra large (125%)
+```
+
+Persistence: `localStorage.ralphx-theme`, `localStorage.ralphx-motion`, `localStorage.ralphx-font-scale`, `localStorage.ralphx-last-base-theme`. All applied as `data-*` attrs on `<html>` by the inline bootstrap script in `index.html`; React re-asserts on mount via `syncThemeAttributesFromStore()` in `main.tsx`.
+
+---
+
+## 10. Ship checklist — status 2026-04-18
+
+- [x] `globals.css` split into tokens + themes (`primitives.css` / `semantic.css` / `components.css` / `themes/light.css` / `themes/high-contrast.css`)
+- [x] Every hardcoded color in `frontend/src/components/**` migrated to a token (see `styleguide.md` §12 end-of-session sweep)
+- [x] `themes/high-contrast.css` values match `themes/high-contrast.md` spec
+- [x] Pre-hydration bootstrap added to `index.html`
+- [x] `Settings → Accessibility` panel with theme selector + HC toggle + motion + font-scale
+- [ ] Axe-core tests in both themes for Settings + Chat + Kanban (planned, not wired)
+- [ ] Visual regression snapshots per theme (planned)
+- [ ] Manual keyboard sweep in all 3 themes (pending)
+- [ ] Manual VoiceOver sweep on Settings + Chat (pending)
+- [ ] CI guard: fail build on primitive-leak grep / Tailwind-palette grep (see styleguide §12)

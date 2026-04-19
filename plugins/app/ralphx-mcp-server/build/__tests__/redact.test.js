@@ -133,10 +133,8 @@ describe("safeError — integration", () => {
     });
 });
 describe("safeTrace — file logging", () => {
-    it("writes redacted trace records to a relative subdirectory under the safe trace root", () => {
-        const traceSubdir = "unit-test-traces";
-        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy", traceSubdir);
-        process.env.RALPHX_MCP_TRACE_DIR = traceSubdir;
+    it("writes only minimal allowlisted trace metadata under the safe trace root", () => {
+        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
         process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
         process.env.RALPHX_CONTEXT_TYPE = "ideation";
         process.env.RALPHX_CONTEXT_ID = "session-123";
@@ -147,10 +145,12 @@ describe("safeTrace — file logging", () => {
         const contents = fs.readFileSync(logPath, "utf8");
         expect(logPath.startsWith(expectedRoot)).toBe(true);
         expect(contents).toContain("\"event\":\"tool.request\"");
-        expect(contents).toContain("sk-ant-***REDACTED***");
         expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
+        expect(contents).not.toContain("sk-ant-***REDACTED***");
+        expect(contents).not.toContain("ralphx-ideation");
+        expect(contents).not.toContain("session-123");
     });
-    it("falls back to the safe trace root when the override is absolute", () => {
+    it("ignores trace dir overrides and keeps traces under the safe root", () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
         const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
         process.env.RALPHX_MCP_TRACE_DIR = tempDir;
@@ -160,6 +160,12 @@ describe("safeTrace — file logging", () => {
         const logPath = getTraceLogPath();
         expect(logPath.startsWith(expectedRoot)).toBe(true);
         expect(logPath.startsWith(tempDir)).toBe(false);
+    });
+    it("normalizes non-allowlisted event names", () => {
+        safeTrace("tool.request:user-supplied");
+        const contents = fs.readFileSync(getTraceLogPath(), "utf8");
+        expect(contents).toContain("\"event\":\"unknown\"");
+        expect(contents).not.toContain("tool.request:user-supplied");
     });
 });
 //# sourceMappingURL=redact.test.js.map

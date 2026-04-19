@@ -32,19 +32,19 @@ function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+        <span className="text-[12px] text-text-secondary">
           {label}
         </span>
-        <span className="text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
+        <span className="text-[12px] font-medium text-text-secondary">
           {pct}%
-          <span className="ml-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <span className="ml-1 text-text-muted">
             ({passCount}/{totalCount})
           </span>
         </span>
       </div>
       <div
         className="h-1.5 w-full rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full transition-all duration-300"
@@ -95,8 +95,7 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-32 shrink-0 flex items-center gap-1"
-        style={{ color: "rgba(255,255,255,0.5)" }}
+        className="w-32 shrink-0 flex items-center gap-1 text-text-secondary"
       >
         <span title={displayName}>
           {displayName}
@@ -116,16 +115,15 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
       </span>
       <div
         className="flex-1 h-1.5 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--accent-primary)" }}
         />
       </div>
       <span
-        className="w-16 text-right shrink-0 tabular-nums"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        className="w-16 text-right shrink-0 tabular-nums text-text-secondary"
       >
         {formatMinutesHuman(phase.avgMinutes)}
       </span>
@@ -149,10 +147,10 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <GitMerge size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <GitMerge size={14} className="text-text-muted" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+            style={{ letterSpacing: "0.08em" }}
           >
             Quality Breakdown
           </span>
@@ -163,7 +161,7 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
             rate={stats.agentSuccessRate}
             passCount={stats.agentSuccessCount}
             totalCount={stats.agentTotalCount}
-            color="#ff6b35"
+            color="var(--accent-primary)"
           />
         )}
         {stats.reviewTotalCount > 0 && (
@@ -172,7 +170,7 @@ export function QualityBreakdown({ stats }: QualityBreakdownProps) {
             rate={stats.reviewPassRate}
             passCount={stats.reviewPassCount}
             totalCount={stats.reviewTotalCount}
-            color="hsl(145 60% 45%)"
+            color="var(--status-success)"
           />
         )}
       </div>
@@ -205,10 +203,10 @@ export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <Clock size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Clock size={14} className="text-text-muted" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+            style={{ letterSpacing: "0.08em" }}
           >
             Cycle Time Breakdown
           </span>
@@ -233,24 +231,22 @@ function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinute
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-24 shrink-0 truncate"
-        style={{ color: "rgba(255,255,255,0.5)" }}
+        className="w-24 shrink-0 truncate text-text-secondary"
         title={dwell.columnName}
       >
         {dwell.columnName}
       </span>
       <div
         className="flex-1 h-1.5 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: "#34d399" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--status-success)" }}
         />
       </div>
       <span
-        className="w-16 text-right shrink-0 tabular-nums"
-        style={{ color: "rgba(255,255,255,0.7)" }}
+        className="w-16 text-right shrink-0 tabular-nums text-text-secondary"
       >
         {formatMinutesHuman(dwell.avgMinutes)}
       </span>
@@ -273,10 +269,10 @@ export function ColumnDwellTimeBreakdown({ dwellTimes }: ColumnDwellTimeBreakdow
     <DetailCard>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-1.5">
-          <Columns3 size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Columns3 size={14} className="text-text-muted" />
           <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+            className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+            style={{ letterSpacing: "0.08em" }}
           >
             Kanban Column Time
           </span>
@@ -355,14 +351,15 @@ export function CopyMarkdownButton({ stats }: CopyMarkdownButtonProps) {
       onClick={handleCopy}
       className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
       style={{
-        backgroundColor: "hsl(220 10% 14%)",
-        color: "rgba(255,255,255,0.7)",
+        backgroundColor: "var(--bg-surface)",
+        color: "var(--text-secondary)",
+        border: "1px solid var(--overlay-faint)",
       }}
     >
       {copied ? (
         <>
-          <Check size={13} style={{ color: "hsl(145 60% 45%)" }} />
-          <span style={{ color: "hsl(145 60% 45%)" }}>Copied!</span>
+          <Check size={13} style={{ color: "var(--status-success)" }} />
+          <span style={{ color: "var(--status-success)" }}>Copied!</span>
         </>
       ) : (
         <>

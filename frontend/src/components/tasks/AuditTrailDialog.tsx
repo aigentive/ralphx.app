@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { useAuditTrail } from "@/hooks/useAuditTrail";
 import { AuditTrailSidebar } from "./audit-trail/AuditTrailSidebar";
 import { EventCard } from "./audit-trail/EventCards";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Props
@@ -70,22 +71,22 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
         className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh]"
         style={{
           backgroundColor: "var(--bg-surface)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Glass Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
+            borderColor: "var(--overlay-weak)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
         >
           <div className="flex items-center gap-3">
             <ScrollText className="w-5 h-5" style={{ color: "var(--accent-primary)" }} />
             <DialogTitle
-              className="text-base font-semibold text-white/90"
+              className="text-base font-semibold text-text-primary/90"
               style={{ letterSpacing: "-0.02em" }}
             >
               Audit Trail
@@ -96,7 +97,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="w-8 h-8 text-white/50 hover:text-white/80 hover:bg-white/10"
+            className="w-8 h-8 text-text-primary/50 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             <X className="w-4 h-4" />
           </Button>
@@ -107,7 +108,7 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
           {/* Left sidebar - 320px */}
           <div
             className="w-[320px] shrink-0 border-r overflow-hidden"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
+            style={{ borderColor: "var(--overlay-weak)" }}
           >
             <AuditTrailSidebar
               phases={phases}
@@ -136,8 +137,8 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                   className="w-8 h-8 mb-2"
                   style={{ color: "var(--text-muted)", opacity: 0.5 }}
                 />
-                <p className="text-sm text-white/50">No audit events recorded yet</p>
-                <p className="text-xs mt-1 text-white/30">
+                <p className="text-sm text-text-primary/50">No audit events recorded yet</p>
+                <p className="text-xs mt-1 text-text-primary/30">
                   State transitions and activity events will appear here
                 </p>
               </div>
@@ -150,15 +151,15 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
                   <div
                     className="sticky top-0 z-10 px-4 py-2.5 border-b"
                     style={{
-                      borderColor: "rgba(255,255,255,0.06)",
-                      background: "rgba(18,18,18,0.95)",
+                      borderColor: "var(--overlay-weak)",
+                      background: withAlpha("var(--bg-surface)", 95),
                       backdropFilter: "blur(12px)",
                     }}
                   >
-                    <span className="text-[12px] font-semibold text-white/80">
+                    <span className="text-[12px] font-semibold text-text-primary/80">
                       {selectedPhase.label}
                     </span>
-                    <span className="text-[11px] text-white/40 ml-2">
+                    <span className="text-[11px] text-text-primary/40 ml-2">
                       {filteredEntries.length} events
                     </span>
                   </div>
@@ -232,19 +233,19 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
         <div
           className="flex items-center justify-between px-4 py-3 border-t shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
+            borderColor: "var(--overlay-weak)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
         >
-          <span className="text-[12px] text-white/50">
+          <span className="text-[12px] text-text-primary/50">
             {entries.length} {entries.length === 1 ? "event" : "events"}
             {selectedPhase && ` \u00B7 Showing: ${selectedPhase.label}`}
           </span>
           <Button
             variant="ghost"
             onClick={onClose}
-            className="text-[13px] text-white/60 hover:text-white/80 hover:bg-white/10"
+            className="text-[13px] text-text-primary/60 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             Close
           </Button>

@@ -8,9 +8,15 @@ export type SettingsSectionId =
   | "ideation-workflow"
   | "ideation-harnesses"
   | "api-keys"
-  | "external-mcp";
+  | "external-mcp"
+  | "accessibility";
 
-export type SettingsGroupId = "general" | "workspace" | "ideation" | "access";
+export type SettingsGroupId =
+  | "general"
+  | "workspace"
+  | "ideation"
+  | "access"
+  | "preferences";
 
 export interface SettingsSectionMeta {
   id: SettingsSectionId;
@@ -23,6 +29,7 @@ export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
   { id: "workspace", label: "Workspace" },
   { id: "ideation", label: "Ideation" },
   { id: "access", label: "Access" },
+  { id: "preferences", label: "Preferences" },
 ];
 
 export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
@@ -36,4 +43,5 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "ideation-harnesses", groupId: "ideation", label: "Ideation Agents" },
   { id: "api-keys", groupId: "access", label: "API Keys" },
   { id: "external-mcp", groupId: "access", label: "External MCP" },
+  { id: "accessibility", groupId: "preferences", label: "Accessibility" },
 ];

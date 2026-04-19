@@ -28,9 +28,9 @@ export function DropZoneOverlay({
       className="absolute inset-0 z-50 pointer-events-none rounded-xl overflow-hidden"
       style={{
         // Dimmed background
-        background: "rgba(10, 10, 10, 0.85)",
-        // Pulsing orange border
-        boxShadow: "inset 0 0 0 2px rgba(255, 107, 53, 0.8)",
+        background: "var(--overlay-scrim-deep)",
+        // Pulsing orange border — keyframe overrides this with --shadow-drop-zone-*
+        boxShadow: "var(--shadow-drop-zone-border)",
         animation: "dropzone-pulse 1.5s ease-in-out infinite",
       }}
     >
@@ -42,14 +42,14 @@ export function DropZoneOverlay({
           className="w-14 h-14 rounded-xl flex items-center justify-center"
           style={{
             background:
-              "linear-gradient(135deg, rgba(255, 107, 53, 0.2) 0%, rgba(255, 107, 53, 0.08) 100%)",
-            border: "1px solid rgba(255, 107, 53, 0.4)",
-            boxShadow: "0 0 32px rgba(255, 107, 53, 0.2)",
+              "linear-gradient(135deg, var(--accent-border) 0%, var(--accent-muted) 100%)",
+            border: "1px solid var(--accent-strong)",
+            boxShadow: "0 0 32px var(--accent-border)",
           }}
         >
           <FileDown
             className="w-6 h-6"
-            style={{ color: "#ff6b35" }}
+            style={{ color: "var(--accent-primary)" }}
             strokeWidth={1.5}
           />
         </div>
@@ -57,7 +57,7 @@ export function DropZoneOverlay({
         {/* Message */}
         <span
           className="text-sm font-medium tracking-tight"
-          style={{ color: "rgba(255, 255, 255, 0.9)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {message}
         </span>
@@ -67,10 +67,10 @@ export function DropZoneOverlay({
       <style>{`
         @keyframes dropzone-pulse {
           0%, 100% {
-            box-shadow: inset 0 0 0 2px rgba(255, 107, 53, 0.8);
+            box-shadow: var(--shadow-drop-zone-border);
           }
           50% {
-            box-shadow: inset 0 0 0 3px rgba(255, 107, 53, 1), 0 0 20px rgba(255, 107, 53, 0.3);
+            box-shadow: var(--shadow-drop-zone-active);
           }
         }
       `}</style>

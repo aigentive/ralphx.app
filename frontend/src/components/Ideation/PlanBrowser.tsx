@@ -11,6 +11,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   ChevronLeft,
   MessageSquare,
@@ -18,7 +19,7 @@ import {
   Search,
   X,
   Loader2,
-  Sparkles,
+  Lightbulb,
   Pencil,
   Zap,
   CheckCircle,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import type { IdeationSessionWithProgress } from "@/types/ideation";
 import { ideationApi } from "@/api/ideation";
+import { withAlpha } from "@/lib/theme-colors";
 import { PlanItem } from "./PlanItem";
 import type { SessionGroup } from "./planBrowserUtils";
 import { GroupSection } from "./GroupSection";
@@ -60,10 +62,10 @@ const GROUP_CONFIG: {
   accentColor?: string;
 }[] = [
   { key: "drafts", label: "Drafts", icon: Pencil },
-  { key: "in-progress", label: "In Progress", icon: Zap, accentColor: "hsl(14 100% 60%)" },
-  { key: "accepted", label: "Accepted", icon: CheckCircle, accentColor: "hsl(145 70% 45%)" },
-  { key: "done", label: "Done", icon: CircleCheck, accentColor: "hsl(220 10% 45%)" },
-  { key: "archived", label: "Archived", icon: Archive, accentColor: "hsl(220 10% 45%)" },
+  { key: "in-progress", label: "In Progress", icon: Zap, accentColor: "var(--accent-primary)" },
+  { key: "accepted", label: "Accepted", icon: CheckCircle, accentColor: "var(--status-success)" },
+  { key: "done", label: "Done", icon: CircleCheck, accentColor: "var(--text-muted)" },
+  { key: "archived", label: "Archived", icon: Archive, accentColor: "var(--text-muted)" },
 ];
 
 // ============================================================================
@@ -273,23 +275,22 @@ export function PlanBrowser({
         flexShrink: 0,
       }}
     >
-      {/* Floating panel inner container */}
+      {/* Panel inner container — fills to layout edges. Phase 1 region
+         border on the outer plan-browser element separates the rail
+         from main content, so no card stroke/gap needed here. */}
       <div
-        className="flex flex-col h-full rounded-[10px]"
+        className="flex flex-col h-full"
         style={{
-          margin: "8px",
-          background: "hsla(220 10% 10% / 0.92)",
+          background: withAlpha("var(--bg-surface)", 92),
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          border: "1px solid hsla(220 20% 100% / 0.08)",
-          boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
       >
         {/* Header */}
         <div
           className="px-4 pt-4 pb-3"
           style={{
-            borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+            borderBottom: "1px solid var(--overlay-faint)",
           }}
         >
           {/* Title */}
@@ -297,22 +298,22 @@ export function PlanBrowser({
             <div
               className="w-8 h-8 rounded-[10px] flex items-center justify-center"
               style={{
-                background: "hsla(14 100% 60% / 0.12)",
-                border: "1px solid hsla(14 100% 60% / 0.2)",
+                background: withAlpha("var(--accent-primary)", 12),
+                border: "1px solid var(--accent-border)",
               }}
             >
-              <Sparkles className="w-4 h-4" style={{ color: "hsl(14 100% 60%)" }} />
+              <Lightbulb className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
             </div>
             <div>
               <h2
                 className="text-[13px] font-semibold tracking-[-0.01em]"
-                style={{ color: "hsl(220 10% 90%)" }}
+                style={{ color: "var(--text-primary)" }}
               >
                 Plans
               </h2>
               <p
                 className="text-[11px] tracking-[-0.005em]"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {totalCount} {totalCount === 1 ? "plan" : "plans"}
               </p>
@@ -325,13 +326,13 @@ export function PlanBrowser({
                 data-testid="sidebar-collapse-button"
                 onClick={onCollapse}
                 className="ml-auto w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "hsl(220 10% 80%)";
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                  e.currentTarget.style.background = "var(--overlay-weak)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  e.currentTarget.style.color = "var(--text-muted)";
                   e.currentTarget.style.background = "transparent";
                 }}
               >
@@ -345,14 +346,14 @@ export function PlanBrowser({
             onClick={onNewPlan}
             className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0 transition-colors duration-150 mb-2"
             style={{
-              background: "hsl(14 100% 60%)",
-              color: "white",
+              background: "var(--accent-primary)",
+              color: "var(--text-inverse)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 55%)";
+              e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 60%)";
+              e.currentTarget.style.background = "var(--accent-primary)";
             }}
           >
             <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
@@ -363,14 +364,14 @@ export function PlanBrowser({
           <div
             className="relative flex items-center"
             style={{
-              background: "hsla(220 10% 100% / 0.04)",
-              border: "1px solid hsla(220 10% 100% / 0.08)",
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-weak)",
               borderRadius: "6px",
             }}
           >
             <Search
               className="absolute left-2.5 w-3.5 h-3.5 pointer-events-none"
-              style={{ color: "hsl(220 10% 40%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
             <input
               ref={searchInputRef}
@@ -381,8 +382,8 @@ export function PlanBrowser({
               aria-label="Search sessions"
               className="w-full h-8 pl-8 pr-8 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
               style={{
-                color: "hsl(220 10% 90%)",
-                caretColor: "hsl(14 100% 60%)",
+                color: "var(--text-primary)",
+                caretColor: "var(--accent-primary)",
               }}
             />
             {/* Right side: spinner or clear button */}
@@ -390,7 +391,7 @@ export function PlanBrowser({
               {isSearchLoading ? (
                 <Loader2
                   className="w-3.5 h-3.5 animate-spin"
-                  style={{ color: "hsl(220 10% 40%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 />
               ) : searchTerm !== "" ? (
                 <button
@@ -401,12 +402,12 @@ export function PlanBrowser({
                     searchInputRef.current?.focus();
                   }}
                   className="w-4 h-4 flex items-center justify-center rounded-sm transition-colors duration-100"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "hsl(220 10% 80%)";
+                    e.currentTarget.style.color = "var(--text-primary)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                    e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
                   <X className="w-3.5 h-3.5" />
@@ -426,43 +427,23 @@ export function PlanBrowser({
         </div>
 
         {/* Plan List */}
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto py-2">
           {!hasAnySessions && !isSearchActive ? (
-            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-                style={{
-                  background: "hsla(220 10% 100% / 0.03)",
-                  border: "1px solid hsla(220 10% 100% / 0.06)",
-                }}
-              >
-                <MessageSquare className="w-5 h-5" style={{ color: "hsl(220 10% 50%)" }} />
-              </div>
-              <p className="text-[13px] font-medium" style={{ color: "hsl(220 10% 70%)" }}>
-                No plans yet
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "hsl(220 10% 50%)" }}>
-                Start your first brainstorm
-              </p>
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<MessageSquare />}
+              title="No plans yet"
+              description="Start your first brainstorm"
+              className="h-full"
+            />
           ) : isEmptySearchResult ? (
-            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-              <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-                style={{
-                  background: "hsla(220 10% 100% / 0.03)",
-                  border: "1px solid hsla(220 10% 100% / 0.06)",
-                }}
-              >
-                <Search className="w-5 h-5" style={{ color: "hsl(220 10% 50%)" }} />
-              </div>
-              <p className="text-[13px] font-medium" style={{ color: "hsl(220 10% 70%)" }}>
-                No sessions match
-              </p>
-              <p className="text-[11px] mt-1" style={{ color: "hsl(220 10% 50%)" }}>
-                Try a different search term
-              </p>
-            </div>
+            <EmptyState
+              variant="neutral"
+              icon={<Search />}
+              title="No sessions match"
+              description="Try a different search term"
+              className="h-full"
+            />
           ) : (
             <>
               {GROUP_CONFIG.map(({ key, label, icon, accentColor }) => {

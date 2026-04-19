@@ -62,7 +62,7 @@ function ActionButtonsCard({
           onClick={onReviewCode}
           variant="ghost"
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
-          style={{ color: "hsl(217 90% 60%)" }}
+          style={{ color: "var(--status-info)" }}
         >
           <Code className="w-4 h-4" />
           Review Code
@@ -74,8 +74,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <ExternalLink className="w-4 h-4" />
@@ -87,8 +87,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <RefreshCw className="w-4 h-4" />
@@ -165,8 +165,7 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2
-          className="w-6 h-6 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-6 h-6 animate-spin text-text-primary/30"
         />
       </div>
     );

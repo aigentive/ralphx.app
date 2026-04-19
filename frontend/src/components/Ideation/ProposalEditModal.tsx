@@ -69,8 +69,8 @@ function ComplexitySelector({ value, onChange, disabled }: ComplexitySelectorPro
               className={`
                 w-3 h-3 rounded-full transition-colors duration-150
                 ${isSelected
-                  ? "bg-[#ff6b35]"
-                  : "bg-white/20 hover:bg-[#ff6b35]/40"
+                  ? "bg-[var(--accent-primary)]"
+                  : "bg-[var(--overlay-moderate)] hover:bg-[var(--accent-muted)]"
                 }
                 ${!disabled ? "cursor-pointer" : "cursor-not-allowed opacity-50"}
               `}
@@ -198,8 +198,8 @@ export function ProposalEditModal({
 
   const canSave = title.trim().length > 0 && !isSaving;
 
-  const inputClasses = "bg-white/[0.03] border border-white/[0.08] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-colors duration-150 focus:border-[#ff6b35]/40 focus:outline-none h-10 px-3";
-  const selectClasses = "w-full h-10 rounded-md border px-3 text-sm bg-white/[0.03] border-white/[0.08] text-[var(--text-primary)] transition-colors duration-150 focus:outline-none focus:border-[#ff6b35]/40";
+  const inputClasses = "bg-white/[0.03] border border-white/[0.08] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-colors duration-150 focus:border-[var(--accent-primary)]/40 focus:outline-none h-10 px-3";
+  const selectClasses = "w-full h-10 rounded-md border px-3 text-sm bg-white/[0.03] border-white/[0.08] text-[var(--text-primary)] transition-colors duration-150 focus:outline-none focus:border-[var(--accent-primary)]/40";
 
   return (
     <Dialog open={!!proposal} onOpenChange={handleOpenChange}>
@@ -212,8 +212,8 @@ export function ProposalEditModal({
         {/* Header */}
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-[#ff6b35]/10 flex items-center justify-center flex-shrink-0">
-              <Edit3 className="w-5 h-5 text-[#ff6b35]" />
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent-primary)]/10 flex items-center justify-center flex-shrink-0">
+              <Edit3 className="w-5 h-5 text-[var(--accent-primary)]" />
             </div>
             <div>
               <DialogTitle id="modal-title" className="text-lg font-medium">
@@ -333,7 +333,7 @@ export function ProposalEditModal({
               <div className="space-y-2">
                 {steps.map((step, index) => (
                   <div key={index} className="group flex items-center gap-3">
-                    <span className="text-sm text-[#ff6b35] font-mono w-6 flex-shrink-0 text-right">
+                    <span className="text-sm text-[var(--accent-primary)] font-mono w-6 flex-shrink-0 text-right">
                       {index + 1}.
                     </span>
                     <Input
@@ -351,7 +351,7 @@ export function ProposalEditModal({
                       onClick={() => handleRemoveStep(index)}
                       aria-label={`Remove step ${index + 1}`}
                       disabled={isSaving}
-                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-status-error hover:bg-status-error/10"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -362,7 +362,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddStep}
                   disabled={isSaving}
-                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[#ff6b35]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
+                  className="w-full h-10 rounded-md border border-dashed border-[var(--border-subtle)] hover:border-[var(--accent-border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Add step
@@ -385,8 +385,8 @@ export function ProposalEditModal({
                 {acceptanceCriteria.map((criterion, index) => (
                   <div key={index} className="group flex items-center gap-3">
                     <div className="w-6 flex justify-center flex-shrink-0">
-                      <div className="w-4 h-4 rounded border border-[#ff6b35]/40 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-sm bg-[#ff6b35]/60" />
+                      <div className="w-4 h-4 rounded border border-[var(--accent-primary)]/40 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-sm bg-[var(--accent-primary)]/60" />
                       </div>
                     </div>
                     <Input
@@ -404,7 +404,7 @@ export function ProposalEditModal({
                       onClick={() => handleRemoveCriterion(index)}
                       aria-label={`Remove criterion ${index + 1}`}
                       disabled={isSaving}
-                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10"
+                      className="w-8 h-8 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--text-muted)] hover:text-status-error hover:bg-status-error/10"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -415,7 +415,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddCriterion}
                   disabled={isSaving}
-                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[#ff6b35]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
+                  className="w-full h-10 rounded-md border border-dashed border-[var(--border-subtle)] hover:border-[var(--accent-border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Add criterion
@@ -440,7 +440,7 @@ export function ProposalEditModal({
             data-testid="confirm-button"
             onClick={handleSave}
             disabled={!canSave}
-            className="bg-[#ff6b35] hover:bg-[#ff6b35]/90 text-white px-6"
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white px-6"
           >
             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isSaving ? "Saving..." : "Save Changes"}

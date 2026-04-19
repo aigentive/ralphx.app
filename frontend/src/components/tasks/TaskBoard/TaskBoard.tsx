@@ -28,6 +28,7 @@ import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
 import { usePlanStore, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Archive, BarChart2, GitMerge, FileText, Sparkles } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
@@ -467,11 +468,11 @@ export function TaskBoard({
               className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
               style={{
                 background: showArchived
-                  ? "hsla(14 100% 60% / 0.15)"
+                  ? "var(--accent-muted)"
                   : "transparent",
                 color: showArchived
-                  ? "hsl(14 100% 60%)"
-                  : "hsl(220 10% 55%)",
+                  ? "var(--accent-primary)"
+                  : "var(--text-muted)",
               }}
             >
               <Archive className="h-3.5 w-3.5" />
@@ -488,11 +489,11 @@ export function TaskBoard({
               className="gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors"
               style={{
                 background: showMergeTasks
-                  ? "hsla(14 100% 60% / 0.15)"
+                  ? "var(--accent-muted)"
                   : "transparent",
                 color: showMergeTasks
-                  ? "hsl(14 100% 60%)"
-                  : "hsl(220 10% 55%)",
+                  ? "var(--accent-primary)"
+                  : "var(--text-muted)",
               }}
             >
               <GitMerge className="h-3.5 w-3.5" />
@@ -504,13 +505,13 @@ export function TaskBoard({
           <Popover open={isStatsOpen} onOpenChange={setIsStatsOpen}>
             <PopoverTrigger asChild>
               <button
-                className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-[var(--overlay-faint)] transition-colors"
                 aria-label="Project stats"
               >
                 <BarChart2 className="w-4 h-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-96 p-0 border-white/10 bg-transparent shadow-xl">
+            <PopoverContent align="end" className="w-96 p-0 border-[var(--border-subtle)] bg-transparent shadow-xl">
               <ProjectStatsCard projectId={projectId} />
             </PopoverContent>
           </Popover>
@@ -522,7 +523,7 @@ export function TaskBoard({
           className="task-board relative flex items-stretch py-4 overflow-x-auto flex-1"
           style={{
             /* Solid dark background with subtle cool tint - like Tahoe Finder */
-            background: "hsl(220 10% 8%)",
+            background: "var(--bg-base)",
             scrollSnapType: "x proximity",
             scrollPaddingLeft: "16px",
             scrollPaddingRight: "16px",
@@ -532,50 +533,54 @@ export function TaskBoard({
           {/* Show no plan state when no active plan is selected */}
           {showNoPlanState ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="flex flex-col items-center justify-center py-24 max-w-md text-center">
-                <div className="relative mb-5 h-24 w-32">
-                  <div
-                    className="absolute left-2 top-5 h-14 w-20 rounded-xl"
-                    style={{
-                      background: "hsla(220 10% 100% / 0.03)",
-                      border: "1px solid hsla(220 10% 100% / 0.08)",
-                    }}
-                  />
-                  <div
-                    className="absolute right-2 top-5 h-14 w-20 rounded-xl"
-                    style={{
-                      background: "hsla(220 10% 100% / 0.03)",
-                      border: "1px solid hsla(220 10% 100% / 0.08)",
-                    }}
-                  />
-                  <div
-                    className="absolute left-1/2 top-1 -translate-x-1/2 h-20 w-24 rounded-2xl flex items-center justify-center"
-                    style={{
-                      background:
-                        "linear-gradient(160deg, hsla(14 100% 60% / 0.18), hsla(45 93% 50% / 0.1))",
-                      border: "1px solid hsla(14 100% 60% / 0.3)",
-                      boxShadow: "0 12px 30px hsla(14 100% 60% / 0.18)",
-                    }}
-                  >
-                    <FileText className="h-8 w-8" style={{ color: "hsl(14 100% 62%)" }} />
+              <EmptyState
+                iconBleed
+                icon={
+                  <div className="relative h-24 w-32">
+                    <div
+                      className="absolute left-2 top-5 h-14 w-20 rounded-xl"
+                      style={{
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-moderate)",
+                      }}
+                    />
+                    <div
+                      className="absolute right-2 top-5 h-14 w-20 rounded-xl"
+                      style={{
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-moderate)",
+                      }}
+                    />
+                    <div
+                      className="absolute left-1/2 top-1 -translate-x-1/2 h-20 w-24 rounded-2xl flex items-center justify-center"
+                      style={{
+                        background:
+                          "linear-gradient(160deg, color-mix(in srgb, var(--accent-primary) 18%, transparent), color-mix(in srgb, var(--status-warning) 10%, transparent))",
+                        border: "1px solid var(--accent-border)",
+                        boxShadow: "0 12px 30px color-mix(in srgb, var(--accent-primary) 18%, transparent)",
+                      }}
+                    >
+                      <FileText className="h-8 w-8" style={{ color: "var(--accent-primary)" }} />
+                    </div>
+                    <div className="absolute right-1 top-0">
+                      <Sparkles className="h-4 w-4" style={{ color: "var(--status-warning)" }} />
+                    </div>
                   </div>
-                  <div className="absolute right-1 top-0">
-                    <Sparkles className="h-4 w-4" style={{ color: "hsl(45 93% 60%)" }} />
+                }
+                title="No plan selected"
+                description="Select a plan to view work on the Kanban board."
+                action={
+                  <div className="flex flex-col items-center gap-2">
+                    <PlanSelectorInline
+                      projectId={projectId}
+                      source="kanban_inline"
+                      onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                    />
+                    <p className="text-xs text-[var(--text-muted)]">or press Cmd+Shift+P</p>
                   </div>
-                </div>
-                <h3 className="text-xl font-medium mb-2">No plan selected</h3>
-                <p className="text-gray-400 mb-6">
-                  Select a plan to view work on the Kanban board.
-                </p>
-                <div className="space-y-2">
-                  <PlanSelectorInline
-                    projectId={projectId}
-                    source="kanban_inline"
-                    onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
-                  />
-                  <p className="text-sm text-gray-500">or press Cmd+Shift+P</p>
-                </div>
-              </div>
+                }
+                className="max-w-md"
+              />
             </div>
           ) : /* Show empty search state when search has no results */
           showEmptyState ? (

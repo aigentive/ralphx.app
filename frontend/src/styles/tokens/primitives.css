@@ -1,0 +1,141 @@
+/**
+ * Tier 1 — Primitive tokens (aka reference tokens)
+ *
+ * Raw, value-named scales. These are NOT used directly by components.
+ * Components consume the semantic layer; the semantic layer consumes these.
+ *
+ * Spec: specs/design/styleguide.md
+ */
+
+:root {
+  /* ============================================================================
+   * Color scales
+   * ============================================================================ */
+
+  /* Blue-gray (220°, 10% sat) — core neutral for dark + light themes.
+   * Keys follow conventional 50→950 scale where 50 is lightest. */
+  --gray-50:   hsl(220 10% 99%);
+  --gray-100:  hsl(220 10% 97%);
+  --gray-200:  hsl(220 10% 92%);
+  --gray-300:  hsl(220 10% 88%);
+  --gray-400:  hsl(220 10% 78%);
+  --gray-500:  hsl(220 10% 60%);
+  --gray-600:  hsl(220 10% 45%);
+  --gray-700:  hsl(220 10% 35%);
+  --gray-800:  hsl(220 10% 22%);
+  --gray-850:  hsl(220 10% 20%);
+  --gray-900:  hsl(220 10% 18%);
+  --gray-925:  hsl(220 10% 16%);
+  --gray-950:  hsl(220 10% 12%);
+  --gray-975:  hsl(220 10% 8%);
+  --gray-990:  hsl(220 15% 10%);
+
+  /* Brand orange scale — warm, use sparingly. hsl(14°, 100%). */
+  --orange-500: hsl(14 100% 60%); /* canonical brand #ff6b35 */
+  --orange-600: hsl(14 100% 55%);
+  --orange-700: hsl(14 90% 50%);  /* light-theme tweak for AA on white */
+  --orange-800: hsl(14 90% 45%);
+  --amber-500:  hsl(32 100% 65%);
+  --amber-600:  hsl(32 90% 50%);
+
+  /* Yellow scale — used by the High-Contrast theme (replaces orange) */
+  --yellow-300: #ffee66;
+  --yellow-400: #ffee33;
+  --yellow-500: #ffdd00;
+
+  /* Blue scale — focus rings, info status (dark theme) */
+  --blue-500: hsl(220 80% 60%);
+  --blue-600: hsl(220 80% 50%);
+
+  /* Okabe-Ito CVD-safe palette (2008). Used for status signals.
+   * Spec: specs/design/color-blind-design.md §5 */
+  --cvd-orange:        #E69F00;
+  --cvd-sky-blue:      #56B4E9;
+  --cvd-bluish-green:  #009E73;
+  --cvd-yellow:        #F0E442;
+  --cvd-blue:          #0072B2;
+  --cvd-vermillion:    #D55E00;
+  --cvd-reddish-purple:#CC79A7;
+
+  /* Light-theme tuned Okabe-Ito (darker variants for AA on white) */
+  --cvd-bluish-green-dark: #007a58;
+  --cvd-yellow-dark:       #a87800;
+  --cvd-vermillion-dark:   #b24800;
+  --cvd-blue-dark:         #005a8a;
+
+  /* High-Contrast maximum-luminance status colors */
+  --hc-green:      #00ff66;
+  --hc-red:        #ff3344;
+  --hc-sky:        #66ccff;
+
+  /* Pure neutrals */
+  --color-black: #000000;
+  --color-white: #ffffff;
+  --color-white-dim-1: #e0e0e0;
+  --color-white-dim-2: #b0b0b0;
+
+  /* Alpha overlays — common translucent values so components don't hand-roll
+   * rgba() literals. Ladder tracks the --overlay-* semantic ladder + a few
+   * reserved strong variants for borders/scrims. */
+  --alpha-black-60: hsla(0 0% 0% / 0.60); /* → --overlay-scrim-deep */
+  --alpha-black-30: hsla(0 0% 0% / 0.30); /* → --overlay-scrim */
+  --alpha-white-50: hsla(0 0% 100% / 0.50); /* HC --border-subtle */
+  --alpha-white-15: hsla(0 0% 100% / 0.15); /* reserved */
+  --alpha-white-10: hsla(0 0% 100% / 0.10); /* → --overlay-moderate */
+  --alpha-white-8:  hsla(0 0% 100% / 0.08); /* reserved */
+  --alpha-white-6:  hsla(0 0% 100% / 0.06); /* → --overlay-weak */
+  --alpha-white-4:  hsla(0 0% 100% / 0.04); /* → --overlay-faint */
+
+  /* ============================================================================
+   * Typography primitives
+   * ============================================================================ */
+
+  --font-display: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body:    'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
+
+  --tracking-normal: 0;
+  --tracking-wide:   0.05em;
+
+  /* ============================================================================
+   * Spacing — 8pt grid
+   * ============================================================================ */
+
+  /* Note: Tailwind spacing utilities (p-1/p-2/...) resolve through the
+   * --spacing-* block in globals.css @theme inline. These --space-* tokens
+   * are kept for direct-CSS consumption if needed; prefer Tailwind utilities. */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+
+  /* ============================================================================
+   * Border radius
+   * ============================================================================ */
+
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  /* Tailwind's rounded-full = 9999px is preferred over a --radius-full token. */
+
+  /* ============================================================================
+   * Shadows — layered for realistic depth on dark theme
+   * ============================================================================ */
+
+  --shadow-xs: 0 1px 2px hsla(0 0% 0% / 0.2),   0 1px 3px  hsla(0 0% 0% / 0.1);
+  --shadow-sm: 0 1px 2px hsla(0 0% 0% / 0.3),   0 2px 4px  hsla(0 0% 0% / 0.2);
+  --shadow-md: 0 4px 6px hsla(0 0% 0% / 0.3),   0 8px 16px hsla(0 0% 0% / 0.2);
+  --shadow-lg: 0 10px 15px hsla(0 0% 0% / 0.3), 0 20px 40px hsla(0 0% 0% / 0.25);
+
+  /* ============================================================================
+   * Transitions
+   * ============================================================================ */
+
+  --transition-fast:   150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow:   300ms ease;
+}

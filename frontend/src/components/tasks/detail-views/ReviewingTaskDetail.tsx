@@ -34,6 +34,7 @@ import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
 import type { ReviewNoteResponse } from "@/lib/tauri";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 interface ReviewingTaskDetailProps {
   task: Task;
@@ -61,30 +62,29 @@ function ReviewStepItem({
       {/* Status icon */}
       <div className="relative">
         {status === "completed" && (
-          <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />
+          <CheckCircle2 className="w-5 h-5" style={{ color: "var(--status-success)" }} />
         )}
         {status === "active" && !isHistorical && (
           <div className="relative">
             <Loader2
               className="w-5 h-5 animate-spin"
-              style={{ color: "#0a84ff" }}
+              style={{ color: "var(--status-info)" }}
             />
             {/* Glow effect */}
             <div
               className="absolute inset-0 rounded-full animate-pulse"
               style={{
-                background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)",
+                background: "radial-gradient(circle, var(--status-info-border) 0%, transparent 70%)",
               }}
             />
           </div>
         )}
         {status === "active" && isHistorical && (
-          <Circle className="w-5 h-5" style={{ color: "#64d2ff" }} />
+          <Circle className="w-5 h-5" style={{ color: "var(--status-info)" }} />
         )}
         {status === "pending" && (
           <Circle
-            className="w-5 h-5"
-            style={{ color: "rgba(255,255,255,0.2)" }}
+            className="w-5 h-5 text-text-primary/20"
           />
         )}
       </div>
@@ -95,12 +95,12 @@ function ReviewStepItem({
         style={{
           color:
             status === "completed"
-              ? "rgba(255,255,255,0.6)"
+              ? withAlpha("var(--text-primary)", 60)
               : status === "active"
               ? isHistorical
-                ? "rgba(255,255,255,0.35)"
-                : "#64d2ff"
-              : "rgba(255,255,255,0.35)",
+                ? withAlpha("var(--text-primary)", 35)
+                : "var(--status-info)"
+              : withAlpha("var(--text-primary)", 35),
         }}
       >
         {label}
@@ -361,8 +361,8 @@ export function ReviewingTaskDetail({
                   disabled={requestChangesMutation.isPending}
                   className="min-h-[100px] text-[13px] resize-none rounded-xl"
                   style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.3)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    backgroundColor: "var(--overlay-scrim)",
+                    border: "1px solid var(--overlay-moderate)",
                   }}
                 />
               </div>
@@ -375,8 +375,8 @@ export function ReviewingTaskDetail({
                 disabled={isActionLoading}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 69, 58, 0.15)",
-                  color: "#ff453a",
+                  backgroundColor: statusTint("error", 15),
+                  color: "var(--status-error)",
                 }}
               >
                 <Square className="w-3.5 h-3.5" />
@@ -389,8 +389,8 @@ export function ReviewingTaskDetail({
                 disabled={requestChangesMutation.isPending || (showFeedback && feedback.trim().length === 0)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 159, 10, 0.15)",
-                  color: "#ff9f0a",
+                  backgroundColor: "var(--status-warning-muted)",
+                  color: "var(--status-warning)",
                 }}
               >
                 {requestChangesMutation.isPending ? (
@@ -413,14 +413,14 @@ export function ReviewingTaskDetail({
                     setFeedback("");
                     setActionError(null);
                   }}
-                  className="text-[12px] text-white/40 hover:text-white/60 transition-colors cursor-pointer"
+                  className="text-[12px] text-text-primary/40 hover:text-text-primary/60 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
               )}
             </div>
             {actionError && (
-              <p className="mt-1 text-[12px]" style={{ color: "#ff453a" }}>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--status-error)" }}>
                 {actionError}
               </p>
             )}

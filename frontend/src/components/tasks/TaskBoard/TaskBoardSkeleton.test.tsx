@@ -56,6 +56,6 @@ describe("TaskBoardSkeleton", () => {
   it("should use correct background color", () => {
     render(<TaskBoardSkeleton />);
     const skeleton = screen.getByTestId("task-board-skeleton");
-    expect(skeleton.style.background).toBe("rgb(18, 20, 22)");
+    expect(skeleton.style.background).toBe("var(--bg-base)");
   });
 });

@@ -292,27 +292,19 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Unified container: attachment icon + textarea + stop button share one input field */}
+        {/* Unified container: textarea + stop button share one input field.
+            Border is 2px wide on every state so the focus color swap does
+            not reflow the layout (previously 1px→2px toggled a 1px jump). */}
         <div
           className="flex-1 flex items-end rounded-lg transition-colors"
           style={{
-            background: "hsl(220 10% 12%)",
+            background: "var(--bg-surface)",
             border: isFocused
-              ? "1px solid hsla(14 100% 60% / 0.5)"
-              : "1px solid hsl(220 10% 18%)",
+              ? "2px solid var(--border-default)"
+              : "2px solid var(--bg-hover)",
             minHeight: "38px",
           }}
         >
-          {enableAttachments && (
-            <div className="pl-1 pb-1 flex-shrink-0">
-              <ChatAttachmentPicker
-                {...(onFilesSelected !== undefined && { onFilesSelected })}
-                disabled={isReadOnly}
-                subtle={true}
-              />
-            </div>
-          )}
-
           {/* Textarea - transparent inside the unified container */}
           <textarea
             ref={textareaRef}
@@ -329,9 +321,9 @@ export function ChatInput({
             className="flex-1 px-3 py-2 text-[13px] resize-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
             style={{
               background: "transparent",
-              color: "hsl(220 10% 90%)",
+              color: "var(--text-primary)",
               border: "none",
-              minHeight: "36px",
+              minHeight: "34px",
               maxHeight: "120px",
               overflowY: "auto",
               boxShadow: "none",
@@ -348,12 +340,12 @@ export function ChatInput({
                 onClick={onStop}
                 aria-label="Stop agent"
                 className="p-1.5 rounded transition-colors"
-                style={{ color: "hsl(220 10% 40%)" }}
+                style={{ color: "var(--text-muted)" }}
                 onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.color = "#ff6b35";
+                  e.currentTarget.style.color = "var(--accent-primary)";
                 }}
                 onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.color = "hsl(220 10% 40%)";
+                  e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -364,6 +356,20 @@ export function ChatInput({
           )}
         </div>
 
+        {/* Attachment picker — sits BETWEEN the input box and the Send
+            button per 2026-04-19 feedback (Image #55). Uses subtle=false
+            so the paperclip button renders at 38×38 matching the Send
+            button's height and rounded-lg chrome. */}
+        {enableAttachments && (
+          <div className="flex-shrink-0 flex items-center">
+            <ChatAttachmentPicker
+              {...(onFilesSelected !== undefined && { onFilesSelected })}
+              disabled={isReadOnly}
+              subtle={false}
+            />
+          </div>
+        )}
+
         {/* Send button */}
         <div className="flex items-center">
           <button
@@ -373,12 +379,13 @@ export function ChatInput({
             disabled={!canSend}
             aria-label="Send message"
             aria-busy={isSending}
-            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
+            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-[0.54] shrink-0 h-[38px] flex items-center justify-center hover:brightness-110 border"
             style={{
               background: canSend
-                ? "hsl(14 100% 60%)"
-                : "hsla(14 100% 60% / 0.3)",
-              color: "white",
+                ? "var(--accent-primary)"
+                : "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+              borderColor: canSend ? "transparent" : "var(--border-subtle)",
+              color: canSend ? "var(--text-inverse)" : "var(--text-muted)",
               boxShadow: "none",
             }}
           >
@@ -402,7 +409,7 @@ export function ChatInput({
       {showHelperText && (
         <p
           className="text-[10px] mt-1.5"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {questionMode
             ? "Enter to send · Type option number or custom text"

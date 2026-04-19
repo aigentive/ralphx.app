@@ -17,6 +17,7 @@ import {
   type SettingsSectionId,
 } from "./settings-registry";
 import { loadActiveSection, saveActiveSection } from "./settings-ui-state";
+import { AccessibilitySection } from "./AccessibilitySection";
 import { ApiKeysSection } from "./ApiKeysSection";
 import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
 import { RepositorySettingsSection } from "./RepositorySettingsSection";
@@ -94,32 +95,22 @@ export default function SettingsDialog({
     "ideation-harnesses": () => <IdeationHarnessSection />,
     "api-keys": () => <ApiKeysSection />,
     "external-mcp": () => <ExternalMcpSettingsPanel />,
+    accessibility: () => <AccessibilitySection />,
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && closeModal()}>
       <DialogContent
         data-testid="settings-dialog"
-        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh]"
+        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh] bg-[var(--dialog-bg)] border border-[var(--dialog-border-color)]"
         hideCloseButton={true}
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Configure execution, ideation, workspace, and access settings.
         </DialogDescription>
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-          style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
-            backdropFilter: "blur(20px)",
-          }}
-        >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--dialog-border-color)] bg-[var(--dialog-bg)] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-[var(--text-primary)]">
               Settings
@@ -136,7 +127,7 @@ export default function SettingsDialog({
           <button
             type="button"
             onClick={closeModal}
-            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[rgba(255,255,255,0.06)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+            className="rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:outline-none focus-visible:ring-0"
             aria-label="Close settings"
           >
             <X className="h-4 w-4" />
@@ -146,10 +137,7 @@ export default function SettingsDialog({
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left rail — hidden below lg breakpoint */}
-          <nav
-            className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r py-3"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
-          >
+          <nav className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r border-[var(--dialog-border-color)] py-3 bg-[var(--dialog-rail-bg)]">
             {SETTINGS_GROUPS.map((group) => {
               const groupSections = SETTINGS_SECTIONS.filter(
                 (s) => s.groupId === group.id
@@ -173,18 +161,12 @@ export default function SettingsDialog({
                             setActiveSection(section.id);
                           }
                         }}
-                        className="mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.04)]"
-                        style={
+                        aria-current={isActive ? "page" : undefined}
+                        className={`mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors ${
                           isActive
-                            ? {
-                                background: "#ffffff",
-                                color: "#0a0a0a",
-                                fontWeight: 600,
-                              }
-                            : {
-                                color: "var(--text-primary)",
-                              }
-                        }
+                            ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] font-semibold"
+                            : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                        }`}
                       >
                         <span className="block truncate">{section.label}</span>
                       </div>
@@ -196,9 +178,7 @@ export default function SettingsDialog({
           </nav>
 
           {/* Mobile section selector — visible below lg breakpoint */}
-          <div className="block lg:hidden w-full px-4 py-2 border-b shrink-0"
-            style={{ borderColor: "rgba(255,255,255,0.06)" }}
-          >
+          <div className="block lg:hidden w-full px-4 py-2 border-b border-[var(--border-subtle)] shrink-0">
             <select
               value={activeSection}
               onChange={(e) => setActiveSection(e.target.value as SettingsSectionId)}
@@ -236,13 +216,7 @@ export default function SettingsDialog({
         </div>
 
         {settingsError && (
-          <div
-            className="px-4 py-2 text-sm shrink-0 border-t"
-            style={{
-              color: "var(--status-error)",
-              borderColor: "rgba(255,255,255,0.06)",
-            }}
-          >
+          <div className="px-4 py-2 text-sm shrink-0 border-t border-[var(--border-subtle)] text-[var(--status-error)]">
             {settingsError}
           </div>
         )}

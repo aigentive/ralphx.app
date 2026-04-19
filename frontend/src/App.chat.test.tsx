@@ -523,7 +523,7 @@ describe("ChatPanel Integration", () => {
       );
 
       const panelInner = screen.getByTestId("chat-panel").firstElementChild as HTMLElement;
-      expect(panelInner).toHaveStyle({ background: "hsla(220 10% 10% / 0.92)" });
+      expect(panelInner).toHaveStyle({ background: "var(--bg-elevated)" });
     });
 
     it("uses design tokens for border", () => {

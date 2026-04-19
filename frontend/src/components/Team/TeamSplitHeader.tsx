@@ -49,8 +49,8 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
       className="flex items-center justify-between px-4 shrink-0"
       style={{
         height: 48,
-        backgroundColor: "hsl(220 10% 9%)",
-        borderBottom: "1px solid hsl(220 10% 14%)",
+        backgroundColor: "var(--bg-surface)",
+        borderBottom: "1px solid var(--border-subtle)",
         backdropFilter: "blur(24px)",
         WebkitBackdropFilter: "blur(24px)",
       }}
@@ -62,7 +62,7 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
           size="sm"
           onClick={handleBack}
           className="gap-1.5 h-7 px-2 text-[13px]"
-          style={{ color: "hsl(220 10% 60%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           <ChevronLeft className="w-4 h-4" />
           Back
@@ -70,7 +70,7 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
 
         <span
           className="text-[13px] font-medium"
-          style={{ color: "hsl(220 10% 85%)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {team?.teamName ?? "Team"}
         </span>
@@ -78,8 +78,8 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
         <span
           className="text-[10px] px-1.5 py-0.5 rounded"
           style={{
-            backgroundColor: "hsl(220 10% 14%)",
-            color: "hsl(220 10% 55%)",
+            backgroundColor: "var(--border-subtle)",
+            color: "var(--text-muted)",
           }}
         >
           {activeCount}/{teammates.length} active
@@ -87,7 +87,7 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
 
         <span
           className="text-[11px] font-mono"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {costLabel}
         </span>
@@ -100,7 +100,7 @@ export const TeamSplitHeader = React.memo(function TeamSplitHeader({
           size="sm"
           onClick={onStopAll}
           className="gap-1.5 h-7 text-[11px]"
-          style={{ color: "hsl(0 70% 60%)" }}
+          style={{ color: "var(--status-error)" }}
         >
           <Square className="w-3 h-3" />
           Stop All

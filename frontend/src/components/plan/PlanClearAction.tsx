@@ -8,6 +8,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -45,11 +46,11 @@ export function PlanClearAction({
       style={{
         background:
           isHighlighted
-            ? "hsla(14 100% 60% / 0.16)"
+            ? withAlpha("var(--accent-primary)", 16)
             : "transparent",
         border:
           isHighlighted
-            ? "1px solid hsla(14 100% 60% / 0.35)"
+            ? "1px solid var(--accent-border)"
             : "1px solid transparent",
       }}
       data-testid="plan-quick-switcher-clear"
@@ -57,11 +58,11 @@ export function PlanClearAction({
       <div className="flex-1 min-w-0">
         <div
           className="text-[13px] font-medium leading-tight"
-          style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
+          style={{ color: isHighlighted ? "var(--accent-primary)" : "var(--text-primary)" }}
         >
           Clear active plan
         </div>
-        <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
+        <div className="text-xs leading-tight mt-0.5" style={{ color: "var(--text-muted)" }}>
           Return to no active plan state
         </div>
       </div>

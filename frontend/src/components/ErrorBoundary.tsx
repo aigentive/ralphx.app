@@ -46,8 +46,8 @@ export class ErrorBoundary extends Component<Props, State> {
             padding: "20px",
             margin: "20px",
             borderRadius: "8px",
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
+            backgroundColor: "var(--status-error-muted)",
+            border: "1px solid var(--status-error-border)",
             fontFamily: "SF Pro, system-ui, sans-serif",
           }}
         >
@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 style={{
                   padding: "12px",
                   borderRadius: "6px",
-                  backgroundColor: "rgba(0, 0, 0, 0.4)",
+                  backgroundColor: "var(--overlay-scrim)",
                   marginBottom: "12px",
                   overflow: "auto",
                 }}
@@ -111,7 +111,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     style={{
                       padding: "12px",
                       borderRadius: "6px",
-                      backgroundColor: "rgba(0, 0, 0, 0.4)",
+                      backgroundColor: "var(--overlay-scrim)",
                       overflow: "auto",
                       maxHeight: "300px",
                     }}

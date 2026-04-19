@@ -18,21 +18,21 @@ export function TeammateProgressBar({ completed, total }: TeammateProgressBarPro
       {/* Track */}
       <div
         className="flex-1 h-1 rounded-full overflow-hidden"
-        style={{ backgroundColor: "hsla(220 10% 100% / 0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         {/* Fill */}
         <div
           className="h-full rounded-full transition-[width] duration-300 ease-out"
           style={{
             width: `${percent}%`,
-            backgroundColor: "hsl(14 100% 60%)",
+            backgroundColor: "var(--accent-primary)",
           }}
         />
       </div>
       {/* Percentage */}
       <span
         className="text-[9px] font-medium tabular-nums shrink-0 w-7 text-right"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {percent}%
       </span>

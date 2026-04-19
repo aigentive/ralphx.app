@@ -91,9 +91,9 @@ function formatElapsed(seconds: number): string {
 
 /** Get color class for elapsed time */
 function getElapsedColor(seconds: number): string {
-  if (seconds < 60) return "text-green-400";
-  if (seconds < 180) return "text-yellow-400";
-  return "text-red-400";
+  if (seconds < 60) return "text-status-success";
+  if (seconds < 180) return "text-status-warning";
+  return "text-status-error";
 }
 
 // ============================================================================
@@ -217,7 +217,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="shrink-0 h-7 px-2 text-white/40 hover:text-white/60"
+            className="shrink-0 h-7 px-2 text-text-primary/40 hover:text-text-primary/60"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -231,15 +231,15 @@ export function StatusActivityBadge({
   if (isWaiting) {
     if (isInlineLayout) {
       return (
-        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55">
-          <CirclePause className="h-3 w-3 shrink-0 text-white/45" />
+        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-text-primary/55">
+          <CirclePause className="h-3 w-3 shrink-0 text-text-primary/45" />
           <span className="truncate">Awaiting input</span>
           {showActivityButton && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleActivityClick}
-              className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+              className="ml-1 shrink-0 h-6 px-1.5 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
               aria-label="View activity"
             >
               <Activity className="w-3.5 h-3.5" />
@@ -253,7 +253,7 @@ export function StatusActivityBadge({
       <div className="flex items-center gap-1.5 shrink-0">
         {showModelChip && modelDisplay && <ModelChip model={modelDisplay} />}
         <Badge variant="secondary" className="shrink-0">
-          <CirclePause className="w-3 h-3 mr-1.5 text-white/50" />
+          <CirclePause className="w-3 h-3 mr-1.5 text-text-primary/50" />
           Awaiting input
         </Badge>
         {showActivityButton && (
@@ -261,7 +261,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="shrink-0 h-7 px-2 text-[#ff6b35] hover:text-[#ff6b35]/80"
+            className="shrink-0 h-7 px-2 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -290,10 +290,10 @@ export function StatusActivityBadge({
   let badgeColorClass: string;
   if (showToolActive) {
     badgeLabel = "Tool active";
-    badgeColorClass = "text-green-400";
+    badgeColorClass = "text-status-success";
   } else if (activeVerificationChildId) {
     badgeLabel = "Verifying...";
-    badgeColorClass = "text-blue-400";
+    badgeColorClass = "text-status-info";
   } else if (isPostStreamWork && (contextType === "merge" || contextType === "review")) {
     badgeLabel = `Completing ${contextType}...`;
     badgeColorClass = "";
@@ -305,10 +305,10 @@ export function StatusActivityBadge({
   if (isInlineLayout) {
     return (
       <div
-        className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55"
+        className="flex items-center gap-1.5 min-w-0 text-[11px] text-text-primary/55"
         data-testid="chat-session-status-inline"
       >
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-white/55" />
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-text-primary/55" />
         <span className={badgeColorClass ? `${badgeColorClass} truncate` : "truncate"}>
           {badgeLabel}
         </span>
@@ -320,7 +320,7 @@ export function StatusActivityBadge({
             variant="ghost"
             size="sm"
             onClick={handleActivityClick}
-            className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+            className="ml-1 shrink-0 h-6 px-1.5 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
             aria-label="View activity"
           >
             <Activity className="w-3.5 h-3.5" />
@@ -346,7 +346,7 @@ export function StatusActivityBadge({
           variant="ghost"
           size="sm"
           onClick={handleActivityClick}
-          className="shrink-0 h-7 px-2 text-[#ff6b35] hover:text-[#ff6b35]/80"
+          className="shrink-0 h-7 px-2 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80"
           aria-label="View activity"
         >
           <Activity className="w-3.5 h-3.5" />

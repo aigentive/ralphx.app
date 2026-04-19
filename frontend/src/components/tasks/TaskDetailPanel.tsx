@@ -30,6 +30,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { withAlpha } from "@/lib/theme-colors";
 
 // Import state-specific detail view components
 import {
@@ -141,57 +142,57 @@ const STATUS_CONFIG: Record<
   },
   ready: {
     label: "Ready",
-    bg: "rgba(59, 130, 246, 0.15)",
+    bg: "var(--status-info-muted)",
     text: "var(--status-info)",
   },
   blocked: {
     label: "Blocked",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   executing: {
     label: "Executing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_refining: {
     label: "QA Refining",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_testing: {
     label: "QA Testing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   qa_passed: {
     label: "QA Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   qa_failed: {
     label: "QA Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
   pending_review: {
     label: "Pending Review",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   revision_needed: {
     label: "Revision Needed",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   approved: {
     label: "Approved",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   failed: {
     label: "Failed",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
   cancelled: {
@@ -201,57 +202,57 @@ const STATUS_CONFIG: Record<
   },
   reviewing: {
     label: "AI Review in Progress",
-    bg: "rgba(59, 130, 246, 0.15)",
+    bg: "var(--status-info-muted)",
     text: "var(--status-info)",
   },
   review_passed: {
     label: "AI Review Passed",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   escalated: {
     label: "Escalated",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   re_executing: {
     label: "Re-executing",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   pending_merge: {
     label: "Pending Merge",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   merging: {
     label: "Merging",
-    bg: "rgba(255, 107, 53, 0.15)",
+    bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
   merge_incomplete: {
     label: "Merge Incomplete",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   merge_conflict: {
     label: "Merge Conflict",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   merged: {
     label: "Merged",
-    bg: "rgba(16, 185, 129, 0.15)",
+    bg: "var(--status-success-muted)",
     text: "var(--status-success)",
   },
   paused: {
     label: "Paused",
-    bg: "rgba(245, 158, 11, 0.15)",
+    bg: "var(--status-warning-muted)",
     text: "var(--status-warning)",
   },
   stopped: {
     label: "Stopped",
-    bg: "rgba(239, 68, 68, 0.15)",
+    bg: "var(--status-error-muted)",
     text: "var(--status-error)",
   },
 };
@@ -295,18 +296,18 @@ function ReviewCard({
   const Icon = reviewerType === "ai" ? Bot : reviewerType === "system" ? Settings : User;
   const label = reviewerType === "ai" ? "AI Review" : reviewerType === "system" ? "System" : "Human Review";
 
-  const defaultStatusColor = { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
+  const defaultStatusColor = { bg: "var(--overlay-weak)", text: withAlpha("var(--text-primary)", 50) };
   const statusColors: Record<string, { bg: string; text: string }> = {
     pending: defaultStatusColor,
     approved: {
-      bg: "rgba(16, 185, 129, 0.15)",
+      bg: "var(--status-success-muted)",
       text: "var(--status-success)",
     },
     changes_requested: {
-      bg: "rgba(245, 158, 11, 0.15)",
+      bg: "var(--status-warning-muted)",
       text: "var(--status-warning)",
     },
-    rejected: { bg: "rgba(239, 68, 68, 0.15)", text: "var(--status-error)" },
+    rejected: { bg: "var(--status-error-muted)", text: "var(--status-error)" },
   };
 
   const statusColor = statusColors[status] ?? defaultStatusColor;
@@ -316,13 +317,13 @@ function ReviewCard({
       data-testid={`review-item-${reviewerType}`}
       className="flex items-center justify-between p-2.5 rounded-lg"
       style={{
-        background: "linear-gradient(180deg, rgba(28,28,28,0.9) 0%, rgba(22,22,22,0.95) 100%)",
-        border: "1px solid rgba(255,255,255,0.06)",
+        background: `linear-gradient(180deg, ${withAlpha("var(--bg-elevated)", 90)} 0%, ${withAlpha("var(--bg-surface)", 95)} 100%)`,
+        border: "1px solid var(--overlay-weak)",
       }}
     >
       <div className="flex items-center gap-2">
-        <Icon className="w-3.5 h-3.5 text-white/50" />
-        <span className="text-[13px] font-medium text-white/80">
+        <Icon className="w-3.5 h-3.5 text-text-primary/50" />
+        <span className="text-[13px] font-medium text-text-primary/80">
           {label}
         </span>
       </div>
@@ -338,7 +339,7 @@ function ReviewCard({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-[13px] font-medium mb-2.5 text-white/80">
+    <h3 className="text-[13px] font-medium mb-2.5 text-text-primary/80">
       {children}
     </h3>
   );
@@ -409,7 +410,7 @@ export function TaskDetailPanel({
             <div className="flex-1 min-w-0">
               <h2
                 data-testid="task-detail-title"
-                className="text-base font-semibold text-white/90"
+                className="text-base font-semibold text-text-primary/90"
                 style={{
                   letterSpacing: "-0.02em",
                   lineHeight: "1.3",
@@ -422,9 +423,9 @@ export function TaskDetailPanel({
                   data-testid="task-detail-category"
                   className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   style={{
-                    backgroundColor: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    color: "rgba(255,255,255,0.6)",
+                    backgroundColor: "var(--overlay-weak)",
+                    border: "1px solid var(--border-subtle)",
+                    color: withAlpha("var(--text-primary)", 60),
                   }}
                 >
                   {task.category}
@@ -463,7 +464,7 @@ export function TaskDetailPanel({
       {task.description ? (
         <div
           data-testid="task-detail-description"
-          className="text-[13px] text-white/60"
+          className="text-[13px] text-text-primary/60"
           style={{
             lineHeight: "1.6",
             wordBreak: "break-word",
@@ -474,7 +475,7 @@ export function TaskDetailPanel({
           </ReactMarkdown>
         </div>
       ) : (
-        <p className="text-[13px] italic text-white/35">
+        <p className="text-[13px] italic text-text-primary/35">
           No description provided
         </p>
       )}

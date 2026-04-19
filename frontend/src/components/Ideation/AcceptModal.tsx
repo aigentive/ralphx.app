@@ -136,7 +136,7 @@ export function AcceptModal({
       <div
         data-testid="modal-overlay"
         className="absolute inset-0"
-        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+        style={{ backgroundColor: "var(--overlay-scrim-med)" }}
         onClick={handleOverlayClick}
       />
       <div
@@ -373,9 +373,9 @@ export function AcceptModal({
             data-testid="verification-blocked-warning"
             className="mb-4 flex items-start gap-2 p-3 rounded text-sm"
             style={{
-              backgroundColor: "hsla(0 70% 50% / 0.06)",
-              border: "1px solid hsla(0 70% 50% / 0.2)",
-              color: "hsl(0 70% 65%)",
+              backgroundColor: "var(--status-error-muted)",
+              border: "1px solid var(--status-error-border)",
+              color: "var(--status-error)",
             }}
           >
             <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />

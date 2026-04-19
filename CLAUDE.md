@@ -15,7 +15,7 @@ These are the **owner's directives**. They override default agent judgment on me
 
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
-Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Delegation topology: `.claude/rules/delegation-topology.md` | Ideation verification architecture: `.claude/rules/ideation-verification-architecture.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md` | Release script validation: `.claude/rules/release-script-validation.md`
+Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Delegation topology: `.claude/rules/delegation-topology.md` | Ideation verification architecture: `.claude/rules/ideation-verification-architecture.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md` | WKWebView CSS vars: `.claude/rules/wkwebview-css-vars.md` | Release script validation: `.claude/rules/release-script-validation.md`
 
 ## Structure
 ```
@@ -138,6 +138,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 | 18 | **Rust std API stability (NON-NEGOTIABLE):** Avoid unstable std APIs in production code (e.g., `is_multiple_of`). Use stable equivalents (e.g., `%`). Details: `.claude/rules/rust-stable-apis.md` |
 | 19 | **Constraint bundle planning** — Ideation plans should derive repo-specific `Constraints`, `Avoid`, and `Proof Obligations` from explored architecture before verification. |
 | 20 | **Mechanical extractions only (NON-NEGOTIABLE):** For large refactors/splits, move existing code with real extraction commands/scripts first (`mv`, `sed`, `awk`, scripted extraction). `apply_patch` is only for the small post-move fix-up layer, never for hand-recreating large existing bodies. Details: `.claude/rules/code-quality-standards.md` |
+| 21 | **WKWebView CSS vars (NON-NEGOTIABLE):** Theme tokens for bg/text/border MUST use literal color values (`#rrggbb`, `hsl()`, `hsla()`) — ❌ chained `var(--primitive)`. WKWebView drops chained var() on inheritance. Every new `[data-theme="X"]` block needs a defensive `html[data-theme="X"]` canvas paint rule. Verify in `npm run tauri dev`, not just `dev:web`. Details: `.claude/rules/wkwebview-css-vars.md` |
 
 ## Adversarial Plan Convergence (NON-NEGOTIABLE)
 

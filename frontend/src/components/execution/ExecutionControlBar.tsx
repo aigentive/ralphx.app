@@ -189,7 +189,7 @@ export function ExecutionControlBar({
   return (
     <TooltipProvider>
       {/* Outer container with padding for floating effect */}
-      <div className="p-2" style={{ backgroundColor: "hsl(220 10% 8%)" }}>
+      <div className="p-2" style={{ backgroundColor: "var(--bg-base)" }}>
         {/* Inner floating glass container */}
         <div
           data-testid="execution-control-bar"
@@ -204,14 +204,11 @@ export function ExecutionControlBar({
           style={{
             /* macOS Tahoe: floating panel - FLAT with blur */
             borderRadius: "10px",
-            background: "hsla(220 10% 10% / 0.92)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
-            border: "1px solid hsla(220 20% 100% / 0.08)",
-            boxShadow: `
-              0 4px 16px hsla(220 20% 0% / 0.4),
-              0 12px 32px hsla(220 20% 0% / 0.3)
-            `,
+            border: "1px solid var(--border-subtle)",
+            boxShadow: "var(--shadow-md)",
           }}
         >
         {/* Status Section (Left) */}
@@ -250,7 +247,7 @@ export function ExecutionControlBar({
               <button
                 data-testid="running-count"
                 className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: runningCount > 0 ? STATUS_COLORS.running : "hsl(220 10% 90%)" }}
+                style={{ color: runningCount > 0 ? STATUS_COLORS.running : "var(--text-primary)" }}
                 onClick={() => { setActiveTab("execution"); setIsPopoverOpen(true); }}
               >
                 {runningLabel}{runningCount}/{maxConcurrent}
@@ -261,21 +258,21 @@ export function ExecutionControlBar({
               content={
                 <div className="space-y-2">
                   <div>
-                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                    <strong className="block mb-1" style={{ color: "var(--text-primary)" }}>
                       Concurrent Execution
                     </strong>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                    <p style={{ color: "var(--text-secondary)" }}>
                       Tasks running in parallel. Currently limited to{" "}
                       <strong>{maxConcurrent}</strong> per project, 20 globally.
                     </p>
                   </div>
                   <div>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                    <p style={{ color: "var(--text-secondary)" }}>
                       Includes: executing, reviewing, re-executing, QA, and merging agents.
                     </p>
                   </div>
-                  <div className="pt-1 border-t" style={{ borderColor: "hsla(220 20% 100% / 0.08)" }}>
-                    <p className="text-xs" style={{ color: "hsl(220 10% 60%)" }}>
+                  <div className="pt-1 border-t" style={{ borderColor: "var(--overlay-weak)" }}>
+                    <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                       Change limits → Settings
                     </p>
                   </div>
@@ -285,7 +282,7 @@ export function ExecutionControlBar({
           </div>
 
           {/* Separator */}
-          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+          <span style={{ color: "var(--text-muted)" }}>•</span>
 
           {/* Queued Count (Clickable Popover) + Info Tooltip */}
           <div className="flex items-center gap-1.5">
@@ -297,7 +294,7 @@ export function ExecutionControlBar({
               <button
                 data-testid="queued-count"
                 className="text-[13px] cursor-pointer hover:underline transition-all"
-                style={{ color: queuedCount > 0 ? STATUS_COLORS.ready : "hsl(220 10% 65%)" }}
+                style={{ color: queuedCount > 0 ? STATUS_COLORS.ready : "var(--text-secondary)" }}
                 aria-label="View queued tasks"
                 aria-haspopup="dialog"
               >
@@ -309,25 +306,25 @@ export function ExecutionControlBar({
               content={
                 <div className="space-y-2">
                   <div>
-                    <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                    <strong className="block mb-1" style={{ color: "var(--text-primary)" }}>
                       Task Queue
                     </strong>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                    <p style={{ color: "var(--text-secondary)" }}>
                       Tasks in "ready" status waiting for an open execution slot.
                       Processed by priority then age (oldest first).
                     </p>
                   </div>
                   <div>
-                    <p style={{ color: "hsl(220 10% 75%)" }}>
+                    <p style={{ color: "var(--text-secondary)" }}>
                       Blocked tasks are NOT counted here.
                     </p>
                   </div>
                   {queuedMessageCount > 0 && (
                     <div>
-                      <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                      <strong className="block mb-1" style={{ color: "var(--text-primary)" }}>
                         Pending Agent Messages
                       </strong>
-                      <p style={{ color: "hsl(220 10% 75%)" }}>
+                      <p style={{ color: "var(--text-secondary)" }}>
                         {queuedMessageCount} prompt{queuedMessageCount === 1 ? "" : "s"} currently held by
                         pause/capacity barriers. They relaunch automatically on resume or when
                         capacity opens.
@@ -341,14 +338,14 @@ export function ExecutionControlBar({
 
           {queuedMessageCount > 0 && (
             <>
-              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <span style={{ color: "var(--text-muted)" }}>•</span>
               <div
                 data-testid="queued-message-count"
                 className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px]"
                 style={{
-                  color: "hsl(35 95% 68%)",
-                  backgroundColor: "hsla(35 95% 55% / 0.14)",
-                  border: "1px solid hsla(35 95% 65% / 0.22)",
+                  color: "var(--status-warning)",
+                  backgroundColor: "var(--status-warning-muted)",
+                  border: "1px solid var(--status-warning-border)",
                 }}
                 aria-label={`${queuedMessageCount} queued agent messages held by pause or capacity barriers`}
                 title="Queued agent messages held by pause/capacity barriers"
@@ -365,13 +362,13 @@ export function ExecutionControlBar({
           {/* Ideation Capacity Indicator - only visible when max > 0 */}
           {showIdeation && (
             <>
-              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <span style={{ color: "var(--text-muted)" }}>•</span>
               <div className="flex items-center gap-1.5">
                 <button
                   data-testid="ideation-count"
                   data-ideation-trigger
                   className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                  style={{ color: ideationActive > 0 ? "#ff6b35" : "hsl(220 10% 65%)" }}
+                  style={{ color: ideationActive > 0 ? "var(--accent-primary)" : "var(--text-secondary)" }}
                   onClick={() => { setActiveTab("ideation"); setIsPopoverOpen(true); }}
                   aria-label={`Ideation: ${ideationActive} active, ${ideationMax} max`}
                 >
@@ -382,9 +379,9 @@ export function ExecutionControlBar({
                     data-testid="ideation-waiting-badge"
                     className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium"
                     style={{
-                      color: "hsl(35 95% 68%)",
-                      backgroundColor: "hsla(35 95% 55% / 0.14)",
-                      border: "1px solid hsla(35 95% 65% / 0.22)",
+                      color: "var(--status-warning)",
+                      backgroundColor: "var(--status-warning-muted)",
+                      border: "1px solid var(--status-warning-border)",
                     }}
                     title={`${ideationWaiting} ideation session${ideationWaiting === 1 ? "" : "s"} waiting for capacity`}
                   >
@@ -398,7 +395,7 @@ export function ExecutionControlBar({
           {/* Paused Count (Clickable Popover) - only visible when > 0 */}
           {pausedCount > 0 && (
             <>
-              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <span style={{ color: "var(--text-muted)" }}>•</span>
               <PausedTasksPopover
                 pausedTasks={pausedTasks}
                 alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
@@ -417,7 +414,7 @@ export function ExecutionControlBar({
           )}
 
           {/* Separator */}
-          <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+          <span style={{ color: "var(--text-muted)" }}>•</span>
 
           {/* Merging Count with Popover */}
           {mergePipelineData ? (
@@ -431,7 +428,7 @@ export function ExecutionControlBar({
               <button
                 data-testid="merging-count"
                 className="flex items-center gap-1.5 text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: mergingCount > 0 ? STATUS_COLORS.pendingMerge : "hsl(220 10% 65%)" }}
+                style={{ color: mergingCount > 0 ? STATUS_COLORS.pendingMerge : "var(--text-secondary)" }}
               >
                 {mergingLabel}{mergingCount}
                 {hasAttentionMerges && (
@@ -450,7 +447,7 @@ export function ExecutionControlBar({
             <span
               data-testid="merging-count"
               className="flex items-center gap-1.5 text-[13px]"
-              style={{ color: "hsl(220 10% 65%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {mergingLabel}{mergingCount}
               {hasAttentionMerges && (
@@ -479,7 +476,7 @@ export function ExecutionControlBar({
             />
             <span
               className="text-[13px] truncate"
-              style={{ color: "hsl(220 10% 65%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {currentTaskName}
             </span>
@@ -503,15 +500,15 @@ export function ExecutionControlBar({
                 style={{
                   /* macOS Tahoe: flat button styling */
                   backgroundColor: isStopped
-                    ? "hsla(14 100% 60% / 0.15)"
+                    ? "var(--accent-muted)"
                     : isPaused
-                      ? "hsla(45 90% 55% / 0.15)"
-                      : "hsl(220 10% 18%)",
+                      ? "var(--status-warning-muted)"
+                      : "var(--bg-hover)",
                   color: isStopped
-                    ? "hsl(14 100% 68%)"
+                    ? "var(--accent-primary)"
                     : isPaused
                       ? STATUS_COLORS.paused
-                      : "hsl(220 10% 90%)",
+                      : "var(--text-primary)",
                   border: "none",
                   opacity: canPauseToggle ? 1 : 0.5,
                 }}
@@ -555,8 +552,8 @@ export function ExecutionControlBar({
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
                   /* macOS Tahoe: flat button styling */
-                  backgroundColor: canStop ? "hsla(0 70% 55% / 0.15)" : "hsl(220 10% 18%)",
-                  color: canStop ? STATUS_COLORS.stop : "hsl(220 10% 45%)",
+                  backgroundColor: canStop ? "var(--status-error-muted)" : "var(--bg-hover)",
+                  color: canStop ? STATUS_COLORS.stop : "var(--text-muted)",
                   border: "none",
                   opacity: canStop ? 1 : 0.5,
                 }}

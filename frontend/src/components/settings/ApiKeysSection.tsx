@@ -12,6 +12,7 @@ import { SectionCard } from "./SettingsView.shared";
 import { ApiKeyEntry } from "./ApiKeyEntry";
 import { CreateKeyDialog } from "./CreateKeyDialog";
 import { useApiKeys } from "@/hooks/useApiKeys";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Component
@@ -25,16 +26,16 @@ export function ApiKeysSection() {
     <>
       <SectionCard
         icon={
-          <KeyRound className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+          <KeyRound className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
         }
         title="API Keys"
         description="Manage external API keys for accessing RalphX programmatically"
       >
         {/* Error state */}
         {error && (
-          <div className="mb-3 px-3 py-2 rounded-md flex items-center gap-2 bg-red-500/10 border border-red-500/20">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <p className="text-sm text-red-400">{error.message}</p>
+          <div className="mb-3 px-3 py-2 rounded-md flex items-center gap-2 bg-status-error/10 border border-status-error/20">
+            <AlertCircle className="w-4 h-4 text-status-error shrink-0" />
+            <p className="text-sm text-status-error">{error.message}</p>
           </div>
         )}
 
@@ -62,7 +63,7 @@ export function ApiKeysSection() {
           <div className="py-6 flex flex-col items-center text-center gap-2">
             <div
               className="p-3 rounded-full"
-              style={{ background: "rgba(255,107,53,0.06)" }}
+              style={{ background: withAlpha("var(--accent-primary)", 6) }}
             >
               <KeyRound className="w-5 h-5 text-[var(--text-muted)]" />
             </div>
@@ -83,7 +84,7 @@ export function ApiKeysSection() {
               size="sm"
               onClick={() => setDialogOpen(true)}
               data-testid="create-api-key-button"
-              className="h-8 px-3 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1.5"
+              className="h-8 px-3 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] gap-1.5"
             >
               <Plus className="w-3.5 h-3.5" />
               Create API Key

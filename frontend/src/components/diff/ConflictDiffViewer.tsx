@@ -35,16 +35,16 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
     <div className="h-full flex flex-col">
       <div
         className="font-mono text-[13px] leading-[20px]"
-        style={{ backgroundColor: "hsl(220 10% 8%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
         {/* Header with file path and language badge */}
         <div
           className="flex items-center justify-between px-3 py-2 border-b"
-          style={{ borderColor: "rgba(255,255,255,0.06)" }}
+          style={{ borderColor: "var(--overlay-weak)" }}
         >
           <span
             className="text-sm truncate"
-            style={{ color: "hsl(220 10% 80%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {filePath}
           </span>
@@ -52,8 +52,8 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
             <span
               className="text-[11px] px-2 py-0.5 rounded ml-2 shrink-0"
               style={{
-                backgroundColor: "rgba(255,255,255,0.08)",
-                color: "hsl(220 10% 60%)",
+                backgroundColor: "var(--overlay-weak)",
+                color: "var(--text-muted)",
               }}
             >
               {displayLanguage}
@@ -65,25 +65,25 @@ export function ConflictDiffViewer({ conflictDiff }: ConflictDiffViewerProps) {
         <div
           className="flex items-center gap-4 px-3 py-1.5 text-[11px]"
           style={{
-            backgroundColor: "rgba(255,255,255,0.02)",
-            borderBottom: "1px solid rgba(255,255,255,0.04)",
+            backgroundColor: "var(--overlay-faint)",
+            borderBottom: "1px solid var(--overlay-faint)",
           }}
         >
           <span className="flex items-center gap-1.5">
             <span
               className="w-3 h-3 rounded"
-              style={{ backgroundColor: "rgba(255, 69, 58, 0.12)" }}
+              style={{ backgroundColor: "var(--status-error-muted)" }}
             />
-            <span style={{ color: "#ff453a" }}>-</span>
-            <span style={{ color: "hsl(220 10% 50%)" }}>Ours (current)</span>
+            <span style={{ color: "var(--status-error)" }}>-</span>
+            <span style={{ color: "var(--text-muted)" }}>Ours (current)</span>
           </span>
           <span className="flex items-center gap-1.5">
             <span
               className="w-3 h-3 rounded"
-              style={{ backgroundColor: "rgba(64, 156, 255, 0.12)" }}
+              style={{ backgroundColor: "var(--status-info-muted)" }}
             />
-            <span style={{ color: "#409cff" }}>+</span>
-            <span style={{ color: "hsl(220 10% 50%)" }}>Theirs (incoming)</span>
+            <span style={{ color: "var(--status-info)" }}>+</span>
+            <span style={{ color: "var(--text-muted)" }}>Theirs (incoming)</span>
           </span>
         </div>
       </div>

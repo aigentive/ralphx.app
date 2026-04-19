@@ -15,9 +15,9 @@ interface ProgressIndicatorProps {
 }
 
 const VARIANT_COLORS = {
-  accent: "hsl(14 100% 60%)",
-  success: "hsl(142 70% 45%)",
-  info: "hsl(217 90% 55%)",
+  accent: "var(--accent-primary)",
+  success: "var(--status-success)",
+  info: "var(--status-info)",
 };
 
 export function ProgressIndicator({
@@ -36,19 +36,19 @@ export function ProgressIndicator({
         {showSteps && (
           <span
             className="text-[12px]"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             Step{" "}
             <span
               className="font-medium tabular-nums"
-              style={{ color: "hsl(220 10% 80%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {completedSteps}
             </span>
             {" "}of{" "}
             <span
               className="font-medium tabular-nums"
-              style={{ color: "hsl(220 10% 80%)" }}
+              style={{ color: "var(--text-secondary)" }}
             >
               {totalSteps}
             </span>
@@ -65,7 +65,7 @@ export function ProgressIndicator({
       {/* Progress track - thin, minimal */}
       <div
         className="relative h-1 rounded-full overflow-hidden"
-        style={{ backgroundColor: "hsl(220 10% 16%)" }}
+        style={{ backgroundColor: "var(--bg-elevated)" }}
       >
         {/* Progress fill */}
         <div

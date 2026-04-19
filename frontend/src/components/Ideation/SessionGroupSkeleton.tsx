@@ -19,7 +19,7 @@ export function SessionGroupSkeleton({ count = 4 }: { count?: number }) {
             <div
               className="w-6 h-6 rounded-md flex-shrink-0 animate-pulse"
               style={{
-                background: "hsl(220 10% 14%)",
+                background: "var(--bg-elevated)",
                 animationDelay: `${i * 0.08}s`,
               }}
             />
@@ -29,7 +29,7 @@ export function SessionGroupSkeleton({ count = 4 }: { count?: number }) {
               <div
                 className="h-2.5 rounded animate-pulse"
                 style={{
-                  background: "hsl(220 10% 17%)",
+                  background: "var(--bg-hover)",
                   width: TITLE_WIDTHS[i % TITLE_WIDTHS.length],
                   animationDelay: `${i * 0.08 + 0.05}s`,
                 }}
@@ -37,7 +37,7 @@ export function SessionGroupSkeleton({ count = 4 }: { count?: number }) {
               <div
                 className="h-2 rounded animate-pulse"
                 style={{
-                  background: "hsl(220 10% 13%)",
+                  background: "var(--bg-elevated)",
                   width: META_WIDTHS[i % META_WIDTHS.length],
                   animationDelay: `${i * 0.08 + 0.1}s`,
                 }}
@@ -48,7 +48,7 @@ export function SessionGroupSkeleton({ count = 4 }: { count?: number }) {
             <div
               className="w-6 h-6 rounded flex-shrink-0 animate-pulse"
               style={{
-                background: "hsl(220 10% 13%)",
+                background: "var(--bg-elevated)",
                 animationDelay: `${i * 0.08}s`,
               }}
             />

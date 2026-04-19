@@ -246,7 +246,7 @@ export function PermissionDialog() {
             <div
               className="p-2 rounded-full"
               style={{
-                backgroundColor: "var(--status-warning-muted, rgba(245, 158, 11, 0.15))",
+                backgroundColor: "var(--status-warning-muted)",
               }}
             >
               <AlertTriangle className="h-5 w-5" style={{ color: "var(--status-warning)" }} />

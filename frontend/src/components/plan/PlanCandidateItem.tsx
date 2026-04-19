@@ -10,6 +10,7 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import type { PlanCandidate } from "@/stores/planStore";
@@ -85,27 +86,27 @@ export function PlanCandidateItem({
       style={{
         background:
           isHighlighted
-            ? "hsla(14 100% 60% / 0.16)"
+            ? withAlpha("var(--accent-primary)", 16)
             : isActive
-              ? "hsla(14 100% 60% / 0.1)"
+              ? withAlpha("var(--accent-primary)", 10)
               : "transparent",
         border: isHighlighted
-          ? "1px solid hsla(14 100% 60% / 0.35)"
+          ? "1px solid var(--accent-border)"
           : "1px solid transparent",
       }}
     >
       <div className="flex-1 min-w-0">
         <div
           className="text-[13px] font-medium leading-tight"
-          style={{ color: isHighlighted ? "hsl(14 100% 66%)" : "hsl(220 10% 90%)" }}
+          style={{ color: isHighlighted ? "var(--accent-primary)" : "var(--text-primary)" }}
         >
           {plan.title || "Untitled Plan"}
         </div>
-        <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
+        <div className="text-xs leading-tight mt-0.5" style={{ color: "var(--text-muted)" }}>
           {formatIncompleteSummary(plan.taskStats.incomplete, plan.taskStats.total)}
           {plan.taskStats.activeNow > 0 && " • Active work"}
           {isIdeationActive && (
-            <span style={{ color: "hsl(14 100% 60%)" }}>
+            <span style={{ color: "var(--accent-primary)" }}>
               {plan.taskStats.total > 0 ? " • Session active" : "Session active"}
             </span>
           )}
@@ -122,25 +123,25 @@ export function PlanCandidateItem({
           <div className="flex items-center gap-1.5" aria-hidden="true">
             <div
               className="w-14 h-1 rounded-full overflow-hidden"
-              style={{ backgroundColor: "hsla(220 10% 100% / 0.1)" }}
+              style={{ backgroundColor: "var(--overlay-moderate)" }}
             >
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
                   width: `${completionPercent}%`,
-                  backgroundColor: "hsla(14 100% 60% / 0.7)",
+                  backgroundColor: withAlpha("var(--accent-primary)", 70),
                 }}
               />
             </div>
             <span
               className="text-[10px] tabular-nums"
-              style={{ color: "hsl(220 10% 48%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {completionPercent}%
             </span>
           </div>
         )}
-        {isActive && <Check className="h-4 w-4" style={{ color: "hsl(14 100% 62%)" }} />}
+        {isActive && <Check className="h-4 w-4" style={{ color: "var(--accent-primary)" }} />}
       </div>
     </button>
   );

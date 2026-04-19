@@ -148,7 +148,7 @@ describe("Column", () => {
       const column = createMockColumn();
       render(<Column column={column} projectId="p1" showArchived={false} isOver />, { wrapper: DndWrapper });
       const dropZone = screen.getByTestId(`drop-zone-${column.id}`);
-      expect(dropZone.style.background).toBe("rgba(51, 102, 204, 0.1)");
+      expect(dropZone.style.background).toBe("var(--status-info-muted)");
       expect(dropZone.style.borderRadius).toBe("10px");
     });
 
@@ -184,7 +184,7 @@ describe("Column", () => {
       const column = createMockColumn({ id: "in_progress" });
       render(<Column column={column} projectId="p1" showArchived={false} isOver isInvalid />, { wrapper: DndWrapper });
       const dropZone = screen.getByTestId(`drop-zone-${column.id}`);
-      expect(dropZone.style.background).toBe("rgba(217, 38, 38, 0.08)");
+      expect(dropZone.style.background).toBe("var(--status-error-muted)");
       expect(dropZone.style.borderRadius).toBe("10px");
     });
   });

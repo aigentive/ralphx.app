@@ -59,7 +59,7 @@ export const PaneInput = React.memo(function PaneInput({
       className="flex items-center gap-1.5 px-2.5 shrink-0"
       style={{
         height: 36,
-        borderTop: "1px solid hsl(220 10% 14%)",
+        borderTop: "1px solid var(--border-subtle)",
       }}
     >
       <input
@@ -71,7 +71,7 @@ export const PaneInput = React.memo(function PaneInput({
         disabled={isDisabled}
         className="flex-1 text-[11px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 disabled:opacity-40"
         style={{
-          color: "hsl(220 10% 90%)",
+          color: "var(--text-primary)",
           boxShadow: "none",
           outline: "none",
         }}
@@ -83,7 +83,7 @@ export const PaneInput = React.memo(function PaneInput({
         aria-label={`Send message to ${teammateName}`}
         className="w-6 h-6 flex items-center justify-center rounded disabled:opacity-20 transition-opacity"
         style={{
-          color: "hsl(14 100% 60%)",
+          color: "var(--accent-primary)",
         }}
       >
         <SendIcon />

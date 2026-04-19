@@ -44,14 +44,14 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
       />
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-        style={{ color: "hsl(220 10% 88%)" }}
+        style={{ color: "var(--text-primary)" }}
         onClick={handleViewDetails}
       >
         {task.title}
       </button>
       <span
         className="text-[11px] shrink-0 max-w-[120px] truncate"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {errorContext}
       </span>
@@ -59,7 +59,7 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
         <button
           onClick={handleViewDetails}
           className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
-          style={{ color: "hsl(220 10% 55%)" }}
+          style={{ color: "var(--text-muted)" }}
           title="View details"
         >
           <ExternalLink className="w-3 h-3" />

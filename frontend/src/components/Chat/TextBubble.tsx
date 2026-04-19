@@ -35,6 +35,7 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
 
   return (
     <div
+      data-testid={isUser ? "text-bubble-user" : "text-bubble-assistant"}
       className={cn(
         "relative group px-3 py-2 text-[13px] leading-relaxed",
         /* macOS Tahoe: uniform rounded corners */
@@ -43,9 +44,9 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
       style={{
         /* macOS Tahoe: flat solid colors, no gradients */
         background: isUser
-          ? "hsl(14 100% 60%)" /* Accent orange - flat */
-          : "hsl(220 10% 14%)", /* Dark surface - flat */
-        color: isUser ? "white" : "hsl(220 10% 90%)",
+          ? "var(--accent-primary)" /* Accent orange - flat */
+          : "var(--bg-elevated)", /* Dark surface - flat */
+        color: isUser ? "var(--text-inverse)" : "var(--text-primary)",
         border: "none",
         boxShadow: "none",
       }}
@@ -62,8 +63,8 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
         className={cn(
           "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity",
           isUser
-            ? "hover:bg-white/20 text-white/80 hover:text-white"
-            : "hover:bg-white/10"
+            ? "hover:bg-[color-mix(in_srgb,_var(--text-inverse)_20%,_transparent)] text-[var(--text-inverse)]"
+            : "hover:bg-[var(--overlay-moderate)]"
         )}
         aria-label={copied ? "Copied" : "Copy message"}
       >

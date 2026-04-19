@@ -4,6 +4,7 @@
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import { withAlpha } from "@/lib/theme-colors";
 import { MIN_WIDTH, MAX_WIDTH_PERCENT } from "./ResizeablePanel.constants";
 
 export interface UseResizePanelOptions {
@@ -33,7 +34,7 @@ function ResizeHandle({ isDragging, onMouseDown }: ResizeHandleProps) {
             ? "var(--accent-primary)"
             : "transparent",
           boxShadow: isDragging
-            ? "0 0 8px rgba(255,107,53,0.4)"
+            ? `0 0 8px ${withAlpha("var(--accent-primary)", 40)}`
             : "none",
         }}
       />

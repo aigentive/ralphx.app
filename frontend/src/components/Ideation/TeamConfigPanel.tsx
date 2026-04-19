@@ -26,9 +26,9 @@ const BUDGET_OPTIONS = [
 ];
 
 const selectStyle: React.CSSProperties = {
-  background: "hsla(220 10% 100% / 0.04)",
-  border: "1px solid hsla(220 10% 100% / 0.08)",
-  color: "hsl(220 10% 90%)",
+  background: "var(--overlay-faint)",
+  border: "1px solid var(--overlay-weak)",
+  color: "var(--text-primary)",
   borderRadius: "8px",
   padding: "6px 10px",
   fontSize: "13px",
@@ -44,13 +44,13 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
     <div
       className="w-full rounded-xl p-4 mt-4 text-left"
       style={{
-        background: "hsla(220 10% 100% / 0.02)",
-        border: "1px solid hsla(220 10% 100% / 0.06)",
+        background: "var(--overlay-faint)",
+        border: "1px solid var(--overlay-faint)",
       }}
     >
       {/* Row 1: Max teammates + Model ceiling */}
       <div className="flex items-center gap-4 mb-3">
-        <label className="flex items-center gap-2 text-[13px]" style={{ color: "hsl(220 10% 60%)" }}>
+        <label className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-secondary)" }}>
           <span>Max teammates:</span>
           <select
             value={config.maxTeammates}
@@ -63,7 +63,7 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-[13px]" style={{ color: "hsl(220 10% 60%)" }}>
+        <label className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-secondary)" }}>
           <span>Model ceiling:</span>
           <select
             value={config.modelCeiling}
@@ -79,7 +79,7 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
 
       {/* Row 2: Budget + Composition */}
       <div className="flex items-center gap-4 mb-3">
-        <label className="flex items-center gap-2 text-[13px]" style={{ color: "hsl(220 10% 60%)" }}>
+        <label className="flex items-center gap-2 text-[13px]" style={{ color: "var(--text-secondary)" }}>
           <span>Budget limit:</span>
           <select
             value={config.budgetLimit ?? ""}
@@ -92,7 +92,7 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
           </select>
         </label>
 
-        <div className="flex items-center gap-3 text-[13px]" style={{ color: "hsl(220 10% 60%)" }}>
+        <div className="flex items-center gap-3 text-[13px]" style={{ color: "var(--text-secondary)" }}>
           <span>Composition:</span>
           <CompositionRadio
             value={config.compositionMode}
@@ -106,21 +106,21 @@ export function TeamConfigPanel({ config, onChange }: TeamConfigPanelProps) {
         <div className="mt-3 pl-1">
           <p
             className="text-[12px] mb-1.5"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             Available specialist roles:
           </p>
           <div className="flex flex-col gap-1 ml-1">
-            <span className="text-[12px]" style={{ color: "hsl(220 10% 65%)" }}>
-              ✓ researcher <span style={{ color: "hsl(220 10% 45%)" }}>(codebase research)</span>
+            <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+              ✓ researcher <span style={{ color: "var(--text-muted)" }}>(codebase research)</span>
             </span>
-            <span className="text-[12px]" style={{ color: "hsl(220 10% 65%)" }}>
-              ✓ critic <span style={{ color: "hsl(220 10% 45%)" }}>(adversarial stress-testing)</span>
+            <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+              ✓ critic <span style={{ color: "var(--text-muted)" }}>(adversarial stress-testing)</span>
             </span>
           </div>
           <p
             className="text-[11px] mt-1.5"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             ⓘ Lead will select from these roles only.
           </p>
@@ -149,18 +149,18 @@ function CompositionRadio({
           <span
             className="w-3.5 h-3.5 rounded-full border flex items-center justify-center"
             style={{
-              borderColor: value === opt.value ? "hsl(14 100% 60%)" : "hsla(220 10% 100% / 0.15)",
-              background: value === opt.value ? "hsl(14 100% 60%)" : "transparent",
+              borderColor: value === opt.value ? "var(--accent-primary)" : "var(--overlay-moderate)",
+              background: value === opt.value ? "var(--accent-primary)" : "transparent",
             }}
           >
             {value === opt.value && (
               <span
                 className="w-1.5 h-1.5 rounded-full"
-                style={{ background: "white" }}
+                style={{ background: "var(--text-inverse)" }}
               />
             )}
           </span>
-          <span style={{ color: value === opt.value ? "hsl(220 10% 90%)" : "hsl(220 10% 60%)" }}>
+          <span style={{ color: value === opt.value ? "var(--text-primary)" : "var(--text-secondary)" }}>
             {opt.label}
           </span>
         </label>

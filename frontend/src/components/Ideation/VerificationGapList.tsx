@@ -5,6 +5,7 @@
  */
 
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { withAlpha } from "@/lib/theme-colors";
 import type { RoundSummary, VerificationGap } from "@/types/ideation";
 
 // ============================================================================
@@ -33,34 +34,34 @@ export interface VerificationGapListProps {
 const SEVERITY_CONFIG = {
   critical: {
     label: "Critical",
-    color: "hsl(0 70% 65%)",
-    bg: "hsla(0 70% 50% / 0.08)",
-    border: "hsla(0 70% 50% / 0.2)",
-    dotColor: "hsl(0 70% 55%)",
+    color: "var(--status-error)",
+    bg: "var(--status-error-muted)",
+    border: "var(--status-error-border)",
+    dotColor: "var(--status-error)",
     order: 0,
   },
   high: {
     label: "High",
-    color: "hsl(14 100% 65%)",
-    bg: "hsla(14 100% 60% / 0.08)",
-    border: "hsla(14 100% 60% / 0.2)",
-    dotColor: "hsl(14 100% 60%)",
+    color: "var(--accent-primary)",
+    bg: withAlpha("var(--accent-primary)", 8),
+    border: "var(--accent-border)",
+    dotColor: "var(--accent-primary)",
     order: 1,
   },
   medium: {
     label: "Medium",
-    color: "hsl(45 93% 60%)",
-    bg: "hsla(45 93% 50% / 0.08)",
-    border: "hsla(45 93% 50% / 0.2)",
-    dotColor: "hsl(45 93% 55%)",
+    color: "var(--status-warning)",
+    bg: "var(--status-warning-muted)",
+    border: "var(--status-warning-border)",
+    dotColor: "var(--status-warning)",
     order: 2,
   },
   low: {
     label: "Low",
-    color: "hsl(220 10% 60%)",
-    bg: "hsla(220 10% 100% / 0.04)",
-    border: "hsla(220 10% 100% / 0.1)",
-    dotColor: "hsl(220 10% 55%)",
+    color: "var(--text-secondary)",
+    bg: "var(--overlay-faint)",
+    border: "var(--overlay-moderate)",
+    dotColor: "var(--text-secondary)",
     order: 3,
   },
 } as const;
@@ -101,12 +102,12 @@ function GapScoreTrend({ rounds }: { rounds: RoundSummary[] }) {
     <div className="flex items-center gap-3 mb-3">
       <div
         className="flex items-center gap-1.5 text-[11px]"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <span>Gap score:</span>
         <span
           className="font-semibold"
-          style={{ color: "hsl(220 10% 85%)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {last.gapScore}
         </span>
@@ -116,10 +117,10 @@ function GapScoreTrend({ rounds }: { rounds: RoundSummary[] }) {
         className="flex items-center gap-1 text-[11px]"
         style={{
           color: stable
-            ? "hsl(220 10% 55%)"
+            ? "var(--text-secondary)"
             : improving
-              ? "hsl(145 70% 50%)"
-              : "hsl(0 70% 65%)",
+              ? "var(--status-success)"
+              : "var(--status-error)",
         }}
       >
         {stable ? (
@@ -149,8 +150,8 @@ function GapScoreTrend({ rounds }: { rounds: RoundSummary[] }) {
               title={`Round ${r.round}: score ${r.gapScore}`}
               style={{
                 background: isLast
-                  ? "hsl(14 100% 60%)"
-                  : "hsla(220 10% 100% / 0.1)",
+                  ? "var(--accent-primary)"
+                  : "var(--overlay-moderate)",
                 opacity: isLast ? 1 : 0.6,
               }}
             />
@@ -167,17 +168,17 @@ function GapCheckbox({ checked }: { checked: boolean }) {
     <span
       className="w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center transition-colors"
       style={{
-        background: checked ? "hsla(14 100% 60% / 0.15)" : "transparent",
+        background: checked ? withAlpha("var(--accent-primary)", 15) : "transparent",
         border: checked
-          ? "1px solid hsl(14 100% 60%)"
-          : "1px solid hsla(220 10% 100% / 0.2)",
+          ? "1px solid var(--accent-primary)"
+          : "1px solid var(--border-default)",
       }}
     >
       {checked && (
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
           <path
             d="M1.5 4L3 5.5L6.5 2"
-            stroke="hsl(14 100% 60%)"
+            stroke="var(--accent-primary)"
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -204,7 +205,7 @@ export function VerificationGapList({
     return (
       <div
         className="flex items-center justify-center py-4 text-[12px]"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         No gaps found
       </div>
@@ -244,10 +245,10 @@ export function VerificationGapList({
       ) : gapScore !== undefined ? (
         <div
           className="flex items-center gap-1.5 text-[11px] mb-3"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           <span>Gap score:</span>
-          <span className="font-semibold" style={{ color: "hsl(220 10% 85%)" }}>
+          <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
             {gapScore}
           </span>
         </div>
@@ -281,13 +282,13 @@ export function VerificationGapList({
           <button
             type="button"
             className="ml-auto text-[10px] transition-colors"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
             onClick={allSelected ? handleDeselectAll : handleSelectAll}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = "hsl(220 10% 80%)";
+              e.currentTarget.style.color = "var(--text-primary)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "hsl(220 10% 50%)";
+              e.currentTarget.style.color = "var(--text-muted)";
             }}
           >
             {allSelected ? "Deselect All" : "Select All"}
@@ -319,7 +320,7 @@ export function VerificationGapList({
                       style={{
                         borderBottom: isLast
                           ? "none"
-                          : "1px solid hsla(220 10% 100% / 0.05)",
+                          : "1px solid var(--overlay-weak)",
                         cursor: selectable ? "pointer" : "default",
                       }}
                       onClick={selectable ? () => handleToggle(index) : undefined}
@@ -337,14 +338,14 @@ export function VerificationGapList({
                       <div className="flex-1 min-w-0">
                         <div
                           className="text-[12px] leading-snug"
-                          style={{ color: "hsl(220 10% 85%)" }}
+                          style={{ color: "var(--text-primary)" }}
                         >
                           {gap.description}
                         </div>
                         {gap.whyItMatters && (
                           <div
                             className="text-[11px] mt-0.5 leading-snug"
-                            style={{ color: "hsl(220 10% 55%)" }}
+                            style={{ color: "var(--text-secondary)" }}
                           >
                             {gap.whyItMatters}
                           </div>

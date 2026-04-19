@@ -19,12 +19,12 @@ interface PaneHeaderProps {
 }
 
 const STATUS_DISPLAY: Record<TeammateStatus, { label: string; color: string; pulse: boolean }> = {
-  spawning: { label: "spawning", color: "hsl(220 10% 50%)", pulse: false },
-  running: { label: "running", color: "hsl(142 71% 45%)", pulse: true },
-  idle: { label: "idle", color: "hsl(48 96% 53%)", pulse: false },
-  completed: { label: "done", color: "hsl(220 10% 40%)", pulse: false },
-  failed: { label: "failed", color: "hsl(0 84% 60%)", pulse: false },
-  shutdown: { label: "stopped", color: "hsl(220 10% 30%)", pulse: false },
+  spawning: { label: "spawning", color: "var(--text-muted)", pulse: false },
+  running: { label: "running", color: "var(--status-success)", pulse: true },
+  idle: { label: "idle", color: "var(--status-warning)", pulse: false },
+  completed: { label: "done", color: "var(--text-muted)", pulse: false },
+  failed: { label: "failed", color: "var(--status-error)", pulse: false },
+  shutdown: { label: "stopped", color: "var(--text-muted)", pulse: false },
 };
 
 export const PaneHeader = React.memo(function PaneHeader({
@@ -42,7 +42,7 @@ export const PaneHeader = React.memo(function PaneHeader({
   return (
     <div
       className="flex items-center gap-2 px-2.5 py-1.5 shrink-0"
-      style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
+      style={{ borderBottom: "1px solid var(--border-subtle)" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -53,7 +53,7 @@ export const PaneHeader = React.memo(function PaneHeader({
       />
       <span
         className="text-[13px] font-medium truncate"
-        style={{ color: "hsl(220 10% 90%)" }}
+        style={{ color: "var(--text-primary)" }}
       >
         {name}
       </span>
@@ -62,8 +62,8 @@ export const PaneHeader = React.memo(function PaneHeader({
       <span
         className="text-[10px] px-1.5 py-px rounded shrink-0"
         style={{
-          backgroundColor: "hsl(220 10% 16%)",
-          color: "hsl(220 10% 50%)",
+          backgroundColor: "var(--bg-elevated)",
+          color: "var(--text-muted)",
         }}
       >
         {model}
@@ -75,7 +75,7 @@ export const PaneHeader = React.memo(function PaneHeader({
           className={`w-1.5 h-1.5 rounded-full${statusConfig.pulse ? " animate-pulse" : ""}`}
           style={{ backgroundColor: statusConfig.color }}
         />
-        <span className="text-[10px]" style={{ color: "hsl(220 10% 50%)" }}>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
           {statusConfig.label}
         </span>
       </div>
@@ -84,7 +84,7 @@ export const PaneHeader = React.memo(function PaneHeader({
       {roleDescription && (
         <span
           className="text-[11px] truncate ml-1"
-          style={{ color: "hsl(220 10% 45%)", maxWidth: 120 }}
+          style={{ color: "var(--text-muted)", maxWidth: 120 }}
         >
           {roleDescription}
         </span>
@@ -102,7 +102,7 @@ export const PaneHeader = React.memo(function PaneHeader({
           className="ml-auto w-5 h-5 flex items-center justify-center rounded transition-opacity"
           style={{
             opacity: hovered ? 0.8 : 0,
-            color: "hsl(0 70% 60%)",
+            color: "var(--status-error)",
           }}
         >
           <X className="w-3 h-3" />

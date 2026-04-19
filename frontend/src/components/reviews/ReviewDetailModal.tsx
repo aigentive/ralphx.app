@@ -38,6 +38,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { withAlpha } from "@/lib/theme-colors";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
@@ -69,9 +70,9 @@ function TaskContextSection({
   if (isLoading) {
     return (
       <div className="space-y-2">
-        <div className="h-5 w-3/4 rounded animate-pulse bg-white/10" />
-        <div className="h-4 w-1/2 rounded animate-pulse bg-white/10" />
-        <div className="h-16 w-full rounded animate-pulse bg-white/10" />
+        <div className="h-5 w-3/4 rounded animate-pulse bg-[var(--overlay-moderate)]" />
+        <div className="h-4 w-1/2 rounded animate-pulse bg-[var(--overlay-moderate)]" />
+        <div className="h-16 w-full rounded animate-pulse bg-[var(--overlay-moderate)]" />
       </div>
     );
   }
@@ -80,17 +81,17 @@ function TaskContextSection({
     <div className="space-y-3">
       {/* Title removed - already displayed in modal header */}
       <div className="flex items-center gap-3 text-[12px]">
-        <span className="text-white/50">
-          Priority: <span className="text-white/70">{priority}</span>
+        <span className="text-text-primary/50">
+          Priority: <span className="text-text-primary/70">{priority}</span>
         </span>
-        <span className="text-white/50">
-          Category: <span className="text-white/70">{category}</span>
+        <span className="text-text-primary/50">
+          Category: <span className="text-text-primary/70">{category}</span>
         </span>
       </div>
       {description && (
         <div
           data-testid="modal-task-description"
-          className="text-[12px] text-white/60"
+          className="text-[12px] text-text-primary/60"
           style={{ lineHeight: "1.5", wordBreak: "break-word", overflowWrap: "anywhere" }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -117,11 +118,11 @@ function AIReviewSummary({
       <div
         className="rounded-lg p-3 text-center"
         style={{
-          backgroundColor: "rgba(0, 0, 0, 0.2)",
-          border: "1px solid rgba(255,255,255,0.05)",
+          backgroundColor: "var(--overlay-scrim)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
-        <p className="text-[12px] text-white/40">No AI review yet</p>
+        <p className="text-[12px] text-text-primary/40">No AI review yet</p>
       </div>
     );
   }
@@ -138,26 +139,26 @@ function AIReviewSummary({
       data-testid="ai-review-summary"
       className="rounded-lg p-3 space-y-3"
       style={{
-        backgroundColor: "rgba(0, 0, 0, 0.2)",
-        border: "1px solid rgba(16, 185, 129, 0.2)",
+        backgroundColor: "var(--overlay-scrim)",
+        border: "1px solid var(--status-success-border)",
       }}
     >
       {/* Header */}
       <div className="flex items-center gap-2">
         <div
           className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-          style={{ backgroundColor: "rgba(59, 130, 246, 0.15)" }}
+          style={{ backgroundColor: "var(--status-info-muted)" }}
         >
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--status-info)" }} />
         </div>
-        <span className="text-[12px] font-medium text-white/70">
+        <span className="text-[12px] font-medium text-text-primary/70">
           AI Review Summary
         </span>
         {latestApproved && (
           <span
             className="ml-auto text-[11px] px-2 py-0.5 rounded-full"
             style={{
-              backgroundColor: "rgba(16, 185, 129, 0.15)",
+              backgroundColor: "var(--status-success-muted)",
               color: "var(--status-success)",
             }}
           >
@@ -168,7 +169,7 @@ function AIReviewSummary({
 
       {/* Summary text - rendered as markdown */}
       {latestApproved?.notes && (
-        <div className="text-[12px] text-white/60 prose prose-sm prose-invert max-w-none">
+        <div className="text-[12px] text-text-primary/60 prose prose-sm prose-invert max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {latestApproved.notes}
           </ReactMarkdown>
@@ -180,12 +181,11 @@ function AIReviewSummary({
         {checklistItems.map((item, index) => (
           <div
             key={index}
-            className="flex items-center gap-2 py-1"
-            style={{ color: item.passed ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }}
+            className={`flex items-center gap-2 py-1 ${item.passed ? "text-text-primary/60" : "text-text-primary/40"}`}
           >
             <CheckCircle2
               className="w-3.5 h-3.5 shrink-0"
-              style={{ color: item.passed ? "var(--status-success)" : "rgba(255,255,255,0.3)" }}
+              style={{ color: item.passed ? "var(--status-success)" : withAlpha("var(--text-primary)", 30) }}
             />
             <span className="text-[12px]">{item.label}</span>
           </div>
@@ -201,7 +201,7 @@ function AIReviewSummary({
 function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
   if (history.length === 0) {
     return (
-      <p className="text-[12px] text-white/40 italic">No review history</p>
+      <p className="text-[12px] text-text-primary/40 italic">No review history</p>
     );
   }
 
@@ -226,8 +226,8 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
           key={entry.id}
           className="flex items-start gap-2 py-1.5 px-2 rounded"
           style={{
-            backgroundColor: "rgba(0, 0, 0, 0.15)",
-            border: "1px solid rgba(255,255,255,0.05)",
+            backgroundColor: "var(--overlay-scrim)",
+            border: "1px solid var(--overlay-weak)",
           }}
         >
           {/* Icon based on outcome */}
@@ -251,13 +251,13 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               {entry.reviewer === "ai" ? (
-                <Bot className="w-3 h-3 text-white/50" />
+                <Bot className="w-3 h-3 text-text-primary/50" />
               ) : entry.reviewer === "system" ? (
-                <Settings className="w-3 h-3 text-white/50" />
+                <Settings className="w-3 h-3 text-text-primary/50" />
               ) : (
-                <User className="w-3 h-3 text-white/50" />
+                <User className="w-3 h-3 text-text-primary/50" />
               )}
-              <span className="text-[11px] font-medium text-white/60">
+              <span className="text-[11px] font-medium text-text-primary/60">
                 {entry.reviewer === "ai" ? "AI" : entry.reviewer === "system" ? "System" : "Human"}{" "}
                 {entry.outcome === "approved"
                   ? "approved"
@@ -267,31 +267,31 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                   ? "requested changes"
                   : "rejected"}
               </span>
-              <span className="text-[10px] text-white/40 ml-auto flex items-center gap-1">
+              <span className="text-[10px] text-text-primary/40 ml-auto flex items-center gap-1">
                 <Clock className="w-2.5 h-2.5" />
                 {formatDate(entry.created_at)}
               </span>
             </div>
             {entry.summary && (
-              <p className="text-[11px] text-white/40 truncate mt-0.5">
+              <p className="text-[11px] text-text-primary/40 truncate mt-0.5">
                 {entry.summary}
               </p>
             )}
             {entry.followup_session_id && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
                 style={{
-                  backgroundColor: "rgba(255, 107, 53, 0.08)",
-                  border: "1px solid rgba(255,255,255,0.05)",
+                  backgroundColor: "var(--accent-muted)",
+                  border: "1px solid var(--overlay-weak)",
                 }}
               >
-                <span className="text-[10px] text-white/45 break-all min-w-0">
+                <span className="text-[10px] text-text-primary/45 break-all min-w-0">
                   Follow-up: {entry.followup_session_id}
                 </span>
                 <button
                   type="button"
                   onClick={() => navigateToIdeationSession(entry.followup_session_id!)}
                   className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium transition-opacity hover:opacity-80"
-                  style={{ color: "#ff8a5b" }}
+                  style={{ color: "var(--status-warning)" }}
                 >
                   <ExternalLink className="w-3 h-3" />
                   Open
@@ -316,8 +316,8 @@ function RevisionCountBadge({ count }: { count: number }) {
       data-testid="revision-count-badge"
       className="flex items-center gap-1.5 px-2 py-1 rounded"
       style={{
-        backgroundColor: "rgba(251, 191, 36, 0.1)",
-        border: "1px solid rgba(251, 191, 36, 0.2)",
+        backgroundColor: "var(--status-warning-muted)",
+        border: "1px solid var(--status-warning-border)",
       }}
     >
       <RotateCcw
@@ -473,22 +473,22 @@ export function ReviewDetailModal({
         )}
         style={{
           backgroundColor: "var(--bg-surface)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"
           style={{
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "rgba(18,18,18,0.85)",
+            borderColor: "var(--overlay-weak)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
           }}
         >
           <div className="flex items-center gap-3">
             <h2
               data-testid="review-detail-modal-title"
-              className="text-base font-semibold text-white/90"
+              className="text-base font-semibold text-text-primary/90"
               style={{ letterSpacing: "-0.02em" }}
             >
               Review: {task?.title ?? "Loading..."}
@@ -500,7 +500,7 @@ export function ReviewDetailModal({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="w-8 h-8 text-white/50 hover:text-white/80 hover:bg-white/10"
+            className="w-8 h-8 text-text-primary/50 hover:text-text-primary/80 hover:bg-[var(--overlay-moderate)]"
           >
             <X className="w-4 h-4" />
           </Button>
@@ -511,7 +511,7 @@ export function ReviewDetailModal({
           {/* Left Pane: Context (300px fixed) */}
           <div
             className="w-[400px] shrink-0 flex flex-col border-r overflow-hidden"
-            style={{ borderColor: "rgba(255,255,255,0.06)", maxWidth: "400px" }}
+            style={{ borderColor: "var(--overlay-weak)", maxWidth: "400px" }}
           >
             <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-5">
@@ -547,11 +547,11 @@ export function ReviewDetailModal({
             {showActions && showFeedbackInput && (
               <div
                 className="p-3 border-t"
-                style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                style={{ borderColor: "var(--overlay-weak)" }}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <MessageSquare className="w-4 h-4 text-white/50" />
-                  <span className="text-[12px] font-medium text-white/60">
+                  <MessageSquare className="w-4 h-4 text-text-primary/50" />
+                  <span className="text-[12px] font-medium text-text-primary/60">
                     What needs to be changed?
                   </span>
                 </div>
@@ -562,8 +562,8 @@ export function ReviewDetailModal({
                   placeholder="Describe the changes needed..."
                   className="min-h-[80px] text-[13px] resize-none"
                   style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.2)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    backgroundColor: "var(--overlay-scrim)",
+                    border: "1px solid var(--overlay-moderate)",
                   }}
                 />
                 <button
@@ -571,7 +571,7 @@ export function ReviewDetailModal({
                     setShowFeedbackInput(false);
                     setFeedback("");
                   }}
-                  className="text-[11px] text-white/40 hover:text-white/60 mt-2"
+                  className="text-[11px] text-text-primary/40 hover:text-text-primary/60 mt-2"
                 >
                   Cancel
                 </button>
@@ -583,8 +583,8 @@ export function ReviewDetailModal({
           <div className="flex-1 min-w-0">
             {task?.internalStatus === "merged" && (
               <div
-                className="px-4 py-2 text-[11px] text-white/55 border-b"
-                style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                className="px-4 py-2 text-[11px] text-text-primary/55 border-b"
+                style={{ borderColor: "var(--overlay-weak)" }}
               >
                 Showing merged diff against the base branch for this task.
               </div>
@@ -609,13 +609,13 @@ export function ReviewDetailModal({
           <div
             className="flex items-center justify-end gap-3 px-4 py-3 border-t shrink-0"
             style={{
-              borderColor: "rgba(255,255,255,0.06)",
-              background: "rgba(18,18,18,0.85)",
+              borderColor: "var(--overlay-weak)",
+              background: "var(--bg-surface)",
             }}
           >
             {/* Error display */}
             {(approveMutation.error || requestChangesMutation.error) && (
-              <span className="text-[12px] text-red-400 mr-auto">
+              <span className="text-[12px] text-status-error mr-auto">
                 {approveMutation.error?.message || requestChangesMutation.error?.message}
               </span>
             )}

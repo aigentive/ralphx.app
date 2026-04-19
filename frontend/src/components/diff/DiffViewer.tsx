@@ -169,7 +169,7 @@ export function DiffViewer({
                 className={cn(
                   "px-1.5 py-0.5 text-xs rounded-full ml-1",
                   activeTab === "changes"
-                    ? "bg-[var(--accent-primary)] text-white"
+                    ? "bg-[var(--accent-primary)] text-text-inverse"
                     : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                 )}
               >
@@ -197,7 +197,7 @@ export function DiffViewer({
                 className={cn(
                   "px-1.5 py-0.5 text-xs rounded-full ml-1",
                   activeTab === "history"
-                    ? "bg-[var(--accent-primary)] text-white"
+                    ? "bg-[var(--accent-primary)] text-text-inverse"
                     : "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
                 )}
               >

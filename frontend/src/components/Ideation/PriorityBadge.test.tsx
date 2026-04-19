@@ -35,7 +35,7 @@ describe("PriorityBadge", () => {
     it("renders high with orange background (#ff6b35)", () => {
       render(<PriorityBadge priority="high" />);
       const badge = screen.getByTestId("priority-badge");
-      expect(badge).toHaveStyle({ backgroundColor: "#ff6b35" });
+      expect(badge).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
     });
 
     it("renders medium with amber background (#ffa94d)", () => {
@@ -226,7 +226,7 @@ describe("PriorityBadge", () => {
 
       rerender(<PriorityBadge priority="high" />);
       badge = screen.getByTestId("priority-badge");
-      expect(badge).toHaveStyle({ backgroundColor: "#ff6b35" });
+      expect(badge).toHaveStyle({ backgroundColor: "var(--accent-primary)" });
 
       rerender(<PriorityBadge priority="medium" />);
       badge = screen.getByTestId("priority-badge");

@@ -28,9 +28,9 @@ export const TeammatePaneGrid = React.memo(function TeammatePaneGrid({
     return (
       <div
         className="flex items-center justify-center h-full"
-        style={{ backgroundColor: "hsl(220 10% 7%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
-        <p className="text-[12px]" style={{ color: "hsl(220 10% 40%)" }}>
+        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
           No teammates spawned yet
         </p>
       </div>
@@ -44,7 +44,7 @@ export const TeammatePaneGrid = React.memo(function TeammatePaneGrid({
         display: "grid",
         gridTemplateRows: `repeat(${teammates.length}, 1fr)`,
         gap: 1,
-        backgroundColor: "hsl(220 10% 14%)",
+        backgroundColor: "var(--border-subtle)",
       }}
     >
       {teammates.map((mate: TeammateState) => (

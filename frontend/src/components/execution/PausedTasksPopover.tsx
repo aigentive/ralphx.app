@@ -127,29 +127,29 @@ export function PausedTasksPopover({
         sideOffset={24}
         className="w-[420px] p-0"
         style={{
-          backgroundColor: "hsl(220 10% 11%)",
-          border: "1px solid hsla(220 20% 100% / 0.08)",
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid var(--overlay-weak)",
           borderRadius: "10px",
           boxShadow:
-            "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+            "0 4px 16px var(--overlay-scrim), 0 12px 32px var(--overlay-scrim)",
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-3 py-2.5"
           style={{
-            borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
+            borderBottom: "1px solid var(--overlay-weak)",
           }}
         >
           <h3
             className="text-xs font-semibold"
-            style={{ color: "hsl(220 10% 80%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             Paused Tasks ({pausedTasks.length})
           </h3>
           <span
             className="text-[11px] tabular-nums"
-            style={{ color: "hsl(220 10% 42%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {providerErrors.length > 0 && userPaused.length > 0
               ? `${providerErrors.length} errors · ${userPaused.length} user`
@@ -164,13 +164,13 @@ export function PausedTasksPopover({
           className="max-h-[320px] overflow-y-auto p-1.5"
           style={{
             scrollbarWidth: "thin",
-            scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
+            scrollbarColor: "var(--overlay-moderate) transparent",
           }}
         >
           {pausedTasks.length === 0 ? (
             <div
               className="py-6 text-center text-xs"
-              style={{ color: "hsl(220 10% 42%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               No paused tasks
             </div>
@@ -180,7 +180,7 @@ export function PausedTasksPopover({
               {providerErrors.length > 0 && hasBothGroups && (
                 <div
                   className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider"
-                  style={{ color: "hsl(220 10% 42%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   Provider Errors
                 </div>
@@ -199,7 +199,7 @@ export function PausedTasksPopover({
               {userPaused.length > 0 && hasBothGroups && (
                 <div
                   className="px-2 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider"
-                  style={{ color: "hsl(220 10% 42%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   User Paused
                 </div>
@@ -237,8 +237,8 @@ export function PausedTasksPopover({
         <div
           className="px-3 py-2 text-[11px]"
           style={{
-            borderTop: "1px solid hsla(220 20% 100% / 0.06)",
-            color: "hsl(220 10% 42%)",
+            borderTop: "1px solid var(--overlay-weak)",
+            color: "var(--text-muted)",
           }}
         >
           Click Resume to restart individual tasks. Auto-resumable tasks retry automatically.

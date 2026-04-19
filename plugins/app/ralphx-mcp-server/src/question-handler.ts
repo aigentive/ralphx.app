@@ -13,8 +13,7 @@ import {
   isHumanWaitTimeoutError,
 } from "./human-wait.js";
 import { safeError } from "./redact.js";
-
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+import { buildTauriApiUrl } from "./tauri-client.js";
 
 interface QuestionOption {
   label: string;
@@ -54,7 +53,7 @@ export async function handleAskUserQuestion(
   let request_id: string;
   try {
     const registerResponse = await fetch(
-      `${TAURI_API_URL}/api/question/request`,
+      buildTauriApiUrl("question/request"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,7 +109,7 @@ export async function handleAskUserQuestion(
 
   try {
     const answerResponse = await fetch(
-      `${TAURI_API_URL}/api/question/await/${request_id}`,
+      buildTauriApiUrl(`question/await/${encodeURIComponent(request_id)}`),
       {
         method: "GET",
         signal: controller.signal,

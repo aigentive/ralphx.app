@@ -19,12 +19,12 @@ interface TeamContextBarProps {
 }
 
 const STATUS_COLORS: Record<TeammateStatus, string> = {
-  running: "hsl(142 71% 45%)",
-  idle: "hsl(48 96% 53%)",
-  spawning: "hsl(220 10% 45%)",
-  completed: "hsl(220 10% 45%)",
-  failed: "hsl(220 10% 45%)",
-  shutdown: "hsl(220 10% 45%)",
+  running: "var(--status-success)",
+  idle: "var(--status-warning)",
+  spawning: "var(--text-muted)",
+  completed: "var(--text-muted)",
+  failed: "var(--text-muted)",
+  shutdown: "var(--text-muted)",
 };
 
 function formatCost(usd: number): string {
@@ -51,16 +51,16 @@ function TeamSummaryRow({ contextKey, isHistorical }: { contextKey: string; isHi
   const runningCount = teammates.filter((m: TeammateState) => m.status === "running" || m.status === "spawning").length;
 
   return (
-    <div className="flex items-center justify-between text-[11px]" style={{ color: "hsl(220 10% 55%)" }}>
+    <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--text-secondary)" }}>
       <div className="flex items-center gap-1.5">
         <span>{activeCount} active</span>
-        <span style={{ color: "hsl(220 10% 30%)" }}>·</span>
+        <span style={{ color: "var(--text-muted)" }}>·</span>
         <span>{runningCount} running</span>
-        <span style={{ color: "hsl(220 10% 30%)" }}>·</span>
+        <span style={{ color: "var(--text-muted)" }}>·</span>
         <span>{formatCost(team.totalEstimatedCostUsd)}</span>
       </div>
       {isHistorical && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "hsl(220 10% 15%)", color: "hsl(220 10% 50%)" }}>
+        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}>
           Session ended
         </span>
       )}
@@ -87,8 +87,8 @@ function TeammateDetailRow({ contextKey, name, onStop }: { contextKey: string; n
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-          <span className="text-[12px] font-medium truncate" style={{ color: "hsl(220 10% 80%)" }}>{mate.name}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(220 10% 15%)", color: "hsl(220 10% 55%)" }}>
+          <span className="text-[12px] font-medium truncate" style={{ color: "var(--text-secondary)" }}>{mate.name}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-secondary)" }}>
             {mate.model}
           </span>
           <span className="text-[11px]" style={{ color: dotColor }}>{statusLabel}</span>
@@ -98,7 +98,7 @@ function TeammateDetailRow({ contextKey, name, onStop }: { contextKey: string; n
             type="button"
             onClick={() => onStop(mate.name)}
             className="shrink-0 p-0.5 rounded hover:brightness-125 transition-[filter]"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             <Square className="w-3 h-3" />
           </button>
@@ -107,10 +107,10 @@ function TeammateDetailRow({ contextKey, name, onStop }: { contextKey: string; n
       {/* Row 2: activity + tokens/cost (only if activity exists) */}
       {mate.currentActivity && (
         <div className="flex items-center justify-between text-[11px] pl-3.5">
-          <span className="truncate mr-2" style={{ color: "hsl(220 10% 45%)" }}>{mate.currentActivity}</span>
-          <div className="flex items-center gap-1.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }}>
+          <span className="truncate mr-2" style={{ color: "var(--text-muted)" }}>{mate.currentActivity}</span>
+          <div className="flex items-center gap-1.5 shrink-0" style={{ color: "var(--text-muted)" }}>
             <span>{formatTokens(mate.tokensUsed)} tok</span>
-            <span style={{ color: "hsl(220 10% 30%)" }}>·</span>
+            <span style={{ color: "var(--text-muted)" }}>·</span>
             <span>{formatCost(mate.estimatedCostUsd)}</span>
           </div>
         </div>
@@ -132,7 +132,7 @@ export const TeamContextBar = React.memo(function TeamContextBar({
   const isSummary = activeFilter === "lead";
 
   return (
-    <div className="px-3 py-1.5 shrink-0" style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}>
+    <div className="px-3 py-1.5 shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
       {isSummary ? (
         <TeamSummaryRow contextKey={contextKey} isHistorical={isHistorical} />
       ) : (

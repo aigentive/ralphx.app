@@ -106,7 +106,7 @@ export function ResumeValidationDialog({
             <div
               className="p-2 rounded-full"
               style={{
-                backgroundColor: "rgba(251, 191, 36, 0.15)",
+                backgroundColor: "var(--status-warning-muted)",
               }}
             >
               <AlertTriangle

@@ -148,6 +148,30 @@ describe("RepositorySettingsSection", () => {
     expect(toggle).not.toBeDisabled();
   });
 
+  it("enables PR mode toggle for GitHub SSH remotes", () => {
+    vi.mocked(useGitRemoteUrl).mockReturnValue({
+      data: "git@github.com:user/repo.git",
+      isLoading: false,
+    } as ReturnType<typeof useGitRemoteUrl>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    const toggle = screen.getByTestId("github-pr-enabled");
+    expect(toggle).not.toBeDisabled();
+  });
+
+  it("disables PR mode toggle for URLs that only mention github.com in a query string", () => {
+    vi.mocked(useGitRemoteUrl).mockReturnValue({
+      data: "https://evil.example.com/redirect?target=https://github.com/user/repo.git",
+      isLoading: false,
+    } as ReturnType<typeof useGitRemoteUrl>);
+
+    render(<RepositorySettingsSection />, { wrapper: createWrapper() });
+
+    const toggle = screen.getByTestId("github-pr-enabled");
+    expect(toggle).toBeDisabled();
+  });
+
   it("calls updatePrEnabled.mutateAsync on PR toggle", async () => {
     const user = userEvent.setup();
     mockMutateAsync.mockResolvedValue(undefined);

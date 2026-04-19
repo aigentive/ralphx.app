@@ -113,7 +113,7 @@ function EffortRow({
       <div
         className={[
           "flex items-start justify-between py-3 -mx-2 px-2 rounded-md transition-colors",
-          !disabled ? "hover:bg-[rgba(45,45,45,0.3)]" : "opacity-50",
+          !disabled ? "hover:bg-[var(--bg-hover)]" : "opacity-50",
         ].join(" ")}
       >
         <div className="flex-1 min-w-0 pr-4">
@@ -316,7 +316,7 @@ export function IdeationEffortSection() {
   return (
     <SectionCard
       icon={
-        <Gauge className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+        <Gauge className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
       }
       title="Ideation Effort"
       description="Configure the --effort level for ideation and verification agents"

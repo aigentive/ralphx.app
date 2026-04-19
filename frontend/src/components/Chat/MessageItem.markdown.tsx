@@ -39,7 +39,7 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
       {language && (
         <span
           className="absolute top-1.5 left-3 text-[10px] uppercase tracking-wide"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           {language}
         </span>
@@ -48,7 +48,7 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
         className="rounded-lg overflow-x-auto max-w-full"
         style={{
           /* macOS Tahoe: flat dark background, no border */
-          backgroundColor: "hsl(220 10% 10%)",
+          backgroundColor: "var(--bg-surface)",
           border: "none",
         }}
       >
@@ -56,7 +56,7 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
           className={cn("block p-3 text-[12px]", language && "pt-7")}
           style={{
             fontFamily: "var(--font-mono)",
-            color: "hsl(220 10% 80%)",
+            color: "var(--text-primary)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -96,7 +96,7 @@ export const markdownComponents = {
       target="_blank"
       rel="noopener noreferrer"
       className="underline hover:no-underline"
-      style={{ color: "hsl(14 100% 60%)" }} /* macOS Tahoe accent */
+      style={{ color: "var(--accent-primary)" }} /* macOS Tahoe accent */
       {...props}
     >
       {children}
@@ -119,8 +119,8 @@ export const markdownComponents = {
         className="px-1.5 py-0.5 rounded text-[12px] break-all"
         style={{
           /* macOS Tahoe: subtle inline code background */
-          backgroundColor: "hsl(220 10% 18%)",
-          color: "hsl(220 10% 85%)",
+          backgroundColor: "var(--bg-hover)",
+          color: "var(--text-primary)",
           fontFamily: "var(--font-mono)",
         }}
         {...props}
@@ -180,7 +180,7 @@ export const markdownComponents = {
       style={{
         /* macOS Tahoe: very subtle separator */
         border: "none",
-        borderTop: "1px solid hsla(220 10% 100% / 0.06)",
+        borderTop: "1px solid var(--overlay-weak)",
         marginTop: "12px",
         marginBottom: "12px",
       }}
@@ -193,7 +193,7 @@ export const markdownComponents = {
       className="overflow-x-auto my-3 rounded-lg"
       style={{
         /* macOS Tahoe: subtle background for table container */
-        backgroundColor: "hsl(220 10% 12%)",
+        backgroundColor: "var(--bg-surface)",
       }}
     >
       <table
@@ -209,7 +209,7 @@ export const markdownComponents = {
     <thead
       style={{
         /* macOS Tahoe: slightly elevated header */
-        backgroundColor: "hsl(220 10% 16%)",
+        backgroundColor: "var(--bg-hover)",
       }}
       {...props}
     >
@@ -223,7 +223,7 @@ export const markdownComponents = {
     <tr
       style={{
         /* macOS Tahoe: very subtle row separator */
-        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+        borderBottom: "1px solid var(--overlay-faint)",
       }}
       {...props}
     >
@@ -234,7 +234,7 @@ export const markdownComponents = {
     <th
       className="px-3 py-2 text-left font-medium text-[11px] uppercase tracking-wide"
       style={{
-        color: "hsl(220 10% 55%)",
+        color: "var(--text-secondary)",
         whiteSpace: "nowrap", /* Prevent text wrapping */
       }}
       {...props}
@@ -246,7 +246,7 @@ export const markdownComponents = {
     <td
       className="px-3 py-2"
       style={{
-        color: "hsl(220 10% 80%)",
+        color: "var(--text-primary)",
         whiteSpace: "nowrap", /* Prevent text wrapping */
       }}
       {...props}

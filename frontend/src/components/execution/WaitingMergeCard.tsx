@@ -38,7 +38,7 @@ export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingM
       {task.isMainMergeDeferred ? (
         <Users
           className="w-3.5 h-3.5 shrink-0"
-          style={{ color: "#ff6b35" }}
+          style={{ color: "var(--accent-primary)" }}
           data-testid="main-merge-deferred-icon"
         />
       ) : (
@@ -49,7 +49,7 @@ export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingM
       )}
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-        style={{ color: task.isMainMergeDeferred ? "hsl(220 10% 80%)" : "hsl(220 10% 70%)" }}
+        style={{ color: task.isMainMergeDeferred ? "var(--text-secondary)" : "var(--text-secondary)" }}
         onClick={() => onViewDetails(task.taskId)}
       >
         {task.title}
@@ -58,8 +58,8 @@ export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingM
         <span
           className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full"
           style={{
-            color: "#ff6b35",
-            backgroundColor: "rgba(255, 107, 53, 0.1)",
+            color: "var(--accent-primary)",
+            backgroundColor: "var(--accent-muted)",
           }}
           data-testid="main-merge-deferred-badge"
         >

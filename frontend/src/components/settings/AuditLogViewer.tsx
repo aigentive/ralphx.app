@@ -55,7 +55,7 @@ export function AuditLogViewer({ keyId }: AuditLogViewerProps) {
 
   if (error) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-red-400 py-2">
+      <div className="flex items-center gap-1.5 text-xs text-status-error py-2">
         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
         {error.message}
       </div>
@@ -91,7 +91,7 @@ export function AuditLogViewer({ keyId }: AuditLogViewerProps) {
               <tr
                 key={entry.id}
                 data-testid={`audit-entry-${entry.id}`}
-                className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-surface-hover)] transition-colors"
+                className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors"
               >
                 {/* Tool name */}
                 <td className="py-1.5 pr-3 font-mono text-[var(--text-primary)] truncate max-w-[160px]">
@@ -108,7 +108,7 @@ export function AuditLogViewer({ keyId }: AuditLogViewerProps) {
                   <span
                     className={[
                       "flex items-center gap-1",
-                      success ? "text-green-400" : "text-red-400",
+                      success ? "text-status-success" : "text-status-error",
                     ].join(" ")}
                   >
                     {success ? (

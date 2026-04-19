@@ -12,6 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { withAlpha } from "@/lib/theme-colors";
 import {
   Trash2,
   Network,
@@ -81,14 +82,14 @@ export function ProposalsToolbar({
     <div
       className="flex items-center justify-between px-4 h-11"
       style={{
-        borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
-        background: "hsla(220 10% 8% / 0.6)",
+        borderBottom: "1px solid var(--overlay-weak)",
+        background: withAlpha("var(--bg-base)", 60),
       }}
     >
       {/* Left: Proposal count and analyzing status */}
       <div className="flex items-center gap-3">
-        <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
-          <span style={{ color: "hsl(220 10% 90%)" }} className="font-semibold">
+        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <span style={{ color: "var(--text-primary)" }} className="font-semibold">
             {totalCount}
           </span>
           {" "}{totalCount === 1 ? "proposal" : "proposals"}
@@ -108,13 +109,13 @@ export function ProposalsToolbar({
                   size="icon"
                   onClick={onAnalyzeDependencies}
                   className="h-7 w-7 rounded-lg disabled:opacity-50 transition-colors duration-150"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "hsl(220 10% 90%)";
-                    e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                    e.currentTarget.style.color = "var(--text-primary)";
+                    e.currentTarget.style.background = "var(--overlay-weak)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                    e.currentTarget.style.color = "var(--text-muted)";
                     e.currentTarget.style.background = "transparent";
                   }}
                 >
@@ -129,7 +130,7 @@ export function ProposalsToolbar({
           {showAnalyzeButton && (
             <div
               className="w-px h-4 mx-1"
-              style={{ background: "hsla(220 10% 100% / 0.08)" }}
+              style={{ background: "var(--overlay-moderate)" }}
             />
           )}
 
@@ -142,14 +143,14 @@ export function ProposalsToolbar({
                   size="icon"
                   className="h-7 w-7 rounded-lg"
                   onClick={onClearAll}
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)";
-                    e.currentTarget.style.color = "hsl(0 70% 60%)";
+                    e.currentTarget.style.background = "var(--status-error-muted)";
+                    e.currentTarget.style.color = "var(--status-error)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                    e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -163,7 +164,7 @@ export function ProposalsToolbar({
           {!isReadOnly && (
             <div
               className="w-px h-4 mx-1"
-              style={{ background: "hsla(220 10% 100% / 0.08)" }}
+              style={{ background: "var(--overlay-moderate)" }}
             />
           )}
 
@@ -174,7 +175,7 @@ export function ProposalsToolbar({
                 <div className="flex items-center px-1">
                   <AlertCircle
                     className="w-4 h-4"
-                    style={{ color: "hsl(40 90% 55%)" }}
+                    style={{ color: "var(--status-warning)" }}
                   />
                 </div>
               </TooltipTrigger>
@@ -191,7 +192,7 @@ export function ProposalsToolbar({
                 <div className="flex items-center px-1">
                   <AlertCircle
                     className="w-4 h-4"
-                    style={{ color: "hsl(40 90% 55%)" }}
+                    style={{ color: "var(--status-warning)" }}
                   />
                 </div>
               </TooltipTrigger>
@@ -208,7 +209,7 @@ export function ProposalsToolbar({
                 <div className="flex items-center px-1">
                   <ShieldAlert
                     className="w-4 h-4"
-                    style={{ color: "hsl(0 70% 65%)" }}
+                    style={{ color: "var(--status-error)" }}
                   />
                 </div>
               </TooltipTrigger>
@@ -229,18 +230,18 @@ export function ProposalsToolbar({
             onClick={onAcceptPlan}
             className="h-7 px-3 text-[11px] font-semibold gap-1.5 rounded-lg transition-all duration-150"
             style={{
-              color: canAccept ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)",
-              background: canAccept ? "hsla(14 100% 60% / 0.1)" : "transparent",
-              border: canAccept ? "1px solid hsla(14 100% 60% / 0.2)" : "1px solid transparent",
+              color: canAccept ? "var(--accent-primary)" : "var(--text-muted)",
+              background: canAccept ? withAlpha("var(--accent-primary)", 10) : "transparent",
+              border: canAccept ? "1px solid var(--accent-border)" : "1px solid transparent",
             }}
             onMouseEnter={(e) => {
               if (canAccept) {
-                e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                e.currentTarget.style.background = "var(--accent-muted)";
               }
             }}
             onMouseLeave={(e) => {
               if (canAccept) {
-                e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
               }
             }}
           >

@@ -129,8 +129,8 @@ function ContextIndicator({ context, isExecutionMode = false }: ContextIndicator
 
   return (
     <div className="flex items-center gap-2 min-w-0 flex-1">
-      <Icon className="w-3.5 h-3.5 shrink-0 text-white/50" />
-      <span className="text-[13px] font-medium truncate text-white/80">{label}</span>
+      <Icon className="w-3.5 h-3.5 shrink-0 text-text-primary/50" />
+      <span className="text-[13px] font-medium truncate text-text-primary/80">{label}</span>
     </div>
   );
 }
@@ -497,8 +497,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           data-testid="chat-panel-header"
           className="flex items-center justify-between h-11 px-3 border-b shrink-0"
           style={{
-            borderColor: "hsla(220 10% 100% / 0.04)",
-            background: "hsla(220 10% 100% / 0.02)",
+            borderColor: "color-mix(in srgb, var(--text-primary) 4%, transparent)",
+            background: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
           }}
         >
           <ContextIndicator context={context} isExecutionMode={isExecutionMode} />

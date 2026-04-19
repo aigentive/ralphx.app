@@ -62,20 +62,20 @@ function TransitionEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
-        <ArrowRight className="w-3.5 h-3.5" style={{ color: "#0a84ff" }} />
+        <ArrowRight className="w-3.5 h-3.5" style={{ color: "var(--status-info)" }} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {entry.fromStatus && <StatusBadge status={entry.fromStatus} />}
-          <ArrowRight className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
+          <ArrowRight className="w-3 h-3 text-text-primary/30" />
           {entry.toStatus && <StatusBadge status={entry.toStatus} />}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
       </div>
     </div>
@@ -105,7 +105,7 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
       </div>
@@ -116,20 +116,19 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
           </span>
           {isToolCall && toolName && (
             <span
-              className="font-mono text-[10px] px-1.5 py-0.5 rounded"
+              className="font-mono text-[10px] px-1.5 py-0.5 rounded text-text-primary/70"
               style={{
-                backgroundColor: "rgba(255,255,255,0.05)",
-                color: "rgba(255,255,255,0.7)",
+                backgroundColor: "var(--overlay-weak)",
               }}
             >
               {toolName}
             </span>
           )}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && (
           <ExpandableContent
             text={entry.description}
@@ -141,11 +140,11 @@ function ActivityEventCard({ entry }: { entry: AuditEntry }) {
           <div
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
-              backgroundColor: "rgba(255, 107, 53, 0.08)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              backgroundColor: "var(--accent-muted)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
-            <span className="text-[10px] text-white/45 break-all min-w-0">
+            <span className="text-[10px] text-text-primary/45 break-all min-w-0">
               Follow-up: {entry.followupSessionId}
             </span>
             <button
@@ -181,7 +180,7 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <ReviewerIcon
           className="w-3.5 h-3.5"
@@ -202,13 +201,13 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
               {entry.type}
             </span>
           ) : (
-            <span className="text-[11px] font-medium text-white/70">{entry.type}</span>
+            <span className="text-[11px] font-medium text-text-primary/70">{entry.type}</span>
           )}
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
         {entry.metadata && (
           <p
@@ -222,11 +221,11 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
           <div
             className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
             style={{
-              backgroundColor: "rgba(255, 107, 53, 0.08)",
-              border: "1px solid rgba(255,255,255,0.05)",
+              backgroundColor: "var(--accent-muted)",
+              border: "1px solid var(--overlay-weak)",
             }}
           >
-            <span className="text-[10px] text-white/45 break-all min-w-0">
+            <span className="text-[10px] text-text-primary/45 break-all min-w-0">
               Follow-up: {entry.followupSessionId}
             </span>
             <button
@@ -258,18 +257,18 @@ function DefaultEventCard({ entry }: { entry: AuditEntry }) {
     >
       <div
         className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
-        style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+        style={{ backgroundColor: "var(--overlay-faint)" }}
       >
         <MessageSquare className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium text-white/70">{entry.type}</span>
-          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+          <span className="text-[11px] font-medium text-text-primary/70">{entry.type}</span>
+          <span className="text-[11px] text-text-primary/40 ml-auto shrink-0">
             {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-        <div className="text-[11px] text-white/50 mt-0.5">by {entry.actor}</div>
+        <div className="text-[11px] text-text-primary/50 mt-0.5">by {entry.actor}</div>
         {entry.description && <ExpandableContent text={entry.description} />}
       </div>
     </div>

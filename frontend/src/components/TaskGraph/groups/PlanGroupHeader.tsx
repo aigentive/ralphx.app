@@ -79,13 +79,13 @@ const CollapseToggle = memo(function CollapseToggle({
   return (
     <button
       onClick={onClick}
-      className="flex-shrink-0 p-0.5 rounded hover:bg-[hsl(var(--bg-surface))] transition-colors"
+      className="flex-shrink-0 p-0.5 rounded hover:bg-[var(--bg-surface)] transition-colors"
       aria-label={isCollapsed ? "Expand group" : "Collapse group"}
     >
       {isCollapsed ? (
-        <ChevronRight className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+        <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
       ) : (
-        <ChevronDown className="w-4 h-4 text-[hsl(var(--text-muted))]" />
+        <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
       )}
     </button>
   );
@@ -103,13 +103,13 @@ const ProgressBar = memo(function ProgressBar({
 
   return (
     <div className="flex items-center gap-1.5 min-w-[100px]">
-      <div className="flex-1 h-[2px] bg-[hsla(220,10%,20%,0.5)] rounded-full overflow-hidden">
+      <div className="flex-1 h-[2px] bg-[color-mix(in_srgb,_var(--border-subtle)_50%,_transparent)] rounded-full overflow-hidden">
         <div
-          className="h-full bg-[hsla(145,60%,45%,0.6)] rounded-full transition-all duration-300"
+          className="h-full bg-[color-mix(in_srgb,_var(--status-success)_60%,_transparent)] rounded-full transition-all duration-300"
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className="text-xs text-[hsl(var(--text-muted))] whitespace-nowrap">
+      <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
         {percentage}%
       </span>
     </div>
@@ -153,10 +153,10 @@ const FeatureBranchBadge = memo(function FeatureBranchBadge({
   status: "active" | "merged" | "abandoned";
 }) {
   const statusColor = status === "active"
-    ? "hsl(145,60%,45%)"
+    ? "var(--status-success)"
     : status === "merged"
-    ? "hsl(220,80%,60%)"
-    : "hsl(var(--text-muted))";
+    ? "var(--status-info)"
+    : "var(--text-muted)";
 
   const statusIcon = status === "active"
     ? <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: statusColor }} />
@@ -172,7 +172,7 @@ const FeatureBranchBadge = memo(function FeatureBranchBadge({
 
   return (
     <div
-      className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[hsl(var(--bg-surface))]"
+      className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[var(--bg-surface)]"
       style={{ color: statusColor }}
       title={`Feature branch: ${branchName} (${status})`}
     >
@@ -238,12 +238,12 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   // Collapsed: two-row layout with text count
   if (isCollapsed) {
     return (
-      <div className="flex flex-col gap-1.5 px-3 py-2 bg-[hsl(var(--bg-elevated)/0.8)] rounded-lg cursor-pointer">
+      <div className="flex flex-col gap-1.5 px-3 py-2 bg-[color-mix(in_srgb,_var(--bg-elevated)_80%,_transparent)] rounded-lg cursor-pointer">
         {/* Row 1: toggle + title + branch badge + count */}
         <div className="flex items-center gap-2">
           <CollapseToggle isCollapsed={true} onClick={onToggleCollapse} />
           <span
-            className="text-sm font-medium text-[hsl(var(--text-primary))] truncate flex-1"
+            className="text-sm font-medium text-[var(--text-primary)] truncate flex-1"
             title={`Plan: ${displayTitle}`}
           >
             {displayTitle}
@@ -254,7 +254,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
               status={planBranch.status}
             />
           )}
-          <span className="text-xs text-[hsl(var(--text-muted))]">
+          <span className="text-xs text-[var(--text-muted)]">
             {counts.total} tasks
           </span>
         </div>
@@ -266,16 +266,16 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
 
   // Expanded: two-row layout
   return (
-    <div className="flex flex-col gap-1 px-2 py-1.5 bg-[hsl(var(--bg-elevated)/0.8)] rounded-t-lg cursor-pointer">
+    <div className="flex flex-col gap-1 px-2 py-1.5 bg-[color-mix(in_srgb,_var(--bg-elevated)_80%,_transparent)] rounded-t-lg cursor-pointer">
       {/* Row 1: toggle + title + tier toggle + status badges + settings */}
       <div className="flex items-center justify-between gap-2 w-full">
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <CollapseToggle isCollapsed={false} onClick={onToggleCollapse} />
           <span
             className={cn(
-              "text-sm font-medium text-[hsl(var(--text-primary))] truncate",
+              "text-sm font-medium text-[var(--text-primary)] truncate",
               onNavigateToSession &&
-                "hover:text-[hsl(var(--accent-primary))] transition-colors cursor-pointer"
+                "hover:text-[var(--accent-primary)] transition-colors cursor-pointer"
             )}
             title={`Plan: ${displayTitle}`}
             onClick={onNavigateToSession}
@@ -290,7 +290,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
             <button
               className={cn(
                 "flex-shrink-0 p-0.5 rounded transition-colors",
-                "hover:bg-[hsl(var(--bg-surface))]",
+                "hover:bg-[var(--bg-surface)]",
               )}
               onClick={(event) => {
                 event.stopPropagation();
@@ -303,9 +303,9 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
               title={shouldExpandAll ? "Expand all tiers" : "Collapse all tiers"}
             >
               {shouldExpandAll ? (
-                <ChevronRight className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+                <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               ) : (
-                <ChevronDown className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               )}
             </button>
           )}
@@ -315,31 +315,31 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
             icon={<Check className="w-3 h-3" />}
             count={counts.done}
             label={`${counts.done} completed`}
-            colorClass="bg-[hsla(145,60%,45%,0.15)] text-[hsl(145,60%,45%)]"
+            colorClass="bg-[var(--status-success-muted)] text-[var(--status-success)]"
           />
           <StatusBadge
             icon={<Play className="w-3 h-3" />}
             count={counts.executing}
             label={`${counts.executing} executing`}
-            colorClass="bg-[hsla(14,100%,55%,0.15)] text-[hsl(14,100%,55%)]"
+            colorClass="bg-[var(--accent-muted)] text-[var(--accent-primary)]"
           />
           <StatusBadge
             icon={<AlertTriangle className="w-3 h-3" />}
             count={counts.blocked}
             label={`${counts.blocked} blocked`}
-            colorClass="bg-[hsla(45,90%,55%,0.15)] text-[hsl(45,90%,55%)]"
+            colorClass="bg-[var(--status-warning-muted)] text-[var(--status-warning)]"
           />
           <StatusBadge
             icon={<Eye className="w-3 h-3" />}
             count={counts.review}
             label={`${counts.review} in review`}
-            colorClass="bg-[hsla(220,80%,60%,0.15)] text-[hsl(220,80%,60%)]"
+            colorClass="bg-[var(--status-info-muted)] text-[var(--status-info)]"
           />
           <StatusBadge
             icon={<GitMerge className="w-3 h-3" />}
             count={counts.merge}
             label={`${counts.merge} merging`}
-            colorClass="bg-[hsla(180,60%,50%,0.15)] text-[hsl(180,60%,50%)]"
+            colorClass="bg-[var(--status-info-muted)] text-[var(--status-info)]"
           />
 
           {/* Settings gear - opens PlanGroupSettings popover */}
@@ -349,14 +349,14 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
                 <button
                   className={cn(
                     "p-1 rounded transition-colors",
-                    "hover:bg-[hsl(var(--bg-surface))]",
-                    settingsOpen && "bg-[hsl(var(--bg-surface))]"
+                    "hover:bg-[var(--bg-surface)]",
+                    settingsOpen && "bg-[var(--bg-surface)]"
                   )}
                   onClick={(event) => event.stopPropagation()}
                   aria-label="Plan group settings"
                   title="Feature branch settings"
                 >
-                  <Settings className="w-3.5 h-3.5 text-[hsl(var(--text-muted))]" />
+                  <Settings className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                 </button>
               </PopoverTrigger>
               <PopoverContent
@@ -388,7 +388,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         )}
         {planBranch && planBranch.baseBranchOverride && (
           <div
-            className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[hsl(var(--bg-surface))] text-[hsl(var(--text-muted))]"
+            className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[var(--bg-surface)] text-[var(--text-muted)]"
             title={`Merging into: ${planBranch.baseBranchOverride}`}
           >
             <span style={{ opacity: 0.5 }}>→</span>

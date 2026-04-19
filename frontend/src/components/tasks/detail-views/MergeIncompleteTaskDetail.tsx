@@ -38,6 +38,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
@@ -83,11 +84,11 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
   if (!mergeError) {
     return (
       <div className="space-y-3">
-        <p className="text-[13px] text-white/60">
+        <p className="text-[13px] text-text-primary/60">
           The merge failed due to a git error that is not a merge conflict.
           This can happen when:
         </p>
-        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-white/50">
+        <ul className="list-disc list-inside space-y-1.5 text-[13px] text-text-primary/50">
           <li>The task branch was deleted or corrupted</li>
           <li>A git lock file is preventing operations</li>
           <li>Network issues interrupted a fetch operation</li>
@@ -101,14 +102,14 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
     <div className="space-y-3">
       {mergeError.error && (
         <div
-          className="rounded-md px-3 py-2 font-mono text-[12px] text-white/80 whitespace-pre-wrap"
-          style={{ backgroundColor: "rgba(255, 69, 58, 0.10)" }}
+          className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
+          style={{ backgroundColor: "var(--status-error-muted)" }}
         >
           {mergeError.error}
         </div>
       )}
       {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
-        <div className="text-[13px] text-white/60">
+        <div className="text-[13px] text-text-primary/60">
           <BranchFlow
             source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
             target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
@@ -116,7 +117,7 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
         </div>
       )}
       {mergeError.diagnosticInfo && (
-        <div className="text-[12px] text-white/50 whitespace-pre-wrap">
+        <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
           {mergeError.diagnosticInfo}
         </div>
       )}
@@ -132,54 +133,54 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
     <div className="space-y-3">
       {hasValidationFailures ? (
         <>
-          <p className="text-[13px] text-white/60">
+          <p className="text-[13px] text-text-primary/60">
             Your validation commands (build, type checks, linting) failed,
             so the merge could not be completed. To recover:
           </p>
-          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
             <li>
               Fix the build, type, or lint errors in your codebase
             </li>
             <li>
-              Click <strong className="text-white/70">Retry Merge</strong> to
+              Click <strong className="text-text-primary/70">Retry Merge</strong> to
               re-run validation and complete the merge
             </li>
             <li>
               Click{" "}
-              <strong className="text-white/70">Retry (Skip Validation)</strong>{" "}
+              <strong className="text-text-primary/70">Retry (Skip Validation)</strong>{" "}
               to complete the merge without running validation
             </li>
             <li>
               If fixed manually, click{" "}
-              <strong className="text-white/70">Mark Resolved</strong>
+              <strong className="text-text-primary/70">Mark Resolved</strong>
             </li>
           </ol>
         </>
       ) : (
         <>
-          <p className="text-[13px] text-white/60">
+          <p className="text-[13px] text-text-primary/60">
             To recover, try the following steps:
           </p>
-          <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
             <li>
               Check if the branch exists:{" "}
-              <code className="text-white/70 bg-white/5 px-1 rounded">
+              <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">
                 git branch --list {branchName}
               </code>
             </li>
             <li>
               Remove any stale lock files:{" "}
-              <code className="text-white/70 bg-white/5 px-1 rounded">
+              <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">
                 rm -f .git/index.lock
               </code>
             </li>
             <li>
-              Click <strong className="text-white/70">Retry Merge</strong> to
+              Click <strong className="text-text-primary/70">Retry Merge</strong> to
               attempt the merge again
             </li>
             <li>
               If the issue is resolved manually, click{" "}
-              <strong className="text-white/70">Mark Resolved</strong>
+              <strong className="text-text-primary/70">Mark Resolved</strong>
             </li>
           </ol>
         </>
@@ -236,18 +237,18 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
   const getEventColor = (kind: string) => {
     switch (kind) {
       case "deferred":
-        return "rgba(255, 159, 10, 0.7)"; // amber
+        return statusTint("warning", 70); // amber
       case "auto_retry_triggered":
       case "manual_retry":
-        return "rgba(255, 107, 53, 0.7)"; // orange
+        return statusTint("accent", 70); // orange
       case "attempt_started":
-        return "rgba(100, 200, 255, 0.7)"; // blue
+        return statusTint("info", 70); // blue
       case "attempt_failed":
-        return "rgba(255, 69, 58, 0.7)"; // red
+        return statusTint("error", 70); // red
       case "attempt_succeeded":
-        return "#34c759"; // green
+        return "var(--status-success)"; // green
       default:
-        return "rgba(255, 255, 255, 0.5)"; // white/gray
+        return withAlpha("var(--text-primary)", 50); // white/gray
     }
   };
 
@@ -272,16 +273,15 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
 
   const getSourceBadge = (source: string) => {
     const colors = {
-      system: "rgba(100, 200, 255, 0.15)",
-      auto: "rgba(255, 107, 53, 0.15)",
-      user: "rgba(52, 199, 89, 0.15)",
+      system: "var(--status-info-muted)",
+      auto: "var(--accent-muted)",
+      user: "var(--status-success-muted)",
     };
     return (
       <span
-        className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide"
+        className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide text-text-primary/70"
         style={{
-          backgroundColor: colors[source as keyof typeof colors] ?? "rgba(255, 255, 255, 0.1)",
-          color: "rgba(255, 255, 255, 0.7)",
+          backgroundColor: colors[source as keyof typeof colors] ?? "var(--overlay-moderate)",
         }}
       >
         {source}
@@ -302,7 +302,7 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
             style={{
               borderBottom:
                 idx < events.length - 1
-                  ? "1px solid rgba(255, 255, 255, 0.08)"
+                  ? "1px solid var(--overlay-weak)"
                   : "none",
             }}
           >
@@ -319,41 +319,41 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
               {/* Header: kind + timestamp */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[13px] font-medium text-white/90">
+                  <span className="text-[13px] font-medium text-text-primary/90">
                     {getKindLabel(event.kind)}
                   </span>
                   {getSourceBadge(event.source)}
                   {event.attempt !== undefined && (
-                    <span className="text-[11px] text-white/40">
+                    <span className="text-[11px] text-text-primary/40">
                       Attempt #{event.attempt}
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-white/40 font-mono">
+                <span className="text-[11px] text-text-primary/40 font-mono">
                   {formatTimestamp(event.at)}
                 </span>
               </div>
 
               {/* Message */}
-              <p className="text-[13px] text-white/70">{event.message}</p>
+              <p className="text-[13px] text-text-primary/70">{event.message}</p>
 
               {/* Additional metadata */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-primary/50">
                 {event.blocking_task_id && (
                   <div>
-                    <span className="text-white/40">Blocker: </span>
+                    <span className="text-text-primary/40">Blocker: </span>
                     <span className="font-mono">{event.blocking_task_id.slice(0, 8)}</span>
                   </div>
                 )}
                 {event.target_branch && (
                   <div>
-                    <span className="text-white/40">Target: </span>
+                    <span className="text-text-primary/40">Target: </span>
                     <span className="font-mono">{event.target_branch}</span>
                   </div>
                 )}
                 {event.reason_code && (
                   <div>
-                    <span className="text-white/40">Reason: </span>
+                    <span className="text-text-primary/40">Reason: </span>
                     <span>{event.reason_code.replace(/_/g, " ")}</span>
                   </div>
                 )}
@@ -384,8 +384,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 107, 53, 0.15)",
-            color: "rgba(255, 107, 53, 0.9)",
+            backgroundColor: "var(--accent-muted)",
+            color: "var(--accent-primary)",
           }}
         >
           Auto-recovery attempted
@@ -395,8 +395,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 159, 10, 0.15)",
-            color: "rgba(255, 159, 10, 0.9)",
+            backgroundColor: "var(--status-warning-muted)",
+            color: "var(--status-warning)",
           }}
         >
           Deferred due to active merge
@@ -406,8 +406,8 @@ function RecoveryBadges({
         <span
           className="text-[11px] px-2.5 py-1 rounded-full font-medium"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.15)",
-            color: "rgba(255, 69, 58, 0.9)",
+            backgroundColor: "var(--status-error-muted)",
+            color: "var(--status-error)",
           }}
         >
           Last attempt failed
@@ -442,7 +442,7 @@ function ActionButtons({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#ff6b35",
+          backgroundColor: "var(--accent-primary)",
         }}
       >
         {isProcessing ? (
@@ -460,7 +460,7 @@ function ActionButtons({
           className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
           style={{
             color: "white",
-            backgroundColor: "rgba(255, 159, 10, 0.85)",
+            backgroundColor: statusTint("warning", 85),
           }}
         >
           {isProcessing ? (
@@ -478,7 +478,7 @@ function ActionButtons({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#34c759",
+          backgroundColor: "var(--status-success)",
         }}
       >
         {isProcessing ? (
@@ -678,18 +678,18 @@ export function MergeIncompleteTaskDetail({
           {planBranch.prStatus === "Closed" ? (
             <DetailCard variant="warning">
               <div className="flex items-center gap-2">
-                <GitPullRequestClosed className="w-4 h-4" style={{ color: "#ff9f0a" }} />
-                <span className="text-[13px] text-white/70">PR closed without merging</span>
+                <GitPullRequestClosed className="w-4 h-4" style={{ color: "var(--status-warning)" }} />
+                <span className="text-[13px] text-text-primary/70">PR closed without merging</span>
                 {planBranch.prNumber != null && (
-                  <span className="text-[12px] text-white/40">PR #{planBranch.prNumber}</span>
+                  <span className="text-[12px] text-text-primary/40">PR #{planBranch.prNumber}</span>
                 )}
               </div>
             </DetailCard>
           ) : planBranch.prNumber != null ? (
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
-                <span className="text-[13px] text-white/70">
+                <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
+                <span className="text-[13px] text-text-primary/70">
                   PR operation failed (PR #{planBranch.prNumber})
                 </span>
               </div>
@@ -697,8 +697,8 @@ export function MergeIncompleteTaskDetail({
           ) : (
             <DetailCard variant="error">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
-                <span className="text-[13px] text-white/70">PR operation failed</span>
+                <AlertTriangle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
+                <span className="text-[13px] text-text-primary/70">PR operation failed</span>
               </div>
             </DetailCard>
           )}
@@ -724,7 +724,7 @@ export function MergeIncompleteTaskDetail({
           </>
         ) : (
           <DetailCard>
-            <p className="text-[13px] text-white/50 italic">
+            <p className="text-[13px] text-text-primary/50 italic">
               No recorded recovery attempts for this task.
             </p>
           </DetailCard>
@@ -762,8 +762,8 @@ export function MergeIncompleteTaskDetail({
         <div
           className="p-3 rounded-lg text-[13px]"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.12)",
-            color: "#ff6961",
+            backgroundColor: statusTint("error", 12),
+            color: "var(--status-error)",
           }}
         >
           {error}

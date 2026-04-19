@@ -283,16 +283,19 @@ describe("ChatAttachmentPicker", () => {
       render(<ChatAttachmentPicker {...defaultProps} disabled={true} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should have reduced opacity background
-      expect(button).toHaveStyle({ background: "hsla(14 100% 60% / 0.3)" });
+      // Neutral muted chrome — disabled attribute + shared CSS opacity-40 class
+      expect(button).toBeDisabled();
+      expect(button.className).toContain("disabled:opacity-40");
     });
 
     it("applies enabled styling when not disabled", () => {
       render(<ChatAttachmentPicker {...defaultProps} disabled={false} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should have full opacity background
-      expect(button).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      // Muted gray chrome (matches Send button's disabled baseline)
+      expect(button).toHaveStyle({
+        background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+      });
     });
   });
 
@@ -365,13 +368,15 @@ describe("ChatAttachmentPicker", () => {
   // ============================================================================
 
   describe("styling", () => {
-    it("applies accent color to enabled button", () => {
+    it("applies muted neutral chrome to enabled button", () => {
       render(<ChatAttachmentPicker {...defaultProps} />);
       const button = screen.getByTestId("attachment-picker-button");
 
-      // Should use orange accent color
-      expect(button).toHaveStyle({ background: "hsl(14 100% 60%)" });
-      expect(button).toHaveStyle({ color: "rgb(255, 255, 255)" });
+      // Neutral control — not a primary CTA (per 2026-04-19 UX pass)
+      expect(button).toHaveStyle({
+        background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+      });
+      expect(button).toHaveStyle({ color: "var(--text-muted)" });
     });
 
     it("has compact size to fit in chat footer", () => {
@@ -653,14 +658,14 @@ describe("ChatAttachmentPicker", () => {
 
       const overlay = screen.getByTestId("attachment-drop-overlay");
 
-      // Check background (testing library normalizes hsla to rgba)
+      // Check background (design token — color-mix preserved by jsdom)
       expect(overlay).toHaveStyle({
-        background: "rgba(255, 99, 51, 0.1)",
+        background: "color-mix(in srgb, var(--accent-primary) 10%, transparent)",
       });
 
-      // Check that it has a dashed border (exact color may be normalized)
-      const computedStyle = window.getComputedStyle(overlay);
-      expect(computedStyle.borderStyle).toBe("dashed");
+      // Check that it has a dashed border (jsdom can't resolve CSS var in shorthand,
+      // so read inline style directly)
+      expect(overlay.style.border).toContain("dashed");
 
       // Check text content
       expect(overlay).toHaveTextContent("Drop files here");
@@ -680,7 +685,7 @@ describe("ChatAttachmentPicker", () => {
 
       expect(text).toHaveClass("text-[13px]");
       expect(text).toHaveClass("font-medium");
-      expect(text).toHaveStyle({ color: "hsl(14 100% 60%)" });
+      expect(text).toHaveStyle({ color: "var(--accent-primary)" });
     });
 
     it("does not interfere with click-to-upload", async () => {

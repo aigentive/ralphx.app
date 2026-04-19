@@ -12,6 +12,7 @@ import { ProposalCard, type DependencyDetail } from "./ProposalCard";
 import type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
 import { ProposalTierGroup } from "./ProposalTierGroup";
 import { useDependencyTiers, getDependencyReason } from "@/hooks/useDependencyGraph";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Tier Connector Component
@@ -40,7 +41,7 @@ const TierConnector = React.memo(function TierConnector({
           <div
             className="absolute inset-0 blur-md"
             style={{
-              background: "radial-gradient(circle, rgba(255,107,53,0.3) 0%, transparent 70%)",
+              background: `radial-gradient(circle, ${withAlpha("var(--accent-primary)", 30)} 0%, transparent 70%)`,
             }}
           />
         )}
@@ -57,24 +58,24 @@ const TierConnector = React.memo(function TierConnector({
             y1="0"
             x2="12"
             y2="16"
-            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.08)"}
+            stroke={isOnCriticalPath ? "var(--accent-primary)" : "var(--border-subtle)"}
             strokeWidth={isOnCriticalPath ? "2" : "1"}
             strokeDasharray={isOnCriticalPath ? "none" : "3 4"}
             strokeLinecap="round"
             style={{
-              filter: isOnCriticalPath ? "drop-shadow(0 0 4px rgba(255,107,53,0.5))" : "none",
+              filter: isOnCriticalPath ? `drop-shadow(0 0 4px ${withAlpha("var(--accent-primary)", 50)})` : "none",
             }}
           />
           {/* Downward chevron */}
           <path
             d="M8 14L12 20L16 14"
-            stroke={isOnCriticalPath ? "#ff6b35" : "rgba(255,255,255,0.1)"}
+            stroke={isOnCriticalPath ? "var(--accent-primary)" : "var(--overlay-moderate)"}
             strokeWidth={isOnCriticalPath ? "2" : "1"}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
             style={{
-              filter: isOnCriticalPath ? "drop-shadow(0 0 4px rgba(255,107,53,0.5))" : "none",
+              filter: isOnCriticalPath ? `drop-shadow(0 0 4px ${withAlpha("var(--accent-primary)", 50)})` : "none",
             }}
           />
         </svg>

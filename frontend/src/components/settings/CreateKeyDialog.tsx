@@ -143,7 +143,7 @@ export function CreateKeyDialog({ open, onClose, onCreated }: CreateKeyDialogPro
         className="max-w-md"
         style={{
           background: "var(--bg-elevated)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
@@ -223,7 +223,7 @@ export function CreateKeyDialog({ open, onClose, onCreated }: CreateKeyDialogPro
                 </div>
 
                 {error && (
-                  <p className="text-xs text-red-400 flex items-center gap-1.5">
+                  <p className="text-xs text-status-error flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                     {error}
                   </p>
@@ -258,8 +258,8 @@ export function CreateKeyDialog({ open, onClose, onCreated }: CreateKeyDialogPro
                     <div
                       className="flex-1 px-3 py-2 rounded-md font-mono text-sm text-[var(--text-primary)] break-all select-all"
                       style={{
-                        background: "rgba(0,0,0,0.3)",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "var(--overlay-scrim)",
+                        border: "1px solid var(--border-subtle)",
                       }}
                     >
                       {rawKey}
@@ -269,18 +269,18 @@ export function CreateKeyDialog({ open, onClose, onCreated }: CreateKeyDialogPro
                       size="icon"
                       onClick={handleCopy}
                       data-testid="copy-key-button"
-                      className="shrink-0 h-9 w-9 hover:bg-[var(--bg-surface-hover)]"
+                      className="shrink-0 h-9 w-9 hover:bg-[var(--bg-hover)]"
                       title="Copy to clipboard"
                     >
                       {copied ? (
-                        <Check className="w-4 h-4 text-green-400" />
+                        <Check className="w-4 h-4 text-status-success" />
                       ) : (
                         <Copy className="w-4 h-4 text-[var(--text-muted)]" />
                       )}
                     </Button>
                   </div>
                   {copyError && (
-                    <p className="text-xs text-red-400 flex items-center gap-1.5">
+                    <p className="text-xs text-status-error flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       {copyError}
                     </p>

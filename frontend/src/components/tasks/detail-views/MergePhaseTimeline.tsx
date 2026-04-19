@@ -18,6 +18,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { SectionTitle, DetailCard } from "./shared";
+import { withAlpha } from "@/lib/theme-colors";
 import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
 /** Default phase config — used as fallback when no dynamic phase list is received */
@@ -39,23 +40,22 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skip
   if (status === "started") {
     return (
       <div className="relative">
-        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
       </div>
     );
   }
   if (status === "passed") {
-    return <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />;
+    return <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />;
   }
   if (status === "failed") {
-    return <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />;
+    return <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />;
   }
   if (status === "skipped") {
-    return <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />;
+    return <SkipForward className="w-4 h-4 text-text-primary/30" />;
   }
   return (
     <div
-      className="w-4 h-4 rounded-full border-2"
-      style={{ borderColor: "rgba(255,255,255,0.15)" }}
+      className="w-4 h-4 rounded-full border-2 border-text-primary/15"
     />
   );
 }
@@ -63,15 +63,15 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skip
 function phaseTextColor(status: "started" | "passed" | "failed" | "skipped" | "pending"): string {
   switch (status) {
     case "started":
-      return "#0a84ff";
+      return "var(--status-info)";
     case "passed":
-      return "rgba(255, 255, 255, 0.6)";
+      return withAlpha("var(--text-primary)", 60);
     case "failed":
-      return "#ff453a";
+      return "var(--status-error)";
     case "skipped":
-      return "rgba(255, 255, 255, 0.3)";
+      return withAlpha("var(--text-primary)", 30);
     default:
-      return "rgba(255, 255, 255, 0.25)";
+      return withAlpha("var(--text-primary)", 25);
   }
 }
 
@@ -122,7 +122,7 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                 style={{
                   borderTop:
                     index > 0
-                      ? "1px solid rgba(255, 255, 255, 0.05)"
+                      ? "1px solid var(--overlay-weak)"
                       : "none",
                 }}
               >
@@ -135,28 +135,28 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                     {config.label}
                   </span>
                   {config.command && (
-                    <span className="text-[10px] font-mono text-white/25 truncate block max-w-[200px]">
+                    <span className="text-[10px] font-mono text-text-primary/25 truncate block max-w-[200px]">
                       $ {config.command}
                     </span>
                   )}
                   {!config.command && config.description && (
-                    <span className="text-[10px] text-white/25 truncate block max-w-[280px]">
+                    <span className="text-[10px] text-text-primary/25 truncate block max-w-[280px]">
                       {config.description}
                     </span>
                   )}
                 </div>
                 {event?.message && status === "started" && (
-                  <span className="text-[11px] text-white/40 truncate max-w-[200px]">
+                  <span className="text-[11px] text-text-primary/40 truncate max-w-[200px]">
                     {event.message}
                   </span>
                 )}
                 {status === "failed" && event?.message && (
-                  <span className="text-[11px] truncate max-w-[200px]" style={{ color: "#ff6961" }}>
+                  <span className="text-[11px] truncate max-w-[200px]" style={{ color: "var(--status-error)" }}>
                     {event.message}
                   </span>
                 )}
                 {status === "skipped" && (
-                  <span className="text-[11px] text-white/25 truncate max-w-[200px]">
+                  <span className="text-[11px] text-text-primary/25 truncate max-w-[200px]">
                     skipped
                   </span>
                 )}

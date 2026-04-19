@@ -148,8 +148,8 @@ export function TaskEditForm({
       <div
         className="rounded-lg p-4 mt-5"
         style={{
-          background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--overlay-faint)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <div className="flex items-center justify-between mb-3">
@@ -157,7 +157,7 @@ export function TaskEditForm({
             Steps
           </label>
           {isExecuting && (
-            <span className="text-[11px] text-white/40 italic">
+            <span className="text-[11px] text-text-primary/40 italic">
               Cannot edit while executing
             </span>
           )}
@@ -192,19 +192,19 @@ export function TaskEditForm({
               className="h-10 px-3 rounded-lg text-[13px] font-medium shrink-0 flex items-center justify-center gap-1.5 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 background: "transparent",
-                border: "1px solid hsla(220 10% 100% / 0.12)",
-                color: "hsl(220 10% 60%)",
+                border: "1px solid var(--overlay-moderate)",
+                color: "var(--text-secondary)",
               }}
               onMouseEnter={(e) => {
                 if (!isSaving && !isAddingStep && newStepTitle.trim()) {
-                  e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
-                  e.currentTarget.style.color = "hsl(220 10% 80%)";
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+                  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--text-primary) 20%, transparent)";
+                  e.currentTarget.style.color = "var(--text-secondary)";
+                  e.currentTarget.style.background = "var(--overlay-faint)";
                 }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.12)";
-                e.currentTarget.style.color = "hsl(220 10% 60%)";
+                e.currentTarget.style.borderColor = "var(--overlay-moderate)";
+                e.currentTarget.style.color = "var(--text-secondary)";
                 e.currentTarget.style.background = "transparent";
               }}
             >

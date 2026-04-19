@@ -48,6 +48,7 @@ import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { PrStatusBadge } from "./shared/PrStatusBadge";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -94,24 +95,24 @@ function ConflictFilesList({
             style={{
               backgroundColor:
                 expandedFile === file
-                  ? "rgba(255, 159, 10, 0.15)"
-                  : "rgba(255, 159, 10, 0.08)",
+                  ? "var(--status-warning-muted)"
+                  : "var(--status-warning-muted)",
             }}
           >
             {expandedFile === file ? (
               <ChevronDown
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             ) : (
               <ChevronRight
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             )}
-            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "#ff9f0a" }} />
+            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
-              className="text-[13px] font-mono text-white/70 truncate text-left"
+              className="text-[13px] font-mono text-text-primary/70 truncate text-left"
               title={file}
             >
               {file}
@@ -121,23 +122,23 @@ function ConflictFilesList({
             <div
               className="mt-2 rounded-lg overflow-hidden border"
               style={{
-                borderColor: "rgba(255, 159, 10, 0.2)",
+                borderColor: "var(--status-warning-border)",
                 height: "400px",
               }}
             >
               {isLoadingDiff ? (
                 <div
                   className="flex items-center justify-center h-full"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
-                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                  <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
               ) : conflictDiff ? (
                 <ConflictDiffViewer conflictDiff={conflictDiff} />
               ) : (
                 <div
-                  className="flex items-center justify-center h-full text-white/50"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  className="flex items-center justify-center h-full text-text-primary/50"
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   Failed to load conflict diff
                 </div>
@@ -155,15 +156,15 @@ function ConflictFilesList({
  */
 function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active" | "pending"; isHistorical?: boolean | undefined }) {
   if (status === "completed") {
-    return <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />;
+    return <CheckCircle2 className="w-5 h-5" style={{ color: "var(--status-success)" }} />;
   }
   if (status === "active" && !isHistorical) {
     return (
       <div className="relative">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#0a84ff" }} />
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--status-info)" }} />
         <div
           className="absolute inset-0 rounded-full animate-pulse"
-          style={{ background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)" }}
+          style={{ background: "radial-gradient(circle, var(--status-info-border) 0%, transparent 70%)" }}
         />
       </div>
     );
@@ -171,13 +172,13 @@ function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active
   if (status === "active" && isHistorical) {
     return (
       <div
-        className="w-5 h-5 rounded-full border-2"
-        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
+        className="w-5 h-5 rounded-full border-2 border-text-primary/20"
+        style={{ backgroundColor: "var(--status-warning-strong)" }}
       />
     );
   }
   return (
-    <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
+    <div className="w-5 h-5 rounded-full border-2 border-text-primary/20" />
   );
 }
 
@@ -262,17 +263,12 @@ function MergeProgressSteps({
         <div className="relative">
           {displayStep !== undefined && <MergeStepIcon status={displayStep.status} isHistorical={isHistorical} />}
         </div>
-        <span
-          className="text-[13px] font-medium flex-1"
-          style={{
-            color: "rgba(255,255,255,0.6)",
-          }}
-        >
+        <span className="text-[13px] font-medium flex-1 text-text-primary/60">
           {displayStep?.label ?? "Merge"}
         </span>
         {expanded
-          ? <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-white/30 shrink-0" />}
+          ? <ChevronDown className="w-4 h-4 text-text-primary/30 shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-text-primary/30 shrink-0" />}
       </button>
 
       {/* Expanded: show all steps in original style */}
@@ -287,10 +283,10 @@ function MergeProgressSteps({
                 className="text-[13px] font-medium"
                 style={{
                   color: step.status === "completed"
-                    ? "rgba(255,255,255,0.6)"
+                    ? withAlpha("var(--text-primary)", 60)
                     : step.status === "active"
-                    ? isHistorical ? "rgba(255,255,255,0.35)" : "#0a84ff"
-                    : "rgba(255,255,255,0.35)",
+                    ? isHistorical ? withAlpha("var(--text-primary)", 35) : "var(--status-info)"
+                    : withAlpha("var(--text-primary)", 35),
                 }}
               >
                 {step.label}
@@ -329,8 +325,8 @@ function PrModeCard({
         {/* PR Number + Status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
-            <span className="text-[13px] font-medium text-white/80">
+            <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+            <span className="text-[13px] font-medium text-text-primary/80">
               PR #{planBranch.prNumber}
             </span>
           </div>
@@ -341,10 +337,9 @@ function PrModeCard({
         {planBranch.prPollingActive && (
           <div className="flex items-center gap-1.5">
             <Loader2
-              className="w-3.5 h-3.5 animate-spin"
-              style={{ color: "rgba(255,255,255,0.4)" }}
+              className="w-3.5 h-3.5 animate-spin text-text-primary/40"
             />
-            <span className="text-[12px] text-white/40">Monitoring PR status</span>
+            <span className="text-[12px] text-text-primary/40">Monitoring PR status</span>
           </div>
         )}
 
@@ -355,8 +350,8 @@ function PrModeCard({
             onClick={handleOpenInGithub}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer"
             style={{
-              backgroundColor: "rgba(52, 199, 89, 0.12)",
-              color: "#34c759",
+              backgroundColor: statusTint("success", 12),
+              color: "var(--status-success)",
             }}
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -567,9 +562,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     >
       {/* Freshness Context Banner — shown when task entered Merging due to stale branch detection */}
       {freshnessOriginState !== null && FRESHNESS_BANNER_COPY[freshnessOriginState] !== undefined && (
-        <div className="px-4 py-3 bg-blue-500/10 border-b border-blue-500/20 flex items-center gap-2">
-          <Info className="w-4 h-4 text-blue-400 shrink-0" />
-          <span className="text-sm text-blue-200">
+        <div className="px-4 py-3 bg-status-info/10 border-b border-status-info/20 flex items-center gap-2">
+          <Info className="w-4 h-4 text-status-info shrink-0" />
+          <span className="text-sm text-status-info">
             {FRESHNESS_BANNER_COPY[freshnessOriginState]}
           </span>
         </div>
@@ -746,8 +741,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             <SectionTitle>Merge Progress</SectionTitle>
             <DetailCard>
               <div className="flex items-center gap-2.5 py-1.5">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
-                <span className="text-[13px] text-white/50">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
+                <span className="text-[13px] text-text-primary/50">
                   Waiting for merge progress...
                 </span>
               </div>
@@ -769,14 +764,14 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           <SectionTitle>
             Conflict Files ({conflictFiles.length})
             {isConflictDetectionEnabled && isLoadingConflicts && (
-              <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-white/40" />
+              <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-text-primary/40" />
             )}
           </SectionTitle>
           <DetailCard variant="warning">
             {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
               <div className="flex items-center gap-2 py-2">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ff9f0a" }} />
-                <span className="text-[13px] text-white/50">Detecting conflicts...</span>
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
+                <span className="text-[13px] text-text-primary/50">Detecting conflicts...</span>
               </div>
             ) : (
               <ConflictFilesList files={conflictFiles} taskId={task.id} />
@@ -798,8 +793,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                 disabled={stopMutation.isPending}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: "rgba(255, 69, 58, 0.15)",
-                  color: "#ff453a",
+                  backgroundColor: statusTint("error", 15),
+                  color: "var(--status-error)",
                 }}
               >
                 <Square className="w-3.5 h-3.5" />
@@ -807,7 +802,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               </button>
             </div>
             {actionError && (
-              <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+              <p className="mt-2 text-[12px]" style={{ color: "var(--status-error)" }}>
                 {actionError}
               </p>
             )}

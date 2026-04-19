@@ -19,6 +19,7 @@ import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import type { TeamArtifactSummary } from "@/api/team";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -44,11 +45,11 @@ interface ArtifactTypeConfig {
   color: string;
 }
 
-const DEFAULT_CONFIG: ArtifactTypeConfig = { icon: FileText, color: "hsl(220 10% 50%)" };
+const DEFAULT_CONFIG: ArtifactTypeConfig = { icon: FileText, color: "var(--text-muted)" };
 
 const ARTIFACT_TYPE_CONFIG: Record<string, ArtifactTypeConfig> = {
-  research: { icon: Microscope, color: "hsl(14 100% 60%)" },
-  analysis: { icon: BarChart3, color: "hsl(174 60% 50%)" },
+  research: { icon: Microscope, color: "var(--accent-primary)" },
+  analysis: { icon: BarChart3, color: "var(--status-info)" },
   summary: DEFAULT_CONFIG,
 };
 
@@ -243,11 +244,11 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
         style={{
           padding: "12px 14px",
           background: isOpen
-            ? "hsla(14 100% 60% / 0.08)"
-            : "hsla(220 10% 100% / 0.02)",
+            ? withAlpha("var(--accent-primary)", 8)
+            : "var(--overlay-faint)",
           border: isOpen
-            ? "1px solid hsla(14 100% 60% / 0.2)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "1px solid var(--accent-border)"
+            : "1px solid var(--overlay-faint)",
         }}
       >
         <CollapsibleTrigger asChild>
@@ -256,15 +257,15 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
               style={{
-                background: isOpen ? `${config.color}15` : "hsla(220 10% 100% / 0.04)",
+                background: isOpen ? withAlpha(config.color, 15) : "var(--overlay-faint)",
                 border: isOpen
-                  ? `1px solid ${config.color}30`
-                  : "1px solid hsla(220 10% 100% / 0.06)",
+                  ? `1px solid ${withAlpha(config.color, 30)}`
+                  : "1px solid var(--overlay-faint)",
               }}
             >
               <Icon
                 className="w-4 h-4 transition-colors duration-200"
-                style={{ color: isOpen ? config.color : "hsl(220 10% 50%)" }}
+                style={{ color: isOpen ? config.color : "var(--text-muted)" }}
               />
             </div>
 
@@ -273,16 +274,16 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
               <div className="flex items-center gap-2">
                 <span
                   className="text-[13px] font-medium truncate tracking-[-0.01em]"
-                  style={{ color: "hsl(220 10% 90%)" }}
+                  style={{ color: "var(--text-primary)" }}
                 >
                   {artifact.name}
                 </span>
                 <span
                   className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                   style={{
-                    background: "hsla(220 10% 100% / 0.04)",
-                    border: "1px solid hsla(220 10% 100% / 0.06)",
-                    color: "hsl(220 10% 50%)",
+                    background: "var(--overlay-faint)",
+                    border: "1px solid var(--overlay-faint)",
+                    color: "var(--text-muted)",
                   }}
                 >
                   v{artifact.version}
@@ -293,7 +294,7 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
               {!isOpen && artifact.author_teammate && (
                 <span
                   className="text-[11px] mt-0.5 block truncate"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   by {artifact.author_teammate}
                 </span>
@@ -303,7 +304,7 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
               {isOpen && author && (
                 <span
                   className="text-[11px] mt-0.5 block"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   by {author}
                 </span>
@@ -316,7 +317,7 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
                 "w-4 h-4 transition-transform duration-200 flex-shrink-0",
                 !isOpen && "-rotate-90",
               )}
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
           </button>
         </CollapsibleTrigger>
@@ -328,27 +329,27 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
           className="mt-3 pl-6 pr-2 pb-4"
           style={{
             marginLeft: "16px",
-            borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
+            borderLeft: `2px solid ${withAlpha("var(--accent-primary)", 15)}`,
           }}
         >
           {cardState.loading ? (
             <div className="flex items-center gap-2 py-4">
               <Loader2
                 className="w-3.5 h-3.5 animate-spin"
-                style={{ color: "hsl(14 100% 60%)" }}
+                style={{ color: "var(--accent-primary)" }}
               />
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
+              <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                 Loading full content...
               </span>
             </div>
           ) : cardState.error ? (
             <div className="py-4 text-center">
-              <span className="text-[12px]" style={{ color: "hsl(0 70% 60%)" }}>
+              <span className="text-[12px]" style={{ color: "var(--status-error)" }}>
                 {cardState.error}
               </span>
               <p
                 className="text-[13px] leading-relaxed mt-2"
-                style={{ color: "hsl(220 10% 55%)" }}
+                style={{ color: "var(--text-secondary)" }}
               >
                 {artifact.content_preview}
               </p>
@@ -360,7 +361,7 @@ function ArtifactCard({ artifact }: { artifact: TeamArtifactSummary }) {
           ) : (
             <p
               className="text-[13px] italic py-4 text-center"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               No content available
             </p>
@@ -380,11 +381,11 @@ export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
   if (artifacts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
-        <FileText className="w-10 h-10 mb-3" style={{ color: "hsl(220 10% 30%)" }} />
-        <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 45%)" }}>
+        <FileText className="w-10 h-10 mb-3" style={{ color: "var(--text-muted)" }} />
+        <span className="text-[13px] font-medium" style={{ color: "var(--text-muted)" }}>
           No team research artifacts yet
         </span>
-        <span className="text-[11px] mt-1" style={{ color: "hsl(220 10% 35%)" }}>
+        <span className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
           Artifacts will appear here once team research completes
         </span>
       </div>
@@ -397,16 +398,16 @@ export function TeamResearchView({ artifacts }: TeamResearchViewProps) {
       <div className="flex items-center gap-2">
         <span
           className="text-[11px] font-medium tracking-wide uppercase"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           Team Research
         </span>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded-md"
           style={{
-            background: "hsla(220 10% 100% / 0.04)",
-            border: "1px solid hsla(220 10% 100% / 0.06)",
-            color: "hsl(220 10% 50%)",
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-faint)",
+            color: "var(--text-muted)",
           }}
         >
           {artifacts.length} artifact{artifacts.length !== 1 ? "s" : ""}

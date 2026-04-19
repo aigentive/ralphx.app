@@ -27,20 +27,20 @@ export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
     >
       <span
         className="text-[11px] tabular-nums shrink-0 w-4 text-right"
-        style={{ color: "hsl(220 10% 40%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {position}
       </span>
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-        style={{ color: "hsl(220 10% 88%)" }}
+        style={{ color: "var(--text-primary)" }}
         onClick={() => navigateToTask(task.id)}
       >
         {task.title}
       </button>
       <span
         className="text-[11px] shrink-0 max-w-[100px] truncate"
-        style={{ color: "hsl(220 10% 45%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         {task.planTitle}
       </span>

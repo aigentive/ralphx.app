@@ -49,14 +49,14 @@ export const TierGroup = memo(function TierGroup({ data, selected }: TierGroupPr
     <div
       className={cn(
         "rounded-md overflow-hidden",
-        "bg-[hsla(220_10%_18%_/_0.45)]",
+        "bg-[color-mix(in_srgb,_var(--bg-elevated)_45%,_transparent)]",
         "transition-all duration-200"
       )}
       style={{
         width,
         height: displayHeight,
         ...(isGroupSelected && {
-          outline: "2px solid hsl(14 100% 55%)",
+          outline: "2px solid var(--accent-primary)",
           outlineOffset: "-2px",
         }),
       }}

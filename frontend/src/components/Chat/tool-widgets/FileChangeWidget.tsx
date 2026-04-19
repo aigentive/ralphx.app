@@ -95,7 +95,7 @@ export const FileChangeWidget = React.memo(function FileChangeWidget({
         <div
           style={{
             fontSize: compact ? 10 : 10.5,
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-muted)",
             padding: "2px 0",
           }}
         >

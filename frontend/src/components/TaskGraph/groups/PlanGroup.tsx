@@ -157,7 +157,7 @@ export const PlanGroup = memo(function PlanGroup({
         // Base styles
         "rounded-lg overflow-hidden",
         // Background - Kanban glass at 50% opacity (no border)
-        "bg-[hsla(220_10%_14%_/_0.5)]",
+        "bg-[color-mix(in_srgb,_var(--bg-elevated)_50%,_transparent)]",
         // Transition
         "transition-all duration-200"
       )}
@@ -165,7 +165,7 @@ export const PlanGroup = memo(function PlanGroup({
         width,
         height: displayHeight,
         ...(isGroupSelected && {
-          outline: "2px solid hsl(14 100% 55%)",
+          outline: "2px solid var(--accent-primary)",
           outlineOffset: "-2px",
         }),
       }}

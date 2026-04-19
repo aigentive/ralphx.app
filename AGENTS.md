@@ -16,6 +16,7 @@ Primary project docs:
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
+- `.claude/rules/wkwebview-css-vars.md` for Tauri (WKWebView) CSS custom-property inheritance rules — theme tokens for bg/text/border MUST be literals, not chained `var()` references
 - `.claude/rules/release-script-validation.md` for safe validation of release proposal/wrapper scripts without triggering real publish steps
 
 ## Codex Rules

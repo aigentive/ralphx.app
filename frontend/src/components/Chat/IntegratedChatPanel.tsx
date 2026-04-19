@@ -34,6 +34,7 @@ import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { api } from "@/lib/tauri";
+import { withAlpha } from "@/lib/theme-colors";
 import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
 import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
@@ -41,6 +42,7 @@ import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import { type AgentType } from "./StatusActivityBadge";
 import { ChatSessionToolbar } from "./ChatSessionToolbar";
+import { ChatSessionChips } from "./ChatSessionChips";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -841,45 +843,58 @@ export function IntegratedChatPanel({
     <>
       <style>{animationStyles}</style>
       <RecoveryPromptDialog surface="chat" taskId={selectedTaskId ?? undefined} />
-      {/* Outer container - matches main content bg for unified surface */}
+      {/* Outer container — fills to layout edges. Phase 1 region border
+         on [data-testid="integrated-chat-panel"] separates chat from
+         main content, so no floating-card chrome needed here. */}
       <div
         data-testid="integrated-chat-panel"
         className="h-full flex flex-col overflow-hidden"
-        style={{
-          backgroundColor: "transparent", /* Let parent bg show through */
-          padding: "8px", /* Equal padding all sides - floating glass element */
-        }}
       >
-        {/* Inner rounded container - flat with blur */}
+        {/* Inner surface — flat with blur, no perimeter or radius. */}
         <div
           className="flex-1 flex flex-col overflow-hidden"
           style={{
-            borderRadius: "10px",
-            /* FLAT semi-transparent (no gradient) */
-            background: "hsla(220 10% 10% / 0.92)",
+            background: withAlpha("var(--bg-surface)", 92),
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
-            /* Luminous perimeter edge */
-            border: "1px solid hsla(220 20% 100% / 0.08)",
-            boxShadow: `
-              0 4px 16px hsla(220 20% 0% / 0.4),
-              0 12px 32px hsla(220 20% 0% / 0.3)
-            `,
           }}
         >
-          {/* Header - subtle separation within glass container */}
+          {/* Header — theme-agnostic subtle tint matches ChatPanel overlay.
+             Previous bg-base@50 produced visible seam on Dark (lum=25 vs
+             body lum=30) and collapsed to pure black on HC. Using a tint
+             derived from text-primary keeps a consistent 2% brighter band
+             across all three themes. */}
           <div
             data-testid="integrated-chat-header"
-            className="flex items-center justify-between h-11 px-3 shrink-0"
+            className="flex items-center justify-between h-11 px-3 shrink-0 gap-3"
             style={{
-              backgroundColor: "hsla(220 15% 5% / 0.5)",
-              borderBottom: "1px solid hsla(220 20% 100% / 0.04)",
+              backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
+              borderBottom: "1px solid var(--border-subtle)",
             }}
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
-            {/* Conversation Selector */}
-            <ConversationSelector
+            {/* Provider-context chips rendered inline next to the
+                ConversationSelector — per 2026-04-19 feedback, the CODEX
+                badge / model / effort / stats popover live in the header
+                row, not in a separate toolbar strip below. */}
+            <div className="ml-auto flex items-center gap-2 min-w-0">
+              <ChatSessionChips
+                contextType={currentContextType as ContextType}
+                contextId={ideationSessionId || selectedTaskId || null}
+                isAgentActive={isAgentActive}
+                conversationId={effectiveConversationId}
+                providerHarness={activeConversationMeta?.providerHarness ?? null}
+                providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+                upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+                providerProfile={activeConversationMeta?.providerProfile ?? null}
+                fallbackConversation={activeConversationMeta}
+                fallbackMessages={sortedMessages}
+                {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+              />
+
+              {/* Conversation Selector */}
+              <ConversationSelector
               contextType={
                 ideationSessionId
                   ? "ideation"
@@ -900,9 +915,13 @@ export function IntegratedChatPanel({
               onNewConversation={handleNewConversation}
               isLoading={conversations.isLoading}
             />
+            </div>
           </div>
 
-          {/* Session Toolbar — always rendered for layout stability; houses StatusActivityBadge + optional back action */}
+          {/* Session Toolbar — houses StatusActivityBadge + optional back
+              action. Provider-context chips are now rendered inline in
+              the integrated-chat-header (above), so suppress them here
+              via `hideProviderContext` to avoid duplication. */}
           <ChatSessionToolbar
             isAgentActive={isAgentActive}
             agentType={agentType}
@@ -917,6 +936,7 @@ export function IntegratedChatPanel({
             providerProfile={activeConversationMeta?.providerProfile ?? null}
             fallbackConversation={activeConversationMeta}
             fallbackMessages={sortedMessages}
+            hideProviderContext
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />
@@ -1053,12 +1073,15 @@ export function IntegratedChatPanel({
             />
           )}
 
-          {/* Input Area - subtle separation within glass container */}
+          {/* Input Area — same theme-agnostic tint as header for symmetric
+             chrome rhythm. Previous bg-base@50 collapsed on HC and shaded
+             darker than body on Dark, producing a three-tier sandwich. */}
           <div
+            data-testid="chat-input-container"
             className={inputContainerClassName ?? "shrink-0"}
             style={inputContainerClassName ? undefined : {
-              backgroundColor: "hsla(220 15% 5% / 0.5)",
-              borderTop: "1px solid hsla(220 20% 100% / 0.04)",
+              backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
+              borderTop: "1px solid var(--border-subtle)",
             }}
           >
             {/* Queued Messages - unified queue with context-aware keys */}
@@ -1085,8 +1108,10 @@ export function IntegratedChatPanel({
               />
             )}
 
-            {/* Chat Input */}
-            <div className="p-3">
+            {/* Chat Input — wrapper padding matches ExecutionControlBar's
+                outer `p-2` so the top border of the composer aligns with
+                the top border of the execution bar across the split pane. */}
+            <div className="p-2">
               <ChatInput
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
                 onStop={handleStopAgentWrapper}

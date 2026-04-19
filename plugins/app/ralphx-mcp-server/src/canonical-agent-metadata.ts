@@ -14,6 +14,7 @@ type CanonicalAgentDefinition = {
 };
 
 const canonicalAgentDefinitionCache = new Map<string, CanonicalAgentDefinition | null>();
+const SAFE_CANONICAL_AGENT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function resolveRepoRoot(): string {
   let current = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
@@ -107,13 +108,33 @@ export function clearCanonicalAgentDefinitionCache(): void {
   canonicalAgentDefinitionCache.clear();
 }
 
+function resolveCanonicalAgentDefinitionPath(canonicalName: string): string | null {
+  if (!SAFE_CANONICAL_AGENT_NAME.test(canonicalName)) {
+    return null;
+  }
+
+  const agentsRoot = path.resolve(resolveRepoRoot(), "agents");
+  const definitionPath = path.resolve(agentsRoot, canonicalName, "agent.yaml");
+  const relative = path.relative(agentsRoot, definitionPath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+
+  return definitionPath;
+}
+
 export function loadCanonicalAgentDefinition(agentType: string): CanonicalAgentDefinition | null {
   const canonicalName = canonicalAgentName(agentType);
   if (canonicalAgentDefinitionCache.has(canonicalName)) {
     return canonicalAgentDefinitionCache.get(canonicalName) ?? null;
   }
 
-  const definitionPath = path.join(resolveRepoRoot(), "agents", canonicalName, "agent.yaml");
+  const definitionPath = resolveCanonicalAgentDefinitionPath(canonicalName);
+  if (!definitionPath) {
+    canonicalAgentDefinitionCache.set(canonicalName, null);
+    return null;
+  }
+
   try {
     const raw = fs.readFileSync(definitionPath, "utf8");
     const parsed = parseYaml(raw) as CanonicalAgentDefinition | null;

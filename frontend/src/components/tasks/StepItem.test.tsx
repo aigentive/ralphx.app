@@ -98,7 +98,9 @@ describe('StepItem', () => {
       const inProgressStep = { ...baseStep, status: 'in_progress' as const };
       const { container } = render(<StepItem step={inProgressStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer).toHaveStyle({ backgroundColor: 'hsla(14 100% 60% / 0.06)' });
+      expect(stepContainer).toHaveStyle({
+        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 6%, transparent)',
+      });
     });
 
     it('should apply completed styles with opacity', () => {
@@ -122,7 +124,9 @@ describe('StepItem', () => {
       const failedStep = { ...baseStep, status: 'failed' as const };
       const { container } = render(<StepItem step={failedStep} index={0} />);
       const stepContainer = container.firstChild as HTMLElement;
-      expect(stepContainer).toHaveStyle({ backgroundColor: 'hsla(0 70% 55% / 0.06)' });
+      expect(stepContainer).toHaveStyle({
+        backgroundColor: 'color-mix(in srgb, var(--status-error) 6%, transparent)',
+      });
     });
   });
 

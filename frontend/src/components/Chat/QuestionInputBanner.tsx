@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import { computeQuestionHeight } from "./QuestionInputBanner.utils";
 import { markdownComponents } from "./MessageItem.markdown";
+import { statusTint } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -63,12 +64,12 @@ function OptionChip({
       style={{
         padding: "5px 12px 5px 8px",
         border: selected
-          ? "1px solid rgba(255, 107, 53, 0.4)"
-          : "1px solid hsla(220 10% 100% / 0.12)",
+          ? `1px solid ${statusTint("accent", 40)}`
+          : "1px solid var(--overlay-moderate)",
         background: selected
-          ? "rgba(255, 107, 53, 0.15)"
-          : "hsl(220 10% 10%)",
-        color: "hsl(220 10% 90%)",
+          ? "var(--accent-muted)"
+          : "var(--bg-surface)",
+        color: "var(--text-primary)",
         opacity: dimmed ? 0.45 : 1,
         cursor: "pointer",
         userSelect: "none",
@@ -83,8 +84,8 @@ function OptionChip({
           borderRadius: "50%",
           background: selected
             ? "var(--accent-primary)"
-            : "hsla(220 10% 100% / 0.06)",
-          color: selected ? "#fff" : "hsl(220 10% 45%)",
+            : "var(--overlay-weak)",
+          color: selected ? "#fff" : "var(--text-muted)",
           transition: "all 0.15s ease",
         }}
       >
@@ -96,7 +97,7 @@ function OptionChip({
         <span
           className="text-[10px]"
           style={{
-            color: selected ? "var(--accent-primary)" : "hsl(220 10% 35%)",
+            color: selected ? "var(--accent-primary)" : "var(--text-muted)",
             marginLeft: -2,
           }}
         >
@@ -181,8 +182,8 @@ export function QuestionInputBanner({
     >
       <div
         style={{
-          background: "hsl(220 10% 12%)",
-          border: "1px solid hsla(220 10% 100% / 0.12)",
+          background: "var(--bg-surface)",
+          border: "1px solid var(--overlay-moderate)",
           borderRadius: 8,
           overflow: "hidden",
         }}
@@ -201,20 +202,20 @@ export function QuestionInputBanner({
                 width: 18,
                 height: 18,
                 borderRadius: "50%",
-                background: "rgba(52, 211, 153, 0.12)",
-                color: "#34d399",
+                background: "var(--status-success-muted)",
+                color: "var(--status-success)",
                 fontSize: 10,
               }}
             >
               <Check size={10} strokeWidth={3} />
             </span>
 
-            <span className="text-xs" style={{ color: "hsl(220 10% 45%)" }}>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
               Answered:
             </span>
             <span
               className="text-xs font-semibold truncate flex-1 min-w-0"
-              style={{ color: "hsl(220 10% 90%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {answeredValue}
             </span>
@@ -230,7 +231,7 @@ export function QuestionInputBanner({
                   borderRadius: 4,
                   border: "none",
                   background: "transparent",
-                  color: "hsl(220 10% 35%)",
+                  color: "var(--text-muted)",
                   cursor: "pointer",
                 }}
                 aria-label="Dismiss answered summary"
@@ -247,7 +248,7 @@ export function QuestionInputBanner({
               className="flex items-center gap-2"
               style={{
                 padding: "8px 12px",
-                borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+                borderBottom: "1px solid var(--overlay-weak)",
               }}
             >
               {/* ? icon in circle */}
@@ -257,7 +258,7 @@ export function QuestionInputBanner({
                   width: 20,
                   height: 20,
                   borderRadius: "50%",
-                  background: "rgba(255, 107, 53, 0.15)",
+                  background: "var(--accent-muted)",
                   color: "var(--accent-primary)",
                 }}
               >
@@ -266,7 +267,7 @@ export function QuestionInputBanner({
 
               <span
                 className="text-[11px] font-semibold flex-1"
-                style={{ color: "hsl(220 10% 45%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 {question.header ?? "Question from agent"}
               </span>
@@ -283,7 +284,7 @@ export function QuestionInputBanner({
                     borderRadius: 4,
                     border: "none",
                     background: "transparent",
-                    color: "hsl(220 10% 45%)",
+                    color: "var(--text-muted)",
                     cursor: "pointer",
                   }}
                   aria-label={isExpanded ? "Collapse question" : "Expand question"}
@@ -306,7 +307,7 @@ export function QuestionInputBanner({
                   borderRadius: 4,
                   border: "none",
                   background: "transparent",
-                  color: "hsl(220 10% 35%)",
+                  color: "var(--text-muted)",
                   cursor: "pointer",
                 }}
                 aria-label="Dismiss question"
@@ -326,7 +327,7 @@ export function QuestionInputBanner({
               <div
                 className="text-[13px] font-medium leading-snug [&>p]:mb-0 [&>ul]:mb-0 [&>ol]:mb-0"
                 style={{
-                  color: "hsl(220 10% 90%)",
+                  color: "var(--text-primary)",
                   marginBottom: 10,
                   lineHeight: 1.45,
                 }}

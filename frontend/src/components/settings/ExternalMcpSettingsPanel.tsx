@@ -29,7 +29,7 @@ function RestartNotice() {
   return (
     <div
       data-testid="restart-required-badge"
-      className="mx-5 mb-2 flex items-center gap-2 rounded-md border border-[rgba(255,107,53,0.2)] bg-[rgba(255,107,53,0.08)] px-3 py-2 text-xs text-[var(--accent-primary)]"
+      className="mx-5 mb-2 flex items-center gap-2 rounded-md border border-[var(--accent-border)] bg-[var(--accent-muted)] px-3 py-2 text-xs text-[var(--accent-primary)]"
     >
       <RefreshCw className="h-3 w-3 shrink-0" />
       <span>All fields below require an app restart to take effect.</span>
@@ -50,7 +50,7 @@ interface FieldRowProps {
 
 function FieldRow({ id, label, description, children }: FieldRowProps) {
   return (
-    <div className="flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors hover:bg-[rgba(45,45,45,0.3)]">
+    <div className="flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors hover:bg-[var(--bg-hover)]">
       <div className="flex-1 min-w-0 pr-4">
         <Label
           htmlFor={id}
@@ -177,12 +177,12 @@ export function ExternalMcpSettingsPanel() {
       className={cn(
         "bg-[var(--bg-elevated)] border-[var(--border-default)] shadow-[var(--shadow-xs)]",
         "border border-transparent",
-        "[background:linear-gradient(var(--bg-elevated),var(--bg-elevated))_padding-box,linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)_border-box]"
+        "bg-[var(--bg-elevated)]"
       )}
     >
       <div className="flex items-start gap-3 p-5 pb-0">
         <div className="p-2 rounded-lg bg-[var(--accent-muted)] shrink-0">
-          <Server className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+          <Server className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
         </div>
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
@@ -308,7 +308,7 @@ export function ExternalMcpSettingsPanel() {
             onClick={() => void handleSave()}
             disabled={isSaving}
             size="sm"
-            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-white"
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--text-inverse)]"
           >
             {isSaving ? "Saving..." : "Save"}
           </Button>

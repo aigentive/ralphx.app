@@ -134,14 +134,14 @@ function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
     case "completed":
     case "skipped":
-      return <span style={{ color: "#34c759" }}><CheckIcon /></span>;
+      return <span style={{ color: "var(--status-success)" }}><CheckIcon /></span>;
     case "in_progress":
-      return <span style={{ color: "hsl(14 100% 60%)" }}><InProgressIcon /></span>;
+      return <span style={{ color: "var(--accent-primary)" }}><InProgressIcon /></span>;
     case "failed":
     case "cancelled":
-      return <span style={{ color: "#ff453a" }}><FailedIcon /></span>;
+      return <span style={{ color: "var(--status-error)" }}><FailedIcon /></span>;
     default:
-      return <span style={{ color: "hsl(220 10% 25%)" }}><PendingIcon /></span>;
+      return <span style={{ color: "var(--text-muted)" }}><PendingIcon /></span>;
   }
 }
 
@@ -161,11 +161,11 @@ function getStepTextStyle(status: string): React.CSSProperties {
   switch (status) {
     case "completed":
     case "skipped":
-      return { color: "hsl(220 10% 45%)" };
+      return { color: "var(--text-muted)" };
     case "in_progress":
-      return { color: "hsl(220 10% 90%)", fontWeight: 500 };
+      return { color: "var(--text-primary)", fontWeight: 500 };
     default:
-      return { color: "hsl(220 10% 60%)" };
+      return { color: "var(--text-secondary)" };
   }
 }
 
@@ -183,7 +183,7 @@ function ChevronIcon({ isOpen, compact }: { isOpen: boolean; compact?: boolean }
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{
-        color: "hsl(220 10% 45%)",
+        color: "var(--text-muted)",
         flexShrink: 0,
         transition: "transform 200ms",
         transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
@@ -207,7 +207,7 @@ function ListIcon({ compact }: { compact?: boolean }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ color: "hsl(220 10% 45%)", flexShrink: 0 }}
+      style={{ color: "var(--text-muted)", flexShrink: 0 }}
     >
       <line x1="8" y1="6" x2="21" y2="6" />
       <line x1="8" y1="12" x2="21" y2="12" />
@@ -245,7 +245,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
           margin: "2px 0",
         }}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="hsl(220 10% 45%)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="8" y1="6" x2="21" y2="6" />
           <line x1="8" y1="12" x2="21" y2="12" />
           <line x1="8" y1="18" x2="21" y2="18" />
@@ -253,7 +253,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
           <line x1="3" y1="12" x2="3.01" y2="12" />
           <line x1="3" y1="18" x2="3.01" y2="18" />
         </svg>
-        <span style={{ fontSize: "10.5px", color: "hsl(220 10% 45%)" }}>
+        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>
           No steps defined
         </span>
       </div>
@@ -267,17 +267,17 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
   // Badge color: all completed = green, otherwise accent orange
   const allCompleted = counts.completed === counts.total;
   const badgeStyle: React.CSSProperties = allCompleted
-    ? { background: "hsla(145 60% 45% / 0.10)", color: "#34c759" }
-    : { background: "hsla(14 100% 60% / 0.10)", color: "hsl(14 100% 60%)" };
+    ? { background: "var(--status-success-muted)", color: "var(--status-success)" }
+    : { background: "var(--accent-muted)", color: "var(--accent-primary)" };
 
   return (
     <div
       data-testid="steps-manifest-widget"
       style={{
-        background: "hsl(220 10% 12%)",
+        background: "var(--bg-surface)",
         borderRadius: "10px",
         overflow: "hidden",
-        border: "1px solid hsl(220 10% 15%)",
+        border: "1px solid var(--border-subtle)",
       }}
     >
       {/* Header */}
@@ -308,7 +308,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
           style={{
             fontSize: compact ? "11px" : "11.5px",
             fontWeight: 500,
-            color: "hsl(220 10% 60%)",
+            color: "var(--text-secondary)",
             flex: 1,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -344,7 +344,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
         <div
           style={{
             padding: "0 10px 8px",
-            borderTop: "1px solid hsl(220 10% 15%)",
+            borderTop: "1px solid var(--border-subtle)",
             paddingTop: "8px",
           }}
         >
@@ -368,7 +368,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
                 <span
                   style={{
                     fontSize: "9px",
-                    color: "hsl(220 10% 45%)",
+                    color: "var(--text-muted)",
                     fontWeight: 600,
                     minWidth: "14px",
                     textAlign: "right",
@@ -411,7 +411,7 @@ export const StepsManifestWidget = React.memo(function StepsManifestWidget({
               left: 0,
               right: 0,
               height: `${GRADIENT_HEIGHT}px`,
-              background: "linear-gradient(to bottom, transparent, hsl(220 10% 12%))",
+              background: "linear-gradient(to bottom, transparent, var(--bg-surface))",
               pointerEvents: "none",
               transition: "opacity 200ms",
             }}

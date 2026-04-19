@@ -1,0 +1,106 @@
+/**
+ * Tier 3 — Component tokens
+ *
+ * Per-component composites that reference the semantic layer. Only introduce
+ * a new component token when:
+ *   (1) multiple places need the same composite value,
+ *   (2) a theme will need to override a specific component independently, OR
+ *   (3) the value is a combination (e.g. bg + border + icon) worth naming together.
+ *
+ * ❌ Don't create a component token just to rename a semantic one — consume
+ * the semantic token directly.
+ *
+ * Spec: specs/design/styleguide.md §7
+ */
+
+:root {
+  /* ============================================================================
+   * Card — SectionCard and most content blocks
+   * ============================================================================ */
+  --card-bg:           var(--bg-elevated);
+  --card-border:       var(--border-subtle);
+  --card-shadow:       var(--shadow-xs);
+  --card-icon-bg:      var(--accent-muted);
+  --card-icon-border:  var(--accent-border);
+  --card-icon-color:   var(--accent-primary);
+
+  /* ============================================================================
+   * Dialog / modal (shadcn consumers also wire through --background/--card)
+   *
+   * --dialog-bg        — main content pane (brighter / primary surface)
+   * --dialog-rail-bg   — left rail / sidebar inside the modal (tonal shift
+   *                      from the body so the user reads nav vs content
+   *                      without relying purely on a 1px divider)
+   * Themes override both so the relationship holds per palette.
+   * ============================================================================ */
+  --dialog-overlay-bg:   var(--overlay-scrim-deep);
+  --dialog-bg:           var(--bg-elevated); /* main content surface */
+  --dialog-rail-bg:      var(--bg-surface);  /* subtle tonal shift for rail */
+  --dialog-border-color: var(--border-subtle);
+  --dialog-shadow:       var(--shadow-lg);
+
+  /* ============================================================================
+   * Input / form field
+   * ============================================================================ */
+  --input-bg:           var(--bg-surface);
+  --input-border:       var(--border-default);
+  --input-border-focus: var(--accent-primary);
+  --input-ring:         var(--accent-primary);
+
+  /* ============================================================================
+   * Button variants — primary text token flips automatically per theme via
+   * --primary-foreground / --text-inverse.
+   * ============================================================================ */
+  --button-primary-bg:       var(--accent-primary);
+  --button-primary-bg-hover: var(--accent-hover);
+  --button-primary-text:     var(--primary-foreground);
+  --button-ghost-bg-hover:   var(--bg-hover);
+
+  /* ============================================================================
+   * Notice / alert — InlineNotice component tones.
+   * Each tone is a trio: bg + border + icon.
+   * ============================================================================ */
+  --notice-ok-bg:     var(--overlay-faint);
+  --notice-ok-border: var(--border-subtle);
+  --notice-ok-icon:   var(--status-success);
+  --notice-ok-text:   var(--text-muted);
+
+  --notice-warn-bg:     var(--status-warning-muted);
+  --notice-warn-border: var(--status-warning-border);
+  --notice-warn-icon:   var(--status-warning);
+  --notice-warn-text:   var(--status-warning);
+
+  --notice-error-bg:     var(--status-error-muted);
+  --notice-error-border: var(--status-error-border);
+  --notice-error-icon:   var(--status-error);
+  --notice-error-text:   var(--status-error);
+
+  --notice-info-bg:     var(--accent-muted);
+  --notice-info-border: var(--accent-border);
+  --notice-info-icon:   var(--accent-primary);
+  --notice-info-text:   var(--text-secondary);
+
+  /* ============================================================================
+   * Diff viewer — @git-diff-view/react overrides in globals.css.
+   * The +/- glyph is always present (CVD rule §6) — color is redundant.
+   * Values use color-mix so they stay anchored to status primitives.
+   * ============================================================================ */
+  --diff-add-bg:     color-mix(in srgb, var(--status-success) 10%, transparent);
+  --diff-add-strong: color-mix(in srgb, var(--status-success) 25%, transparent);
+  --diff-del-bg:     color-mix(in srgb, var(--status-error) 10%, transparent);
+  --diff-del-strong: color-mix(in srgb, var(--status-error) 25%, transparent);
+
+  /* ============================================================================
+   * Syntax highlighting — Prism token colours consumed by the diff viewer.
+   * Default is a Dracula-inspired dark palette; light + HC override via
+   * themes/*.css for adequate contrast on white / pure black.
+   * ============================================================================ */
+  --syntax-keyword:    #ff79c6; /* pink — keywords, operators */
+  --syntax-string:     #f1fa8c; /* yellow — string literals */
+  --syntax-number:     #bd93f9; /* purple — numeric literals */
+  --syntax-comment:    #6272a4; /* blue-gray — comments */
+  --syntax-function:   #50fa7b; /* green — function calls / defs */
+  --syntax-class-name: #8be9fd; /* cyan — class names */
+  --syntax-operator:   var(--syntax-keyword);
+  --syntax-punctuation:var(--text-secondary);
+}

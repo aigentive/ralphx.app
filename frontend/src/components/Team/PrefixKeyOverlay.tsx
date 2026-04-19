@@ -16,10 +16,10 @@ export function PrefixKeyOverlay() {
     <div
       className="fixed bottom-6 right-6 z-50 animate-in fade-in duration-150"
       style={{
-        background: "hsla(220, 10%, 12%, 0.9)",
+        background: "var(--bg-surface)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
-        border: "1px solid hsla(220, 10%, 100%, 0.1)",
+        border: "1px solid var(--overlay-moderate)",
         borderRadius: "8px",
         padding: "8px 14px",
       }}
@@ -28,8 +28,8 @@ export function PrefixKeyOverlay() {
         <kbd
           className="rounded px-1.5 py-0.5 font-mono text-[11px] text-text-primary"
           style={{
-            background: "hsla(220, 10%, 100%, 0.08)",
-            border: "1px solid hsla(220, 10%, 100%, 0.12)",
+            background: "var(--overlay-weak)",
+            border: "1px solid var(--overlay-moderate)",
           }}
         >
           Ctrl+B

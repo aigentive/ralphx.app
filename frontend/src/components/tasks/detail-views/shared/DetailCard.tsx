@@ -21,22 +21,22 @@ interface DetailCardProps {
 // Flat backgrounds only - no borders, no glows
 const VARIANT_STYLES: Record<CardVariant, { bg: string }> = {
   default: {
-    bg: "hsl(220 10% 12%)",
+    bg: "var(--bg-surface)",
   },
   success: {
-    bg: "hsla(145 60% 45% / 0.08)",
+    bg: "var(--status-success-muted)",
   },
   warning: {
-    bg: "hsla(35 100% 50% / 0.08)",
+    bg: "var(--status-warning-muted)",
   },
   error: {
-    bg: "hsla(0 70% 55% / 0.08)",
+    bg: "var(--status-error-muted)",
   },
   info: {
-    bg: "hsla(217 90% 55% / 0.08)",
+    bg: "var(--status-info-muted)",
   },
   accent: {
-    bg: "hsla(14 100% 60% / 0.08)",
+    bg: "var(--accent-muted)",
   },
 };
 

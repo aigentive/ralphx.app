@@ -23,10 +23,14 @@ import {
   RotateCcw,
   RefreshCw,
   CircleCheck,
+  CheckCircle,
   CornerDownRight,
   ArrowDownToLine,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
@@ -37,8 +41,10 @@ import type { SessionGroup } from "./planBrowserUtils";
 // Helpers
 // ============================================================================
 
-function formatRelativeTime(dateString: string): string {
+function formatRelativeTime(dateString: string | null | undefined): string {
+  if (!dateString) return "—";
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "—";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -53,22 +59,20 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ============================================================================
 // ActivityIndicator
 // ============================================================================
 
-const ACCENT_COLOR = "hsl(14 100% 60%)";
-const VERIFYING_COLOR = "hsl(217 91% 60%)";
-const QUEUED_COLOR = "hsl(45 93% 55%)";
+const ACCENT_COLOR = "var(--accent-primary)";
+const VERIFYING_COLOR = "var(--status-info)";
+const QUEUED_COLOR = "var(--status-warning)";
 
 interface ActivityIndicatorProps {
   isActive: boolean;
@@ -84,9 +88,9 @@ function ActivityIndicator({ isActive, isWaiting, isQueued, label = "Agent worki
   return (
     <>
       {isActive && <span style={{ color }}>{label}</span>}
-      {isWaiting && <span style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>}
+      {isWaiting && <span style={{ color: "var(--text-muted)" }}>Awaiting input</span>}
       {!isActive && !isWaiting && isQueued && <span style={{ color: QUEUED_COLOR }}>Queued</span>}
-      {(isActive || isWaiting) && separator && <span style={{ color: "hsl(220 10% 35%)" }}>{separator}</span>}
+      {(isActive || isWaiting) && separator && <span style={{ color: "var(--text-muted)" }}>{separator}</span>}
     </>
   );
 }
@@ -138,12 +142,12 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
   if (parentSessionTitle) {
     return (
       <div
-        className="flex flex-col gap-0.5 text-[10px]"
-        style={{ color: "hsl(220 10% 45%)" }}
+        className="flex flex-col gap-0.5 text-[12px]"
+        style={{ color: "var(--text-muted)" }}
       >
         <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
         <div className="flex items-center gap-1">
-          <CornerDownRight className="w-2.5 h-2.5" />
+          <CornerDownRight className="w-3 h-3" />
           <span className="truncate">Follow-up of: {parentSessionTitle}</span>
         </div>
       </div>
@@ -154,14 +158,14 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
     case "drafts":
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
-          style={{ color: "hsl(220 10% 45%)" }}
+          className="flex items-center gap-1 text-[12px]"
+          style={{ color: "var(--text-muted)" }}
         >
           {(isIdeationActive || isIdeationWaiting || isVerifying || isQueued) ? (
             <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
           ) : (
             <>
-              <Clock className="w-2.5 h-2.5" />
+              <Clock className="w-3 h-3" />
               <span>{formatRelativeTime(plan.updatedAt)}</span>
             </>
           )}
@@ -172,7 +176,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
       if (!progress) {
         if (isIdeationActive || isIdeationWaiting || isVerifying || isQueued) {
           return (
-            <span className="text-[10px]">
+            <span className="text-[12px]">
               <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
             </span>
           );
@@ -180,15 +184,15 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         return null;
       }
       return (
-        <div className="flex items-center gap-1 text-[10px]">
+        <div className="flex items-center gap-1 text-[12px]">
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
-          <span style={{ color: "hsl(145 70% 50%)" }}>
+          <span style={{ color: "var(--status-success)" }}>
             {progress.done}/{progress.total} done
           </span>
           {progress.active > 0 && (
             <>
-              <span style={{ color: "hsl(220 10% 35%)" }}>&middot;</span>
-              <span style={{ color: "hsl(14 100% 60%)" }}>
+              <span style={{ color: "var(--text-muted)" }}>&middot;</span>
+              <span style={{ color: "var(--accent-primary)" }}>
                 {progress.active} active
               </span>
             </>
@@ -199,8 +203,8 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
     case "accepted":
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
-          style={{ color: "hsl(220 10% 45%)" }}
+          className="flex items-center gap-1 text-[12px]"
+          style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
           <span>{progress?.total ?? 0} {(progress?.total ?? 0) === 1 ? "task" : "tasks"}</span>
@@ -213,32 +217,31 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         </div>
       );
 
-    case "done":
+    case "done": {
+      const hasActivity = isIdeationActive || isIdeationWaiting || isVerifying || isQueued;
+      if (!hasActivity) return null;
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
-          style={{ color: "hsl(220 10% 40%)" }}
+          className="flex items-center gap-1 text-[12px]"
+          style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
-          <CircleCheck className="w-2.5 h-2.5" style={{ color: "hsl(145 70% 40%)" }} />
-          <span>Completed</span>
         </div>
       );
+    }
 
-    case "archived":
+    case "archived": {
+      const hasActivity = isIdeationActive || isIdeationWaiting || isVerifying || isQueued;
+      if (!hasActivity) return null;
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
-          style={{ color: "hsl(220 10% 40%)" }}
+          className="flex items-center gap-1 text-[12px]"
+          style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
-          {plan.archivedAt ? (
-            <span>Archived {formatDate(plan.archivedAt)}</span>
-          ) : (
-            <span>Archived</span>
-          )}
         </div>
       );
+    }
   }
 }
 
@@ -314,6 +317,17 @@ function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetRe
 
 const isMutedGroup = (group: SessionGroup) => group === "done" || group === "archived";
 
+// Group → leftmost row icon + color. Mirrors SessionGroupHeader's icon so
+// expanded collapse items inherit the group's visual identity. Done/Accepted
+// punch green via --status-success (matches collapse count badge accent).
+const GROUP_ICON: Record<SessionGroup, { Icon: LucideIcon; color: string }> = {
+  drafts:        { Icon: MessageSquare, color: "var(--text-muted)" },
+  "in-progress": { Icon: Zap,           color: "var(--accent-primary)" },
+  accepted:      { Icon: CheckCircle,   color: "var(--status-success)" },
+  done:          { Icon: CircleCheck,   color: "var(--status-success)" },
+  archived:      { Icon: Archive,       color: "var(--text-muted)" },
+};
+
 export const PlanItem = memo(function PlanItem({
   plan,
   isSelected,
@@ -382,25 +396,26 @@ export const PlanItem = memo(function PlanItem({
     <div
       data-testid={`plan-item-${plan.id}`}
       className={cn(
-        "group relative rounded-md cursor-pointer",
+        "group relative cursor-pointer",
         "transition-all duration-150 ease-out"
       )}
       style={{
-        padding: "6px 8px",
+        padding: "10px 16px",
         background: isSelected
-          ? "hsla(14 100% 60% / 0.12)"
+          ? withAlpha("var(--accent-primary)", 12)
           : isMenuOpen
-            ? "hsla(220 10% 100% / 0.04)"
+            ? "var(--overlay-faint)"
             : "transparent",
-        border: isSelected
-          ? "1px solid hsla(14 100% 60% / 0.2)"
-          : "1px solid transparent",
+        borderTop: "1px solid transparent",
+        borderBottom: "1px solid transparent",
+        borderLeft: isSelected ? "2px solid var(--accent-primary)" : "2px solid transparent",
+        borderRight: "none",
         opacity: muted && !isSelected ? 0.7 : 1,
       }}
       onClick={handleClick}
       onMouseEnter={(e) => {
         if (!isSelected && !isMenuOpen) {
-          e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+          e.currentTarget.style.background = "var(--overlay-faint)";
         }
       }}
       onMouseLeave={(e) => {
@@ -415,11 +430,11 @@ export const PlanItem = memo(function PlanItem({
           className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors duration-150"
           style={{
             background: isSelected
-              ? "hsla(14 100% 60% / 0.15)"
-              : "hsla(220 10% 100% / 0.04)",
+              ? withAlpha("var(--accent-primary)", 15)
+              : "var(--overlay-faint)",
             border: isSelected
-              ? "1px solid hsla(14 100% 60% / 0.2)"
-              : "1px solid hsla(220 10% 100% / 0.06)",
+              ? "1px solid var(--accent-border)"
+              : "1px solid var(--overlay-faint)",
           }}
         >
           {(isIdeationActive || isVerifying) ? (
@@ -427,12 +442,11 @@ export const PlanItem = memo(function PlanItem({
               className="w-3 h-3 animate-spin"
               style={{ color: isVerifying ? VERIFYING_COLOR : ACCENT_COLOR }}
             />
-          ) : (
-            <MessageSquare
-              className="w-3 h-3"
-              style={{ color: isIdeationWaiting || isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
-            />
-          )}
+          ) : (() => {
+            const { Icon, color } = GROUP_ICON[group];
+            const iconColor = isSelected || isIdeationWaiting ? "var(--accent-primary)" : color;
+            return <Icon className="w-3 h-3" style={{ color: iconColor }} />;
+          })()}
         </div>
 
         {/* Content */}
@@ -446,8 +460,8 @@ export const PlanItem = memo(function PlanItem({
               onBlur={handleConfirmRename}
               className="h-6 text-[13px] px-2 py-0 rounded-md"
               style={{
-                background: "hsl(220 10% 12%)",
-                border: "1px solid hsla(220 10% 100% / 0.1)",
+                background: "var(--bg-surface)",
+                border: "1px solid var(--overlay-moderate)",
               }}
               onClick={(e) => e.stopPropagation()}
             />
@@ -461,10 +475,10 @@ export const PlanItem = memo(function PlanItem({
                   )}
                   style={{
                     color: isSelected
-                      ? "hsl(220 10% 90%)"
+                      ? "var(--text-primary)"
                       : muted
-                        ? "hsl(220 10% 55%)"
-                        : "hsl(220 10% 70%)",
+                        ? "var(--text-secondary)"
+                        : "var(--text-secondary)",
                   }}
                 >
                   {plan.title || "Untitled Plan"}
@@ -475,9 +489,9 @@ export const PlanItem = memo(function PlanItem({
                     data-testid="import-badge"
                     className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1 py-0.5 rounded flex-shrink-0 select-none transition-opacity hover:opacity-80"
                     style={{
-                      background: "hsla(145 70% 45% / 0.1)",
-                      border: "1px solid hsla(145 70% 45% / 0.25)",
-                      color: "hsl(145 70% 50%)",
+                      background: "var(--status-success-muted)",
+                      border: "1px solid var(--status-success-border)",
+                      color: "var(--status-success)",
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -491,7 +505,7 @@ export const PlanItem = memo(function PlanItem({
                 )}
                 {plan.hasPendingPrompt && (
                   <span
-                    className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0"
+                    className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-status-warning animate-pulse flex-shrink-0"
                     title="Waiting for capacity — message queued"
                   />
                 )}
@@ -522,11 +536,11 @@ export const PlanItem = memo(function PlanItem({
                     : "opacity-0 group-hover:opacity-100"
                 )}
                 style={{
-                  background: isMenuOpen ? "hsla(220 10% 100% / 0.08)" : "transparent",
+                  background: isMenuOpen ? "var(--overlay-weak)" : "transparent",
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
+                  e.currentTarget.style.background = "var(--overlay-weak)";
                 }}
                 onMouseLeave={(e) => {
                   if (!isMenuOpen) {
@@ -534,16 +548,16 @@ export const PlanItem = memo(function PlanItem({
                   }
                 }}
               >
-                <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 50%)" }} />
+                <MoreHorizontal className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
               className="w-48"
               style={{
-                background: "hsl(220 10% 14%)",
-                border: "1px solid hsla(220 10% 100% / 0.08)",
-                boxShadow: "0 8px 32px hsla(0 0% 0% / 0.4)",
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--overlay-weak)",
+                boxShadow: "var(--shadow-lg)",
               }}
             >
               <ContextMenuItems

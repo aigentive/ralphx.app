@@ -107,7 +107,7 @@ export function RotateKeyDialog({
         className="max-w-md"
         style={{
           background: "var(--bg-elevated)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
@@ -116,8 +116,8 @@ export function RotateKeyDialog({
             <div
               className="p-2 rounded-lg shrink-0"
               style={{
-                background: "rgba(255,107,53,0.1)",
-                border: "1px solid rgba(255,107,53,0.2)",
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent-border)",
               }}
             >
               <RotateCcw className="h-5 w-5 text-[var(--accent-primary)]" />
@@ -143,21 +143,21 @@ export function RotateKeyDialog({
               <div
                 className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
                 style={{
-                  background: "rgba(255,107,53,0.08)",
-                  border: "1px solid rgba(255,107,53,0.25)",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-border)",
                 }}
               >
                 <AlertTriangle
                   className="w-4 h-4 shrink-0 mt-0.5"
-                  style={{ color: "#ff6b35" }}
+                  style={{ color: "var(--accent-primary)" }}
                 />
-                <p className="text-sm" style={{ color: "#ff6b35" }}>
+                <p className="text-sm" style={{ color: "var(--accent-primary)" }}>
                   The old key will remain valid for 60 seconds after rotation,
                   then expire. Any clients must update immediately.
                 </p>
               </div>
               {error && (
-                <p className="text-xs text-red-400 flex items-center gap-1.5">
+                <p className="text-xs text-status-error flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   {error}
                 </p>
@@ -180,15 +180,15 @@ export function RotateKeyDialog({
               <div
                 className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
                 style={{
-                  background: "rgba(255,107,53,0.08)",
-                  border: "1px solid rgba(255,107,53,0.25)",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-border)",
                 }}
               >
                 <AlertTriangle
                   className="w-4 h-4 shrink-0 mt-0.5"
-                  style={{ color: "#ff6b35" }}
+                  style={{ color: "var(--accent-primary)" }}
                 />
-                <p className="text-sm" style={{ color: "#ff6b35" }}>
+                <p className="text-sm" style={{ color: "var(--accent-primary)" }}>
                   This new key will only be shown once. Copy it now and store
                   it securely.
                 </p>
@@ -199,8 +199,8 @@ export function RotateKeyDialog({
                 <div
                   className="flex-1 px-3 py-2 rounded-md font-mono text-sm text-[var(--text-primary)] break-all select-all"
                   style={{
-                    background: "rgba(0,0,0,0.3)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "var(--overlay-scrim)",
+                    border: "1px solid var(--border-subtle)",
                   }}
                 >
                   {rawKey}
@@ -210,11 +210,11 @@ export function RotateKeyDialog({
                   size="icon"
                   onClick={handleCopy}
                   data-testid="copy-rotated-key-button"
-                  className="shrink-0 h-9 w-9 hover:bg-[var(--bg-surface-hover)]"
+                  className="shrink-0 h-9 w-9 hover:bg-[var(--bg-hover)]"
                   title="Copy to clipboard"
                 >
                   {copied ? (
-                    <Check className="w-4 h-4 text-green-400" />
+                    <Check className="w-4 h-4 text-status-success" />
                   ) : (
                     <Copy className="w-4 h-4 text-[var(--text-muted)]" />
                   )}
@@ -241,7 +241,7 @@ export function RotateKeyDialog({
                 data-testid="confirm-rotate-button"
                 type="button"
                 onClick={() => void handleRotate()}
-                style={{ background: "#ff6b35", color: "white" }}
+                style={{ background: "var(--accent-primary)", color: "white" }}
                 className="hover:opacity-90"
               >
                 <Key className="w-3.5 h-3.5 mr-1.5" />
@@ -257,7 +257,7 @@ export function RotateKeyDialog({
               onClick={handleDone}
               disabled={!hasCopied}
               title={!hasCopied ? "Copy the key before closing" : undefined}
-              style={hasCopied ? { background: "#ff6b35", color: "white" } : undefined}
+              style={hasCopied ? { background: "var(--accent-primary)", color: "white" } : undefined}
               className={hasCopied ? "hover:opacity-90" : "opacity-60"}
             >
               Done

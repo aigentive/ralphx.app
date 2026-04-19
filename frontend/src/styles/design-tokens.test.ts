@@ -13,8 +13,20 @@ describe("design-tokens", () => {
   let cssContent: string;
 
   beforeAll(() => {
-    const cssPath = path.resolve(__dirname, "./globals.css");
-    cssContent = fs.readFileSync(cssPath, "utf-8");
+    // 3-tier token architecture — concatenate all token sources so assertions
+    // don't depend on which file a given token currently lives in.
+    // See specs/design/styleguide.md.
+    const files = [
+      "./globals.css",
+      "./tokens/primitives.css",
+      "./tokens/semantic.css",
+      "./tokens/components.css",
+      "./themes/light.css",
+      "./themes/high-contrast.css",
+    ];
+    cssContent = files
+      .map((f) => fs.readFileSync(path.resolve(__dirname, f), "utf-8"))
+      .join("\n");
   });
 
   describe("color palette", () => {
@@ -34,8 +46,10 @@ describe("design-tokens", () => {
     it("should define accent colors (warm, NOT purple)", () => {
       expect(cssContent).toContain("--accent-primary:");
       expect(cssContent).toContain("--accent-secondary:");
-      // Verify warm orange, not purple
-      expect(cssContent).toMatch(/--accent-primary:\s*hsl\(14 100% 60%\)/);
+      // Dark theme accent resolves to the brand orange primitive --orange-500
+      // which is hsl(14 100% 60%). Verify both links in the chain.
+      expect(cssContent).toMatch(/--orange-500:\s*hsl\(14 100% 60%\)/);
+      expect(cssContent).toMatch(/--accent-primary:\s*var\(--orange-500\)/);
     });
 
     it("should define status colors", () => {
@@ -72,13 +86,16 @@ describe("design-tokens", () => {
 
   describe("spacing (8pt grid)", () => {
     it("should define spacing scale", () => {
+      // --space-* primitives are the direct-CSS scale (1-8). Tailwind's wider
+      // 1-16 scale resolves via --spacing-* in the @theme inline block.
       expect(cssContent).toContain("--space-1:");
       expect(cssContent).toContain("--space-2:");
       expect(cssContent).toContain("--space-3:");
       expect(cssContent).toContain("--space-4:");
       expect(cssContent).toContain("--space-6:");
       expect(cssContent).toContain("--space-8:");
-      expect(cssContent).toContain("--space-12:");
+      // Tailwind-scale entries available as --spacing-* for utility classes
+      expect(cssContent).toContain("--spacing-12:");
     });
 
     it("should use 8pt grid values", () => {
@@ -107,6 +124,15 @@ describe("design-tokens", () => {
       expect(cssContent).toContain("--transition-fast:");
       expect(cssContent).toContain("--transition-normal:");
     });
+
+    it("should keep settings card icon tiles legible in high contrast", () => {
+      // HC icon tile pattern: transparent fill + yellow outline + white glyph.
+      // Avoids the yellow-on-yellow collision that happens when tinted bg
+      // meets accent-colored glyphs. See themes/high-contrast.md §3.
+      expect(cssContent).toMatch(/--card-icon-bg:\s*transparent/);
+      expect(cssContent).toMatch(/--card-icon-border:\s*var\(--accent-primary\)/);
+      expect(cssContent).toMatch(/--card-icon-color:\s*var\(--color-white\)/);
+    });
   });
 
   describe("anti-AI-slop guardrails", () => {
@@ -116,12 +142,16 @@ describe("design-tokens", () => {
     });
 
     it("should use dark grays, NOT pure black", () => {
-      // bg-base should be dark gray, not pure black
-      expect(cssContent).toMatch(/--bg-base:\s*hsl\(220 10% 8%\)/);
+      // Dark theme bg-base should resolve to a dark gray primitive.
+      // Primitive --gray-975 is hsl(220 10% 8%) and the semantic layer
+      // references it.
+      expect(cssContent).toMatch(/--gray-975:\s*hsl\(220 10% 8%\)/);
+      expect(cssContent).toMatch(/--bg-base:\s*var\(--gray-975\)/);
     });
 
     it("should use off-white, NOT pure white", () => {
-      // text-primary should be off-white, not pure white
+      // Dark theme text-primary must be off-white (not pure #fff).
+      // Currently set directly on :root for dark theme.
       expect(cssContent).toMatch(/--text-primary:\s*hsl\(220 10% 90%\)/);
     });
   });

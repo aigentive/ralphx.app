@@ -36,6 +36,7 @@ import { api } from "@/lib/tauri";
 import { useConflictDetection } from "@/hooks/useConflictDetection";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
 import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
+import { statusTint } from "@/lib/theme-colors";
 
 interface MergeConflictTaskDetailProps {
   task: Task;
@@ -60,7 +61,7 @@ function ConflictFilesList({
 
   if (files.length === 0) {
     return (
-      <p className="text-[13px] text-white/50 italic">
+      <p className="text-[13px] text-text-primary/50 italic">
         No conflict files recorded
       </p>
     );
@@ -81,24 +82,24 @@ function ConflictFilesList({
             style={{
               backgroundColor:
                 expandedFile === file
-                  ? "rgba(255, 159, 10, 0.15)"
-                  : "rgba(255, 159, 10, 0.08)",
+                  ? "var(--status-warning-muted)"
+                  : "var(--status-warning-muted)",
             }}
           >
             {expandedFile === file ? (
               <ChevronDown
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             ) : (
               <ChevronRight
                 className="w-4 h-4 shrink-0"
-                style={{ color: "#ff9f0a" }}
+                style={{ color: "var(--status-warning)" }}
               />
             )}
-            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "#ff9f0a" }} />
+            <FileWarning className="w-4 h-4 shrink-0" style={{ color: "var(--status-warning)" }} />
             <span
-              className="text-[13px] font-mono text-white/70 truncate text-left"
+              className="text-[13px] font-mono text-text-primary/70 truncate text-left"
               title={file}
             >
               {file}
@@ -108,23 +109,23 @@ function ConflictFilesList({
             <div
               className="mt-2 rounded-lg overflow-hidden border"
               style={{
-                borderColor: "rgba(255, 159, 10, 0.2)",
+                borderColor: "var(--status-warning-border)",
                 height: "400px",
               }}
             >
               {isLoadingDiff ? (
                 <div
                   className="flex items-center justify-center h-full"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
-                  <Loader2 className="w-5 h-5 animate-spin text-white/50" />
+                  <Loader2 className="w-5 h-5 animate-spin text-text-primary/50" />
                 </div>
               ) : conflictDiff ? (
                 <ConflictDiffViewer conflictDiff={conflictDiff} />
               ) : (
                 <div
-                  className="flex items-center justify-center h-full text-white/50"
-                  style={{ backgroundColor: "hsl(220 10% 8%)" }}
+                  className="flex items-center justify-center h-full text-text-primary/50"
+                  style={{ backgroundColor: "var(--bg-base)" }}
                 >
                   Failed to load conflict diff
                 </div>
@@ -143,15 +144,15 @@ function ConflictFilesList({
 function ResolutionInstructions({ branchName }: { branchName: string }) {
   return (
     <div className="space-y-3">
-      <p className="text-[13px] text-white/60">
+      <p className="text-[13px] text-text-primary/60">
         The AI agent could not automatically resolve the merge conflicts.
         Please resolve them manually:
       </p>
-      <ol className="list-decimal list-inside space-y-2 text-[13px] text-white/50">
+      <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
         <li>Open the conflicting files in your editor</li>
         <li>Resolve the conflicts (remove conflict markers)</li>
-        <li>Stage the resolved files: <code className="text-white/70 bg-white/5 px-1 rounded">git add .</code></li>
-        <li>Commit the merge: <code className="text-white/70 bg-white/5 px-1 rounded">git commit</code></li>
+        <li>Stage the resolved files: <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">git add .</code></li>
+        <li>Commit the merge: <code className="text-text-primary/70 bg-[var(--overlay-faint)] px-1 rounded">git commit</code></li>
         <li>Click "Conflicts Resolved" below to continue</li>
       </ol>
       <div className="pt-2">
@@ -184,8 +185,8 @@ function ActionButtonsCard({
         variant="ghost"
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
-          color: "hsl(220 10% 70%)",
-          backgroundColor: "hsl(220 10% 16%)",
+          color: "var(--text-secondary)",
+          backgroundColor: "var(--bg-elevated)",
         }}
       >
         <GitMerge className="w-4 h-4" />
@@ -198,7 +199,7 @@ function ActionButtonsCard({
         className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
         style={{
           color: "white",
-          backgroundColor: "#34c759",
+          backgroundColor: "var(--status-success)",
         }}
       >
         {isProcessing ? (
@@ -394,14 +395,14 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         <SectionTitle>
           Conflict Files ({conflictFiles.length})
           {isConflictDetectionEnabled && isLoadingConflicts && (
-            <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-white/40" />
+            <Loader2 className="inline-block w-3.5 h-3.5 ml-2 animate-spin text-text-primary/40" />
           )}
         </SectionTitle>
         <DetailCard variant="warning">
           {isConflictDetectionEnabled && isLoadingConflicts && conflictFiles.length === 0 ? (
             <div className="flex items-center gap-2 py-2">
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#ff9f0a" }} />
-              <span className="text-[13px] text-white/50">Detecting conflicts...</span>
+              <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-warning)" }} />
+              <span className="text-[13px] text-text-primary/50">Detecting conflicts...</span>
             </div>
           ) : (
             <ConflictFilesList files={conflictFiles} taskId={task.id} />
@@ -424,8 +425,8 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
         <div
           className="p-3 rounded-lg text-[13px]"
           style={{
-            backgroundColor: "rgba(255, 69, 58, 0.12)",
-            color: "#ff6961",
+            backgroundColor: statusTint("error", 12),
+            color: "var(--status-error)",
           }}
         >
           {error}

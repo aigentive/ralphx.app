@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Local imports from extracted modules
+import { withAlpha } from "@/lib/theme-colors";
 import type {
   ViewMode,
   MessageTypeFilter,
@@ -315,8 +316,8 @@ export function ActivityView({
       className="flex flex-col h-full"
       style={{
         background: `
-          radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,107,53,0.06) 0%, transparent 50%),
-          radial-gradient(ellipse 60% 40% at 80% 100%, rgba(255,107,53,0.03) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 20% 0%, ${withAlpha("var(--accent-primary)", 6)} 0%, transparent 50%),
+          radial-gradient(ellipse 60% 40% at 80% 100%, ${withAlpha("var(--accent-primary)", 3)} 0%, transparent 50%),
           var(--bg-base)
         `,
       }}
@@ -326,16 +327,16 @@ export function ActivityView({
         <div
           className="flex items-center justify-between px-4 py-3 border-b"
           style={{
-            background: "rgba(18,18,18,0.85)",
+            background: "var(--bg-surface)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            borderColor: "rgba(255,255,255,0.06)",
+            borderColor: "var(--overlay-weak)",
           }}
         >
           <div className="flex items-center gap-3">
             <div
               className="p-1.5 rounded-lg"
-              style={{ background: "rgba(255,107,53,0.1)", border: "1px solid rgba(255,107,53,0.2)" }}
+              style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-border)" }}
             >
               <Activity className="w-5 h-5 text-[var(--accent-primary)]" />
             </div>
@@ -361,7 +362,7 @@ export function ActivityView({
       )}
 
       {/* Search and Filters */}
-      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="px-4 py-3 border-b space-y-3" style={{ borderColor: "var(--overlay-weak)" }}>
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <SearchBar value={searchQuery} onChange={setSearchQuery} onClear={handleClearSearch} />
@@ -467,11 +468,11 @@ export function ActivityView({
 
         @keyframes live-pulse {
           0%, 100% {
-            box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.4);
+            box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-primary) 40%, transparent);
             transform: scale(1);
           }
           50% {
-            box-shadow: 0 0 8px 2px rgba(255, 107, 53, 0.3);
+            box-shadow: 0 0 8px 2px color-mix(in srgb, var(--accent-primary) 30%, transparent);
             transform: scale(1.1);
           }
         }
@@ -479,7 +480,7 @@ export function ActivityView({
           animation: live-pulse 1.5s ease-in-out infinite;
         }
         .live-receiving {
-          box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.3);
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 30%, transparent);
         }
       `}</style>
     </div>

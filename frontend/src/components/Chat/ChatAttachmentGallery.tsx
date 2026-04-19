@@ -121,15 +121,15 @@ function AttachmentCard({
       data-testid="attachment-card"
       className={cardClass}
       style={{
-        background: "hsl(220 10% 12%)",
-        border: "1px solid hsl(220 10% 18%)",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--bg-hover)",
       }}
     >
       {/* File icon */}
       <div
         className="shrink-0 flex items-center justify-center"
         style={{
-          color: "hsl(220 10% 60%)",
+          color: "var(--text-secondary)",
         }}
       >
         {getFileIcon(attachment.mimeType, attachment.fileName)}
@@ -140,7 +140,7 @@ function AttachmentCard({
         <p
           className={compact ? "text-[11px]" : "text-xs"}
           style={{
-            color: "hsl(220 10% 90%)",
+            color: "var(--text-primary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -152,7 +152,7 @@ function AttachmentCard({
         <p
           className="text-[10px]"
           style={{
-            color: "hsl(220 10% 45%)",
+            color: "var(--text-muted)",
           }}
         >
           {formatFileSize(attachment.fileSize)}
@@ -165,7 +165,7 @@ function AttachmentCard({
           data-testid="upload-progress"
           className="shrink-0"
           style={{
-            color: "hsl(14 100% 60%)",
+            color: "var(--accent-primary)",
           }}
         >
           <svg
@@ -197,18 +197,18 @@ function AttachmentCard({
             onClick={() => onRemove(attachment.id)}
             className="shrink-0 rounded p-0.5 transition-colors hover:brightness-110"
             style={{
-              color: "hsl(220 10% 60%)",
+              color: "var(--text-secondary)",
               background: "transparent",
             }}
             onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
               const target = e.currentTarget;
-              target.style.background = "hsl(220 10% 20%)";
-              target.style.color = "hsl(220 10% 90%)";
+              target.style.background = "var(--bg-hover)";
+              target.style.color = "var(--text-primary)";
             }}
             onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
               const target = e.currentTarget;
               target.style.background = "transparent";
-              target.style.color = "hsl(220 10% 60%)";
+              target.style.color = "var(--text-secondary)";
             }}
             aria-label={`Remove ${attachment.fileName}`}
           >

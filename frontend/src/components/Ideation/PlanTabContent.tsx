@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
@@ -107,15 +108,15 @@ export function PlanTabContent({
           className="mb-4 p-4 rounded-xl"
           style={{
             background: importStatus.type === "success"
-              ? "hsla(145 70% 40% / 0.1)"
-              : "hsla(0 70% 50% / 0.1)",
+              ? "var(--status-success-muted)"
+              : "var(--status-error-muted)",
             border: `1px solid ${importStatus.type === "success"
-              ? "hsla(145 70% 40% / 0.3)"
-              : "hsla(0 70% 50% / 0.3)"}`,
+              ? "var(--status-success-border)"
+              : "var(--status-error-border)"}`,
           }}
         >
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>{importStatus.message}</p>
+            <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{importStatus.message}</p>
             <Button variant="ghost" size="icon" onClick={() => onImportStatusChange(null)} className="h-7 w-7">×</Button>
           </div>
         </div>
@@ -126,28 +127,28 @@ export function PlanTabContent({
           data-testid="plan-loading-state"
           className="mb-4 rounded-xl px-4 py-5"
           style={{
-            background: "hsla(220 10% 100% / 0.04)",
-            border: "1px solid hsla(220 10% 100% / 0.08)",
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-weak)",
           }}
         >
           <div className="flex items-start gap-3">
             <div
               className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full"
               style={{
-                background: "hsla(14 100% 60% / 0.12)",
-                border: "1px solid hsla(14 100% 60% / 0.2)",
+                background: withAlpha("var(--accent-primary)", 12),
+                border: "1px solid var(--accent-border)",
               }}
             >
               <Loader2
                 className="h-4 w-4 animate-spin"
-                style={{ color: "hsl(14 100% 60%)" }}
+                style={{ color: "var(--accent-primary)" }}
               />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                 Loading plan
               </p>
-              <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 RalphX already linked this session to a plan artifact. The plan tab will populate as soon as that artifact finishes loading.
               </p>
             </div>
@@ -162,16 +163,16 @@ export function PlanTabContent({
           onClick={onImportPlan}
           className="w-full mb-4 gap-2 transition-colors duration-150"
           style={{
-            border: "1px solid hsla(220 10% 100% / 0.1)",
+            border: "1px solid var(--overlay-moderate)",
             background: "transparent",
-            color: "hsl(220 10% 70%)",
+            color: "var(--text-secondary)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
-            e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+            e.currentTarget.style.borderColor = "var(--border-default)";
+            e.currentTarget.style.background = "var(--overlay-faint)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.1)";
+            e.currentTarget.style.borderColor = "var(--overlay-moderate)";
             e.currentTarget.style.background = "transparent";
           }}
           data-testid="import-plan-button"

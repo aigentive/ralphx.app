@@ -84,10 +84,10 @@ export function ArtifactsPanel() {
       <div
         className="w-48 flex-shrink-0 p-3 rounded-lg"
         style={{
-          background: "rgba(255,255,255,0.03)",
+          background: "var(--overlay-faint)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <h3
@@ -213,11 +213,11 @@ export function ArtifactsPanel() {
                   data-testid="artifact-card"
                   className="group cursor-pointer transition-all duration-180 hover:-translate-y-px"
                   style={{
-                    background: "rgba(255,255,255,0.04)",
+                    background: "var(--overlay-faint)",
                     backdropFilter: "blur(20px)",
                     WebkitBackdropFilter: "blur(20px)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                    border: "1px solid var(--border-subtle)",
+                    boxShadow: "var(--shadow-xs)",
                   }}
                 >
                   <CardContent className="p-3 text-center">

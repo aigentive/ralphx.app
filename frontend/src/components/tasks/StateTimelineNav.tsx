@@ -20,133 +20,66 @@ import {
 } from "@/components/ui/tooltip";
 import type { InternalStatus } from "@/types/task";
 import { isTerminalStatus } from "@/types/status";
+import {
+  STATUS_TOKEN_REFS,
+  statusTint,
+  withAlpha,
+  type StatusTokenKey,
+} from "@/lib/theme-colors";
+
+type TimelineStatusKey = StatusTokenKey | "muted";
 
 // macOS Tahoe system colors (dark mode)
 const STATUS_CONFIG: Record<
   InternalStatus,
-  { label: string; color: string; bgColor: string }
+  { label: string; color: TimelineStatusKey }
 > = {
-  backlog: {
-    label: "Backlog",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  ready: {
-    label: "Ready",
-    color: "#0a84ff",
-    bgColor: "rgba(10, 132, 255, 0.15)",
-  },
-  blocked: {
-    label: "Blocked",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  executing: {
-    label: "Executing",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_refining: {
-    label: "QA Refining",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_testing: {
-    label: "QA Testing",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  qa_passed: {
-    label: "QA Passed",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  qa_failed: {
-    label: "QA Failed",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
-  pending_review: {
-    label: "Pending Review",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  revision_needed: {
-    label: "Revision Needed",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  approved: {
-    label: "Approved",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  failed: {
-    label: "Failed",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
-  cancelled: {
-    label: "Cancelled",
-    color: "#8e8e93",
-    bgColor: "rgba(142, 142, 147, 0.15)",
-  },
-  reviewing: {
-    label: "Reviewing",
-    color: "#0a84ff",
-    bgColor: "rgba(10, 132, 255, 0.15)",
-  },
-  review_passed: {
-    label: "Review Passed",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  escalated: {
-    label: "Escalated",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  re_executing: {
-    label: "Re-executing",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  pending_merge: {
-    label: "Pending Merge",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  merging: {
-    label: "Merging",
-    color: "#ff6b35",
-    bgColor: "rgba(255, 107, 53, 0.15)",
-  },
-  merge_incomplete: {
-    label: "Merge Incomplete",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  merge_conflict: {
-    label: "Merge Conflict",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  merged: {
-    label: "Merged",
-    color: "#34c759",
-    bgColor: "rgba(52, 199, 89, 0.15)",
-  },
-  paused: {
-    label: "Paused",
-    color: "#ff9f0a",
-    bgColor: "rgba(255, 159, 10, 0.15)",
-  },
-  stopped: {
-    label: "Stopped",
-    color: "#ff453a",
-    bgColor: "rgba(255, 69, 58, 0.15)",
-  },
+  backlog: { label: "Backlog", color: "muted" },
+  ready: { label: "Ready", color: "info" },
+  blocked: { label: "Blocked", color: "warning" },
+  executing: { label: "Executing", color: "accent" },
+  qa_refining: { label: "QA Refining", color: "accent" },
+  qa_testing: { label: "QA Testing", color: "accent" },
+  qa_passed: { label: "QA Passed", color: "success" },
+  qa_failed: { label: "QA Failed", color: "error" },
+  pending_review: { label: "Pending Review", color: "muted" },
+  revision_needed: { label: "Revision Needed", color: "warning" },
+  approved: { label: "Approved", color: "success" },
+  failed: { label: "Failed", color: "error" },
+  cancelled: { label: "Cancelled", color: "muted" },
+  reviewing: { label: "Reviewing", color: "info" },
+  review_passed: { label: "Review Passed", color: "success" },
+  escalated: { label: "Escalated", color: "warning" },
+  re_executing: { label: "Re-executing", color: "warning" },
+  pending_merge: { label: "Pending Merge", color: "accent" },
+  merging: { label: "Merging", color: "accent" },
+  merge_incomplete: { label: "Merge Incomplete", color: "warning" },
+  merge_conflict: { label: "Merge Conflict", color: "warning" },
+  merged: { label: "Merged", color: "success" },
+  paused: { label: "Paused", color: "warning" },
+  stopped: { label: "Stopped", color: "error" },
 };
+
+/**
+ * Resolve a timeline status key to its CSS var reference. The "muted" key
+ * returns `var(--text-muted)` since the Okabe palette does not carry a
+ * dedicated neutral status tone.
+ */
+function resolveTimelineColor(color: TimelineStatusKey): string {
+  return color === "muted" ? "var(--text-muted)" : STATUS_TOKEN_REFS[color];
+}
+
+/**
+ * Resolve a timeline status key + alpha-percent into a translucent color
+ * expression. Uses statusTint for known status keys and withAlpha-equivalent
+ * color-mix for the muted neutral.
+ */
+function resolveTimelineTint(color: TimelineStatusKey, alpha: number): string {
+  if (color === "muted") {
+    return `color-mix(in srgb, var(--text-muted) ${alpha}%, transparent)`;
+  }
+  return statusTint(color, alpha);
+}
 
 interface TimelineEntry {
   status: InternalStatus;
@@ -182,6 +115,11 @@ interface TimelineBadgeProps {
 function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
   const config = STATUS_CONFIG[entry.status];
   const isActive = isSelected || entry.isCurrent;
+  const colorRef = resolveTimelineColor(config.color);
+  const bgRef = resolveTimelineTint(config.color, 15);
+  const glowInnerRef = resolveTimelineTint(config.color, 30);
+  const glowOuterRef = resolveTimelineTint(config.color, 20);
+  const dotGlowRef = resolveTimelineTint(config.color, 40);
 
   return (
     <Tooltip delayDuration={200}>
@@ -195,9 +133,9 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           data-selected={isSelected}
           className="group relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-200"
           style={{
-            backgroundColor: isActive ? config.bgColor : "transparent",
+            backgroundColor: isActive ? bgRef : "transparent",
             boxShadow: isSelected
-              ? `0 0 0 2px ${config.color}50, 0 2px 8px ${config.color}30`
+              ? `0 0 0 2px ${glowInnerRef}, 0 2px 8px ${glowOuterRef}`
               : undefined,
           }}
         >
@@ -205,8 +143,8 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           <div
             className="relative w-2 h-2 rounded-full shrink-0 transition-transform duration-200 group-hover:scale-125"
             style={{
-              backgroundColor: config.color,
-              boxShadow: isActive ? `0 0 8px ${config.color}60` : undefined,
+              backgroundColor: colorRef,
+              boxShadow: isActive ? `0 0 8px ${dotGlowRef}` : undefined,
             }}
           >
             {/* Pulse ring for current */}
@@ -214,7 +152,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
               <div
                 className="absolute inset-0 rounded-full animate-ping"
                 style={{
-                  backgroundColor: config.color,
+                  backgroundColor: colorRef,
                   opacity: 0.4,
                 }}
               />
@@ -225,7 +163,7 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
           <span
             className="text-[11px] font-semibold tracking-tight transition-colors duration-200"
             style={{
-              color: isActive ? config.color : "rgba(255,255,255,0.45)",
+              color: isActive ? colorRef : withAlpha("var(--text-primary)", 45),
             }}
           >
             {config.label}
@@ -237,26 +175,26 @@ function TimelineBadge({ entry, isSelected, onClick }: TimelineBadgeProps) {
         sideOffset={8}
         className="px-3 py-1.5 text-[11px] font-medium rounded-lg"
         style={{
-          backgroundColor: "rgba(30, 30, 30, 0.95)",
+          backgroundColor: "var(--bg-elevated)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "0.5px solid rgba(255,255,255,0.1)",
-          color: "rgba(255,255,255,0.7)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+          border: "0.5px solid var(--overlay-moderate)",
+          color: withAlpha("var(--text-primary)", 70),
+          boxShadow: "0 4px 16px var(--overlay-scrim)",
         }}
       >
         <div className="flex items-center gap-2">
           <div
             className="w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: config.color }}
+            style={{ backgroundColor: colorRef }}
           />
           <span>{formatRelativeTime(entry.timestamp)}</span>
           {entry.isCurrent && (
             <span
               className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
               style={{
-                backgroundColor: config.bgColor,
-                color: config.color,
+                backgroundColor: bgRef,
+                color: colorRef,
               }}
             >
               Current
@@ -279,7 +217,7 @@ function TimelineConnector({ isActive, color }: TimelineConnectorProps) {
       <ChevronRight
         className="w-3.5 h-3.5 transition-colors duration-200"
         style={{
-          color: isActive ? color : "rgba(255,255,255,0.15)",
+          color: isActive ? color : withAlpha("var(--text-primary)", 15),
         }}
       />
     </div>
@@ -419,8 +357,7 @@ export function StateTimelineNav({
     return (
       <div
         data-testid="timeline-loading"
-        className="flex items-center gap-2.5 px-4 py-3"
-        style={{ color: "rgba(255,255,255,0.4)" }}
+        className="flex items-center gap-2.5 px-4 py-3 text-text-primary/40"
       >
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-[11px] font-medium">Loading history...</span>
@@ -434,7 +371,7 @@ export function StateTimelineNav({
       <div
         data-testid="timeline-error"
         className="flex items-center gap-2 px-4 py-3 text-[11px] font-medium"
-        style={{ color: "#ff453a" }}
+        style={{ color: "var(--status-error)" }}
       >
         <History className="w-4 h-4" />
         <span>Failed to load history</span>
@@ -462,25 +399,19 @@ export function StateTimelineNav({
         data-testid="state-timeline-nav"
         className="flex items-center gap-1 px-4 py-3 overflow-x-auto"
         style={{
-          backgroundColor: "rgba(20, 20, 20, 0.6)",
+          backgroundColor: withAlpha("var(--bg-base)", 60),
           backdropFilter: "blur(40px) saturate(150%)",
           WebkitBackdropFilter: "blur(40px) saturate(150%)",
-          borderBottom: "0.5px solid rgba(255,255,255,0.06)",
+          borderBottom: "0.5px solid var(--overlay-weak)",
         }}
       >
         {/* History icon */}
         <div
           className="flex items-center gap-2 mr-2 pr-3"
-          style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ borderRight: "1px solid var(--border-subtle)" }}
         >
-          <History
-            className="w-4 h-4"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          />
-          <span
-            className="text-[10px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          >
+          <History className="w-4 h-4 text-text-primary/35" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-primary/35">
             History
           </span>
         </div>
@@ -504,7 +435,7 @@ export function StateTimelineNav({
               {nextEntry && (
                 <TimelineConnector
                   isActive={isConnectorActive}
-                  color={STATUS_CONFIG[entry.status].color}
+                  color={resolveTimelineColor(STATUS_CONFIG[entry.status].color)}
                 />
               )}
             </div>
@@ -515,20 +446,17 @@ export function StateTimelineNav({
         {selectedState && (
           <div
             className="ml-auto pl-3 flex items-center gap-2"
-            style={{ borderLeft: "1px solid rgba(255,255,255,0.08)" }}
+            style={{ borderLeft: "1px solid var(--border-subtle)" }}
           >
-            <span
-              className="text-[10px] font-medium"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            >
+            <span className="text-[10px] font-medium text-text-primary/40">
               Viewing past state
             </span>
             <button
               onClick={() => onStateSelect(null)}
               className="px-2 py-1 rounded-md text-[10px] font-semibold transition-colors"
               style={{
-                backgroundColor: "rgba(255, 107, 53, 0.15)",
-                color: "#ff8050",
+                backgroundColor: "var(--accent-muted)",
+                color: "var(--accent-primary)",
               }}
             >
               Back to Current

@@ -132,7 +132,7 @@ function Thumbnail({ screenshot, index, onClick }: ThumbnailProps) {
           {screenshot.label}
         </span>
         {screenshot.timestamp && (
-          <span className="text-xs text-white/70">
+          <span className="text-xs text-text-primary/70">
             {formatTimestamp(screenshot.timestamp)}
           </span>
         )}
@@ -261,7 +261,7 @@ function Lightbox({
   return (
     <div
       data-testid="screenshot-lightbox"
-      className="fixed inset-0 z-50 flex flex-col bg-black/95"
+      className="fixed inset-0 z-50 flex flex-col bg-[var(--overlay-scrim-deep)]"
       onClick={onClose}
     >
       {/* Header */}
@@ -281,7 +281,7 @@ function Lightbox({
             {isFailed && (
               <Badge
                 variant="outline"
-                className="border-0 bg-red-500/20 text-[var(--status-error)] gap-1.5"
+                className="border-0 bg-status-error/20 text-[var(--status-error)] gap-1.5"
               >
                 <AlertTriangle className="w-3 h-3" />
                 Failed
@@ -290,7 +290,7 @@ function Lightbox({
             {current.stepResult?.status === "passed" && (
               <Badge
                 variant="outline"
-                className="border-0 bg-emerald-500/20 text-[var(--status-success)] gap-1.5"
+                className="border-0 bg-status-success/20 text-[var(--status-success)] gap-1.5"
               >
                 <Check className="w-3 h-3" />
                 Passed
@@ -301,7 +301,7 @@ function Lightbox({
           {/* Counter */}
           <span
             data-testid="lightbox-counter"
-            className="text-white/60 text-sm"
+            className="text-text-primary/60 text-sm"
           >
             {currentIndex + 1} / {screenshots.length}
           </span>
@@ -323,7 +323,7 @@ function Lightbox({
                 "gap-2",
                 viewMode === "comparison"
                   ? "bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)]"
-                  : "text-white hover:bg-white/10"
+                  : "text-white hover:bg-[var(--overlay-moderate)]"
               )}
             >
               <GitCompare className="w-4 h-4" />
@@ -342,12 +342,12 @@ function Lightbox({
               disabled={zoom <= 0.5}
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/10 disabled:opacity-30"
+              className="text-white hover:bg-[var(--overlay-moderate)] disabled:opacity-30"
               title="Zoom out (-)"
             >
               <ZoomOut className="w-5 h-5" />
             </Button>
-            <span className="w-12 text-center text-sm text-white/80">
+            <span className="w-12 text-center text-sm text-text-primary/80">
               {Math.round(zoom * 100)}%
             </span>
             <Button
@@ -359,7 +359,7 @@ function Lightbox({
               disabled={zoom >= 4}
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/10 disabled:opacity-30"
+              className="text-white hover:bg-[var(--overlay-moderate)] disabled:opacity-30"
               title="Zoom in (+)"
             >
               <ZoomIn className="w-5 h-5" />
@@ -375,7 +375,7 @@ function Lightbox({
             }}
             variant="ghost"
             size="icon"
-            className="text-white hover:bg-white/10 ml-4"
+            className="text-white hover:bg-[var(--overlay-moderate)] ml-4"
             title="Close (Esc)"
           >
             <X className="w-6 h-6" />
@@ -420,12 +420,12 @@ function Lightbox({
               <div className="flex items-center gap-2 mb-3">
                 <Badge
                   variant="outline"
-                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-emerald-500/20 text-[var(--status-success)]"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-status-success/20 text-[var(--status-success)]"
                 >
                   Expected
                 </Badge>
                 {current.stepResult?.expected && (
-                  <span className="text-sm text-white/60 truncate max-w-[300px]">
+                  <span className="text-sm text-text-primary/60 truncate max-w-[300px]">
                     {current.stepResult.expected}
                   </span>
                 )}
@@ -435,12 +435,12 @@ function Lightbox({
                   data-testid="comparison-expected-image"
                   src={current.expectedPath}
                   alt="Expected"
-                  className="max-h-[65vh] object-contain rounded-xl border border-emerald-500/30"
+                  className="max-h-[65vh] object-contain rounded-xl border border-status-success/30"
                   draggable={false}
                 />
               ) : (
-                <div className="flex-1 flex items-center justify-center rounded-xl border border-dashed border-white/20 bg-white/5 min-h-[200px]">
-                  <div className="text-center text-white/40">
+                <div className="flex-1 flex items-center justify-center rounded-xl border border-dashed border-white/20 bg-[var(--overlay-faint)] min-h-[200px]">
+                  <div className="text-center text-text-primary/40">
                     <Image className="w-12 h-12 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No expected screenshot</p>
                     {current.stepResult?.expected && (
@@ -454,19 +454,19 @@ function Lightbox({
             </div>
 
             {/* Divider */}
-            <div className="w-px bg-white/20 self-stretch" />
+            <div className="w-px bg-[var(--overlay-moderate)] self-stretch" />
 
             {/* Actual panel */}
             <div className="flex-1 flex flex-col">
               <div className="flex items-center gap-2 mb-3">
                 <Badge
                   variant="outline"
-                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-red-500/20 text-[var(--status-error)]"
+                  className="border-0 px-2 py-1 text-xs font-semibold uppercase tracking-wider bg-status-error/20 text-[var(--status-error)]"
                 >
                   Actual
                 </Badge>
                 {current.stepResult?.actual && (
-                  <span className="text-sm text-white/60 truncate max-w-[300px]">
+                  <span className="text-sm text-text-primary/60 truncate max-w-[300px]">
                     {current.stepResult.actual}
                   </span>
                 )}
@@ -475,7 +475,7 @@ function Lightbox({
                 data-testid="comparison-actual-image"
                 src={current.path}
                 alt="Actual"
-                className="max-h-[65vh] object-contain rounded-xl border border-red-500/30"
+                className="max-h-[65vh] object-contain rounded-xl border border-status-error/30"
                 draggable={false}
               />
             </div>
@@ -494,7 +494,7 @@ function Lightbox({
               disabled={!hasPrev}
               variant="ghost"
               size="icon"
-              className="absolute left-4 w-12 h-12 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30"
+              className="absolute left-4 w-12 h-12 rounded-full bg-[var(--overlay-scrim-med)] text-white hover:bg-[var(--overlay-scrim-deep)] disabled:opacity-30"
               title="Previous (←)"
             >
               <ChevronLeft className="w-6 h-6" />
@@ -508,7 +508,7 @@ function Lightbox({
               disabled={!hasNext}
               variant="ghost"
               size="icon"
-              className="absolute right-4 w-12 h-12 rounded-full bg-black/50 text-white hover:bg-black/70 disabled:opacity-30"
+              className="absolute right-4 w-12 h-12 rounded-full bg-[var(--overlay-scrim-med)] text-white hover:bg-[var(--overlay-scrim-deep)] disabled:opacity-30"
               title="Next (→)"
             >
               <ChevronRight className="w-6 h-6" />
@@ -535,13 +535,13 @@ function Lightbox({
                 {current.stepResult.expected && (
                   <div>
                     <span className="text-[--status-success] font-medium">Expected:</span>
-                    <p className="text-white/80 mt-0.5">{current.stepResult.expected}</p>
+                    <p className="text-text-primary/80 mt-0.5">{current.stepResult.expected}</p>
                   </div>
                 )}
                 {current.stepResult.actual && (
                   <div>
                     <span className="text-[--status-error] font-medium">Actual:</span>
-                    <p className="text-white/80 mt-0.5">{current.stepResult.actual}</p>
+                    <p className="text-text-primary/80 mt-0.5">{current.stepResult.actual}</p>
                   </div>
                 )}
               </div>
@@ -553,7 +553,7 @@ function Lightbox({
       {/* Thumbnail strip */}
       {screenshots.length > 1 && (
         <div
-          className="flex justify-center gap-2 px-6 py-4 bg-black/50"
+          className="flex justify-center gap-2 px-6 py-4 bg-[var(--overlay-scrim-med)]"
           onClick={(e) => e.stopPropagation()}
         >
           {screenshots.map((screenshot, index) => (

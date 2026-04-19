@@ -149,7 +149,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ top: -3 }}
       />
 
@@ -159,7 +159,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           relative rounded px-2 py-1.5
           transition-all duration-150 ease-out
           hover:shadow-md
-          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[var(--accent-border)]" : ""}
           ${isHighlighted ? "animate-pulse" : ""}
         `}
         style={{
@@ -170,14 +170,14 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           // Border: solid orange for all selection methods (click, keyboard, timeline)
           // Use explicit borderTop/Right/Bottom instead of shorthand to prevent conflicts with borderLeft
           borderTop: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderRight: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderBottom: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           // Keep status-colored left stripe visible in all states
           borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
@@ -219,7 +219,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
           className="font-medium leading-tight line-clamp-2"
           style={{
             fontSize: "12px",
-            color: "hsl(220 10% 88%)",
+            color: "var(--text-primary)",
             lineHeight: 1.35,
           }}
           title={abbreviateTitle(label)}
@@ -232,7 +232,7 @@ function TaskNodeCompactComponent({ data, selected }: NodeProps<TaskNodeCompactT
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ bottom: -3 }}
       />
     </div>

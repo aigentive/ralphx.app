@@ -2,7 +2,7 @@
  * PriorityBadge - Visual indicator for priority levels
  * Colors follow design spec:
  * - Critical: Red (#ef4444)
- * - High: Orange (#ff6b35)
+ * - High: Orange (var(--accent-primary))
  * - Medium: Amber (#ffa94d)
  * - Low: Gray (#6b7280)
  */
@@ -24,7 +24,7 @@ const PRIORITY_CONFIG: Record<Priority, PriorityConfig> = {
     animate: true,
   },
   high: {
-    backgroundColor: "#ff6b35",
+    backgroundColor: "var(--accent-primary)",
     textColor: "#1a1a1a",
     label: "High",
   },

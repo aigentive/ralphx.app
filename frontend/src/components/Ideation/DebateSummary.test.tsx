@@ -116,9 +116,9 @@ describe("DebateSummary", () => {
 
     const winnerColumn = screen.getByTestId("advocate-column-WebSockets");
     expect(winnerColumn).toBeInTheDocument();
-    // Winner column should have a warm orange border (jsdom converts hsl to rgb)
+    // Winner column should have a warm orange border (design token)
     const style = winnerColumn.getAttribute("style") ?? "";
-    expect(style).toContain("rgb(255, 99, 51)");
+    expect(style).toContain("var(--accent-primary)");
   });
 
   it("handles single advocate gracefully", () => {

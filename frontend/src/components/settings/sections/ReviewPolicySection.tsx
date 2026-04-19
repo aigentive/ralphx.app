@@ -19,7 +19,7 @@ export default function ReviewPolicySection() {
   return (
     <SectionCard
       icon={
-        <ShieldCheck className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+        <ShieldCheck className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />
       }
       title="Review Policy"
       description="Configure global review policy for all projects"

@@ -115,7 +115,7 @@ export function DurationDisplay(props: DurationDisplayProps) {
     <span
       data-testid="duration-display"
       className={`inline-flex items-center gap-1 tabular-nums ${className ?? ""}`}
-      style={{ color: "hsl(220 10% 55%)" }}
+      style={{ color: "var(--text-muted)" }}
     >
       <Clock className="w-3 h-3 shrink-0" />
       <span className="text-[12px]">{label}</span>

@@ -146,21 +146,21 @@ describe("TaskQABadge", () => {
   it("applies correct color class for passed status", () => {
     render(<TaskQABadge needsQA={true} testStatus="passed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-emerald-500/15");
+    expect(badge).toHaveClass("bg-status-success/15");
     expect(badge).toHaveClass("text-[var(--status-success)]");
   });
 
   it("applies correct color class for failed status", () => {
     render(<TaskQABadge needsQA={true} testStatus="failed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-red-500/15");
+    expect(badge).toHaveClass("bg-status-error/15");
     expect(badge).toHaveClass("text-[var(--status-error)]");
   });
 
   it("applies correct color class for preparing status", () => {
     render(<TaskQABadge needsQA={true} prepStatus="running" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-amber-500/15");
+    expect(badge).toHaveClass("bg-status-warning/15");
     expect(badge).toHaveClass("text-[var(--status-warning)]");
   });
 
@@ -174,7 +174,7 @@ describe("TaskQABadge", () => {
   it("applies correct color class for ready status", () => {
     render(<TaskQABadge needsQA={true} prepStatus="completed" />);
     const badge = screen.getByTestId("task-qa-badge");
-    expect(badge).toHaveClass("bg-blue-500/15");
+    expect(badge).toHaveClass("bg-status-info/15");
     expect(badge).toHaveClass("text-[var(--status-info)]");
   });
 

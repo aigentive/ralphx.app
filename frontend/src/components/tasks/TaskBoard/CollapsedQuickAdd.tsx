@@ -55,7 +55,7 @@ export function CollapsedQuickAdd({ projectId, columnId }: CollapsedQuickAddProp
             height: "28px",
             marginTop: "8px",
             borderRadius: "6px",
-            border: "1.5px dashed hsla(220 10% 100% / 0.15)",
+            border: "1.5px dashed var(--overlay-moderate)",
             backgroundColor: "transparent",
             cursor: "pointer",
             transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
@@ -68,7 +68,7 @@ export function CollapsedQuickAdd({ projectId, columnId }: CollapsedQuickAddProp
               width: "14px",
               height: "14px",
               strokeWidth: 2.5,
-              color: "hsl(220 10% 45%)",
+              color: "var(--text-muted)",
               transition: "color 180ms ease",
             }}
           />
@@ -92,11 +92,11 @@ export function CollapsedQuickAdd({ projectId, columnId }: CollapsedQuickAddProp
       {/* Hover styles for the trigger button */}
       <style>{`
         .collapsed-quick-add-btn:hover {
-          border-color: hsl(14 100% 60%) !important;
-          background-color: hsla(14 100% 60% / 0.04) !important;
+          border-color: var(--accent-primary) !important;
+          background-color: color-mix(in srgb, var(--accent-primary) 4%, transparent) !important;
         }
         .collapsed-quick-add-btn:hover .collapsed-quick-add-icon {
-          color: hsl(14 100% 60%) !important;
+          color: var(--accent-primary) !important;
         }
       `}</style>
     </Popover>

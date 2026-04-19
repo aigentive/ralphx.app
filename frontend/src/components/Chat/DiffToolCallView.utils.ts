@@ -7,6 +7,7 @@
 
 import type { ToolCall } from "./ToolCallIndicator";
 import { canonicalizeToolName } from "./tool-widgets/tool-name";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -151,9 +152,9 @@ export function computeDiff(oldContent: string, newContent: string): DiffLine[] 
 export function getLineBackground(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "rgba(52, 199, 89, 0.12)";
+      return "var(--status-success-muted)";
     case "deletion":
-      return "rgba(255, 69, 58, 0.12)";
+      return "var(--status-error-muted)";
     default:
       return "transparent";
   }
@@ -162,11 +163,11 @@ export function getLineBackground(type: DiffLine["type"]): string {
 export function getLineNumColor(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "rgba(52, 199, 89, 0.6)";
+      return withAlpha("var(--status-success)", 60);
     case "deletion":
-      return "rgba(255, 69, 58, 0.6)";
+      return withAlpha("var(--status-error)", 60);
     default:
-      return "hsl(220 10% 35%)";
+      return "var(--text-muted)";
   }
 }
 
@@ -184,11 +185,11 @@ export function getLinePrefix(type: DiffLine["type"]): string {
 export function getPrefixColor(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "#34c759";
+      return "var(--status-success)";
     case "deletion":
-      return "#ff453a";
+      return "var(--status-error)";
     case "header":
-      return "rgba(255,255,255,0.45)";
+      return withAlpha("var(--text-primary)", 45);
     default:
       return "transparent";
   }

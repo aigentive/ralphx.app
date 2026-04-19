@@ -73,21 +73,23 @@ const NOTICE_STYLES: Record<
 > = {
   ok: {
     wrapper:
-      "bg-[rgba(255,255,255,0.03)] border-[var(--border-subtle)] text-[var(--text-muted)]",
+      "bg-[var(--notice-ok-bg)] border-[var(--notice-ok-border)] text-[var(--notice-ok-text)]",
     icon: (
-      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--status-success)]" />
+      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-ok-icon)]" />
     ),
   },
   warn: {
     wrapper:
-      "bg-[rgba(251,146,60,0.06)] border-[rgba(251,146,60,0.2)] text-[var(--warning)]",
-    icon: <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />,
+      "bg-[var(--notice-warn-bg)] border-[var(--notice-warn-border)] text-[var(--notice-warn-text)]",
+    icon: (
+      <TriangleAlert className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-warn-icon)]" />
+    ),
   },
   info: {
     wrapper:
-      "bg-[rgba(255,107,53,0.05)] border-[rgba(255,107,53,0.18)] text-[var(--text-secondary)]",
+      "bg-[var(--notice-info-bg)] border-[var(--notice-info-border)] text-[var(--notice-info-text)]",
     icon: (
-      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent-primary)]" />
+      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--notice-info-icon)]" />
     ),
   },
 };

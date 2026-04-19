@@ -51,12 +51,12 @@ function parseIssues(result: unknown): IssueData[] {
   );
 }
 
-const DEFAULT_SEVERITY_STYLE = { bg: "hsl(220 10% 18%)", text: "hsl(220 10% 45%)" } as const;
+const DEFAULT_SEVERITY_STYLE = { bg: "var(--bg-hover)", text: "var(--text-muted)" } as const;
 
 const SEVERITY_COLORS: Record<string, { bg: string; text: string }> = {
-  critical: { bg: "hsla(0 70% 55% / 0.10)", text: "#ff453a" },
-  major: { bg: "hsla(14 100% 60% / 0.10)", text: "hsl(14 100% 60%)" },
-  minor: { bg: "hsla(220 60% 50% / 0.12)", text: "hsl(220 60% 50%)" },
+  critical: { bg: "var(--status-error-muted)", text: "var(--status-error)" },
+  major: { bg: "var(--accent-muted)", text: "var(--accent-primary)" },
+  minor: { bg: "var(--status-info-muted)", text: "var(--status-info)" },
   suggestion: DEFAULT_SEVERITY_STYLE,
 };
 
@@ -81,7 +81,7 @@ function ChevronIcon({ isOpen, compact }: { isOpen: boolean; compact?: boolean }
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{
-        color: "hsl(220 10% 45%)",
+        color: "var(--text-muted)",
         flexShrink: 0,
         transition: "transform 200ms",
         transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
@@ -104,7 +104,7 @@ function AlertIcon({ compact }: { compact?: boolean }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ color: "hsl(220 10% 45%)", flexShrink: 0 }}
+      style={{ color: "var(--text-muted)", flexShrink: 0 }}
     >
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="8" x2="12" y2="12" />
@@ -148,14 +148,14 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
           height="12"
           viewBox="0 0 24 24"
           fill="none"
-          stroke="hsl(220 10% 45%)"
+          stroke="var(--text-muted)"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
           <polyline points="20 6 9 17 4 12" />
         </svg>
-        <span style={{ fontSize: "10.5px", color: "hsl(220 10% 45%)" }}>
+        <span style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>
           No open issues
         </span>
       </div>
@@ -168,19 +168,19 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
   const hasCritical = criticalCount > 0;
 
   const badgeStyle: React.CSSProperties = hasCritical
-    ? { background: "hsla(0 70% 55% / 0.10)", color: "#ff453a" }
+    ? { background: "var(--status-error-muted)", color: "var(--status-error)" }
     : majorCount > 0
-      ? { background: "hsla(14 100% 60% / 0.10)", color: "hsl(14 100% 60%)" }
-      : { background: "hsl(220 10% 18%)", color: "hsl(220 10% 45%)" };
+      ? { background: "var(--accent-muted)", color: "var(--accent-primary)" }
+      : { background: "var(--bg-hover)", color: "var(--text-muted)" };
 
   return (
     <div
       data-testid="issues-summary-widget"
       style={{
-        background: "hsl(220 10% 12%)",
+        background: "var(--bg-surface)",
         borderRadius: "10px",
         overflow: "hidden",
-        border: "1px solid hsl(220 10% 15%)",
+        border: "1px solid var(--border-subtle)",
       }}
     >
       {/* Header */}
@@ -211,7 +211,7 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
           style={{
             fontSize: compact ? "11px" : "11.5px",
             fontWeight: 500,
-            color: "hsl(220 10% 60%)",
+            color: "var(--text-secondary)",
             flex: 1,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -246,7 +246,7 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
         <div
           style={{
             padding: "0 10px 8px",
-            borderTop: "1px solid hsl(220 10% 15%)",
+            borderTop: "1px solid var(--border-subtle)",
             paddingTop: "8px",
           }}
         >
@@ -294,7 +294,7 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
                     <div
                       style={{
                         fontSize: compact ? "11px" : "11.5px",
-                        color: "hsl(220 10% 75%)",
+                        color: "var(--text-secondary)",
                         lineHeight: "1.4",
                       }}
                     >
@@ -304,7 +304,7 @@ export const IssuesSummaryWidget = React.memo(function IssuesSummaryWidget({
                       <div
                         style={{
                           fontSize: "10px",
-                          color: "hsl(220 10% 45%)",
+                          color: "var(--text-muted)",
                           fontFamily: "var(--font-mono)",
                           marginTop: "1px",
                           overflow: "hidden",

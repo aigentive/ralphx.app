@@ -170,7 +170,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
             variant="ghost"
             size="sm"
             onClick={handleClearAll}
-            className="h-6 px-2 text-xs text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
+            className="h-6 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
             <X className="w-3 h-3 mr-1" />
             Clear all
@@ -190,7 +190,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
             {/* Category header with toggle */}
             <button
               onClick={() => handleCategoryToggle(category)}
-              className="flex items-center gap-2 w-full hover:bg-[hsl(220_10%_15%)] rounded px-1 py-0.5 transition-colors"
+              className="flex items-center gap-2 w-full hover:bg-[var(--bg-elevated)] rounded px-1 py-0.5 transition-colors"
             >
               <div
                 className="w-2.5 h-2.5 rounded-sm"
@@ -203,7 +203,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                 {categoryLabel}
               </span>
               {someSelected && (
-                <span className="ml-auto text-[10px] text-[hsl(220_10%_50%)]">
+                <span className="ml-auto text-[10px] text-[var(--text-muted)]">
                   {items.filter((item) => filters.statuses.includes(item.status)).length}/{items.length}
                 </span>
               )}
@@ -218,7 +218,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                 return (
                   <label
                     key={item.status}
-                    className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-[hsl(220_10%_12%)] rounded px-1 transition-colors"
+                    className="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-[var(--bg-surface)] rounded px-1 transition-colors"
                   >
                     <Checkbox
                       checked={isSelected}
@@ -232,7 +232,7 @@ const StatusFilterContent = memo(function StatusFilterContent({
                         backgroundColor: style.backgroundColor,
                       }}
                     />
-                    <span className="text-xs text-[hsl(220_10%_70%)]">{item.label}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">{item.label}</span>
                   </label>
                 );
               })}
@@ -242,14 +242,14 @@ const StatusFilterContent = memo(function StatusFilterContent({
       })}
 
       {/* Show archived toggle */}
-      <div className="pt-2 border-t border-[hsl(220_10%_20%)]">
+      <div className="pt-2 border-t border-[var(--border-subtle)]">
         <label className="flex items-center gap-2 cursor-pointer">
           <Checkbox
             checked={filters.showArchived}
             onCheckedChange={handleShowArchivedToggle}
             className="h-3.5 w-3.5"
           />
-          <span className="text-xs text-[hsl(220_10%_70%)]">Show archived tasks</span>
+          <span className="text-xs text-[var(--text-secondary)]">Show archived tasks</span>
         </label>
       </div>
     </div>
@@ -276,26 +276,26 @@ const GroupingDropdown = memo(function GroupingDropdown({
         <button
           className={cn(
             "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
-            "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
-            "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]"
+            "bg-[var(--bg-surface)] border border-[var(--border-default)]",
+            "hover:bg-[var(--bg-elevated)] hover:border-[var(--border-default)]"
           )}
         >
-          <Layers className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-          <span className="text-[hsl(220_10%_70%)]">{currentOption}</span>
-          <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+          <Layers className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+          <span className="text-[var(--text-secondary)]">{currentOption}</span>
+          <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-56 p-1 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
+        className="w-56 p-1 bg-[var(--bg-elevated)] border-[var(--border-default)]"
         align="start"
       >
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[10px] text-[hsl(220_10%_50%)] uppercase tracking-wide">
+          <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">
             Grouping
           </span>
           <button
             onClick={() => onGroupingChange({ byPlan: false, byTier: false, showUncategorized: false })}
-            className="text-[10px] text-[hsl(220_10%_60%)] hover:text-[hsl(220_10%_80%)]"
+            className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
             None
           </button>
@@ -309,7 +309,7 @@ const GroupingDropdown = memo(function GroupingDropdown({
                 key={option.key}
                 className={cn(
                   "flex items-start gap-2 px-2 py-2 rounded transition-colors cursor-pointer",
-                  "hover:bg-[hsl(220_10%_15%)]",
+                  "hover:bg-[var(--bg-hover)]",
                   isDisabled && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -324,8 +324,8 @@ const GroupingDropdown = memo(function GroupingDropdown({
                   }}
                 />
                 <div className="flex-1">
-                  <div className="text-xs text-[hsl(220_10%_80%)]">{option.label}</div>
-                  <div className="text-[10px] text-[hsl(220_10%_50%)]">{option.description}</div>
+                  <div className="text-xs text-[var(--text-primary)]">{option.label}</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">{option.description}</div>
                 </div>
               </label>
             );
@@ -368,8 +368,8 @@ function GraphControlsComponent({
     <div
       className={cn(
         "flex items-center gap-2 px-3 py-2",
-        "bg-[hsl(220_10%_10%_/_0.9)] backdrop-blur-sm",
-        "border-b border-[hsl(220_10%_25%)]",
+        "bg-[color-mix(in_srgb,_var(--bg-elevated)_90%,_transparent)] backdrop-blur-sm",
+        "border-b border-[var(--border-default)]",
         className
       )}
       data-testid="graph-controls"
@@ -380,23 +380,23 @@ function GraphControlsComponent({
           <button
             className={cn(
               "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
-              "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
-              "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]",
-              activeStatusCount > 0 && "border-[hsl(14_100%_55%)]"
+              "bg-[var(--bg-surface)] border border-[var(--border-default)]",
+              "hover:bg-[var(--bg-elevated)] hover:border-[var(--border-default)]",
+              activeStatusCount > 0 && "border-[var(--accent-primary)]"
             )}
           >
-            <Filter className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
-            <span className="text-[hsl(220_10%_70%)]">
+            <Filter className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+            <span className="text-[var(--text-secondary)]">
               Status
               {activeStatusCount > 0 && (
-                <span className="ml-1 text-[hsl(14_100%_55%)]">({activeStatusCount})</span>
+                <span className="ml-1 text-[var(--accent-primary)]">({activeStatusCount})</span>
               )}
             </span>
-            <ChevronDown className="w-3 h-3 text-[hsl(220_10%_50%)]" />
+            <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
           </button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-64 p-3 bg-[hsl(220_10%_10%)] border-[hsl(220_10%_25%)]"
+          className="w-64 p-3 bg-[var(--bg-elevated)] border-[var(--border-default)]"
           align="start"
         >
           <StatusFilterContent filters={filters} onFiltersChange={onFiltersChange} />
@@ -404,24 +404,24 @@ function GraphControlsComponent({
       </Popover>
 
       {/* Separator */}
-      <div className="h-5 w-px bg-[hsl(220_10%_25%)]" />
+      <div className="h-5 w-px bg-[var(--border-default)]" />
 
       {/* Layout Direction Toggle */}
       <button
         onClick={handleLayoutToggle}
         className={cn(
           "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
-          "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
-          "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]"
+          "bg-[var(--bg-surface)] border border-[var(--border-default)]",
+          "hover:bg-[var(--bg-elevated)] hover:border-[var(--border-default)]"
         )}
         title={layoutDirection === "TB" ? "Switch to horizontal layout" : "Switch to vertical layout"}
       >
         {layoutDirection === "TB" ? (
-          <ArrowDownFromLine className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+          <ArrowDownFromLine className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         ) : (
-          <ArrowRightFromLine className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+          <ArrowRightFromLine className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         )}
-        <span className="text-[hsl(220_10%_70%)]">{layoutDirection}</span>
+        <span className="text-[var(--text-secondary)]">{layoutDirection}</span>
       </button>
 
       {/* Node Mode Toggle */}
@@ -429,9 +429,9 @@ function GraphControlsComponent({
         onClick={handleNodeModeToggle}
         className={cn(
           "flex items-center gap-1.5 px-2 py-1.5 rounded text-xs transition-colors",
-          "bg-[hsl(220_10%_12%)] border border-[hsl(220_10%_25%)]",
-          "hover:bg-[hsl(220_10%_15%)] hover:border-[hsl(220_10%_30%)]",
-          isAutoCompact && nodeMode === "compact" && "border-[hsl(14_100%_55%_/_0.5)]"
+          "bg-[var(--bg-surface)] border border-[var(--border-default)]",
+          "hover:bg-[var(--bg-elevated)] hover:border-[var(--border-default)]",
+          isAutoCompact && nodeMode === "compact" && "border-[var(--accent-strong)]"
         )}
         title={
           nodeMode === "standard"
@@ -442,15 +442,15 @@ function GraphControlsComponent({
         }
       >
         {nodeMode === "compact" ? (
-          <Minimize2 className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+          <Minimize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         ) : (
-          <Maximize2 className="w-3.5 h-3.5 text-[hsl(220_10%_50%)]" />
+          <Maximize2 className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         )}
-        <span className="text-[hsl(220_10%_70%)]">
+        <span className="text-[var(--text-secondary)]">
           {nodeMode === "compact" ? "Compact" : "Standard"}
         </span>
         {isAutoCompact && nodeMode === "compact" && (
-          <span className="text-[10px] text-[hsl(14_100%_55%)]">(auto)</span>
+          <span className="text-[10px] text-[var(--accent-primary)]">(auto)</span>
         )}
       </button>
 

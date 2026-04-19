@@ -652,7 +652,7 @@ describe("BasicTaskDetail", () => {
 
       const soloBtn = screen.getByTestId("mode-solo");
       // Solo button should have non-transparent background (selected state)
-      expect(soloBtn).toHaveStyle({ backgroundColor: "hsla(220 10% 100% / 0.08)" });
+      expect(soloBtn).toHaveStyle({ backgroundColor: "var(--overlay-moderate)" });
     });
 
     it("switches to team mode with orange styling on click", async () => {
@@ -664,7 +664,7 @@ describe("BasicTaskDetail", () => {
       await user.click(teamBtn);
 
       // Team button should have warm orange background when selected
-      expect(teamBtn).toHaveStyle({ backgroundColor: "hsla(14 100% 60% / 0.15)" });
+      expect(teamBtn).toHaveStyle({ backgroundColor: "var(--accent-muted)" });
     });
 
     it("passes 'team' agentVariant to API when team mode selected", async () => {

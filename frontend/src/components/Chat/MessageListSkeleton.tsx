@@ -5,6 +5,8 @@
  * Centered, minimal, with organic breathing animation.
  */
 
+import { withAlpha } from "@/lib/theme-colors";
+
 const skeletonStyles = `
 @keyframes skeleton-breathe {
   0%, 100% {
@@ -46,9 +48,9 @@ const skeletonStyles = `
 .skeleton-line {
   background: linear-gradient(
     90deg,
-    hsla(0 0% 100% / 0.04) 0%,
-    hsla(0 0% 100% / 0.08) 50%,
-    hsla(0 0% 100% / 0.04) 100%
+    var(--overlay-faint) 0%,
+    var(--overlay-weak) 50%,
+    var(--overlay-faint) 100%
   );
   border-radius: 6px;
   animation: skeleton-breathe 2.4s ease-in-out infinite;
@@ -57,9 +59,9 @@ const skeletonStyles = `
 .skeleton-line-accent {
   background: linear-gradient(
     90deg,
-    hsla(14 100% 60% / 0.06) 0%,
-    hsla(14 100% 60% / 0.12) 50%,
-    hsla(14 100% 60% / 0.06) 100%
+    color-mix(in srgb, var(--accent-primary) 6%, transparent) 0%,
+    color-mix(in srgb, var(--accent-primary) 12%, transparent) 50%,
+    color-mix(in srgb, var(--accent-primary) 6%, transparent) 100%
   );
   border-radius: 6px;
   animation: skeleton-breathe 2.4s ease-in-out infinite;
@@ -68,8 +70,8 @@ const skeletonStyles = `
 .skeleton-avatar {
   background: linear-gradient(
     135deg,
-    hsla(14 100% 60% / 0.15) 0%,
-    hsla(14 100% 60% / 0.08) 100%
+    color-mix(in srgb, var(--accent-primary) 15%, transparent) 0%,
+    color-mix(in srgb, var(--accent-primary) 8%, transparent) 100%
   );
   animation: skeleton-pulse-ring 2.4s ease-in-out infinite;
 }
@@ -92,7 +94,7 @@ export function MessageListSkeleton() {
           <div
             className="skeleton-avatar w-10 h-10 rounded-xl flex items-center justify-center"
             style={{
-              boxShadow: "0 0 20px hsla(14 100% 60% / 0.1)",
+              boxShadow: `0 0 20px ${withAlpha("var(--accent-primary)", 10)}`,
             }}
           >
             {/* Three dots in a subtle arrangement */}
@@ -102,7 +104,7 @@ export function MessageListSkeleton() {
                   key={i}
                   className="w-1.5 h-1.5 rounded-full"
                   style={{
-                    backgroundColor: "hsla(14 100% 60% / 0.6)",
+                    backgroundColor: withAlpha("var(--accent-primary)", 60),
                     animation: `skeleton-breathe 1.6s ease-in-out infinite`,
                     animationDelay: `${i * 0.15}s`,
                   }}
@@ -149,7 +151,7 @@ export function MessageListSkeleton() {
           <p
             className="text-[11px] tracking-wide uppercase"
             style={{
-              color: "hsla(0 0% 100% / 0.25)",
+              color: "var(--text-muted)",
               fontFamily: "var(--font-body)",
               letterSpacing: "0.08em",
               animation: "skeleton-breathe 2.4s ease-in-out infinite",

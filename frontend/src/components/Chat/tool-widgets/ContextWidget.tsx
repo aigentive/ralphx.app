@@ -203,8 +203,8 @@ export const ContextWidget = React.memo(function ContextWidget({
                     fontWeight: 600,
                     textTransform: "uppercase" as const,
                     letterSpacing: "0.04em",
-                    background: "hsl(220 10% 18%)",
-                    color: "hsl(220 10% 45%)",
+                    background: "var(--bg-hover)",
+                    color: "var(--text-muted)",
                     flexShrink: 0,
                   }}
                 >

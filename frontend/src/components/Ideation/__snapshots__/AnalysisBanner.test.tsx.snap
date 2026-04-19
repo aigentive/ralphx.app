@@ -4,7 +4,7 @@ exports[`AnalysisBanner > matches snapshot 1`] = `
 <div
   class="flex items-center gap-2 px-4 py-2 shrink-0"
   data-testid="analysis-banner"
-  style="background: rgba(255, 99, 51, 0.06); border-bottom: 1px solid rgba(255, 99, 51, 0.15);"
+  style="background: color-mix(in srgb, var(--accent-primary) 6%, transparent); border-bottom: 1px solid var(--accent-border);"
 >
   <svg
     aria-hidden="true"
@@ -15,7 +15,7 @@ exports[`AnalysisBanner > matches snapshot 1`] = `
     stroke-linecap="round"
     stroke-linejoin="round"
     stroke-width="2"
-    style="color: rgb(255, 99, 51);"
+    style="color: var(--accent-primary);"
     viewBox="0 0 24 24"
     width="24"
     xmlns="http://www.w3.org/2000/svg"
@@ -26,7 +26,7 @@ exports[`AnalysisBanner > matches snapshot 1`] = `
   </svg>
   <span
     class="text-[12px]"
-    style="color: rgb(255, 118, 77);"
+    style="color: var(--accent-primary);"
   >
     Analyzing dependencies — accept will be available when complete
   </span>

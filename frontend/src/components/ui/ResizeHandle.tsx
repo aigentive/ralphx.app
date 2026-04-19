@@ -13,7 +13,7 @@
 // ============================================================================
 
 /** Default chat panel width in pixels */
-export const CHAT_PANEL_DEFAULT_WIDTH = 430;
+export const CHAT_PANEL_DEFAULT_WIDTH = 600;
 
 /** Minimum chat panel width in pixels */
 export const CHAT_PANEL_MIN_WIDTH = 320;
@@ -44,8 +44,8 @@ export const ResizeHandle = memo(function ResizeHandle({
       <div
         className={`h-full transition-all duration-150 ${
           isResizing
-            ? "w-[3px] bg-[hsl(14_100%_55%)]"
-            : "w-[2px] bg-[hsla(220_20%_100%_/_0.15)] group-hover:w-[3px] group-hover:bg-[hsl(14_100%_55%)]"
+            ? "w-[3px] bg-[var(--accent-primary)]"
+            : "w-[2px] bg-[var(--border-subtle)] group-hover:w-[3px] group-hover:bg-[var(--accent-primary)]"
         }`}
       />
     </div>
@@ -58,6 +58,6 @@ export const ResizeHandle = memo(function ResizeHandle({
  */
 export const SeparatorLine = memo(function SeparatorLine() {
   return (
-    <div className="shrink-0 w-px bg-[hsla(220_20%_100%_/_0.04)]" />
+    <div className="shrink-0 w-px bg-[var(--overlay-faint)]" />
   );
 });

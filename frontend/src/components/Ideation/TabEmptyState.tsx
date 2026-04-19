@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FileDown } from "lucide-react";
+import { withAlpha } from "@/lib/theme-colors";
 
 interface TabEmptyStateProps {
   icon: ReactNode;
@@ -10,8 +11,17 @@ interface TabEmptyStateProps {
 
 export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmptyStateProps) {
   return (
-    <div className="flex flex-col items-center pt-[20%] h-full p-6">
-      <div className="w-full max-w-[280px]">
+    <div
+      data-testid="tab-empty-state"
+      className="flex flex-col items-center justify-center h-full p-6"
+    >
+      <div
+        className="w-full max-w-[340px] rounded-2xl p-6"
+        style={{
+          background: "var(--overlay-faint)",
+          border: "1px solid var(--border-subtle)",
+        }}
+      >
         {/* Icon */}
         <div className="flex justify-center mb-4">
           {icon}
@@ -21,11 +31,11 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
         <div className="text-center">
           <h3
             className="text-sm font-semibold mb-1.5 tracking-tight"
-            style={{ color: "hsl(220 10% 90%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             {heading}
           </h3>
-          <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             {description}
           </p>
         </div>
@@ -35,8 +45,8 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
-              background: "hsla(220 10% 100% / 0.03)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
             }}
           >
             <svg
@@ -44,7 +54,7 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
               height="14"
               viewBox="0 0 14 14"
               fill="none"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               <path
                 d="M2 7h10m0 0l-3-3m3 3l-3 3"
@@ -56,7 +66,7 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
             </svg>
             <span
               className="text-[10px] uppercase tracking-wider"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               From chat
             </span>
@@ -69,32 +79,35 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
             <div className="flex items-center gap-3 mt-6">
               <div
                 className="flex-1 h-px"
-                style={{ background: "hsla(220 10% 100% / 0.08)" }}
+                style={{ background: "var(--overlay-moderate)" }}
               />
               <span
                 className="text-[10px] uppercase tracking-wider"
-                style={{ color: "hsl(220 10% 50%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 or
               </span>
               <div
                 className="flex-1 h-px"
-                style={{ background: "hsla(220 10% 100% / 0.08)" }}
+                style={{ background: "var(--overlay-moderate)" }}
               />
             </div>
 
-            {/* Browse button */}
+            {/* Browse button — filled with a soft gray tint (overlay-weak)
+                so the drop zone reads as a nested frame inside the card,
+                slightly lighter than the card's overlay-faint fill. Hover
+                bumps to overlay-moderate for affordance. */}
             <button
               data-testid="drop-hint"
               type="button"
               onClick={onBrowse}
               className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors cursor-pointer focus:outline-none"
-              style={{ color: "hsl(220 10% 50%)" }}
+              style={{ color: "var(--text-muted)", background: "var(--overlay-weak)" }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+                e.currentTarget.style.background = "var(--overlay-moderate)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.background = "var(--overlay-weak)";
               }}
             >
               <FileDown className="w-4 h-4" />
@@ -103,7 +116,7 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
                 <br />
                 or{" "}
                 <span
-                  style={{ color: "hsla(14 100% 60% / 0.8)" }}
+                  style={{ color: withAlpha("var(--accent-primary)", 80) }}
                   className="underline underline-offset-2"
                 >
                   click to browse

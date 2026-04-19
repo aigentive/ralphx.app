@@ -170,13 +170,13 @@ function ReviewEntryIssues({
       <button
         onClick={onToggle}
         className="flex items-center gap-1.5 text-[11px] w-full text-left"
-        style={{ color: "hsl(220 10% 55%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <ChevronIcon className="w-3 h-3" />
         <AlertCircle className="w-3 h-3" />
         <span>
           {newIssues.length > 0 && (
-            <span style={{ color: "hsl(220 80% 60%)" }}>
+            <span style={{ color: "var(--status-info)" }}>
               {newIssues.length} new
             </span>
           )}
@@ -184,7 +184,7 @@ function ReviewEntryIssues({
             <span> · </span>
           )}
           {verifiedIssues.length > 0 && (
-            <span style={{ color: "hsl(145 60% 45%)" }}>
+            <span style={{ color: "var(--status-success)" }}>
               {verifiedIssues.length} verified
             </span>
           )}
@@ -198,7 +198,7 @@ function ReviewEntryIssues({
             <div>
               <div
                 className="text-[10px] uppercase tracking-wider mb-1.5"
-                style={{ color: "hsl(220 10% 40%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 Issues Found
               </div>
@@ -215,7 +215,7 @@ function ReviewEntryIssues({
             <div className="mt-2">
               <div
                 className="text-[10px] uppercase tracking-wider mb-1.5"
-                style={{ color: "hsl(145 60% 45%)" }}
+                style={{ color: "var(--status-success)" }}
               >
                 Verified
               </div>
@@ -240,14 +240,14 @@ function CompactIssueCard({ issue }: CompactIssueCardProps) {
   return (
     <div
       className="px-2 py-1.5 rounded"
-      style={{ backgroundColor: "hsl(220 10% 12%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
     >
       <div className="flex items-center gap-1.5">
         <SeverityBadge severity={issue.severity} compact />
         <StatusBadge status={issue.status} compact />
         <span
           className="text-[11px] truncate flex-1"
-          style={{ color: "hsl(220 10% 75%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {issue.title}
         </span>
@@ -255,7 +255,7 @@ function CompactIssueCard({ issue }: CompactIssueCardProps) {
       {issue.filePath && (
         <div
           className="text-[10px] font-mono mt-0.5"
-          style={{ color: "hsl(220 80% 60%)" }}
+          style={{ color: "var(--status-info)" }}
         >
           {issue.filePath}
           {issue.lineNumber && `:${issue.lineNumber}`}
@@ -277,18 +277,18 @@ function IssueSummaryHeader({ progress }: IssueSummaryHeaderProps) {
   return (
     <div
       className="p-3 rounded-lg mb-3"
-      style={{ backgroundColor: "hsl(220 10% 12%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
     >
       <div className="flex items-center justify-between mb-2">
         <span
           className="text-[11px] uppercase tracking-wider font-medium"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           Issue Progress
         </span>
         <span
           className="text-[12px] font-medium tabular-nums"
-          style={{ color: "hsl(220 10% 70%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {progress.verified + progress.addressed + progress.wontfix}/{progress.total} resolved
         </span>

@@ -8,6 +8,7 @@
 import { useMemo } from "react";
 import { CheckCircle2, ArrowRight, Clock, Zap, CircleCheck } from "lucide-react";
 import { useTasks } from "@/hooks/useTasks";
+import { withAlpha } from "@/lib/theme-colors";
 import type { TaskProposal } from "@/types/ideation";
 import { getStatusCounts } from "@/types/status";
 
@@ -59,90 +60,90 @@ export function AcceptedSessionBanner({
       data-testid="accepted-session-banner"
       className="mb-4 rounded-xl overflow-hidden"
       style={{
-        background: "hsla(220 10% 14% / 0.8)",
-        border: "1px solid hsla(14 100% 60% / 0.15)",
-        boxShadow: "0 0 24px hsla(14 100% 60% / 0.04)",
+        background: `linear-gradient(135deg, ${withAlpha("var(--status-success)", 12)} 0%, ${withAlpha("var(--status-success)", 4)} 100%)`,
+        border: `1px solid ${withAlpha("var(--status-success)", 35)}`,
+        boxShadow: `0 0 32px ${withAlpha("var(--status-success)", 8)}, inset 0 1px 0 ${withAlpha("var(--status-success)", 15)}`,
       }}
     >
-      {/* Top accent line */}
-      <div
-        className="h-[2px] w-full"
-        style={{
-          background: "linear-gradient(90deg, hsla(14 100% 60% / 0.6) 0%, hsla(14 100% 60% / 0.1) 100%)",
-        }}
-      />
-
-      <div className="px-4 py-3.5">
+      <div className="px-5 py-4">
         {/* Header row */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-5 h-5 rounded-full flex items-center justify-center"
-              style={{ background: "hsla(145 70% 45% / 0.15)" }}
+              className="w-7 h-7 rounded-full flex items-center justify-center"
+              style={{
+                background: withAlpha("var(--status-success)", 18),
+                border: `1px solid ${withAlpha("var(--status-success)", 40)}`,
+              }}
             >
-              <CheckCircle2 className="w-3 h-3" style={{ color: "hsl(145 70% 45%)" }} />
+              <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
             </div>
-            <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>
-              Plan accepted
-            </span>
-            {convertedAt && (
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 45%)" }}>
-                {formatTimestamp(convertedAt)}
+            <div className="flex flex-col leading-tight">
+              <span className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                Plan accepted
               </span>
-            )}
+              {convertedAt && (
+                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {formatTimestamp(convertedAt)}
+                </span>
+              )}
+            </div>
           </div>
 
           <button
             data-testid="view-work-button"
             onClick={onViewWork}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-150"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-150"
             style={{
-              background: "hsl(14 100% 60%)",
-              color: "white",
-              boxShadow: "0 1px 4px hsla(14 100% 40% / 0.3)",
+              background: "var(--status-success)",
+              color: "var(--text-inverse)",
+              boxShadow: `0 1px 4px ${withAlpha("var(--status-success)", 30)}`,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 55%)";
-              e.currentTarget.style.boxShadow = "0 2px 8px hsla(14 100% 40% / 0.4)";
+              e.currentTarget.style.background = withAlpha("var(--status-success)", 90);
+              e.currentTarget.style.boxShadow = `0 2px 8px ${withAlpha("var(--status-success)", 40)}`;
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "hsl(14 100% 60%)";
-              e.currentTarget.style.boxShadow = "0 1px 4px hsla(14 100% 40% / 0.3)";
+              e.currentTarget.style.background = "var(--status-success)";
+              e.currentTarget.style.boxShadow = `0 1px 4px ${withAlpha("var(--status-success)", 30)}`;
             }}
           >
             View Work
-            <ArrowRight className="w-3 h-3" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Status summary */}
-        <div className="flex items-center gap-4">
-          <span className="text-[12px]" style={{ color: "hsl(220 10% 50%)" }}>
+        <div
+          className="flex items-center gap-4 pt-3"
+          style={{ borderTop: `1px solid ${withAlpha("var(--status-success)", 15)}` }}
+        >
+          <span className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
             {counts.total} {counts.total === 1 ? "task" : "tasks"}
           </span>
 
           {counts.active > 0 && (
-            <div className="flex items-center gap-1">
-              <Zap className="w-3 h-3" style={{ color: "hsl(14 100% 60%)" }} />
-              <span className="text-[11px]" style={{ color: "hsl(14 100% 65%)" }}>
+            <div className="flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" style={{ color: "var(--accent-primary)" }} />
+              <span className="text-[12px] font-medium" style={{ color: "var(--accent-primary)" }}>
                 {counts.active} in progress
               </span>
             </div>
           )}
 
           {counts.done > 0 && (
-            <div className="flex items-center gap-1">
-              <CircleCheck className="w-3 h-3" style={{ color: "hsl(145 70% 45%)" }} />
-              <span className="text-[11px]" style={{ color: "hsl(145 70% 50%)" }}>
+            <div className="flex items-center gap-1.5">
+              <CircleCheck className="w-3.5 h-3.5" style={{ color: "var(--status-success)" }} />
+              <span className="text-[12px] font-medium" style={{ color: "var(--status-success)" }}>
                 {counts.done} completed
               </span>
             </div>
           )}
 
           {counts.idle > 0 && counts.active === 0 && counts.done === 0 && (
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" style={{ color: "hsl(220 10% 45%)" }} />
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+              <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
                 {counts.idle} queued
               </span>
             </div>

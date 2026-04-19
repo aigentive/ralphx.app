@@ -347,13 +347,13 @@ export function DiffPanel({
         className="flex items-center justify-between px-4 shrink-0"
         style={{
           height: "40px",
-          borderBottom: "1px solid hsl(220 10% 15%)",
-          backgroundColor: "hsl(220 10% 10%)",
+          borderBottom: "1px solid var(--border-subtle)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         <span
           className="font-mono text-sm truncate"
-          style={{ color: "hsl(220 10% 75%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {filePath}
         </span>

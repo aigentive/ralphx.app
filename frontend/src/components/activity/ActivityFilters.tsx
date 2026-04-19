@@ -51,7 +51,7 @@ export function ViewModeToggle({
   const showPulsating = mode === "realtime" && isReceiving;
 
   return (
-    <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-base)]">
+    <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-hover)]">
       <button
         data-testid="activity-mode-realtime"
         onClick={() => onChange("realtime")}
@@ -59,16 +59,16 @@ export function ViewModeToggle({
         className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors relative",
           mode === "realtime"
-            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
-            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent",
+            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-xs)]"
+            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
           disabled && "opacity-50 cursor-not-allowed",
           showPulsating && "live-receiving"
         )}
       >
-        <Radio className={cn("w-3 h-3", showPulsating && "text-[#ff6b35]")} />
+        <Radio className={cn("w-3 h-3", showPulsating && "text-[var(--accent-primary)]")} />
         Live
         {showPulsating && (
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#ff6b35] live-pulse-dot" />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent-primary)] live-pulse-dot" />
         )}
       </button>
       <button
@@ -78,8 +78,8 @@ export function ViewModeToggle({
         className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
           mode === "historical"
-            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
-            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent",
+            ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-xs)]"
+            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >
@@ -263,7 +263,7 @@ export function SearchBar({
       {value && (
         <button
           onClick={onClear}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-white/5 text-[var(--text-muted)]"
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[var(--overlay-faint)] text-[var(--text-muted)]"
           aria-label="Clear search"
         >
           <X className="w-4 h-4" />

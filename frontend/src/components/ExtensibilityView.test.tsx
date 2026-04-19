@@ -94,7 +94,8 @@ describe("ExtensibilityView", () => {
       const view = screen.getByTestId("extensibility-view");
       const style = view.getAttribute("style");
       expect(style).toContain("radial-gradient");
-      expect(style).toContain("rgba(255,107,53");
+      // Accent color resolved through design-token layer via color-mix()
+      expect(style).toContain("var(--accent-primary)");
     });
   });
 

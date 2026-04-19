@@ -113,7 +113,7 @@ describe("ChatInput", () => {
     it("has minHeight style for single line", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ minHeight: "36px" });
+      expect(textarea).toHaveStyle({ minHeight: "34px" });
     });
 
     it("has maxHeight style to limit growth", () => {
@@ -312,14 +312,14 @@ describe("ChatInput", () => {
       render(<ChatInput {...defaultProps} />);
       await user.type(screen.getByTestId("chat-input-textarea"), "Hello");
       const sendButton = screen.getByTestId("chat-input-send");
-      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      expect(sendButton).toHaveStyle({ background: "var(--accent-primary)" });
     });
 
     it("applies reduced opacity when send button is disabled", async () => {
       render(<ChatInput {...defaultProps} />);
       const sendButton = screen.getByTestId("chat-input-send");
-      // Send button should have disabled:opacity-50 class or similar
-      expect(sendButton).toHaveClass("disabled:opacity-40");
+      // Send button uses disabled:opacity-[0.54] (Tailwind arbitrary value)
+      expect(sendButton.className).toMatch(/disabled:opacity-\[0\.54\]/);
     });
   });
 
@@ -608,8 +608,8 @@ describe("ChatInput", () => {
       await user.type(textarea, "answer");
 
       const sendButton = screen.getByTestId("chat-input-send");
-      // Should have the orange accent color when enabled
-      expect(sendButton).toHaveStyle({ background: "hsl(14 100% 60%)" });
+      // Should have the orange accent color when enabled (design token)
+      expect(sendButton).toHaveStyle({ background: "var(--accent-primary)" });
     });
 
     it("calls onSend when Send button clicked in question mode", async () => {
@@ -736,20 +736,18 @@ describe("ChatInput", () => {
       expect(onRemoveAttachment).toHaveBeenCalledWith("1");
     });
 
-    it("ChatAttachmentPicker appears to the left of textarea", () => {
+    it("ChatAttachmentPicker appears between textarea and Send button", () => {
       render(<ChatInput {...defaultProps} enableAttachments={true} />);
 
-      const container = screen.getByTestId("chat-input-textarea").parentElement;
+      const textarea = screen.getByTestId("chat-input-textarea");
       const pickerButton = screen.getByTestId("attachment-picker-button");
+      const sendButton = screen.getByTestId("chat-input-send");
 
-      expect(container).toContainElement(pickerButton);
-
-      // Picker should be first child in the flex container
-      const children = Array.from(container?.children || []);
-      const pickerIndex = children.findIndex(el => el.contains(pickerButton));
-      const textareaIndex = children.findIndex(el => el === screen.getByTestId("chat-input-textarea"));
-
-      expect(pickerIndex).toBeLessThan(textareaIndex);
+      // Document order: textarea → picker → send
+      const position = textarea.compareDocumentPosition(pickerButton);
+      const sendPosition = pickerButton.compareDocumentPosition(sendButton);
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(sendPosition & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("ChatAttachmentGallery appears below textarea and above helper text", () => {

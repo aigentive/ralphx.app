@@ -36,6 +36,12 @@ export interface ChatSessionToolbarProps {
   providerProfile?: string | null;
   fallbackConversation?: ChatConversation | null | undefined;
   fallbackMessages?: ChatMessageResponse[] | null | undefined;
+  /**
+   * When true, skip rendering the provider-context chips (harness badge,
+   * ModelChip, EffortChip, stats popover) — used when those chips are
+   * rendered elsewhere (e.g., inline in the Conversation header).
+   */
+  hideProviderContext?: boolean;
 }
 
 export function ChatSessionToolbar({
@@ -55,6 +61,7 @@ export function ChatSessionToolbar({
   providerProfile,
   fallbackConversation,
   fallbackMessages,
+  hideProviderContext = false,
 }: ChatSessionToolbarProps) {
   const { data: featureFlags } = useFeatureFlags();
   const statsFallbackConversation = useMemo(() => {
@@ -116,10 +123,11 @@ export function ChatSessionToolbar({
   });
   const showStats = Boolean(stats);
   const showProviderContext =
-    harnessLabel !== null ||
-    modelDisplay != null ||
-    effortKey != null ||
-    showStats;
+    !hideProviderContext &&
+    (harnessLabel !== null ||
+      modelDisplay != null ||
+      effortKey != null ||
+      showStats);
   const showStatus =
     isAgentActive ||
     agentStatus === "waiting_for_input" ||
@@ -132,7 +140,7 @@ export function ChatSessionToolbar({
   return (
     <div
       className="px-3 py-1.5 shrink-0"
-      style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
+      style={{ borderBottom: "1px solid var(--border-subtle)" }}
     >
       <div
         className="flex min-w-0 items-center gap-2"
@@ -142,7 +150,7 @@ export function ChatSessionToolbar({
           <button
             data-testid="back-to-plan-button"
             onClick={backAction.onClick}
-            className="flex shrink-0 items-center gap-1 text-xs text-white/50 hover:text-white/80 transition-colors"
+            className="flex shrink-0 items-center gap-1 text-xs text-text-primary/50 hover:text-text-primary/80 transition-colors"
           >
             {backAction.icon}
             <span>{backAction.label}</span>

@@ -97,7 +97,7 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
             <div
               key={i}
               className={`${compact ? "text-xs" : "text-[13px]"} font-semibold mb-1`}
-              style={{ color: "hsl(220 10% 90%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {trimmed.replace(/^#+\s*/, "")}
             </div>
@@ -110,7 +110,7 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
             <div
               key={i}
               className={`${compact ? "text-[10.5px]" : "text-[11.5px]"} font-semibold mt-1.5`}
-              style={{ color: "hsl(220 10% 90%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {trimmed.replace(/^#+\s*/, "")}
             </div>
@@ -123,7 +123,7 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
             <div
               key={i}
               className={`${compact ? "text-[10px]" : "text-[11px]"} font-semibold mt-1`}
-              style={{ color: "hsl(220 10% 80%)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               {trimmed.replace(/^#+\s*/, "")}
             </div>
@@ -142,7 +142,7 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
               key={i}
               className={`${compact ? "text-[10px]" : "text-[10.5px]"} mt-0.5`}
               style={{
-                color: "hsl(220 10% 55%)",
+                color: "var(--text-secondary)",
                 fontFamily: "var(--font-mono)",
               }}
             >
@@ -156,7 +156,7 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
           <div
             key={i}
             className={`${compact ? "text-[10px]" : "text-[11px]"} mt-0.5`}
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {trimmed}
           </div>
@@ -239,8 +239,8 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
       <span
         className="text-[9px] px-1.5 py-px rounded font-semibold uppercase tracking-wider flex-shrink-0"
         style={{
-          background: "hsl(220 10% 18%)",
-          color: "hsl(220 10% 45%)",
+          background: "var(--bg-hover)",
+          color: "var(--text-muted)",
           letterSpacing: "0.04em",
         }}
       >
@@ -248,7 +248,7 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
       </span>
       <span
         className={`${compact ? "text-[11px]" : "text-[11.5px]"} font-medium flex-1 min-w-0 truncate`}
-        style={{ color: "hsl(220 10% 60%)" }}
+        style={{ color: "var(--text-secondary)" }}
       >
         {parsed.title}
       </span>
@@ -269,7 +269,7 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
       ) : (
         <div
           className={`${compact ? "text-[10px]" : "text-[10.5px]"} py-1`}
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           No content preview available
         </div>
@@ -300,7 +300,7 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
     <>
       <span
         className={`${compact ? "text-[11px]" : "text-[11.5px]"} font-medium flex-1 min-w-0 truncate`}
-        style={{ color: "hsl(220 10% 60%)" }}
+        style={{ color: "var(--text-secondary)" }}
       >
         {headerTitle}
       </span>
@@ -319,7 +319,7 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
             style={{
               padding: compact ? "4px 6px" : "5px 8px",
               borderRadius: 6,
-              background: "hsl(220 10% 10%)",
+              background: "var(--bg-surface)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -331,8 +331,8 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
                   fontWeight: 600,
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
-                  background: "hsl(220 10% 18%)",
-                  color: "hsl(220 10% 45%)",
+                  background: "var(--bg-hover)",
+                  color: "var(--text-muted)",
                   flexShrink: 0,
                 }}
               >
@@ -342,7 +342,7 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
                 style={{
                   fontSize: compact ? 10.5 : 11,
                   fontWeight: 500,
-                  color: "hsl(220 10% 75%)",
+                  color: "var(--text-secondary)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -356,7 +356,7 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
               <div
                 style={{
                   fontSize: compact ? 9.5 : 10,
-                  color: "hsl(220 10% 50%)",
+                  color: "var(--text-muted)",
                   marginTop: 2,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -374,7 +374,7 @@ function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: 
           <div
             style={{
               fontSize: compact ? 9.5 : 10,
-              color: "hsl(220 10% 45%)",
+              color: "var(--text-muted)",
               padding: "2px 6px",
             }}
           >

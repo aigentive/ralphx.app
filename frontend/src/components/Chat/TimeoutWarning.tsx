@@ -54,9 +54,9 @@ export function TimeoutWarning({ toolCallStartTime, effectiveTimeoutMs, onDismis
       data-testid="timeout-warning-banner"
       className="shrink-0 mx-3 mb-2 flex items-start gap-2 rounded-md px-3 py-2 text-sm"
       style={{
-        backgroundColor: "hsla(38 80% 50% / 0.12)",
-        border: "1px solid hsla(38 80% 50% / 0.3)",
-        color: "hsl(38 80% 70%)",
+        backgroundColor: "var(--status-warning-muted)",
+        border: "1px solid var(--status-warning-border)",
+        color: "var(--status-warning)",
       }}
     >
       <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -70,7 +70,7 @@ export function TimeoutWarning({ toolCallStartTime, effectiveTimeoutMs, onDismis
         onClick={onDismiss}
         aria-label="Dismiss timeout warning"
         className="shrink-0 -mt-0.5 -mr-1 h-6 w-6"
-        style={{ color: "hsl(38 80% 60%)" }}
+        style={{ color: "var(--status-warning)" }}
       >
         <X className="w-3.5 h-3.5" />
       </Button>

@@ -18,7 +18,7 @@ export default function ExecutionSection({
 }: ExecutionSectionProps) {
   return (
     <SectionCard
-      icon={<Zap className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<Zap className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Execution"
       description="Control task execution behavior and concurrency"
     >

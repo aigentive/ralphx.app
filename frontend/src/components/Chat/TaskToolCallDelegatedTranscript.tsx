@@ -10,8 +10,8 @@ function FallbackText({ text }: { text: string }) {
     <pre
       className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64"
       style={{
-        backgroundColor: "var(--bg-surface, hsl(220 10% 10%))",
-        color: "var(--text-secondary, hsl(220 10% 80%))",
+        backgroundColor: "var(--bg-surface)",
+        color: "var(--text-secondary)",
         fontFamily: "var(--font-mono)",
         wordBreak: "break-word",
         whiteSpace: "pre-wrap",
@@ -60,8 +60,8 @@ export function TaskToolCallDelegatedTranscript({
       <div
         className="text-[11px] px-2 py-1.5 rounded"
         style={{
-          backgroundColor: "var(--bg-surface, hsl(220 10% 10%))",
-          color: "var(--text-muted, hsl(220 10% 50%))",
+          backgroundColor: "var(--bg-surface)",
+          color: "var(--text-muted)",
         }}
       >
         Loading delegated conversation...
@@ -76,8 +76,8 @@ export function TaskToolCallDelegatedTranscript({
       <div
         className="text-[11px] px-2 py-1.5 rounded"
         style={{
-          backgroundColor: "hsla(0 70% 50% / 0.1)",
-          color: "hsl(0 70% 75%)",
+          backgroundColor: "var(--status-error-muted)",
+          color: "var(--status-error)",
         }}
       >
         Unable to load delegated conversation.
@@ -95,7 +95,7 @@ export function TaskToolCallDelegatedTranscript({
     <div className="space-y-3">
       <div
         className="text-[10px] uppercase tracking-[0.08em]"
-        style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Delegated conversation
       </div>

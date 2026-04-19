@@ -63,50 +63,50 @@ interface ReviewNoteEntry {
 
 const OUTCOME_STYLES = {
   approved: {
-    bg: "hsla(142, 70%, 45%, 0.12)",
-    border: "hsla(142, 70%, 45%, 0.25)",
-    accent: "hsl(142, 70%, 55%)",
-    text: "hsl(142, 70%, 70%)",
+    bg: "var(--status-success-muted)",
+    border: "var(--status-success-border)",
+    accent: "var(--status-success)",
+    text: "var(--status-success)",
     label: "Approved",
     Icon: CheckCircle,
   },
   approved_no_changes: {
-    bg: "hsla(142, 70%, 45%, 0.12)",
-    border: "hsla(142, 70%, 45%, 0.25)",
-    accent: "hsl(142, 70%, 55%)",
-    text: "hsl(142, 70%, 70%)",
+    bg: "var(--status-success-muted)",
+    border: "var(--status-success-border)",
+    accent: "var(--status-success)",
+    text: "var(--status-success)",
     label: "No Changes",
     Icon: CheckCircle,
   },
   needs_changes: {
-    bg: "hsla(25, 95%, 53%, 0.12)",
-    border: "hsla(25, 95%, 53%, 0.25)",
-    accent: "hsl(25, 95%, 53%)",
-    text: "hsl(25, 90%, 68%)",
+    bg: "var(--accent-muted)",
+    border: "var(--accent-border)",
+    accent: "var(--accent-primary)",
+    text: "var(--accent-primary)",
     label: "Changes Requested",
     Icon: AlertTriangle,
   },
   changes_requested: {
-    bg: "hsla(25, 95%, 53%, 0.12)",
-    border: "hsla(25, 95%, 53%, 0.25)",
-    accent: "hsl(25, 95%, 53%)",
-    text: "hsl(25, 90%, 68%)",
+    bg: "var(--accent-muted)",
+    border: "var(--accent-border)",
+    accent: "var(--accent-primary)",
+    text: "var(--accent-primary)",
     label: "Changes Requested",
     Icon: AlertTriangle,
   },
   escalate: {
-    bg: "hsla(210, 70%, 55%, 0.12)",
-    border: "hsla(210, 70%, 55%, 0.25)",
-    accent: "hsl(210, 70%, 55%)",
-    text: "hsl(210, 70%, 70%)",
+    bg: "var(--status-info-muted)",
+    border: "var(--status-info-border)",
+    accent: "var(--status-info)",
+    text: "var(--status-info)",
     label: "Escalated",
     Icon: AlertCircle,
   },
   rejected: {
-    bg: "hsla(210, 70%, 55%, 0.12)",
-    border: "hsla(210, 70%, 55%, 0.25)",
-    accent: "hsl(210, 70%, 55%)",
-    text: "hsl(210, 70%, 70%)",
+    bg: "var(--status-info-muted)",
+    border: "var(--status-info-border)",
+    accent: "var(--status-info)",
+    text: "var(--status-info)",
     label: "Escalated",
     Icon: AlertCircle,
   },
@@ -115,10 +115,10 @@ const OUTCOME_STYLES = {
 type OutcomeKey = keyof typeof OUTCOME_STYLES;
 
 const DEFAULT_STYLE = {
-  bg: "hsl(220 10% 14%)",
-  border: "hsla(220, 10%, 100%, 0.06)",
-  accent: "hsl(220, 10%, 55%)",
-  text: "hsl(220, 10%, 70%)",
+  bg: "var(--bg-elevated)",
+  border: "var(--border-subtle)",
+  accent: "var(--text-secondary)",
+  text: "var(--text-secondary)",
   label: "Review",
   Icon: FileText,
 };
@@ -131,30 +131,30 @@ function getOutcomeStyle(outcome: string | undefined) {
 function getSeverityColor(severity: string): string {
   switch (severity) {
     case "critical":
-      return "hsl(0, 70%, 65%)";
+      return "var(--status-error)";
     case "major":
-      return "hsl(25, 95%, 60%)";
+      return "var(--accent-primary)";
     case "minor":
-      return "hsl(45, 80%, 60%)";
+      return "var(--status-warning)";
     case "suggestion":
-      return "hsl(210, 60%, 65%)";
+      return "var(--status-info)";
     default:
-      return "hsl(220, 10%, 60%)";
+      return "var(--text-secondary)";
   }
 }
 
 function getSeverityBg(severity: string): string {
   switch (severity) {
     case "critical":
-      return "hsla(0, 70%, 55%, 0.15)";
+      return "var(--status-error-muted)";
     case "major":
-      return "hsla(25, 95%, 53%, 0.15)";
+      return "var(--accent-muted)";
     case "minor":
-      return "hsla(45, 80%, 50%, 0.15)";
+      return "var(--status-warning-muted)";
     case "suggestion":
-      return "hsla(210, 60%, 55%, 0.15)";
+      return "var(--status-info-muted)";
     default:
-      return "hsla(220, 10%, 50%, 0.15)";
+      return "var(--bg-hover)";
   }
 }
 
@@ -201,8 +201,8 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
       data-testid="review-widget-complete"
       className={`${compact ? "rounded-md" : "rounded-lg"} overflow-hidden ${compact ? "mb-1" : ""} ${className}`}
       style={{
-        backgroundColor: hasError ? "hsla(0, 70%, 55%, 0.15)" : style.bg,
-        borderLeft: `3px solid ${hasError ? "hsl(0, 70%, 55%)" : style.accent}`,
+        backgroundColor: hasError ? "var(--status-error-muted)" : style.bg,
+        borderLeft: `3px solid ${hasError ? "var(--status-error)" : style.accent}`,
       }}
     >
       {/* Header */}
@@ -225,9 +225,9 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
         {/* Expand/collapse chevron */}
         {hasBody ? (
           isExpanded ? (
-            <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220, 10%, 45%)" }} />
+            <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           ) : (
-            <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220, 10%, 45%)" }} />
+            <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           )
         ) : null}
 
@@ -245,7 +245,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
         {/* Issue count or summary */}
         <span
           className={`${compact ? "text-[11px]" : "text-xs"} truncate flex-1 min-w-[80px]`}
-          style={{ color: hasError ? "hsl(0, 70%, 75%)" : "hsl(220, 10%, 70%)" }}
+          style={{ color: hasError ? "var(--status-error)" : "var(--text-secondary)" }}
         >
           {issues.length > 0
             ? `${issues.length} issue${issues.length !== 1 ? "s" : ""} found`
@@ -256,7 +256,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
         {hasError && (
           <span
             className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium px-1.5 py-0.5 rounded`}
-            style={{ backgroundColor: "hsla(0, 70%, 50%, 0.2)", color: "hsl(0, 70%, 70%)" }}
+            style={{ backgroundColor: "var(--status-error-muted)", color: "var(--status-error)" }}
           >
             Failed
           </span>
@@ -271,9 +271,9 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
             }}
             className={`${compact ? "text-[9px]" : "text-[10px]"} flex items-center gap-1 px-1.5 py-0.5 rounded transition-opacity hover:opacity-80 flex-shrink-0`}
             style={{
-              backgroundColor: "hsla(14, 100%, 60%, 0.12)",
-              color: "hsl(14, 100%, 68%)",
-              border: "1px solid hsla(14, 100%, 60%, 0.2)",
+              backgroundColor: "var(--accent-muted)",
+              color: "var(--accent-primary)",
+              border: "1px solid var(--accent-border)",
             }}
           >
             <ExternalLink size={compact ? 9 : 10} />
@@ -286,15 +286,15 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
       {isExpanded && hasBody && (
         <div
           className={`${compact ? "px-2 pb-2" : "px-3 pb-3"} space-y-2 pt-1`}
-          style={{ borderTop: "1px solid hsla(220, 10%, 100%, 0.04)" }}
+          style={{ borderTop: "1px solid var(--overlay-faint)" }}
         >
           {/* Feedback text */}
           {args.feedback && (
             <div
               className={`${compact ? "text-[10px]" : "text-[11px]"} px-2 py-1.5 rounded`}
               style={{
-                backgroundColor: "hsl(220, 10%, 10%)",
-                color: "hsl(220, 10%, 75%)",
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--text-secondary)",
                 whiteSpace: "pre-wrap",
                 lineHeight: 1.5,
               }}
@@ -308,7 +308,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
             <div className="space-y-1">
               <div
                 className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium uppercase tracking-wide`}
-                style={{ color: "hsl(220, 10%, 45%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 Issues
               </div>
@@ -316,7 +316,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
                 <div
                   key={idx}
                   className={`${compact ? "text-[10px]" : "text-[11px]"} px-2 py-1.5 rounded flex items-start gap-2`}
-                  style={{ backgroundColor: "hsl(220, 10%, 10%)" }}
+                  style={{ backgroundColor: "var(--bg-surface)" }}
                 >
                   {/* Severity badge */}
                   <span
@@ -326,9 +326,9 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
                     {issue.severity}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div style={{ color: "hsl(220, 10%, 80%)" }}>{issue.description}</div>
+                    <div style={{ color: "var(--text-primary)" }}>{issue.description}</div>
                     {issue.file && (
-                      <div className="mt-0.5 font-mono text-[9px]" style={{ color: "hsl(220, 10%, 50%)" }}>
+                      <div className="mt-0.5 font-mono text-[9px]" style={{ color: "var(--text-muted)" }}>
                         {issue.file}{issue.line != null ? `:${issue.line}` : ""}
                       </div>
                     )}
@@ -342,23 +342,23 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
             <div className="space-y-1">
               <div
                 className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium uppercase tracking-wide`}
-                style={{ color: "hsl(220, 10%, 45%)" }}
+                style={{ color: "var(--text-muted)" }}
               >
                 Follow-up Session
               </div>
               <div
                 className={`${compact ? "text-[10px]" : "text-[11px]"} px-2 py-1.5 rounded flex items-center justify-between gap-2`}
-                style={{ backgroundColor: "hsl(220, 10%, 10%)" }}
+                style={{ backgroundColor: "var(--bg-surface)" }}
               >
-                <span style={{ color: "hsl(220, 10%, 72%)" }}>{followupSessionId}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{followupSessionId}</span>
                 <button
                   type="button"
                   onClick={() => navigateToIdeationSession(followupSessionId)}
                   className="flex items-center gap-1 px-2 py-1 rounded transition-opacity hover:opacity-80"
                   style={{
-                    backgroundColor: "hsla(14, 100%, 60%, 0.12)",
-                    color: "hsl(14, 100%, 68%)",
-                    border: "1px solid hsla(14, 100%, 60%, 0.2)",
+                    backgroundColor: "var(--accent-muted)",
+                    color: "var(--accent-primary)",
+                    border: "1px solid var(--accent-border)",
                   }}
                 >
                   <ExternalLink size={compact ? 10 : 11} />
@@ -410,11 +410,11 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
       <div
         data-testid="review-widget-notes-empty"
         className={`${compact ? "rounded-md" : "rounded-lg"} overflow-hidden ${compact ? "mb-1" : ""} ${className}`}
-        style={{ backgroundColor: "hsl(220, 10%, 14%)" }}
+        style={{ backgroundColor: "var(--bg-elevated)" }}
       >
         <div className={`flex items-center gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"}`}>
-          <FileText size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220, 10%, 40%)" }} />
-          <span className={`${compact ? "text-[11px]" : "text-xs"}`} style={{ color: "hsl(220, 10%, 50%)" }}>
+          <FileText size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
+          <span className={`${compact ? "text-[11px]" : "text-xs"}`} style={{ color: "var(--text-muted)" }}>
             No review notes
           </span>
         </div>
@@ -427,7 +427,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
       data-testid="review-widget-notes"
       className={`${compact ? "rounded-md" : "rounded-lg"} overflow-hidden ${compact ? "mb-1" : ""} ${className}`}
       style={{
-        backgroundColor: hasError ? "hsla(0, 70%, 55%, 0.15)" : "hsl(220, 10%, 14%)",
+        backgroundColor: hasError ? "var(--status-error-muted)" : "var(--bg-elevated)",
         border: "none",
       }}
     >
@@ -439,13 +439,13 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
       >
         {hasBody ? (
           isExpanded ? (
-            <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220, 10%, 45%)" }} />
+            <ChevronDown size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           ) : (
-            <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "hsl(220, 10%, 45%)" }} />
+            <ChevronRight size={iconSize} className="flex-shrink-0" style={{ color: "var(--text-muted)" }} />
           )
         ) : null}
 
-        <FileText size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14, 100%, 60%)" }} />
+        <FileText size={iconSize} className="flex-shrink-0" style={{ color: "var(--accent-primary)" }} />
 
         {/* Approval status badge from latest review */}
         {latestStyle && (
@@ -459,7 +459,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
 
         <span
           className={`${compact ? "text-[11px]" : "text-xs"} flex-1 min-w-[80px] break-words`}
-          style={{ color: "hsl(220, 10%, 75%)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {reviews.length} review note{reviews.length !== 1 ? "s" : ""}
         </span>
@@ -469,8 +469,8 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
           <span
             className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded flex-shrink-0`}
             style={{
-              backgroundColor: "hsla(25, 95%, 53%, 0.15)",
-              color: "hsl(25, 90%, 65%)",
+              backgroundColor: "var(--accent-muted)",
+              color: "var(--accent-primary)",
             }}
           >
             {revisionCount}{maxRevisions != null ? `/${maxRevisions}` : ""} revision{revisionCount !== 1 ? "s" : ""}
@@ -480,7 +480,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
         {hasError && (
           <span
             className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium px-1.5 py-0.5 rounded`}
-            style={{ backgroundColor: "hsla(0, 70%, 50%, 0.2)", color: "hsl(0, 70%, 70%)" }}
+            style={{ backgroundColor: "var(--status-error-muted)", color: "var(--status-error)" }}
           >
             Failed
           </span>
@@ -504,7 +504,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
       {isExpanded && hasBody && (
         <div
           className={`${compact ? "px-2 pb-2" : "px-3 pb-3"} space-y-1.5 pt-1`}
-          style={{ borderTop: "1px solid hsla(220, 10%, 100%, 0.04)" }}
+          style={{ borderTop: "1px solid var(--overlay-faint)" }}
         >
           {reviews.map((note) => {
             const noteStyle = getOutcomeStyle(note.outcome);
@@ -513,31 +513,31 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
               <div
                 key={note.id}
                 className={`${compact ? "text-[10px]" : "text-[11px]"} px-2 py-1.5 rounded`}
-                style={{ backgroundColor: "hsl(220, 10%, 10%)" }}
+                style={{ backgroundColor: "var(--bg-surface)" }}
               >
                 <div className="flex items-center gap-1.5 mb-1">
                   <NoteIcon size={10} style={{ color: noteStyle.accent }} />
                   <span className="font-medium" style={{ color: noteStyle.text }}>
                     {noteStyle.label}
                   </span>
-                  <span className="text-[9px]" style={{ color: "hsl(220, 10%, 45%)" }}>
+                  <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
                     {note.reviewer}
                   </span>
                   {note.created_at && (
-                    <span className="flex items-center gap-0.5 text-[9px] ml-auto" style={{ color: "hsl(220, 10%, 40%)" }}>
+                    <span className="flex items-center gap-0.5 text-[9px] ml-auto" style={{ color: "var(--text-muted)" }}>
                       <Clock size={8} />
                       {formatTimestamp(note.created_at)}
                     </span>
                   )}
                 </div>
                 {note.notes && (
-                  <div style={{ color: "hsl(220, 10%, 70%)", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                  <div style={{ color: "var(--text-secondary)", lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
                     {note.notes.length > 200 ? note.notes.slice(0, 200) + "..." : note.notes}
                   </div>
                 )}
                 {note.issues && note.issues.length > 0 && (
                   <div className="mt-1 flex items-center gap-1">
-                    <span style={{ color: "hsl(220, 10%, 50%)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>
                       {note.issues.length} issue{note.issues.length !== 1 ? "s" : ""}
                     </span>
                   </div>

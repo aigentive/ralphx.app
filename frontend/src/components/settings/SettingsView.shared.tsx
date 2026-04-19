@@ -8,6 +8,7 @@
  * react-refresh/only-export-components lint rule.
  */
 
+import { useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
@@ -66,7 +67,7 @@ export function SettingRow({
     <div
       className={cn(
         "flex items-start justify-between py-3 border-b border-[var(--border-subtle)] last:border-0 -mx-2 px-2 rounded-md transition-colors",
-        !isDisabled && "hover:bg-[rgba(45,45,45,0.3)]",
+        !isDisabled && "hover:bg-[var(--bg-hover)]",
         isDisabled && "opacity-50"
       )}
     >
@@ -101,7 +102,7 @@ export interface ToggleSettingRowProps {
   description: string;
   checked: boolean;
   disabled: boolean;
-  onChange: () => void;
+  onChange: (checked: boolean) => void;
   isSubSetting?: boolean;
 }
 
@@ -114,6 +115,24 @@ export function ToggleSettingRow({
   onChange,
   isSubSetting = false,
 }: ToggleSettingRowProps) {
+  // Radix Switch can emit a stale `onCheckedChange` when its `checked` prop
+  // transitions externally. That spurious fire flips our controlled state
+  // right back. Guard: only honour onCheckedChange when the user has actually
+  // activated this switch. Use click activation, not pointer-down, so aborted
+  // presses cannot leave a stale intent flag behind for the next external
+  // prop transition.
+  const userIntentRef = useRef(false);
+  const markUserIntent = useCallback(() => {
+    userIntentRef.current = true;
+  }, []);
+  const handleCheckedChange = useCallback(
+    (next: boolean) => {
+      if (!userIntentRef.current) return;
+      userIntentRef.current = false;
+      onChange(next);
+    },
+    [onChange],
+  );
   return (
     <SettingRow
       id={id}
@@ -126,7 +145,8 @@ export function ToggleSettingRow({
         id={id}
         data-testid={id}
         checked={checked}
-        onCheckedChange={onChange}
+        onCheckedChange={handleCheckedChange}
+        onClick={markUserIntent}
         disabled={disabled}
         aria-describedby={`${id}-desc`}
         className="data-[state=checked]:bg-[var(--accent-primary)]"
@@ -230,6 +250,7 @@ export function SelectSettingRow<T extends string>({
   disabled,
   onChange,
 }: SelectSettingRowProps<T>) {
+  const selected = options.find((opt) => opt.value === value);
   return (
     <SettingRow id={id} label={label} description={description} isDisabled={disabled}>
       <Select
@@ -243,7 +264,11 @@ export function SelectSettingRow<T extends string>({
           aria-describedby={`${id}-desc`}
           className="w-[200px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
         >
-          <SelectValue placeholder="Select model" />
+          {/* Styleguide §8: trigger shows label only; description is
+              dropdown-item context, never a truncated second line in the trigger. */}
+          <SelectValue placeholder="Select model">
+            <span className="text-[var(--text-primary)]">{selected?.label ?? ""}</span>
+          </SelectValue>
         </SelectTrigger>
         <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
           {options.map((opt) => (
@@ -279,24 +304,9 @@ export interface SectionCardProps {
 
 export function SectionCard({ icon, title, description, children }: SectionCardProps) {
   return (
-    <Card
-      className="rounded-lg"
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-      }}
-    >
+    <Card className="rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
       <div className="flex items-start gap-3 p-5 pb-0">
-        <div
-          className="p-2 rounded-lg shrink-0"
-          style={{
-            background: "rgba(255,107,53,0.1)",
-            border: "1px solid rgba(255,107,53,0.2)",
-          }}
-        >
+        <div className="p-2 rounded-lg shrink-0 bg-[var(--card-icon-bg)] border border-[var(--card-icon-border)] [&>svg]:text-[var(--card-icon-color)]">
           {icon}
         </div>
         <div>
@@ -360,14 +370,14 @@ export interface ErrorBannerProps {
 
 export function ErrorBanner({ error, onDismiss }: ErrorBannerProps) {
   return (
-    <div className="mx-6 mt-4 p-3 rounded-lg bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] flex items-center gap-3">
+    <div className="mx-6 mt-4 p-3 rounded-lg bg-[var(--status-error-muted)] border border-[var(--status-error-border)] flex items-center gap-3">
       <AlertCircle className="w-4 h-4 text-[var(--status-error)] shrink-0" />
       <p className="text-sm text-[var(--status-error)] flex-1">{error}</p>
       <Button
         variant="ghost"
         size="icon"
         onClick={onDismiss}
-        className="h-6 w-6 hover:bg-[rgba(239,68,68,0.2)]"
+        className="h-6 w-6 hover:bg-[var(--status-error-border)]"
       >
         <X className="w-4 h-4 text-[var(--status-error)]" />
       </Button>

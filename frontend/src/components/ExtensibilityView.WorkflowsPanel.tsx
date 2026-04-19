@@ -94,11 +94,11 @@ export function WorkflowsPanel() {
               data-testid="workflow-card"
               className="group transition-all duration-180 hover:-translate-y-px"
               style={{
-                background: "rgba(255,255,255,0.04)",
+                background: "var(--overlay-faint)",
                 backdropFilter: "blur(20px)",
                 WebkitBackdropFilter: "blur(20px)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                border: "1px solid var(--border-subtle)",
+                boxShadow: "var(--shadow-xs)",
               }}
             >
               <CardContent className="p-4">
@@ -118,7 +118,15 @@ export function WorkflowsPanel() {
                       {workflow.name}
                     </span>
                     {workflow.isDefault && (
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px]"
+                        style={{
+                          backgroundColor: "var(--bg-hover)",
+                          color: "var(--text-secondary)",
+                          border: "1px solid var(--border-subtle)",
+                        }}
+                      >
                         DEFAULT
                       </Badge>
                     )}
@@ -154,7 +162,7 @@ export function WorkflowsPanel() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                            className="h-7 w-7 p-0 text-status-error hover:text-status-error"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

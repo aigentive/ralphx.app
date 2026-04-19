@@ -8,17 +8,18 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import type { TeammateState, TeammateStatus } from "@/stores/teamStore";
 
 export type TeamFilterValue = "lead" | string;
 
 const STATUS_DOT_COLORS: Record<TeammateStatus, string> = {
-  running: "hsl(142 71% 45%)",
-  spawning: "hsl(142 71% 45%)",
-  idle: "hsl(48 96% 53%)",
-  completed: "hsl(220 10% 40%)",
-  shutdown: "hsl(220 10% 40%)",
-  failed: "hsl(220 10% 40%)",
+  running: "var(--status-success)",
+  spawning: "var(--status-success)",
+  idle: "var(--status-warning)",
+  completed: "var(--text-muted)",
+  shutdown: "var(--text-muted)",
+  failed: "var(--text-muted)",
 };
 
 interface TeamFilterTabsProps {
@@ -36,7 +37,7 @@ export const TeamFilterTabs = React.memo(function TeamFilterTabs({
     <div
       className="flex items-center gap-1 px-3 py-1.5 overflow-x-auto shrink-0"
       style={{
-        borderTop: "1px solid hsl(220 10% 14%)",
+        borderTop: "1px solid var(--border-subtle)",
       }}
     >
       {/* Lead tab */}
@@ -80,9 +81,9 @@ function FilterChip({ label, color, isActive, onClick }: FilterChipProps) {
         "outline-none focus-visible:ring-1",
       )}
       style={{
-        backgroundColor: isActive ? "hsl(220 10% 18%)" : "transparent",
-        color: isActive ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
-        ...(isActive ? { outline: "1px solid hsla(220 80% 60% / 0.5)" } : {}),
+        backgroundColor: isActive ? "var(--bg-hover)" : "transparent",
+        color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+        ...(isActive ? { outline: `1px solid ${withAlpha("var(--status-info)", 50)}` } : {}),
       }}
     >
       {color && (

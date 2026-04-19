@@ -21,9 +21,9 @@ export interface ProviderHarnessBadgeStyle {
 }
 
 const DEFAULT_BADGE_STYLE: ProviderHarnessBadgeStyle = {
-  color: "hsl(150 55% 63%)",
-  backgroundColor: "hsla(150 55% 45% / 0.12)",
-  border: "1px solid hsla(150 55% 45% / 0.2)",
+  color: "var(--status-success)",
+  backgroundColor: "var(--status-success-muted)",
+  border: "1px solid var(--status-success-border)",
 };
 
 export function formatProviderHarnessLabel(
@@ -53,17 +53,17 @@ export function getProviderHarnessBadgeStyle(
 ): ProviderHarnessBadgeStyle {
   if (harness === "codex") {
     return {
-      color: "hsl(14 100% 68%)",
-      backgroundColor: "hsla(14 100% 60% / 0.12)",
-      border: "1px solid hsla(14 100% 60% / 0.18)",
+      color: "var(--accent-primary)",
+      backgroundColor: "color-mix(in srgb, var(--accent-primary) 12%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--accent-primary) 18%, transparent)",
     };
   }
 
   if (harness === "claude") {
     return {
-      color: "hsl(220 10% 68%)",
-      backgroundColor: "hsla(220 10% 100% / 0.06)",
-      border: "1px solid hsla(220 10% 100% / 0.08)",
+      color: "var(--text-secondary)",
+      backgroundColor: "var(--overlay-weak)",
+      border: "1px solid var(--overlay-moderate)",
     };
   }
 

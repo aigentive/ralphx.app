@@ -22,5 +22,5 @@ export declare function redactSecrets(input: string): string;
 export declare function safeError(...args: unknown[]): void;
 export declare function getTraceLogPath(): string;
 export declare function resetTraceLogPathForTests(): void;
-export declare function safeTrace(event: string, payload?: unknown): void;
+export declare function safeTrace(event: string, _payload?: unknown): void;
 //# sourceMappingURL=redact.d.ts.map

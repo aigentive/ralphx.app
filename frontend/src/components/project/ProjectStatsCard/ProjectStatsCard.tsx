@@ -82,7 +82,7 @@ function RateBar({ label, rate, passCount, totalCount, color, testId }: RateBarP
       </div>
       <div
         className="h-1.5 w-full rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -116,11 +116,11 @@ function CycleTimeBar({ phase, maxMinutes }: CycleTimeBarProps) {
       </span>
       <div
         className="flex-1 h-1 rounded-full"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--accent-primary)" }}
         />
       </div>
       <span className="w-16 text-right text-[var(--text-secondary)] shrink-0 tabular-nums">
@@ -138,14 +138,14 @@ function LoadingSkeleton() {
   return (
     <div
       className="rounded-xl p-4 space-y-4 animate-pulse"
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-loading"
     >
       {[...Array(3)].map((_, i) => (
         <div
           key={i}
           className="h-10 rounded"
-          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+          style={{ backgroundColor: "var(--overlay-weak)" }}
         />
       ))}
     </div>
@@ -160,7 +160,7 @@ function ErrorState({ message }: { message: string }) {
   return (
     <div
       className="rounded-xl p-4 text-sm text-[var(--text-muted)]"
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-error"
     >
       {message}
@@ -239,13 +239,13 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
     return (
       <div
         className={`rounded-xl p-4 ${className}`}
-        style={{ backgroundColor: "hsl(220 10% 10%)" }}
+        style={{ backgroundColor: "var(--bg-surface)" }}
         data-testid="project-stats-card"
       >
         <div className="flex items-center gap-2 mb-3">
           <TrendingUp
             className="w-4 h-4"
-            style={{ color: "#ff6b35" }}
+            style={{ color: "var(--accent-primary)" }}
             aria-hidden="true"
           />
           <span className="text-sm font-medium text-[var(--text-primary)]">
@@ -283,14 +283,14 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
   return (
     <div
       className={`rounded-xl p-4 space-y-5 ${className}`}
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
       data-testid="project-stats-card"
     >
       {/* Header */}
       <div className="flex items-center gap-2">
         <TrendingUp
           className="w-4 h-4"
-          style={{ color: "#ff6b35" }}
+          style={{ color: "var(--accent-primary)" }}
           aria-hidden="true"
         />
         <span className="text-sm font-medium text-[var(--text-primary)]">
@@ -302,7 +302,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
       <div
         className="grid grid-cols-3 gap-4"
         style={{
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid var(--overlay-weak)",
           paddingBottom: "16px",
         }}
       >
@@ -332,7 +332,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
               className="space-y-3"
               style={{
                 borderBottom: hasCycleTimes
-                  ? "1px solid rgba(255,255,255,0.06)"
+                  ? "1px solid var(--overlay-weak)"
                   : undefined,
                 paddingBottom: hasCycleTimes ? "16px" : undefined,
               }}
@@ -348,7 +348,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
                   rate={safeStats.agentSuccessRate}
                   passCount={safeStats.agentSuccessCount}
                   totalCount={safeStats.agentTotalCount}
-                  color="#ff6b35"
+                  color="var(--accent-primary)"
                   testId="agent-success-rate"
                 />
               )}
@@ -359,7 +359,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
                   rate={safeStats.reviewPassRate}
                   passCount={safeStats.reviewPassCount}
                   totalCount={safeStats.reviewTotalCount}
-                  color="hsl(145 60% 45%)"
+                  color="var(--status-success)"
                   testId="review-pass-rate"
                 />
               )}
@@ -391,7 +391,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
           {showEstimates && safeStats.eme && (
             <div
               style={{
-                borderTop: "1px solid rgba(255,255,255,0.06)",
+                borderTop: "1px solid var(--overlay-weak)",
                 paddingTop: "12px",
               }}
             >
@@ -404,7 +404,7 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
       {/* Copy as Markdown button */}
       <div
         style={{
-          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderTop: "1px solid var(--overlay-weak)",
           paddingTop: "12px",
         }}
       >
@@ -417,10 +417,10 @@ export function ProjectStatsCard({ projectId, className = "" }: ProjectStatsCard
             <>
               <Check
                 className="w-3.5 h-3.5"
-                style={{ color: "hsl(145 60% 45%)" }}
+                style={{ color: "var(--status-success)" }}
                 aria-hidden="true"
               />
-              <span style={{ color: "hsl(145 60% 45%)" }}>Copied!</span>
+              <span style={{ color: "var(--status-success)" }}>Copied!</span>
             </>
           ) : (
             <>

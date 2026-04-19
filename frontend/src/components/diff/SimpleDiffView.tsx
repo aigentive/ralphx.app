@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { Button } from "@/components/ui/button";
+import { withAlpha } from "@/lib/theme-colors";
 
 interface SimpleDiffViewProps {
   oldContent: string;
@@ -165,10 +166,10 @@ function getLineBackground(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
       return variant === "conflict"
-        ? "rgba(64, 156, 255, 0.12)"
-        : "rgba(52, 199, 89, 0.12)";
+        ? "var(--status-info-muted)"
+        : "var(--status-success-muted)";
     case "deletion":
-      return "rgba(255, 69, 58, 0.12)";
+      return "var(--status-error-muted)";
     default:
       return "transparent";
   }
@@ -181,12 +182,12 @@ function getLineNumColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
       return variant === "conflict"
-        ? "rgba(64, 156, 255, 0.6)"
-        : "rgba(52, 199, 89, 0.6)";
+        ? withAlpha("var(--status-info)", 60)
+        : withAlpha("var(--status-success)", 60);
     case "deletion":
-      return "rgba(255, 69, 58, 0.6)";
+      return withAlpha("var(--status-error)", 60);
     default:
-      return "hsl(220 10% 35%)";
+      return "var(--text-muted)";
   }
 }
 
@@ -210,11 +211,11 @@ function getLinePrefix(type: DiffLine["type"]): string {
 function getPrefixColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
-      return variant === "conflict" ? "#409cff" : "#34c759";
+      return variant === "conflict" ? "var(--status-info)" : "var(--status-success)";
     case "deletion":
-      return "#ff453a";
+      return "var(--status-error)";
     case "header":
-      return "rgba(255,255,255,0.45)";
+      return withAlpha("var(--text-primary)", 45);
     default:
       return "transparent";
   }
@@ -289,10 +290,10 @@ function renderHeader(content: string) {
     <div
       className="px-3 py-1 text-[11px] font-mono"
       style={{
-        backgroundColor: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.6)",
-        borderTop: "1px solid rgba(255,255,255,0.06)",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        backgroundColor: "var(--overlay-weak)",
+        color: withAlpha("var(--text-primary)", 60),
+        borderTop: "1px solid var(--overlay-weak)",
+        borderBottom: "1px solid var(--overlay-weak)",
       }}
     >
       {content}
@@ -317,7 +318,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 0,
           color: getLineNumColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         {line.oldLineNum ?? ""}
@@ -329,8 +330,8 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 48,
           color: getLineNumColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
-          borderColor: "hsl(220 10% 15%)",
+          backgroundColor: "var(--bg-surface)",
+          borderColor: "var(--border-subtle)",
         }}
       >
         {line.newLineNum ?? ""}
@@ -342,7 +343,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
           position: "sticky",
           left: 96,
           color: getPrefixColor(line.type, variant),
-          backgroundColor: "hsl(220 10% 10%)",
+          backgroundColor: "var(--bg-surface)",
         }}
       >
         {getLinePrefix(line.type)}
@@ -355,8 +356,8 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: 
         style={{
           color:
             line.type === "deletion"
-              ? "hsl(220 10% 60%)"
-              : "hsl(220 10% 80%)",
+              ? "var(--text-muted)"
+              : "var(--text-secondary)",
         }}
       >
         {line.content || " "}
@@ -402,10 +403,10 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     return (
       <div
         className="flex flex-col items-center justify-center h-full gap-3 px-6"
-        style={{ color: "hsl(220 10% 55%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <div className="text-sm">Diff too large to render quickly</div>
-        <div className="text-xs text-white/50">
+        <div className="text-xs text-text-primary/50">
           {totalLines.toLocaleString()} total lines in this file.
         </div>
         <Button
@@ -423,7 +424,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     return (
       <div
         className="flex items-center justify-center h-full"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         <p className="text-sm">No changes</p>
       </div>
@@ -434,9 +435,9 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
     <div className="h-full overflow-y-auto">
       <div
         className="font-mono text-[13px] leading-[20px]"
-        style={{ backgroundColor: "hsl(220 10% 8%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
-        <div className="px-3 py-2 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="px-3 py-2 border-b" style={{ borderColor: "var(--overlay-weak)" }}>
           <Button
             variant="ghost"
             className="h-7 px-2 text-[11px]"
@@ -455,7 +456,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
           const isExpanded = expandedGaps.has(gapId);
 
           return (
-            <div key={hunk.id} className="border-b" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            <div key={hunk.id} className="border-b" style={{ borderColor: "var(--overlay-faint)" }}>
               {gapHasLines && (
                 <div className="px-3 py-2">
                   {isExpanded ? (
@@ -473,7 +474,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
                       )}
                       <button
                         type="button"
-                        className="mt-2 text-[11px] text-white/50 hover:text-white/70"
+                        className="mt-2 text-[11px] text-text-primary/50 hover:text-text-primary/70"
                         onClick={() => toggleGap(gapId)}
                       >
                         Hide unchanged lines
@@ -482,7 +483,7 @@ export function SimpleDiffView({ oldContent, newContent, variant = "standard" }:
                   ) : (
                     <button
                       type="button"
-                      className="text-[11px] text-white/50 hover:text-white/70"
+                      className="text-[11px] text-text-primary/50 hover:text-text-primary/70"
                       onClick={() => toggleGap(gapId)}
                     >
                       Show {gapLines.length} unchanged lines

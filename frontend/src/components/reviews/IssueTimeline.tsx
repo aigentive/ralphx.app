@@ -22,6 +22,7 @@ import {
   FileCode,
 } from "lucide-react";
 import type { ReviewIssue, IssueStatus } from "@/types/review-issue";
+import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Types
@@ -48,38 +49,38 @@ const EVENT_CONFIG: Record<
 > = {
   created: {
     icon: AlertCircle,
-    color: "hsl(220 80% 60%)",
-    bgColor: "hsla(220 80% 60% / 0.15)",
+    color: "var(--status-info)",
+    bgColor: withAlpha("var(--status-info)", 15),
     label: "Issue created",
   },
   in_progress: {
     icon: Clock,
-    color: "hsl(45 90% 55%)",
-    bgColor: "hsla(45 90% 55% / 0.15)",
+    color: "var(--status-warning)",
+    bgColor: withAlpha("var(--status-warning)", 15),
     label: "Work started",
   },
   addressed: {
     icon: CheckCircle2,
-    color: "hsl(145 60% 55%)",
-    bgColor: "hsla(145 60% 55% / 0.15)",
+    color: "var(--status-success)",
+    bgColor: withAlpha("var(--status-success)", 15),
     label: "Addressed",
   },
   verified: {
     icon: CheckCircle2,
-    color: "hsl(145 60% 45%)",
-    bgColor: "hsla(145 60% 45% / 0.20)",
+    color: "var(--status-success)",
+    bgColor: withAlpha("var(--status-success)", 20),
     label: "Verified",
   },
   reopened: {
     icon: RotateCcw,
-    color: "hsl(45 90% 55%)",
-    bgColor: "hsla(45 90% 55% / 0.15)",
+    color: "var(--status-warning)",
+    bgColor: withAlpha("var(--status-warning)", 15),
     label: "Reopened",
   },
   wontfix: {
     icon: XCircle,
-    color: "hsl(220 10% 45%)",
-    bgColor: "hsla(220 10% 45% / 0.15)",
+    color: "var(--text-muted)",
+    bgColor: withAlpha("var(--text-muted)", 15),
     label: "Won't fix",
   },
 };
@@ -190,7 +191,7 @@ function TimelineEventItem({ event, isLast }: TimelineEventItemProps) {
         {!isLast && (
           <div
             className="w-0.5 flex-1 min-h-[16px] mt-1"
-            style={{ backgroundColor: "hsl(220 10% 20%)" }}
+            style={{ backgroundColor: "var(--bg-hover)" }}
           />
         )}
       </div>
@@ -200,13 +201,13 @@ function TimelineEventItem({ event, isLast }: TimelineEventItemProps) {
         <div className="flex items-center gap-2">
           <span
             className="text-[12px] font-medium"
-            style={{ color: "hsl(220 10% 80%)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             {config.label}
           </span>
           <span
             className="text-[11px] ml-auto"
-            style={{ color: "hsl(220 10% 40%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {formatRelativeTime(event.timestamp)}
           </span>
@@ -214,7 +215,7 @@ function TimelineEventItem({ event, isLast }: TimelineEventItemProps) {
         {event.details && (
           <p
             className="text-[11px] mt-0.5"
-            style={{ color: "hsl(220 10% 50%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {event.details}
           </p>
@@ -235,30 +236,30 @@ export function IssueTimeline({ issue, showFileLink = true }: IssueTimelineProps
   return (
     <div
       className="rounded-lg p-3"
-      style={{ backgroundColor: "hsl(220 10% 10%)" }}
+      style={{ backgroundColor: "var(--bg-surface)" }}
     >
       {/* Issue header */}
-      <div className="mb-3 pb-3" style={{ borderBottom: "1px solid hsl(220 10% 18%)" }}>
+      <div className="mb-3 pb-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <h4
           className="text-[13px] font-medium"
-          style={{ color: "hsl(220 10% 90%)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           {issue.title}
         </h4>
         {issue.description && (
           <p
             className="text-[12px] mt-1"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {issue.description}
           </p>
         )}
         {showFileLink && hasFileLink && (
           <div className="flex items-center gap-1.5 mt-2">
-            <FileCode className="w-3 h-3" style={{ color: "hsl(220 10% 45%)" }} />
+            <FileCode className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
             <span
               className="text-[11px] font-mono"
-              style={{ color: "hsl(220 80% 60%)" }}
+              style={{ color: "var(--status-info)" }}
             >
               {issue.filePath}:{issue.lineNumber}
             </span>
@@ -281,17 +282,17 @@ export function IssueTimeline({ issue, showFileLink = true }: IssueTimelineProps
       {issue.resolutionNotes && issue.status !== "wontfix" && (
         <div
           className="mt-2 pt-2"
-          style={{ borderTop: "1px solid hsl(220 10% 18%)" }}
+          style={{ borderTop: "1px solid var(--border-subtle)" }}
         >
           <span
             className="text-[10px] uppercase tracking-wider"
-            style={{ color: "hsl(220 10% 40%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             Resolution Notes
           </span>
           <p
             className="text-[11px] mt-1"
-            style={{ color: "hsl(220 10% 60%)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
             {issue.resolutionNotes}
           </p>
@@ -329,7 +330,7 @@ export function IssueTimelineCompact({ issue }: IssueTimelineCompactProps) {
             {index < events.length - 1 && (
               <div
                 className="w-3 h-0.5 mx-0.5"
-                style={{ backgroundColor: "hsl(220 10% 25%)" }}
+                style={{ backgroundColor: "var(--bg-hover)" }}
               />
             )}
           </div>

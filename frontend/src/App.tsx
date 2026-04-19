@@ -792,11 +792,10 @@ function AppContent() {
         <header
           className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
           style={{
-            background: "hsla(220 10% 8% / 0.85)",
+            background: "color-mix(in srgb, var(--bg-base) 85%, transparent)",
             backdropFilter: "blur(24px)",
             WebkitBackdropFilter: "blur(24px)",
-            borderColor: "hsla(220 10% 100% / 0.06)",
-            boxShadow: "0 1px 0 hsla(220 10% 100% / 0.03)",
+            borderColor: "var(--border-subtle)",
           }}
           data-tauri-drag-region
           data-testid="app-header"
@@ -811,8 +810,8 @@ function AppContent() {
               Ralph
               <span
                 style={{
-                  color: "#ff6b35",
-                  textShadow: "0 0 12px rgba(255, 107, 53, 0.5)",
+                  color: "var(--accent-primary)",
+                  textShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 50%, transparent)",
                 }}
               >
                 X
@@ -854,10 +853,10 @@ function AppContent() {
                       )}
                       style={{
                         background: isExpanded
-                          ? "rgba(255,107,53,0.1)"
+                          ? "var(--accent-muted)"
                           : "transparent",
-                        border: isExpanded ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                        color: isExpanded ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                        border: isExpanded ? "1px solid var(--accent-border)" : "1px solid transparent",
+                        color: isExpanded ? "var(--accent-primary)" : "var(--text-muted)",
                       }}
                       data-testid="chat-toggle"
                     >
@@ -874,8 +873,8 @@ function AppContent() {
                           isNavCompact ? "hidden" : isExpanded ? "inline" : "hidden xl:inline"
                         )}
                         style={{
-                          backgroundColor: "rgba(255,255,255,0.05)",
-                          color: "rgba(255,255,255,0.4)",
+                          backgroundColor: "var(--overlay-faint)",
+                          color: "var(--text-muted)",
                         }}
                       >
                         ⌘K
@@ -902,10 +901,10 @@ function AppContent() {
                   )}
                   style={{
                     background: reviewsPanelOpen
-                      ? "rgba(255,107,53,0.1)"
+                      ? "var(--accent-muted)"
                       : "transparent",
-                    border: reviewsPanelOpen ? "1px solid rgba(255,107,53,0.15)" : "1px solid transparent",
-                    color: reviewsPanelOpen ? "#ff6b35" : "rgba(255,255,255,0.5)",
+                    border: reviewsPanelOpen ? "1px solid var(--accent-border)" : "1px solid transparent",
+                    color: reviewsPanelOpen ? "var(--accent-primary)" : "var(--text-muted)",
                   }}
                   data-testid="reviews-toggle"
                 >
@@ -922,7 +921,7 @@ function AppContent() {
                       className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-xs font-bold rounded-full animate-badge-pop"
                       style={{
                         backgroundColor: "var(--status-warning)",
-                        color: "white",
+                        color: "var(--text-inverse)",
                       }}
                       data-testid="reviews-badge"
                     >
@@ -948,14 +947,14 @@ function AppContent() {
                     className="h-8 w-8 p-0 transition-all duration-150 active:scale-[0.98]"
                     style={{
                       background: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
-                        ? "rgba(255,107,53,0.1)"
+                        ? "var(--accent-muted)"
                         : "transparent",
                       border: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
-                        ? "1px solid rgba(255,107,53,0.15)"
+                        ? "1px solid var(--accent-border)"
                         : "1px solid transparent",
                       color: (isNavCompact ? graphRightPanelCompactOpen : graphRightPanelUserOpen)
-                        ? "#ff6b35"
-                        : "rgba(255,255,255,0.5)",
+                        ? "var(--accent-primary)"
+                        : "var(--text-muted)",
                       opacity: battleModeActive ? 0.45 : 1,
                     }}
                     data-testid="graph-panel-toggle"
@@ -1131,22 +1130,26 @@ function AppContent() {
             </div>
         </div>
 
-          {/* ReviewsPanel - floating overlay with Tahoe glass panel */}
+          {/* ReviewsPanel - floating overlay with Tahoe glass panel.
+              bottomOffset 76 when ExecutionControlBar is visible below this
+              panel (kanban/graph/ideation), 0 elsewhere so the panel fills
+              the viewport instead of leaving a ~84px void. */}
           {reviewsPanelOpen && (
             <div
-              className="fixed top-14 right-0 w-[400px] z-40 flex flex-col animate-[slide-in-right_200ms_ease-out]"
-              style={{ bottom: "76px" }}
+              className="fixed top-14 right-0 w-[400px] z-50 flex flex-col"
+              style={{
+                bottom: (currentView === "kanban" || currentView === "graph" || currentView === "ideation") ? "76px" : "0px",
+                background: "var(--bg-elevated)",
+              }}
             >
               {/* Floating panel inner container */}
               <div
                 className="flex flex-col flex-1 rounded-[10px] overflow-hidden"
                 style={{
                   margin: "8px",
-                  background: "hsla(220 10% 10% / 0.92)",
-                  backdropFilter: "blur(20px) saturate(180%)",
-                  WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                  border: "1px solid hsla(220 20% 100% / 0.08)",
-                  boxShadow: "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  boxShadow: "var(--shadow-md)",
                 }}
               >
                 <ReviewsPanel

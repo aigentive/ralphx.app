@@ -14,12 +14,6 @@ import path from "node:path";
 
 const TRACE_ROOT_DIR = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
 
-function isWithinDir(rootDir: string, candidatePath: string): boolean {
-  const root = path.resolve(rootDir);
-  const candidate = path.resolve(candidatePath);
-  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
-}
-
 interface RedactPattern {
   regex: RegExp;
   replacement: string;
@@ -89,40 +83,27 @@ export function safeError(...args: unknown[]): void {
 }
 
 let traceLogPath: string | null = null;
-
-function slugify(input: string): string {
-  const slug = input
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug.length > 0 ? slug : "unknown";
-}
+const SAFE_TRACE_EVENTS = new Set([
+  "backend.error",
+  "backend.request",
+  "backend.response",
+  "server.ready",
+  "server.start",
+  "tool.denied",
+  "tool.dispatch",
+  "tool.error",
+  "tool.request",
+  "tool.success",
+  "tools.list",
+]);
 
 function buildTraceFilename(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const agentType = slugify(process.env.RALPHX_AGENT_TYPE ?? "unknown-agent");
-  const contextType = slugify(process.env.RALPHX_CONTEXT_TYPE ?? "unknown-context");
-  const contextId = slugify((process.env.RALPHX_CONTEXT_ID ?? "no-context-id").slice(0, 32));
-  return `${timestamp}-${process.pid}-${agentType}-${contextType}-${contextId}.jsonl`;
+  return `${timestamp}-${process.pid}.jsonl`;
 }
 
 function resolveTraceDir(): string {
-  const override = process.env.RALPHX_MCP_TRACE_DIR?.trim();
-  if (!override) {
-    return TRACE_ROOT_DIR;
-  }
-
-  if (path.isAbsolute(override)) {
-    return TRACE_ROOT_DIR;
-  }
-
-  const resolved = path.resolve(TRACE_ROOT_DIR, override);
-  if (!isWithinDir(TRACE_ROOT_DIR, resolved)) {
-    return TRACE_ROOT_DIR;
-  }
-
-  return resolved;
+  return TRACE_ROOT_DIR;
 }
 
 export function getTraceLogPath(): string {
@@ -144,28 +125,17 @@ type TraceRecord = {
   ts: string;
   pid: number;
   event: string;
-  agent_type: string;
-  task_id: string | null;
-  project_id: string | null;
-  context_type: string | null;
-  context_id: string | null;
-  payload?: string;
 };
 
-export function safeTrace(event: string, payload?: unknown): void {
+function normalizeTraceEvent(event: string): string {
+  return SAFE_TRACE_EVENTS.has(event) ? event : "unknown";
+}
+
+export function safeTrace(event: string, _payload?: unknown): void {
   const record: TraceRecord = {
     ts: new Date().toISOString(),
     pid: process.pid,
-    event,
-    agent_type: process.env.RALPHX_AGENT_TYPE ?? "unknown",
-    task_id: process.env.RALPHX_TASK_ID ?? null,
-    project_id: process.env.RALPHX_PROJECT_ID ?? null,
-    context_type: process.env.RALPHX_CONTEXT_TYPE ?? null,
-    context_id: process.env.RALPHX_CONTEXT_ID ?? null,
-  };
-
-  if (payload !== undefined) {
-    record.payload = redactSecrets(stringify(payload));
+    event: normalizeTraceEvent(event),
   }
 
   try {

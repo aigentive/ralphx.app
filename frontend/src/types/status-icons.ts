@@ -6,7 +6,8 @@
  * - TaskNode (Graph view) - icons
  * - TaskStatusBadge - icons
  *
- * Each status gets: icon, color, background opacity, label, and optional border highlight
+ * Each status gets: icon, color, background opacity, label, and optional border highlight.
+ * Colors reference design-system tokens so they flip with the active theme (Dark/Light/HC).
  */
 
 import {
@@ -34,7 +35,7 @@ import type { InternalStatus } from "./status";
 export interface StatusIconConfig {
   /** Lucide icon component */
   icon: React.ComponentType<{ className?: string }>;
-  /** Icon/text color (HSL or CSS variable) - used for icons AND left border */
+  /** Icon/text color — design-system token reference (e.g. `var(--status-info)`) */
   color: string;
   /** Background opacity (0-1 as string, e.g., "0.2") */
   bgOpacity: string;
@@ -52,13 +53,13 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Idle States ===
   backlog: {
     icon: FileText,
-    color: "hsl(220 10% 55%)",
+    color: "var(--text-muted)",
     bgOpacity: "0.15",
     label: "Draft",
   },
   ready: {
     icon: Play,
-    color: "hsl(220 80% 60%)",
+    color: "var(--status-info)",
     bgOpacity: "0.15",
     label: "Ready",
   },
@@ -66,7 +67,7 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Blocked ===
   blocked: {
     icon: Ban,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Blocked",
   },
@@ -74,43 +75,43 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Execution States ===
   executing: {
     icon: Loader2,
-    color: "hsl(14 100% 55%)",
+    color: "var(--accent-primary)",
     bgOpacity: "0.2",
     label: "Executing",
     animate: true,
   },
   re_executing: {
     icon: Loader2,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Revising",
     animate: true,
   },
 
-  // === QA States ===
+  // === QA States (informational / distinct from execution) ===
   qa_refining: {
     icon: Loader2,
-    color: "hsl(280 60% 55%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "QA",
     animate: true,
   },
   qa_testing: {
     icon: Loader2,
-    color: "hsl(280 60% 55%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "Testing",
     animate: true,
   },
   qa_passed: {
     icon: CheckCircle,
-    color: "hsl(280 60% 55%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "QA ✓",
   },
   qa_failed: {
     icon: XCircle,
-    color: "hsl(280 60% 55%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "QA ✗",
   },
@@ -118,32 +119,32 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Review States ===
   pending_review: {
     icon: Clock,
-    color: "hsl(220 80% 60%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "Pending",
   },
   reviewing: {
     icon: Loader2,
-    color: "hsl(220 80% 60%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "Reviewing",
     animate: true,
   },
   review_passed: {
     icon: CheckCircle,
-    color: "hsl(145 60% 45%)",
+    color: "var(--status-success)",
     bgOpacity: "0.2",
     label: "Approved",
   },
   escalated: {
     icon: AlertTriangle,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Escalated",
   },
   revision_needed: {
     icon: RotateCcw,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Revision",
   },
@@ -151,26 +152,26 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Merge States ===
   pending_merge: {
     icon: GitPullRequest,
-    color: "hsl(180 60% 50%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "Merge",
   },
   merging: {
     icon: Loader2,
-    color: "hsl(180 60% 50%)",
+    color: "var(--status-info)",
     bgOpacity: "0.2",
     label: "Merging",
     animate: true,
   },
   merge_incomplete: {
     icon: AlertTriangle,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Incomplete",
   },
   merge_conflict: {
     icon: AlertCircle,
-    color: "hsl(0 70% 55%)",
+    color: "var(--status-error)",
     bgOpacity: "0.2",
     label: "Conflict",
   },
@@ -178,13 +179,13 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Complete States ===
   approved: {
     icon: CheckCircle,
-    color: "hsl(145 60% 45%)",
+    color: "var(--status-success)",
     bgOpacity: "0.2",
     label: "Done",
   },
   merged: {
     icon: GitMerge,
-    color: "hsl(145 60% 45%)",
+    color: "var(--status-success)",
     bgOpacity: "0.2",
     label: "Merged",
   },
@@ -192,19 +193,19 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Terminal States ===
   failed: {
     icon: XOctagon,
-    color: "hsl(0 70% 55%)",
+    color: "var(--status-error)",
     bgOpacity: "0.2",
     label: "Failed",
   },
   cancelled: {
     icon: XCircle,
-    color: "hsl(220 10% 50%)",
+    color: "var(--text-muted)",
     bgOpacity: "0.15",
     label: "Cancelled",
   },
   stopped: {
     icon: XOctagon,
-    color: "hsl(0 70% 55%)",
+    color: "var(--status-error)",
     bgOpacity: "0.2",
     label: "Stopped",
   },
@@ -212,7 +213,7 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
   // === Suspended States ===
   paused: {
     icon: Clock,
-    color: "hsl(45 90% 55%)",
+    color: "var(--status-warning)",
     bgOpacity: "0.2",
     label: "Paused",
   },
@@ -225,7 +226,7 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
 /** Archived task icon config */
 export const ARCHIVED_ICON_CONFIG: StatusIconConfig = {
   icon: Archive,
-  color: "hsl(220 10% 45%)",
+  color: "var(--text-muted)",
   bgOpacity: "0.1",
   label: "Archived",
 };
@@ -241,10 +242,9 @@ export function getStatusIconConfig(status: InternalStatus | string): StatusIcon
   const config = STATUS_ICON_CONFIG[status as InternalStatus];
   if (config) return config;
 
-  // Fallback for unknown statuses
   return {
     icon: Clock,
-    color: "hsl(220 10% 55%)",
+    color: "var(--text-muted)",
     bgOpacity: "0.15",
     label: status,
   };
@@ -259,17 +259,13 @@ export function shouldAnimateIcon(status: InternalStatus | string): boolean {
 }
 
 /**
- * Get status color for left border stripe (50% opacity)
- * Used by both Kanban TaskCard and Graph TaskNode for visual consistency
- * Returns color with / 0.5 alpha channel for semi-transparent effect
+ * Get status color for left border stripe (50% opacity).
+ * Used by Kanban TaskCard and Graph TaskNode for visual consistency.
+ * Uses color-mix so it resolves theme tokens at render time.
  */
 export function getStatusBorderColor(status: InternalStatus | string, isArchived = false): string {
-  if (isArchived) {
-    const color = ARCHIVED_ICON_CONFIG.color;
-    // Insert alpha channel inside parentheses: hsl(h s% l% / 0.5)
-    return color.replace(")", " / 0.5)");
-  }
-  const color = getStatusIconConfig(status).color;
-  // Insert alpha channel inside parentheses: hsl(h s% l% / 0.5)
-  return color.replace(")", " / 0.5)");
+  const color = isArchived
+    ? ARCHIVED_ICON_CONFIG.color
+    : getStatusIconConfig(status).color;
+  return `color-mix(in srgb, ${color} 50%, transparent)`;
 }

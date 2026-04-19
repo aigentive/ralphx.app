@@ -26,6 +26,7 @@ import { artifactApi } from "@/api/artifact";
 import type { Artifact, ArtifactVersionSummary } from "@/types/artifact";
 import { formatDateTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
@@ -346,15 +347,16 @@ export function PlanDisplay({
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         {/* Header - flat Tahoe style */}
         <div
+          data-testid="plan-card-header"
           className="rounded-xl transition-all duration-200"
           style={{
             padding: "12px 14px",
             background: isOpen
-              ? "hsla(14 100% 60% / 0.08)"
-              : "hsla(220 10% 100% / 0.02)",
+              ? withAlpha("var(--accent-primary)", 8)
+              : "var(--overlay-faint)",
             border: isOpen
-              ? "1px solid hsla(14 100% 60% / 0.2)"
-              : "1px solid hsla(220 10% 100% / 0.06)",
+              ? "1px solid var(--accent-border)"
+              : "1px solid var(--overlay-faint)",
           }}
         >
           <div className="flex items-center gap-3">
@@ -367,16 +369,16 @@ export function PlanDisplay({
                   className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
                   style={{
                     background: isOpen
-                      ? "hsla(14 100% 60% / 0.15)"
-                      : "hsla(220 10% 100% / 0.04)",
+                      ? withAlpha("var(--accent-primary)", 15)
+                      : "var(--overlay-faint)",
                     border: isOpen
-                      ? "1px solid hsla(14 100% 60% / 0.25)"
-                      : "1px solid hsla(220 10% 100% / 0.06)",
+                      ? "1px solid var(--accent-border)"
+                      : "1px solid var(--overlay-faint)",
                   }}
                 >
                   <FileText
                     className="w-4 h-4 transition-colors duration-200"
-                    style={{ color: isOpen ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
+                    style={{ color: isOpen ? "var(--accent-primary)" : "var(--text-muted)" }}
                   />
                 </div>
 
@@ -384,7 +386,7 @@ export function PlanDisplay({
                   <div className="flex items-center gap-2">
                     <span
                       className="text-[13px] font-medium truncate tracking-[-0.01em]"
-                      style={{ color: "hsl(220 10% 90%)" }}
+                      style={{ color: "var(--text-primary)" }}
                     >
                       {plan.name}
                     </span>
@@ -392,9 +394,9 @@ export function PlanDisplay({
                     <span
                       className="text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                       style={{
-                        background: "hsla(220 10% 100% / 0.04)",
-                        border: "1px solid hsla(220 10% 100% / 0.06)",
-                        color: "hsl(220 10% 50%)",
+                        background: "var(--overlay-faint)",
+                        border: "1px solid var(--overlay-faint)",
+                        color: "var(--text-muted)",
                       }}
                     >
                       v{plan.metadata.version}
@@ -404,9 +406,9 @@ export function PlanDisplay({
                       <span
                         className="text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0"
                         style={{
-                          background: "hsla(14 100% 60% / 0.12)",
-                          border: "1px solid hsla(14 100% 60% / 0.25)",
-                          color: "hsl(14 100% 60%)",
+                          background: withAlpha("var(--accent-primary)", 12),
+                          border: "1px solid var(--accent-border)",
+                          color: "var(--accent-primary)",
                         }}
                       >
                         {teamMetadata.teamMode === "research" ? "Research Team" : "Debate Team"}
@@ -418,7 +420,7 @@ export function PlanDisplay({
                   {linkedProposalsCount > 0 && (
                     <span
                       className="text-[11px] mt-0.5 block"
-                      style={{ color: "hsl(220 10% 50%)" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {linkedProposalsCount} linked proposal{linkedProposalsCount !== 1 ? "s" : ""}
                     </span>
@@ -430,7 +432,7 @@ export function PlanDisplay({
                     "w-4 h-4 transition-transform duration-200 flex-shrink-0",
                     !isOpen && "-rotate-90"
                   )}
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 />
               </button>
             </CollapsibleTrigger>
@@ -448,15 +450,15 @@ export function PlanDisplay({
                   onClick={onApprove}
                   className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
                   style={{
-                    color: "hsl(14 100% 60%)",
-                    background: "hsla(14 100% 60% / 0.1)",
-                    border: "1px solid hsla(14 100% 60% / 0.2)",
+                    color: "var(--accent-primary)",
+                    background: withAlpha("var(--accent-primary)", 10),
+                    border: "1px solid var(--accent-border)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                    e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                    e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
                   }}
                 >
                   <Sparkles className="w-3 h-3" />
@@ -468,9 +470,9 @@ export function PlanDisplay({
                 <span
                   className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
                   style={{
-                    background: "hsla(145 70% 45% / 0.1)",
-                    border: "1px solid hsla(145 70% 45% / 0.2)",
-                    color: "hsl(145 70% 45%)",
+                    background: "var(--status-success-muted)",
+                    border: "1px solid var(--status-success-border)",
+                    color: "var(--status-success)",
                   }}
                 >
                   <CheckCircle2 className="w-3 h-3" />
@@ -485,15 +487,15 @@ export function PlanDisplay({
                   onClick={onCreateProposals}
                   className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
                   style={{
-                    color: "hsl(14 100% 60%)",
-                    background: "hsla(14 100% 60% / 0.1)",
-                    border: "1px solid hsla(14 100% 60% / 0.2)",
+                    color: "var(--accent-primary)",
+                    background: withAlpha("var(--accent-primary)", 10),
+                    border: "1px solid var(--accent-border)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                    e.currentTarget.style.background = withAlpha("var(--accent-primary)", 15);
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                    e.currentTarget.style.background = withAlpha("var(--accent-primary)", 10);
                   }}
                 >
                   <ListPlus className="w-3 h-3" />
@@ -508,15 +510,15 @@ export function PlanDisplay({
                       variant="ghost"
                       size="sm"
                       className="h-7 px-2 text-[11px] gap-1 rounded-lg transition-colors duration-150"
-                      style={{ color: "hsl(220 10% 50%)" }}
+                      style={{ color: "var(--text-muted)" }}
                       title="View version history"
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                        e.currentTarget.style.color = "hsl(220 10% 90%)";
+                        e.currentTarget.style.background = "var(--overlay-weak)";
+                        e.currentTarget.style.color = "var(--text-primary)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "hsl(220 10% 50%)";
+                        e.currentTarget.style.color = "var(--text-muted)";
                       }}
                     >
                       <History className="w-3 h-3" />
@@ -528,10 +530,10 @@ export function PlanDisplay({
                     align="end"
                     className="w-72"
                     style={{
-                      background: "hsl(220 10% 14%)",
+                      background: "var(--bg-elevated)",
                       backdropFilter: "blur(20px)",
-                      border: "1px solid hsla(220 10% 100% / 0.08)",
-                      boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
+                      border: "1px solid var(--overlay-weak)",
+                      boxShadow: "var(--shadow-lg)",
                     }}
                   >
                     {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
@@ -545,25 +547,25 @@ export function PlanDisplay({
                           onClick={() => handleVersionSelect(version)}
                           className="text-[12px] cursor-pointer px-3 py-2"
                           style={{
-                            background: isSelected ? "hsla(14 100% 60% / 0.1)" : "transparent",
-                            borderLeft: isSelected ? "2px solid hsl(14 100% 60%)" : "2px solid transparent",
+                            background: isSelected ? withAlpha("var(--accent-primary)", 10) : "transparent",
+                            borderLeft: isSelected ? "2px solid var(--accent-primary)" : "2px solid transparent",
                           }}
                         >
                           <span className="flex items-center gap-2 w-full">
                             {isSelected && (
                               <span
                                 className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: "hsl(14 100% 60%)" }}
+                                style={{ background: "var(--accent-primary)" }}
                               />
                             )}
                             <span>
                               v{version}
                               {timestamp && (
-                                <span style={{ color: "hsl(220 10% 55%)" }}> — {timestamp}</span>
+                                <span style={{ color: "var(--text-muted)" }}> — {timestamp}</span>
                               )}
                             </span>
                             {isLatest && (
-                              <span className="ml-auto" style={{ color: "hsl(220 10% 50%)" }}>
+                              <span className="ml-auto" style={{ color: "var(--text-muted)" }}>
                                 (latest)
                               </span>
                             )}
@@ -581,14 +583,14 @@ export function PlanDisplay({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
-                    style={{ color: "hsl(220 10% 50%)" }}
+                    style={{ color: "var(--text-muted)" }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                      e.currentTarget.style.color = "hsl(220 10% 90%)";
+                      e.currentTarget.style.background = "var(--overlay-weak)";
+                      e.currentTarget.style.color = "var(--text-primary)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = "hsl(220 10% 50%)";
+                      e.currentTarget.style.color = "var(--text-muted)";
                     }}
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
@@ -598,10 +600,10 @@ export function PlanDisplay({
                   align="end"
                   className="w-44"
                   style={{
-                    background: "hsl(220 10% 14%)",
+                    background: "var(--bg-elevated)",
                     backdropFilter: "blur(20px)",
-                    border: "1px solid hsla(220 10% 100% / 0.08)",
-                    boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
+                    border: "1px solid var(--overlay-weak)",
+                    boxShadow: "var(--shadow-lg)",
                   }}
                 >
                   <DropdownMenuItem
@@ -645,7 +647,7 @@ export function PlanDisplay({
             className="mt-3 pl-6 pr-2 pb-4"
             style={{
               marginLeft: "16px",
-              borderLeft: "2px solid hsla(14 100% 60% / 0.15)",
+              borderLeft: "2px solid var(--accent-border)",
             }}
           >
             {/* Debate summary — shown for debate-mode plans */}
@@ -660,11 +662,11 @@ export function PlanDisplay({
               <div
                 className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
                 style={{
-                  background: "hsla(45 93% 50% / 0.1)",
-                  border: "1px solid hsla(45 93% 50% / 0.2)",
+                  background: "var(--status-warning-muted)",
+                  border: "1px solid var(--status-warning-border)",
                 }}
               >
-                <span className="text-[12px] font-medium" style={{ color: "hsl(45 93% 55%)" }}>
+                <span className="text-[12px] font-medium" style={{ color: "var(--status-warning)" }}>
                   Viewing version {selectedVersion} of {plan.metadata.version}
                 </span>
                 <Button
@@ -673,14 +675,14 @@ export function PlanDisplay({
                   onClick={handleBackToLatest}
                   className="h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md transition-colors duration-150"
                   style={{
-                    color: "hsl(45 93% 55%)",
-                    background: "hsla(45 93% 50% / 0.1)",
+                    color: "var(--status-warning)",
+                    background: "var(--status-warning-muted)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(45 93% 50% / 0.2)";
+                    e.currentTarget.style.background = withAlpha("var(--status-warning)", 20);
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "hsla(45 93% 50% / 0.1)";
+                    e.currentTarget.style.background = "var(--status-warning-muted)";
                   }}
                 >
                   <ArrowLeft className="w-3 h-3" />
@@ -693,8 +695,8 @@ export function PlanDisplay({
             {isLoadingVersion ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
-                    <span className="text-[12px]" style={{ color: "hsl(220 10% 50%)" }}>
+                    <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent-primary)" }} />
+                    <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
                       Loading version...
                     </span>
                   </div>
@@ -708,7 +710,7 @@ export function PlanDisplay({
               ) : (
                 <p
                   className="text-[13px] italic py-8 text-center"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   No content available
                 </p>

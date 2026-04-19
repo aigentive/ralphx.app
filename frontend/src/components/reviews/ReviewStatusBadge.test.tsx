@@ -79,21 +79,21 @@ describe("ReviewStatusBadge", () => {
     it("should apply green/success background class for approved status", () => {
       render(<ReviewStatusBadge status="approved" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge).toHaveClass("bg-emerald-500/15");
+      expect(badge).toHaveClass("bg-status-success/15");
       expect(badge).toHaveClass("text-[var(--status-success)]");
     });
 
     it("should apply amber/warning background class for changes_requested status", () => {
       render(<ReviewStatusBadge status="changes_requested" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge).toHaveClass("bg-amber-500/15");
+      expect(badge).toHaveClass("bg-status-warning/15");
       expect(badge).toHaveClass("text-[var(--status-warning)]");
     });
 
     it("should apply red/error background class for rejected status", () => {
       render(<ReviewStatusBadge status="rejected" />);
       const badge = screen.getByTestId("review-status-badge");
-      expect(badge).toHaveClass("bg-red-500/15");
+      expect(badge).toHaveClass("bg-status-error/15");
       expect(badge).toHaveClass("text-[var(--status-error)]");
     });
   });

@@ -117,7 +117,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
   return (
     <div
       style={{
-        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+        borderBottom: "1px solid var(--overlay-faint)",
       }}
     >
       {/* Compact filter header with toggle */}
@@ -128,7 +128,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
           background: "transparent",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "hsl(220 10% 16%)";
+          e.currentTarget.style.background = "var(--bg-hover)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = "transparent";
@@ -137,13 +137,13 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
         <div className="flex items-center gap-2">
           <Filter
             className="w-3.5 h-3.5"
-            style={{ color: "hsl(220 10% 45%)" }}
+            style={{ color: "var(--text-muted)" }}
           />
           <span
             style={{
               fontSize: "11px",
               fontWeight: 500,
-              color: "hsl(220 10% 60%)",
+              color: "var(--text-secondary)",
             }}
           >
             {isShowingAll ? "All events" : `${activeCount} filter${activeCount > 1 ? "s" : ""}`}
@@ -154,7 +154,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
             "w-3.5 h-3.5 transition-transform",
             filters.isExpanded && "rotate-90"
           )}
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         />
       </button>
 
@@ -162,7 +162,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
       {filters.isExpanded && (
         <div
           className="px-2 py-2 space-y-0.5"
-          style={{ background: "hsl(220 10% 8%)" }}
+          style={{ background: "var(--bg-base)" }}
         >
           {TIMELINE_FILTER_OPTIONS.map((option) => {
             const isActive =
@@ -176,16 +176,16 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
                 onClick={() => handleCategoryToggle(option.id)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
                 style={{
-                  background: isActive ? "hsla(220 60% 50% / 0.12)" : "transparent",
+                  background: isActive ? "var(--status-info-muted)" : "transparent",
                   borderRadius: "6px",
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.currentTarget.style.background = "hsl(220 10% 14%)";
+                    e.currentTarget.style.background = "var(--bg-hover)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = isActive ? "hsla(220 60% 50% / 0.12)" : "transparent";
+                  e.currentTarget.style.background = isActive ? "var(--status-info-muted)" : "transparent";
                 }}
                 aria-pressed={isActive}
               >
@@ -204,7 +204,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
                   style={{
                     fontSize: "11px",
                     fontWeight: 500,
-                    color: isActive ? "hsl(220 10% 90%)" : "hsl(220 10% 55%)",
+                    color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                   }}
                 >
                   {option.label}
@@ -215,7 +215,7 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
                   <span
                     style={{
                       fontSize: "10px",
-                      color: "hsl(220 80% 65%)",
+                      color: "var(--status-info)",
                     }}
                   >
                     ✓
@@ -232,13 +232,13 @@ const TimelineFilterBar = memo(function TimelineFilterBar({
               className="w-full mt-1 py-1.5 transition-colors"
               style={{
                 fontSize: "10px",
-                color: "hsl(220 10% 50%)",
+                color: "var(--text-muted)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "hsl(220 10% 80%)";
+                e.currentTarget.style.color = "var(--text-secondary)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "hsl(220 10% 50%)";
+                e.currentTarget.style.color = "var(--text-muted)";
               }}
             >
               Clear filters
@@ -273,14 +273,14 @@ const TimelineHeader = memo(function TimelineHeader({
       className="flex items-center justify-between px-3"
       style={{
         height: "44px",
-        background: "hsla(220 15% 5% / 0.5)",
-        borderBottom: "1px solid hsla(220 10% 100% / 0.04)",
+        background: "var(--overlay-scrim)",
+        borderBottom: "1px solid var(--overlay-faint)",
       }}
     >
       <div className="flex items-center gap-2">
         <Clock
           className="w-4 h-4"
-          style={{ color: "hsl(220 10% 50%)" }}
+          style={{ color: "var(--text-muted)" }}
         />
         {!collapsed && (
           <>
@@ -288,7 +288,7 @@ const TimelineHeader = memo(function TimelineHeader({
               style={{
                 fontSize: "13px",
                 fontWeight: 500,
-                color: "hsl(220 10% 90%)",
+                color: "var(--text-primary)",
                 letterSpacing: "-0.01em",
               }}
             >
@@ -298,7 +298,7 @@ const TimelineHeader = memo(function TimelineHeader({
               style={{
                 fontSize: "11px",
                 fontWeight: 500,
-                color: "hsl(220 10% 45%)",
+                color: "var(--text-muted)",
               }}
             >
               {eventCount}
@@ -313,15 +313,15 @@ const TimelineHeader = memo(function TimelineHeader({
             disabled={isRefreshing}
             className="p-1.5 rounded-md transition-colors disabled:opacity-50"
             style={{
-              color: "hsl(220 10% 50%)",
+              color: "var(--text-muted)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "hsl(220 10% 16%)";
-              e.currentTarget.style.color = "hsl(220 10% 85%)";
+              e.currentTarget.style.background = "var(--bg-hover)";
+              e.currentTarget.style.color = "var(--text-primary)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "hsl(220 10% 50%)";
+              e.currentTarget.style.color = "var(--text-muted)";
             }}
             title="Refresh timeline"
           >
@@ -334,15 +334,15 @@ const TimelineHeader = memo(function TimelineHeader({
               onClick={onToggleCollapse}
               className="p-1.5 rounded-md transition-colors"
               style={{
-                color: "hsl(220 10% 50%)",
+                color: "var(--text-muted)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsl(220 10% 16%)";
-                e.currentTarget.style.color = "hsl(220 10% 85%)";
+                e.currentTarget.style.background = "var(--bg-hover)";
+                e.currentTarget.style.color = "var(--text-primary)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "hsl(220 10% 50%)";
+                e.currentTarget.style.color = "var(--text-muted)";
               }}
               title="Collapse timeline"
             >
@@ -356,15 +356,15 @@ const TimelineHeader = memo(function TimelineHeader({
           onClick={onToggleCollapse}
           className="p-1.5 rounded-md transition-colors"
           style={{
-            color: "hsl(220 10% 50%)",
+            color: "var(--text-muted)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = "hsl(220 10% 16%)";
-            e.currentTarget.style.color = "hsl(220 10% 85%)";
+            e.currentTarget.style.background = "var(--bg-hover)";
+            e.currentTarget.style.color = "var(--text-primary)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "hsl(220 10% 50%)";
+            e.currentTarget.style.color = "var(--text-muted)";
           }}
           title="Expand timeline"
         >
@@ -397,15 +397,15 @@ const TimelineLoadMore = memo(function TimelineLoadMore({
         style={{
           fontSize: "11px",
           fontWeight: 500,
-          color: "hsl(220 10% 55%)",
+          color: "var(--text-muted)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "hsl(220 10% 16%)";
-          e.currentTarget.style.color = "hsl(220 10% 85%)";
+          e.currentTarget.style.background = "var(--bg-hover)";
+          e.currentTarget.style.color = "var(--text-primary)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "hsl(220 10% 55%)";
+          e.currentTarget.style.color = "var(--text-muted)";
         }}
       >
         {isFetching ? (
@@ -496,8 +496,8 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
     return (
       <div
         className={cn(
-          "flex flex-col h-full bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm",
-          "border-l border-[hsl(220_10%_25%)]",
+          "flex flex-col h-full bg-[color-mix(in_srgb,_var(--bg-elevated)_95%,_transparent)] backdrop-blur-sm",
+          "border-l border-[var(--border-default)]",
           className
         )}
         style={{ width: PANEL_WIDTH_COLLAPSED }}
@@ -513,7 +513,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
         {/* Rotated label for collapsed state */}
         <div className="flex-1 flex items-center justify-center">
           <span
-            className="text-xs font-medium text-[hsl(220_10%_50%)] whitespace-nowrap"
+            className="text-xs font-medium text-[var(--text-muted)] whitespace-nowrap"
             style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
           >
             Execution Timeline
@@ -529,7 +529,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
       className={cn(
         "flex flex-col h-full",
         // Only apply backdrop styling when not embedded (FloatingTimeline handles it)
-        !embedded && "bg-[hsl(220_10%_10%_/_0.95)] backdrop-blur-sm border-l border-[hsl(220_10%_25%)]",
+        !embedded && "bg-[color-mix(in_srgb,_var(--bg-elevated)_95%,_transparent)] backdrop-blur-sm border-l border-[var(--border-default)]",
         className
       )}
       style={embedded ? undefined : { width: PANEL_WIDTH_EXPANDED }}
@@ -555,7 +555,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
           <div className="flex items-center justify-center h-32">
             <Loader2
               className="w-5 h-5 animate-spin"
-              style={{ color: "hsl(220 10% 45%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
           </div>
         )}
@@ -565,12 +565,12 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
           <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
             <AlertCircle
               className="w-5 h-5 mb-2"
-              style={{ color: "hsl(0 70% 55%)" }}
+              style={{ color: "var(--status-error)" }}
             />
             <p
               style={{
                 fontSize: "12px",
-                color: "hsl(0 70% 60%)",
+                color: "var(--status-error)",
                 marginBottom: "8px",
               }}
             >
@@ -580,7 +580,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
               onClick={refresh}
               style={{
                 fontSize: "11px",
-                color: "hsl(220 80% 65%)",
+                color: "var(--status-info)",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.textDecoration = "underline";
@@ -599,13 +599,13 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
           <div className="flex flex-col items-center justify-center h-32 px-4 text-center">
             <Clock
               className="w-5 h-5 mb-2"
-              style={{ color: "hsl(220 10% 35%)" }}
+              style={{ color: "var(--text-muted)" }}
             />
             <p
               style={{
                 fontSize: "12px",
                 fontWeight: 500,
-                color: "hsl(220 10% 50%)",
+                color: "var(--text-muted)",
               }}
             >
               No events yet
@@ -613,7 +613,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
             <p
               style={{
                 fontSize: "11px",
-                color: "hsl(220 10% 40%)",
+                color: "var(--text-muted)",
                 marginTop: "4px",
               }}
             >

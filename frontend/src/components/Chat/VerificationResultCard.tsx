@@ -1,5 +1,6 @@
 import { AlertTriangle, ChevronRight, RotateCcw, Wrench } from "lucide-react";
 import { useState } from "react";
+import { withAlpha } from "@/lib/theme-colors";
 
 interface VerificationResultBlocker {
   severity: string;
@@ -72,9 +73,9 @@ export function VerificationResultCard({
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-xl transition-colors"
-        style={{ background: expanded ? "hsl(220 10% 11%)" : "transparent" }}
+        style={{ background: expanded ? "var(--bg-surface)" : "transparent" }}
         onMouseEnter={(e) => {
-          if (!expanded) e.currentTarget.style.background = "hsl(220 10% 11%)";
+          if (!expanded) e.currentTarget.style.background = "var(--bg-surface)";
         }}
         onMouseLeave={(e) => {
           if (!expanded) e.currentTarget.style.background = "transparent";
@@ -102,7 +103,7 @@ export function VerificationResultCard({
         <div
           className="mt-1 mx-4 w-full max-w-[560px] rounded-lg px-3 py-2 text-[11px] leading-relaxed space-y-2"
           style={{
-            background: "hsl(220 10% 11%)",
+            background: "var(--bg-surface)",
             color: "var(--text-secondary)",
             fontFamily: "var(--font-body)",
             wordBreak: "break-word",
@@ -112,7 +113,7 @@ export function VerificationResultCard({
             <span
               className="px-2 py-0.5 rounded-full text-[10px]"
               style={{
-                background: actionableForParent ? "hsla(14 100% 60% / 0.18)" : "hsla(0 0% 100% / 0.06)",
+                background: actionableForParent ? withAlpha("var(--accent-primary)", 18) : "var(--overlay-weak)",
                 color: actionableForParent ? "var(--accent-primary)" : "var(--text-muted)",
               }}
             >
@@ -138,11 +139,11 @@ export function VerificationResultCard({
                 <div
                   key={`${blocker.severity}-${index}`}
                   className="flex items-start gap-2 rounded-md px-2 py-1.5"
-                  style={{ background: "hsla(0 0% 100% / 0.04)" }}
+                  style={{ background: "var(--overlay-faint)" }}
                 >
                   <AlertTriangle
                     className="w-3 h-3 mt-[1px] shrink-0"
-                    style={{ color: blocker.severity === "critical" ? "hsl(14 100% 60%)" : "var(--text-muted)" }}
+                    style={{ color: blocker.severity === "critical" ? "var(--accent-primary)" : "var(--text-muted)" }}
                   />
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "var(--text-muted)" }}>

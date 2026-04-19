@@ -9,6 +9,7 @@
 
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { statusTint, withAlpha } from "@/lib/theme-colors";
 
 type BannerVariant = "success" | "warning" | "error" | "info" | "accent" | "neutral";
 
@@ -29,40 +30,40 @@ const VARIANT_CONFIG: Record<BannerVariant, {
   titleColor: string;
 }> = {
   success: {
-    bgColor: "hsla(145 60% 45% / 0.12)",
-    iconBg: "hsla(145 60% 45% / 0.18)",
-    iconColor: "#34c759",
-    titleColor: "#30d158",
+    bgColor: "var(--status-success-muted)",
+    iconBg: statusTint("success", 18),
+    iconColor: "var(--status-success)",
+    titleColor: "var(--status-success)",
   },
   warning: {
-    bgColor: "hsla(35 100% 50% / 0.12)",
-    iconBg: "hsla(35 100% 50% / 0.18)",
-    iconColor: "#ff9f0a",
-    titleColor: "#ffd60a",
+    bgColor: "var(--status-warning-muted)",
+    iconBg: statusTint("warning", 18),
+    iconColor: "var(--status-warning)",
+    titleColor: "var(--status-warning)",
   },
   error: {
-    bgColor: "hsla(0 70% 55% / 0.12)",
-    iconBg: "hsla(0 70% 55% / 0.18)",
-    iconColor: "#ff453a",
-    titleColor: "#ff6961",
+    bgColor: "var(--status-error-muted)",
+    iconBg: statusTint("error", 18),
+    iconColor: "var(--status-error)",
+    titleColor: "var(--status-error)",
   },
   info: {
-    bgColor: "hsla(217 90% 55% / 0.12)",
-    iconBg: "hsla(217 90% 55% / 0.18)",
-    iconColor: "#0a84ff",
-    titleColor: "#64d2ff",
+    bgColor: "var(--status-info-muted)",
+    iconBg: statusTint("info", 18),
+    iconColor: "var(--status-info)",
+    titleColor: "var(--status-info)",
   },
   accent: {
-    bgColor: "hsla(14 100% 60% / 0.12)",
-    iconBg: "hsla(14 100% 60% / 0.18)",
-    iconColor: "#ff6b35",
-    titleColor: "#ff8050",
+    bgColor: "var(--accent-muted)",
+    iconBg: statusTint("accent", 18),
+    iconColor: "var(--accent-primary)",
+    titleColor: "var(--accent-primary)",
   },
   neutral: {
-    bgColor: "hsla(220 10% 50% / 0.12)",
-    iconBg: "hsla(220 10% 50% / 0.18)",
-    iconColor: "#8e8e93",
-    titleColor: "#aeaeb2",
+    bgColor: withAlpha("var(--text-muted)", 12),
+    iconBg: withAlpha("var(--text-muted)", 18),
+    iconColor: "var(--text-muted)",
+    titleColor: "var(--text-muted)",
   },
 };
 
@@ -107,7 +108,7 @@ export function StatusBanner({
         {subtitle && (
           <span
             className="text-[12px] mt-0.5 block truncate"
-            style={{ color: "hsl(220 10% 55%)" }}
+            style={{ color: "var(--text-muted)" }}
           >
             {subtitle}
           </span>

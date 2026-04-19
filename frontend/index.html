@@ -8,6 +8,49 @@
   </head>
 
   <body>
+    <script>
+      // Pre-hydration theme bootstrap — applies persisted settings before React
+      // mounts so there is no flash-of-wrong-theme. Supports three themes:
+      //   - "dark" (implicit default — no attribute, matches :root)
+      //   - "light"
+      //   - "high-contrast"
+      // See specs/design/theme-architecture.md.
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem('ralphx-theme');
+          // Explicit stored choice wins.
+          var resolved;
+          if (theme === 'dark' || theme === 'light' || theme === 'high-contrast') {
+            resolved = theme;
+          } else if (window.matchMedia) {
+            // First run — infer from OS signals.
+            // Precedence: prefers-contrast: more > prefers-color-scheme: light.
+            if (window.matchMedia('(prefers-contrast: more)').matches) {
+              resolved = 'high-contrast';
+            } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+              resolved = 'light';
+            } else {
+              resolved = 'dark';
+            }
+          } else {
+            resolved = 'dark';
+          }
+          root.setAttribute('data-theme', resolved);
+          // Keep shadcn's `.dark` class compat in sync with the resolved theme
+          // so a stale class never leaks Dark shadcn tokens into Light/HC.
+          if (resolved === 'dark') {
+            root.classList.add('dark');
+          } else {
+            root.classList.remove('dark');
+          }
+          var motion = localStorage.getItem('ralphx-motion');
+          if (motion === 'reduce') root.setAttribute('data-motion', 'reduce');
+          var scale = localStorage.getItem('ralphx-font-scale');
+          if (scale === 'lg' || scale === 'xl') root.setAttribute('data-font-scale', scale);
+        } catch (_) { /* no-op */ }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,0 +1,246 @@
+/**
+ * Tier 2 — Semantic tokens (aka system / alias tokens)
+ *
+ * Maps primitives to intent-based roles. This is the layer components
+ * consume via `bg-[var(--bg-surface)]` etc. Theme files override these same
+ * names for Light / High-Contrast variants.
+ *
+ * The values here are the DARK theme (RalphX default) — no theme attribute
+ * required. Light + HC themes live in `themes/*.css` and override via
+ * `[data-theme="..."]` selectors.
+ *
+ * Spec: specs/design/styleguide.md §1
+ */
+
+/* Dark is the base — `:root` always matches regardless of data-theme value.
+   Light and High-Contrast override via `[data-theme="..."]` selectors loaded
+   after this file. Do NOT add `, [data-theme="dark"]` to this list — some
+   browsers cache compound :root selectors strangely across HMR reloads. */
+:root {
+  /* ============================================================================
+   * Backgrounds
+   * ============================================================================ */
+  --bg-base:          var(--gray-975);  /* app root */
+  --bg-surface:       var(--gray-950);  /* panels, sidebars */
+  --bg-elevated:      var(--gray-925);  /* cards, dropdowns */
+  --bg-hover:         var(--gray-850);  /* row hover */
+  --bg-surface-hover: var(--bg-hover);  /* deprecated alias — migrate callsites to --bg-hover */
+
+  /* ============================================================================
+   * Text
+   * ============================================================================ */
+  --text-primary:   hsl(220 10% 90%);
+  --text-secondary: var(--gray-500);
+  --text-muted:     var(--gray-600);
+  --text-inverse:   hsl(220 10% 6%); /* on accent/light surfaces (e.g. HC yellow btn) */
+
+  /* ============================================================================
+   * Accent (brand) — warm orange used sparingly
+   * ============================================================================ */
+  --accent-primary:   var(--orange-500);
+  --accent-secondary: var(--amber-500);
+  --accent-hover:     var(--orange-600);
+  --accent-muted:     hsla(14 100% 60% / 0.15); /* tinted bg for icon boxes */
+  --accent-border:    hsla(14 100% 60% / 0.25); /* subtle accent-tinted borders */
+
+  /* ============================================================================
+   * Status — Okabe-Ito CVD-safe palette (spec §5 color-blind-design.md).
+   * Every state carries a quartet: base / muted bg / border / strong emphasis.
+   * Muted/border/strong are derived from the base via color-mix so themes
+   * only need to re-point the base — alphas stay proportional automatically.
+   * ============================================================================ */
+  --status-success:        var(--cvd-bluish-green);
+  --status-success-muted:  color-mix(in srgb, var(--status-success) 10%, transparent);
+  --status-success-border: color-mix(in srgb, var(--status-success) 30%, transparent);
+  --status-success-strong: color-mix(in srgb, var(--status-success) 50%, transparent);
+
+  --status-warning:        var(--cvd-yellow);
+  --status-warning-muted:  color-mix(in srgb, var(--status-warning) 10%, transparent);
+  --status-warning-border: color-mix(in srgb, var(--status-warning) 30%, transparent);
+  --status-warning-strong: color-mix(in srgb, var(--status-warning) 50%, transparent);
+
+  --status-error:          var(--cvd-vermillion);
+  --status-error-muted:    color-mix(in srgb, var(--status-error) 10%, transparent);
+  --status-error-border:   color-mix(in srgb, var(--status-error) 30%, transparent);
+  --status-error-strong:   color-mix(in srgb, var(--status-error) 50%, transparent);
+
+  --status-info:           var(--cvd-blue);
+  --status-info-muted:     color-mix(in srgb, var(--status-info) 10%, transparent);
+  --status-info-border:    color-mix(in srgb, var(--status-info) 30%, transparent);
+  --status-info-strong:    color-mix(in srgb, var(--status-info) 50%, transparent);
+
+  /* Accent strong tint — for emphasis backgrounds / glow edges */
+  --accent-strong:         color-mix(in srgb, var(--accent-primary) 50%, transparent);
+
+  /* ============================================================================
+   * Borders
+   * ============================================================================ */
+  --border-subtle:  var(--gray-900);
+  --border-default: var(--gray-800);
+  --border-focus:   var(--blue-500);
+  --border-inline:  var(--border-subtle); /* field/chip chrome — HC overrides to 30% white */
+
+  /* Theme-adjustable stroke widths — HC overrides to thicker values */
+  --border-width-default: 1px;
+  --border-width-focus:   2px;
+
+  /* ============================================================================
+   * Overlay surfaces — translucent whites/blacks for subtle layering where
+   * the underlying surface should show through. Components should consume
+   * these instead of reaching for --alpha-white-* primitives directly.
+   * ============================================================================ */
+  --overlay-faint:     var(--alpha-white-4);  /* 4%  — subtle card / nested row */
+  --overlay-weak:      var(--alpha-white-6);  /* 6%  — hover emphasis */
+  --overlay-moderate:  var(--alpha-white-10); /* 10% — section highlight */
+  --overlay-scrim:     var(--alpha-black-30); /* 30% — dialog scrim, hero dim */
+  --overlay-scrim-med: hsla(0 0% 0% / 0.50);  /* 50% — modal centre overlay */
+  --overlay-scrim-deep:var(--alpha-black-60); /* 60% — modal backdrop */
+
+  /* ============================================================================
+   * Interactive / focus
+   * ============================================================================ */
+  --focus-ring: hsla(220 80% 60% / 0.5);
+
+  --selection-bg:   hsla(220 60% 50% / 0.20);
+  --selection-text: hsl(220 80% 70%);
+
+  /* ============================================================================
+   * Nav active surface — tokenised so each theme can pick its own flavour
+   *   Dark: white bg + dark text
+   *   Light: orange bg + white text
+   *   HC:    yellow bg + black text
+   * ============================================================================ */
+  --nav-active-bg:   var(--color-white);
+  --nav-active-text: hsl(220 10% 6%);
+
+  /* ============================================================================
+   * Semantic shadow tokens — named by intent.
+   * Components reference these, not primitives, so themes can re-tune
+   * glow intensity without touching component code.
+   * (Audit/spec: Team F report 2026-04-18.)
+   * ============================================================================ */
+
+  /* Accent pulse (orange in dark, darker orange in light, yellow in HC) */
+  --shadow-pulse-accent-base:   0 0 0 0 hsla(14 100% 60% / 0.6),
+                                0 0 8px hsla(14 100% 60% / 0.3);
+  --shadow-pulse-accent-expand: 0 0 0 4px hsla(14 100% 60% / 0),
+                                0 0 12px hsla(14 100% 60% / 0.5);
+
+  /* Info pulse (reviewing state) */
+  --shadow-pulse-info-base:   0 0 0 0 hsla(217 91% 60% / 0.5),
+                              0 0 8px hsla(217 91% 60% / 0.25);
+  --shadow-pulse-info-expand: 0 0 0 4px hsla(217 91% 60% / 0),
+                              0 0 12px hsla(217 91% 60% / 0.4);
+
+  /* Success pulse (task runtime) */
+  --shadow-pulse-status-base:   0 0 0 0 hsla(160 84% 39% / 0.4);
+  --shadow-pulse-status-expand: 0 0 0 4px hsla(160 84% 39% / 0);
+
+  /* Accent soft glow (card idle ambient) */
+  --shadow-glow-accent-soft:   0 0 12px hsla(14 100% 60% / 0.08),
+                               0 0 24px hsla(14 100% 60% / 0.04),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.05);
+  --shadow-glow-accent-active: 0 0 18px hsla(14 100% 60% / 0.15),
+                               0 0 36px hsla(14 100% 60% / 0.08),
+                               inset 0 1px 0 hsla(0 0% 100% / 0.08);
+
+  /* Drop-zone borders (dnd affordances) */
+  --shadow-drop-zone-border: inset 0 0 0 2px hsla(14 100% 60% / 0.8);
+  --shadow-drop-zone-active: inset 0 0 0 3px hsla(14 100% 60% / 1),
+                             0 0 20px hsla(14 100% 60% / 0.3);
+
+  /* ============================================================================
+   * Animation keyframes — these are referenced by animation-pulse classes
+   * defined in globals.css
+   * ============================================================================ */
+  --animation-executing-pulse: executing-pulse 2s ease-in-out infinite;
+  --animation-attention-pulse: attention-pulse 1.5s ease-in-out infinite;
+  --animation-reviewing-pulse: reviewing-pulse 2s ease-in-out infinite;
+
+  /* ============================================================================
+   * shadcn/ui bridging — maps our semantic tokens to shadcn variable names.
+   * Components imported from shadcn read `--background`, `--primary` etc.
+   * ============================================================================ */
+  --radius: 0.5rem;
+
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--color-white);
+
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--color-white);
+
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+
+  --sidebar:                       var(--bg-surface);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent-primary);
+  --sidebar-primary-foreground:    var(--color-white);
+  --sidebar-accent:                var(--bg-hover);
+  --sidebar-accent-foreground:     var(--text-primary);
+  --sidebar-border:                var(--border-subtle);
+  --sidebar-ring:                  var(--accent-primary);
+}
+
+/* shadcn compatibility: .dark class and dark theme map to the same :root
+ * tokens — RalphX's default is dark. Present so any shadcn component wrapped
+ * in `<body class="dark">` still works. */
+.dark {
+  --background:         var(--bg-base);
+  --foreground:         var(--text-primary);
+  --card:               var(--bg-elevated);
+  --card-foreground:    var(--text-primary);
+  --popover:            var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary:            var(--accent-primary);
+  --primary-foreground: var(--color-white);
+  --secondary:            var(--bg-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted:            var(--bg-surface);
+  --muted-foreground: var(--text-muted);
+  --accent:            var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+  --destructive:            var(--status-error);
+  --destructive-foreground: var(--color-white);
+  --border: var(--border-default);
+  --input:  var(--border-default);
+  --ring:   var(--accent-primary);
+  --chart-1: var(--accent-primary);
+  --chart-2: var(--status-success);
+  --chart-3: var(--status-info);
+  --chart-4: var(--accent-secondary);
+  --chart-5: var(--status-warning);
+  --sidebar:                       var(--bg-surface);
+  --sidebar-foreground:            var(--text-primary);
+  --sidebar-primary:               var(--accent-primary);
+  --sidebar-primary-foreground:    var(--color-white);
+  --sidebar-accent:                var(--bg-hover);
+  --sidebar-accent-foreground:     var(--text-primary);
+  --sidebar-border:                var(--border-subtle);
+  --sidebar-ring:                  var(--accent-primary);
+}

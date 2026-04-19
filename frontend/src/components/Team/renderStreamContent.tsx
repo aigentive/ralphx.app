@@ -13,8 +13,8 @@ export function renderStreamContent(text: string): React.ReactNode[] {
           key={i}
           className="inline-block text-[9px] px-1 py-px rounded mx-0.5"
           style={{
-            backgroundColor: "hsl(220 10% 14%)",
-            color: "hsl(14 100% 60%)",
+            backgroundColor: "var(--border-subtle)",
+            color: "var(--accent-primary)",
           }}
         >
           {part}

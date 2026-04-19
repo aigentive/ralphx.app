@@ -114,14 +114,14 @@ function getStepDotStyle(
 
   // Green only for terminal complete states (merged/approved)
   const completedColor = isTerminalComplete
-    ? "hsl(142 76% 45%)" // success green
-    : "hsl(220 10% 55%)"; // light gray
+    ? "var(--status-success)" // success green
+    : "var(--text-muted)"; // light gray
 
   if (index < completed) return { ...base, backgroundColor: completedColor };
-  if (index < completedAndSkipped) return { ...base, backgroundColor: "hsl(220 10% 45%)" }; // muted
-  if (index < failedEnd) return { ...base, backgroundColor: "hsl(0 84% 60%)" }; // error red
-  if (index < inProgressEnd) return { ...base, backgroundColor: "hsl(14 100% 60%)" }; // accent orange
-  return { ...base, backgroundColor: "hsl(220 10% 25%)" }; // pending darker gray
+  if (index < completedAndSkipped) return { ...base, backgroundColor: "var(--text-muted)" }; // muted
+  if (index < failedEnd) return { ...base, backgroundColor: "var(--status-error)" }; // error red
+  if (index < inProgressEnd) return { ...base, backgroundColor: "var(--accent-primary)" }; // accent orange
+  return { ...base, backgroundColor: "var(--border-subtle)" }; // pending darker gray
 }
 
 
@@ -203,7 +203,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ top: -3 }}
       />
 
@@ -213,7 +213,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           relative rounded-lg px-3 py-2 overflow-hidden
           transition-all duration-150 ease-out
           hover:shadow-lg
-          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[hsl(14_100%_55%_/_0.3)]" : ""}
+          ${isCriticalPath && !selected && !isHighlighted && !isFocused ? "ring-1 ring-[var(--accent-border)]" : ""}
         `}
         style={{
           // Fixed height for consistent graph layout (minus handle space)
@@ -225,14 +225,14 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           // Border: solid orange for all selection methods (click, keyboard, timeline)
           // Use explicit borderTop/Right/Bottom instead of shorthand to prevent conflicts with borderLeft
           borderTop: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderRight: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           borderBottom: (selected || isHighlighted || isFocused)
-            ? "2px solid hsl(14 100% 55%)"
-            : "1px solid hsla(220 10% 100% / 0.06)",
+            ? "2px solid var(--accent-primary)"
+            : "1px solid var(--overlay-weak)",
           // Keep status-colored left stripe visible in all states
           borderLeft: `3px solid ${statusColor}`,
           boxShadow: GLASS_SURFACE.boxShadow,
@@ -250,7 +250,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           style={{
             fontSize: "12px",
             fontWeight: 500,
-            color: "hsl(220 10% 88%)",
+            color: "var(--text-primary)",
             lineHeight: 1.35,
             minHeight: "17px",
             maxHeight: "34px",
@@ -273,7 +273,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
               className="line-clamp-2"
               style={{
                 fontSize: "11px",
-                color: "hsl(220 10% 50%)",
+                color: "var(--text-muted)",
                 lineHeight: 1.4,
               }}
             >
@@ -293,7 +293,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
               style={{
                 fontSize: "10px",
                 fontWeight: 500,
-                color: "hsl(220 10% 42%)",
+                color: "var(--text-muted)",
                 textTransform: "capitalize",
               }}
             >
@@ -325,19 +325,19 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           <div className="flex items-center gap-2 mt-1">
             <div
               className="flex-1 h-1 rounded-full overflow-hidden"
-              style={{ backgroundColor: "hsl(220 10% 14%)" }}
+              style={{ backgroundColor: "var(--border-subtle)" }}
             >
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
                   width: `${Math.round(((stepProgress.completed + stepProgress.skipped) / stepProgress.total) * 100)}%`,
-                  backgroundColor: "hsl(220 10% 35%)",
+                  backgroundColor: "var(--text-muted)",
                 }}
               />
             </div>
             <span
               className="text-[10px] tabular-nums shrink-0"
-              style={{ color: "hsl(220 10% 40%)" }}
+              style={{ color: "var(--text-muted)" }}
             >
               {Math.round(((stepProgress.completed + stepProgress.skipped) / stepProgress.total) * 100)}%
             </span>
@@ -349,7 +349,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-[hsl(220_10%_40%)] !border-[hsl(220_10%_25%)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
+        className="!bg-[var(--text-muted)] !border-[var(--border-default)] !w-1.5 !h-1.5 !opacity-50 hover:!opacity-100 transition-opacity duration-150"
         style={{ bottom: -3 }}
       />
     </div>

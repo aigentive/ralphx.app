@@ -76,19 +76,19 @@ function MergeInfoCard({
         <div className="flex items-center gap-3">
           <div
             className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-            style={{ backgroundColor: "rgba(52, 199, 89, 0.15)" }}
+            style={{ backgroundColor: "var(--status-success-muted)" }}
           >
-            <GitCommit className="w-4 h-4" style={{ color: "#34c759" }} />
+            <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+            <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
               Merge Commit
             </span>
-            <span className="text-[13px] text-white/70 font-mono">
+            <span className="text-[13px] text-text-primary/70 font-mono">
               {shortSha}
             </span>
           </div>
-          <span className="text-[12px] text-white/40">
+          <span className="text-[12px] text-text-primary/40">
             {formatRelativeTime(mergedAt)}
           </span>
         </div>
@@ -98,22 +98,22 @@ function MergeInfoCard({
           <>
             <div
               className="h-px"
-              style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+              style={{ backgroundColor: "var(--overlay-weak)" }}
             />
             <div className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-                style={{ backgroundColor: "rgba(52, 199, 89, 0.15)" }}
+                style={{ backgroundColor: "var(--status-success-muted)" }}
               >
-                <GitMerge className="w-4 h-4" style={{ color: "#34c759" }} />
+                <GitMerge className="w-4 h-4" style={{ color: "var(--status-success)" }} />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+                <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
                   Branch
                 </span>
                 <BranchBadge branch={branchName} variant="muted" />
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/40">
+              <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--overlay-faint)] text-text-primary/40">
                 Deleted
               </span>
             </div>
@@ -134,8 +134,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2
-          className="w-5 h-5 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-5 h-5 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -143,7 +142,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
 
   if (commits.length === 0) {
     return (
-      <p className="text-[13px] text-white/50 italic">
+      <p className="text-[13px] text-text-primary/50 italic">
         No commit history available
       </p>
     );
@@ -156,16 +155,16 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
           key={commit.sha}
           className="flex items-start gap-3 py-2"
         >
-          <span className="text-[11px] font-mono text-white/50 shrink-0 pt-0.5">
+          <span className="text-[11px] font-mono text-text-primary/50 shrink-0 pt-0.5">
             {commit.shortSha}
           </span>
-          <span className="text-[13px] text-white/70 line-clamp-2">
+          <span className="text-[13px] text-text-primary/70 line-clamp-2">
             {commit.message}
           </span>
         </div>
       ))}
       {commits.length > 5 && (
-        <p className="text-[12px] text-white/40 italic">
+        <p className="text-[12px] text-text-primary/40 italic">
           +{commits.length - 5} more commits
         </p>
       )}
@@ -190,8 +189,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2
-          className="w-6 h-6 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-6 h-6 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -237,8 +235,8 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           <DetailCard variant="success">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
-                <span className="text-[13px] text-white/80">
+                <GitPullRequest className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+                <span className="text-[13px] text-text-primary/80">
                   Merged via PR #{planBranch.prNumber}
                 </span>
               </div>
@@ -250,7 +248,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
                     await openUrl(planBranch.prUrl!);
                   }}
                   className="flex items-center gap-1 text-[12px] cursor-pointer"
-                  style={{ color: "#34c759" }}
+                  style={{ color: "var(--status-success)" }}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   View PR
@@ -300,7 +298,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
             onClick={() => setShowReviewModal(true)}
             variant="ghost"
             className="h-8 px-3 gap-2 rounded-lg font-medium text-[12px]"
-            style={{ color: "hsl(217 90% 60%)" }}
+            style={{ color: "var(--status-info)" }}
           >
             <Code className="w-4 h-4" />
             Review Code

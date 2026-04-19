@@ -7,6 +7,7 @@
 
 import { TrendingDown, TrendingUp, Minus, CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import type {
   RoundSummary,
   VerificationGap,
@@ -47,10 +48,10 @@ const CONVERGENCE_LABELS: Record<string, string> = {
 };
 
 const SEVERITY_CONFIG = {
-  critical: { color: "hsl(0 70% 65%)", bg: "hsla(0 70% 50% / 0.1)", label: "Critical" },
-  high: { color: "hsl(14 100% 65%)", bg: "hsla(14 100% 60% / 0.1)", label: "High" },
-  medium: { color: "hsl(45 93% 60%)", bg: "hsla(45 93% 50% / 0.1)", label: "Medium" },
-  low: { color: "hsl(220 10% 60%)", bg: "hsla(220 10% 100% / 0.05)", label: "Low" },
+  critical: { color: "var(--status-error)", bg: "var(--status-error-muted)", label: "Critical" },
+  high: { color: "var(--accent-primary)", bg: withAlpha("var(--accent-primary)", 10), label: "High" },
+  medium: { color: "var(--status-warning)", bg: "var(--status-warning-muted)", label: "Medium" },
+  low: { color: "var(--text-secondary)", bg: "var(--overlay-weak)", label: "Low" },
 } as const;
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"] as const;
@@ -81,7 +82,7 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
     <div className="mb-5">
       <div
         className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Gap Score by Round
       </div>
@@ -92,28 +93,32 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
           const barHeight = Math.max(4, Math.round((round.gapScore / maxScore) * 48));
           const isLast = idx === rounds.length - 1;
 
-          let barColor = "hsla(14 100% 60% / 0.5)";
-          if (round.gapScore === 0) barColor = "hsla(145 70% 45% / 0.6)";
-          else if (delta < 0) barColor = "hsla(145 70% 45% / 0.45)";
-          else if (delta > 0) barColor = "hsla(0 70% 50% / 0.5)";
+          // Select semantic token per state. Light variants for normal, heavy for "isLast".
+          let barToken = "var(--accent-primary)";
+          if (round.gapScore === 0) barToken = "var(--status-success)";
+          else if (delta < 0) barToken = "var(--status-success)";
+          else if (delta > 0) barToken = "var(--status-error)";
+
+          const barBg = withAlpha(barToken, isLast ? 80 : 50);
+          const barBorder = isLast ? `1px solid ${withAlpha(barToken, 90)}` : "1px solid transparent";
 
           return (
             <div key={round.round} className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
               {/* Trend arrow */}
               <div className="h-4 flex items-center">
                 {idx === 0 || delta === 0 ? (
-                  <Minus className="w-3 h-3" style={{ color: "hsl(220 10% 50%)" }} />
+                  <Minus className="w-3 h-3" style={{ color: "var(--text-muted)" }} />
                 ) : delta < 0 ? (
-                  <TrendingDown className="w-3 h-3" style={{ color: "hsl(145 70% 45%)" }} />
+                  <TrendingDown className="w-3 h-3" style={{ color: "var(--status-success)" }} />
                 ) : (
-                  <TrendingUp className="w-3 h-3" style={{ color: "hsl(0 70% 60%)" }} />
+                  <TrendingUp className="w-3 h-3" style={{ color: "var(--status-error)" }} />
                 )}
               </div>
               {/* Bar */}
               <div className="w-full flex flex-col items-center gap-1">
                 <span
                   className="text-[10px] font-medium tabular-nums"
-                  style={{ color: isLast ? "hsl(220 10% 75%)" : "hsl(220 10% 50%)" }}
+                  style={{ color: isLast ? "var(--text-secondary)" : "var(--text-muted)" }}
                 >
                   {round.gapScore}
                 </span>
@@ -121,19 +126,15 @@ function RoundTimeline({ rounds }: { rounds: RoundSummary[] }) {
                   className="w-full rounded-sm transition-all duration-300"
                   style={{
                     height: `${barHeight}px`,
-                    background: isLast
-                      ? barColor.replace("/ 0.", "/ 0.8")
-                      : barColor,
-                    border: isLast
-                      ? "1px solid " + barColor.replace("/ 0.", "/ 0.9")
-                      : "1px solid transparent",
+                    background: barBg,
+                    border: barBorder,
                   }}
                 />
               </div>
               {/* Round label */}
               <span
                 className="text-[10px]"
-                style={{ color: isLast ? "hsl(220 10% 70%)" : "hsl(220 10% 45%)" }}
+                style={{ color: isLast ? "var(--text-secondary)" : "var(--text-muted)" }}
               >
                 R{round.round}
               </span>
@@ -152,7 +153,7 @@ function GapBreakdown({ gaps }: { gaps: VerificationGap[] }) {
     <div>
       <div
         className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Final Gaps ({gaps.length})
       </div>
@@ -181,20 +182,20 @@ function GapBreakdown({ gaps }: { gaps: VerificationGap[] }) {
                     className="rounded-md px-2.5 py-2"
                     style={{ background: config.bg }}
                   >
-                    <div className="text-[12px]" style={{ color: "hsl(220 10% 80%)" }}>
+                    <div className="text-[12px]" style={{ color: "var(--text-primary)" }}>
                       {gap.description}
                     </div>
                     {gap.whyItMatters && (
                       <div
                         className="text-[11px] mt-0.5"
-                        style={{ color: "hsl(220 10% 55%)" }}
+                        style={{ color: "var(--text-secondary)" }}
                       >
                         {gap.whyItMatters}
                       </div>
                     )}
                     <div
                       className="text-[10px] mt-1 font-medium uppercase tracking-wide"
-                      style={{ color: "hsl(220 10% 45%)" }}
+                      style={{ color: "var(--text-muted)" }}
                     >
                       {gap.category}
                     </div>
@@ -214,7 +215,7 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
     <div className="space-y-4">
       <div
         className="text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "hsl(220 10% 50%)" }}
+        style={{ color: "var(--text-muted)" }}
       >
         Round Lineage
       </div>
@@ -230,24 +231,24 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
             key={round.round}
             className="rounded-lg px-3 py-3 space-y-2"
             style={{
-              background: "hsla(220 10% 100% / 0.03)",
-              border: "1px solid hsla(220 10% 100% / 0.06)",
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-faint)",
             }}
           >
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[12px] font-medium" style={{ color: "hsl(220 10% 82%)" }}>
+              <span className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
                 Round {round.round}
               </span>
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 55%)" }}>
+              <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
                 Score {round.gapScore}
               </span>
-              <span className="text-[11px]" style={{ color: "hsl(220 10% 55%)" }}>
+              <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
                 {round.gapCount} gap{round.gapCount === 1 ? "" : "s"}
               </span>
             </div>
 
             <div>
-              <div className="text-[11px] font-medium mb-1" style={{ color: "hsl(220 10% 65%)" }}>
+              <div className="text-[11px] font-medium mb-1" style={{ color: "var(--text-secondary)" }}>
                 Remaining after round {round.round}
               </div>
               {round.gaps.length > 0 ? (
@@ -256,19 +257,19 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
                     <div
                       key={`${round.round}-${gapIndex}-${gapKey(gap)}`}
                       className="rounded-md px-2.5 py-2"
-                      style={{ background: "hsla(220 10% 100% / 0.04)" }}
+                      style={{ background: "var(--overlay-faint)" }}
                     >
-                      <div className="text-[12px]" style={{ color: "hsl(220 10% 82%)" }}>
+                      <div className="text-[12px]" style={{ color: "var(--text-primary)" }}>
                         {gap.description}
                       </div>
-                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "hsl(220 10% 45%)" }}>
+                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         {gap.severity} · {gap.category}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+                <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                   No gaps remained after this round.
                 </div>
               )}
@@ -276,7 +277,7 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
 
             {resolved.length > 0 && (
               <div>
-                <div className="text-[11px] font-medium mb-1" style={{ color: "hsl(145 70% 45%)" }}>
+                <div className="text-[11px] font-medium mb-1" style={{ color: "var(--status-success)" }}>
                   Addressed Since Round {previous?.round}
                 </div>
                 <div className="space-y-1.5">
@@ -284,12 +285,12 @@ function RoundLineage({ roundDetails }: { roundDetails: VerificationRoundDetail[
                     <div
                       key={`${round.round}-resolved-${gapIndex}-${gapKey(gap)}`}
                       className="rounded-md px-2.5 py-2"
-                      style={{ background: "hsla(145 70% 45% / 0.08)" }}
+                      style={{ background: "var(--status-success-muted)" }}
                     >
-                      <div className="text-[12px]" style={{ color: "hsl(220 10% 82%)" }}>
+                      <div className="text-[12px]" style={{ color: "var(--text-primary)" }}>
                         {gap.description}
                       </div>
-                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "hsl(220 10% 45%)" }}>
+                      <div className="text-[10px] mt-1 uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
                         {gap.severity} · {gap.category}
                       </div>
                     </div>
@@ -333,32 +334,32 @@ export function VerificationHistory({
           )}
           style={{
             background: isVerified
-              ? "hsla(145 70% 45% / 0.08)"
-              : "hsla(0 70% 50% / 0.08)",
+              ? "var(--status-success-muted)"
+              : "var(--status-error-muted)",
             border: isVerified
-              ? "1px solid hsla(145 70% 45% / 0.2)"
-              : "1px solid hsla(0 70% 50% / 0.15)",
+              ? "1px solid var(--status-success-border)"
+              : "1px solid var(--status-error-border)",
           }}
         >
           {isVerified ? (
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "hsl(145 70% 45%)" }} />
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "var(--status-success)" }} />
           ) : (
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "hsl(0 70% 60%)" }} />
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: "var(--status-error)" }} />
           )}
           <div>
             <div
               className="text-[12px] font-medium"
-              style={{ color: isVerified ? "hsl(145 70% 45%)" : "hsl(0 70% 65%)" }}
+              style={{ color: isVerified ? "var(--status-success)" : "var(--status-error)" }}
             >
               {isVerified ? "Plan verified" : "Gaps require attention"}
             </div>
             {convergenceLabel && (
-              <div className="text-[11px] mt-0.5" style={{ color: "hsl(220 10% 55%)" }}>
+              <div className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                 {convergenceLabel}
               </div>
             )}
             {gapScore !== undefined && gapScore > 0 && (
-              <div className="text-[11px] mt-0.5" style={{ color: "hsl(220 10% 55%)" }}>
+              <div className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                 Gap score: {gapScore}
               </div>
             )}
@@ -373,7 +374,7 @@ export function VerificationHistory({
       {rounds.length === 0 && !hasGaps && (
         <p
           className="text-[12px] py-4 text-center"
-          style={{ color: "hsl(220 10% 45%)" }}
+          style={{ color: "var(--text-muted)" }}
         >
           No verification rounds recorded.
         </p>

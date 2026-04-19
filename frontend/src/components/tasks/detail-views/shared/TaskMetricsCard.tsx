@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import { useTaskMetrics } from "@/hooks/useTaskMetrics";
 import { deriveComplexityTier, type ComplexityTier } from "@/api/task-metrics";
 import { DetailCard } from "./DetailCard";
+import { statusTint } from "@/lib/theme-colors";
 
 // ── Complexity badge ─────────────────────────────────────────────────────────
 
@@ -23,16 +24,16 @@ const COMPLEXITY_STYLES: Record<
   { bg: string; color: string }
 > = {
   Simple: {
-    bg: "rgba(52, 199, 89, 0.12)",
-    color: "#34c759",
+    bg: statusTint("success", 12),
+    color: "var(--status-success)",
   },
   Medium: {
-    bg: "rgba(255, 107, 53, 0.12)",
-    color: "#ff6b35",
+    bg: statusTint("accent", 12),
+    color: "var(--accent-primary)",
   },
   Complex: {
-    bg: "rgba(255, 159, 10, 0.12)",
-    color: "#ff9f0a",
+    bg: statusTint("warning", 12),
+    color: "var(--status-warning)",
   },
 };
 
@@ -65,15 +66,15 @@ function StatRow({
     <div className="flex items-center gap-3">
       <div
         className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+        style={{ backgroundColor: "var(--overlay-weak)" }}
       >
-        <Icon className="w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.4)" }} />
+        <Icon className="w-3.5 h-3.5 text-text-primary/40" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-[11px] uppercase tracking-wider text-white/40 block">
+        <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
           {label}
         </span>
-        <span className="text-[13px] text-white/70 font-medium">{value}</span>
+        <span className="text-[13px] text-text-primary/70 font-medium">{value}</span>
       </div>
     </div>
   );
@@ -109,8 +110,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2
-          className="w-4 h-4 animate-spin"
-          style={{ color: "rgba(255,255,255,0.3)" }}
+          className="w-4 h-4 animate-spin text-text-primary/30"
         />
       </div>
     );
@@ -125,7 +125,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
   const divider = (
     <div
       className="h-px"
-      style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      style={{ backgroundColor: "var(--overlay-weak)" }}
     />
   );
 
@@ -134,7 +134,7 @@ export function TaskMetricsCard({ taskId }: TaskMetricsCardProps) {
       <div className="space-y-3">
         {/* Header: complexity tier */}
         <div className="flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider text-white/40">
+          <span className="text-[11px] uppercase tracking-wider text-text-primary/40">
             Complexity
           </span>
           <ComplexityBadge tier={tier} />

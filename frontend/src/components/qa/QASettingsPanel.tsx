@@ -179,7 +179,7 @@ export function QASettingsPanel() {
 
       {/* Error Banner */}
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-[var(--status-error)]">
+        <div className="p-3 rounded-lg bg-status-error/10 border border-status-error/30 text-sm text-[var(--status-error)]">
           {error}
         </div>
       )}

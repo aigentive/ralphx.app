@@ -17,6 +17,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import { SectionTitle } from "./SectionTitle";
+import { withAlpha } from "@/lib/theme-colors";
 import type { MergeValidationStepEvent } from "@/types/events";
 
 function formatDuration(ms: number): string {
@@ -36,21 +37,21 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   const [expanded, setExpanded] = useState(isRunning || isFailed);
 
   const statusIcon = isRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : isFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : isSkipped ? (
-    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
+    <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : isCached ? (
-    <Archive className="w-4 h-4" style={{ color: "#34c759" }} />
+    <Archive className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   );
 
   return (
     <div
       className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+      style={{ backgroundColor: "var(--overlay-scrim)" }}
     >
       <button
         type="button"
@@ -61,31 +62,31 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
         {statusIcon}
         <span
           className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: "rgba(255, 107, 53, 0.15)", color: "#ff6b35" }}
+          style={{ backgroundColor: "var(--accent-muted)", color: "var(--accent-primary)" }}
         >
           validate
         </span>
-        <span className="text-[12px] text-white/80 font-mono truncate flex-1" title={step.label}>
+        <span className="text-[12px] text-text-primary/80 font-mono truncate flex-1" title={step.label}>
           {step.label}
         </span>
         {isCached && (
           <span
             className="text-[9px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: "rgba(52, 199, 89, 0.15)", color: "#34c759" }}
+            style={{ backgroundColor: "var(--status-success-muted)", color: "var(--status-success)" }}
           >
             Cached
           </span>
         )}
         {step.duration_ms != null && (
-          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+          <span className="flex items-center gap-1 text-[11px] text-text-primary/40 shrink-0">
             <Clock className="w-3 h-3" />
             {formatDuration(step.duration_ms)}
           </span>
         )}
         {hasOutput && (
           expanded
-            ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-            : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />
+            ? <ChevronDown className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
+            : <ChevronRight className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
         )}
       </button>
       {expanded && hasOutput && (
@@ -94,12 +95,12 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
           style={{ scrollbarWidth: "thin" }}
         >
           {step.stdout && step.stdout.trim() && (
-            <pre className="text-[11px] font-mono text-white/50 whitespace-pre-wrap break-all leading-relaxed">
+            <pre className="text-[11px] font-mono text-text-primary/50 whitespace-pre-wrap break-all leading-relaxed">
               {step.stdout}
             </pre>
           )}
           {step.stderr && step.stderr.trim() && (
-            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+            <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
               {step.stderr}
             </pre>
           )}
@@ -123,24 +124,24 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const badgeBg = phase === "setup" ? "rgba(10, 132, 255, 0.15)" : phase === "install" ? "rgba(255, 107, 53, 0.15)" : phase === "skipped" ? "rgba(255, 255, 255, 0.08)" : "rgba(52, 199, 89, 0.15)";
-  const badgeColor = phase === "setup" ? "#64d2ff" : phase === "install" ? "#ff6b35" : phase === "skipped" ? "rgba(255, 255, 255, 0.4)" : "#34c759";
+  const badgeBg = phase === "setup" ? "var(--status-info-muted)" : phase === "install" ? "var(--accent-muted)" : phase === "skipped" ? "var(--overlay-weak)" : "var(--status-success-muted)";
+  const badgeColor = phase === "setup" ? "var(--status-info)" : phase === "install" ? "var(--accent-primary)" : phase === "skipped" ? withAlpha("var(--text-primary)", 40) : "var(--status-success)";
 
   const allSkipped = steps.every((s) => s.status === "skipped");
   const statusIcon = anyRunning ? (
-    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
+    <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--status-info)" }} />
   ) : anyFailed ? (
-    <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+    <XCircle className="w-4 h-4" style={{ color: "var(--status-error)" }} />
   ) : allSkipped ? (
-    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
+    <SkipForward className="w-4 h-4 text-text-primary/30" />
   ) : (
-    <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
+    <CheckCircle2 className="w-4 h-4" style={{ color: "var(--status-success)" }} />
   );
 
   return (
     <div
       className="rounded-lg overflow-hidden"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+      style={{ backgroundColor: "var(--overlay-scrim)" }}
     >
       <button
         type="button"
@@ -154,18 +155,18 @@ export function StepsGroup({ steps, phase, label }: {
         >
           {phase}
         </span>
-        <span className="text-[12px] text-white/80 flex-1">
+        <span className="text-[12px] text-text-primary/80 flex-1">
           {label}
         </span>
         {totalMs > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-white/40 shrink-0">
+          <span className="flex items-center gap-1 text-[11px] text-text-primary/40 shrink-0">
             <Clock className="w-3 h-3" />
             {formatDuration(totalMs)}
           </span>
         )}
         {expanded
-          ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-          : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />}
+          ? <ChevronDown className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />
+          : <ChevronRight className="w-3.5 h-3.5 text-text-primary/30 shrink-0" />}
       </button>
       {expanded && (
         <div className="px-3 pb-2.5 space-y-2">
@@ -179,24 +180,24 @@ export function StepsGroup({ steps, phase, label }: {
               <div key={`${phase}-${step.command}-${i}`} className="space-y-1">
                 <div className="flex items-center gap-2">
                   {isRunning ? (
-                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "#0a84ff" }} />
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: "var(--status-info)" }} />
                   ) : isFailed ? (
-                    <XCircle className="w-3 h-3" style={{ color: "#ff453a" }} />
+                    <XCircle className="w-3 h-3" style={{ color: "var(--status-error)" }} />
                   ) : isSkipped ? (
-                    <SkipForward className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
+                    <SkipForward className="w-3 h-3 text-text-primary/30" />
                   ) : (
-                    <CheckCircle2 className="w-3 h-3" style={{ color: "#34c759" }} />
+                    <CheckCircle2 className="w-3 h-3" style={{ color: "var(--status-success)" }} />
                   )}
-                  <span className="text-[11px] text-white/60 truncate flex-1" title={step.label}>
+                  <span className="text-[11px] text-text-primary/60 truncate flex-1" title={step.label}>
                     {step.label}
                   </span>
                   {step.duration_ms != null && (
-                    <span className="text-[10px] text-white/30 shrink-0">
+                    <span className="text-[10px] text-text-primary/30 shrink-0">
                       {formatDuration(step.duration_ms)}
                     </span>
                   )}
                 </div>
-                <code className="block text-[10px] font-mono text-white/40 pl-5 truncate" title={step.command}>
+                <code className="block text-[10px] font-mono text-text-primary/40 pl-5 truncate" title={step.command}>
                   $ {step.command}
                 </code>
                 {hasOutput && (
@@ -205,12 +206,12 @@ export function StepsGroup({ steps, phase, label }: {
                     style={{ scrollbarWidth: "thin" }}
                   >
                     {step.stdout && step.stdout.trim() && (
-                      <pre className="text-[10px] font-mono text-white/40 whitespace-pre-wrap break-all leading-relaxed">
+                      <pre className="text-[10px] font-mono text-text-primary/40 whitespace-pre-wrap break-all leading-relaxed">
                         {step.stdout}
                       </pre>
                     )}
                     {step.stderr && step.stderr.trim() && (
-                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
+                      <pre className="text-[10px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "var(--status-error)" }}>
                         {step.stderr}
                       </pre>
                     )}
@@ -296,7 +297,7 @@ export function ValidationProgress({
       <SectionTitle>
         {title}
         {source === "live" && (
-          <span className="ml-2 text-[10px] font-normal text-white/30">(live)</span>
+          <span className="ml-2 text-[10px] font-normal text-text-primary/30">(live)</span>
         )}
       </SectionTitle>
       <div className="space-y-1.5">

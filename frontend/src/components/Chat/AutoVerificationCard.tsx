@@ -27,9 +27,9 @@ export function AutoVerificationCard({ content }: AutoVerificationCardProps) {
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-xl transition-colors"
-        style={{ background: expanded ? "hsl(220 10% 11%)" : "transparent" }}
+        style={{ background: expanded ? "var(--bg-surface)" : "transparent" }}
         onMouseEnter={(e) => {
-          if (!expanded) e.currentTarget.style.background = "hsl(220 10% 11%)";
+          if (!expanded) e.currentTarget.style.background = "var(--bg-surface)";
         }}
         onMouseLeave={(e) => {
           if (!expanded) e.currentTarget.style.background = "transparent";
@@ -57,7 +57,7 @@ export function AutoVerificationCard({ content }: AutoVerificationCardProps) {
         <div
           className="mt-1 mx-4 w-full max-w-[480px] rounded-lg px-3 py-2 text-[11px] leading-relaxed"
           style={{
-            background: "hsl(220 10% 11%)",
+            background: "var(--bg-surface)",
             color: "var(--text-secondary)",
             fontFamily: "var(--font-body)",
             whiteSpace: "pre-wrap",

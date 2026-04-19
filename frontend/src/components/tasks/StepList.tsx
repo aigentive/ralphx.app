@@ -84,7 +84,7 @@ export function StepList({ taskId, editable = false, hideCompletionNotes = false
             {index > 0 && (
               <div
                 className="h-px mx-3"
-                style={{ backgroundColor: 'hsla(220 10% 100% / 0.04)' }}
+                style={{ backgroundColor: 'var(--overlay-faint)' }}
               />
             )}
             <StepItem {...props} />

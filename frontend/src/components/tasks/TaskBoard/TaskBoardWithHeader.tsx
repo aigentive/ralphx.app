@@ -13,6 +13,7 @@ import { WorkflowSelector } from "@/components/workflows/WorkflowSelector";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ProjectStatsCard } from "@/components/project/ProjectStatsCard";
 import { TaskBoard } from "./TaskBoard";
+import { withAlpha } from "@/lib/theme-colors";
 import type { WorkflowSchema } from "@/types/workflow";
 
 // ============================================================================
@@ -55,8 +56,8 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
       <div
         className="flex items-center justify-between px-3 py-1.5 border-b backdrop-blur-sm"
         style={{
-          borderColor: "rgba(255,255,255,0.06)",
-          background: "linear-gradient(180deg, rgba(26,26,26,0.95) 0%, rgba(20,20,20,0.98) 100%)",
+          borderColor: "var(--overlay-weak)",
+          background: `linear-gradient(180deg, ${withAlpha("var(--bg-elevated)", 95)} 0%, ${withAlpha("var(--bg-surface)", 98)} 100%)`,
         }}
       >
         <WorkflowSelector
@@ -69,13 +70,13 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
         <Popover open={isStatsOpen} onOpenChange={setIsStatsOpen}>
           <PopoverTrigger asChild>
             <button
-              className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-[var(--overlay-faint)] transition-colors"
               aria-label="Project stats"
             >
               <BarChart2 className="w-4 h-4" />
             </button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-96 p-0 border-white/10 bg-transparent shadow-xl">
+          <PopoverContent align="end" className="w-96 p-0 border-[var(--border-subtle)] bg-transparent shadow-xl">
             <ProjectStatsCard projectId={projectId} />
           </PopoverContent>
         </Popover>

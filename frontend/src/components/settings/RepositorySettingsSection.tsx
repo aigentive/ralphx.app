@@ -60,13 +60,32 @@ function SubsectionLabel({
       {hint && (
         <span
           className="text-[9px] uppercase tracking-wider text-[var(--text-muted)] rounded px-1.5 py-0.5"
-          style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ border: "1px solid var(--border-subtle)" }}
         >
           {hint}
         </span>
       )}
     </div>
   );
+}
+
+function isGithubRemoteUrl(remoteUrl: string | null | undefined): boolean {
+  if (!remoteUrl) return false;
+
+  const trimmed = remoteUrl.trim();
+  if (trimmed.startsWith("git@github.com:")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      parsed.hostname === "github.com" &&
+      (parsed.protocol === "https:" || parsed.protocol === "ssh:")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function TextSettingRow({
@@ -115,7 +134,7 @@ function TextSettingRow({
             size="sm"
             onClick={onAction}
             disabled={disabled || actionLoading}
-            className="h-8 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+            className="h-8 px-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
             title={actionLabel}
           >
             {actionLoading ? (
@@ -266,13 +285,13 @@ export function RepositorySettingsSection() {
   const worktreeParentDirectory =
     pendingWorktreeDir ?? project.worktreeParentDirectory ?? "~/ralphx-worktrees";
 
-  const isGithubRemote = !!remoteUrl && remoteUrl.includes("github.com");
+  const isGithubRemote = isGithubRemoteUrl(remoteUrl);
   const isToggleDisabled = !isGithubRemote || updatePrEnabled.isPending;
   const isSaving = isUpdating || updatePrEnabled.isPending;
 
   return (
     <SectionCard
-      icon={<GitBranch className="w-[18px] h-[18px] text-[var(--accent-primary)]" />}
+      icon={<GitBranch className="w-[18px] h-[18px] text-[var(--card-icon-color)]" />}
       title="Repository"
       description="Version control and GitHub integration"
     >
@@ -331,8 +350,8 @@ export function RepositorySettingsSection() {
       <div
         className="rounded-md -mx-2 px-2"
         style={{
-          background: "rgba(255,255,255,0.02)",
-          border: "1px solid rgba(255,255,255,0.05)",
+          background: "var(--overlay-faint)",
+          border: "1px solid var(--overlay-weak)",
         }}
       >
         <SettingRow
@@ -356,7 +375,7 @@ export function RepositorySettingsSection() {
           {isLoadingAuth ? (
             <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
           ) : isGhAuthed ? (
-            <div className="flex items-center gap-1.5 text-xs text-green-400">
+            <div className="flex items-center gap-1.5 text-xs text-status-success">
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Authenticated</span>
             </div>

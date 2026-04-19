@@ -76,11 +76,11 @@ export const COMPACT_TITLE_MAX_CHARS = 40;
  * Matches Kanban card styling for visual consistency
  */
 export const GLASS_SURFACE: GlassSurface = {
-  background: "hsla(220 10% 14% / 0.85)",
+  background: "color-mix(in srgb, var(--bg-elevated) 85%, transparent)",
   backdropFilter: "blur(12px) saturate(150%)",
   WebkitBackdropFilter: "blur(12px) saturate(150%)",
-  border: "1px solid hsla(220 10% 100% / 0.06)",
-  boxShadow: "0 2px 8px hsla(220 10% 0% / 0.25)",
+  border: "1px solid var(--overlay-weak)",
+  boxShadow: "0 2px 8px var(--overlay-scrim)",
 };
 
 // ============================================================================
@@ -92,10 +92,10 @@ export const GLASS_SURFACE: GlassSurface = {
  * Matches Kanban card styling (from TaskCard.utils.ts)
  */
 const PRIORITY_COLORS: Record<number, string> = {
-  1: "hsl(0 70% 55%)",      // P1 Critical - Red
-  2: "hsl(25 90% 55%)",     // P2 High - Deep orange
-  3: "hsl(14 100% 60%)",    // P3 Medium - Accent orange (#ff6b35)
-  4: "hsl(220 10% 35%)",    // P4 Low - Gray
+  1: "var(--status-error)",    // P1 Critical
+  2: "var(--accent-secondary)", // P2 High — soft amber
+  3: "var(--accent-primary)",  // P3 Medium — brand orange
+  4: "var(--text-muted)",      // P4 Low
 };
 
 /**
@@ -125,34 +125,34 @@ export type StatusCategory =
 
 /** Idle statuses: backlog, ready */
 const IDLE_COLORS = {
-  border: "hsl(220 10% 40%)",
-  background: "hsla(220 10% 15% / 0.8)",
+  border: "var(--text-muted)",
+  background: "color-mix(in srgb, var(--bg-elevated) 80%, transparent)",
 } as const;
 
 /** Blocked status: blocked */
 const BLOCKED_COLORS = {
-  border: "hsl(45 90% 55%)",
-  background: "hsla(45 90% 55% / 0.1)",
+  border: "var(--status-warning)",
+  background: "var(--status-warning-muted)",
 } as const;
 
 /** Executing statuses: executing, re_executing */
 const EXECUTING_COLORS = {
-  border: "hsl(14 100% 55%)",
-  background: "hsla(14 100% 55% / 0.15)",
-  boxShadow: "0 0 12px hsla(14 100% 55% / 0.3)",
+  border: "var(--accent-primary)",
+  background: "var(--accent-muted)",
+  boxShadow: "0 0 12px color-mix(in srgb, var(--accent-primary) 30%, transparent)",
   animation: "var(--animation-executing-pulse)",
 } as const;
 
 /** QA statuses: qa_refining, qa_testing, qa_passed, qa_failed */
 const QA_COLORS = {
-  border: "hsl(280 60% 55%)",
-  background: "hsla(280 60% 55% / 0.12)",
+  border: "var(--status-info)",
+  background: "var(--status-info-muted)",
 } as const;
 
 /** Review statuses: pending_review, reviewing, review_passed, escalated, revision_needed */
 const REVIEW_COLORS = {
-  border: "hsl(220 80% 60%)",
-  background: "hsla(220 80% 60% / 0.12)",
+  border: "var(--status-info)",
+  background: "var(--status-info-muted)",
 } as const;
 
 /** Reviewing status: active review with pulse animation */
@@ -160,20 +160,20 @@ const REVIEWING_ANIMATION = "var(--animation-reviewing-pulse)";
 
 /** Merge statuses: pending_merge, merging, merge_conflict */
 const MERGE_COLORS = {
-  border: "hsl(180 60% 50%)",
-  background: "hsla(180 60% 50% / 0.12)",
+  border: "var(--status-info)",
+  background: "var(--status-info-muted)",
 } as const;
 
 /** Complete statuses: approved, merged */
 const COMPLETE_COLORS = {
-  border: "hsl(145 60% 45%)",
-  background: "hsla(145 60% 45% / 0.12)",
+  border: "var(--status-success)",
+  background: "var(--status-success-muted)",
 } as const;
 
 /** Terminal statuses: failed, cancelled */
 const TERMINAL_COLORS = {
-  border: "hsl(0 70% 55%)",
-  background: "hsla(0 70% 55% / 0.12)",
+  border: "var(--status-error)",
+  background: "var(--status-error-muted)",
 } as const;
 
 // ============================================================================

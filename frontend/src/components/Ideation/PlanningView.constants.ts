@@ -12,22 +12,22 @@ import type { Priority } from "@/types/ideation";
  */
 export const PRIORITY_CONFIG: Record<Priority, { gradient: string; glow: string; label: string }> = {
   critical: {
-    gradient: "from-red-500/20 to-red-600/10",
-    glow: "shadow-[0_0_12px_rgba(239,68,68,0.1)]",
+    gradient: "from-status-error/20 to-status-error/10",
+    glow: "shadow-[0_0_12px_var(--status-error-muted)]",
     label: "Critical"
   },
   high: {
-    gradient: "from-[#ff6b35]/20 to-[#ff6b35]/10",
-    glow: "shadow-[0_0_12px_rgba(255,107,53,0.1)]",
+    gradient: "from-accent-primary/20 to-accent-primary/10",
+    glow: "shadow-[0_0_12px_var(--accent-muted)]",
     label: "High"
   },
   medium: {
-    gradient: "from-amber-500/15 to-amber-600/5",
+    gradient: "from-status-warning/15 to-status-warning/5",
     glow: "",
     label: "Medium"
   },
   low: {
-    gradient: "from-slate-500/10 to-slate-600/5",
+    gradient: "from-text-muted/10 to-text-muted/5",
     glow: "",
     label: "Low"
   },
@@ -66,14 +66,10 @@ export const animationStyles = `
 
 @keyframes glowPulse {
   0%, 100% {
-    box-shadow: 0 0 12px rgba(255,107,53,0.08),
-                0 0 24px rgba(255,107,53,0.04),
-                inset 0 1px 0 rgba(255,255,255,0.05);
+    box-shadow: var(--shadow-glow-accent-soft);
   }
   50% {
-    box-shadow: 0 0 18px rgba(255,107,53,0.15),
-                0 0 36px rgba(255,107,53,0.08),
-                inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: var(--shadow-glow-accent-active);
   }
 }
 
@@ -94,9 +90,9 @@ export const animationStyles = `
 .shimmer-loading {
   background: linear-gradient(
     90deg,
-    rgba(255,255,255,0) 0%,
-    rgba(255,255,255,0.05) 50%,
-    rgba(255,255,255,0) 100%
+    transparent 0%,
+    var(--overlay-weak) 50%,
+    transparent 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s infinite;

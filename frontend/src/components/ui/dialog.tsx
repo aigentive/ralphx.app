@@ -20,7 +20,7 @@ const DialogOverlay = React.forwardRef<
     ref={ref}
     data-testid="modal-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/60 backdrop-blur-[8px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-[var(--dialog-overlay-bg)] backdrop-blur-[8px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -48,6 +48,7 @@ const DialogContent = React.forwardRef<
         className
       )}
       style={{
+        backgroundColor: "var(--dialog-bg, var(--bg-elevated))",
         boxShadow: "var(--shadow-lg)",
       }}
       {...props}

@@ -81,7 +81,7 @@ export function ConversationStatsPopover({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex items-center justify-center w-6 h-6 rounded text-white/38 hover:text-white/72 hover:bg-white/5 transition-colors"
+          className="flex items-center justify-center w-6 h-6 rounded text-text-primary/38 hover:text-text-primary/72 hover:bg-[var(--overlay-faint)] transition-colors"
           aria-label="Conversation stats"
           data-testid="chat-session-stats-button"
         >
@@ -90,11 +90,11 @@ export function ConversationStatsPopover({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 p-0 border-white/10 bg-[hsl(220_15%_8%_/_0.96)] shadow-xl"
+        className="w-80 p-0 border-[var(--border-subtle)] bg-[color-mix(in_srgb,_var(--bg-base)_96%,_transparent)] shadow-xl"
       >
-        <div className="p-3 border-b border-white/6">
-          <div className="text-sm font-medium text-white/90">Conversation stats</div>
-          <div className="text-[11px] text-white/45 mt-1">
+        <div className="p-3 border-b border-[var(--border-subtle)]">
+          <div className="text-sm font-medium text-text-primary/90">Conversation stats</div>
+          <div className="text-[11px] text-text-primary/45 mt-1">
             {usagePending
               ? "Usage totals are pending until the provider reports the current turn."
               : `Aggregated from ${stats?.usageCoverage.effectiveTotalsSource ?? "available data"}.`}
@@ -102,27 +102,27 @@ export function ConversationStatsPopover({
         </div>
 
         {isLoading ? (
-          <div className="p-3 text-sm text-white/55">Loading conversation stats...</div>
+          <div className="p-3 text-sm text-text-primary/55">Loading conversation stats...</div>
         ) : !stats ? (
-          <div className="p-3 text-sm text-white/55">Stats are not available for this conversation.</div>
+          <div className="p-3 text-sm text-text-primary/55">Stats are not available for this conversation.</div>
         ) : (
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
-                <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Input</div>
-                <div className="text-sm text-white/88 mt-1">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Input</div>
+                <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.inputTokens)}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
-                <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Output</div>
-                <div className="text-sm text-white/88 mt-1">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Output</div>
+                <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.outputTokens)}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
-                <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Cache</div>
-                <div className="text-sm text-white/88 mt-1">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Cache</div>
+                <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending
                     ? "Pending"
                     : formatCompactInteger(
@@ -131,9 +131,9 @@ export function ConversationStatsPopover({
                     )}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
-                <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Est. cost</div>
-                <div className="text-sm text-white/88 mt-1">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Est. cost</div>
+                <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatUsd(stats.effectiveUsageTotals.estimatedUsd)}
                 </div>
               </div>
@@ -141,8 +141,8 @@ export function ConversationStatsPopover({
 
             <div className="grid grid-cols-2 gap-3 text-[11px]">
               <div>
-                <div className="uppercase tracking-[0.08em] text-white/38">Coverage</div>
-                <div className="mt-1 text-white/70">
+                <div className="uppercase tracking-[0.08em] text-text-primary/38">Coverage</div>
+                <div className="mt-1 text-text-primary/70">
                   {formatCoverageLine(
                     "Usage",
                     stats.usageCoverage.providerMessagesWithUsage,
@@ -150,14 +150,14 @@ export function ConversationStatsPopover({
                   )}
                 </div>
                 {stats.usageCoverage.runCount > 0 && (
-                  <div className="text-white/70">
+                  <div className="text-text-primary/70">
                     {`Run usage captured on ${stats.usageCoverage.runsWithUsage} of ${stats.usageCoverage.runCount} runs`}
                   </div>
                 )}
               </div>
               <div>
-                <div className="uppercase tracking-[0.08em] text-white/38">Attribution</div>
-                <div className="mt-1 text-white/70">
+                <div className="uppercase tracking-[0.08em] text-text-primary/38">Attribution</div>
+                <div className="mt-1 text-text-primary/70">
                   {formatCoverageLine(
                     "Attribution",
                     stats.attributionCoverage.providerMessagesWithAttribution,
@@ -165,7 +165,7 @@ export function ConversationStatsPopover({
                   )}
                 </div>
                 {stats.attributionCoverage.runCount > 0 && (
-                  <div className="text-white/70">
+                  <div className="text-text-primary/70">
                     {`Run attribution captured on ${stats.attributionCoverage.runsWithAttribution} of ${stats.attributionCoverage.runCount} runs`}
                   </div>
                 )}
@@ -173,21 +173,21 @@ export function ConversationStatsPopover({
             </div>
 
             <div className="space-y-2">
-              <div className="uppercase tracking-[0.08em] text-[10px] text-white/38">Top breakdowns</div>
+              <div className="uppercase tracking-[0.08em] text-[10px] text-text-primary/38">Top breakdowns</div>
               {stats.byModel[0] && (
-                <div className="flex items-center justify-between text-[11px] text-white/72">
+                <div className="flex items-center justify-between text-[11px] text-text-primary/72">
                   <span>Model</span>
                   <span className="truncate max-w-[12rem] text-right">{stats.byModel[0].key}</span>
                 </div>
               )}
               {stats.byEffort[0] && (
-                <div className="flex items-center justify-between text-[11px] text-white/72">
+                <div className="flex items-center justify-between text-[11px] text-text-primary/72">
                   <span>Effort</span>
                   <span>{stats.byEffort[0].key}</span>
                 </div>
               )}
               {stats.byUpstreamProvider[0] && (
-                <div className="flex items-center justify-between text-[11px] text-white/72">
+                <div className="flex items-center justify-between text-[11px] text-text-primary/72">
                   <span>Upstream</span>
                   <span>{stats.byUpstreamProvider[0].key}</span>
                 </div>

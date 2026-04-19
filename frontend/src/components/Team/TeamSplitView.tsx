@@ -34,9 +34,9 @@ export const TeamSplitView = React.memo(function TeamSplitView({
     return (
       <div
         className="flex items-center justify-center h-full"
-        style={{ backgroundColor: "hsl(220 10% 6%)" }}
+        style={{ backgroundColor: "var(--bg-base)" }}
       >
-        <span className="text-[13px]" style={{ color: "hsl(220 10% 40%)" }}>
+        <span className="text-[13px]" style={{ color: "var(--text-muted)" }}>
           No active team
         </span>
       </div>
@@ -46,7 +46,7 @@ export const TeamSplitView = React.memo(function TeamSplitView({
   return (
     <div
       className="flex flex-col h-full"
-      style={{ backgroundColor: "hsl(220 10% 6%)" }}
+      style={{ backgroundColor: "var(--bg-base)" }}
     >
       <TeamSplitHeader contextKey={contextKey} />
       <TeamSplitGrid />
