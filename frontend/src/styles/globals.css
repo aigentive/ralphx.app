@@ -143,6 +143,14 @@ html, body {
   overflow: hidden;
 }
 
+/* Bumped root font-size so every rem/em and Tailwind text-* utility
+   scales 12.5% larger across all themes (per 2026-04-19 readability
+   pass). Arbitrary `text-[Npx]` values are unaffected — those are pinned
+   pixel sizes by design. */
+html {
+  font-size: 18px;
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);

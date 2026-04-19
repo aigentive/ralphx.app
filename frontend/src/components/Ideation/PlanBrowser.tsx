@@ -19,7 +19,7 @@ import {
   Search,
   X,
   Loader2,
-  Sparkles,
+  Lightbulb,
   Pencil,
   Zap,
   CheckCircle,
@@ -302,7 +302,7 @@ export function PlanBrowser({
                 border: "1px solid var(--accent-border)",
               }}
             >
-              <Sparkles className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
+              <Lightbulb className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
             </div>
             <div>
               <h2
@@ -427,7 +427,7 @@ export function PlanBrowser({
         </div>
 
         {/* Plan List */}
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto py-2">
           {!hasAnySessions && !isSearchActive ? (
             <EmptyState
               variant="neutral"

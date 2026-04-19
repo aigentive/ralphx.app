@@ -93,18 +93,21 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
               />
             </div>
 
-            {/* Browse button */}
+            {/* Browse button — filled with a soft gray tint (overlay-weak)
+                so the drop zone reads as a nested frame inside the card,
+                slightly lighter than the card's overlay-faint fill. Hover
+                bumps to overlay-moderate for affordance. */}
             <button
               data-testid="drop-hint"
               type="button"
               onClick={onBrowse}
               className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors cursor-pointer focus:outline-none"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "var(--text-muted)", background: "var(--overlay-weak)" }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--overlay-faint)";
+                e.currentTarget.style.background = "var(--overlay-moderate)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.background = "var(--overlay-weak)";
               }}
             >
               <FileDown className="w-4 h-4" />

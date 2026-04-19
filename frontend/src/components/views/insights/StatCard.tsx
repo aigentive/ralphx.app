@@ -18,18 +18,25 @@ export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
     <div
       data-testid="insights-card"
       className="flex flex-col gap-1 rounded-xl"
-      style={{ backgroundColor: "var(--bg-surface)", padding: "14px 16px" }}
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--overlay-faint)",
+        padding: "14px 16px",
+      }}
     >
       <span
-        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-primary/40"
-        style={{ letterSpacing: "0.08em" }}
+        className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ letterSpacing: "0.08em", color: "var(--text-secondary)" }}
       >
         {label}
         {tooltip !== undefined && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <HelpCircle className="inline w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                <HelpCircle
+                  className="inline w-3.5 h-3.5 cursor-help"
+                  style={{ color: "var(--text-muted)" }}
+                />
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-[240px] text-xs normal-case tracking-normal font-normal">
                 {tooltip}
@@ -39,13 +46,13 @@ export function StatCard({ label, value, sub, tooltip }: StatCardProps) {
         )}
       </span>
       <span
-        className="text-[22px] font-semibold text-text-primary/90"
-        style={{ fontFamily: "system-ui" }}
+        className="text-[22px] font-semibold"
+        style={{ fontFamily: "system-ui", color: "var(--text-primary)", letterSpacing: "-0.02em" }}
       >
         {value}
       </span>
       {sub !== undefined && (
-        <span className="text-[12px] text-text-primary/40">
+        <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
           {sub}
         </span>
       )}

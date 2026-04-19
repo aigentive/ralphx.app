@@ -4,11 +4,13 @@
  * Targets WCAG 2.1 AAA (7:1 normal / 4.5:1 large / UI). Overrides:
  *   - All backgrounds → pure black
  *   - All text → pure white + graduated grays
- *   - Accent → yellow (orange fails AAA on black)
+ *   - Accent → brand orange (#ff8855 — bright HC variant of #ff6b35 for
+ *     cross-theme branding consistency; pairs with icons to retain
+ *     color-blind-safe affordances per color-blind-design.md §4)
  *   - Status → bright, shape-paired (icons mandatory — see
  *     color-blind-design.md rule §4)
  *   - Borders → thicker + always solid white
- *   - Focus rings → 3px bright yellow + offset
+ *   - Focus rings → 3px brand orange + offset
  *
  * Spec: specs/design/themes/high-contrast.md
  */
@@ -40,13 +42,15 @@ html[data-theme="high-contrast"] main {
   --text-muted:     #b0b0b0;
   --text-inverse:   #000000;
 
-  /* Accent — yellow (orange fails AAA on black). Literals per WKWebView
-     rule — inheritance breaks on chained var() for color-bearing props. */
-  --accent-primary:   #ffdd00;
-  --accent-secondary: #ffee33;
-  --accent-hover:     #ffee66;
-  --accent-muted:     hsla(50 100% 50% / 0.2);
-  --accent-border:    hsla(50 100% 50% / 0.5);
+  /* Accent — brand orange. Keeps branding consistent with Dark/Light
+     (#ff6b35 base); HC uses a brighter variant (#ff8855) so normal text
+     lands closer to AAA on pure black. Literals per WKWebView rule —
+     inheritance breaks on chained var() for color-bearing props. */
+  --accent-primary:   #ff8855;
+  --accent-secondary: #ffaa77;
+  --accent-hover:     #ffaa77;
+  --accent-muted:     hsla(20 100% 65% / 0.2);
+  --accent-border:    hsla(20 100% 65% / 0.5);
 
   /* Status — bright + always paired with icons. Literals per WKWebView
      rule; color-mix against the same literal keeps the alpha ladder. */
@@ -55,10 +59,10 @@ html[data-theme="high-contrast"] main {
   --status-success-border: color-mix(in srgb, #00ff66 50%, transparent);
   --status-success-strong: color-mix(in srgb, #00ff66 80%, transparent);
 
-  --status-warning:        #ffdd00;
-  --status-warning-muted:  color-mix(in srgb, #ffdd00 20%, transparent);
-  --status-warning-border: color-mix(in srgb, #ffdd00 50%, transparent);
-  --status-warning-strong: color-mix(in srgb, #ffdd00 80%, transparent);
+  --status-warning:        #ff8855;
+  --status-warning-muted:  color-mix(in srgb, #ff8855 20%, transparent);
+  --status-warning-border: color-mix(in srgb, #ff8855 50%, transparent);
+  --status-warning-strong: color-mix(in srgb, #ff8855 80%, transparent);
 
   --status-error:          #ff3344;
   --status-error-muted:    color-mix(in srgb, #ff3344 18%, transparent);
@@ -66,23 +70,23 @@ html[data-theme="high-contrast"] main {
   --status-error-strong:   color-mix(in srgb, #ff3344 80%, transparent);
 
   /* HC: remap info→yellow so Ready/Queued/etc. read on black (sky fails AAA) */
-  --status-info:           #ffdd00;
-  --status-info-muted:     color-mix(in srgb, #ffdd00 20%, transparent);
-  --status-info-border:    color-mix(in srgb, #ffdd00 50%, transparent);
-  --status-info-strong:    color-mix(in srgb, #ffdd00 80%, transparent);
+  --status-info:           #ff8855;
+  --status-info-muted:     color-mix(in srgb, #ff8855 20%, transparent);
+  --status-info-border:    color-mix(in srgb, #ff8855 50%, transparent);
+  --status-info-strong:    color-mix(in srgb, #ff8855 80%, transparent);
 
-  --accent-strong:         color-mix(in srgb, #ffdd00 80%, transparent);
+  --accent-strong:         color-mix(in srgb, #ff8855 80%, transparent);
 
   /* Borders — always solid white, thicker stroke width. Literals for the
      same WKWebView reason as the bg/text tokens above. */
   --border-subtle:  hsla(0 0% 100% / 0.50);
   --border-default: #ffffff;
-  --border-focus:   #ffdd00;
+  --border-focus:   #ff8855;
   --border-width-default: 2px;
   --border-width-focus:   3px;
 
-  /* Focus ring — bright yellow. Literal per WKWebView rule. */
-  --focus-ring: #ffdd00;
+  /* Focus ring — brand orange. Literal per WKWebView rule. */
+  --focus-ring: #ff8855;
 
   /* Overlay surfaces — HC uses higher-contrast separation (thicker borders
    * do most of the work). Overlay still available but less subtle. */
@@ -93,26 +97,26 @@ html[data-theme="high-contrast"] main {
   --overlay-scrim-med:  hsla(0 0% 0% / 0.80);
   --overlay-scrim-deep: hsla(0 0% 0% / 0.90);
 
-  /* Shadow pulses — yellow for accent, brighter edges so they punch on black */
-  --shadow-pulse-accent-base:   0 0 0 0 hsla(50 100% 50% / 0.5),
-                                0 0 8px hsla(50 100% 50% / 0.3);
-  --shadow-pulse-accent-expand: 0 0 0 4px hsla(50 100% 50% / 0),
-                                0 0 12px hsla(50 100% 50% / 0.5);
+  /* Shadow pulses — brand orange for accent, brighter edges so they punch on black */
+  --shadow-pulse-accent-base:   0 0 0 0 hsla(20 100% 65% / 0.5),
+                                0 0 8px hsla(20 100% 65% / 0.3);
+  --shadow-pulse-accent-expand: 0 0 0 4px hsla(20 100% 65% / 0),
+                                0 0 12px hsla(20 100% 65% / 0.5);
   --shadow-pulse-info-base:   0 0 0 0 hsla(200 100% 70% / 0.5),
                               0 0 8px hsla(200 100% 70% / 0.3);
   --shadow-pulse-info-expand: 0 0 0 4px hsla(200 100% 70% / 0),
                               0 0 12px hsla(200 100% 70% / 0.5);
   --shadow-pulse-status-base:   0 0 0 0 hsla(140 100% 50% / 0.6);
   --shadow-pulse-status-expand: 0 0 0 4px hsla(140 100% 50% / 0);
-  --shadow-glow-accent-soft:   0 0 12px hsla(50 100% 50% / 0.12),
-                               0 0 24px hsla(50 100% 50% / 0.06),
+  --shadow-glow-accent-soft:   0 0 12px hsla(20 100% 65% / 0.12),
+                               0 0 24px hsla(20 100% 65% / 0.06),
                                inset 0 1px 0 hsla(0 0% 100% / 0.08);
-  --shadow-glow-accent-active: 0 0 18px hsla(50 100% 50% / 0.20),
-                               0 0 36px hsla(50 100% 50% / 0.12),
+  --shadow-glow-accent-active: 0 0 18px hsla(20 100% 65% / 0.20),
+                               0 0 36px hsla(20 100% 65% / 0.12),
                                inset 0 1px 0 hsla(0 0% 100% / 0.12);
-  --shadow-drop-zone-border: inset 0 0 0 2px hsla(50 100% 50% / 1);
-  --shadow-drop-zone-active: inset 0 0 0 3px hsla(50 100% 50% / 1),
-                             0 0 20px hsla(50 100% 50% / 0.4);
+  --shadow-drop-zone-border: inset 0 0 0 2px hsla(20 100% 65% / 1);
+  --shadow-drop-zone-active: inset 0 0 0 3px hsla(20 100% 65% / 1),
+                             0 0 20px hsla(20 100% 65% / 0.4);
 
   /* Card/dialog shadows — HC has pure-black surfaces, so drop-shadows are
      invisible. Borders do all elevation work. Keep the vars defined so any
@@ -122,12 +126,12 @@ html[data-theme="high-contrast"] main {
   --shadow-md: none;
   --shadow-lg: none;
 
-  /* Selection — yellow highlight with black text */
-  --selection-bg:   hsla(50 100% 50% / 0.5);
+  /* Selection — brand orange highlight with black text */
+  --selection-bg:   hsla(20 100% 65% / 0.5);
   --selection-text: #000000;
 
-  /* Nav active — yellow with black text. Literals per WKWebView rule. */
-  --nav-active-bg:   #ffdd00;
+  /* Nav active — brand orange with black text. Literals per WKWebView rule. */
+  --nav-active-bg:   #ff8855;
   --nav-active-text: #000000;
 
   /* Syntax palette — HC code surface. Bright saturated hues with high
@@ -137,7 +141,7 @@ html[data-theme="high-contrast"] main {
   --syntax-number:      #bd93f9; /* bright lavender */
   --syntax-comment:     #b0b0b0; /* gray (secondary on black) */
   --syntax-function:    #8be9fd; /* bright cyan */
-  --syntax-class-name:  #ffdd00; /* yellow — main accent (literal per WKWebView rule) */
+  --syntax-class-name:  #ff8855; /* brand orange — main accent (literal per WKWebView rule) */
   --syntax-operator:    var(--syntax-keyword);
   --syntax-punctuation: var(--text-secondary);
 
@@ -164,7 +168,7 @@ html[data-theme="high-contrast"] main {
      had been rendering transparent inside the Settings modal. */
   --border: #ffffff;
   --input:  #ffffff;
-  --ring:   #ffdd00;
+  --ring:   #ff8855;
   --sidebar:                    var(--bg-surface);
   --sidebar-foreground:         var(--text-primary);
   --sidebar-primary:            var(--accent-primary);
@@ -199,7 +203,7 @@ html[data-theme="high-contrast"] main {
 [data-theme="high-contrast"] {
   /* Component tokens — literals per WKWebView rule. */
   --card-icon-bg: transparent;
-  --card-icon-border: #ffdd00;
+  --card-icon-border: #ff8855;
   --card-icon-color: #ffffff;
 
   /* Dialog/modal design in HC uses the HC language: pure-black everywhere,
@@ -264,9 +268,9 @@ html[data-theme="high-contrast"] main {
   /* Section card border: soft white (30%) instead of pure white. */
   --card-border:       hsla(0 0% 100% / 0.30);
   /* Section icon tile: yellow-muted fill + yellow border + yellow glyph. */
-  --card-icon-bg:      hsla(50 100% 50% / 0.15);
-  --card-icon-border:  #ffdd00;
-  --card-icon-color:   #ffdd00;
+  --card-icon-bg:      hsla(20 100% 65% / 0.15);
+  --card-icon-border:  #ff8855;
+  --card-icon-color:   #ff8855;
 }
 
 /* Settings left-rail nav — render each row as a link, not a boxed
@@ -283,7 +287,7 @@ html[data-theme="high-contrast"] main {
   text-decoration-color: hsla(0 0% 100% / 0.40);
 }
 [data-theme="high-contrast"] [data-testid="settings-dialog"] nav [role="button"][aria-current="page"] {
-  color: #ffdd00 !important;
+  color: #ff8855 !important;
   background: transparent !important;
   text-decoration: underline;
   text-decoration-thickness: 2px;
@@ -291,11 +295,15 @@ html[data-theme="high-contrast"] main {
 }
 
 /* Flat section cards — rounded-lg on HC reads as "pill" next to the
-   flat body dividers. Drop to zero radius so the section card feels
-   like a fenced rectangle, consistent with Phase 1 region borders. */
-[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-lg"],
-[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-xl"],
-[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-md"] {
+   flat body dividers. Drop to zero radius on wrapping blocks so the
+   section card feels like a fenced rectangle, consistent with Phase 1
+   region borders. Micro-controls (inputs, textareas, native selects,
+   Radix combobox triggers, and badge-like `.border-transparent` chips)
+   keep their rounded corners per 2026-04-19 feedback — the user wants
+   link-style affordance on inputs/selects/badges, not flat rectangles. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-lg"]:not(input):not(textarea):not(select):not([role="combobox"]):not(.border-transparent),
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-xl"]:not(input):not(textarea):not(select):not([role="combobox"]):not(.border-transparent),
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-md"]:not(input):not(textarea):not(select):not([role="combobox"]):not(.border-transparent) {
   border-radius: 0 !important;
 }
 
@@ -325,6 +333,16 @@ html[data-theme="high-contrast"] main {
 [data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-controls^="harness-body"],
 [data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-expanded][aria-controls]:not([role="combobox"]) {
   border: none !important;
+  cursor: pointer;
+}
+
+/* Execution Agents tabs — once the tablist wrapper chrome is stripped
+   (above), "Global Defaults" and "Project Overrides" butt up against
+   each other with no visible gap. Add 8px between them so each tab
+   reads as its own target on HC. Scoped to the dialog so the default
+   segmented-tab spacing in Light/Dark stays intact. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [role="tablist"] [role="tab"] + [role="tab"] {
+  margin-left: 8px;
 }
 
 /* InlineNotice tones on HC — default tokens resolve to ~6% white (ok)
@@ -336,12 +354,12 @@ html[data-theme="high-contrast"] main {
   --notice-ok-border: hsla(140 100% 50% / 0.40);
   --notice-ok-text:   #ffffff;
 
-  --notice-info-bg:     hsla(50 100% 50% / 0.18);
-  --notice-info-border: hsla(50 100% 50% / 0.50);
+  --notice-info-bg:     hsla(20 100% 65% / 0.18);
+  --notice-info-border: hsla(20 100% 65% / 0.50);
   --notice-info-text:   #ffffff;
 
-  --notice-warn-bg:     hsla(50 100% 50% / 0.22);
-  --notice-warn-border: hsla(50 100% 50% / 0.55);
+  --notice-warn-bg:     hsla(20 100% 65% / 0.22);
+  --notice-warn-border: hsla(20 100% 65% / 0.55);
   --notice-warn-text:   #ffffff;
 }
 
@@ -374,25 +392,46 @@ html[data-theme="high-contrast"] main {
    of global white/50% — affordance stays visible without clashing with
    the white surface. */
 
-/* HC chat panel zone borders — the header, body, and composer share the
-   same pure-black bg. Stronger borders (white-default) make zone handoffs
-   readable. ChatInput's root carries `data-testid="chat-input"` — target
-   its top border. */
+/* HC chat panel zone borders — the header gets a strong white rule so
+   the "Conversation" heading reads as a region fence. The chat input
+   no longer carries a top rule — per 2026-04-19 feedback, the white
+   line above the composer was visual noise; the inner input container
+   provides its own perimeter stroke and that's enough separation. */
 [data-theme="high-contrast"] [data-testid="integrated-chat-header"],
 [data-theme="high-contrast"] [data-testid="chat-panel-header"] {
-  border-bottom-color: var(--border-default) !important;
+  border-bottom-color: hsla(0 0% 100% / 0.15) !important;
   border-bottom-width: 1px !important;
 }
-[data-theme="high-contrast"] [data-testid="chat-input"] {
-  border-top: 1px solid var(--border-default);
+
+/* HC chat composer — idle border is soft gray (25% white) so the resting
+   input reads as a quiet control. On focus the border + placeholder flip
+   to pure white for a crisp "active field" punch (per 2026-04-19 feedback
+   superseding the earlier white-idle / yellow-focus scheme). Target the
+   `div:has(textarea)` combo so we reach the unified wrapper without
+   hitting the outer flex row. */
+[data-theme="high-contrast"] [data-testid="chat-input"] > div > div:has(textarea) {
+  border-color: hsla(0 0% 100% / 0.25) !important;
+}
+[data-theme="high-contrast"] [data-testid="chat-input"] > div > div:has(textarea:focus) {
+  border-color: #ffffff !important;
+}
+/* Placeholder ladder: muted gray at rest, pure white when the field is
+   focused so the typing affordance matches the border highlight. */
+[data-theme="high-contrast"] [data-testid="chat-input"] textarea::placeholder {
+  color: hsla(0 0% 100% / 0.40) !important;
+  opacity: 1;
+}
+[data-theme="high-contrast"] [data-testid="chat-input"] textarea:focus::placeholder {
+  color: #ffffff !important;
+  opacity: 1;
 }
 
 /* HC chat message bubbles — TextBubble's wrapper sets inline border:none.
-   Give HC a 1px white stroke so consecutive bubbles don't merge visually.
-   Selector targets every direct child of the message list that carries the
-   TextBubble's rounded-xl class combo. */
+   Give HC a 1px soft white (54%) stroke so consecutive bubbles don't
+   merge visually without competing with accent elements (CODEX badge,
+   FROM CHAT CTA). Per 2026-04-19 feedback. */
 [data-theme="high-contrast"] [data-testid^="text-bubble"] {
-  border: 1px solid var(--border-subtle) !important;
+  border: 1px solid hsla(0 0% 100% / 0.54) !important;
 }
 
 /* ============================================================================
@@ -415,11 +454,21 @@ html[data-theme="high-contrast"] main {
   border-bottom-width: 1px !important;
 }
 
-/* Bottom execution bar — the inner floating container already has a 1px
-   perimeter via `--border-subtle`. Bump to `--border-default` on HC so the
-   bar reads as a fenced region on pure black. */
+/* Bottom execution bar — per 2026-04-19 feedback, drop the border on HC
+   so the bar reads as a floating strip, not a fenced region. The inner
+   dark-gray fill (`--bg-surface`) keeps the container shape without a
+   stroke. Status-link buttons inside (running/queued/ideation/merging)
+   also lose their auto-applied button border so they read as plain
+   text links instead of bordered chips. */
 [data-theme="high-contrast"] [data-testid="execution-control-bar"] {
-  border-color: var(--border-default) !important;
+  border: none !important;
+}
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="running-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="queued-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="ideation-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="merging-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="paused-count"] {
+  border: none !important;
 }
 
 /* Right-side chat panels — left fence separates chat from main content.
@@ -427,14 +476,67 @@ html[data-theme="high-contrast"] main {
    integrated variant (Kanban/Ideation). */
 [data-theme="high-contrast"] [data-testid="chat-panel"],
 [data-theme="high-contrast"] [data-testid="integrated-chat-panel"] {
-  border-left: 1px solid var(--border-default);
+  border-left: 1px solid hsla(0 0% 100% / 0.15) !important;
 }
 
-/* Ideation plan browser rail — right fence separates rail from main. The
-   floating inner container keeps its subtle stroke; the outer gets the
-   default stroke as the region boundary. */
+/* Chat footer (input container) top border — softened to match left-side
+   ideation-footer so the split-pane footer rhythm is symmetric. Fill
+   matches the Plans sidebar so footer + rail share the same tone. */
+[data-theme="high-contrast"] [data-testid="chat-input-container"] {
+  border-top: 1px solid hsla(0 0% 100% / 0.15) !important;
+  background-color: #0e0e0e !important;
+}
+
+/* Ideation vertical split between plan/proposals (left) and Conversation
+   (right) — the ResizeHandle paints a visible stroke. In HC its default
+   --border-subtle at 50% white read as a hard column seam. Drop the idle
+   stroke to 1px / 15% white; hover still lights up yellow for grab. */
+[data-theme="high-contrast"] [data-testid="ideation-resize-handle"] > div {
+  width: 1px !important;
+  background-color: hsla(0 0% 100% / 0.15) !important;
+}
+[data-theme="high-contrast"] [data-testid="ideation-resize-handle"]:hover > div {
+  width: 2px !important;
+  background-color: var(--accent-primary) !important;
+}
+
+/* Ideation plan browser rail — right fence separates rail from main.
+   Soft near-black fill and 15% white stroke so the rail reads as a
+   separate zone without competing with the pure-black main canvas. */
 [data-theme="high-contrast"] [data-testid="plan-browser"] {
-  border-right: 1px solid var(--border-default);
+  border-right: 1px solid hsla(0 0% 100% / 0.15) !important;
+  background-color: #0e0e0e !important;
+}
+[data-theme="high-contrast"] [data-testid="plan-browser"] > div {
+  background-color: #0e0e0e !important;
+}
+
+/* Session group collapsible triggers (Accepted / Done / Archived) — HC
+   version of the rail's quiet chrome. Soft 15% border, slightly lifted
+   fill so the collapsed groups read as distinct rows matching the width
+   of New Plan / Search above. Active label/chevron punch to white on
+   hover/open for legibility. */
+[data-theme="high-contrast"] [data-testid="session-group-trigger"] {
+  border: 1px solid hsla(0 0% 100% / 0.15) !important;
+  background-color: #000000 !important;
+  color: hsla(0 0% 100% / 0.72) !important;
+}
+[data-theme="high-contrast"] [data-testid="session-group-trigger"]:hover {
+  background-color: #050505 !important;
+  border-color: hsla(0 0% 100% / 0.30) !important;
+  color: #ffffff !important;
+}
+[data-theme="high-contrast"] [data-testid="session-group-trigger"][data-state="open"] {
+  border-color: hsla(0 0% 100% / 0.30) !important;
+  color: #ffffff !important;
+}
+
+/* Plan card header — the global HC button-border rule stamps the inner
+   CollapsibleTrigger button with a 1px subtle stroke, producing an
+   unwanted gray ring inside the outer accent border. The outer card
+   carries the perimeter stroke; the trigger button should be chromeless. */
+[data-theme="high-contrast"] [data-testid="plan-card-header"] button {
+  border: none !important;
 }
 
 /* ============================================================================
@@ -443,25 +545,47 @@ html[data-theme="high-contrast"] main {
  * ============================================================================ */
 
 /* Ideation plan detail header — session title + metadata strip sits above
-   the tab bar. Bump its bottom stroke to --default so the handoff from
-   header to tabs reads as a region boundary. */
+   the tab bar. Softened to 15% white so the separator doesn't compete
+   with the Conversation header sitting alongside (per 2026-04-19 feedback). */
 [data-theme="high-contrast"] [data-testid="ideation-header"] {
-  border-bottom: 1px solid var(--border-default) !important;
+  border-bottom: 1px solid hsla(0 0% 100% / 0.15) !important;
 }
 
 /* Ideation tab bar (Plan · Verification · Proposals · Research) — the list
-   already has an inline border-bottom; bump its color to --default so the
-   tab row fences off tab content. Individual tab triggers still carry the
-   yellow 2px bottom indicator from the earlier HC tablist rule. */
+   already has an inline border-bottom; use 54% white so the tab row fences
+   off tab content softly (matches the right-side Conversation heading
+   bottom border). Individual tab triggers drop the auto-applied HC
+   button-border stroke (per 2026-04-19 feedback) so tabs read as plain
+   text with the active-tab yellow bottom bar as the only marker. */
 [data-theme="high-contrast"] [data-testid="content-tab-bar"] {
-  border-bottom-color: var(--border-default) !important;
+  border-bottom-color: hsla(0 0% 100% / 0.15) !important;
   border-bottom-width: 1px !important;
+}
+[data-theme="high-contrast"] [data-testid="content-tab-bar"] button {
+  border: none !important;
 }
 
 /* Ideation footer strip (accept / verify / etc. action row) — fence it
-   off from the scrollable plan body above. */
+   off from the scrollable plan body above. Softer 54% white so the
+   separator doesn't compete with the execution bar content. */
 [data-theme="high-contrast"] [data-testid="ideation-footer"] {
-  border-top: 1px solid var(--border-default);
+  border-top: 1px solid hsla(0 0% 100% / 0.15) !important;
+}
+
+/* Execution bar status labels (Running/Queued/Ideation/Merging/Paused)
+   and their separator dots read at 84% white so the live counts step
+   down from primary UI text without losing legibility. */
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="running-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="queued-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="ideation-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="merging-count"],
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] [data-testid="paused-count"] {
+  color: hsla(0 0% 100% / 0.84) !important;
+}
+/* Separator dots and any inline text-muted labels inside the bar also
+   follow the 84% ladder so the row reads as a coherent status line. */
+[data-theme="high-contrast"] [data-testid="execution-control-bar"] span {
+  color: hsla(0 0% 100% / 0.84) !important;
 }
 
 /* Activity view header — houses mode toggle + search + filters. The
@@ -587,16 +711,72 @@ html[data-theme="high-contrast"] main {
   border-color: var(--border-subtle) !important;
 }
 
+/* HC TaskGraph cards — the default GLASS_SURFACE bg is 85% bg-elevated
+   + 15% transparent, letting the dot grid bleed through the node on
+   pure black. Paint the card fully opaque and force the top/right/
+   bottom perimeter to pure white (the default `--overlay-weak` at 10%
+   is invisible on pure black). The status-colored left stripe (inline
+   `borderLeft`) is preserved because we only override the specific
+   directional properties. Selected/highlighted/focused nodes keep the
+   inline yellow `--accent-primary` border via `:not(.selected)`. */
+[data-theme="high-contrast"] .react-flow__node [data-testid="task-node"] > div {
+  background: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-theme="high-contrast"] .react-flow__node:not(.selected) [data-testid="task-node"]:not([data-highlighted="true"]):not([data-focused="true"]) > div {
+  border-top-color: #ffffff !important;
+  border-right-color: #ffffff !important;
+  border-bottom-color: #ffffff !important;
+}
+
+/* HC TaskGraph dot grid — React Flow's Background uses
+   `color="var(--text-muted)"` which resolves to #b0b0b0 on HC. Bump
+   the opacity per 2026-04-19 feedback so the grid reads clearly while
+   still letting nodes and edges lead the hierarchy. */
+[data-theme="high-contrast"] .react-flow__background {
+  opacity: 0.84;
+}
+
+/* HC PlanGroup selection outline — selected plan groups use
+   `outline: 2px solid var(--accent-primary)` which renders as yellow
+   on HC. Per 2026-04-19 feedback, swap to pure white so the group
+   frame reads as neutral chrome and yellow stays reserved for focused
+   actionable affordances (tabs, active nav, selected task nodes). */
+[data-theme="high-contrast"] [data-testid^="plan-group-"] {
+  outline-color: #ffffff !important;
+}
+
+/* ============================================================================
+ * PlanDisplay collapsed-header — the outer card carries a yellow
+ * accent-border when open, which on HC reads as a large yellow frame
+ * competing with the body content. Per 2026-04-19 feedback, strip the
+ * perimeter entirely; the background tint + icon tile still signal
+ * "active plan" without the heavy stroke.
+ * ============================================================================ */
+[data-theme="high-contrast"] [data-testid="plan-card-header"] {
+  border: none !important;
+}
+
 /* ============================================================================
  * Empty-state polish — the ProposalsEmptyState and sibling TabEmptyState
- * read as a pool of loose text on pure black. Now that TabEmptyState has
- * a card wrapper (--overlay-faint bg + --border-subtle perimeter), bump
- * the card tokens so the hero reads as a deliberate "empty zone" instead
- * of a bummer.
+ * read as a pool of loose text on pure black. Use a soft muted perimeter
+ * (15% white) so the card reads as a deliberate "empty zone" without the
+ * card fighting the hero icon + CTA for attention. Previously the border
+ * was forced to --border-default (pure white) which drew the eye away
+ * from the content — 2026-04-19 feedback.
  * ============================================================================ */
 [data-theme="high-contrast"] [data-testid="tab-empty-state"] > div {
-  border-color: var(--border-default) !important;
+  border-color: hsla(0 0% 100% / 0.15) !important;
   border-width: 1px !important;
+}
+
+/* Inner drop-hint button — the global HC button-border rule stamps it
+   with a 50% white stroke which competes with the outer card frame.
+   Drop to 15% so the nested drop zone reads as a soft fill, not a
+   second hard rectangle. Per 2026-04-19 feedback. */
+[data-theme="high-contrast"] [data-testid="tab-empty-state"] [data-testid="drop-hint"] {
+  border-color: hsla(0 0% 100% / 0.15) !important;
 }
 
 /* Mock proposal-card visuals inside the empty state — the dashed cards
@@ -620,4 +800,35 @@ html[data-theme="high-contrast"] main {
 }
 [data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="border: 1.5px dashed"] {
   border-color: var(--border-subtle) !important;
+}
+
+/* User chat bubble (HC): full-saturation yellow collides with primary
+   buttons/nav pills (color-only affordance smell). Keep yellow as the
+   identity signal via a low-opacity tint + yellow stroke; text reads as
+   normal white. Styleguide §3 — color shouldn't carry two meanings. */
+[data-theme="high-contrast"] [data-testid="text-bubble-user"] {
+  background: hsla(20 100% 65% / 0.10) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid hsla(20 100% 65% / 0.45) !important;
+}
+[data-theme="high-contrast"] [data-testid="text-bubble-user"] button {
+  color: var(--text-primary) !important;
+}
+
+/* Timeline entries (HC): soften the full-white button border from the
+   global HC button rule and add vertical breathing room between rows.
+   Entries are [role="button"] when clickable, which inherits the global
+   HC 1px white stroke — too heavy for a scrollable list. */
+[data-theme="high-contrast"] [data-testid="execution-timeline"] [role="button"],
+[data-theme="high-contrast"] [data-testid="execution-timeline-collapsed"] [role="button"] {
+  border: 1px solid hsla(0 0% 100% / 0.15) !important;
+  margin-bottom: 6px;
+}
+[data-theme="high-contrast"] [data-testid="execution-timeline"] [role="button"]:hover,
+[data-theme="high-contrast"] [data-testid="execution-timeline-collapsed"] [role="button"]:hover {
+  border-color: hsla(0 0% 100% / 0.30) !important;
+}
+/* Non-clickable entries (events without taskId) — same visual weight. */
+[data-theme="high-contrast"] [data-testid="execution-timeline"] [class*="rounded-md"]:not([role="button"]):not(button) {
+  margin-bottom: 6px;
 }

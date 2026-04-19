@@ -23,8 +23,11 @@ import {
   RotateCcw,
   RefreshCw,
   CircleCheck,
+  CheckCircle,
   CornerDownRight,
   ArrowDownToLine,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { withAlpha } from "@/lib/theme-colors";
@@ -38,8 +41,10 @@ import type { SessionGroup } from "./planBrowserUtils";
 // Helpers
 // ============================================================================
 
-function formatRelativeTime(dateString: string): string {
+function formatRelativeTime(dateString: string | null | undefined): string {
+  if (!dateString) return "—";
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "—";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -54,13 +59,11 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ============================================================================
@@ -139,12 +142,12 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
   if (parentSessionTitle) {
     return (
       <div
-        className="flex flex-col gap-0.5 text-[10px]"
+        className="flex flex-col gap-0.5 text-[12px]"
         style={{ color: "var(--text-muted)" }}
       >
         <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
         <div className="flex items-center gap-1">
-          <CornerDownRight className="w-2.5 h-2.5" />
+          <CornerDownRight className="w-3 h-3" />
           <span className="truncate">Follow-up of: {parentSessionTitle}</span>
         </div>
       </div>
@@ -155,14 +158,14 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
     case "drafts":
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
+          className="flex items-center gap-1 text-[12px]"
           style={{ color: "var(--text-muted)" }}
         >
           {(isIdeationActive || isIdeationWaiting || isVerifying || isQueued) ? (
             <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
           ) : (
             <>
-              <Clock className="w-2.5 h-2.5" />
+              <Clock className="w-3 h-3" />
               <span>{formatRelativeTime(plan.updatedAt)}</span>
             </>
           )}
@@ -173,7 +176,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
       if (!progress) {
         if (isIdeationActive || isIdeationWaiting || isVerifying || isQueued) {
           return (
-            <span className="text-[10px]">
+            <span className="text-[12px]">
               <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
             </span>
           );
@@ -181,7 +184,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         return null;
       }
       return (
-        <div className="flex items-center gap-1 text-[10px]">
+        <div className="flex items-center gap-1 text-[12px]">
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
           <span style={{ color: "var(--status-success)" }}>
             {progress.done}/{progress.total} done
@@ -200,7 +203,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
     case "accepted":
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
+          className="flex items-center gap-1 text-[12px]"
           style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
@@ -214,32 +217,31 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         </div>
       );
 
-    case "done":
+    case "done": {
+      const hasActivity = isIdeationActive || isIdeationWaiting || isVerifying || isQueued;
+      if (!hasActivity) return null;
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
+          className="flex items-center gap-1 text-[12px]"
           style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
-          <CircleCheck className="w-2.5 h-2.5" style={{ color: "var(--status-success)" }} />
-          <span>Completed</span>
         </div>
       );
+    }
 
-    case "archived":
+    case "archived": {
+      const hasActivity = isIdeationActive || isIdeationWaiting || isVerifying || isQueued;
+      if (!hasActivity) return null;
       return (
         <div
-          className="flex items-center gap-1 text-[10px]"
+          className="flex items-center gap-1 text-[12px]"
           style={{ color: "var(--text-muted)" }}
         >
           <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
-          {plan.archivedAt ? (
-            <span>Archived {formatDate(plan.archivedAt)}</span>
-          ) : (
-            <span>Archived</span>
-          )}
         </div>
       );
+    }
   }
 }
 
@@ -315,6 +317,17 @@ function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetRe
 
 const isMutedGroup = (group: SessionGroup) => group === "done" || group === "archived";
 
+// Group → leftmost row icon + color. Mirrors SessionGroupHeader's icon so
+// expanded collapse items inherit the group's visual identity. Done/Accepted
+// punch green via --status-success (matches collapse count badge accent).
+const GROUP_ICON: Record<SessionGroup, { Icon: LucideIcon; color: string }> = {
+  drafts:        { Icon: MessageSquare, color: "var(--text-muted)" },
+  "in-progress": { Icon: Zap,           color: "var(--accent-primary)" },
+  accepted:      { Icon: CheckCircle,   color: "var(--status-success)" },
+  done:          { Icon: CircleCheck,   color: "var(--status-success)" },
+  archived:      { Icon: Archive,       color: "var(--text-muted)" },
+};
+
 export const PlanItem = memo(function PlanItem({
   plan,
   isSelected,
@@ -383,19 +396,20 @@ export const PlanItem = memo(function PlanItem({
     <div
       data-testid={`plan-item-${plan.id}`}
       className={cn(
-        "group relative rounded-md cursor-pointer",
+        "group relative cursor-pointer",
         "transition-all duration-150 ease-out"
       )}
       style={{
-        padding: "6px 8px",
+        padding: "10px 16px",
         background: isSelected
           ? withAlpha("var(--accent-primary)", 12)
           : isMenuOpen
             ? "var(--overlay-faint)"
             : "transparent",
-        border: isSelected
-          ? "1px solid var(--accent-border)"
-          : "1px solid transparent",
+        borderTop: "1px solid transparent",
+        borderBottom: "1px solid transparent",
+        borderLeft: isSelected ? "2px solid var(--accent-primary)" : "2px solid transparent",
+        borderRight: "none",
         opacity: muted && !isSelected ? 0.7 : 1,
       }}
       onClick={handleClick}
@@ -428,12 +442,11 @@ export const PlanItem = memo(function PlanItem({
               className="w-3 h-3 animate-spin"
               style={{ color: isVerifying ? VERIFYING_COLOR : ACCENT_COLOR }}
             />
-          ) : (
-            <MessageSquare
-              className="w-3 h-3"
-              style={{ color: isIdeationWaiting || isSelected ? "var(--accent-primary)" : "var(--text-muted)" }}
-            />
-          )}
+          ) : (() => {
+            const { Icon, color } = GROUP_ICON[group];
+            const iconColor = isSelected || isIdeationWaiting ? "var(--accent-primary)" : color;
+            return <Icon className="w-3 h-3" style={{ color: iconColor }} />;
+          })()}
         </div>
 
         {/* Content */}

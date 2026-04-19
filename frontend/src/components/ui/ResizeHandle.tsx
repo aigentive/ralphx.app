@@ -13,7 +13,7 @@
 // ============================================================================
 
 /** Default chat panel width in pixels */
-export const CHAT_PANEL_DEFAULT_WIDTH = 430;
+export const CHAT_PANEL_DEFAULT_WIDTH = 600;
 
 /** Minimum chat panel width in pixels */
 export const CHAT_PANEL_MIN_WIDTH = 320;

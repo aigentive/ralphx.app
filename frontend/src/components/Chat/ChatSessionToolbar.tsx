@@ -36,6 +36,12 @@ export interface ChatSessionToolbarProps {
   providerProfile?: string | null;
   fallbackConversation?: ChatConversation | null | undefined;
   fallbackMessages?: ChatMessageResponse[] | null | undefined;
+  /**
+   * When true, skip rendering the provider-context chips (harness badge,
+   * ModelChip, EffortChip, stats popover) — used when those chips are
+   * rendered elsewhere (e.g., inline in the Conversation header).
+   */
+  hideProviderContext?: boolean;
 }
 
 export function ChatSessionToolbar({
@@ -55,6 +61,7 @@ export function ChatSessionToolbar({
   providerProfile,
   fallbackConversation,
   fallbackMessages,
+  hideProviderContext = false,
 }: ChatSessionToolbarProps) {
   const { data: featureFlags } = useFeatureFlags();
   const statsFallbackConversation = useMemo(() => {
@@ -116,10 +123,11 @@ export function ChatSessionToolbar({
   });
   const showStats = Boolean(stats);
   const showProviderContext =
-    harnessLabel !== null ||
-    modelDisplay != null ||
-    effortKey != null ||
-    showStats;
+    !hideProviderContext &&
+    (harnessLabel !== null ||
+      modelDisplay != null ||
+      effortKey != null ||
+      showStats);
   const showStatus =
     isAgentActive ||
     agentStatus === "waiting_for_input" ||

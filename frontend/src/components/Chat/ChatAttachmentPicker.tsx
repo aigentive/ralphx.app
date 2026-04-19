@@ -207,8 +207,12 @@ export function ChatAttachmentPicker({
             subtle
               ? { background: "transparent", color: "var(--text-muted)", boxShadow: "none" }
               : {
-                  background: disabled ? "color-mix(in srgb, var(--accent-primary) 30%, transparent)" : "var(--accent-primary)",
-                  color: "white",
+                  /* Muted gray chrome matching the Send button's disabled
+                     baseline so the attachment picker reads as a neutral
+                     control, not a primary CTA. Per 2026-04-19 feedback. */
+                  background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-muted)",
                   boxShadow: "none",
                 }
           }

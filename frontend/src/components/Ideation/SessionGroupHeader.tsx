@@ -29,45 +29,48 @@ export function SessionGroupHeader({
   children,
 }: SessionGroupHeaderProps) {
   return (
-    <Collapsible open={isOpen} onOpenChange={onToggle} className="mt-3">
-      <CollapsibleTrigger asChild>
-        <button
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors duration-150"
-          style={{
-            color: "var(--text-muted)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--overlay-faint)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-          }}
-        >
-          <Icon className="w-3.5 h-3.5" />
-          <span className="text-[11px] font-medium tracking-[-0.01em]">
-            {label}
-          </span>
-          {count > 0 && (
-            <span
-              className="text-[9px] px-1.5 rounded-full font-medium leading-[16px]"
-              style={{
-                background: accentColor
-                  ? withAlpha(accentColor, 15)
-                  : withAlpha("var(--text-muted)", 15),
-                color: accentColor ?? "var(--text-secondary)",
-              }}
-            >
-              {count}
+    <Collapsible open={isOpen} onOpenChange={onToggle} className="mt-2" data-testid={`session-group-${label.toLowerCase()}`}>
+      <div className="px-4">
+        <CollapsibleTrigger asChild>
+          <button
+            data-testid="session-group-trigger"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-md transition-colors duration-150"
+            style={{
+              color: "var(--text-muted)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--overlay-faint)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            <span className="text-[12px] font-medium tracking-[-0.01em]">
+              {label}
             </span>
-          )}
-          <ChevronDown
-            className={cn(
-              "w-3 h-3 ml-auto transition-transform duration-200",
-              isOpen && "rotate-180"
+            {count > 0 && (
+              <span
+                className="text-[10px] px-1.5 rounded-full font-medium leading-[16px]"
+                style={{
+                  background: accentColor
+                    ? withAlpha(accentColor, 15)
+                    : withAlpha("var(--text-muted)", 15),
+                  color: accentColor ?? "var(--text-secondary)",
+                }}
+              >
+                {count}
+              </span>
             )}
-          />
-        </button>
-      </CollapsibleTrigger>
+            <ChevronDown
+              className={cn(
+                "w-3.5 h-3.5 ml-auto transition-transform duration-200",
+                isOpen && "rotate-180"
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
+      </div>
       <CollapsibleContent className="mt-1 space-y-1">
         {children}
       </CollapsibleContent>

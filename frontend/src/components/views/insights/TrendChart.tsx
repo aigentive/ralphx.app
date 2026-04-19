@@ -7,18 +7,17 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { withAlpha } from "@/lib/theme-colors";
 import type { WeeklyDataPoint } from "@/types/project-stats";
 
 const ACCENT = "var(--accent-primary)";
-const SECONDARY_DEFAULT = withAlpha("var(--text-secondary)", 70);
+const SECONDARY_DEFAULT = "var(--text-muted)";
 
 const tooltipStyle = {
   backgroundColor: "var(--bg-surface)",
-  border: "none",
+  border: "1px solid var(--overlay-faint)",
   borderRadius: "8px",
   fontSize: "12px",
-  color: withAlpha("var(--text-primary)", 85),
+  color: "var(--text-primary)",
 };
 
 function formatWeek(weekStart: string): string {
@@ -74,17 +73,17 @@ export function TrendChart({
   const header = (
     <div className={timeWindow !== undefined ? "mb-2" : "mb-3"}>
       <div className="flex items-center justify-between">
-        <p className="text-[12px] font-medium text-text-primary/70">
+        <p className="text-[12px] font-medium text-text-secondary">
           {title}
         </p>
         {currentValue !== undefined && (
-          <span className="text-[12px] text-text-primary/50">
+          <span className="text-[12px] text-text-secondary">
             {currentValue}
           </span>
         )}
       </div>
       {timeWindow !== undefined && (
-        <p className="text-[10px] mt-0.5 text-text-primary/35">
+        <p className="text-[10px] mt-0.5 text-text-muted">
           {timeWindow}
         </p>
       )}
@@ -95,7 +94,7 @@ export function TrendChart({
     return (
       <div>
         {header}
-        <p className="text-[12px] text-text-primary/30">
+        <p className="text-[12px] text-text-muted">
           No data yet
         </p>
       </div>
@@ -108,7 +107,7 @@ export function TrendChart({
   return (
     <div>
       {header}
-      <ResponsiveContainer width="100%" height={120}>
+      <ResponsiveContainer width="100%" height={160}>
         <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid
             strokeDasharray="3 3"
@@ -117,12 +116,12 @@ export function TrendChart({
           />
           <XAxis
             dataKey="week"
-            tick={{ fontSize: 10, fill: withAlpha("var(--text-primary)", 35) }}
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 10, fill: withAlpha("var(--text-primary)", 35) }}
+            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
             axisLine={false}
             tickLine={false}
             tickFormatter={fmt}
@@ -139,7 +138,7 @@ export function TrendChart({
                 ? [fmt(val), pLabel]
                 : [String(val), pLabel];
             }}
-            labelStyle={{ color: withAlpha("var(--text-primary)", 50) }}
+            labelStyle={{ color: "var(--text-secondary)" }}
           />
           <Line
             type="monotone"
@@ -163,22 +162,22 @@ export function TrendChart({
         </LineChart>
       </ResponsiveContainer>
       {hasSecondary && (
-        <div className="flex items-center gap-3 mt-1.5">
-          <span className="flex items-center gap-1">
+        <div className="w-full flex items-center justify-center gap-4 mt-2">
+          <span className="flex items-center gap-1.5">
             <span
-              className="inline-block w-[6px] h-[6px] rounded-full"
+              className="inline-block w-[8px] h-[8px] rounded-full"
               style={{ backgroundColor: color }}
             />
-            <span className="text-[10px] text-text-primary/50">
+            <span className="text-[12px] text-text-secondary">
               {pLabel}
             </span>
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1.5">
             <span
-              className="inline-block w-[6px] h-[6px] rounded-full"
+              className="inline-block w-[8px] h-[8px] rounded-full"
               style={{ backgroundColor: secondaryColor }}
             />
-            <span className="text-[10px] text-text-primary/50">
+            <span className="text-[12px] text-text-secondary">
               {sLabel}
             </span>
           </span>

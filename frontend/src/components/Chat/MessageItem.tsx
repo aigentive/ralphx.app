@@ -184,7 +184,7 @@ export const MessageItem = React.memo(function MessageItem({
     >
       {/* Agent indicator for assistant messages */}
       {!isUser && !teammateName && (
-        <Bot className="w-3.5 h-3.5 mt-2 mr-2 shrink-0 text-text-primary/40" />
+        <Bot className={cn("w-3.5 h-3.5 mr-2 shrink-0 text-text-primary/40", showProviderMeta ? "mt-0.5" : "mt-2")} />
       )}
       {/* Teammate name badge */}
       {!isUser && teammateName && (

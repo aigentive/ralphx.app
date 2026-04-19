@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Archive,
   Loader2,
-  Sparkles,
   RotateCcw,
   RefreshCw,
   ArrowLeft,
@@ -864,7 +863,7 @@ export function PlanningView({
             {session && (
             <header
               data-testid="ideation-header"
-              className="flex items-center justify-between h-11 px-4 border-b"
+              className="flex items-center justify-between h-14 px-4 border-b"
               style={{
                 borderColor: "var(--overlay-faint)",
                 background: withAlpha("var(--bg-surface)", 85),
@@ -901,24 +900,15 @@ export function PlanningView({
                   }
                   return null;
                 })()}
-                <div
-                  className="w-6 h-6 rounded-md flex items-center justify-center"
-                  style={{
-                    background: withAlpha("var(--accent-primary)", 10),
-                    border: "1px solid var(--accent-border)",
-                  }}
-                >
-                  <Sparkles className="w-3 h-3" style={{ color: "var(--accent-primary)" }} />
-                </div>
                 <div>
                   <h1
-                    className="text-xs font-semibold tracking-tight"
+                    className="text-[14px] font-semibold tracking-tight leading-tight"
                     style={{ color: "var(--text-primary)" }}
                   >
                     {session.title || "New Session"}
                   </h1>
                   <p
-                    className="text-[10px]"
+                    className="text-[12px]"
                     style={{ color: "var(--text-muted)" }}
                   >
                     {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
@@ -1037,11 +1027,13 @@ export function PlanningView({
                 {/* Active-Session State */}
                 {session && (
                   <>
-                    {/* Tab bar — Plan | Proposals | Team Research (conditional) */}
+                    {/* Tab bar — Plan | Proposals | Team Research (conditional).
+                        Height matches the right-side chat header (h-11 = 44px) so
+                        the horizontal divider unites across the split pane. */}
                     <div
                       className="flex items-center gap-0 px-4 shrink-0"
                       style={{
-                        height: "36px",
+                        height: "44px",
                         borderBottom: "1px solid var(--overlay-faint)",
                         background: withAlpha("var(--bg-surface)", 60),
                         backdropFilter: "blur(12px)",

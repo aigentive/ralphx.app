@@ -9,7 +9,6 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { withAlpha } from "@/lib/theme-colors";
 import { ChatAttachmentPicker } from "./ChatAttachmentPicker";
 import { ChatAttachmentGallery, type ChatAttachment } from "./ChatAttachmentGallery";
 import type { AgentStatus } from "@/stores/chatStore";
@@ -293,27 +292,19 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Unified container: attachment icon + textarea + stop button share one input field */}
+        {/* Unified container: textarea + stop button share one input field.
+            Border is 2px wide on every state so the focus color swap does
+            not reflow the layout (previously 1px→2px toggled a 1px jump). */}
         <div
           className="flex-1 flex items-end rounded-lg transition-colors"
           style={{
             background: "var(--bg-surface)",
             border: isFocused
-              ? `1px solid ${withAlpha("var(--accent-primary)", 50)}`
-              : "1px solid var(--bg-hover)",
+              ? "2px solid var(--border-default)"
+              : "2px solid var(--bg-hover)",
             minHeight: "38px",
           }}
         >
-          {enableAttachments && (
-            <div className="pl-1 pb-1 flex-shrink-0">
-              <ChatAttachmentPicker
-                {...(onFilesSelected !== undefined && { onFilesSelected })}
-                disabled={isReadOnly}
-                subtle={true}
-              />
-            </div>
-          )}
-
           {/* Textarea - transparent inside the unified container */}
           <textarea
             ref={textareaRef}
@@ -332,7 +323,7 @@ export function ChatInput({
               background: "transparent",
               color: "var(--text-primary)",
               border: "none",
-              minHeight: "36px",
+              minHeight: "34px",
               maxHeight: "120px",
               overflowY: "auto",
               boxShadow: "none",
@@ -365,6 +356,20 @@ export function ChatInput({
           )}
         </div>
 
+        {/* Attachment picker — sits BETWEEN the input box and the Send
+            button per 2026-04-19 feedback (Image #55). Uses subtle=false
+            so the paperclip button renders at 38×38 matching the Send
+            button's height and rounded-lg chrome. */}
+        {enableAttachments && (
+          <div className="flex-shrink-0 flex items-center">
+            <ChatAttachmentPicker
+              {...(onFilesSelected !== undefined && { onFilesSelected })}
+              disabled={isReadOnly}
+              subtle={false}
+            />
+          </div>
+        )}
+
         {/* Send button */}
         <div className="flex items-center">
           <button
@@ -374,7 +379,7 @@ export function ChatInput({
             disabled={!canSend}
             aria-label="Send message"
             aria-busy={isSending}
-            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110 border"
+            className="px-3 py-2 rounded-lg transition-colors disabled:opacity-[0.54] shrink-0 h-[38px] flex items-center justify-center hover:brightness-110 border"
             style={{
               background: canSend
                 ? "var(--accent-primary)"

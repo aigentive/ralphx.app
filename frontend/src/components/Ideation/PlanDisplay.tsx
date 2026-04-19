@@ -347,6 +347,7 @@ export function PlanDisplay({
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         {/* Header - flat Tahoe style */}
         <div
+          data-testid="plan-card-header"
           className="rounded-xl transition-all duration-200"
           style={{
             padding: "12px 14px",

@@ -32,7 +32,6 @@ import {
   CopyMarkdownButton,
 } from "./insights/MetricsDetails";
 import { UsageInsightsCard } from "./insights/UsageInsightsCard";
-import { withAlpha } from "@/lib/theme-colors";
 
 // ============================================================================
 // Week Start Day Preference (localStorage-backed)
@@ -71,9 +70,12 @@ function WeekStartToggle({
   return (
     <div
       className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
-      style={{ backgroundColor: "var(--bg-surface)" }}
+      style={{
+        backgroundColor: "var(--bg-surface)",
+        border: "1px solid var(--overlay-faint)",
+      }}
     >
-      <Calendar size={13} className="text-text-primary/50" />
+      <Calendar size={13} style={{ color: "var(--text-muted)" }} />
       {[
         { day: 0, label: "Sun" },
         { day: 1, label: "Mon" },
@@ -84,8 +86,8 @@ function WeekStartToggle({
           className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
           style={
             value === day
-              ? { backgroundColor: "var(--accent-primary)", color: "var(--text-primary)" }
-              : { color: withAlpha("var(--text-primary)", 55) }
+              ? { backgroundColor: "var(--accent-primary)", color: "var(--text-inverse)" }
+              : { color: "var(--text-muted)" }
           }
           title={`Week starts on ${day === 0 ? "Sunday" : "Monday"}`}
         >
@@ -147,6 +149,20 @@ function getAvgPipelineTimeDisplay(stats: ProjectStats): string {
   return formatMinutesHuman(stats.avgPipelineMinutes);
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mt-2">
+      <span
+        className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {children}
+      </span>
+      <div className="flex-1 h-px" style={{ backgroundColor: "var(--overlay-faint)" }} />
+    </div>
+  );
+}
+
 // ============================================================================
 // EME Panel (right column / inline depending on breakpoint)
 // ============================================================================
@@ -176,10 +192,10 @@ function EmeSection({
   return (
     <DetailCard>
       <div className="flex flex-col gap-1">
-        <p className="text-[13px] font-medium text-text-primary/70">
+        <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
           Effort estimation unlocks after 5 completed tasks
         </p>
-        <p className="text-[12px] text-text-primary/35">
+        <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
           {stats.taskCount} of 5 tasks completed — keep going!
         </p>
       </div>
@@ -204,7 +220,7 @@ export function InsightsView() {
   // No active project
   if (!projectId) {
     return (
-      <div className="flex flex-1 items-center justify-center text-text-primary/30">
+      <div className="flex flex-1 items-center justify-center" style={{ color: "var(--text-muted)" }}>
         <p className="text-[14px]">Select a project to view insights</p>
       </div>
     );
@@ -213,7 +229,7 @@ export function InsightsView() {
   // Loading
   if (statsQuery.isLoading || trendsQuery.isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-text-primary/30">
+      <div className="flex flex-1 items-center justify-center" style={{ color: "var(--text-muted)" }}>
         <p className="text-[14px]">Loading insights...</p>
       </div>
     );
@@ -222,7 +238,7 @@ export function InsightsView() {
   // Error
   if (statsQuery.error ?? trendsQuery.error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-text-primary/30">
+      <div className="flex flex-1 items-center justify-center" style={{ color: "var(--text-muted)" }}>
         <p className="text-[14px]">Failed to load insights. Try again.</p>
       </div>
     );
@@ -306,31 +322,39 @@ function InsightsContent({
 
   return (
     <div
+      data-testid="insights-view"
       className="flex flex-col flex-1 overflow-auto"
       style={{ backgroundColor: "var(--bg-base)" }}
     >
       <div className="flex flex-col gap-6 p-6 max-w-[1400px] w-full mx-auto">
         {/* Header with export buttons */}
         <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
+          <div data-testid="insights-header" className="flex flex-col gap-1">
             <h1
-              className="text-[22px] font-semibold text-text-primary/90"
-              style={{ fontFamily: "system-ui" }}
+              className="text-[22px] font-semibold"
+              style={{ fontFamily: "system-ui", color: "var(--text-primary)", letterSpacing: "-0.01em" }}
             >
               Insights
             </h1>
-            <p className="text-[13px] text-text-primary/40">
+            <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
               Project analytics and effort estimation
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <WeekStartToggle value={weekStartDay} onChange={onWeekStartDayChange} />
+            <div
+              className="w-px h-6 mx-1"
+              style={{ backgroundColor: "var(--overlay-faint)" }}
+              aria-hidden="true"
+            />
             <CopyMarkdownButton stats={stats} />
             <button
               onClick={() => exportJSON(stats, trends)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
               style={{
                 backgroundColor: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--overlay-faint)",
               }}
               title="Download JSON"
             >
@@ -339,9 +363,11 @@ function InsightsContent({
             </button>
             <button
               onClick={() => exportCSV(trends)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors text-text-primary/70"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
               style={{
                 backgroundColor: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--overlay-faint)",
               }}
               title="Download CSV"
             >
@@ -354,7 +380,8 @@ function InsightsContent({
         {/* Two-column dashboard: metrics left, EME sticky right at >=1200px */}
         <div className="grid grid-cols-1 min-[1200px]:grid-cols-[1fr_320px] gap-6">
           {/* Left column: all metrics */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
+            <SectionLabel>Overview</SectionLabel>
             {/* Stat cards — reordered: Tasks → Success → Cycle Time → Review */}
             <div className="grid grid-cols-2 min-[800px]:grid-cols-4 gap-3">
               <StatCard
@@ -402,52 +429,56 @@ function InsightsContent({
               <EmeSection stats={stats} showEme={showEme} projectId={projectId} />
             </div>
 
-            {usageStats && <UsageInsightsCard stats={usageStats} />}
+            {usageStats && (
+              <>
+                <SectionLabel>AI Usage</SectionLabel>
+                <UsageInsightsCard stats={usageStats} />
+              </>
+            )}
 
+            <SectionLabel>Trends</SectionLabel>
             {/* Trend charts */}
             {!hasEnoughForTrends ? (
               <DetailCard>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[13px] font-medium text-text-primary/70">
+                  <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
                     Trend charts unlock after 10 completed tasks
                   </p>
-                  <p className="text-[12px] text-text-primary/35">
+                  <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
                     {stats.taskCount} of 10 tasks completed
                   </p>
                 </div>
               </DetailCard>
             ) : (
-              <div className="flex flex-col gap-3">
-                <div className="grid grid-cols-1 min-[800px]:grid-cols-2 gap-3">
-                  <DetailCard>
-                    <TrendChart
-                      title="Weekly Throughput (tasks)"
-                      data={trends.weeklyThroughput}
-                      {...(throughputHeader !== undefined && { currentValue: throughputHeader })}
-                      timeWindow="Last 12 months"
-                    />
-                  </DetailCard>
-                  <DetailCard>
-                    <TrendChart
-                      title="Execution Time"
-                      data={trends.weeklyCycleTime}
-                      valueFormatter={(v) => formatMinutesHuman(v * 60)}
-                      primaryLabel="AI execution"
-                      secondaryData={trends.weeklyPipelineCycleTime}
-                      secondaryLabel="Pipeline (start → merge)"
-                      secondaryValueFormatter={(v) => formatMinutesHuman(v * 60)}
-                      {...(cycleTimeHeader !== undefined && { currentValue: cycleTimeHeader })}
-                      timeWindow="Last 12 months"
-                    />
-                  </DetailCard>
-                </div>
+              <div className="grid grid-cols-1 min-[640px]:grid-cols-2 gap-3 items-start">
+                <DetailCard>
+                  <TrendChart
+                    title="Weekly Throughput (tasks)"
+                    data={trends.weeklyThroughput}
+                    {...(throughputHeader !== undefined && { currentValue: throughputHeader })}
+                    timeWindow="Last 12 months"
+                  />
+                </DetailCard>
+                <DetailCard>
+                  <TrendChart
+                    title="Execution Time"
+                    data={trends.weeklyCycleTime}
+                    valueFormatter={(v) => formatMinutesHuman(v * 60)}
+                    primaryLabel="AI execution"
+                    secondaryData={trends.weeklyPipelineCycleTime}
+                    secondaryLabel="Pipeline (start → merge)"
+                    secondaryValueFormatter={(v) => formatMinutesHuman(v * 60)}
+                    {...(cycleTimeHeader !== undefined && { currentValue: cycleTimeHeader })}
+                    timeWindow="Last 12 months"
+                  />
+                </DetailCard>
                 {showSuccessRateTrend && (
                   <DetailCard>
                     <TrendChart
                       title="Agent Success Rate (%)"
                       data={trends.weeklySuccessRate}
                       valueFormatter={(v) => `${Math.round(v * 100)}%`}
-                      color="#34d399"
+                      color="var(--status-success)"
                       {...(successRateHeader !== undefined && { currentValue: successRateHeader })}
                       timeWindow="Last 12 months"
                     />
@@ -456,7 +487,8 @@ function InsightsContent({
               </div>
             )}
 
-            {/* Breakdowns */}
+            <SectionLabel>Breakdowns</SectionLabel>
+            {/* Breakdowns — full-width stack (each breakdown is a row list, not split) */}
             <div className="flex flex-col gap-3">
               <CycleTimeBreakdown phases={stats.cycleTimeBreakdown} />
               <ColumnDwellTimeBreakdown dwellTimes={stats.columnDwellTimes} />

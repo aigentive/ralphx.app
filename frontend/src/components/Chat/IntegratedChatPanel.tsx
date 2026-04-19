@@ -42,6 +42,7 @@ import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import { type AgentType } from "./StatusActivityBadge";
 import { ChatSessionToolbar } from "./ChatSessionToolbar";
+import { ChatSessionChips } from "./ChatSessionChips";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -865,7 +866,7 @@ export function IntegratedChatPanel({
              across all three themes. */}
           <div
             data-testid="integrated-chat-header"
-            className="flex items-center justify-between h-11 px-3 shrink-0"
+            className="flex items-center justify-between h-11 px-3 shrink-0 gap-3"
             style={{
               backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
               borderBottom: "1px solid var(--border-subtle)",
@@ -873,8 +874,27 @@ export function IntegratedChatPanel({
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
-            {/* Conversation Selector */}
-            <ConversationSelector
+            {/* Provider-context chips rendered inline next to the
+                ConversationSelector — per 2026-04-19 feedback, the CODEX
+                badge / model / effort / stats popover live in the header
+                row, not in a separate toolbar strip below. */}
+            <div className="ml-auto flex items-center gap-2 min-w-0">
+              <ChatSessionChips
+                contextType={currentContextType as ContextType}
+                contextId={ideationSessionId || selectedTaskId || null}
+                isAgentActive={isAgentActive}
+                conversationId={effectiveConversationId}
+                providerHarness={activeConversationMeta?.providerHarness ?? null}
+                providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+                upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+                providerProfile={activeConversationMeta?.providerProfile ?? null}
+                fallbackConversation={activeConversationMeta}
+                fallbackMessages={sortedMessages}
+                {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+              />
+
+              {/* Conversation Selector */}
+              <ConversationSelector
               contextType={
                 ideationSessionId
                   ? "ideation"
@@ -895,9 +915,13 @@ export function IntegratedChatPanel({
               onNewConversation={handleNewConversation}
               isLoading={conversations.isLoading}
             />
+            </div>
           </div>
 
-          {/* Session Toolbar — always rendered for layout stability; houses StatusActivityBadge + optional back action */}
+          {/* Session Toolbar — houses StatusActivityBadge + optional back
+              action. Provider-context chips are now rendered inline in
+              the integrated-chat-header (above), so suppress them here
+              via `hideProviderContext` to avoid duplication. */}
           <ChatSessionToolbar
             isAgentActive={isAgentActive}
             agentType={agentType}
@@ -912,6 +936,7 @@ export function IntegratedChatPanel({
             providerProfile={activeConversationMeta?.providerProfile ?? null}
             fallbackConversation={activeConversationMeta}
             fallbackMessages={sortedMessages}
+            hideProviderContext
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />
@@ -1052,6 +1077,7 @@ export function IntegratedChatPanel({
              chrome rhythm. Previous bg-base@50 collapsed on HC and shaded
              darker than body on Dark, producing a three-tier sandwich. */}
           <div
+            data-testid="chat-input-container"
             className={inputContainerClassName ?? "shrink-0"}
             style={inputContainerClassName ? undefined : {
               backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
@@ -1082,8 +1108,10 @@ export function IntegratedChatPanel({
               />
             )}
 
-            {/* Chat Input */}
-            <div className="p-3">
+            {/* Chat Input — wrapper padding matches ExecutionControlBar's
+                outer `p-2` so the top border of the composer aligns with
+                the top border of the execution bar across the split pane. */}
+            <div className="p-2">
               <ChatInput
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
                 onStop={handleStopAgentWrapper}
