@@ -18,6 +18,8 @@ prepare_runtime_package() {
     cd "${package_dir}"
     npm ci
     npm run build
+    rm -rf node_modules
+    npm ci --omit=dev --ignore-scripts
   )
 }
 

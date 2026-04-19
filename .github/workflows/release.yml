@@ -19,6 +19,14 @@ on:
         required: true
         type: boolean
         default: false
+      arm_runner:
+        description: "Runner to use for the macOS ARM release build"
+        required: true
+        type: choice
+        default: self-hosted
+        options:
+          - self-hosted
+          - github-hosted
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ jobs:
       draft: ${{ steps.meta.outputs.draft }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       source_ref: ${{ steps.meta.outputs.source_ref }}
+      build_matrix: ${{ steps.meta.outputs.build_matrix }}
     steps:
       - name: Resolve release metadata
         id: meta
@@ -54,6 +63,7 @@ jobs:
           raw_version="${{ github.event.inputs.version }}"
           raw_draft="${{ github.event.inputs.draft }}"
           raw_prerelease="${{ github.event.inputs.prerelease }}"
+          raw_arm_runner="${{ github.event.inputs.arm_runner }}"
 
           version="${raw_version#v}"
           if [[ -z "${version}" ]]; then
@@ -70,6 +80,33 @@ jobs:
             exit 1
           fi
 
+          arm_runs_on='"macos-15"'
+          if [[ "${raw_arm_runner}" == "self-hosted" ]]; then
+            arm_runs_on='["self-hosted","macOS","ARM64","ralphx-release"]'
+          fi
+
+          build_matrix="$(
+            jq -cn \
+              --arg arm_arch "aarch64" \
+              --arg arm_runs_on "${arm_runs_on}" \
+              --arg arm_runner_kind "${raw_arm_runner}" \
+              --arg intel_arch "x86_64" \
+              --arg intel_runs_on '"macos-15-intel"' \
+              --arg intel_runner_kind "github-hosted" \
+              '{include: [
+                {
+                  arch: $arm_arch,
+                  runs_on: $arm_runs_on,
+                  runner_kind: $arm_runner_kind
+                },
+                {
+                  arch: $intel_arch,
+                  runs_on: $intel_runs_on,
+                  runner_kind: $intel_runner_kind
+                }
+              ]}'
+          )"
+
           {
             echo "version=${version}"
             echo "tag=${tag}"
@@ -77,6 +114,7 @@ jobs:
             echo "draft=${raw_draft}"
             echo "prerelease=${raw_prerelease}"
             echo "source_ref=refs/tags/${tag}"
+            echo "build_matrix=${build_matrix}"
           } >> "${GITHUB_OUTPUT}"
 
   build-macos:
@@ -85,16 +123,9 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: aarch64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+      matrix: ${{ fromJSON(needs.metadata.outputs.build_matrix) }}
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -109,6 +140,9 @@ jobs:
 
       - name: Validate signing environment
         shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           required_vars=(
@@ -142,6 +176,15 @@ jobs:
           chmod 600 "${key_path}"
           echo "api_key_path=${key_path}" >> "${GITHUB_OUTPUT}"
 
+      - name: Generate temporary signing keychain password
+        id: keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "password=$(openssl rand -base64 24 | tr -d '\n')" >> "${GITHUB_OUTPUT}"
+          echo "path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}.keychain-db" >> "${GITHUB_OUTPUT}"
+          echo "search_list_path=${RUNNER_TEMP}/ralphx-release-${{ matrix.arch }}-keychains.txt" >> "${GITHUB_OUTPUT}"
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -164,24 +207,60 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Import Apple certificate
+      - name: Checkout workflow automation support
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-support
+
+      - name: Overlay release automation scripts from workflow ref
         shell: bash
         run: |
           set -euo pipefail
+          install -m 0755 workflow-support/scripts/build-prod-release.sh scripts/build-prod-release.sh
+          install -m 0755 workflow-support/scripts/prepare-release-runtime.sh scripts/prepare-release-runtime.sh
+
+      - name: Import Apple certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ steps.keychain.outputs.password }}
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
+        run: |
+          set -euo pipefail
+
+          curl -L --fail --silent --show-error \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            --output developer-id-g2.cer
+
           echo "${APPLE_CERTIFICATE}" | base64 --decode > certificate.p12
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import certificate.p12 -k build.keychain -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
-          rm certificate.p12
+          security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security list-keychains -d user | sed 's/^[[:space:]]*\"//; s/\"$//' > "${KEYCHAIN_SEARCH_LIST_PATH}"
+          keychain_search_list=("${KEYCHAIN_PATH}")
+          while IFS= read -r keychain; do
+            if [[ -n "${keychain}" && "${keychain}" != "${KEYCHAIN_PATH}" ]]; then
+              keychain_search_list+=("${keychain}")
+            fi
+          done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+          security list-keychains -d user -s "${keychain_search_list[@]}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -t 3600 -u "${KEYCHAIN_PATH}"
+          security import developer-id-g2.cer -k "${KEYCHAIN_PATH}" -A
+          security import certificate.p12 -k "${KEYCHAIN_PATH}" -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          rm developer-id-g2.cer certificate.p12
 
       - name: Validate imported signing identity
         shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
         run: |
           set -euo pipefail
 
-          identities="$(security find-identity -v -p codesigning build.keychain)"
+          identities="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}")"
           identity_count="$(
             awk '/[0-9]+\) [0-9A-F]{40} / { count += 1 } END { print count + 0 }' <<< "${identities}"
           )"
@@ -223,6 +302,11 @@ jobs:
               printf '[release-heartbeat] %s build step still running for %s\n' \
                 "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
                 "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+              ps -axo pid,ppid,etime,stat,command \
+                | grep -E 'codesign|notarytool|xcrun|cargo-tauri|cargo tauri|cargo build|node .*tauri|ralphx' \
+                | grep -v 'grep -E' \
+                | sed 's/^/[release-heartbeat] process /' \
+                | tee -a "${heartbeat_log}" || true
               sleep 60
             done
           }
@@ -238,6 +322,11 @@ jobs:
           printf '[release-heartbeat] %s starting build script for %s\n' \
             "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
             "${{ matrix.arch }}" | tee -a "${heartbeat_log}"
+
+          echo "[release-heartbeat] ${{
+            matrix.arch
+          }} using pre-imported build.keychain; clearing APPLE_CERTIFICATE env to avoid duplicate Tauri keychain import" | tee -a "${heartbeat_log}"
+          unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
 
           ./scripts/build-prod-release.sh 2>&1 | tee -a "${build_log}"
 
@@ -293,6 +382,28 @@ jobs:
           path: release-dist/${{ matrix.arch }}/*
           if-no-files-found: error
 
+      - name: Delete temporary signing keychain
+        if: always()
+        shell: bash
+        env:
+          KEYCHAIN_PATH: ${{ steps.keychain.outputs.path }}
+          KEYCHAIN_SEARCH_LIST_PATH: ${{ steps.keychain.outputs.search_list_path }}
+        run: |
+          set -euo pipefail
+          if [[ -f "${KEYCHAIN_SEARCH_LIST_PATH}" ]]; then
+            restored_keychains=()
+            while IFS= read -r keychain; do
+              if [[ -n "${keychain}" ]]; then
+                restored_keychains+=("${keychain}")
+              fi
+            done < "${KEYCHAIN_SEARCH_LIST_PATH}"
+            if [[ "${#restored_keychains[@]}" -gt 0 ]]; then
+              security list-keychains -d user -s "${restored_keychains[@]}"
+            fi
+          fi
+          security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          rm -f "${KEYCHAIN_SEARCH_LIST_PATH}"
+
   publish-release:
     name: Publish public release assets
     needs:
@@ -334,17 +445,17 @@ jobs:
           if [[ -f "${notes_file}" ]]; then
             cp "${notes_file}" release-assets/release-notes.md
           else
-            cat > release-assets/release-notes.md <<EOF
-            Release artifacts for ${tag}.
-
-            Included:
-            - macOS Apple Silicon DMG
-            - macOS Intel DMG
-            - macOS Apple Silicon updater bundle
-            - macOS Intel updater bundle
-            - latest.json
-            - checksums.txt
-            EOF
+            {
+              printf 'Release artifacts for %s.\n\n' "${tag}"
+              printf 'Included:\n'
+              printf '%s\n' \
+                '- macOS Apple Silicon DMG' \
+                '- macOS Intel DMG' \
+                '- macOS Apple Silicon updater bundle' \
+                '- macOS Intel updater bundle' \
+                '- latest.json' \
+                '- checksums.txt'
+            } > release-assets/release-notes.md
           fi
 
           aarch64_updater="release-assets/release-aarch64/RalphX_${version}_aarch64.app.tar.gz"
@@ -475,6 +586,18 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: release-assets
+
+      - name: Checkout workflow automation support
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-support
+
+      - name: Overlay Homebrew cask renderer from workflow ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0755 workflow-support/scripts/render-homebrew-cask.sh scripts/render-homebrew-cask.sh
 
       - name: Clone Homebrew tap
         shell: bash
