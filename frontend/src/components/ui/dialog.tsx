@@ -48,6 +48,7 @@ const DialogContent = React.forwardRef<
         className
       )}
       style={{
+        backgroundColor: "var(--dialog-bg, var(--bg-elevated))",
         boxShadow: "var(--shadow-lg)",
       }}
       {...props}
