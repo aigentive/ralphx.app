@@ -394,6 +394,10 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Build frontend bundle
+        run: npm exec vite build
+        working-directory: frontend
+
   frontend-tests-shard-1:
     name: Frontend Tests (Shard 1/2)
     needs: changes
