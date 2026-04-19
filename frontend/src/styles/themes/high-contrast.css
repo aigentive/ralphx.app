@@ -419,3 +419,29 @@
   border-bottom-color: var(--border-default) !important;
   border-bottom-width: 1px !important;
 }
+
+/* ============================================================================
+ * Phase 3 — Row/list dividers inside regions.
+ * Plan: specs/design/themes/hc-border-layout-plan.md §4.
+ * ============================================================================ */
+
+/* Activity messages — thin 50% white rule between consecutive rows so the
+   scrollable feed reads as a structured list, not a river of text. Last
+   row drops the divider so there's no orphan stroke at the bottom. */
+[data-theme="high-contrast"] [data-testid="activity-message"] {
+  border-bottom: 1px solid var(--border-subtle);
+}
+[data-theme="high-contrast"] [data-testid="activity-message"]:last-child {
+  border-bottom: none;
+}
+
+/* Settings sidebar nav items — inside the light-scoped modal the nav
+   items render without separators; add a bottom divider between siblings
+   so the nav reads as a list. Matches the reference (Google AI Studio)
+   left-rail divider pattern. Scoped to the dialog so non-HC Settings
+   stays clean. The modal's scoped --border-subtle is gray-400, so this
+   picks up the light palette automatically. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [role="button"][aria-current],
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [role="button"][tabindex="0"] {
+  border-bottom: 1px solid var(--border-subtle);
+}
