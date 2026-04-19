@@ -12,7 +12,37 @@
 
 import { safeError } from "./redact.js";
 
-const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const DEFAULT_TAURI_API_URL = "http://127.0.0.1:3847";
+
+function resolveTauriApiBaseUrl(): URL {
+  const raw = process.env.TAURI_API_URL || DEFAULT_TAURI_API_URL;
+
+  try {
+    const parsed = new URL(raw);
+    const isAllowedProtocol = parsed.protocol === "http:";
+    const isAllowedHost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+
+    if (isAllowedProtocol && isAllowedHost) {
+      return parsed;
+    }
+
+    safeError(
+      `[RalphX MCP] Invalid TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`
+    );
+  } catch {
+    safeError(
+      `[RalphX MCP] Failed to parse TAURI_API_URL "${raw}", falling back to ${DEFAULT_TAURI_API_URL}`
+    );
+  }
+
+  return new URL(DEFAULT_TAURI_API_URL);
+}
+
+const TAURI_API_BASE_URL = resolveTauriApiBaseUrl();
+
+function buildTauriApiUrl(pathname: string): string {
+  return new URL(pathname, TAURI_API_BASE_URL).toString();
+}
 
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
 const TEAM_PLAN_TIMEOUT_MS = 15 * 60 * 1000;
@@ -97,7 +127,7 @@ export async function handleRequestTeamPlan(
   let plan_id: string;
   try {
     const registerResponse = await fetch(
-      `${TAURI_API_URL}/api/team/plan/request`,
+      buildTauriApiUrl("/api/team/plan/request"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -162,7 +192,7 @@ export async function handleRequestTeamPlan(
 
   try {
     const awaitResponse = await fetch(
-      `${TAURI_API_URL}/api/team/plan/await/${plan_id}`,
+      buildTauriApiUrl(`/api/team/plan/await/${encodeURIComponent(plan_id)}`),
       {
         method: "GET",
         signal: controller.signal,
