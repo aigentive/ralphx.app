@@ -90,9 +90,9 @@ export function ConversationStatsPopover({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 p-0 border-white/10 bg-[color-mix(in_srgb,_var(--bg-base)_96%,_transparent)] shadow-xl"
+        className="w-80 p-0 border-[var(--border-subtle)] bg-[color-mix(in_srgb,_var(--bg-base)_96%,_transparent)] shadow-xl"
       >
-        <div className="p-3 border-b border-white/6">
+        <div className="p-3 border-b border-[var(--border-subtle)]">
           <div className="text-sm font-medium text-text-primary/90">Conversation stats</div>
           <div className="text-[11px] text-text-primary/45 mt-1">
             {usagePending
@@ -108,19 +108,19 @@ export function ConversationStatsPopover({
         ) : (
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Input</div>
                 <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.inputTokens)}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Output</div>
                 <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatCompactInteger(stats.effectiveUsageTotals.outputTokens)}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Cache</div>
                 <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending
@@ -131,7 +131,7 @@ export function ConversationStatsPopover({
                     )}
                 </div>
               </div>
-              <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
+              <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--overlay-faint)] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-text-primary/38">Est. cost</div>
                 <div className="text-sm text-text-primary/88 mt-1">
                   {usagePending ? "Pending" : formatUsd(stats.effectiveUsageTotals.estimatedUsd)}

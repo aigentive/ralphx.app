@@ -1,17 +1,57 @@
 #!/usr/bin/env bash
-# Pre-commit hook: reject commits containing node_modules paths.
-# Worktree agents create node_modules symlinks for performance; this hook
-# prevents those symlinks from being accidentally committed.
+# RalphX pre-commit hook
+#
+# Two guards:
+#   1. Reject node_modules paths (worktree agents create symlinks that must
+#      never be committed).
+#   2. Design-token guards + typecheck + lint on staged frontend changes.
+#
+# Install: `npm --prefix frontend run hooks:install` (sets core.hooksPath)
+# Bypass with `git commit --no-verify` only when absolutely necessary.
 
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# ----------------------------------------------------------------------------
+# Guard 1 — node_modules in staged paths
+# ----------------------------------------------------------------------------
 staged=$(git diff --cached --name-only --diff-filter=ACR)
-
 bad=$(echo "$staged" | grep -E '(^|/)node_modules(/|$)' || true)
-
 if [ -n "$bad" ]; then
-    echo "ERROR: Refusing to commit node_modules paths:"
-    echo "$bad" | sed 's/^/  /'
-    echo ""
-    echo "These are likely worktree symlinks. Remove them from staging:"
-    echo "  git reset HEAD <path>"
-    exit 1
+  echo "ERROR: Refusing to commit node_modules paths:"
+  echo "$bad" | sed 's/^/  /'
+  echo ""
+  echo "These are likely worktree symlinks. Remove them from staging:"
+  echo "  git reset HEAD <path>"
+  exit 1
 fi
+
+# ----------------------------------------------------------------------------
+# Guard 2 — frontend design-system + typecheck + lint
+# Only runs when frontend files are staged (keeps backend/docs commits fast).
+# ----------------------------------------------------------------------------
+staged_frontend=$(echo "$staged" | grep -E '^frontend/(src|scripts|tests)/' || true)
+if [ -z "$staged_frontend" ]; then
+  exit 0
+fi
+
+cd frontend
+
+printf '\033[1m[pre-commit]\033[0m design-token guards…\n'
+./scripts/check-design-tokens.sh
+
+printf '\n\033[1m[pre-commit]\033[0m typecheck…\n'
+npm run -s typecheck
+
+printf '\n\033[1m[pre-commit]\033[0m lint (staged .ts/.tsx only)…\n'
+staged_src=$(echo "$staged_frontend" | sed -n 's|^frontend/||p' | grep -E '^src/.*\.tsx?$' || true)
+if [ -n "$staged_src" ]; then
+  # shellcheck disable=SC2086
+  npx eslint --max-warnings=0 $staged_src
+else
+  printf '(no staged .ts/.tsx files in src/)\n'
+fi
+
+printf '\n\033[32m[pre-commit] all checks passed\033[0m\n'

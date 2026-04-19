@@ -24,7 +24,7 @@ export function getBaseCardStyles(
     borderRadius: "8px",
     background: "var(--bg-surface)",
     border: "1px solid var(--overlay-moderate)",
-    boxShadow: "0 4px 16px hsla(220 20% 0% / 0.28)",
+    boxShadow: "var(--shadow-xs)",
     borderLeft: `3px solid ${getStatusBorderColor(status, isArchived)}`,
   };
 }
@@ -47,7 +47,7 @@ export function getCardStyles(
       cursor: "grabbing",
       transform: "scale(1.02)",
       background: "var(--bg-elevated)",
-      boxShadow: "0 8px 24px hsla(220 20% 0% / 0.38), 0 2px 10px hsla(220 20% 0% / 0.3)",
+      boxShadow: "var(--shadow-lg)",
       zIndex: 50,
     };
   }

@@ -70,7 +70,7 @@ function ComplexitySelector({ value, onChange, disabled }: ComplexitySelectorPro
                 w-3 h-3 rounded-full transition-colors duration-150
                 ${isSelected
                   ? "bg-[var(--accent-primary)]"
-                  : "bg-white/20 hover:bg-[var(--accent-primary)]/40"
+                  : "bg-[var(--overlay-moderate)] hover:bg-[var(--accent-muted)]"
                 }
                 ${!disabled ? "cursor-pointer" : "cursor-not-allowed opacity-50"}
               `}
@@ -362,7 +362,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddStep}
                   disabled={isSaving}
-                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[var(--accent-primary)]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
+                  className="w-full h-10 rounded-md border border-dashed border-[var(--border-subtle)] hover:border-[var(--accent-border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Add step
@@ -415,7 +415,7 @@ export function ProposalEditModal({
                   type="button"
                   onClick={handleAddCriterion}
                   disabled={isSaving}
-                  className="w-full h-10 rounded-md border border-dashed border-white/10 hover:border-[var(--accent-primary)]/30 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
+                  className="w-full h-10 rounded-md border border-dashed border-[var(--border-subtle)] hover:border-[var(--accent-border)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center justify-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Add criterion

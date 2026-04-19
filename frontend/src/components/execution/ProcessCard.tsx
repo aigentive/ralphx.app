@@ -155,7 +155,7 @@ export function ProcessCard({
   return (
     <div
       data-testid={`process-card-${process.taskId}`}
-      className="px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+      className="px-2 py-1.5 rounded-md hover:bg-[var(--overlay-faint)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-border)]"
       role="button"
       tabIndex={0}
       onClick={() => onNavigate?.(process.taskId)}

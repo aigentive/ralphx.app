@@ -7,7 +7,13 @@
 # Guards:
 #   1. No primitive tokens in component files (tier-1 leaks).
 #   2. No Tailwind default palette utilities (palette leaks).
-#   3. No hardcoded brand hex / rgba / rgb in component files.
+#   3. No inline rgba/rgb literals in component files.
+#   4. No brand hex literals in live code.
+#   5. No raw hsl() / hsla() colour literals in component inline styles.
+#   6. No `white/N` or `black/N` Tailwind opacity-modifier classes in component
+#      files (they don't flip per theme; use overlay / text tokens instead).
+#   7. No hardcoded hue families for status or accent (hsl(14 …), hsl(0 70 …),
+#      hsl(45 … %), hsl(145 … %), hsl(220 80 … %)).
 #
 # Excluded paths (documented in specs/design/styleguide.md §12):
 #   - src/components/WelcomeScreen/** — marketing splash
@@ -27,6 +33,13 @@ EXCLUDE_PATHS=(
   --exclude-dir='__snapshots__'
   --exclude-dir='WelcomeScreen'
   --exclude-dir='battle-v2'
+  # Lightbox component intentionally paints black/white gradients regardless
+  # of theme — it's a media viewer chrome, not a themed surface.
+  --exclude-dir='ScreenshotGallery'
+  # SVG data-URI backgrounds embed CSS in URL params — allow but they count
+  # as components. Inline SVGs with color-literal fills for background-image
+  # should use a theme CSS var in the stroke.
+  --exclude='TaskFormFields.constants.ts'
 )
 
 FAIL=0
@@ -99,6 +112,73 @@ else
 fi
 
 # ----------------------------------------------------------------------------
+# Guard 5 — raw hsl() / hsla() in component inline styles
+# ----------------------------------------------------------------------------
+# Any hsl( ... ) / hsla( ... ) appearing in component code (not in token CSS
+# sources) bypasses the theme system. The only allowed form is a var(--token)
+# reference that itself resolves to hsl(). Allow hsl inside color-mix() since
+# that's a legitimate pattern; the token the color-mix wraps is usually a var.
+print_section "Guard 5: raw hsl() literals in component files"
+
+HSL_HITS=$(grep -rEn 'hsla?\(' src/components "${EXCLUDE_PATHS[@]}" \
+  | grep -v 'color-mix' \
+  | grep -vE ':[0-9]+:\s*\*' \
+  | grep -vE ':[0-9]+:\s*//' \
+  | grep -vE 'var\(--[^)]*\)[^,]*hsla?' || true)
+
+if [ -n "${HSL_HITS}" ]; then
+  print_fail "Raw hsl()/hsla() bypass the theme token cascade. Use var(--bg-*/text-*/accent-*/status-*) instead."
+  echo "${HSL_HITS}"
+else
+  print_pass "No raw hsl()/hsla() literals in components."
+fi
+
+# ----------------------------------------------------------------------------
+# Guard 6 — white/black Tailwind opacity-modifier classes
+# ----------------------------------------------------------------------------
+# `text-white/40`, `bg-white/5`, `bg-black/50`, `border-white/10` etc. compile
+# to `color-mix(var(--color-white) N% …)` — which resolves correctly on Dark
+# but dissolves on Light (white-on-white) or paints inverted on HC.
+# Use overlay tokens (--overlay-faint/-weak/-moderate), scrim tokens
+# (--overlay-scrim/-med/-deep), or text-* alpha tokens instead.
+print_section "Guard 6: Tailwind white/N + black/N opacity classes"
+
+WB_PATTERN='\b(bg|text|border|ring|from|to|via)-(white|black)\/[0-9]+\b'
+WB_HITS=$(grep -rEn "${WB_PATTERN}" src/components "${EXCLUDE_PATHS[@]}" || true)
+
+if [ -n "${WB_HITS}" ]; then
+  print_fail "text-/bg-/border-white|black opacity classes don't flip per theme. Use overlay-* or text-* tokens."
+  echo "${WB_HITS}"
+else
+  print_pass "No white/N or black/N opacity classes in components."
+fi
+
+# ----------------------------------------------------------------------------
+# Guard 7 — hardcoded accent / status hue families
+# ----------------------------------------------------------------------------
+# Specific hsl hue families that indicate brand / status drift:
+#   14 100% …  → accent orange          (use --accent-primary)
+#   0 70% …    → status error red       (use --status-error)
+#   45 90% …   → status warning yellow  (use --status-warning)
+#   145 60% …  → status success green   (use --status-success)
+#   220 80% …  → status info blue       (use --status-info)
+# Strips hits inside color-mix() and var() references.
+print_section "Guard 7: hardcoded brand/status hue families"
+
+HUE_PATTERN='hsla?\( *(14 +100%|0 +70%|45 +90%|145 +60%|220 +80%)'
+HUE_HITS=$(grep -rEn "${HUE_PATTERN}" src/components "${EXCLUDE_PATHS[@]}" \
+  | grep -v 'color-mix' \
+  | grep -vE ':[0-9]+:\s*\*' \
+  | grep -vE ':[0-9]+:\s*//' || true)
+
+if [ -n "${HUE_HITS}" ]; then
+  print_fail "Hardcoded brand/status hue families bypass --accent-primary / --status-* tokens."
+  echo "${HUE_HITS}"
+else
+  print_pass "No hardcoded accent/status hue families."
+fi
+
+# ----------------------------------------------------------------------------
 # Result
 # ----------------------------------------------------------------------------
 echo ""
@@ -106,4 +186,4 @@ if [ "$FAIL" -ne 0 ]; then
   echo -e "\033[31mDesign-token guards failed.\033[0m Fix the leaks above or update specs/design/styleguide.md §12 exclusions."
   exit 1
 fi
-echo -e "\033[32mAll design-token guards passed.\033[0m"
+echo -e "\033[32mAll 7 design-token guards passed.\033[0m"

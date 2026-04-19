@@ -206,7 +206,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
         borderRadius: "10px",
         backgroundColor: "var(--bg-surface)",
         border: "1px solid var(--overlay-weak)",
-        boxShadow: "0 2px 8px hsla(220 10% 0% / 0.2)",
+        boxShadow: "var(--shadow-md)",
         animation: "fadeInScale 180ms cubic-bezier(0.34, 1.56, 0.64, 1)",
       }}
     >
@@ -435,7 +435,7 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
                       alignItems: "center",
                       padding: "1px 3px",
                       borderRadius: "2px",
-                      backgroundColor: title.trim() ? "hsla(0 0% 100% / 0.15)" : "var(--overlay-moderate)",
+                      backgroundColor: title.trim() ? "var(--overlay-moderate)" : "var(--overlay-faint)",
                       fontSize: "9px",
                       fontWeight: 500,
                       opacity: 0.7,

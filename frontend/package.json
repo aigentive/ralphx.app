@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "check:tokens": "./scripts/check-design-tokens.sh"
+    "check:tokens": "./scripts/check-design-tokens.sh",
+    "hooks:install": "git -C .. config core.hooksPath .githooks"
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.3",

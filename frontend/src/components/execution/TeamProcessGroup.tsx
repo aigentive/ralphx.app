@@ -73,7 +73,7 @@ export function TeamProcessGroup({
     >
       {/* Team Header */}
       <div
-        className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.04] transition-colors rounded-t-md cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+        className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--overlay-faint)] transition-colors rounded-t-md cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-border)]"
         role="button"
         tabIndex={0}
         onClick={() => onNavigate?.(process.taskId)}

@@ -13,7 +13,7 @@ export function ModelChip({ model }: ModelChipProps) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-xs text-white/40 shrink-0 cursor-default select-none">
+          <span className="text-xs text-[var(--text-muted)] shrink-0 cursor-default select-none">
             {displayLabel}
           </span>
         </TooltipTrigger>

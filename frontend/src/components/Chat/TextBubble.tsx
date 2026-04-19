@@ -62,7 +62,7 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
         className={cn(
           "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity",
           isUser
-            ? "hover:bg-white/20 text-white/80 hover:text-white"
+            ? "hover:bg-[color-mix(in_srgb,_var(--text-inverse)_20%,_transparent)] text-[var(--text-inverse)]"
             : "hover:bg-[var(--overlay-moderate)]"
         )}
         aria-label={copied ? "Copied" : "Copy message"}

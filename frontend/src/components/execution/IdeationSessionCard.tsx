@@ -21,7 +21,7 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
   return (
     <div
       data-testid={`ideation-card-${session.sessionId}`}
-      className={`px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors${onClick ? " cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20" : ""}`}
+      className={`px-2 py-1.5 rounded-md hover:bg-[var(--overlay-faint)] transition-colors${onClick ? " cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-border)]" : ""}`}
       {...(onClick
         ? {
             role: "button" as const,

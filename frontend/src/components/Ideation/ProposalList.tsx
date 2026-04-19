@@ -223,7 +223,7 @@ function Toolbar({
           data-testid="sort-priority-btn"
           onClick={onSortByPriority}
           aria-label="Sort by priority"
-          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded hover:bg-[var(--overlay-weak)] transition-colors"
           style={{ color: "var(--text-secondary)" }}
           title="Sort by priority"
         >
@@ -234,7 +234,7 @@ function Toolbar({
           data-testid="clear-all-btn"
           onClick={onClearAll}
           aria-label="Clear all"
-          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded hover:bg-[var(--overlay-weak)] transition-colors"
           style={{ color: "var(--text-secondary)" }}
           title="Clear all"
         >

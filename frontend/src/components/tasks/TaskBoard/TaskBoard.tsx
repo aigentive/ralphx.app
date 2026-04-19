@@ -511,7 +511,7 @@ export function TaskBoard({
                 <BarChart2 className="w-4 h-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-96 p-0 border-white/10 bg-transparent shadow-xl">
+            <PopoverContent align="end" className="w-96 p-0 border-[var(--border-subtle)] bg-transparent shadow-xl">
               <ProjectStatsCard projectId={projectId} />
             </PopoverContent>
           </Popover>
