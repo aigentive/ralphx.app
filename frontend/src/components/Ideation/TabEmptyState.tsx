@@ -11,8 +11,17 @@ interface TabEmptyStateProps {
 
 export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmptyStateProps) {
   return (
-    <div className="flex flex-col items-center pt-[20%] h-full p-6">
-      <div className="w-full max-w-[280px]">
+    <div
+      data-testid="tab-empty-state"
+      className="flex flex-col items-center justify-center h-full p-6"
+    >
+      <div
+        className="w-full max-w-[340px] rounded-2xl p-6"
+        style={{
+          background: "var(--overlay-faint)",
+          border: "1px solid var(--border-subtle)",
+        }}
+      >
         {/* Icon */}
         <div className="flex justify-center mb-4">
           {icon}
@@ -36,8 +45,8 @@ export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmpty
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
-              background: "var(--overlay-faint)",
-              border: "1px solid var(--overlay-weak)",
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border-subtle)",
             }}
           >
             <svg

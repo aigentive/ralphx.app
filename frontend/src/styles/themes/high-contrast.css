@@ -522,3 +522,38 @@
 [data-theme="high-contrast"] [data-testid="floating-timeline"] > div {
   border-color: var(--border-subtle) !important;
 }
+
+/* ============================================================================
+ * Empty-state polish — the ProposalsEmptyState and sibling TabEmptyState
+ * read as a pool of loose text on pure black. Now that TabEmptyState has
+ * a card wrapper (--overlay-faint bg + --border-subtle perimeter), bump
+ * the card tokens so the hero reads as a deliberate "empty zone" instead
+ * of a bummer.
+ * ============================================================================ */
+[data-theme="high-contrast"] [data-testid="tab-empty-state"] > div {
+  border-color: var(--border-default) !important;
+  border-width: 1px !important;
+}
+
+/* Mock proposal-card visuals inside the empty state — the dashed cards
+   fade down with opacity 0.4 / 0.25 / 0.15 and their dashed strokes use
+   `--accent-border` (50% yellow). On HC those opacities make the cards
+   effectively invisible. Boost the three cards to uniformly ~60% and
+   swap the dashed border to white so they read as "placeholder
+   cards", not ghosts. The mock's outer div (the space-y-2 wrapper)
+   hosts three children with the opacity inline styles. */
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity: 0.4"],
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity:0.4"] {
+  opacity: 0.75 !important;
+}
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity: 0.25"],
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity:0.25"] {
+  opacity: 0.55 !important;
+}
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity: 0.15"],
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="opacity:0.15"] {
+  opacity: 0.40 !important;
+}
+[data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="border: 1.5px dashed"] {
+  border-color: var(--border-subtle) !important;
+}
