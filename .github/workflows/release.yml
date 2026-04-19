@@ -587,6 +587,18 @@ jobs:
         with:
           path: release-assets
 
+      - name: Checkout workflow automation support
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: workflow-support
+
+      - name: Overlay Homebrew cask renderer from workflow ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 0755 workflow-support/scripts/render-homebrew-cask.sh scripts/render-homebrew-cask.sh
+
       - name: Clone Homebrew tap
         shell: bash
         run: |
