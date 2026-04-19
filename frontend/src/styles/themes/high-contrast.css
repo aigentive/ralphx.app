@@ -319,9 +319,11 @@ html[data-theme="high-contrast"] main {
 /* Execution Agents collapsible rows — the toggle button sits at the
    top of each lane block. Our global HC button-border rule (Phase 1)
    strokes it as if it were a button, which reads as double-borders
-   inside the bordered lane block. Strip the stroke for aria-expanded
-   buttons (they're headers, not buttons). */
-[data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-expanded] {
+   inside the bordered lane block. Strip the stroke for aria-controls
+   headers (collapsible-section buttons). Exclude comboboxes and other
+   buttons that legitimately show aria-expanded (Radix SelectTrigger). */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-controls^="harness-body"],
+[data-theme="high-contrast"] [data-testid="settings-dialog"] button[aria-expanded][aria-controls]:not([role="combobox"]) {
   border: none !important;
 }
 
@@ -544,6 +546,17 @@ html[data-theme="high-contrast"] main {
    shape on any background. */
 [data-theme="high-contrast"] [role="switch"] {
   border-color: var(--border-default) !important;
+}
+
+/* Radix SelectTrigger / combobox — the base ships `border border-input`
+   but the resolved color dropped to transparent on WKWebView chain,
+   leaving the trigger as a bare label + chevron. Explicit white 1px
+   literal paints the box regardless of var-chain state. Also covers
+   "Project Overrides / Model / Effort / Approval / Sandbox" triggers
+   across the app. */
+[data-theme="high-contrast"] [role="combobox"],
+[data-theme="high-contrast"] button[data-radix-select-trigger] {
+  border: 1px solid #ffffff !important;
 }
 
 /* ============================================================================
