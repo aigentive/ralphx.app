@@ -83,6 +83,19 @@ export function safeError(...args: unknown[]): void {
 }
 
 let traceLogPath: string | null = null;
+const SAFE_TRACE_EVENTS = new Set([
+  "backend.error",
+  "backend.request",
+  "backend.response",
+  "server.ready",
+  "server.start",
+  "tool.denied",
+  "tool.dispatch",
+  "tool.error",
+  "tool.request",
+  "tool.success",
+  "tools.list",
+]);
 
 function buildTraceFilename(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -112,28 +125,17 @@ type TraceRecord = {
   ts: string;
   pid: number;
   event: string;
-  agent_type: string;
-  task_id: string | null;
-  project_id: string | null;
-  context_type: string | null;
-  context_id: string | null;
-  has_payload?: boolean;
 };
 
-export function safeTrace(event: string, payload?: unknown): void {
+function normalizeTraceEvent(event: string): string {
+  return SAFE_TRACE_EVENTS.has(event) ? event : "unknown";
+}
+
+export function safeTrace(event: string, _payload?: unknown): void {
   const record: TraceRecord = {
     ts: new Date().toISOString(),
     pid: process.pid,
-    event,
-    agent_type: process.env.RALPHX_AGENT_TYPE ?? "unknown",
-    task_id: process.env.RALPHX_TASK_ID ?? null,
-    project_id: process.env.RALPHX_PROJECT_ID ?? null,
-    context_type: process.env.RALPHX_CONTEXT_TYPE ?? null,
-    context_id: process.env.RALPHX_CONTEXT_ID ?? null,
-  };
-
-  if (payload !== undefined) {
-    record.has_payload = true;
+    event: normalizeTraceEvent(event),
   }
 
   try {

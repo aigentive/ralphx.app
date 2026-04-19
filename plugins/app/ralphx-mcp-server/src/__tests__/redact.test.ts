@@ -165,7 +165,7 @@ describe("safeError — integration", () => {
 });
 
 describe("safeTrace — file logging", () => {
-  it("writes trace metadata under the safe trace root without persisting payload contents", () => {
+  it("writes only minimal allowlisted trace metadata under the safe trace root", () => {
     const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
     process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
     process.env.RALPHX_CONTEXT_TYPE = "ideation";
@@ -179,9 +179,10 @@ describe("safeTrace — file logging", () => {
     const contents = fs.readFileSync(logPath, "utf8");
     expect(logPath.startsWith(expectedRoot)).toBe(true);
     expect(contents).toContain("\"event\":\"tool.request\"");
-    expect(contents).toContain("\"has_payload\":true");
     expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
     expect(contents).not.toContain("sk-ant-***REDACTED***");
+    expect(contents).not.toContain("ralphx-ideation");
+    expect(contents).not.toContain("session-123");
   });
 
   it("ignores trace dir overrides and keeps traces under the safe root", () => {
@@ -196,5 +197,13 @@ describe("safeTrace — file logging", () => {
     const logPath = getTraceLogPath();
     expect(logPath.startsWith(expectedRoot)).toBe(true);
     expect(logPath.startsWith(tempDir)).toBe(false);
+  });
+
+  it("normalizes non-allowlisted event names", () => {
+    safeTrace("tool.request:user-supplied");
+
+    const contents = fs.readFileSync(getTraceLogPath(), "utf8");
+    expect(contents).toContain("\"event\":\"unknown\"");
+    expect(contents).not.toContain("tool.request:user-supplied");
   });
 });

@@ -74,6 +74,19 @@ export function safeError(...args) {
     console.error(...redacted);
 }
 let traceLogPath = null;
+const SAFE_TRACE_EVENTS = new Set([
+    "backend.error",
+    "backend.request",
+    "backend.response",
+    "server.ready",
+    "server.start",
+    "tool.denied",
+    "tool.dispatch",
+    "tool.error",
+    "tool.request",
+    "tool.success",
+    "tools.list",
+]);
 function buildTraceFilename() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     return `${timestamp}-${process.pid}.jsonl`;
@@ -93,20 +106,15 @@ export function getTraceLogPath() {
 export function resetTraceLogPathForTests() {
     traceLogPath = null;
 }
-export function safeTrace(event, payload) {
+function normalizeTraceEvent(event) {
+    return SAFE_TRACE_EVENTS.has(event) ? event : "unknown";
+}
+export function safeTrace(event, _payload) {
     const record = {
         ts: new Date().toISOString(),
         pid: process.pid,
-        event,
-        agent_type: process.env.RALPHX_AGENT_TYPE ?? "unknown",
-        task_id: process.env.RALPHX_TASK_ID ?? null,
-        project_id: process.env.RALPHX_PROJECT_ID ?? null,
-        context_type: process.env.RALPHX_CONTEXT_TYPE ?? null,
-        context_id: process.env.RALPHX_CONTEXT_ID ?? null,
+        event: normalizeTraceEvent(event),
     };
-    if (payload !== undefined) {
-        record.has_payload = true;
-    }
     try {
         fs.appendFileSync(getTraceLogPath(), `${JSON.stringify(record)}\n`, "utf8");
     }
