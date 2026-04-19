@@ -253,6 +253,56 @@ html[data-theme="high-contrast"] main {
    user request 2026-04-19 — consistency with the rest of the shell wins
    over density-compensation. */
 
+/* Settings polish (HC) — soften the card perimeter and yellow-fill the
+   section icons per 2026-04-19 feedback. Scope-override tokens inside
+   the dialog so the rest of the HC shell keeps strong white strokes. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] {
+  /* Section card border: soft white (30%) instead of pure white. */
+  --card-border:       hsla(0 0% 100% / 0.30);
+  /* Section icon tile: yellow-muted fill + yellow border + yellow glyph. */
+  --card-icon-bg:      hsla(50 100% 50% / 0.15);
+  --card-icon-border:  #ffdd00;
+  --card-icon-color:   #ffdd00;
+}
+
+/* Settings left-rail nav — render each row as a link, not a boxed
+   button. Strip the border/bg from the global button-border rule;
+   active row is yellow text + solid underline; hover shows a soft
+   dotted underline (accessibility affordance). */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] nav [role="button"] {
+  border: none !important;
+  background: transparent !important;
+}
+[data-theme="high-contrast"] [data-testid="settings-dialog"] nav [role="button"]:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: hsla(0 0% 100% / 0.40);
+}
+[data-theme="high-contrast"] [data-testid="settings-dialog"] nav [role="button"][aria-current="page"] {
+  color: #ffdd00 !important;
+  background: transparent !important;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Flat section cards — rounded-lg on HC reads as "pill" next to the
+   flat body dividers. Drop to zero radius so the section card feels
+   like a fenced rectangle, consistent with Phase 1 region borders. */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-lg"],
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-xl"],
+[data-theme="high-contrast"] [data-testid="settings-dialog"] [class*="rounded-md"] {
+  border-radius: 0 !important;
+}
+
+/* Settings row hover — the shared SettingRow ships `rounded-md` for
+   hover state, which on HC reads as a floating pill inside a flat-
+   section context. Drop the corner so hover highlights look like
+   banded stripes. (Phase 3 already handled nav-item dividers.) */
+[data-theme="high-contrast"] [data-testid="settings-dialog"] .hover\:bg-\[var\(--bg-hover\)\] {
+  border-radius: 0;
+}
+
 /* HC dialog backdrop — the overlay reads `--dialog-overlay-bg` which in
    turn chains through `--overlay-scrim-deep`. WKWebView drops chained
    var() on inheritance (see .claude/rules/wkwebview-css-vars.md), leaving
