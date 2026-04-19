@@ -127,7 +127,7 @@ export async function handleRequestTeamPlan(
   let plan_id: string;
   try {
     const registerResponse = await fetch(
-      `${TAURI_API_URL}/api/team/plan/request`,
+      buildTauriApiUrl("/api/team/plan/request"),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
