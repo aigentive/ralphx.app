@@ -84,7 +84,7 @@ What it does:
 Primary review artifacts:
 
 - proposal draft: `.artifacts/release-notes/proposal-from-v0.1.0.md`
-- accepted version file: `.artifacts/release-notes/.version`
+- accepted version file: `.artifacts/release-notes/.version` (local/gitignored)
 - release notes: `release-notes/vX.Y.Z.md`
 - Codex logs: `.artifacts/release-notes/logs/`
 
@@ -132,9 +132,11 @@ This updates version in:
 ### Step 3: Commit Release Prep
 
 ```bash
-git add -A
+git add frontend/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
 git commit -m "chore: bump version to 0.2.0"
 ```
+
+Do not commit `.artifacts/release-notes/.version`; it is local state for the no-arg release helpers.
 
 ### Step 4: Draft And Review Release Notes
 

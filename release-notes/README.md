@@ -17,7 +17,7 @@ Typical flow:
 Notes:
 
 - Release proposals default to `.artifacts/release-notes/proposal-from-v<current-version>.md`
-- Accepted release versions are stored in `.artifacts/release-notes/.version`
+- Accepted release versions are stored in `.artifacts/release-notes/.version` (local/gitignored)
 - `./scripts/propose-release.sh`, `./scripts/bump-version.sh`, and `./scripts/generate-release-notes.sh` still work as standalone lower-level steps
 - Codex generation logs are written to `.artifacts/release-notes/logs/`
 - The full release sequence lives in `docs/release-process.md`
