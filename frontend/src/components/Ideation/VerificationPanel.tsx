@@ -30,6 +30,7 @@ import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { chatApi } from "@/api/chat";
 import { useChildSessionStatus } from "@/hooks/useChildSessionStatus";
+import { verificationGenerationKey, verificationStatusKey } from "@/hooks/useVerificationStatus";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -322,7 +323,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   // Fetch current verification data — always fires when a plan exists (not gated on verificationStatus)
   // so that page-load hydration works even when the session cache still shows "unverified".
   const { data: currentVerificationData } = useQuery({
-    queryKey: ["verification", session.id, "current"],
+    queryKey: verificationStatusKey(session.id),
     queryFn: async () => {
       try {
         return await ideationApi.verification.getStatus(session.id);
@@ -355,7 +356,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     currentGeneration != null &&
     autoDisplayGeneration !== currentGeneration;
   const { data: historicalVerificationData } = useQuery({
-    queryKey: ["verification", session.id, autoDisplayGeneration],
+    queryKey: verificationGenerationKey(session.id, autoDisplayGeneration ?? -1),
     queryFn: () => ideationApi.verification.getStatus(session.id, autoDisplayGeneration ?? undefined),
     enabled:
       hasPlan &&

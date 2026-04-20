@@ -144,6 +144,28 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
+  it("uses the canonical current verification query key", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const { verificationStatusKey } = await import("@/hooks/useVerificationStatus");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    const firstQueryConfig = vi.mocked(useQuery).mock.calls[0]?.[0] as { queryKey?: unknown } | undefined;
+    expect(firstQueryConfig?.queryKey).toEqual(verificationStatusKey("session-1"));
+  });
+
   it("keeps verification history visible when only roundDetails remain after current gaps are cleared", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const verificationData = {
