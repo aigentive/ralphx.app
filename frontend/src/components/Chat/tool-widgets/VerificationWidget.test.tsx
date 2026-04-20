@@ -329,9 +329,32 @@ describe("VerificationWidget", () => {
       });
 
       render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("needs_revision")).toBeInTheDocument();
+      expect(screen.getAllByText("needs_revision").length).toBeGreaterThan(0);
       expect(screen.getByText("Max rounds")).toBeInTheDocument();
+      expect(screen.queryByText("infra_failure")).not.toBeInTheDocument();
       expect(screen.queryByText("Agent error")).not.toBeInTheDocument();
+    });
+
+    it("uses terminal cleanup arguments instead of a sealed aborted result when no session id is available", () => {
+      const toolCall = makeToolCall("mcp__ralphx__complete_plan_verification", {
+        arguments: {
+          status: "verified",
+          convergence_reason: "zero_blocking",
+          generation: 3,
+          round: 4,
+        },
+        result: {
+          status: "aborted",
+          reason: "stopped",
+        },
+      });
+
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Final cleanup")).toBeInTheDocument();
+      expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
+      expect(screen.getByText("All gaps resolved")).toBeInTheDocument();
+      expect(screen.queryByText("Aborted")).not.toBeInTheDocument();
+      expect(screen.queryByText("Cleanup aborted before a canonical terminal result was returned.")).not.toBeInTheDocument();
     });
   });
 
