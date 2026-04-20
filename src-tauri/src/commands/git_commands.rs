@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
 use crate::application::runtime_factory::{
@@ -506,6 +506,10 @@ async fn execute_merge_retry_background(
         execution_plan_repo: None,
         execution_settings_repo: Some(Arc::clone(&execution_settings_repo)),
         agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
+        review_repo: app_handle_opt
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.review_repo)),
         plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
         interactive_process_registry: Some(Arc::clone(&interactive_process_registry)),
         github_service: None,
@@ -671,7 +675,7 @@ mod transition_guard_tests {
     use super::*;
     use crate::application::AppState;
     use crate::commands::ExecutionState;
-    use crate::domain::entities::{ChatContextType, Project, Task};
+    use crate::domain::entities::{Project, Task};
     use std::sync::Arc;
 
     #[test]
@@ -755,12 +759,16 @@ mod transition_guard_tests {
             "manual reroute must not arm merge retry guard"
         );
 
-        let exec_convs = app_state
-            .chat_conversation_repo
-            .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        let review_notes = app_state
+            .review_repo
+            .get_notes_by_task_id(&task_id)
             .await
-            .unwrap();
-        assert_eq!(exec_convs.len(), 1);
+            .expect("review notes query should succeed");
+        assert_eq!(review_notes.len(), 1);
+        assert_eq!(
+            review_notes[0].reviewer,
+            crate::domain::entities::ReviewerType::System
+        );
     }
 }
 

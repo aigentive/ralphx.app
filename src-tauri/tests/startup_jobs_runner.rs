@@ -14,13 +14,43 @@ use ralphx_lib::domain::repositories::AppStateRepository;
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::mocks::MockTaskScheduler;
 use ralphx_lib::domain::state_machine::TaskScheduler;
+use std::process::Command;
 use std::sync::Arc;
+use tempfile::TempDir;
 
 // Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
     let execution_state = Arc::new(ExecutionState::new());
     let app_state = AppState::new_test();
     (execution_state, app_state)
+}
+
+fn setup_git_repo() -> TempDir {
+    let dir = TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init should succeed");
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("git config user.email should succeed");
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output()
+        .expect("git config user.name should succeed");
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(path)
+        .output()
+        .expect("git commit should succeed");
+
+    dir
 }
 
 /// Helper to build a StartupJobRunner from test state.
@@ -653,9 +683,13 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     // Tasks stuck in RevisionNeeded should auto-transition to ReExecuting
     // which spawns a worker agent
     let (execution_state, app_state) = setup_test_state().await;
+    let repo = setup_git_repo();
 
     // Create a project with a task in RevisionNeeded state
-    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
     app_state
         .project_repo
         .create(project.clone())
@@ -715,8 +749,12 @@ async fn test_revision_needed_auto_transitions_on_startup() {
 async fn test_merge_incomplete_commit_hook_rows_are_rerouted_on_startup() {
     let (execution_state, app_state) = setup_test_state().await;
     execution_state.set_max_concurrent(10);
+    let repo = setup_git_repo();
 
-    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
     app_state
         .project_repo
         .create(project.clone())

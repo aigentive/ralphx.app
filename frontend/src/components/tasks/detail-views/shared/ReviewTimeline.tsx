@@ -4,15 +4,14 @@
  * Shows a vertical timeline of review events with collapsible markdown content.
  */
 
-import { useState, Fragment } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Fragment } from "react";
 import { CheckCircle2, RotateCcw, Bot, User, Settings, ExternalLink } from "lucide-react";
-import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import { navigateToIdeationSession } from "@/lib/navigation";
 import { statusTint, withAlpha } from "@/lib/theme-colors";
+import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
+import { getReviewerTypeLabel } from "@/lib/review-feedback";
 
 // ============================================================================
 // Staleness Detection
@@ -122,26 +121,15 @@ function TimelineItem({
   isStale = false,
   resolutionTrail = [],
 }: TimelineItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const isApproved = entry.outcome === "approved" || entry.outcome === "approved_no_changes";
   const isNoChanges = entry.outcome === "approved_no_changes";
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
   const isSystem = entry.reviewer === "system";
 
-  // Use summary if available, otherwise fall back to notes
   const hasSummary = !!entry.summary;
   const hasNotes = !!entry.notes;
   const hasContent = hasSummary || hasNotes;
-
-  // Expandable if there are full notes different from summary
-  const isExpandable = hasSummary && hasNotes;
-
-  const handleContentClick = () => {
-    if (isExpandable && !isExpanded) {
-      setIsExpanded(true);
-    }
-  };
 
   const getConfig = () => {
     if (isApproved) {
@@ -170,7 +158,7 @@ function TimelineItem({
 
   const config = getConfig();
   const ReviewerIcon = isHuman ? User : isSystem ? Settings : Bot;
-  const reviewerLabel = isHuman ? "Human" : isSystem ? "System" : "AI";
+  const reviewerLabel = getReviewerTypeLabel(entry.reviewer).replace(" Review", "");
 
   const getLabel = () => {
     if (attemptNumber !== undefined && isChangesRequested) {
@@ -240,65 +228,14 @@ function TimelineItem({
           </div>
           {hasContent && (
             <div className="mt-1.5 pl-5">
-              {/* Summary (always shown) or notes if no summary */}
-              <div
-                onClick={handleContentClick}
-                className={isExpandable && !isExpanded ? "cursor-pointer" : ""}
-              >
-                <div className="text-[12px] text-text-primary/50 leading-relaxed">
-                  {hasSummary ? (
-                    <div className="prose prose-sm prose-invert max-w-none">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={markdownComponents}
-                      >
-                        {entry.summary ?? ""}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    // No summary - show notes as markdown
-                    <div className="prose prose-sm prose-invert max-w-none">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={markdownComponents}
-                      >
-                        {entry.notes ?? ""}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                </div>
-
-                {/* Show more link when expandable and collapsed */}
-                {isExpandable && !isExpanded && (
-                  <div
-                    className="mt-1 text-[11px] font-medium"
-                    style={{ color: "var(--status-info)" }}
-                  >
-                    Show details
-                  </div>
-                )}
-              </div>
-
-              {/* Expanded notes */}
-              {isExpandable && isExpanded && (
-                <div className="mt-3">
-                  <div className="text-[12px] text-text-primary/50 leading-relaxed prose prose-sm prose-invert max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={markdownComponents}
-                    >
-                      {entry.notes ?? ""}
-                    </ReactMarkdown>
-                  </div>
-                  <button
-                    onClick={() => setIsExpanded(false)}
-                    className="mt-2 text-[11px] font-medium transition-colors hover:opacity-80"
-                    style={{ color: "var(--status-info)" }}
-                  >
-                    Show less
-                  </button>
-                </div>
-              )}
+              <ReviewFeedbackBody
+                summary={entry.summary ?? null}
+                notes={entry.notes ?? null}
+                dialogTitle="Full review feedback"
+                dialogDescription="Full review feedback in a scrollable view."
+                fullButtonLabel="View full feedback"
+                previewClassName="text-[12px] text-text-primary/50 leading-relaxed"
+              />
 
               {entry.followup_session_id && (
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"

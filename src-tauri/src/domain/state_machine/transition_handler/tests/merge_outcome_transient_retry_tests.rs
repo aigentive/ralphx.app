@@ -38,6 +38,7 @@ fn build_transition_service(app_state: &AppState) -> Arc<TaskTransitionService<t
         None,
         Arc::clone(&app_state.memory_event_repo),
     )
+    .with_review_repo(Arc::clone(&app_state.review_repo))
     .into_arc()
 }
 
@@ -482,6 +483,10 @@ async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
 
     let meta: serde_json::Value =
         serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert!(
+        meta.get("restart_note").is_none(),
+        "hook reroutes must not use restart_note user-message transport"
+    );
     let feedback = meta
         .get("merge_revision_feedback")
         .and_then(|value| value.as_str())
@@ -494,6 +499,39 @@ async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
         !emitter.get_events().iter().any(|e| e.method == "emit_status_change"
             && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
         "hook reroute should not emit a merge_incomplete transition"
+    );
+
+    let notes = app_state
+        .review_repo
+        .get_notes_by_task_id(&task_id)
+        .await
+        .expect("review notes query should succeed");
+    let latest = notes.first().expect("hook reroute should persist a review note");
+    assert_eq!(latest.reviewer, crate::domain::entities::ReviewerType::System);
+    assert_eq!(
+        latest.outcome,
+        crate::domain::entities::ReviewOutcome::ChangesRequested
+    );
+    assert!(
+        latest
+            .summary
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Repository commit hooks rejected the merge commit"),
+        "hook reroute should store a concise review-note summary"
+    );
+    let note_body = latest.notes.as_deref().unwrap_or_default();
+    assert!(
+        note_body.contains("Full hook output:"),
+        "hook reroute should store full hook output in review-note details"
+    );
+    assert!(
+        note_body.contains("```text"),
+        "hook reroute details should preserve large hook output in a readable code block"
+    );
+    assert!(
+        !note_body.contains('\u{001b}'),
+        "hook reroute note bodies should strip ANSI escape codes before persistence"
     );
 }
 

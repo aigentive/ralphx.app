@@ -39,6 +39,7 @@ pub(crate) struct RuntimeFactoryDeps {
     pub execution_plan_repo: Option<Arc<dyn ExecutionPlanRepository>>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    pub review_repo: Option<Arc<dyn ReviewRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     pub github_service: Option<Arc<dyn GithubServiceTrait>>,
@@ -80,6 +81,7 @@ impl RuntimeFactoryDeps {
             execution_plan_repo: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
+            review_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
             github_service: None,
@@ -100,6 +102,11 @@ impl RuntimeFactoryDeps {
         execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
     ) -> Self {
         self.execution_plan_repo = Some(execution_plan_repo);
+        self
+    }
+
+    pub(crate) fn with_review_repo(mut self, review_repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(review_repo);
         self
     }
 
@@ -145,6 +152,7 @@ impl RuntimeFactoryDeps {
         )
         .with_agent_clients(Some(state.agent_client_bundle()))
         .with_execution_plan_repo(Arc::clone(&state.execution_plan_repo))
+        .with_review_repo(Arc::clone(&state.review_repo))
         .with_runtime_support(
             Some(Arc::clone(&state.execution_settings_repo)),
             Some(Arc::clone(&state.agent_lane_settings_repo)),
@@ -521,6 +529,9 @@ pub(crate) fn build_transition_service_from_deps<R: Runtime>(
     }
     if let Some(repo) = deps.agent_lane_settings_repo.as_ref() {
         service = service.with_agent_lane_settings_repo(Arc::clone(repo));
+    }
+    if let Some(repo) = deps.review_repo.as_ref() {
+        service = service.with_review_repo(Arc::clone(repo));
     }
     if let Some(repo) = deps.plan_branch_repo.as_ref() {
         service = service.with_plan_branch_repo(Arc::clone(repo));

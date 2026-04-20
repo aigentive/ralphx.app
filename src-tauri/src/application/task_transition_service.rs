@@ -29,7 +29,7 @@ use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
-    Task, TaskId,
+    ReviewNote, ReviewOutcome, ReviewerType, Task, TaskId,
 };
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
@@ -38,7 +38,7 @@ use crate::domain::repositories::{
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
     ArtifactRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository, TaskStepRepository,
+    ReviewRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{
     payload_enrichment::{PresentationKind, WebhookPresentationContext},
@@ -722,6 +722,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     artifact_repo: Option<Arc<dyn ArtifactRepository>>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    review_repo: Option<Arc<dyn ReviewRepository>>,
 
     /// Activity event repository for emitting merge pipeline audit events.
     /// Cloned before being passed to the app chat service so the transition handler also has access.
@@ -1054,6 +1055,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             artifact_repo: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
+            review_repo: None,
             activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
             interactive_process_registry: None,
@@ -1120,6 +1122,12 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Set the artifact repository for richer PR metadata (builder pattern).
     pub fn with_artifact_repo(mut self, repo: Arc<dyn ArtifactRepository>) -> Self {
         self.artifact_repo = Some(repo);
+        self
+    }
+
+    /// Set the review repository for system review-note persistence (builder pattern).
+    pub fn with_review_repo(mut self, repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(repo);
         self
     }
 
@@ -1601,11 +1609,32 @@ impl<R: Runtime> TaskTransitionService<R> {
                 crate::domain::state_machine::transition_handler::build_commit_hook_revision_feedback(
                     &full_error,
                 );
+            let review_note_body =
+                crate::domain::state_machine::transition_handler::build_commit_hook_review_note_body(
+                    &full_error,
+                );
+
+            if let Some(review_repo) = self.review_repo.as_ref() {
+                let note = ReviewNote::with_content(
+                    task.id.clone(),
+                    ReviewerType::System,
+                    ReviewOutcome::ChangesRequested,
+                    Some(feedback.clone()),
+                    Some(review_note_body),
+                    None,
+                );
+                if let Err(error) = review_repo.add_note(&note).await {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %error,
+                        "Failed to persist system changes_requested note for commit-hook reroute"
+                    );
+                }
+            }
 
             crate::domain::state_machine::transition_handler::merge_metadata_into(
                 &mut task,
                 &serde_json::json!({
-                    "restart_note": feedback,
                     "merge_revision_feedback": feedback,
                     "merge_revision_error": full_error,
                     "merge_hook_reexecution_requested": true,

@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
 use crate::application::GitService;
 use crate::domain::entities::ArtifactContent;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
@@ -31,6 +34,11 @@ const COMMIT_HOOK_PATTERNS: &[&str] = &[
     "husky",
     "hook declined",
 ];
+
+lazy_static! {
+    static ref ANSI_ESCAPE_RE: Regex =
+        Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]").expect("valid ansi escape regex");
+}
 
 // ===== Stale git state cleanup =====
 
@@ -163,6 +171,18 @@ pub(crate) fn is_commit_hook_merge_error_text(message: &str) -> bool {
             .any(|pattern| lowered.contains(pattern))
 }
 
+pub(crate) fn strip_ansi_escape_sequences(text: &str) -> String {
+    ANSI_ESCAPE_RE.replace_all(text, "").into_owned()
+}
+
+pub(crate) fn sanitize_commit_hook_feedback_text(text: &str) -> String {
+    strip_ansi_escape_sequences(text)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim()
+        .to_string()
+}
+
 pub(crate) fn extract_commit_hook_merge_error(task: &Task) -> Option<String> {
     let meta = parse_metadata(task)?;
     for key in ["merge_revision_error", "error"] {
@@ -189,7 +209,8 @@ pub(crate) fn task_has_commit_hook_merge_failure(task: &Task) -> bool {
 }
 
 pub(crate) fn build_commit_hook_revision_feedback(error: &str) -> String {
-    let condensed = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    let sanitized = sanitize_commit_hook_feedback_text(error);
+    let condensed = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
     let lowered = condensed.to_lowercase();
     let excerpt = if let Some(start) = COMMIT_HOOK_PATTERNS
         .iter()
@@ -209,6 +230,16 @@ pub(crate) fn build_commit_hook_revision_feedback(error: &str) -> String {
     format!(
         "Repository commit hooks rejected the merge commit. Rework the task so it passes the repository's commit-time checks before merge. Key hook output: {}",
         excerpt
+    )
+}
+
+pub(crate) fn build_commit_hook_review_note_body(error: &str) -> String {
+    let sanitized = sanitize_commit_hook_feedback_text(error);
+    let summary = build_commit_hook_revision_feedback(&sanitized);
+    let fenced_output = sanitized.replace("```", "``\u{200B}`");
+
+    format!(
+        "{summary}\n\nFull hook output:\n```text\n{fenced_output}\n```"
     )
 }
 
