@@ -700,6 +700,39 @@ async fn finalize_assistant_message_with_terminal_tool_state<R: Runtime>(
 ///
 /// For Merge context:
 /// - Attempts merge auto-completion via git state inspection
+async fn persist_shutdown_interrupted_metadata(
+    task_repo: &Arc<dyn TaskRepository>,
+    task: &crate::domain::entities::Task,
+    context: &'static str,
+    last_agent_error: Option<&str>,
+) {
+    let mut metadata_obj = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    if let Some(obj) = metadata_obj.as_object_mut() {
+        obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
+        obj.insert(
+            "last_agent_error_context".to_string(),
+            serde_json::json!(context),
+        );
+        if let Some(error) = last_agent_error {
+            obj.insert("last_agent_error".to_string(), serde_json::json!(error));
+            obj.insert(
+                "last_agent_error_at".to_string(),
+                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+            );
+        }
+    }
+
+    let mut updated_task = task.clone();
+    updated_task.metadata = Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+    updated_task.touch();
+    let _ = task_repo.update(&updated_task).await;
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_stream_success<R: Runtime>(
     agent_run_id: &str,
@@ -745,6 +778,13 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping task execution transition; task stays in Executing for auto-recovery"
                         );
+                        persist_shutdown_interrupted_metadata(
+                            task_repo,
+                            &task,
+                            "execution",
+                            None,
+                        )
+                        .await;
                         return;
                     }
 
@@ -925,19 +965,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping review escalation; task stays in Reviewing for auto-recovery"
                         );
-                        let mut metadata_obj = task
-                            .metadata
-                            .as_deref()
-                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                            .unwrap_or_else(|| serde_json::json!({}));
-                        if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
-                        }
-                        let mut updated_task = task.clone();
-                        updated_task.metadata =
-                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                        updated_task.touch();
-                        let _ = task_repo.update(&updated_task).await;
+                        persist_shutdown_interrupted_metadata(task_repo, &task, "review", None)
+                            .await;
                         return;
                     }
                     IncompleteReviewAction::Escalate => {
@@ -1086,6 +1115,10 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     task_id = context_id,
                     "Shutdown detected — skipping merge auto-complete; task stays in Merging for auto-recovery"
                 );
+                let task_id = TaskId::from_string(context_id.to_string());
+                if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                    persist_shutdown_interrupted_metadata(task_repo, &task, "merge", None).await;
+                }
                 return;
             }
 
@@ -1928,6 +1961,13 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping task execution error transition; task stays in Executing for auto-recovery"
                         );
+                        persist_shutdown_interrupted_metadata(
+                            task_repo,
+                            &task,
+                            "execution",
+                            Some(&redacted_error),
+                        )
+                        .await;
                         return false;
                     }
 
@@ -2262,6 +2302,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     task_id = context_id,
                     "Shutdown detected — skipping merge error auto-complete; task stays in Merging for auto-recovery"
                 );
+                let task_id = TaskId::from_string(context_id.to_string());
+                if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                    persist_shutdown_interrupted_metadata(task_repo, &task, "merge", Some(error))
+                        .await;
+                }
                 return false;
             }
         }
@@ -2427,19 +2472,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping review error escalation; task stays in Reviewing for auto-recovery"
                         );
-                        let mut metadata_obj = task
-                            .metadata
-                            .as_deref()
-                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                            .unwrap_or_else(|| serde_json::json!({}));
-                        if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
-                        }
-                        let mut updated_task = task.clone();
-                        updated_task.metadata =
-                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                        updated_task.touch();
-                        let _ = task_repo.update(&updated_task).await;
+                        persist_shutdown_interrupted_metadata(task_repo, &task, "review", Some(error))
+                            .await;
                         return false;
                     }
 
