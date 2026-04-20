@@ -11,8 +11,35 @@
 // D. Branch not found → re-check + MergeIncomplete if truly missing
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+use crate::application::{AppState, TaskTransitionService};
+use crate::commands::ExecutionState;
+use crate::domain::entities::{InternalStatus, MergeValidationMode, Project, ProjectId, Task};
+use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::TransitionHandler;
+
+fn build_transition_service(app_state: &AppState) -> Arc<TaskTransitionService<tauri::Wry>> {
+    let execution_state = Arc::new(ExecutionState::new());
+    let message_queue = Arc::new(MessageQueue::new());
+    let running_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        message_queue,
+        running_registry,
+        execution_state,
+        None,
+        Arc::clone(&app_state.memory_event_repo),
+    )
+    .into_arc()
+}
 
 // ==================
 // A. is_transient_merge_error classification
@@ -133,6 +160,30 @@ fn test_non_git_error_is_not_transient() {
     assert!(
         !is_transient_merge_error(&err),
         "non-git errors should not be transient"
+    );
+}
+
+#[test]
+fn test_commit_hook_merge_error_detected() {
+    use super::super::merge_outcome_handler::is_commit_hook_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "Failed to commit rebase+squash in worktree: stdout=[pre-commit] TS2307 Cannot find module 'zod'".to_string(),
+    );
+    assert!(
+        is_commit_hook_merge_error(&err),
+        "hook-style failed-to-commit errors should be detected"
+    );
+}
+
+#[test]
+fn test_plain_commit_failure_without_hook_marker_is_not_commit_hook_error() {
+    use super::super::merge_outcome_handler::is_commit_hook_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "Failed to commit squash merge in worktree: stdout= stderr=Author identity unknown".to_string(),
+    );
+    assert!(
+        !is_commit_hook_merge_error(&err),
+        "plain commit failures without hook markers should not be rerouted as hook failures"
     );
 }
 
@@ -352,6 +403,97 @@ async fn test_permanent_git_error_transitions_to_merge_incomplete() {
         events.iter().any(|e| e.method == "emit_status_change"
             && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
         "Should emit merge_incomplete status change for permanent errors"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let real_repo = setup_real_git_repo();
+    let repo_path = real_repo.path();
+
+    let app_state = AppState::new_test();
+    let transition_service = build_transition_service(&app_state);
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let mut project = Project::new("test".to_string(), repo_path.to_string_lossy().to_string());
+    project.base_branch = Some("main".to_string());
+    project.merge_validation_mode = MergeValidationMode::Off;
+    let project_id = project.id.clone();
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Hook reroute test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(real_repo.task_branch.clone());
+    task.worktree_path = Some(repo_path.to_string_lossy().to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    )
+    .with_transition_service(Arc::clone(&transition_service));
+
+    let context = create_context_with_services(task_id.as_str(), project_id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
+        "Failed to commit rebase+squash in worktree: stdout=[pre-commit][design-token guards] error TS2307: Cannot find module 'zod'".to_string(),
+    ));
+    let opts = MergeHandlerOptions::rebase_squash();
+    let task_repo_arc = Arc::clone(&app_state.task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path,
+        source_branch: &real_repo.task_branch,
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task to exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::ReExecuting,
+        "hook-blocked merge commits should route back into re-execution"
+    );
+
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    let feedback = meta
+        .get("merge_revision_feedback")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(
+        feedback.contains("Repository commit hooks rejected the merge commit"),
+        "expected durable revision feedback note in metadata, got: {feedback}"
+    );
+    assert!(
+        !emitter.get_events().iter().any(|e| e.method == "emit_status_change"
+            && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
+        "hook reroute should not emit a merge_incomplete transition"
     );
 }
 

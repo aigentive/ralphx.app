@@ -56,6 +56,7 @@ Primary project docs:
 - Verify before commit: review `git diff` against `HEAD` for every touched file.
 - Frontend Playwright visual runs (NON-NEGOTIABLE): run them from `frontend/`, not repo root.
 - Refactor tracker hygiene: when a turn exposes real architectural debt, update `## High-Value Refactor Targets` in the same slice.
+- `.artifacts` tracker hygiene (NON-NEGOTIABLE): for any multi-step investigation/fix likely to outlive the current context window, create/update `.artifacts/specs/<slug>/tracker.md` as soon as substantive findings appear and keep it current before continuing.
 - Turn-level refactor discipline (NON-NEGOTIABLE): if production callsites repeat the same wiring/branching, centralize it or track it before continuing.
 - Factory-first runtime wiring: when scheduler/chat/transition assembly repeats in 3+ production callsites, extend a shared builder/factory instead of adding another copy.
 - Future harness readiness: prefer provider-neutral registries/factories keyed by `AgentHarnessKind` over one-off `claude+codex` branching when safe.

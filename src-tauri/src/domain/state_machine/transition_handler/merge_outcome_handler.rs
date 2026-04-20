@@ -152,6 +152,15 @@ const TRANSIENT_GIT_PATTERNS: &[&str] = &[
     "shallow file has changed",
 ];
 
+const COMMIT_HOOK_PATTERNS: &[&str] = &[
+    "pre-commit",
+    "[pre-commit]",
+    "commit-msg",
+    "prepare-commit-msg",
+    "husky",
+    "hook declined",
+];
+
 /// Classify whether a merge error is transient (worth retrying immediately)
 /// vs permanent (should go to MergeIncomplete for reconciliation).
 ///
@@ -163,6 +172,40 @@ pub(super) fn is_transient_merge_error(error: &crate::error::AppError) -> bool {
     }
     let msg = error.to_string().to_lowercase();
     TRANSIENT_GIT_PATTERNS.iter().any(|pat| msg.contains(pat))
+}
+
+pub(super) fn is_commit_hook_merge_error(error: &crate::error::AppError) -> bool {
+    if !matches!(error, crate::error::AppError::GitOperation(_)) {
+        return false;
+    }
+    let msg = error.to_string().to_lowercase();
+    msg.contains("failed to commit")
+        && COMMIT_HOOK_PATTERNS
+            .iter()
+            .any(|pattern| msg.contains(pattern))
+}
+
+fn build_commit_hook_revision_feedback(error: &str) -> String {
+    let condensed = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    let excerpt = if let Some(start) = COMMIT_HOOK_PATTERNS
+        .iter()
+        .filter_map(|pattern| condensed.to_lowercase().find(pattern))
+        .min()
+    {
+        condensed[start..].to_string()
+    } else {
+        condensed
+    };
+    let excerpt = if excerpt.chars().count() > 220 {
+        let truncated = excerpt.chars().take(220).collect::<String>();
+        format!("{truncated}...")
+    } else {
+        excerpt
+    };
+    format!(
+        "Repository commit hooks rejected the merge commit. Rework the task so it passes the repository's commit-time checks before merge. Key hook output: {}",
+        excerpt
+    )
 }
 
 impl<'a> super::TransitionHandler<'a> {
@@ -810,6 +853,34 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
 
+        if is_commit_hook_merge_error(&error) {
+            let feedback = build_commit_hook_revision_feedback(&error.to_string());
+            if self
+                .route_commit_hook_failure_to_revision(
+                    task,
+                    task_id,
+                    task_id_str,
+                    task_repo,
+                    &feedback,
+                    &error.to_string(),
+                )
+                .await
+            {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    strategy = opts.strategy_label,
+                    "Commit-hook merge failure rerouted to revision flow"
+                );
+                return;
+            }
+
+            tracing::warn!(
+                task_id = task_id_str,
+                strategy = opts.strategy_label,
+                "Commit-hook merge reroute unavailable; falling back to MergeIncomplete"
+            );
+        }
+
         tracing::error!(task_id = task_id_str, error = %error, strategy = opts.strategy_label, "Merge failed → MergeIncomplete");
 
         let mut recovery = get_or_create_recovery(task);
@@ -869,6 +940,89 @@ impl<'a> super::TransitionHandler<'a> {
             &self.machine.context.services.event_emitter,
         )
         .await;
+    }
+
+    async fn route_commit_hook_failure_to_revision(
+        &self,
+        task: &mut Task,
+        task_id: &TaskId,
+        task_id_str: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+        feedback: &str,
+        full_error: &str,
+    ) -> bool {
+        let Some(transition_service) = &self.machine.context.services.transition_service else {
+            tracing::warn!(
+                task_id = task_id_str,
+                "transition_service unavailable; cannot reroute commit-hook merge failure"
+            );
+            return false;
+        };
+
+        super::merge_helpers::merge_metadata_into(
+            task,
+            &serde_json::json!({
+                "restart_note": feedback,
+                "merge_revision_feedback": feedback,
+                "merge_revision_error": full_error,
+                "merge_hook_reexecution_requested": true,
+            }),
+        );
+        task.touch();
+
+        if let Err(e) = task_repo.update(task).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to persist commit-hook reroute metadata"
+            );
+            return false;
+        }
+
+        let updated = match transition_service
+            .transition_task_corrective_with_exit(
+                task_id,
+                InternalStatus::RevisionNeeded,
+                None,
+                "system",
+            )
+            .await
+        {
+            Ok(task) => task,
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to corrective-transition commit-hook merge failure to RevisionNeeded"
+                );
+                return false;
+            }
+        };
+
+        transition_service
+            .execute_entry_actions(task_id, &updated, InternalStatus::RevisionNeeded)
+            .await;
+
+        match task_repo.get_by_id(task_id).await {
+            Ok(Some(refreshed)) => {
+                *task = refreshed;
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    "Task disappeared after commit-hook reroute"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to refresh task after commit-hook reroute"
+                );
+            }
+        }
+
+        true
     }
 }
 
