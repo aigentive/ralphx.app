@@ -2647,6 +2647,69 @@ async fn reconcile_merge_incomplete_skips_when_agent_reported() {
     );
 }
 
+#[tokio::test]
+async fn reconcile_merge_incomplete_reroutes_commit_hook_failures_to_reexecution() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.set_max_concurrent(10);
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Commit Hook MergeIncomplete".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed",
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        reconciled,
+        "commit-hook MergeIncomplete should be rerouted into revision flow"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::ReExecuting,
+        "commit-hook MergeIncomplete should end up re-executing, not re-merging"
+    );
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_reexecution_requested"),
+        Some(&serde_json::json!(true))
+    );
+}
+
 // ── SHA comparison guard ──
 
 #[test]

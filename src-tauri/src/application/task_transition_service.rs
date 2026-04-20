@@ -1557,6 +1557,89 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
     }
 
+    /// Reroute a merge failure caused by repository commit hooks back into revision flow.
+    ///
+    /// This is the shared repair path for:
+    /// - live merge outcome handling
+    /// - manual retry actions on hook-blocked `MergeIncomplete` tasks
+    /// - reconciliation/startup remediation of legacy hook-blocked merge rows
+    ///
+    /// When `execute_now` is true, this method also replays `RevisionNeeded` entry actions so
+    /// the normal `RevisionNeeded -> ReExecuting` auto-transition runs immediately.
+    #[track_caller]
+    pub fn reroute_commit_hook_merge_failure<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        explicit_error: Option<String>,
+        execute_now: bool,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        async move {
+            let mut task = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            if task.internal_status == InternalStatus::ReExecuting {
+                return Ok(task);
+            }
+
+            let full_error = explicit_error
+                .or_else(|| {
+                    crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                        &task,
+                    )
+                })
+                .ok_or_else(|| {
+                    AppError::Conflict(format!(
+                        "Task {} is not a commit-hook merge failure",
+                        task_id.as_str()
+                    ))
+                })?;
+            let feedback =
+                crate::domain::state_machine::transition_handler::build_commit_hook_revision_feedback(
+                    &full_error,
+                );
+
+            crate::domain::state_machine::transition_handler::merge_metadata_into(
+                &mut task,
+                &serde_json::json!({
+                    "restart_note": feedback,
+                    "merge_revision_feedback": feedback,
+                    "merge_revision_error": full_error,
+                    "merge_hook_reexecution_requested": true,
+                }),
+            );
+            task.touch();
+            self.task_repo.update(&task).await?;
+
+            let updated = if task.internal_status == InternalStatus::RevisionNeeded {
+                task
+            } else {
+                self.transition_task_corrective_with_exit(
+                    task_id,
+                    InternalStatus::RevisionNeeded,
+                    None,
+                    history_actor,
+                )
+                .await?
+            };
+
+            if execute_now {
+                self.execute_entry_actions(task_id, &updated, InternalStatus::RevisionNeeded)
+                    .await;
+                return self
+                    .task_repo
+                    .get_by_id(task_id)
+                    .await?
+                    .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()));
+            }
+
+            Ok(updated)
+        }
+    }
+
     /// Apply an explicit corrective transition for nonstandard repair flows.
     ///
     /// Unlike `transition_task*`, this path intentionally bypasses the normal state-machine

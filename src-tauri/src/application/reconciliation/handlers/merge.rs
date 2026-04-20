@@ -597,6 +597,30 @@ impl<R: Runtime> ReconciliationRunner<R> {
             }
         }
 
+        if crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(
+            task,
+        ) {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                "MergeIncomplete commit-hook failure detected — rerouting to revision flow"
+            );
+            return match self
+                .transition_service
+                .reroute_commit_hook_merge_failure(&task.id, None, true, "system")
+                .await
+            {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to reroute commit-hook MergeIncomplete during reconciliation"
+                    );
+                    false
+                }
+            };
+        }
+
         // Circuit breaker active guard — fires before all other checks.
         // Prevents auto-retry when the circuit breaker has been triggered.
         // Cleared on user-initiated manual retry.

@@ -165,24 +165,24 @@ fn test_non_git_error_is_not_transient() {
 
 #[test]
 fn test_commit_hook_merge_error_detected() {
-    use super::super::merge_outcome_handler::is_commit_hook_merge_error;
+    use super::super::merge_helpers::is_commit_hook_merge_error_text;
     let err = crate::error::AppError::GitOperation(
         "Failed to commit rebase+squash in worktree: stdout=[pre-commit] TS2307 Cannot find module 'zod'".to_string(),
     );
     assert!(
-        is_commit_hook_merge_error(&err),
+        is_commit_hook_merge_error_text(&err.to_string()),
         "hook-style failed-to-commit errors should be detected"
     );
 }
 
 #[test]
 fn test_plain_commit_failure_without_hook_marker_is_not_commit_hook_error() {
-    use super::super::merge_outcome_handler::is_commit_hook_merge_error;
+    use super::super::merge_helpers::is_commit_hook_merge_error_text;
     let err = crate::error::AppError::GitOperation(
         "Failed to commit squash merge in worktree: stdout= stderr=Author identity unknown".to_string(),
     );
     assert!(
-        !is_commit_hook_merge_error(&err),
+        !is_commit_hook_merge_error_text(&err.to_string()),
         "plain commit failures without hook markers should not be rerouted as hook failures"
     );
 }

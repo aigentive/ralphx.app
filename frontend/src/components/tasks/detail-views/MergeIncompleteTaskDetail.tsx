@@ -66,6 +66,7 @@ interface MergeErrorContext {
 }
 
 const ATTEMPT_MESSAGE_PREVIEW_CHARS = 220;
+const ERROR_CONTEXT_PREVIEW_CHARS = 900;
 
 function buildAttemptMessagePreview(message: string): string {
   const condensed = message.replace(/\s+/g, " ").trim();
@@ -73,6 +74,14 @@ function buildAttemptMessagePreview(message: string): string {
     return condensed;
   }
   return `${condensed.slice(0, ATTEMPT_MESSAGE_PREVIEW_CHARS).trimEnd()}...`;
+}
+
+function buildErrorContextPreview(message: string): string {
+  const trimmed = message.trim();
+  if (trimmed.length <= ERROR_CONTEXT_PREVIEW_CHARS) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, ERROR_CONTEXT_PREVIEW_CHARS).trimEnd()}...`;
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
@@ -98,6 +107,8 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
  * ErrorContextCard - Shows actual error details or generic fallback
  */
 function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { mergeError: MergeErrorContext | null; resolvedSource?: string; resolvedTarget?: string | null }) {
+  const [selectedErrorOutput, setSelectedErrorOutput] = useState<string | null>(null);
+
   if (!mergeError) {
     return (
       <div className="space-y-3">
@@ -115,30 +126,74 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
     );
   }
 
+  const errorPreview = mergeError.error ? buildErrorContextPreview(mergeError.error) : null;
+  const errorIsTruncated = errorPreview !== null && errorPreview !== mergeError.error?.trim();
+
   return (
-    <div className="space-y-3">
-      {mergeError.error && (
-        <div
-          className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
-          style={{ backgroundColor: "var(--status-error-muted)" }}
+    <>
+      <div className="space-y-3">
+        {mergeError.error && (
+          <div className="space-y-2">
+            <div
+              className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
+              style={{ backgroundColor: "var(--status-error-muted)" }}
+            >
+              {errorPreview}
+            </div>
+            {errorIsTruncated && (
+              <button
+                type="button"
+                className="text-[12px] font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+                onClick={() => setSelectedErrorOutput(mergeError.error)}
+              >
+                View full output
+              </button>
+            )}
+          </div>
+        )}
+        {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
+          <div className="text-[13px] text-text-primary/60">
+            <BranchFlow
+              source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
+              target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
+            />
+          </div>
+        )}
+        {mergeError.diagnosticInfo && (
+          <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
+            {mergeError.diagnosticInfo}
+          </div>
+        )}
+      </div>
+
+      <Dialog
+        open={selectedErrorOutput !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedErrorOutput(null);
+          }
+        }}
+      >
+        <DialogContent
+          data-testid="merge-error-context-dialog"
+          className="sm:max-w-3xl max-h-[80vh] overflow-hidden"
         >
-          {mergeError.error}
-        </div>
-      )}
-      {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
-        <div className="text-[13px] text-text-primary/60">
-          <BranchFlow
-            source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
-            target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
-          />
-        </div>
-      )}
-      {mergeError.diagnosticInfo && (
-        <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
-          {mergeError.diagnosticInfo}
-        </div>
-      )}
-    </div>
+          <DialogHeader>
+            <DialogTitle>Full error output</DialogTitle>
+            <DialogDescription>
+              Full merge error output in a scrollable view.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
+                {selectedErrorOutput}
+              </pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

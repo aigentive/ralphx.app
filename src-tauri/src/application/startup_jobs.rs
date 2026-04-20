@@ -639,6 +639,12 @@ impl<R: Runtime> StartupJobRunner<R> {
         // pre-escalation states so Phase 1/2/3 can re-process them normally.
         self.recover_crash_escalated_tasks(&projects).await;
 
+        // Phase 0.9: Remediate legacy MergeIncomplete rows that are actually commit-hook
+        // rework failures. These should rejoin the normal RevisionNeeded -> ReExecuting flow,
+        // not remain in merge recovery forever across restarts.
+        self.remediate_commit_hook_merge_incomplete_tasks(&projects)
+            .await;
+
         // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
@@ -1872,6 +1878,59 @@ impl<R: Runtime> StartupJobRunner<R> {
                             "Startup repaired non-merge task worktree_path"
                         );
                     }
+                }
+            }
+        }
+    }
+
+    async fn remediate_commit_hook_merge_incomplete_tasks(
+        &self,
+        projects: &[crate::domain::entities::Project],
+    ) {
+        for project in projects {
+            let tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::MergeIncomplete)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Failed to load MergeIncomplete tasks for commit-hook startup remediation"
+                    );
+                    continue;
+                }
+            };
+
+            for task in tasks {
+                if task.archived_at.is_some()
+                    || !crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(&task)
+                {
+                    continue;
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Phase 0.9: Rerouting legacy commit-hook MergeIncomplete task into revision flow"
+                );
+
+                if let Err(e) = self
+                    .transition_service
+                    .reroute_commit_hook_merge_failure(
+                        &task.id,
+                        None,
+                        false,
+                        "startup_recovery",
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Phase 0.9: Failed to reroute commit-hook MergeIncomplete task"
+                    );
                 }
             }
         }

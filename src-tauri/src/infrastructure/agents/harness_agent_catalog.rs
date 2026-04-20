@@ -263,10 +263,6 @@ fn has_canonical_agents_tree(root: &Path) -> bool {
 }
 
 fn trusted_canonical_project_root(project_root: &Path) -> Option<PathBuf> {
-    if !path_has_only_safe_components(project_root) {
-        return None;
-    }
-
     let canonical_root = project_root.canonicalize().ok()?;
     if !path_has_only_safe_components(&canonical_root) || !has_canonical_agents_tree(&canonical_root)
     {

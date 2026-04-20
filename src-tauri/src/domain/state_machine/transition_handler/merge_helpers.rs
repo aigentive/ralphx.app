@@ -23,6 +23,14 @@ use crate::infrastructure::agents::claude::git_runtime_config;
 
 const RALPHX_REPOSITORY_URL: &str = "https://github.com/aigentive/ralphx";
 const MAX_PLAN_MARKDOWN_CHARS_IN_PR_BODY: usize = 6_000;
+const COMMIT_HOOK_PATTERNS: &[&str] = &[
+    "pre-commit",
+    "[pre-commit]",
+    "commit-msg",
+    "prepare-commit-msg",
+    "husky",
+    "hook declined",
+];
 
 // ===== Stale git state cleanup =====
 
@@ -145,6 +153,63 @@ pub(crate) fn merge_metadata_into(task: &mut Task, new_fields: &serde_json::Valu
         }
     }
     task.metadata = Some(existing.to_string());
+}
+
+pub(crate) fn is_commit_hook_merge_error_text(message: &str) -> bool {
+    let lowered = message.to_lowercase();
+    lowered.contains("failed to commit")
+        && COMMIT_HOOK_PATTERNS
+            .iter()
+            .any(|pattern| lowered.contains(pattern))
+}
+
+pub(crate) fn extract_commit_hook_merge_error(task: &Task) -> Option<String> {
+    let meta = parse_metadata(task)?;
+    for key in ["merge_revision_error", "error"] {
+        if let Some(candidate) = meta.get(key).and_then(|value| value.as_str()) {
+            if is_commit_hook_merge_error_text(candidate) {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+
+    meta.get("merge_recovery")
+        .and_then(|value| value.get("events"))
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .rev()
+        .filter_map(|event| event.get("message").and_then(|value| value.as_str()))
+        .find(|message| is_commit_hook_merge_error_text(message))
+        .map(str::to_string)
+}
+
+pub(crate) fn task_has_commit_hook_merge_failure(task: &Task) -> bool {
+    extract_commit_hook_merge_error(task).is_some()
+}
+
+pub(crate) fn build_commit_hook_revision_feedback(error: &str) -> String {
+    let condensed = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lowered = condensed.to_lowercase();
+    let excerpt = if let Some(start) = COMMIT_HOOK_PATTERNS
+        .iter()
+        .filter_map(|pattern| lowered.find(pattern))
+        .min()
+    {
+        condensed[start..].to_string()
+    } else {
+        condensed
+    };
+    let excerpt = if excerpt.chars().count() > 220 {
+        let truncated = excerpt.chars().take(220).collect::<String>();
+        format!("{truncated}...")
+    } else {
+        excerpt
+    };
+    format!(
+        "Repository commit hooks rejected the merge commit. Rework the task so it passes the repository's commit-time checks before merge. Key hook output: {}",
+        excerpt
+    )
 }
 
 // ===== Pre-merge validation =====

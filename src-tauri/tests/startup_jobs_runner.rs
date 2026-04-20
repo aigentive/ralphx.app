@@ -712,6 +712,61 @@ async fn test_revision_needed_auto_transitions_on_startup() {
 }
 
 #[tokio::test]
+async fn test_merge_incomplete_commit_hook_rows_are_rerouted_on_startup() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Legacy Hook MergeIncomplete".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed"
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let exec_convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        exec_convs.len(),
+        1,
+        "startup remediation should reroute hook-blocked merge rows into task re-execution"
+    );
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::ReExecuting,
+        "legacy hook-blocked MergeIncomplete rows should auto-resume through ReExecuting on startup"
+    );
+}
+
+#[tokio::test]
 async fn test_approved_auto_transitions_on_startup() {
     // Approved is in AUTO_TRANSITION_STATES
     // Tasks stuck in Approved should auto-transition to PendingMerge

@@ -563,6 +563,18 @@ fn project_root() -> PathBuf {
 }
 
 #[test]
+fn lexical_project_root_with_parent_segments_loads_canonical_prompts() {
+    let lexical_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+    let prompt = load_harness_agent_prompt(&lexical_root, "ralphx-ideation", AgentPromptHarness::Claude);
+
+    assert!(
+        prompt.is_some(),
+        "lexical repo roots like src-tauri/.. should still resolve canonical prompts"
+    );
+}
+
+#[test]
 fn codex_runtime_features_load_from_harness_metadata() {
     let root = project_root();
 

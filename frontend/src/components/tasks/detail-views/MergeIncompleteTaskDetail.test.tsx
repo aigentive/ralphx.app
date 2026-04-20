@@ -333,6 +333,32 @@ describe("MergeIncompleteTaskDetail", () => {
     expect(screen.getByText("Git error: branch locked")).toBeInTheDocument();
   });
 
+  it("truncates oversized What Happened output and opens full output in a dialog", async () => {
+    const user = userEvent.setup();
+    const longError =
+      "Git operation error: Failed to commit rebase+squash in worktree: stdout=, stderr=[pre-commit] " +
+      "error TS2307: Cannot find module 'zod'.\n".repeat(40);
+    const metadata = JSON.stringify({
+      error: longError,
+      source_branch: "ralphx/ralphx/task-123",
+      target_branch: "ralphx/ralphx/plan-main",
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.queryByText(longError)).not.toBeInTheDocument();
+    expect(screen.getByText(/Git operation error: Failed to commit rebase\+squash in worktree/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View full output" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View full output" }));
+
+    const dialog = screen.getByTestId("merge-error-context-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Failed to commit rebase+squash in worktree");
+    expect(dialog).toHaveTextContent("Cannot find module 'zod'");
+  });
+
   it("preserves action buttons in non-historical mode", () => {
     const task = createTestTask();
     render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });

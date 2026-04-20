@@ -16,6 +16,7 @@ Primary project docs:
 - `.claude/rules/runtime-root-vs-target-project.md` for the contract between RalphX-owned runtime/plugin roots and the user’s active target project checkout
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
+- `.claude/rules/merge-recovery-consistency.md` for the coupled merge-failure behavior across merge outcome handling, manual retry, reconciliation, startup recovery, and MergeIncomplete UI
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 - `.claude/rules/wkwebview-css-vars.md` for Tauri (WKWebView) CSS custom-property inheritance rules — theme tokens for bg/text/border MUST be literals, not chained `var()` references
 - `.claude/rules/release-script-validation.md` for safe validation of release proposal/wrapper scripts without triggering real publish steps
@@ -26,6 +27,7 @@ Primary project docs:
 - For GPT-5.4/Codex prompt work, check `.claude/rules/openai-gpt-5.4-prompting.md` and `docs/ai-docs/openai/gpt-5.4-prompting.md` before substantial prompt edits.
 - When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
 - When touching plugin/root resolution, canonical agent loading, or generated plugin bundles, read `.claude/rules/runtime-root-vs-target-project.md` first.
+- When touching merge failure recovery, merge retry/resolve actions, merge reconciliation, or startup merge remediation, read `.claude/rules/merge-recovery-consistency.md` first.
 - When touching release automation, read `.claude/rules/release-script-validation.md` first.
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - PR branch freshness (NON-NEGOTIABLE): before opening, updating, or handing off a PR, fetch the base branch, rebase onto the latest `origin/<base>`, and push the rebased branch so GitHub does not show it as behind.
