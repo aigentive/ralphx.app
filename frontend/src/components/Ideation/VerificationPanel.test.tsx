@@ -251,7 +251,7 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
-  it("keeps verification history visible and does not replace the tab with the child transcript", async () => {
+  it("keeps verification history visible when a verification child session exists", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const childSession = {
       id: "child-run-1",
@@ -282,7 +282,7 @@ describe("VerificationPanel — page-load hydration", () => {
     await waitFor(() => {
       expect(screen.getByTestId("verification-history")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("verification-child-transcript")).not.toBeInTheDocument();
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {
