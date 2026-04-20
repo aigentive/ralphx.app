@@ -1816,6 +1816,7 @@ async fn test_task_execution_shutdown_success_persists_startup_recovery_metadata
         &state.task_repo,
         &state.task_dependency_repo,
         &state.project_repo,
+        &state.artifact_repo,
         &state.chat_message_repo,
         &state.chat_attachment_repo,
         &state.chat_conversation_repo,

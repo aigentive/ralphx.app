@@ -377,6 +377,7 @@ pub async fn retry_merge(
     let task_repo = Arc::clone(&state.task_repo);
     let task_dependency_repo = Arc::clone(&state.task_dependency_repo);
     let project_repo = Arc::clone(&state.project_repo);
+    let artifact_repo = Arc::clone(&state.artifact_repo);
     let chat_message_repo = Arc::clone(&state.chat_message_repo);
     let chat_attachment_repo = Arc::clone(&state.chat_attachment_repo);
     let chat_conversation_repo = Arc::clone(&state.chat_conversation_repo);
@@ -401,6 +402,7 @@ pub async fn retry_merge(
             task_repo,
             task_dependency_repo,
             project_repo,
+            artifact_repo,
             chat_message_repo,
             chat_attachment_repo,
             chat_conversation_repo,
@@ -433,6 +435,7 @@ async fn execute_merge_retry_background(
     task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
     task_dependency_repo: Arc<dyn crate::domain::repositories::TaskDependencyRepository>,
     project_repo: Arc<dyn crate::domain::repositories::ProjectRepository>,
+    artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
     chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
     chat_attachment_repo: Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
     chat_conversation_repo: Arc<dyn crate::domain::repositories::ChatConversationRepository>,
@@ -458,6 +461,7 @@ async fn execute_merge_retry_background(
         task_repo: Arc::clone(&task_repo),
         task_dependency_repo: Arc::clone(&task_dependency_repo),
         project_repo: Arc::clone(&project_repo),
+        artifact_repo: Arc::clone(&artifact_repo),
         chat_message_repo: Arc::clone(&chat_message_repo),
         chat_attachment_repo: Arc::clone(&chat_attachment_repo),
         conversation_repo: Arc::clone(&chat_conversation_repo),

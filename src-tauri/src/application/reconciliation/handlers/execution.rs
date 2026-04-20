@@ -2319,6 +2319,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     task_repo: &self.task_repo,
                     task_dependency_repo: &self.task_dep_repo,
                     project_repo: &self.project_repo,
+                    artifact_repo: &self.artifact_repo,
                     chat_message_repo: &self.chat_message_repo,
                     chat_attachment_repo: &self.chat_attachment_repo,
                     conversation_repo: &self.chat_conversation_repo,

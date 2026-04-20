@@ -13,10 +13,13 @@ use std::sync::Arc;
 use crate::application::services::PrPollerRegistry;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::{InternalStatus, PlanBranchStatus};
-use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use crate::domain::repositories::{
+    ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
+    TaskRepository,
+};
 use crate::domain::services::GithubServiceTrait;
 use crate::domain::state_machine::transition_handler::{
-    create_draft_pr_if_needed, plan_branch_has_reviewable_diff,
+    create_draft_pr_if_needed, plan_branch_has_reviewable_diff, sync_plan_branch_pr_if_needed,
 };
 
 /// Re-create draft PRs that should already exist for active PR-mode plans.
@@ -32,6 +35,8 @@ pub async fn recover_missing_draft_prs(
     task_repo: Arc<dyn TaskRepository>,
     plan_branch_repo: Arc<dyn PlanBranchRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
     github_service: Arc<dyn GithubServiceTrait>,
 ) {
     let pr_creation_guard = Arc::new(dashmap::DashMap::new());
@@ -58,10 +63,7 @@ pub async fn recover_missing_draft_prs(
         };
 
         for plan_branch in plan_branches {
-            if !plan_branch.pr_eligible
-                || plan_branch.pr_number.is_some()
-                || plan_branch.status != PlanBranchStatus::Active
-            {
+            if !plan_branch.pr_eligible || plan_branch.status != PlanBranchStatus::Active {
                 continue;
             }
 
@@ -133,23 +135,49 @@ pub async fn recover_missing_draft_prs(
                 continue;
             }
 
-            tracing::info!(
-                branch_id = plan_branch.id.as_str(),
-                branch = %plan_branch.branch_name,
-                merge_task_id = merge_task.id.as_str(),
-                status = ?merge_task.internal_status,
-                "PR startup recovery: repairing missing draft PR for active plan branch"
-            );
+            if plan_branch.pr_number.is_none() {
+                tracing::info!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    merge_task_id = merge_task.id.as_str(),
+                    status = ?merge_task.internal_status,
+                    "PR startup recovery: repairing missing draft PR for active plan branch"
+                );
 
-            create_draft_pr_if_needed(
-                &merge_task,
-                &project,
-                &plan_branch,
-                &pr_creation_guard,
-                &github_service,
-                &plan_branch_repo,
-            )
-            .await;
+                create_draft_pr_if_needed(
+                    &merge_task,
+                    &project,
+                    &plan_branch,
+                    &pr_creation_guard,
+                    &github_service,
+                    &plan_branch_repo,
+                    Some(&ideation_session_repo),
+                    Some(&artifact_repo),
+                )
+                .await;
+                continue;
+            }
+
+            if !matches!(
+                plan_branch.pr_push_status,
+                crate::domain::entities::plan_branch::PrPushStatus::Pushed
+            ) {
+                tracing::info!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    merge_task_id = merge_task.id.as_str(),
+                    status = ?merge_task.internal_status,
+                    push_status = %plan_branch.pr_push_status,
+                    "PR startup recovery: syncing pending PR branch push for active plan branch"
+                );
+                sync_plan_branch_pr_if_needed(
+                    &project,
+                    &plan_branch,
+                    &github_service,
+                    &plan_branch_repo,
+                )
+                .await;
+            }
         }
     }
 }

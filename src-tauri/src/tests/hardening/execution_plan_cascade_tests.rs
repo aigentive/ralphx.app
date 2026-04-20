@@ -50,6 +50,7 @@ fn build_reconciler_for_tests(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.artifact_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_attachment_repo),

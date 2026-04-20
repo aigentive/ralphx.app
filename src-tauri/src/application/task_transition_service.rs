@@ -37,8 +37,8 @@ use crate::domain::repositories::{
     ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
-    PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
-    TaskStepRepository,
+    ArtifactRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
+    TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{
     payload_enrichment::{PresentationKind, WebhookPresentationContext},
@@ -718,6 +718,8 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Ideation session repository for fetching live session titles.
     /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    /// Artifact repository for reading plan artifact markdown during PR creation/update.
+    artifact_repo: Option<Arc<dyn ArtifactRepository>>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
 
@@ -1049,6 +1051,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             plan_branch_repo: None,
             step_repo: None,
             ideation_session_repo: Some(ideation_session_repo),
+            artifact_repo: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
             activity_event_repo: activity_event_repo_for_services,
@@ -1111,6 +1114,12 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Set the task step repository (builder pattern).
     pub fn with_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
         self.step_repo = Some(repo);
+        self
+    }
+
+    /// Set the artifact repository for richer PR metadata (builder pattern).
+    pub fn with_artifact_repo(mut self, repo: Arc<dyn ArtifactRepository>) -> Self {
+        self.artifact_repo = Some(repo);
         self
     }
 
@@ -1640,6 +1649,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
         if let Some(ref repo) = self.step_repo {
             services = services.with_step_repo(Arc::clone(repo));
+        }
+        if let Some(ref repo) = self.artifact_repo {
+            services = services.with_artifact_repo(Arc::clone(repo));
         }
         if let Some(ref repo) = self.ideation_session_repo {
             services = services.with_ideation_session_repo(Arc::clone(repo));

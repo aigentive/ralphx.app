@@ -25,6 +25,7 @@ pub(crate) struct RuntimeFactoryDeps {
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -50,6 +51,7 @@ impl RuntimeFactoryDeps {
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -64,6 +66,7 @@ impl RuntimeFactoryDeps {
             task_repo,
             task_dependency_repo,
             project_repo,
+            artifact_repo,
             chat_message_repo,
             chat_attachment_repo,
             conversation_repo,
@@ -129,6 +132,7 @@ impl RuntimeFactoryDeps {
             Arc::clone(&state.task_repo),
             Arc::clone(&state.task_dependency_repo),
             Arc::clone(&state.project_repo),
+            Arc::clone(&state.artifact_repo),
             Arc::clone(&state.chat_message_repo),
             Arc::clone(&state.chat_attachment_repo),
             Arc::clone(&state.chat_conversation_repo),
@@ -521,6 +525,7 @@ pub(crate) fn build_transition_service_from_deps<R: Runtime>(
     if let Some(repo) = deps.plan_branch_repo.as_ref() {
         service = service.with_plan_branch_repo(Arc::clone(repo));
     }
+    service = service.with_artifact_repo(Arc::clone(&deps.artifact_repo));
     if let Some(ipr) = deps.interactive_process_registry.as_ref() {
         service = service.with_interactive_process_registry(Arc::clone(ipr));
     }
@@ -557,6 +562,7 @@ pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
         Arc::clone(&deps.project_repo),
         Arc::clone(&deps.task_repo),
         Arc::clone(&deps.task_dependency_repo),
+        Arc::clone(&deps.artifact_repo),
         Arc::clone(&deps.chat_message_repo),
         Arc::clone(&deps.chat_attachment_repo),
         Arc::clone(&deps.conversation_repo),

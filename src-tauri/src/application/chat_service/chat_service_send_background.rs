@@ -892,6 +892,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &task_repo,
                     &task_dependency_repo,
                     &project_repo,
+                    &artifact_repo,
                     &chat_message_repo,
                     &chat_attachment_repo,
                     &conversation_repo,

@@ -65,7 +65,8 @@ pub(crate) use merge_helpers::{
     compute_merge_worktree_path, get_trigger_origin,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
     is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, merge_metadata_into,
-    plan_branch_has_reviewable_diff, resolve_plan_branch_pr_base, set_source_conflict_resolved, set_conflict_metadata,
+    plan_branch_has_reviewable_diff, resolve_plan_branch_pr_base, set_source_conflict_resolved,
+    set_conflict_metadata, sync_plan_branch_pr_if_needed,
     is_merge_worktree_path, restore_task_worktree,
 };
 #[doc(hidden)]

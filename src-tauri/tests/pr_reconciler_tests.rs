@@ -15,10 +15,13 @@ use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project, Task, TaskCategory, TaskId,
+    plan_branch::PrPushStatus, ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project,
+    Task, TaskCategory, TaskId,
 };
 use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
-use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
+use ralphx_lib::infrastructure::memory::{
+    MemoryArtifactRepository, MemoryIdeationSessionRepository, MemoryPlanBranchRepository,
+};
 
 // ============================================================================
 // Shared helpers
@@ -48,6 +51,7 @@ fn build_reconciler(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.artifact_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_attachment_repo),
@@ -522,6 +526,8 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
         github_service,
     )
     .await;
@@ -587,6 +593,8 @@ async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff()
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
         github_service,
     )
     .await;
@@ -668,6 +676,8 @@ async fn test_startup_recovery_skips_terminal_or_already_open_prs() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
         github_service,
     )
     .await;
@@ -690,6 +700,73 @@ async fn test_startup_recovery_skips_terminal_or_already_open_prs() {
         mock_github.push_calls(),
         0,
         "startup repair should not push skipped branches"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_pushes_existing_pr_branch_when_local_sync_pending() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "ralphx/test/pending-sync";
+    let working_dir = setup_plan_git_repo(branch_name, true);
+    let project = Project::new(
+        "Startup PR Sync".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge synced plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-sync".to_string()),
+        IdeationSessionId::from_string("session-startup-sync".to_string()),
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.pr_eligible = true;
+    branch.pr_number = Some(77);
+    branch.pr_url = Some("https://github.com/owner/repo/pull/77".to_string());
+    branch.pr_push_status = PrPushStatus::Pending;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(branch_after.pr_number, Some(77));
+    assert_eq!(branch_after.pr_push_status, PrPushStatus::Pushed);
+    assert_eq!(
+        mock_github.push_calls(),
+        1,
+        "startup recovery should push PR-backed plan branches whose local updates were never synced"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "startup recovery should not recreate an already-open PR when only branch sync is pending"
     );
 }
 
@@ -734,6 +811,8 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
         github_service,
     )
     .await;

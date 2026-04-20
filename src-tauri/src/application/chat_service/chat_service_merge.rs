@@ -22,9 +22,9 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Project, Task, TaskId};
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    ExecutionSettingsRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
 };
 use crate::application::InteractiveProcessRegistry;
@@ -75,6 +75,7 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
     pub task_repo: &'a Arc<dyn TaskRepository>,
     pub task_dependency_repo: &'a Arc<dyn TaskDependencyRepository>,
     pub project_repo: &'a Arc<dyn ProjectRepository>,
+    pub artifact_repo: &'a Arc<dyn ArtifactRepository>,
     pub chat_message_repo: &'a Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: &'a Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: &'a Arc<dyn ChatConversationRepository>,
@@ -97,6 +98,7 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             Arc::clone(self.task_repo),
             Arc::clone(self.task_dependency_repo),
             Arc::clone(self.project_repo),
+            Arc::clone(self.artifact_repo),
             Arc::clone(self.chat_message_repo),
             Arc::clone(self.chat_attachment_repo),
             Arc::clone(self.conversation_repo),

@@ -10,10 +10,10 @@ use crate::application::{
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
-    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    ExecutionPlanRepository, ExecutionSettingsRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository,
+    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository,
+    ProjectRepository, ReviewRepository, TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -24,6 +24,7 @@ pub(crate) struct StartupSchedulerDeps<R: Runtime = tauri::Wry> {
     pub project_repo: Arc<dyn ProjectRepository>,
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -49,6 +50,7 @@ pub(crate) fn build_startup_task_scheduler<R: Runtime>(
             deps.project_repo,
             deps.task_repo,
             deps.task_dependency_repo,
+            deps.artifact_repo,
             deps.chat_message_repo,
             deps.chat_attachment_repo,
             deps.conversation_repo,
@@ -113,6 +115,7 @@ pub(crate) struct StartupReconciliationDeps {
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -138,6 +141,7 @@ pub(crate) fn build_startup_reconciliation_runner(
         deps.task_repo,
         deps.task_dependency_repo,
         deps.project_repo,
+        deps.artifact_repo,
         deps.conversation_repo,
         deps.chat_message_repo,
         deps.chat_attachment_repo,
@@ -198,6 +202,7 @@ mod tests {
             project_repo: Arc::clone(&app_state.project_repo),
             task_repo: Arc::clone(&app_state.task_repo),
             task_dependency_repo: Arc::clone(&app_state.task_dependency_repo),
+            artifact_repo: Arc::clone(&app_state.artifact_repo),
             chat_message_repo: Arc::clone(&app_state.chat_message_repo),
             chat_attachment_repo: Arc::clone(&app_state.chat_attachment_repo),
             conversation_repo: Arc::clone(&app_state.chat_conversation_repo),

@@ -36,6 +36,7 @@ pub struct MockGithubState {
 
     // --- Last arguments recorded ---
     pub last_create_draft_pr_args: Option<(String, String, String, String)>,
+    pub last_create_draft_pr_body: Option<String>,
     pub last_mark_pr_ready_number: Option<i64>,
     pub last_check_pr_status_number: Option<i64>,
     pub last_push_branch_name: Option<String>,
@@ -119,6 +120,7 @@ impl GithubServiceTrait for MockGithubService {
             title.to_string(),
             body_file.to_string_lossy().into_owned(),
         ));
+        s.last_create_draft_pr_body = std::fs::read_to_string(body_file).ok();
         s.create_draft_pr_result
             .take()
             .unwrap_or(Ok((1, "https://github.com/owner/repo/pull/1".to_string())))

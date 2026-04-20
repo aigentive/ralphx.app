@@ -186,15 +186,7 @@ impl<'a> TransitionHandler<'a> {
         ) {
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
                 if task.category != TaskCategory::PlanMerge {
-                    if let (
-                        Some(plan_branch_repo),
-                        Some(pr_creation_guard),
-                        Some(github_service),
-                    ) = (
-                        plan_branch_repo.as_ref(),
-                        self.machine.context.services.pr_creation_guard.as_ref(),
-                        self.machine.context.services.github_service.as_ref(),
-                    ) {
+                    if let Some(plan_branch_repo) = plan_branch_repo.as_ref() {
                         if let Ok(Some(project)) = project_repo
                             .get_by_id(&ProjectId::from_string(self.machine.context.project_id.clone()))
                             .await
@@ -209,15 +201,45 @@ impl<'a> TransitionHandler<'a> {
                                 if plan_branch.pr_eligible
                                     && plan_branch.status == PlanBranchStatus::Active
                                 {
-                                    super::super::merge_helpers::create_draft_pr_if_needed(
-                                        &task,
-                                        &project,
-                                        &plan_branch,
-                                        pr_creation_guard,
-                                        github_service,
-                                        plan_branch_repo,
-                                    )
-                                    .await;
+                                    if plan_branch.pr_number.is_some() {
+                                        let _ = plan_branch_repo
+                                            .update_pr_push_status(
+                                                &plan_branch.id,
+                                                crate::domain::entities::plan_branch::PrPushStatus::Pending,
+                                            )
+                                            .await;
+                                    }
+
+                                    if let Some(github_service) =
+                                        self.machine.context.services.github_service.as_ref()
+                                    {
+                                        if plan_branch.pr_number.is_some() {
+                                            let mut refreshed_plan_branch = plan_branch.clone();
+                                            refreshed_plan_branch.pr_push_status =
+                                                crate::domain::entities::plan_branch::PrPushStatus::Pending;
+                                            super::super::merge_helpers::sync_plan_branch_pr_if_needed(
+                                                &project,
+                                                &refreshed_plan_branch,
+                                                github_service,
+                                                plan_branch_repo,
+                                            )
+                                            .await;
+                                        } else if let Some(pr_creation_guard) =
+                                            self.machine.context.services.pr_creation_guard.as_ref()
+                                        {
+                                            super::super::merge_helpers::create_draft_pr_if_needed(
+                                                &task,
+                                                &project,
+                                                &plan_branch,
+                                                pr_creation_guard,
+                                                github_service,
+                                                plan_branch_repo,
+                                                self.machine.context.services.ideation_session_repo.as_ref(),
+                                                self.machine.context.services.artifact_repo.as_ref(),
+                                            )
+                                            .await;
+                                        }
+                                    }
                                 }
                             }
                         }
