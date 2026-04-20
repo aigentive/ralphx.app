@@ -357,6 +357,8 @@ describe("VerificationPanel — page-load hydration", () => {
       status: "reviewing",
       inProgress: true,
       generation: 20,
+      currentRound: 2,
+      maxRounds: 5,
       gaps: [],
       rounds: [],
       roundDetails: [],
@@ -375,10 +377,11 @@ describe("VerificationPanel — page-load hydration", () => {
         },
         {
           generation: 18,
-          status: "needs_revision",
+          status: "unverified",
           inProgress: false,
           roundCount: 2,
           gapCount: 1,
+          convergenceReason: "agent_error",
         },
       ],
     };
@@ -392,8 +395,22 @@ describe("VerificationPanel — page-load hydration", () => {
     const user = userEvent.setup();
     render(<VerificationPanel session={baseSession} />);
 
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current verification");
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Round 2 of 5");
+      expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Current run");
+    });
+
     await user.click(await screen.findByTestId("verification-run-picker-trigger"));
-    await user.click(await screen.findByTestId("verification-run-option-1"));
+
+    expect(screen.getByTestId("verification-run-option-generation-20")).toHaveTextContent("Current verification");
+    expect(screen.getByTestId("verification-run-option-generation-20")).toHaveTextContent("Round 2 of 5");
+    expect(screen.getByTestId("verification-run-option-generation-18")).toHaveTextContent("Previous verification");
+    expect(screen.getByTestId("verification-run-option-generation-18")).toHaveTextContent("Ended early");
+    expect(screen.getByTestId("verification-run-picker-menu")).not.toHaveTextContent("Gen 20");
+    expect(screen.getByTestId("verification-run-picker-menu")).not.toHaveTextContent("Run 1");
+
+    await user.click(await screen.findByTestId("verification-run-option-generation-20"));
 
     expect(mockSetActiveVerificationChildId).not.toHaveBeenCalled();
     expect(mockSetLastVerificationChildId).not.toHaveBeenCalled();
@@ -456,9 +473,10 @@ describe("VerificationPanel — page-load hydration", () => {
     render(<VerificationPanel session={baseSession} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current run");
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current verification");
     });
     expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Run 1");
+    expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Gen 21");
     expect(screen.getByTestId("verification-current-run-bootstrap")).toBeInTheDocument();
     expect(screen.getByText("Verification is warming up")).toBeInTheDocument();
     expect(screen.getByText("Bootstrapping the verifier context before round 1.")).toBeInTheDocument();

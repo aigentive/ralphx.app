@@ -48,10 +48,13 @@ interface VerificationPanelProps {
 
 interface VerificationRunEntry {
   generation: number;
-  runNumber: number;
   status: VerificationStatus;
+  inProgress: boolean;
+  currentRound?: number;
+  maxRounds?: number;
   roundCount: number;
   gapCount: number;
+  convergenceReason?: string;
 }
 
 const EMPTY_CHILD_SESSIONS: Array<{ id: string; createdAt: string }> = [];
@@ -60,7 +63,7 @@ const EMPTY_CHILD_SESSIONS: Array<{ id: string; createdAt: string }> = [];
 // Helpers
 // ============================================================================
 
-function statusLabel(status: VerificationStatus | undefined): string {
+function statusLabel(status: VerificationStatus | undefined, convergenceReason?: string): string {
   switch (status) {
     case "verified":
     case "imported_verified":
@@ -71,9 +74,55 @@ function statusLabel(status: VerificationStatus | undefined): string {
       return "In progress";
     case "skipped":
       return "Skipped";
+    case "unverified":
+      if (convergenceReason === "agent_error") return "Ended early";
+      return "No result";
     default:
-      return "Completed";
+      return "No result";
   }
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function describeRunSummary(run: VerificationRunEntry): string {
+  if (run.inProgress && run.currentRound !== undefined && run.maxRounds !== undefined) {
+    return `Round ${run.currentRound} of ${run.maxRounds}`;
+  }
+
+  const status = statusLabel(run.status, run.convergenceReason);
+
+  if (run.roundCount === 0) {
+    return status === "Ended early"
+      ? "Ended before any review rounds finished"
+      : "No review rounds completed";
+  }
+
+  const roundsSummary = pluralize(run.roundCount, "round");
+  if (run.gapCount === 0) {
+    return `${status} after ${roundsSummary}`;
+  }
+
+  return `${status} • ${roundsSummary} • ${pluralize(run.gapCount, "gap")} remaining`;
+}
+
+function describeRunTitle(
+  run: VerificationRunEntry,
+  index: number,
+  currentGeneration: number | null,
+): string {
+  const isCurrentGeneration = currentGeneration != null && run.generation === currentGeneration;
+  if (isCurrentGeneration) {
+    return run.inProgress ? "Current verification" : "Latest verification";
+  }
+
+  const previousOffset = currentGeneration != null ? index : index + 1;
+  if (previousOffset <= 1) {
+    return "Previous verification";
+  }
+
+  return `Earlier verification ${previousOffset}`;
 }
 
 function verificationAgentLabel(agentState: string | undefined): string {
@@ -102,9 +151,6 @@ interface VerificationRunPickerProps {
   runs: VerificationRunEntry[];
   activeGeneration: number | null;
   currentGeneration: number | null;
-  currentStatus: VerificationStatus;
-  currentRound?: number;
-  maxRounds?: number;
   onSelect: (generation: number) => void;
 }
 
@@ -112,9 +158,6 @@ function VerificationRunPicker({
   runs,
   activeGeneration,
   currentGeneration,
-  currentStatus,
-  currentRound,
-  maxRounds,
   onSelect,
 }: VerificationRunPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -143,21 +186,13 @@ function VerificationRunPicker({
   }, [isOpen]);
 
   const activeRun = runs.find((r) => r.generation === activeGeneration) ?? runs[0];
-  const isCurrentRun =
-    currentGeneration != null &&
-    (activeGeneration == null || activeGeneration === currentGeneration);
-
-  // Build trigger label
-  let triggerLabel: string;
-  if (isCurrentRun && currentRound !== undefined && maxRounds !== undefined) {
-    triggerLabel = `Current run (Round ${currentRound}/${maxRounds})`;
-  } else if (isCurrentRun) {
-    triggerLabel = "Current run";
-  } else if (activeRun) {
-    triggerLabel = `Run ${activeRun.runNumber}`;
-  } else {
-    triggerLabel = "Select run";
-  }
+  const activeIndex = activeRun ? runs.findIndex((run) => run.generation === activeRun.generation) : -1;
+  const triggerTitle = activeRun
+    ? describeRunTitle(activeRun, activeIndex, currentGeneration)
+    : "Verification history";
+  const triggerDetail = activeRun
+    ? describeRunSummary(activeRun)
+    : "Select a previous verification to review";
 
   if (runs.length <= 1) {
     // Single run — just show a non-interactive label
@@ -167,9 +202,16 @@ function VerificationRunPicker({
         style={{ background: "var(--overlay-faint)" }}
       >
         <History className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
-        <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-          {triggerLabel}
-        </span>
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+            {triggerTitle}
+          </div>
+          {triggerDetail && (
+            <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              {triggerDetail}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -179,7 +221,7 @@ function VerificationRunPicker({
       {/* Trigger button */}
       <button
         onClick={() => setIsOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors duration-150"
+        className="flex items-center gap-2 px-2 py-1 rounded-md transition-colors duration-150"
         style={{
           background: isOpen ? "var(--overlay-weak)" : "var(--overlay-faint)",
           border: "1px solid var(--overlay-weak)",
@@ -195,9 +237,14 @@ function VerificationRunPicker({
         data-testid="verification-run-picker-trigger"
       >
         <History className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
-        <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
-          {triggerLabel}
-        </span>
+        <div className="min-w-0 text-left">
+          <div className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+            {triggerTitle}
+          </div>
+          <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {triggerDetail}
+          </div>
+        </div>
         <ChevronDown
           className="w-3 h-3 shrink-0 transition-transform duration-150"
           style={{
@@ -218,10 +265,10 @@ function VerificationRunPicker({
             border: "1px solid var(--overlay-moderate)",
           }}
         >
-          {runs.map((run) => {
+          {runs.map((run, index) => {
             const isActive = run.generation === activeGeneration || (!activeGeneration && run.generation === currentGeneration);
-            const isNewest = currentGeneration != null && run.generation === currentGeneration;
-            const label = isNewest ? statusLabel(currentStatus) : statusLabel(run.status);
+            const title = describeRunTitle(run, index, currentGeneration);
+            const summary = describeRunSummary(run);
 
             return (
               <button
@@ -246,26 +293,19 @@ function VerificationRunPicker({
                     ? withAlpha("var(--accent-primary)", 8)
                     : "transparent";
                 }}
-                data-testid={`verification-run-option-${run.runNumber}`}
+                data-testid={`verification-run-option-generation-${run.generation}`}
               >
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <span
                     className="text-[12px] font-medium truncate"
                     style={{ color: isActive ? "var(--accent-primary)" : "var(--text-primary)" }}
                   >
-                    Run {run.runNumber}
-                    <span className="ml-1.5 text-[10px] font-normal" style={{ color: "var(--text-muted)" }}>— {label}</span>
+                    {title}
                   </span>
                   <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    Gen {run.generation}
+                    {summary}
                   </span>
                 </div>
-                <span
-                  className="text-[10px] shrink-0"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {run.roundCount}r / {run.gapCount}g
-                </span>
               </button>
             );
           })}
@@ -465,13 +505,25 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   // Build sorted run entries from native verification lineage (newest first for display).
   const runEntries: VerificationRunEntry[] = [...(currentVerificationData?.runHistory ?? [])]
     .sort((a, b) => a.generation - b.generation)
-    .map((run, index) => ({
-      generation: run.generation,
-      runNumber: index + 1,
-      status: run.status,
-      roundCount: run.roundCount,
-      gapCount: run.gapCount,
-    }))
+    .map((run) => {
+      const isCurrentGeneration = run.generation === currentGeneration;
+      const currentRound = run.currentRound ?? (isCurrentGeneration ? currentVerificationData?.currentRound : undefined);
+      const maxRounds = run.maxRounds ?? (isCurrentGeneration ? currentVerificationData?.maxRounds : undefined);
+      const convergenceReason =
+        run.convergenceReason ??
+        (isCurrentGeneration ? currentVerificationData?.convergenceReason : undefined);
+
+      return {
+        generation: run.generation,
+        status: run.status,
+        inProgress: run.inProgress,
+        ...(currentRound !== undefined && { currentRound }),
+        ...(maxRounds !== undefined && { maxRounds }),
+        roundCount: run.roundCount,
+        gapCount: run.gapCount,
+        ...(convergenceReason !== undefined && { convergenceReason }),
+      };
+    })
     .reverse(); // newest first in dropdown
 
   const handleRunSelect = useCallback((generation: number) => {
@@ -679,13 +731,6 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
             runs={runEntries}
             activeGeneration={autoDisplayGeneration ?? null}
             currentGeneration={currentGeneration}
-            currentStatus={verificationStatus}
-            {...(currentVerificationData?.currentRound !== undefined && {
-              currentRound: currentVerificationData.currentRound,
-            })}
-            {...(currentVerificationData?.maxRounds !== undefined && {
-              maxRounds: currentVerificationData.maxRounds,
-            })}
             onSelect={handleRunSelect}
           />
         </div>
