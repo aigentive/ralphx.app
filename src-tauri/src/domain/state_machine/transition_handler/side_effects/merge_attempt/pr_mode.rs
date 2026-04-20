@@ -1,6 +1,8 @@
 use super::*;
 use crate::domain::state_machine::{State, TransitionHandler};
-use crate::domain::state_machine::transition_handler::TaskCore;
+use crate::domain::state_machine::transition_handler::{
+    resolve_plan_branch_pr_base, TaskCore,
+};
 
 impl<'a> TransitionHandler<'a> {
     /// PR-mode PendingMerge path (AD17).
@@ -44,7 +46,7 @@ impl<'a> TransitionHandler<'a> {
         // 2. Run concurrent merge guard with PR exclusion (AD14)
         // PR-polling tasks are excluded from the blocking check (they wait for GitHub, not local pipeline)
         let pb_repo_opt: Option<Arc<dyn PlanBranchRepository>> = Some(Arc::clone(plan_branch_repo));
-        let target_branch = plan_branch.source_branch.clone(); // source_branch = the base branch (e.g. "main")
+        let target_branch = resolve_plan_branch_pr_base(project, &plan_branch);
         if matches!(
             self.run_concurrent_merge_guard(task, task_id_str, &target_branch, project, task_repo, &pb_repo_opt).await,
             ConcurrentGuardResult::Deferred

@@ -108,6 +108,66 @@ fn build_transition_service(
     ))
 }
 
+fn setup_plan_git_repo(branch_name: &str, ahead_of_base: bool) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("set git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(path)
+        .output()
+        .expect("set git name");
+
+    std::fs::write(path.join("README.md"), "# startup pr repo\n").expect("write README");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output()
+        .expect("initial commit");
+
+    std::process::Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(path)
+        .output()
+        .expect("create plan branch");
+    if ahead_of_base {
+        std::fs::write(path.join("plan.txt"), "plan branch work\n").expect("write plan file");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("git add plan file");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "plan branch work"])
+            .current_dir(path)
+            .output()
+            .expect("plan branch commit");
+    }
+
+    std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output()
+        .expect("checkout main");
+
+    dir
+}
+
 // ============================================================================
 // Test 1: reconciler skips a healthy Merging+PR task (poller alive, not stale)
 // ============================================================================
@@ -429,7 +489,8 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
-    let working_dir = tempfile::tempdir().unwrap();
+    let branch_name = "ralphx/test/startup-create";
+    let working_dir = setup_plan_git_repo(branch_name, true);
     let project = Project::new(
         "Startup PR Repair".to_string(),
         working_dir.path().to_string_lossy().into_owned(),
@@ -445,7 +506,7 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
         ArtifactId::from_string("artifact-startup-create".to_string()),
         IdeationSessionId::from_string("session-startup-create".to_string()),
         project.id.clone(),
-        "ralphx/test/startup-create".to_string(),
+        branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());
@@ -484,6 +545,70 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
         mock_github.create_calls(),
         1,
         "startup repair should create one draft PR for the active plan"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "ralphx/test/startup-empty";
+    let working_dir = setup_plan_git_repo(branch_name, false);
+    let project = Project::new(
+        "Startup PR Empty".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge empty plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-empty".to_string()),
+        IdeationSessionId::from_string("session-startup-empty".to_string()),
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        branch_after.pr_number.is_none(),
+        "empty plan branches should not create a PR during startup recovery"
+    );
+    assert_eq!(
+        mock_github.push_calls(),
+        0,
+        "startup recovery should not push branches that are not ahead of base"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "startup recovery should not create a PR when the branch has no reviewable diff"
     );
 }
 
@@ -574,7 +699,8 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
-    let working_dir = tempfile::tempdir().unwrap();
+    let branch_name = "ralphx/test/duplicate";
+    let working_dir = setup_plan_git_repo(branch_name, true);
     let project = Project::new(
         "Startup PR Duplicate".to_string(),
         working_dir.path().to_string_lossy().into_owned(),
@@ -590,7 +716,7 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
         ArtifactId::from_string("artifact-duplicate".to_string()),
         IdeationSessionId::from_string("session-duplicate".to_string()),
         project.id.clone(),
-        "ralphx/test/duplicate".to_string(),
+        branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());

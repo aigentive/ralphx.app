@@ -657,7 +657,30 @@ mod mode_switch_tests {
             plan_branch_repo.clone(),
         ));
 
-        let working_dir = tempfile::tempdir().unwrap();
+        let working_dir = create_git_repo();
+        let repo_path = working_dir.path();
+        create_commit_on_branch(repo_path, "main");
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "ralphx/test/plan-toggle"])
+            .current_dir(repo_path)
+            .output()
+            .expect("create plan branch");
+        std::fs::write(repo_path.join("plan.txt"), "plan branch work\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("stage plan file");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "plan branch work"])
+            .current_dir(repo_path)
+            .output()
+            .expect("commit plan branch work");
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output()
+            .expect("checkout main");
         let mut project = Project::new(
             "PR Toggle".to_string(),
             working_dir.path().to_string_lossy().into_owned(),

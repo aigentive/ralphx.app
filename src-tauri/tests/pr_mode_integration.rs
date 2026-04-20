@@ -120,6 +120,63 @@ fn make_pr_plan_branch(
     pb
 }
 
+fn setup_plan_git_repo(branch_name: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("set git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(path)
+        .output()
+        .expect("set git name");
+
+    std::fs::write(path.join("README.md"), "# pr mode repo\n").expect("write README");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output()
+        .expect("initial commit");
+
+    std::process::Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(path)
+        .output()
+        .expect("create plan branch");
+    std::fs::write(path.join("plan.txt"), "plan branch work\n").expect("write plan file");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add plan file");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "plan branch work"])
+        .current_dir(path)
+        .output()
+        .expect("plan branch commit");
+    std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output()
+        .expect("checkout main");
+
+    dir
+}
+
 #[tokio::test]
 async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge() {
     let task_repo = Arc::new(MemoryTaskRepository::new());
@@ -137,7 +194,8 @@ async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge()
         plan_branch_repo.clone(),
     ));
 
-    let working_dir = tempfile::tempdir().unwrap();
+    let branch_name = "ralphx/test/plan-scheduler";
+    let working_dir = setup_plan_git_repo(branch_name);
     let mut project = Project::new(
         "PR Scheduler".to_string(),
         working_dir.path().to_string_lossy().into_owned(),
@@ -155,7 +213,7 @@ async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge()
         ArtifactId::from_string("sched-artifact".to_string()),
         IdeationSessionId::from_string("sched-session".to_string()),
         project.id.clone(),
-        "ralphx/test/plan-scheduler".to_string(),
+        branch_name.to_string(),
         "main".to_string(),
     );
     plan_branch.merge_task_id = Some(merge_task_id.clone());

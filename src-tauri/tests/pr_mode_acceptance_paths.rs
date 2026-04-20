@@ -104,55 +104,12 @@ async fn create_single_feature_proposal(state: &HttpServerState, session_id: &Id
         .unwrap();
 }
 
-async fn wait_for_pr_creation(state: &HttpServerState, session_id: &IdeationSessionId) {
-    for _ in 0..10 {
-        let branch = state
-            .app_state
-            .plan_branch_repo
-            .get_by_session_id(session_id)
-            .await
-            .unwrap();
-
-        if let Some(branch) = branch {
-            if branch.pr_number.is_some() {
-                return;
-            }
-        }
-
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-
-    let branch = state
-        .app_state
-        .plan_branch_repo
-        .get_by_session_id(session_id)
-        .await
-        .unwrap();
-    let session = state
-        .app_state
-        .ideation_session_repo
-        .get_by_id(session_id)
-        .await
-        .unwrap()
-        .unwrap();
-    let tasks = state
-        .app_state
-        .task_repo
-        .get_by_project(&session.project_id)
-        .await
-        .unwrap();
-
-    panic!(
-        "timed out waiting for PR-backed plan branch to be created; branch={branch:?}; task_statuses={:?}",
-        tasks
-            .into_iter()
-            .map(|task| (task.title, task.internal_status))
-            .collect::<Vec<_>>()
-    );
+async fn wait_for_initial_scheduler_tick() {
+    tokio::time::sleep(Duration::from_millis(300)).await;
 }
 
 #[tokio::test]
-async fn accept_finalize_starts_pr_mode_execution_for_new_plan() {
+async fn accept_finalize_defers_pr_creation_until_plan_branch_has_changes() {
     let (state, mock_github) = setup_http_state_with_pr_mode();
     let repo = setup_real_git_repo();
     let session_id = create_project_and_session(
@@ -178,7 +135,7 @@ async fn accept_finalize_starts_pr_mode_execution_for_new_plan() {
         response.err()
     );
 
-    wait_for_pr_creation(&state, &session_id).await;
+    wait_for_initial_scheduler_tick().await;
 
     let branch = state
         .app_state
@@ -188,16 +145,24 @@ async fn accept_finalize_starts_pr_mode_execution_for_new_plan() {
         .unwrap()
         .unwrap();
     assert!(branch.pr_eligible, "accepted plan branch should be PR-eligible");
-    assert_eq!(branch.pr_number, Some(1), "draft PR should be recorded on the plan branch");
-    assert!(mock_github.push_calls() > 0, "execution should push the plan branch");
     assert!(
-        mock_github.create_calls() > 0,
-        "execution should create a draft PR when PR mode is enabled"
+        branch.pr_number.is_none(),
+        "accepting a plan should not create a PR before the plan branch has reviewable changes"
+    );
+    assert_eq!(
+        mock_github.push_calls(),
+        0,
+        "initial scheduling should not push an empty plan branch"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "initial scheduling should not create a draft PR before any work lands on the plan branch"
     );
 }
 
 #[tokio::test]
-async fn finalize_proposals_starts_pr_mode_execution_for_internal_agents() {
+async fn finalize_proposals_defers_pr_creation_until_plan_branch_has_changes() {
     let (state, mock_github) = setup_http_state_with_pr_mode();
     let repo = setup_real_git_repo();
     let session_id =
@@ -219,7 +184,7 @@ async fn finalize_proposals_starts_pr_mode_execution_for_internal_agents() {
         response.err()
     );
 
-    wait_for_pr_creation(&state, &session_id).await;
+    wait_for_initial_scheduler_tick().await;
 
     let branch = state
         .app_state
@@ -229,13 +194,16 @@ async fn finalize_proposals_starts_pr_mode_execution_for_internal_agents() {
         .unwrap()
         .unwrap();
     assert!(branch.pr_eligible, "internal finalize path should create a PR-eligible plan branch");
-    assert_eq!(branch.pr_number, Some(1));
-    assert!(mock_github.push_calls() > 0);
-    assert!(mock_github.create_calls() > 0);
+    assert!(
+        branch.pr_number.is_none(),
+        "internal finalize should defer PR creation until the plan branch is ahead of base"
+    );
+    assert_eq!(mock_github.push_calls(), 0);
+    assert_eq!(mock_github.create_calls(), 0);
 }
 
 #[tokio::test]
-async fn external_apply_proposals_starts_pr_mode_execution_for_external_agents() {
+async fn external_apply_proposals_defers_pr_creation_until_plan_branch_has_changes() {
     let (state, mock_github) = setup_http_state_with_pr_mode();
     let repo = setup_real_git_repo();
     let session_id =
@@ -268,7 +236,7 @@ async fn external_apply_proposals_starts_pr_mode_execution_for_external_agents()
         response.err()
     );
 
-    wait_for_pr_creation(&state, &session_id).await;
+    wait_for_initial_scheduler_tick().await;
 
     let branch = state
         .app_state
@@ -278,7 +246,10 @@ async fn external_apply_proposals_starts_pr_mode_execution_for_external_agents()
         .unwrap()
         .unwrap();
     assert!(branch.pr_eligible, "external apply path should create a PR-eligible plan branch");
-    assert_eq!(branch.pr_number, Some(1));
-    assert!(mock_github.push_calls() > 0);
-    assert!(mock_github.create_calls() > 0);
+    assert!(
+        branch.pr_number.is_none(),
+        "external apply should defer PR creation until the plan branch is ahead of base"
+    );
+    assert_eq!(mock_github.push_calls(), 0);
+    assert_eq!(mock_github.create_calls(), 0);
 }

@@ -15,7 +15,9 @@ use crate::application::TaskTransitionService;
 use crate::domain::entities::{InternalStatus, PlanBranchStatus};
 use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use crate::domain::services::GithubServiceTrait;
-use crate::domain::state_machine::transition_handler::create_draft_pr_if_needed;
+use crate::domain::state_machine::transition_handler::{
+    create_draft_pr_if_needed, plan_branch_has_reviewable_diff,
+};
 
 /// Re-create draft PRs that should already exist for active PR-mode plans.
 ///
@@ -102,6 +104,31 @@ pub async fn recover_missing_draft_prs(
                     merge_task_id = merge_task.id.as_str(),
                     status = ?merge_task.internal_status,
                     "PR startup recovery: skipping terminal merge task with no PR"
+                );
+                continue;
+            }
+
+            let branch_has_reviewable_diff =
+                match plan_branch_has_reviewable_diff(&project, &plan_branch).await {
+                    Ok(has_diff) => has_diff,
+                    Err(e) => {
+                        tracing::warn!(
+                            branch_id = plan_branch.id.as_str(),
+                            branch = %plan_branch.branch_name,
+                            merge_task_id = merge_task.id.as_str(),
+                            error = %e,
+                            "PR startup recovery: failed to determine whether the active plan branch is ahead of base"
+                        );
+                        false
+                    }
+                };
+            if !branch_has_reviewable_diff {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    merge_task_id = merge_task.id.as_str(),
+                    status = ?merge_task.internal_status,
+                    "PR startup recovery: skipping active plan branch with no reviewable diff"
                 );
                 continue;
             }

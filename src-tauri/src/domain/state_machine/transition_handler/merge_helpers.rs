@@ -822,14 +822,6 @@ pub(super) async fn resolve_task_base_branch(
                 feature_branch = %pb.branch_name,
                 "Resolved task base branch to plan feature branch"
             );
-            // Draft PR creation (AD10: CAS guard, idempotent)
-            // Note: plan_branch_repo is already &Arc<dyn PlanBranchRepository> (destructured above)
-            if pb.pr_eligible {
-                if let (Some(ref guard), Some(ref github)) = (pr_creation_guard, github_service) {
-                    create_draft_pr_if_needed(task, project, &pb, guard, github, plan_branch_repo)
-                        .await;
-                }
-            }
             pb.branch_name
         }
         PlanBranchStatus::Merged => {
@@ -919,6 +911,37 @@ async fn build_pr_body(
     body
 }
 
+pub(crate) fn resolve_plan_branch_pr_base(project: &Project, pb: &PlanBranch) -> String {
+    pb.base_branch_override
+        .clone()
+        .or_else(|| project.base_branch.clone())
+        .unwrap_or_else(|| pb.source_branch.clone())
+}
+
+pub(crate) async fn plan_branch_reviewable_commit_count(
+    project: &Project,
+    pb: &PlanBranch,
+) -> AppResult<u32> {
+    let repo_path = Path::new(&project.working_directory);
+    let pr_base = resolve_plan_branch_pr_base(project, pb);
+
+    if !GitService::branch_exists(repo_path, &pb.branch_name)
+        .await
+        .unwrap_or(false)
+    {
+        return Ok(0);
+    }
+
+    GitService::count_commits_not_on_branch(repo_path, &pb.branch_name, &pr_base).await
+}
+
+pub(crate) async fn plan_branch_has_reviewable_diff(
+    project: &Project,
+    pb: &PlanBranch,
+) -> AppResult<bool> {
+    Ok(plan_branch_reviewable_commit_count(project, pb).await? > 0)
+}
+
 /// Create a draft PR for the plan branch if not already created.
 ///
 /// CAS guard (AD10): DashMap entry prevents duplicate creation across concurrent task executions.
@@ -968,6 +991,25 @@ pub(crate) async fn create_draft_pr_if_needed(
         return;
     }
 
+    let reviewable_commit_count = match plan_branch_reviewable_commit_count(project, &current_pb).await {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(
+                branch = %branch_name,
+                error = %e,
+                "create_draft_pr_if_needed: failed to determine whether the plan branch is ahead of base"
+            );
+            return;
+        }
+    };
+    if reviewable_commit_count == 0 {
+        tracing::debug!(
+            branch = %branch_name,
+            "create_draft_pr_if_needed: skipping PR creation because the plan branch has no reviewable changes yet"
+        );
+        return;
+    }
+
     // Run with timeout — task proceeds normally on timeout
     let timed_out = timeout(Duration::from_secs(30), async {
         // --- PUSH ---
@@ -998,11 +1040,11 @@ pub(crate) async fn create_draft_pr_if_needed(
         }
 
         // --- CREATE DRAFT PR ---
-        let base = project.base_branch.as_deref().unwrap_or("main");
+        let base = resolve_plan_branch_pr_base(project, &current_pb);
         let pr_title = format!("Draft: {}", branch_name);
 
         // Build PR body
-        let pr_body = build_pr_body(task, project, pb, repo_path).await;
+        let pr_body = build_pr_body(task, project, &current_pb, repo_path).await;
 
         // Write body to temp file
         let body_file = match tempfile::NamedTempFile::new() {
@@ -1024,7 +1066,7 @@ pub(crate) async fn create_draft_pr_if_needed(
             "create_draft_pr_if_needed: creating draft PR"
         );
         match github
-            .create_draft_pr(repo_path, base, &branch_name, &pr_title, body_file.path())
+            .create_draft_pr(repo_path, &base, &branch_name, &pr_title, body_file.path())
             .await
         {
             Ok((pr_number, pr_url)) => {

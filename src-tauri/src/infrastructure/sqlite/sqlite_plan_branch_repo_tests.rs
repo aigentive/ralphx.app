@@ -445,3 +445,18 @@ async fn test_delete_returns_not_found_for_nonexistent() {
     let err = result.unwrap_err();
     assert!(matches!(err, crate::error::AppError::NotFound(_)));
 }
+
+#[tokio::test]
+async fn test_update_pr_push_status_persists_without_updated_at_column() {
+    let (_db, repo) = setup_repo();
+    let branch = create_test_branch();
+    let branch_id = branch.id.clone();
+
+    repo.create(branch).await.unwrap();
+    repo.update_pr_push_status(&branch_id, PrPushStatus::Pushed)
+        .await
+        .unwrap();
+
+    let retrieved = repo.get_by_id(&branch_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.pr_push_status, PrPushStatus::Pushed);
+}

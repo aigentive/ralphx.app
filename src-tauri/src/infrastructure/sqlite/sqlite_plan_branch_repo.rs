@@ -567,8 +567,8 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE plan_branches SET pr_push_status = ?1, updated_at = ?2 WHERE id = ?3",
-                    rusqlite::params![status_str, chrono::Utc::now().to_rfc3339(), id_str],
+                    "UPDATE plan_branches SET pr_push_status = ?1 WHERE id = ?2",
+                    rusqlite::params![status_str, id_str],
                 )
                 .map_err(|e| {
                     AppError::Database(format!("Failed to update pr_push_status: {}", e))

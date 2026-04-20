@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::PlanBranchStatus;
 use crate::domain::state_machine::TransitionHandler;
 
 impl<'a> TransitionHandler<'a> {
@@ -184,6 +185,45 @@ impl<'a> TransitionHandler<'a> {
             &self.machine.context.services.project_repo,
         ) {
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                if task.category != TaskCategory::PlanMerge {
+                    if let (
+                        Some(plan_branch_repo),
+                        Some(pr_creation_guard),
+                        Some(github_service),
+                    ) = (
+                        plan_branch_repo.as_ref(),
+                        self.machine.context.services.pr_creation_guard.as_ref(),
+                        self.machine.context.services.github_service.as_ref(),
+                    ) {
+                        if let Ok(Some(project)) = project_repo
+                            .get_by_id(&ProjectId::from_string(self.machine.context.project_id.clone()))
+                            .await
+                        {
+                            if let Some(plan_branch) =
+                                super::super::merge_helpers::resolve_task_plan_branch_record(
+                                    &task,
+                                    plan_branch_repo,
+                                )
+                                .await
+                            {
+                                if plan_branch.pr_eligible
+                                    && plan_branch.status == PlanBranchStatus::Active
+                                {
+                                    super::super::merge_helpers::create_draft_pr_if_needed(
+                                        &task,
+                                        &project,
+                                        &plan_branch,
+                                        pr_creation_guard,
+                                        github_service,
+                                        plan_branch_repo,
+                                    )
+                                    .await;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if task.category == TaskCategory::PlanMerge {
                     let project_id =
                         ProjectId::from_string(self.machine.context.project_id.clone());

@@ -48,11 +48,74 @@ fn make_pr_eligible_plan_branch(
 }
 
 async fn setup_project(project_repo: &MemoryProjectRepository) {
+    setup_project_with_path(project_repo, "/tmp/pr-mode-test".to_string()).await;
+}
+
+async fn setup_project_with_path(project_repo: &MemoryProjectRepository, working_directory: String) {
     let mut project =
-        Project::new("test-project".to_string(), "/tmp/pr-mode-test".to_string());
+        Project::new("test-project".to_string(), working_directory);
     project.id = ProjectId::from_string("proj-1".to_string());
     project.base_branch = Some("main".to_string());
     project_repo.create(project).await.unwrap();
+}
+
+fn setup_plan_git_repo(branch_name: &str, ahead_of_base: bool) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("set git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(path)
+        .output()
+        .expect("set git name");
+
+    std::fs::write(path.join("README.md"), "# pr mode state machine repo\n").expect("write README");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output()
+        .expect("initial commit");
+
+    std::process::Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(path)
+        .output()
+        .expect("create plan branch");
+    if ahead_of_base {
+        std::fs::write(path.join("plan.txt"), "plan branch work\n").expect("write plan file");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("git add plan file");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "plan branch work"])
+            .current_dir(path)
+            .output()
+            .expect("plan branch commit");
+    }
+    std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output()
+        .expect("checkout main");
+
+    dir
 }
 
 async fn create_pending_merge_task(
@@ -129,7 +192,9 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
-    setup_project(&project_repo).await;
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
     let task_id = create_pending_merge_task(&task_repo, "task-pr-new").await;
 
     // No pr_number — should trigger PR creation path
@@ -179,6 +244,47 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
         updated_pb.pr_number,
         Some(99),
         "pr_number should be persisted after creation"
+    );
+}
+
+#[tokio::test]
+async fn test_pr_mode_without_pr_number_skips_empty_plan_branch() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, false);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let task_id = create_pending_merge_task(&task_repo, "task-pr-empty").await;
+
+    let pb = make_pr_eligible_plan_branch(&task_id, None, false);
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
+
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::PendingMerge).await;
+    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+
+    let state = mock_github.state();
+    assert_eq!(state.push_branch_calls, 0, "empty plan branch should not be pushed to GitHub");
+    assert_eq!(
+        state.create_draft_pr_calls, 0,
+        "empty plan branch should not create a PR in PendingMerge"
+    );
+    assert_eq!(
+        state.mark_pr_ready_calls, 0,
+        "empty plan branch should not enter the PR-ready flow"
     );
 }
 
@@ -428,6 +534,59 @@ async fn test_post_merge_cleanup_idempotency_already_merged_plan_branch() {
         PlanBranchStatus::Merged,
         "plan branch should still be Merged after idempotent cleanup"
     );
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_merged_state_creates_draft_pr_after_first_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+
+    let mut task =
+        Task::new(ProjectId::from_string("proj-1".to_string()), "Merged plan task".to_string());
+    task.id = TaskId::from_string("task-plan-merged".to_string());
+    task.internal_status = InternalStatus::Merged;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch = make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    mock_github.will_create_pr(123, "https://github.com/owner/repo/pull/123");
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_pr_creation_guard(Arc::new(dashmap::DashMap::new()))
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
+
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::Merged).await;
+    assert!(result.is_ok(), "on_enter(Merged) should succeed: {:?}", result);
+
+    let state = mock_github.state();
+    assert_eq!(state.push_branch_calls, 1, "first merged plan task should push the plan branch");
+    assert_eq!(
+        state.create_draft_pr_calls, 1,
+        "first merged plan task should create the draft PR once the plan branch has reviewable changes"
+    );
+    drop(state);
+
+    let updated_plan_branch = plan_branch_repo.get_by_id(&branch_id).await.unwrap().unwrap();
+    assert_eq!(updated_plan_branch.pr_number, Some(123));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
