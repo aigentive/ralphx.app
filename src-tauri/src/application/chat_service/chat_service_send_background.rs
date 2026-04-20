@@ -27,7 +27,7 @@ use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversationId, ChatMessageAttribution, InternalStatus,
-    TaskId,
+    SessionPurpose, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
@@ -39,6 +39,7 @@ use crate::domain::repositories::{
     TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
+use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 use tokio_util::sync::CancellationToken;
 
 /// All repository and service dependencies grouped together.
@@ -120,6 +121,116 @@ fn session_changed_after_resume(stored: Option<&str>, new_id: Option<&str>) -> b
     }
 }
 
+#[derive(Debug, Clone)]
+struct AssistantTranscriptSegment {
+    content: String,
+    tool_calls: Vec<crate::infrastructure::agents::claude::ToolCall>,
+    content_blocks: Vec<crate::infrastructure::agents::claude::ContentBlockItem>,
+}
+
+fn build_assistant_transcript_segments(
+    tool_calls: &[crate::infrastructure::agents::claude::ToolCall],
+    content_blocks: &[crate::infrastructure::agents::claude::ContentBlockItem],
+) -> Vec<AssistantTranscriptSegment> {
+    let mut segments = Vec::new();
+    let mut current = AssistantTranscriptSegment {
+        content: String::new(),
+        tool_calls: Vec::new(),
+        content_blocks: Vec::new(),
+    };
+    let mut tool_index = 0usize;
+    let mut saw_tool_in_current = false;
+
+    for block in content_blocks {
+        if matches!(block, ContentBlockItem::Text { .. }) && saw_tool_in_current {
+            if !current.content_blocks.is_empty() {
+                segments.push(current);
+                current = AssistantTranscriptSegment {
+                    content: String::new(),
+                    tool_calls: Vec::new(),
+                    content_blocks: Vec::new(),
+                };
+            }
+            saw_tool_in_current = false;
+        }
+
+        match block {
+            ContentBlockItem::Text { text } => {
+                current.content.push_str(text);
+                current.content_blocks.push(block.clone());
+            }
+            ContentBlockItem::ToolUse {
+                id,
+                name,
+                arguments,
+                result,
+                parent_tool_use_id,
+                diff_context,
+            } => {
+                let tool_call = tool_calls.get(tool_index).cloned().unwrap_or_else(|| {
+                    crate::infrastructure::agents::claude::ToolCall {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments: arguments.clone(),
+                        result: result.clone(),
+                        parent_tool_use_id: parent_tool_use_id.clone(),
+                        diff_context: diff_context
+                            .clone()
+                            .and_then(|value| serde_json::from_value(value).ok()),
+                        stats: None,
+                    }
+                });
+                tool_index += 1;
+                saw_tool_in_current = true;
+                current.tool_calls.push(tool_call);
+                current.content_blocks.push(block.clone());
+            }
+        }
+    }
+
+    if !current.content_blocks.is_empty() {
+        segments.push(current);
+    }
+
+    segments
+}
+
+fn attribution_from_message(
+    message: &crate::domain::entities::ChatMessage,
+) -> ChatMessageAttribution {
+    ChatMessageAttribution {
+        attribution_source: message.attribution_source.clone(),
+        provider_harness: message.provider_harness,
+        provider_session_id: message.provider_session_id.clone(),
+        upstream_provider: message.upstream_provider.clone(),
+        provider_profile: message.provider_profile.clone(),
+        logical_model: message.logical_model.clone(),
+        effective_model_id: message.effective_model_id.clone(),
+        logical_effort: message.logical_effort,
+        effective_effort: message.effective_effort.clone(),
+    }
+}
+
+pub(super) async fn should_split_verification_transcript(
+    context_type: ChatContextType,
+    context_id: &str,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+) -> bool {
+    if context_type != ChatContextType::Ideation {
+        return false;
+    }
+
+    ideation_session_repo
+        .get_by_id(&crate::domain::entities::IdeationSessionId::from_string(
+            context_id.to_string(),
+        ))
+        .await
+        .ok()
+        .flatten()
+        .map(|session| session.session_purpose == SessionPurpose::Verification)
+        .unwrap_or(false)
+}
+
 pub(super) async fn finalize_assistant_message<R: Runtime>(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     app_handle: Option<&AppHandle<R>>,
@@ -156,6 +267,98 @@ pub(super) async fn finalize_assistant_message<R: Runtime>(
     }
 }
 
+pub(super) async fn finalize_structured_assistant_message<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: &ChatConversationId,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls: &[crate::infrastructure::agents::claude::ToolCall],
+    content_blocks: &[crate::infrastructure::agents::claude::ContentBlockItem],
+    split_verification_transcript: bool,
+) {
+    let event_ctx = event_context(conversation_id, &context_type, context_id);
+    if split_verification_transcript {
+        let segments = build_assistant_transcript_segments(tool_calls, content_blocks);
+        if segments.len() > 1 {
+            let original_message = chat_message_repo
+                .get_by_id(&crate::domain::entities::ChatMessageId::from_string(
+                    message_id.to_string(),
+                ))
+                .await
+                .ok()
+                .flatten();
+            let attribution = original_message.as_ref().map(attribution_from_message);
+
+            if let Some(first_segment) = segments.first() {
+                let tool_calls_json = serde_json::to_string(&first_segment.tool_calls).ok();
+                let content_blocks_json = serde_json::to_string(&first_segment.content_blocks).ok();
+                finalize_assistant_message(
+                    chat_message_repo,
+                    app_handle,
+                    &event_ctx,
+                    message_id,
+                    role,
+                    &first_segment.content,
+                    tool_calls_json.as_deref(),
+                    content_blocks_json.as_deref(),
+                )
+                .await;
+            }
+
+            for segment in segments.iter().skip(1) {
+                let mut extra_message = chat_service_context::create_assistant_message(
+                    context_type,
+                    context_id,
+                    &segment.content,
+                    conversation_id.clone(),
+                    &segment.tool_calls,
+                    &segment.content_blocks,
+                );
+                if let Some(attribution) = attribution.clone() {
+                    extra_message = extra_message.with_attribution(attribution);
+                }
+
+                if let Ok(created_message) = chat_message_repo.create(extra_message).await {
+                    if let Some(handle) = app_handle {
+                        let _ = handle.emit(
+                            "agent:message_created",
+                            AgentMessageCreatedPayload {
+                                message_id: created_message.id.as_str().to_string(),
+                                conversation_id: event_ctx.conversation_id.clone(),
+                                context_type: event_ctx.context_type.clone(),
+                                context_id: event_ctx.context_id.clone(),
+                                role: role.to_string(),
+                                content: created_message.content.clone(),
+                                created_at: None,
+                                metadata: None,
+                            },
+                        );
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    let tool_calls_json = serde_json::to_string(tool_calls).ok();
+    let content_blocks_json = serde_json::to_string(content_blocks).ok();
+    finalize_assistant_message(
+        chat_message_repo,
+        app_handle,
+        &event_ctx,
+        message_id,
+        role,
+        content,
+        tool_calls_json.as_deref(),
+        content_blocks_json.as_deref(),
+    )
+    .await;
+}
+
 #[doc(hidden)]
 pub async fn finalize_assistant_message_for_test<R: Runtime>(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
@@ -183,6 +386,36 @@ pub async fn finalize_assistant_message_for_test<R: Runtime>(
         content,
         tool_calls_json,
         content_blocks_json,
+    )
+    .await;
+}
+
+#[doc(hidden)]
+pub async fn finalize_structured_assistant_message_for_test<R: Runtime>(
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    app_handle: Option<&AppHandle<R>>,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: &ChatConversationId,
+    message_id: &str,
+    role: &str,
+    content: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlockItem],
+    split_verification_transcript: bool,
+) {
+    finalize_structured_assistant_message(
+        chat_message_repo,
+        app_handle,
+        context_type,
+        context_id,
+        conversation_id,
+        message_id,
+        role,
+        content,
+        tool_calls,
+        content_blocks,
+        split_verification_transcript,
     )
     .await;
 }
@@ -258,6 +491,12 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
 
         tracing::debug!("send_background start");
         let event_ctx = event_context(&conversation_id, &context_type, &context_id);
+        let split_verification_transcript = should_split_verification_transcript(
+            context_type,
+            &context_id,
+            &ideation_session_repo,
+        )
+        .await;
 
         // Clone completion signal EARLY for Merge/Review contexts.
         // The HTTP handlers (complete_merge, complete_review) call notify_one() then remove()
@@ -330,6 +569,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Some(agent_run_id.clone()),
             execution_state.clone(),
             Some(Arc::clone(&conversation_repo)),
+            split_verification_transcript,
         )
         .await;
 
@@ -545,17 +785,18 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         turns_finalized,
                     );
                 } else if has_output {
-                    let tool_calls_json = serde_json::to_string(&tool_calls).ok();
-                    let content_blocks_json = serde_json::to_string(&content_blocks).ok();
-                    finalize_assistant_message(
+                    finalize_structured_assistant_message(
                         &chat_message_repo,
                         app_handle.as_ref(),
-                        &event_ctx,
+                        context_type,
+                        &context_id,
+                        &conversation_id,
                         &pre_assistant_msg_id,
                         &assistant_role,
                         &response_text,
-                        tool_calls_json.as_deref(),
-                        content_blocks_json.as_deref(),
+                        &tool_calls,
+                        &content_blocks,
+                        split_verification_transcript,
                     )
                     .await;
                 } else {
