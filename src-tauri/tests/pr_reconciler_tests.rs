@@ -4,19 +4,20 @@
 //! the PendingMerge PR skip guard, the mode_switch bypass in
 //! `reconcile_merge_incomplete_task`, and the startup recovery helper.
 
+mod common;
+
 use std::sync::Arc;
 
 use chrono::Utc;
-use ralphx_lib::application::pr_startup_recovery::recover_pr_pollers;
+use common::MockGithubService;
+use ralphx_lib::application::pr_startup_recovery::{recover_missing_draft_prs, recover_pr_pollers};
 use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project, Task, TaskId,
+    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project, Task, TaskCategory, TaskId,
 };
-use ralphx_lib::domain::repositories::{
-    PlanBranchRepository, ProjectRepository, TaskRepository,
-};
+use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
 
 // ============================================================================
@@ -163,7 +164,7 @@ async fn test_reconciler_skips_healthy_pr_merging_task() {
     // the dead-poller restart path fires (covered in test 2). With pr_polling_active=false
     // the PR block is skipped entirely — that is the boundary we confirm here.
     let pr_registry = Arc::new(PrPollerRegistry::new(
-        None,                                                   // no github service
+        None, // no github service
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
@@ -216,8 +217,8 @@ async fn test_reconciler_detects_dead_poller_and_restarts() {
         project.id.clone(),
         &task.id,
         1234,
-        true,  // pr_polling_active = true
-        None,  // last_polled_at = None
+        true, // pr_polling_active = true
+        None, // last_polled_at = None
     );
     plan_branch_repo.create(pb).await.unwrap();
 
@@ -299,7 +300,11 @@ async fn test_mode_switch_bypasses_guards() {
         })
         .to_string(),
     );
-    app_state.task_repo.create(blocked_task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
 
     let reconciler = build_reconciler(&app_state, &execution_state);
 
@@ -418,6 +423,213 @@ async fn test_startup_recovery_restarts_pollers() {
     );
 }
 
+#[tokio::test]
+async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let working_dir = tempfile::tempdir().unwrap();
+    let project = Project::new(
+        "Startup PR Repair".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge active plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-create".to_string()),
+        IdeationSessionId::from_string("session-startup-create".to_string()),
+        project.id.clone(),
+        "ralphx/test/startup-create".to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(branch_after.pr_number, Some(1));
+    assert_eq!(
+        branch_after.pr_url.as_deref(),
+        Some("https://github.com/owner/repo/pull/1")
+    );
+    assert_eq!(
+        mock_github.push_calls(),
+        1,
+        "startup repair should push the plan branch once"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        1,
+        "startup repair should create one draft PR for the active plan"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_skips_terminal_or_already_open_prs() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let working_dir = tempfile::tempdir().unwrap();
+    let project = Project::new(
+        "Startup PR Skip".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut existing_pr_task = Task::new(project.id.clone(), "Existing PR merge task".to_string());
+    existing_pr_task.category = TaskCategory::PlanMerge;
+    existing_pr_task.internal_status = InternalStatus::Blocked;
+    let existing_pr_task = task_repo.create(existing_pr_task).await.unwrap();
+
+    let mut existing_pr_branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-existing-pr".to_string()),
+        IdeationSessionId::from_string("session-existing-pr".to_string()),
+        project.id.clone(),
+        "ralphx/test/existing-pr".to_string(),
+        "main".to_string(),
+    );
+    existing_pr_branch.merge_task_id = Some(existing_pr_task.id.clone());
+    existing_pr_branch.pr_eligible = true;
+    existing_pr_branch.pr_number = Some(42);
+    existing_pr_branch.pr_url = Some("https://github.com/owner/repo/pull/42".to_string());
+    plan_branch_repo.create(existing_pr_branch).await.unwrap();
+
+    let mut terminal_task = Task::new(project.id.clone(), "Terminal merge task".to_string());
+    terminal_task.category = TaskCategory::PlanMerge;
+    terminal_task.internal_status = InternalStatus::Merged;
+    let terminal_task = task_repo.create(terminal_task).await.unwrap();
+
+    let mut terminal_branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-terminal".to_string()),
+        IdeationSessionId::from_string("session-terminal".to_string()),
+        project.id.clone(),
+        "ralphx/test/terminal".to_string(),
+        "main".to_string(),
+    );
+    terminal_branch.merge_task_id = Some(terminal_task.id.clone());
+    terminal_branch.pr_eligible = true;
+    let terminal_branch_id = terminal_branch.id.clone();
+    plan_branch_repo.create(terminal_branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        github_service,
+    )
+    .await;
+
+    let terminal_after = plan_branch_repo
+        .get_by_id(&terminal_branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        terminal_after.pr_number.is_none(),
+        "terminal merge tasks must not grow a new PR during startup repair"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "startup repair should skip branches with an existing PR or a terminal merge task"
+    );
+    assert_eq!(
+        mock_github.push_calls(),
+        0,
+        "startup repair should not push skipped branches"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_recovers_duplicate_pr() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let working_dir = tempfile::tempdir().unwrap();
+    let project = Project::new(
+        "Startup PR Duplicate".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Duplicate merge task".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-duplicate".to_string()),
+        IdeationSessionId::from_string("session-duplicate".to_string()),
+        project.id.clone(),
+        "ralphx/test/duplicate".to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    mock_github.will_fail_create_pr_duplicate();
+    mock_github.will_return_existing_pr(77, "https://github.com/owner/repo/pull/77");
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(branch_after.pr_number, Some(77));
+    assert_eq!(
+        branch_after.pr_url.as_deref(),
+        Some("https://github.com/owner/repo/pull/77")
+    );
+    assert_eq!(mock_github.create_calls(), 1);
+    assert_eq!(
+        mock_github.find_pr_calls(),
+        1,
+        "duplicate recovery should look up the existing PR by head branch"
+    );
+}
+
 // ============================================================================
 // Test 5: PendingMerge reconciler skips when pr_polling_active = true
 // ============================================================================
@@ -503,7 +715,10 @@ async fn test_merge_incomplete_branch_missing_skips_retry() {
         .await
         .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Branch missing merge incomplete".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Branch missing merge incomplete".to_string(),
+    );
     task.internal_status = InternalStatus::MergeIncomplete;
     task.metadata = Some(
         serde_json::json!({
@@ -556,7 +771,10 @@ async fn test_merge_conflict_branch_missing_skips_retry() {
         .await
         .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Branch missing merge conflict".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Branch missing merge conflict".to_string(),
+    );
     task.internal_status = InternalStatus::MergeConflict;
     task.metadata = Some(
         serde_json::json!({

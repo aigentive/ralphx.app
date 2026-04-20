@@ -60,6 +60,7 @@ pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata,
 
 // -- Crate-visible re-exports (merge_helpers) --
 pub(crate) use merge_helpers::{
+    create_draft_pr_if_needed,
     clear_main_merge_deferred_metadata, clear_merge_deferred_metadata,
     compute_merge_worktree_path, get_trigger_origin,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,

@@ -12,8 +12,120 @@ use std::sync::Arc;
 
 use crate::application::services::PrPollerRegistry;
 use crate::application::TaskTransitionService;
-use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
-use crate::domain::entities::InternalStatus;
+use crate::domain::entities::{InternalStatus, PlanBranchStatus};
+use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use crate::domain::services::GithubServiceTrait;
+use crate::domain::state_machine::transition_handler::create_draft_pr_if_needed;
+
+/// Re-create draft PRs that should already exist for active PR-mode plans.
+///
+/// This runs once on startup to repair the gap where an executing plan branch was
+/// marked `pr_eligible=true` but never persisted a `pr_number` because early PR
+/// creation failed before app shutdown/restart. The helper reuses the same
+/// duplicate-safe `create_draft_pr_if_needed` flow used during normal execution.
+///
+/// # Errors
+/// Logs warnings on repo failures; never panics or returns an error to the caller.
+pub async fn recover_missing_draft_prs(
+    task_repo: Arc<dyn TaskRepository>,
+    plan_branch_repo: Arc<dyn PlanBranchRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    github_service: Arc<dyn GithubServiceTrait>,
+) {
+    let pr_creation_guard = Arc::new(dashmap::DashMap::new());
+
+    let projects = match project_repo.get_all().await {
+        Ok(projects) => projects,
+        Err(e) => {
+            tracing::warn!(error = %e, "PR startup recovery: failed to list projects");
+            return;
+        }
+    };
+
+    for project in projects {
+        let plan_branches = match plan_branch_repo.get_by_project_id(&project.id).await {
+            Ok(branches) => branches,
+            Err(e) => {
+                tracing::warn!(
+                    project_id = project.id.as_str(),
+                    error = %e,
+                    "PR startup recovery: failed to load plan branches for project"
+                );
+                continue;
+            }
+        };
+
+        for plan_branch in plan_branches {
+            if !plan_branch.pr_eligible
+                || plan_branch.pr_number.is_some()
+                || plan_branch.status != PlanBranchStatus::Active
+            {
+                continue;
+            }
+
+            let Some(merge_task_id) = plan_branch.merge_task_id.as_ref() else {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    "PR startup recovery: active PR-eligible plan branch has no merge task"
+                );
+                continue;
+            };
+
+            let merge_task = match task_repo.get_by_id(merge_task_id).await {
+                Ok(Some(task)) => task,
+                Ok(None) => {
+                    tracing::debug!(
+                        branch_id = plan_branch.id.as_str(),
+                        branch = %plan_branch.branch_name,
+                        merge_task_id = merge_task_id.as_str(),
+                        "PR startup recovery: merge task not found for PR-eligible plan branch"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        branch_id = plan_branch.id.as_str(),
+                        branch = %plan_branch.branch_name,
+                        merge_task_id = merge_task_id.as_str(),
+                        error = %e,
+                        "PR startup recovery: failed to load merge task for PR-eligible plan branch"
+                    );
+                    continue;
+                }
+            };
+
+            if merge_task.is_terminal() {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    merge_task_id = merge_task.id.as_str(),
+                    status = ?merge_task.internal_status,
+                    "PR startup recovery: skipping terminal merge task with no PR"
+                );
+                continue;
+            }
+
+            tracing::info!(
+                branch_id = plan_branch.id.as_str(),
+                branch = %plan_branch.branch_name,
+                merge_task_id = merge_task.id.as_str(),
+                status = ?merge_task.internal_status,
+                "PR startup recovery: repairing missing draft PR for active plan branch"
+            );
+
+            create_draft_pr_if_needed(
+                &merge_task,
+                &project,
+                &plan_branch,
+                &pr_creation_guard,
+                &github_service,
+                &plan_branch_repo,
+            )
+            .await;
+        }
+    }
+}
 
 /// Restart PR merge pollers for tasks that were polling when the app last shut down.
 ///
@@ -28,7 +140,7 @@ pub async fn recover_pr_pollers(
     task_repo: Arc<dyn TaskRepository>,
     plan_branch_repo: Arc<dyn PlanBranchRepository>,
     pr_poller_registry: Arc<PrPollerRegistry>,
-    project_repo: Arc<dyn crate::domain::repositories::ProjectRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
     transition_service: Arc<TaskTransitionService<tauri::Wry>>,
 ) {
     let task_ids = match plan_branch_repo.find_pr_polling_task_ids().await {
@@ -44,7 +156,10 @@ pub async fn recover_pr_pollers(
         return;
     }
 
-    tracing::info!(count = task_ids.len(), "PR startup recovery: found tasks with active polling");
+    tracing::info!(
+        count = task_ids.len(),
+        "PR startup recovery: found tasks with active polling"
+    );
 
     for task_id in task_ids {
         // Verify task still in Merging status

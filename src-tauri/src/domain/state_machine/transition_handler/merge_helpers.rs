@@ -925,7 +925,7 @@ async fn build_pr_body(
 /// Idempotent: re-reads pr_number from DB inside guard — skips if already set.
 /// Non-blocking: errors are logged and silently skipped (PR can be created at PendingMerge time).
 /// Timeout: entire flow wrapped in 30s timeout.
-async fn create_draft_pr_if_needed(
+pub(crate) async fn create_draft_pr_if_needed(
     task: &Task,
     project: &Project,
     pb: &crate::domain::entities::PlanBranch,
