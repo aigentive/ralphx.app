@@ -8,6 +8,11 @@ const CANONICAL_AGENTS_DIR: &str = "agents";
 const PROMPT_FILE_NAME: &str = "prompt.md";
 const AGENT_FILE_NAME: &str = "agent.yaml";
 const SHARED_PROMPT_DIR_NAME: &str = "shared";
+const PRIMARY_PLUGIN_DIR_COMPONENTS: &[&str] = &["plugins", "app"];
+const LEGACY_PLUGIN_DIR_COMPONENTS: &[&str] = &["ralphx-plugin"];
+const GENERATED_PLUGIN_DIR_COMPONENTS: &[&str] = &["generated", "claude-plugin"];
+const DEBUG_GENERATED_PLUGIN_DIR_COMPONENTS: &[&str] =
+    &[".artifacts", "generated", "claude-plugin"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -152,10 +157,75 @@ fn canonical_agent_name(agent_name: &str) -> &str {
     canonical_short_agent_name(agent_name)
 }
 
-fn canonical_agent_root(project_root: &Path, agent_name: &str) -> PathBuf {
-    project_root
-        .join(CANONICAL_AGENTS_DIR)
-        .join(canonical_agent_name(agent_name))
+fn trusted_runtime_plugin_dir(plugin_dir: &Path) -> Option<&Path> {
+    let has_expected_shape = path_has_component_suffix(plugin_dir, PRIMARY_PLUGIN_DIR_COMPONENTS)
+        || path_has_component_suffix(plugin_dir, LEGACY_PLUGIN_DIR_COMPONENTS)
+        || path_has_component_suffix(plugin_dir, GENERATED_PLUGIN_DIR_COMPONENTS)
+        || path_has_component_suffix(plugin_dir, DEBUG_GENERATED_PLUGIN_DIR_COMPONENTS);
+
+    if !has_expected_shape {
+        return None;
+    }
+
+    if !path_has_only_safe_components(plugin_dir) {
+        return None;
+    }
+
+    Some(plugin_dir)
+}
+
+fn path_has_only_safe_components(path: &Path) -> bool {
+    path.components().all(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::Normal(_)
+        )
+    })
+}
+
+fn path_has_component_suffix(path: &Path, suffix: &[&str]) -> bool {
+    let components = path
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    components.as_slice().ends_with(
+        &suffix
+            .iter()
+            .map(|part| part.to_string())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn trusted_canonical_agent_name(agent_name: &str) -> Option<&str> {
+    let short_name = canonical_agent_name(agent_name);
+    let valid_component = !short_name.is_empty()
+        && !short_name.contains("..")
+        && !short_name.contains('/')
+        && !short_name.contains('\\')
+        && short_name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+
+    if valid_component {
+        Some(short_name)
+    } else {
+        None
+    }
+}
+
+fn canonical_agent_root(project_root: &Path, agent_name: &str) -> Option<PathBuf> {
+    let trusted_agent_name = trusted_canonical_agent_name(agent_name)?;
+    Some(
+        project_root
+            .join(CANONICAL_AGENTS_DIR)
+            .join(trusted_agent_name),
+    )
 }
 
 fn has_canonical_agents_tree(root: &Path) -> bool {
@@ -181,9 +251,12 @@ fn find_project_root_with_canonical_agents(start: &Path) -> Option<PathBuf> {
 }
 
 fn find_project_root_via_resolved_plugin_targets(plugin_dir: &Path) -> Option<PathBuf> {
+    let plugin_dir = trusted_runtime_plugin_dir(plugin_dir)?;
+
     if let Ok(canonical_plugin_dir) = plugin_dir.canonicalize() {
         if canonical_plugin_dir != plugin_dir {
-            if let Some(project_root) = find_project_root_with_canonical_agents(&canonical_plugin_dir)
+            if let Some(project_root) =
+                find_project_root_with_canonical_agents(&canonical_plugin_dir)
             {
                 return Some(project_root);
             }
@@ -204,6 +277,11 @@ fn find_project_root_via_resolved_plugin_targets(plugin_dir: &Path) -> Option<Pa
 }
 
 pub fn resolve_project_root_from_plugin_dir(plugin_dir: &Path) -> PathBuf {
+    let Some(plugin_dir) = trusted_runtime_plugin_dir(plugin_dir) else {
+        let parent = plugin_dir.parent().unwrap_or(plugin_dir);
+        return parent.to_path_buf();
+    };
+
     if let Some(project_root) = find_project_root_with_canonical_agents(plugin_dir) {
         return project_root;
     }
@@ -227,8 +305,8 @@ pub fn load_canonical_agent_definition(
     project_root: &Path,
     agent_name: &str,
 ) -> Option<CanonicalAgentDefinition> {
-    let short_name = canonical_agent_name(agent_name);
-    let agent_path = canonical_agent_root(project_root, short_name).join(AGENT_FILE_NAME);
+    let short_name = trusted_canonical_agent_name(agent_name)?;
+    let agent_path = canonical_agent_root(project_root, short_name)?.join(AGENT_FILE_NAME);
     let raw = std::fs::read_to_string(agent_path).ok()?;
     let definition = serde_yaml::from_str::<CanonicalAgentDefinition>(&raw).ok()?;
     if definition.name == short_name {
@@ -265,7 +343,10 @@ pub fn list_canonical_prompt_backed_agents(
                 return Some(agent_name);
             }
 
-            let shared_prompt_path = entry.path().join(SHARED_PROMPT_DIR_NAME).join(PROMPT_FILE_NAME);
+            let shared_prompt_path = entry
+                .path()
+                .join(SHARED_PROMPT_DIR_NAME)
+                .join(PROMPT_FILE_NAME);
             if shared_prompt_path.is_file() {
                 Some(agent_name)
             } else {
@@ -279,8 +360,7 @@ pub fn list_canonical_prompt_backed_agents(
 
 pub fn has_canonical_agent_definition(project_root: &Path, agent_name: &str) -> bool {
     canonical_agent_root(project_root, agent_name)
-        .join(AGENT_FILE_NAME)
-        .exists()
+        .is_some_and(|root| root.join(AGENT_FILE_NAME).exists())
 }
 
 pub fn load_canonical_claude_metadata(
@@ -294,15 +374,18 @@ pub fn try_load_canonical_claude_metadata(
     project_root: &Path,
     agent_name: &str,
 ) -> Result<CanonicalClaudeAgentMetadata, String> {
-    let legacy = match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Claude) {
-        Some(raw) => serde_yaml::from_str::<CanonicalClaudeAgentMetadata>(&raw).map_err(|error| {
-            format!(
-                "Failed to parse Claude harness metadata for agent {}: {error}",
-                canonical_agent_name(agent_name)
-            )
-        })?,
-        None => CanonicalClaudeAgentMetadata::default(),
-    };
+    let legacy =
+        match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Claude) {
+            Some(raw) => {
+                serde_yaml::from_str::<CanonicalClaudeAgentMetadata>(&raw).map_err(|error| {
+                    format!(
+                        "Failed to parse Claude harness metadata for agent {}: {error}",
+                        canonical_agent_name(agent_name)
+                    )
+                })?
+            }
+            None => CanonicalClaudeAgentMetadata::default(),
+        };
 
     let Some(definition) = load_canonical_agent_definition(project_root, agent_name) else {
         return Ok(legacy);
@@ -311,7 +394,11 @@ pub fn try_load_canonical_claude_metadata(
         return Ok(legacy);
     }
 
-    let merged = definition.harnesses.claude.clone().overlay_onto(legacy.clone());
+    let merged = definition
+        .harnesses
+        .claude
+        .clone()
+        .overlay_onto(legacy.clone());
     if merged != legacy {
         tracing::debug!(
             agent = %canonical_agent_name(agent_name),
@@ -336,14 +423,16 @@ pub fn try_load_canonical_codex_metadata(
 ) -> Result<CanonicalCodexAgentMetadata, String> {
     if let Some(definition) = load_canonical_agent_definition(project_root, agent_name) {
         if !definition.harnesses.codex.runtime_features.is_empty() {
-            if let Some(raw) = load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex)
+            if let Some(raw) =
+                load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex)
             {
-                let fallback = serde_yaml::from_str::<CanonicalCodexAgentMetadata>(&raw).map_err(|error| {
-                    format!(
-                        "Failed to parse Codex harness metadata for agent {}: {error}",
-                        canonical_agent_name(agent_name)
-                    )
-                })?;
+                let fallback =
+                    serde_yaml::from_str::<CanonicalCodexAgentMetadata>(&raw).map_err(|error| {
+                        format!(
+                            "Failed to parse Codex harness metadata for agent {}: {error}",
+                            canonical_agent_name(agent_name)
+                        )
+                    })?;
                 if fallback.runtime_features != definition.harnesses.codex.runtime_features {
                     tracing::debug!(
                         agent = %canonical_agent_name(agent_name),
@@ -374,15 +463,15 @@ pub fn resolve_harness_agent_prompt_path(
     harness: AgentPromptHarness,
 ) -> Option<PathBuf> {
     load_canonical_agent_definition(project_root, agent_name)?;
-    let agent_root = canonical_agent_root(project_root, agent_name);
-    let prompt_path = agent_root
-        .join(harness.as_dir())
-        .join(PROMPT_FILE_NAME);
+    let agent_root = canonical_agent_root(project_root, agent_name)?;
+    let prompt_path = agent_root.join(harness.as_dir()).join(PROMPT_FILE_NAME);
     if prompt_path.exists() {
         return Some(prompt_path);
     }
 
-    let shared_prompt_path = agent_root.join(SHARED_PROMPT_DIR_NAME).join(PROMPT_FILE_NAME);
+    let shared_prompt_path = agent_root
+        .join(SHARED_PROMPT_DIR_NAME)
+        .join(PROMPT_FILE_NAME);
     if shared_prompt_path.exists() {
         Some(shared_prompt_path)
     } else {
@@ -412,15 +501,13 @@ fn load_harness_agent_metadata(
     harness: AgentPromptHarness,
 ) -> Option<String> {
     load_canonical_agent_definition(project_root, agent_name)?;
-    let metadata_path = canonical_agent_root(project_root, agent_name)
+    let metadata_path = canonical_agent_root(project_root, agent_name)?
         .join(harness.as_dir())
         .join(AGENT_FILE_NAME);
     std::fs::read_to_string(metadata_path).ok()
 }
 
-fn build_generated_delegation_appendix(
-    definition: &CanonicalAgentDefinition,
-) -> Option<String> {
+fn build_generated_delegation_appendix(definition: &CanonicalAgentDefinition) -> Option<String> {
     let policy = &definition.delegation;
     if !policy.is_enabled() {
         return None;

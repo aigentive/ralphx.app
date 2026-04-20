@@ -14,8 +14,16 @@ const PILOT_AGENTS: &[(&str, &str, &str)] = &[
         "ideation_orchestrator",
         "ralphx-ideation",
     ),
-    ("ralphx-ideation-team-lead", "ideation_team_lead", "ralphx-ideation-team-lead"),
-    ("ralphx-utility-session-namer", "session_namer", "ralphx-utility-session-namer"),
+    (
+        "ralphx-ideation-team-lead",
+        "ideation_team_lead",
+        "ralphx-ideation-team-lead",
+    ),
+    (
+        "ralphx-utility-session-namer",
+        "session_namer",
+        "ralphx-utility-session-namer",
+    ),
 ];
 
 const CODEX_PILOT_AGENTS: &[&str] = &["ralphx-ideation", "ralphx-utility-session-namer"];
@@ -35,16 +43,18 @@ const CODEX_DELEGATION_GUIDE_AGENTS: &[&str] = &[
     "ralphx-qa-executor",
     "ralphx-research-deep-researcher",
 ];
-const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
-    (
-        "ralphx-execution-team-lead",
-        "worker_team_lead",
-        "ralphx-execution-team-lead",
-    ),
-];
+const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[(
+    "ralphx-execution-team-lead",
+    "worker_team_lead",
+    "ralphx-execution-team-lead",
+)];
 
 const CROSS_HARNESS_VERIFICATION_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-plan-verifier", "plan_verifier", "ralphx-plan-verifier"),
+    (
+        "ralphx-plan-verifier",
+        "plan_verifier",
+        "ralphx-plan-verifier",
+    ),
     (
         "ralphx-plan-critic-completeness",
         "plan_critic_completeness",
@@ -73,7 +83,11 @@ const CROSS_HARNESS_IDEATION_DELEGATE_AGENTS: &[(&str, &str, &str)] = &[
         "ideation_specialist_infra",
         "ralphx-ideation-specialist-infra",
     ),
-    ("ralphx-ideation-specialist-ux", "ideation_specialist_ux", "ralphx-ideation-specialist-ux"),
+    (
+        "ralphx-ideation-specialist-ux",
+        "ideation_specialist_ux",
+        "ralphx-ideation-specialist-ux",
+    ),
     (
         "ralphx-ideation-specialist-code-quality",
         "ideation_specialist_code_quality",
@@ -99,8 +113,16 @@ const CROSS_HARNESS_IDEATION_DELEGATE_AGENTS: &[(&str, &str, &str)] = &[
         "ideation_specialist_pipeline_safety",
         "ralphx-ideation-specialist-pipeline-safety",
     ),
-    ("ralphx-ideation-advocate", "ideation_advocate", "ralphx-ideation-advocate"),
-    ("ralphx-ideation-critic", "ideation_critic", "ralphx-ideation-critic"),
+    (
+        "ralphx-ideation-advocate",
+        "ideation_advocate",
+        "ralphx-ideation-advocate",
+    ),
+    (
+        "ralphx-ideation-critic",
+        "ideation_critic",
+        "ralphx-ideation-critic",
+    ),
 ];
 
 const CROSS_HARNESS_EXECUTION_AGENTS: &[(&str, &str, &str)] = &[
@@ -121,16 +143,44 @@ const CROSS_HARNESS_CHAT_AGENTS: &[(&str, &str, &str)] = &[
 
 const CROSS_HARNESS_SUPPORT_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-review-history", "review_history", "review-history"),
-    ("ralphx-project-analyzer", "project_analyzer", "ralphx-project-analyzer"),
-    ("ralphx-memory-capture", "memory_capture", "ralphx-memory-capture"),
-    ("ralphx-memory-maintainer", "memory_maintainer", "ralphx-memory-maintainer"),
+    (
+        "ralphx-project-analyzer",
+        "project_analyzer",
+        "ralphx-project-analyzer",
+    ),
+    (
+        "ralphx-memory-capture",
+        "memory_capture",
+        "ralphx-memory-capture",
+    ),
+    (
+        "ralphx-memory-maintainer",
+        "memory_maintainer",
+        "ralphx-memory-maintainer",
+    ),
 ];
 
 const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-general-explorer", "general_explorer", "ralphx-general-explorer"),
-    ("ralphx-general-worker", "general_worker", "ralphx-general-worker"),
-    ("ralphx-research-deep-researcher", "researcher", "deep-researcher"),
-    ("ralphx-execution-orchestrator", "orchestrator", "orchestrator"),
+    (
+        "ralphx-general-explorer",
+        "general_explorer",
+        "ralphx-general-explorer",
+    ),
+    (
+        "ralphx-general-worker",
+        "general_worker",
+        "ralphx-general-worker",
+    ),
+    (
+        "ralphx-research-deep-researcher",
+        "researcher",
+        "deep-researcher",
+    ),
+    (
+        "ralphx-execution-orchestrator",
+        "orchestrator",
+        "orchestrator",
+    ),
     ("ralphx-qa-prep", "qa_prep", "qa-prep"),
     ("ralphx-qa-executor", "qa_executor", "qa-executor"),
 ];
@@ -204,45 +254,34 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
     ),
     (
         "ralphx-ideation",
-        &[
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Task(ralphx:*)",
-        ],
+        &["Write", "Edit", "NotebookEdit", "Task(ralphx:*)"],
     ),
     (
         "ralphx-ideation-readonly",
-        &[
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Task(ralphx:*)",
-        ],
+        &["Write", "Edit", "NotebookEdit", "Task(ralphx:*)"],
     ),
     ("ralphx-plan-verifier", &["Write", "Edit", "NotebookEdit"]),
     (
         "ralphx-plan-critic-completeness",
-        &[
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Bash",
-        ],
+        &["Write", "Edit", "NotebookEdit", "Bash"],
     ),
     (
         "ralphx-plan-critic-implementation-feasibility",
-        &[
-            "Write",
-            "Edit",
-            "NotebookEdit",
-            "Bash",
-        ],
+        &["Write", "Edit", "NotebookEdit", "Bash"],
     ),
     ("ralphx-qa-prep", &["Write", "Edit", "Bash", "NotebookEdit"]),
-    ("ralphx-ideation-specialist-backend", &["Write", "Edit", "NotebookEdit", "Bash"]),
-    ("ralphx-ideation-specialist-frontend", &["Write", "Edit", "NotebookEdit", "Bash"]),
-    ("ralphx-ideation-specialist-intent", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    (
+        "ralphx-ideation-specialist-backend",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    (
+        "ralphx-ideation-specialist-frontend",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    (
+        "ralphx-ideation-specialist-intent",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
     (
         "ralphx-ideation-specialist-pipeline-safety",
         &["Write", "Edit", "NotebookEdit", "Bash"],
@@ -255,14 +294,26 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
         "ralphx-ideation-specialist-state-machine",
         &["Write", "Edit", "NotebookEdit", "Bash"],
     ),
-    ("ralphx-ideation-specialist-ux", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    (
+        "ralphx-ideation-specialist-ux",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
     (
         "ralphx-ideation-specialist-code-quality",
         &["Write", "Edit", "NotebookEdit", "Bash"],
     ),
-    ("ralphx-ideation-specialist-infra", &["Write", "Edit", "NotebookEdit"]),
-    ("ralphx-ideation-advocate", &["Write", "Edit", "NotebookEdit", "Bash"]),
-    ("ralphx-ideation-critic", &["Write", "Edit", "NotebookEdit", "Bash"]),
+    (
+        "ralphx-ideation-specialist-infra",
+        &["Write", "Edit", "NotebookEdit"],
+    ),
+    (
+        "ralphx-ideation-advocate",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
+    (
+        "ralphx-ideation-critic",
+        &["Write", "Edit", "NotebookEdit", "Bash"],
+    ),
 ];
 
 const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
@@ -368,42 +419,137 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ("ralphx-chat-project", "base_tools", &["Task"], false),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
-    ("ralphx-execution-orchestrator", "base_tools", &["Write", "Edit", "Task"], false),
+    (
+        "ralphx-execution-orchestrator",
+        "base_tools",
+        &["Write", "Edit", "Task"],
+        false,
+    ),
     ("ralphx-project-analyzer", "base_tools", &[], false),
     ("ralphx-ideation", "base_tools", &["Task"], false),
     ("ralphx-ideation-readonly", "base_tools", &["Task"], false),
     (
         "ralphx-ideation-team-lead",
         "base_tools",
-        &["Task", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
+        &[
+            "Task",
+            "TaskStop",
+            "TeamCreate",
+            "TeamDelete",
+            "SendMessage",
+        ],
         false,
     ),
-    ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "LSP"], false),
-    ("ralphx-execution-coder", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
+    (
+        "ralphx-execution-worker",
+        "base_tools",
+        &["Write", "Edit", "LSP"],
+        false,
+    ),
+    (
+        "ralphx-execution-coder",
+        "base_tools",
+        &["Write", "Edit", "Task", "LSP"],
+        false,
+    ),
     ("ralphx-execution-reviewer", "base_tools", &[], false),
     ("ralphx-qa-prep", "base_tools", &["Task"], false),
-    ("ralphx-qa-executor", "base_tools", &["Write", "Edit", "Task"], false),
+    (
+        "ralphx-qa-executor",
+        "base_tools",
+        &["Write", "Edit", "Task"],
+        false,
+    ),
     ("ralphx-execution-merger", "base_tools", &["Edit"], false),
     (
         "ralphx-execution-team-lead",
         "base_tools",
-        &["Write", "Edit", "Task", "LSP", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
+        &[
+            "Write",
+            "Edit",
+            "Task",
+            "LSP",
+            "TaskStop",
+            "TeamCreate",
+            "TeamDelete",
+            "SendMessage",
+        ],
         false,
     ),
-    ("ralphx-plan-critic-completeness", "critic_tools", &[], false),
-    ("ralphx-plan-critic-implementation-feasibility", "critic_tools", &[], false),
-    ("ralphx-research-deep-researcher", "base_tools", &["Write", "Task"], false),
-    ("ralphx-memory-maintainer", "base_tools", &["Write", "Edit"], false),
-    ("ralphx-memory-capture", "base_tools", &["Write", "Edit"], false),
-    ("ralphx-ideation-specialist-backend", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-frontend", "base_tools", &[], false),
+    (
+        "ralphx-plan-critic-completeness",
+        "critic_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-plan-critic-implementation-feasibility",
+        "critic_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-research-deep-researcher",
+        "base_tools",
+        &["Write", "Task"],
+        false,
+    ),
+    (
+        "ralphx-memory-maintainer",
+        "base_tools",
+        &["Write", "Edit"],
+        false,
+    ),
+    (
+        "ralphx-memory-capture",
+        "base_tools",
+        &["Write", "Edit"],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-backend",
+        "base_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-frontend",
+        "base_tools",
+        &[],
+        false,
+    ),
     ("ralphx-ideation-specialist-infra", "base_tools", &[], false),
     ("ralphx-ideation-specialist-ux", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-code-quality", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-prompt-quality", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-intent", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-state-machine", "base_tools", &[], false),
-    ("ralphx-ideation-specialist-pipeline-safety", "base_tools", &[], false),
+    (
+        "ralphx-ideation-specialist-code-quality",
+        "base_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-prompt-quality",
+        "base_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-intent",
+        "base_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-state-machine",
+        "base_tools",
+        &[],
+        false,
+    ),
+    (
+        "ralphx-ideation-specialist-pipeline-safety",
+        "base_tools",
+        &[],
+        false,
+    ),
     ("ralphx-ideation-advocate", "base_tools", &[], false),
     ("ralphx-ideation-critic", "base_tools", &[], false),
 ];
@@ -426,7 +572,8 @@ fn codex_runtime_features_load_from_harness_metadata() {
         "verifier should disable Codex shell_tool declaratively"
     );
 
-    let backend_specialist = load_canonical_codex_metadata(&root, "ralphx-ideation-specialist-backend");
+    let backend_specialist =
+        load_canonical_codex_metadata(&root, "ralphx-ideation-specialist-backend");
     assert_eq!(
         backend_specialist.runtime_features.get("shell_tool"),
         Some(&false),
@@ -476,8 +623,7 @@ fn canonical_codex_runtime_features_match_loader_for_current_owned_agents() {
         let runtime_features = load_canonical_codex_metadata(&root, agent_name);
 
         assert_eq!(
-            definition.harnesses.codex.runtime_features,
-            runtime_features.runtime_features,
+            definition.harnesses.codex.runtime_features, runtime_features.runtime_features,
             "root harnesses.codex.runtime_features should stay aligned for {agent_name}"
         );
     }
@@ -544,8 +690,7 @@ fn canonical_claude_harness_metadata_matches_loader_for_owned_agents() {
             .unwrap_or_else(|_| panic!("expected Claude metadata for {agent_name}"));
 
         assert_eq!(
-            definition.harnesses.claude,
-            metadata,
+            definition.harnesses.claude, metadata,
             "root canonical Claude harness metadata should stay aligned for {agent_name}"
         );
     }
@@ -558,8 +703,9 @@ fn canonical_claude_permission_mode_matches_loader_for_owned_agents() {
     for (agent_name, expected_permission_mode) in CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
-        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name).unwrap_or_else(|_| {
+            panic!("failed to load canonical Claude metadata for {agent_name}")
+        });
 
         assert_eq!(
             definition.harnesses.claude.permission_mode.as_deref(),
@@ -589,8 +735,9 @@ fn canonical_claude_model_matches_loader_for_owned_agents() {
     for (agent_name, expected_model) in CANONICAL_CLAUDE_MODEL_OWNED_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
-        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name).unwrap_or_else(|_| {
+            panic!("failed to load canonical Claude metadata for {agent_name}")
+        });
 
         assert_eq!(
             definition.harnesses.claude.model.as_deref(),
@@ -620,8 +767,9 @@ fn canonical_claude_effort_matches_loader_for_owned_agents() {
     for (agent_name, expected_effort) in CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
-        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name).unwrap_or_else(|_| {
+            panic!("failed to load canonical Claude metadata for {agent_name}")
+        });
 
         assert_eq!(
             definition.harnesses.claude.effort.as_deref(),
@@ -653,8 +801,9 @@ fn canonical_claude_tool_spec_matches_loader_for_owned_agents() {
     {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
-        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name).unwrap_or_else(|_| {
+            panic!("failed to load canonical Claude metadata for {agent_name}")
+        });
         let spec = definition
             .harnesses
             .claude
@@ -663,7 +812,13 @@ fn canonical_claude_tool_spec_matches_loader_for_owned_agents() {
             .unwrap_or_else(|| panic!("expected canonical Claude tools for {agent_name}"));
 
         assert_eq!(spec.extends.as_deref(), Some(*expected_extends));
-        assert_eq!(spec.include, expected_include.iter().map(|v| (*v).to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            spec.include,
+            expected_include
+                .iter()
+                .map(|v| (*v).to_string())
+                .collect::<Vec<_>>()
+        );
         assert_eq!(spec.mcp_only, *expected_mcp_only);
         assert_eq!(metadata.tools.as_ref(), Some(spec));
         assert_eq!(
@@ -835,8 +990,12 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
     }
 
     assert!(
-        resolve_harness_agent_prompt_path(&root, "ralphx-ideation-team-lead", AgentPromptHarness::Claude)
-            .is_some(),
+        resolve_harness_agent_prompt_path(
+            &root,
+            "ralphx-ideation-team-lead",
+            AgentPromptHarness::Claude
+        )
+        .is_some(),
         "expected claude prompt path for ralphx-ideation-team-lead"
     );
     assert!(
@@ -1016,8 +1175,9 @@ fn legacy_agent_aliases_resolve_into_canonical_catalog_entries() {
     ];
 
     for (legacy_name, canonical_name) in cases {
-        let definition = load_canonical_agent_definition(&root, legacy_name)
-            .unwrap_or_else(|| panic!("expected canonical definition for legacy alias {legacy_name}"));
+        let definition = load_canonical_agent_definition(&root, legacy_name).unwrap_or_else(|| {
+            panic!("expected canonical definition for legacy alias {legacy_name}")
+        });
         assert_eq!(definition.name, canonical_name);
         assert!(
             resolve_harness_agent_prompt_path(&root, legacy_name, AgentPromptHarness::Claude)
@@ -1110,18 +1270,20 @@ fn codex_pilot_prompts_avoid_claude_only_team_and_task_syntax() {
 fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
     let root = project_root();
 
-    let orchestrator = load_harness_agent_prompt(
-        &root,
-        "ralphx-ideation",
-        AgentPromptHarness::Codex,
-    )
-    .expect("missing codex orchestrator prompt");
+    let orchestrator =
+        load_harness_agent_prompt(&root, "ralphx-ideation", AgentPromptHarness::Codex)
+            .expect("missing codex orchestrator prompt");
     assert!(
         orchestrator.contains("Codex-native delegation"),
         "orchestrator codex prompt should describe Codex-native delegation semantics"
     );
     assert!(
-        load_harness_agent_prompt(&root, "ralphx-ideation-team-lead", AgentPromptHarness::Codex).is_none(),
+        load_harness_agent_prompt(
+            &root,
+            "ralphx-ideation-team-lead",
+            AgentPromptHarness::Codex
+        )
+        .is_none(),
         "ralphx-ideation-team-lead should not have a codex prompt while team mode is unsupported"
     );
 }
@@ -1129,12 +1291,9 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
 #[test]
 fn codex_plan_verifier_prompt_treats_actionable_needs_revision_as_non_terminal() {
     let root = project_root();
-    let prompt = load_harness_agent_prompt(
-        &root,
-        "ralphx-plan-verifier",
-        AgentPromptHarness::Codex,
-    )
-    .expect("missing codex prompt for ralphx-plan-verifier");
+    let prompt =
+        load_harness_agent_prompt(&root, "ralphx-plan-verifier", AgentPromptHarness::Codex)
+            .expect("missing codex prompt for ralphx-plan-verifier");
 
     assert!(
         prompt.contains(
@@ -1256,7 +1415,9 @@ fn generated_delegation_appendix_describes_general_explorer_usage_for_general_ex
             "delegation appendix for {agent_name} should describe the general explorer target"
         );
         assert!(
-            prompt.contains("bounded file inspection, pattern search, or evidence gathering without edits"),
+            prompt.contains(
+                "bounded file inspection, pattern search, or evidence gathering without edits"
+            ),
             "delegation appendix for {agent_name} should explain when to use the general explorer"
         );
     }
@@ -1271,6 +1432,17 @@ fn resolve_project_root_from_generated_plugin_dir_finds_repo_agents_tree() {
         resolve_project_root_from_plugin_dir(&generated_plugin_dir),
         root,
         "generated plugin dir should resolve back to the repo root so canonical agent definitions load in live Codex/Claude runs"
+    );
+}
+
+#[test]
+fn resolve_project_root_from_traversal_like_plugin_dir_skips_directory_scans() {
+    let invalid_plugin_dir = PathBuf::from("../plugins/app");
+
+    assert_eq!(
+        resolve_project_root_from_plugin_dir(&invalid_plugin_dir),
+        PathBuf::from("../plugins"),
+        "plugin dirs with parent traversal components should be rejected before filesystem scans"
     );
 }
 
@@ -1305,6 +1477,20 @@ fn resolve_project_root_from_external_generated_plugin_dir_follows_runtime_symli
         resolve_project_root_from_plugin_dir(&generated_plugin_dir),
         root,
         "external generated plugin dirs should resolve through symlinked runtime entries back to the RalphX repo root"
+    );
+}
+
+#[test]
+fn invalid_agent_names_do_not_escape_canonical_agent_tree() {
+    let root = project_root();
+
+    assert!(
+        load_canonical_agent_definition(&root, "../escape").is_none(),
+        "path-like agent names must not resolve to canonical agent definitions"
+    );
+    assert!(
+        resolve_harness_agent_prompt_path(&root, "../escape", AgentPromptHarness::Claude).is_none(),
+        "path-like agent names must not resolve to harness prompt files"
     );
 }
 
@@ -1430,9 +1616,10 @@ fn symlink_dir(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path
 #[test]
 fn canonical_agent_tree_is_schema_valid_and_loadable() {
     let root = project_root();
-    let prompt_backed_agents = list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude)
-        .into_iter()
-        .collect::<std::collections::BTreeSet<_>>();
+    let prompt_backed_agents =
+        list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude)
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
     let promptless_metadata_only_agents = std::collections::BTreeSet::from([
         "ralphx-execution-team-member".to_string(),
         "ralphx-ideation-team-member".to_string(),
@@ -1459,8 +1646,9 @@ fn canonical_agent_tree_is_schema_valid_and_loadable() {
             .join(&agent_name)
             .join("codex/prompt.md");
 
-        let has_any_prompt =
-            shared_prompt_path.exists() || claude_prompt_path.exists() || codex_prompt_path.exists();
+        let has_any_prompt = shared_prompt_path.exists()
+            || claude_prompt_path.exists()
+            || codex_prompt_path.exists();
         if has_any_prompt {
             continue;
         }
