@@ -30,6 +30,17 @@ describe("GlobWidget", () => {
       expect(screen.getByText("*.json")).toBeInTheDocument();
     });
 
+    it("uses fs_glob aliases from MCP arguments", () => {
+      render(
+        <GlobWidget
+          toolCall={makeGlobCall({
+            arguments: { file_pattern: "**/*.rs", base_path: "src-tauri/" },
+          })}
+        />,
+      );
+      expect(screen.getByText("**/*.rs in src-tauri/")).toBeInTheDocument();
+    });
+
     it("shows match count badge", () => {
       render(<GlobWidget toolCall={makeGlobCall()} />);
       expect(screen.getByText("2 matches")).toBeInTheDocument();

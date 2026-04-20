@@ -158,5 +158,56 @@ describe("ReadWidget", () => {
       expect(screen.getByText("const a = 1;")).toBeInTheDocument();
       expect(screen.getByText("const b = 2;")).toBeInTheDocument();
     });
+
+    it("parses fs_read_file MCP payloads with metadata headers and pipe-prefixed lines", () => {
+      render(
+        <ReadWidget
+          toolCall={makeReadCall({
+            arguments: {
+              path: "frontend/src/components/TaskGraph/hooks/useExecutionTimeline.ts",
+              start_line: 1,
+              end_line: 2,
+            },
+            result: [
+              {
+                type: "text",
+                text: [
+                  "FILE: /workspace/project/frontend/src/components/TaskGraph/hooks/useExecutionTimeline.ts",
+                  "LINES: 1-2/206",
+                  "TRUNCATED: false",
+                  "",
+                  "1| const a = 1;",
+                  "2|   const b = 2;",
+                ].join("\n"),
+              },
+            ],
+          })}
+        />,
+      );
+
+      expect(screen.getByText(/useExecutionTimeline\.ts/)).toBeInTheDocument();
+      expect(screen.getByText("const a = 1;")).toBeInTheDocument();
+      expect(screen.getByText("const b = 2;")).toBeInTheDocument();
+      expect(screen.getByText("2 lines")).toBeInTheDocument();
+      expect(screen.queryByText(/FILE:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/LINES:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/TRUNCATED:/)).not.toBeInTheDocument();
+    });
+
+    it("surfaces fs_read_file ERROR payloads as widget errors", () => {
+      render(
+        <ReadWidget
+          toolCall={makeReadCall({
+            arguments: { path: "frontend/src/missing.ts" },
+            result: [{ type: "text", text: "ERROR: ENOENT: no such file or directory" }],
+          })}
+        />,
+      );
+
+      expect(screen.getByText("error")).toBeInTheDocument();
+      expect(
+        screen.getByText("ERROR: ENOENT: no such file or directory"),
+      ).toBeInTheDocument();
+    });
   });
 });
