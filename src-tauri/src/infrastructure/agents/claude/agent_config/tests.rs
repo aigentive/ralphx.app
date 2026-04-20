@@ -14,7 +14,8 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_WORKER_TEAM,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    has_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
+    has_canonical_agent_definition, list_canonical_prompt_backed_agents,
+    load_harness_agent_prompt, AgentPromptHarness,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -26,6 +27,27 @@ fn test_yaml_loaded_has_unique_names() {
     names.sort();
     names.dedup();
     assert_eq!(names.len(), original_len);
+}
+
+#[test]
+fn test_canonical_agent_project_root_resolves_live_claude_agents() {
+    let project_root = canonical_agent_project_root();
+    let expected_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .expect("canonical repo root");
+
+    assert_eq!(project_root, expected_root);
+
+    let live_agents = list_canonical_prompt_backed_agents(&project_root, AgentPromptHarness::Claude);
+    assert!(
+        live_agents.contains(&SHORT_ORCHESTRATOR_IDEATION.to_string()),
+        "canonical project root should expose live Claude agents for runtime config synthesis"
+    );
+    assert!(
+        live_agents.contains(&SHORT_PLAN_VERIFIER.to_string()),
+        "canonical project root should expose verifier agents for runtime config synthesis"
+    );
 }
 
 #[test]

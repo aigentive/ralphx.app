@@ -3,9 +3,9 @@ use crate::infrastructure::agents::claude::{
     claude_runtime_config, find_base_plugin_dir, get_agent_config,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
-    CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
+    list_canonical_agent_names, load_canonical_agent_definition, load_harness_agent_prompt,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
+    AgentPromptHarness, CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -231,71 +231,42 @@ fn sync_generated_agent_prompts(
     })?;
 
     let mut reserved_outputs = HashSet::new();
-    let canonical_agents_root = project_root.join("agents");
-    if canonical_agents_root.exists() {
-        for entry in fs::read_dir(&canonical_agents_root).map_err(|error| {
-            format!(
-                "Failed to read canonical agents dir {}: {error}",
-                canonical_agents_root.display()
-            )
-        })? {
-            let entry = entry.map_err(|error| {
+    for short_name in list_canonical_agent_names(project_root) {
+        let Some(definition) = load_canonical_agent_definition(project_root, &short_name) else {
+            continue;
+        };
+
+        let relative_output = claude_output_relative_path(&definition, &short_name)?;
+        reserved_outputs.insert(relative_output.clone());
+
+        let Some(prompt_body) =
+            load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
+        else {
+            continue;
+        };
+        let claude_metadata = try_load_canonical_claude_metadata(project_root, &short_name)?;
+
+        let generated_target = generated_plugin_dir.join(&relative_output);
+        if let Some(parent) = generated_target.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
                 format!(
-                    "Failed to inspect canonical agent entry under {}: {error}",
-                    canonical_agents_root.display()
-                )
-            })?;
-            if !entry
-                .file_type()
-                .map_err(|error| {
-                    format!(
-                        "Failed to read canonical agent file type for {}: {error}",
-                        entry.path().display()
-                    )
-                })?
-                .is_dir()
-            {
-                continue;
-            }
-
-            let short_name = entry.file_name().to_string_lossy().to_string();
-            let Some(definition) = load_canonical_agent_definition(project_root, &short_name)
-            else {
-                continue;
-            };
-
-            let relative_output = claude_output_relative_path(&definition, &short_name)?;
-            reserved_outputs.insert(relative_output.clone());
-
-            let Some(prompt_body) =
-                load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
-            else {
-                continue;
-            };
-            let claude_metadata = try_load_canonical_claude_metadata(project_root, &short_name)?;
-
-            let generated_target = generated_plugin_dir.join(&relative_output);
-            if let Some(parent) = generated_target.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "Failed to create generated Claude agent parent dir {}: {error}",
-                        parent.display()
-                    )
-                })?;
-            }
-            let rendered = render_generated_agent_markdown(
-                &short_name,
-                &definition,
-                &claude_metadata,
-                &prompt_body,
-            )?;
-            fs::write(&generated_target, rendered).map_err(|error| {
-                format!(
-                    "Failed to write generated Claude agent prompt {}: {error}",
-                    generated_target.display()
+                    "Failed to create generated Claude agent parent dir {}: {error}",
+                    parent.display()
                 )
             })?;
         }
+        let rendered = render_generated_agent_markdown(
+            &short_name,
+            &definition,
+            &claude_metadata,
+            &prompt_body,
+        )?;
+        fs::write(&generated_target, rendered).map_err(|error| {
+            format!(
+                "Failed to write generated Claude agent prompt {}: {error}",
+                generated_target.display()
+            )
+        })?;
     }
 
     let base_agents_dir = base_plugin_dir.join("agents");

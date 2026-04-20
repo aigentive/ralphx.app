@@ -1,7 +1,8 @@
 use super::{
     list_canonical_prompt_backed_agents, load_canonical_agent_definition,
     load_canonical_codex_metadata, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
+    resolve_project_root_from_catalog_path, resolve_project_root_from_plugin_dir,
+    try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use crate::infrastructure::agents::claude::get_agent_config;
 use std::fs;
@@ -1436,6 +1437,18 @@ fn resolve_project_root_from_generated_plugin_dir_finds_repo_agents_tree() {
 }
 
 #[test]
+fn resolve_project_root_from_config_dir_finds_repo_agents_tree() {
+    let root = project_root();
+    let config_dir = root.join("config");
+
+    assert_eq!(
+        resolve_project_root_from_catalog_path(&config_dir),
+        Some(root),
+        "config-rooted canonical discovery should resolve back to the repo root so agent-config loading does not depend on plugin-dir heuristics"
+    );
+}
+
+#[test]
 fn resolve_project_root_from_traversal_like_plugin_dir_skips_directory_scans() {
     let invalid_plugin_dir = PathBuf::from("../plugins/app");
 
@@ -1491,6 +1504,53 @@ fn invalid_agent_names_do_not_escape_canonical_agent_tree() {
     assert!(
         resolve_harness_agent_prompt_path(&root, "../escape", AgentPromptHarness::Claude).is_none(),
         "path-like agent names must not resolve to harness prompt files"
+    );
+}
+
+#[test]
+fn agents_root_symlink_escaping_project_root_is_rejected() {
+    let temp = tempdir().expect("tempdir");
+    let root = temp.path().join("project");
+    let outside_agents = temp.path().join("outside-agents");
+    fs::create_dir_all(&root).expect("create project root");
+    seed_minimal_canonical_claude_agent(&outside_agents.join("ralphx-escape"), "ralphx-escape");
+    symlink_dir(&outside_agents, root.join("agents"));
+
+    assert!(
+        load_canonical_agent_definition(&root, "ralphx-escape").is_none(),
+        "agents roots that resolve outside the project must be rejected"
+    );
+    assert!(
+        load_harness_agent_prompt(&root, "ralphx-escape", AgentPromptHarness::Claude).is_none(),
+        "escaped agents roots must not resolve harness prompts"
+    );
+    assert!(
+        list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude).is_empty(),
+        "escaped agents roots must not populate the canonical prompt-backed agent list"
+    );
+}
+
+#[test]
+fn canonical_agent_directory_symlink_escaping_project_root_is_rejected() {
+    let temp = tempdir().expect("tempdir");
+    let root = temp.path().join("project");
+    let outside_agent = temp.path().join("outside-agent");
+    fs::create_dir_all(root.join("agents")).expect("create project agents dir");
+    seed_minimal_canonical_claude_agent(&outside_agent, "ralphx-escape");
+    symlink_dir(&outside_agent, root.join("agents/ralphx-escape"));
+
+    assert!(
+        load_canonical_agent_definition(&root, "ralphx-escape").is_none(),
+        "canonical agent directories that resolve outside the project must be rejected"
+    );
+    assert!(
+        resolve_harness_agent_prompt_path(&root, "ralphx-escape", AgentPromptHarness::Claude)
+            .is_none(),
+        "escaped canonical agent directories must not resolve harness prompt paths"
+    );
+    assert!(
+        list_canonical_prompt_backed_agents(&root, AgentPromptHarness::Claude).is_empty(),
+        "escaped canonical agent directories must not populate the canonical prompt-backed agent list"
     );
 }
 
@@ -1611,6 +1671,20 @@ fn symlink_dir(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path
 #[cfg(windows)]
 fn symlink_dir(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path::Path>) {
     std::os::windows::fs::symlink_dir(source, target).expect("create directory symlink");
+}
+
+fn seed_minimal_canonical_claude_agent(agent_root: &std::path::Path, agent_name: &str) {
+    fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
+    fs::write(
+        agent_root.join("agent.yaml"),
+        format!("name: {agent_name}\nrole: test_agent\n"),
+    )
+    .expect("write shared definition");
+    fs::write(
+        agent_root.join("claude/prompt.md"),
+        format!("prompt for {agent_name}"),
+    )
+    .expect("write claude prompt");
 }
 
 #[test]

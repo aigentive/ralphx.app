@@ -101,6 +101,16 @@ fn make_isolated_live_project_plugin_dir(
     (dir, root, plugin_dir)
 }
 
+#[cfg(unix)]
+fn symlink_dir(source: impl AsRef<Path>, target: impl AsRef<Path>) {
+    std::os::unix::fs::symlink(source, target).expect("create directory symlink");
+}
+
+#[cfg(windows)]
+fn symlink_dir(source: impl AsRef<Path>, target: impl AsRef<Path>) {
+    std::os::windows::fs::symlink_dir(source, target).expect("create directory symlink");
+}
+
 /// Parse the JSON args array from a generated MCP config temp file.
 fn get_json_args(config_path: &Path) -> Vec<String> {
     let content = std::fs::read_to_string(config_path).expect("read config file");
@@ -614,6 +624,34 @@ description: Generates concise ideation session titles from user or plan context
     assert!(
         generated_prompt.contains("Shared session naming prompt"),
         "expected shared canonical prompt body to be preserved, got: {generated_prompt}"
+    );
+}
+
+#[test]
+fn test_materialize_generated_plugin_dir_skips_canonical_agent_symlinks_outside_project_root() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let outside_dir = tempfile::TempDir::new().expect("create outside dir");
+    let outside_agent_root = outside_dir.path().join("ralphx-escape");
+    std::fs::create_dir_all(outside_agent_root.join("claude")).expect("create outside claude dir");
+    std::fs::write(
+        outside_agent_root.join("agent.yaml"),
+        "name: ralphx-escape\nrole: test_agent\n",
+    )
+    .expect("write outside agent definition");
+    std::fs::write(
+        outside_agent_root.join("claude/prompt.md"),
+        "escaped canonical prompt",
+    )
+    .expect("write outside claude prompt");
+    std::fs::create_dir_all(root.join("agents")).expect("create project agents dir");
+    symlink_dir(&outside_agent_root, root.join("agents/ralphx-escape"));
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+
+    assert!(
+        !generated_dir.join("agents/ralphx-escape.md").exists(),
+        "generated plugin materialization must ignore canonical agent directories that resolve outside the project root"
     );
 }
 

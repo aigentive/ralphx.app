@@ -11,8 +11,9 @@ use crate::domain::agents::{
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
     list_canonical_prompt_backed_agents, load_canonical_agent_definition,
-    resolve_harness_agent_prompt_path, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, AgentPromptHarness, CanonicalClaudeToolSpec,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_catalog_path,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
+    AgentPromptHarness, CanonicalClaudeToolSpec,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -696,7 +697,8 @@ fn canonical_agent_project_root() -> PathBuf {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."));
-    resolve_project_root_from_plugin_dir(&config_dir)
+    resolve_project_root_from_catalog_path(&config_dir)
+        .unwrap_or_else(|| resolve_project_root_from_plugin_dir(&config_dir))
 }
 
 fn resolve_system_prompt_file(project_root: &Path, raw: &AgentConfigRaw) -> String {
