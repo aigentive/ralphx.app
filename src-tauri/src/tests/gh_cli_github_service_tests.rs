@@ -6,7 +6,8 @@
 use crate::domain::services::github_service::PrStatus;
 use crate::error::AppError;
 use crate::infrastructure::services::gh_cli_github_service::{
-    parse_pr_create_output, parse_pr_status_output, sanitize_stderr_line, scrub_token_urls,
+    parse_pr_create_output, parse_pr_create_plain_output, parse_pr_status_output,
+    sanitize_stderr_line, scrub_token_urls,
 };
 
 // ── parse_pr_create_output ─────────────────────────────────────────────────
@@ -39,6 +40,29 @@ fn parse_pr_create_fails_on_missing_url() {
 #[test]
 fn parse_pr_create_fails_on_invalid_json() {
     let err = parse_pr_create_output("not json").unwrap_err();
+    assert!(matches!(err, AppError::Infrastructure(_)));
+}
+
+#[test]
+fn parse_pr_create_plain_output_returns_number_and_url() {
+    let stdout = "https://github.com/owner/repo/pull/42\n";
+    let (number, url) = parse_pr_create_plain_output(stdout).unwrap();
+    assert_eq!(number, 42);
+    assert_eq!(url, "https://github.com/owner/repo/pull/42");
+}
+
+#[test]
+fn parse_pr_create_plain_output_extracts_url_from_wrapped_text() {
+    let stdout = "Created pull request:\n<https://github.com/owner/repo/pull/77>\n";
+    let (number, url) = parse_pr_create_plain_output(stdout).unwrap();
+    assert_eq!(number, 77);
+    assert_eq!(url, "https://github.com/owner/repo/pull/77");
+}
+
+#[test]
+fn parse_pr_create_plain_output_fails_without_url() {
+    let err = parse_pr_create_plain_output("created pull request successfully")
+        .unwrap_err();
     assert!(matches!(err, AppError::Infrastructure(_)));
 }
 
@@ -185,9 +209,57 @@ fn scrub_token_urls_no_mutation_on_plain_text() {
 
 mod mock_roundtrip {
     use std::path::Path;
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
 
     use crate::domain::services::github_service::{GithubServiceTrait, PrStatus};
+    use crate::error::AppError;
+    use crate::infrastructure::services::gh_cli_github_service::{
+        GhCliCommandRunner, GhCliGithubService,
+    };
     use crate::tests::mock_github_service::MockGithubService;
+    use crate::AppResult;
+
+    #[derive(Default)]
+    struct MockGhCliRunner {
+        gh_results: Mutex<Vec<AppResult<Vec<String>>>>,
+        gh_calls: Mutex<Vec<Vec<String>>>,
+        git_calls: Mutex<Vec<Vec<String>>>,
+    }
+
+    impl MockGhCliRunner {
+        fn with_gh_results(results: Vec<AppResult<Vec<String>>>) -> Self {
+            Self {
+                gh_results: Mutex::new(results),
+                gh_calls: Mutex::new(Vec::new()),
+                git_calls: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn gh_calls(&self) -> Vec<Vec<String>> {
+            self.gh_calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl GhCliCommandRunner for MockGhCliRunner {
+        async fn run_gh(&self, _working_dir: &Path, args: &[String]) -> AppResult<Vec<String>> {
+            self.gh_calls.lock().unwrap().push(args.to_vec());
+            let mut results = self.gh_results.lock().unwrap();
+            assert!(
+                !results.is_empty(),
+                "unexpected gh invocation with args: {:?}",
+                args
+            );
+            results.remove(0)
+        }
+
+        async fn run_git(&self, _working_dir: &Path, args: &[String]) -> AppResult<()> {
+            self.git_calls.lock().unwrap().push(args.to_vec());
+            Ok(())
+        }
+    }
 
     #[tokio::test]
     async fn mock_create_draft_pr_defaults_to_pr_1() {
@@ -291,5 +363,100 @@ mod mock_roundtrip {
             .unwrap_err();
 
         assert!(err.to_string().contains("not authenticated"));
+    }
+
+    #[tokio::test]
+    async fn create_draft_pr_falls_back_when_create_json_flag_is_unsupported() {
+        let runner = Arc::new(MockGhCliRunner::with_gh_results(vec![
+            Err(AppError::Infrastructure(
+                "gh exited with code 1: unknown flag: --json".to_string(),
+            )),
+            Ok(vec!["https://github.com/owner/repo/pull/42".to_string()]),
+        ]));
+        let service = GhCliGithubService::with_runner(runner.clone());
+
+        let (number, url) = service
+            .create_draft_pr(
+                Path::new("/tmp"),
+                "main",
+                "feature/pr-mode-fallback",
+                "Compatibility PR",
+                Path::new("/tmp/body.md"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(number, 42);
+        assert_eq!(url, "https://github.com/owner/repo/pull/42");
+
+        let calls = runner.gh_calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0],
+            vec![
+                "pr",
+                "create",
+                "--draft",
+                "--base",
+                "main",
+                "--head",
+                "feature/pr-mode-fallback",
+                "--title",
+                "Compatibility PR",
+                "--body-file",
+                "/tmp/body.md",
+                "--json",
+                "number,url",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            calls[1],
+            vec![
+                "pr",
+                "create",
+                "--draft",
+                "--base",
+                "main",
+                "--head",
+                "feature/pr-mode-fallback",
+                "--title",
+                "Compatibility PR",
+                "--body-file",
+                "/tmp/body.md",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn create_draft_pr_preserves_duplicate_error_on_plain_fallback() {
+        let runner = Arc::new(MockGhCliRunner::with_gh_results(vec![
+            Err(AppError::Infrastructure(
+                "gh exited with code 1: unknown flag: --json".to_string(),
+            )),
+            Err(AppError::Infrastructure(
+                "gh exited with code 1: a pull request for branch \"feature/pr-mode-fallback\" already exists".to_string(),
+            )),
+        ]));
+        let service = GhCliGithubService::with_runner(runner.clone());
+
+        let err = service
+            .create_draft_pr(
+                Path::new("/tmp"),
+                "main",
+                "feature/pr-mode-fallback",
+                "Compatibility PR",
+                Path::new("/tmp/body.md"),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, AppError::DuplicatePr));
+        assert_eq!(runner.gh_calls().len(), 2);
     }
 }
