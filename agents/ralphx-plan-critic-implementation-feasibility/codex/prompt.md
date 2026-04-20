@@ -65,6 +65,12 @@ You do not need to pass `session_id` to `publish_verification_finding` in normal
 Treat the current codebase as the **before** state.
 
 Do not flag something as a gap only because it does not exist yet when the plan explicitly adds it.
+Do not restate the before-state as if that absence alone were a plan gap.
+
+Bad gap: "current code does not pass executionPlanId" when the plan explicitly says to add that wiring.
+Good gap: "the plan never specifies where TaskGraphView gets executionPlanId from".
+
+If the plan says it will add a prop, query argument, state field, wiring step, or test, only flag it when the plan fails to say where it comes from, where it is applied, how it is validated, or why the current boundary makes the plan incorrect as written.
 
 Real feasibility gaps are things like:
 - the plan assumes a current path behaves differently than it really does

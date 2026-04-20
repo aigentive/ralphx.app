@@ -1709,6 +1709,34 @@ fn test_plan_critic_mcp_tools_match_prompt_contract() {
 }
 
 #[test]
+fn test_plan_critic_prompts_forbid_restatements_of_planned_future_state() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+    for harness in [AgentPromptHarness::Claude, AgentPromptHarness::Codex] {
+        for agent_name in [
+            "ralphx-plan-critic-completeness",
+            "ralphx-plan-critic-implementation-feasibility",
+        ] {
+            let prompt = load_harness_agent_prompt(&project_root, agent_name, harness)
+                .unwrap_or_else(|| panic!("failed to load prompt for {agent_name} ({harness:?})"));
+
+            assert!(
+                prompt.contains("Do not restate the before-state as if that absence alone were a plan gap."),
+                "{agent_name} ({harness:?}) prompt must explicitly forbid before-state restatement gaps"
+            );
+            assert!(
+                prompt.contains("Bad gap: \"current code does not pass executionPlanId\" when the plan explicitly says to add that wiring."),
+                "{agent_name} ({harness:?}) prompt must include a concrete bad-gap example"
+            );
+            assert!(
+                prompt.contains("Good gap: \"the plan never specifies where TaskGraphView gets executionPlanId from\"."),
+                "{agent_name} ({harness:?}) prompt must include a concrete good-gap example"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_canonical_agent_capabilities_override_runtime_yaml_mcp_tools_when_present() {
     let yaml = r#"
 claude:
