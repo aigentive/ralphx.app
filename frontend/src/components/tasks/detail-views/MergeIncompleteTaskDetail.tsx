@@ -23,6 +23,13 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   SectionTitle,
   DetailCard,
   StatusBanner,
@@ -56,6 +63,16 @@ interface MergeErrorContext {
   hasValidationFailures: boolean;
   recoveryEvents: MergeRecoveryEvent[];
   metadata: TaskMetadata | null;
+}
+
+const ATTEMPT_MESSAGE_PREVIEW_CHARS = 220;
+
+function buildAttemptMessagePreview(message: string): string {
+  const condensed = message.replace(/\s+/g, " ").trim();
+  if (condensed.length <= ATTEMPT_MESSAGE_PREVIEW_CHARS) {
+    return condensed;
+  }
+  return `${condensed.slice(0, ATTEMPT_MESSAGE_PREVIEW_CHARS).trimEnd()}...`;
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
@@ -200,6 +217,11 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
  * RecoveryTimeline - Shows chronological timeline of merge recovery attempts
  */
 function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
+  const [selectedMessage, setSelectedMessage] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
   const formatTimestamp = (isoString: string) => {
     try {
       const date = new Date(isoString);
@@ -290,10 +312,13 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
   };
 
   return (
-    <div className="space-y-3">
-      {events.map((event, idx) => {
+    <>
+      <div className="space-y-3">
+        {events.map((event, idx) => {
         const Icon = getEventIcon(event.kind);
         const color = getEventColor(event.kind);
+        const preview = buildAttemptMessagePreview(event.message);
+        const isTruncated = preview !== event.message.replace(/\s+/g, " ").trim();
 
         return (
           <div
@@ -335,7 +360,23 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
               </div>
 
               {/* Message */}
-              <p className="text-[13px] text-text-primary/70">{event.message}</p>
+              <div className="space-y-1.5">
+                <p className="text-[13px] text-text-primary/70 break-words">{preview}</p>
+                {isTruncated && (
+                  <button
+                    type="button"
+                    className="text-[12px] font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+                    onClick={() =>
+                      setSelectedMessage({
+                        title: getKindLabel(event.kind),
+                        message: event.message,
+                      })
+                    }
+                  >
+                    View full output
+                  </button>
+                )}
+              </div>
 
               {/* Additional metadata */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-primary/50">
@@ -361,8 +402,37 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
             </div>
           </div>
         );
-      })}
-    </div>
+        })}
+      </div>
+
+      <Dialog
+        open={selectedMessage !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedMessage(null);
+          }
+        }}
+      >
+        <DialogContent
+          data-testid="merge-attempt-message-dialog"
+          className="sm:max-w-3xl max-h-[80vh] overflow-hidden"
+        >
+          <DialogHeader>
+            <DialogTitle>{selectedMessage?.title ?? "Attempt output"}</DialogTitle>
+            <DialogDescription>
+              Full merge attempt output in a scrollable view.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
+                {selectedMessage?.message}
+              </pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

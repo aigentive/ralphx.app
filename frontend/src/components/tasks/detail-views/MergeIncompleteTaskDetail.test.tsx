@@ -283,6 +283,41 @@ describe("MergeIncompleteTaskDetail", () => {
     expect(screen.getByText("Fourth: attempt failed")).toBeInTheDocument();
   });
 
+  it("truncates oversized attempt messages and opens full output in a dialog", async () => {
+    const user = userEvent.setup();
+    const longMessage =
+      "Failed to commit rebase+squash in worktree: stdout=[pre-commit][design-token guards] " +
+      "error TS2307: Cannot find module 'zod'. ".repeat(12);
+    const events: MergeRecoveryEvent[] = [
+      createRecoveryEvent({
+        kind: "attempt_failed",
+        message: longMessage,
+      }),
+    ];
+
+    const metadata = JSON.stringify({
+      merge_recovery: {
+        version: 1,
+        events,
+        last_state: "failed",
+      },
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.queryByText(longMessage)).not.toBeInTheDocument();
+    expect(screen.getByText(/Failed to commit rebase\+squash in worktree/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View full output" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View full output" }));
+
+    const dialog = screen.getByTestId("merge-attempt-message-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Failed to commit rebase+squash in worktree");
+    expect(dialog).toHaveTextContent("Cannot find module 'zod'");
+  });
+
   it("preserves existing What Happened section", () => {
     const metadata = JSON.stringify({
       error: "Git error: branch locked",
