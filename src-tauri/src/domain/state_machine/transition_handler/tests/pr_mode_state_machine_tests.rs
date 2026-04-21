@@ -633,9 +633,15 @@ async fn test_regular_plan_task_merged_state_creates_draft_pr_after_first_merge(
         .last_create_draft_pr_body
         .clone()
         .expect("expected draft PR body to be captured");
-    assert!(body.contains("## RalphX Plan Review"));
+    assert!(body.contains("## Summary"));
+    assert!(body.contains("## Delivered Changes"));
+    assert!(body.contains("`1` commit"));
+    assert!(body.contains("- `plan.txt`"));
+    assert!(body.contains("## Review Focus"));
+    assert!(body.contains("Merge this PR in GitHub"));
+    assert!(body.contains("## RalphX Status"));
     assert!(body.contains("Fix graph crash when no active plan selected"));
-    assert!(body.contains("Latest merged task"));
+    assert!(body.contains("Current RalphX task"));
     assert!(body.contains("Merged plan task"));
     assert!(body.contains("<details>"));
     assert!(body.contains("Thread `executionPlanId` through the timeline components"));

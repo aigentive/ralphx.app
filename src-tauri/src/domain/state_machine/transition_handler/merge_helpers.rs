@@ -27,6 +27,7 @@ use crate::infrastructure::agents::claude::git_runtime_config;
 
 const RALPHX_REPOSITORY_URL: &str = "https://github.com/aigentive/ralphx";
 const MAX_PLAN_MARKDOWN_CHARS_IN_PR_BODY: usize = 6_000;
+const MAX_CHANGED_FILES_IN_PR_BODY: usize = 12;
 const COMMIT_HOOK_PATTERNS: &[&str] = &[
     "pre-commit",
     "[pre-commit]",
@@ -1195,6 +1196,62 @@ fn build_pr_title(display_title: &str) -> String {
     format!("Plan: {}", display_title.trim())
 }
 
+async fn build_pr_change_summary(repo_path: &Path, base: &str, head: &str) -> Option<String> {
+    let diff = GitService::get_diff_stats_between(repo_path, base, head)
+        .await
+        .ok()?;
+    let commit_count = GitService::count_commits_not_on_branch(repo_path, head, base)
+        .await
+        .ok();
+
+    if diff.files_changed == 0 && diff.changed_files.is_empty() && commit_count.unwrap_or(0) == 0 {
+        return None;
+    }
+
+    let mut lines = Vec::new();
+    if let Some(commit_count) = commit_count {
+        lines.push(format!(
+            "- Scope: `{}` commit{}, `{}` file{} changed, `+{}` / `-{}`",
+            commit_count,
+            if commit_count == 1 { "" } else { "s" },
+            diff.files_changed,
+            if diff.files_changed == 1 { "" } else { "s" },
+            diff.insertions,
+            diff.deletions
+        ));
+    } else {
+        lines.push(format!(
+            "- Scope: `{}` file{} changed, `+{}` / `-{}`",
+            diff.files_changed,
+            if diff.files_changed == 1 { "" } else { "s" },
+            diff.insertions,
+            diff.deletions
+        ));
+    }
+
+    if !diff.changed_files.is_empty() {
+        lines.push(String::new());
+        lines.push("<details>".to_string());
+        lines.push("<summary>Changed files</summary>".to_string());
+        lines.push(String::new());
+        for file in diff.changed_files.iter().take(MAX_CHANGED_FILES_IN_PR_BODY) {
+            lines.push(format!("- `{}`", file));
+        }
+        let remaining = diff
+            .changed_files
+            .len()
+            .saturating_sub(MAX_CHANGED_FILES_IN_PR_BODY);
+        if remaining > 0 {
+            let suffix = if remaining == 1 { "" } else { "s" };
+            lines.push(format!("- _{} more file{}_", remaining, suffix));
+        }
+        lines.push(String::new());
+        lines.push("</details>".to_string());
+    }
+
+    Some(lines.join("\n"))
+}
+
 /// Build the PR body content.
 /// If a pull request template exists, preserve it and append RalphX plan metadata below it.
 async fn build_pr_body(
@@ -1209,6 +1266,8 @@ async fn build_pr_body(
     let pr_base = resolve_plan_branch_pr_base(project, pb);
     let template = read_pull_request_template(repo_path).await;
     let plan_markdown = read_plan_artifact_markdown(pb, artifact_repo).await;
+    let change_summary =
+        build_pr_change_summary(repo_path, &pr_base, &pb.branch_name).await;
 
     let mut sections = Vec::new();
     if let Some(template) = template {
@@ -1216,11 +1275,23 @@ async fn build_pr_body(
     }
 
     sections.push(format!(
-        "## RalphX Plan Review\n\nThis pull request tracks the RalphX execution plan for **{}**.",
+        "## Summary\n\nRalphX opened this draft PR for **{}** after reviewable plan work landed on the plan branch.",
         display_title
     ));
+
+    if let Some(change_summary) = change_summary {
+        sections.push(format!("## Delivered Changes\n\n{}", change_summary));
+    }
+
+    sections.push(
+        "## Review Focus\n\n\
+         - Review the delivered diff and any repository checks.\n\
+         - Merge this PR in GitHub when the plan branch is ready; RalphX will detect the merge and finish the plan."
+            .to_string(),
+    );
+
     sections.push(format!(
-        "## Current Status\n\n- Latest merged task: **{}**\n- Base branch: `{}`\n- Plan branch: `{}`",
+        "## RalphX Status\n\n- State: Draft plan PR, waiting for GitHub review/merge\n- Current RalphX task: **{}**\n- Base branch: `{}`\n- Plan branch: `{}`",
         task.title.trim(),
         pr_base,
         pb.branch_name
