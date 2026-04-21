@@ -15,6 +15,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { MergingTaskDetail } from "./MergingTaskDetail";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
+import type { PlanBranch } from "@/api/plan-branch.types";
+
+const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
+  current: null,
+}));
 
 const mockConfirmation = {
   confirm: vi.fn(async () => true),
@@ -32,6 +37,10 @@ vi.mock("@/lib/tauri", () => ({
       stop: vi.fn(async () => ({})),
     },
   },
+}));
+
+vi.mock("@/hooks/usePlanBranchForTask", () => ({
+  usePlanBranchForTask: vi.fn(() => ({ data: mockPlanBranchState.current })),
 }));
 
 import { api } from "@/lib/tauri";
@@ -103,6 +112,30 @@ function makeProgressEvent(
   };
 }
 
+function createTestPlanBranch(overrides?: Partial<PlanBranch>): PlanBranch {
+  return {
+    id: "plan-branch-123",
+    planArtifactId: "artifact-123",
+    sessionId: "session-123",
+    projectId: "project-456",
+    branchName: "ralphx/ralphx/plan-a3612efd",
+    sourceBranch: "main",
+    status: "active",
+    mergeTaskId: "task-123",
+    createdAt: "2026-01-28T12:00:00+00:00",
+    mergedAt: null,
+    prNumber: 68,
+    prUrl: "https://github.com/aigentive/ralphx/pull/68",
+    prDraft: false,
+    prPushStatus: "pushed",
+    prStatus: "Open",
+    prPollingActive: true,
+    prEligible: true,
+    baseBranchOverride: null,
+    ...overrides,
+  };
+}
+
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -121,6 +154,7 @@ function renderWithProviders(ui: React.ReactElement) {
 describe("MergingTaskDetail", () => {
   beforeEach(() => {
     mockListeners.clear();
+    mockPlanBranchState.current = null;
     // Mock invoke to return resolved promises for hydration calls
     vi.mocked(invoke).mockResolvedValue(undefined);
     mockConfirmation.confirm = vi.fn(async () => true);
@@ -577,6 +611,33 @@ describe("MergingTaskDetail", () => {
       renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByText("Resolving Merge Conflicts")).toBeInTheDocument();
+    });
+
+    it("shows PR waiting copy instead of conflict-agent UI for PR-backed plan merge", () => {
+      mockPlanBranchState.current = createTestPlanBranch();
+      const task = createTestTask({
+        internalStatus: "merging",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByText("Waiting on Pull Request")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Review and merge PR #68 in GitHub. RalphX will finish this plan after GitHub reports it merged."
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("pr-mode-section")).toBeInTheDocument();
+      expect(screen.getByText("PR #68")).toBeInTheDocument();
+      expect(screen.getByText("Waiting for GitHub review or merge.")).toBeInTheDocument();
+      expect(screen.queryByText("Agent resolving conflicts")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("merge-progress-section")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("merging-actions-section")).not.toBeInTheDocument();
+      expect(screen.queryByText("Stop Merge")).not.toBeInTheDocument();
+      expect(screen.getByTitle("ralphx/ralphx/plan-a3612efd")).toBeInTheDocument();
+      expect(screen.getByTitle("main")).toBeInTheDocument();
     });
 
     it("shows conflict files when present in metadata", () => {

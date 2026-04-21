@@ -312,6 +312,13 @@ function PrModeCard({
     prPollingActive: boolean;
   };
 }) {
+  const statusText =
+    planBranch.prStatus === "Draft"
+      ? "Draft PR published. RalphX will keep the branch synced until it is ready."
+      : planBranch.prStatus === "Open"
+      ? "Waiting for GitHub review or merge."
+      : "Watching GitHub for PR updates.";
+
   const handleOpenInGithub = async () => {
     if (planBranch.prUrl) {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -339,7 +346,7 @@ function PrModeCard({
             <Loader2
               className="w-3.5 h-3.5 animate-spin text-text-primary/40"
             />
-            <span className="text-[12px] text-text-primary/40">Monitoring PR status</span>
+            <span className="text-[12px] text-text-primary/40">{statusText}</span>
           </div>
         )}
 
@@ -519,6 +526,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     ? historicalOutcome === "merged"
       ? "Merged"
       : "Conflict"
+    : isPrMode
+    ? "Waiting on PR"
     : isHistorical
     ? isProgrammaticPhase
       ? "Attempted"
@@ -538,6 +547,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     ? historicalOutcome === "merged"
       ? CheckCircle2
       : AlertTriangle
+    : isPrMode
+    ? GitPullRequest
     : isHistorical
     ? isProgrammaticPhase
       ? GitMerge
@@ -611,7 +622,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isProgrammaticPhase
             ? "Merging Changes..."
             : isPrMode
-            ? "Waiting for PR Merge"
+            ? "Waiting on Pull Request"
             : isValidationRecovery
             ? "Fixing Validation Errors..."
             : mergeConflictContext?.type === "plan_update"
@@ -638,7 +649,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isProgrammaticPhase
             ? "Attempting to merge..."
             : isPrMode
-            ? "Monitoring GitHub PR status — merge will complete automatically"
+            ? planBranch?.prNumber
+              ? `Review and merge PR #${planBranch.prNumber} in GitHub. RalphX will finish this plan after GitHub reports it merged.`
+              : "Review and merge the GitHub PR. RalphX will finish this plan after GitHub reports it merged."
             : isValidationRecovery
             ? "AI agent is fixing build errors"
             : mergeConflictContext?.type === "plan_update"
@@ -662,6 +675,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "warning"
             : isProgrammaticPhase
             ? "accent"
+            : isPrMode
+            ? "info"
             : isValidationRecovery
             ? "accent"
             : mergeConflictContext
@@ -688,6 +703,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                   : "warning"
                 : isProgrammaticPhase
                 ? "accent"
+                : isPrMode
+                ? "info"
                 : isValidationRecovery
                 ? "accent"
                 : mergeConflictContext
@@ -716,7 +733,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}
-      {(isHistorical || isAgentPhase || (isValidationRecovery && !isRevalidating)) && (
+      {(isHistorical || (!isPrMode && isAgentPhase) || (isValidationRecovery && !isRevalidating)) && (
         <section data-testid="merge-progress-section">
           <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
           <DetailCard variant="default">
@@ -759,7 +776,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       />
 
       {/* Conflict Files (only for agent phase, non-recovery) */}
-      {isAgentPhase && !isValidationRecovery && (conflictFiles.length > 0 || (isConflictDetectionEnabled && isLoadingConflicts)) && (
+      {isAgentPhase && !isPrMode && !isValidationRecovery && (conflictFiles.length > 0 || (isConflictDetectionEnabled && isLoadingConflicts)) && (
         <section data-testid="conflict-files-section">
           <SectionTitle>
             Conflict Files ({conflictFiles.length})
@@ -781,7 +798,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       )}
 
       {/* Actions — only for active (non-historical) agent-assisted merges */}
-      {!isHistorical && isAgentPhase && (
+      {!isHistorical && isAgentPhase && !isPrMode && (
         <section data-testid="merging-actions-section">
           <SectionTitle>Actions</SectionTitle>
           <DetailCard>
@@ -813,7 +830,9 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Branch Info */}
       <section data-testid="branch-info-section">
         <SectionTitle muted>Branch</SectionTitle>
-        {mergeConflictContext?.type === "plan_update" ? (
+        {isPrMode && planBranch ? (
+          <BranchFlow source={planBranch.branchName} target={planBranch.sourceBranch} size="sm" />
+        ) : mergeConflictContext?.type === "plan_update" ? (
           <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
         ) : mergeConflictContext?.type === "source_update" ? (
           <BranchFlow source={mergeConflictContext.source} target={mergeConflictContext.target} size="sm" />
@@ -824,7 +843,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         )}
       </section>
     </TwoColumnLayout>
-    {!isHistorical && isAgentPhase && <ConfirmationDialog {...confirmationDialogProps} />}
+    {!isHistorical && isAgentPhase && !isPrMode && <ConfirmationDialog {...confirmationDialogProps} />}
     </>
   );
 }
