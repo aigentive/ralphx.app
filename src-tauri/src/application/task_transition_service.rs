@@ -1605,6 +1605,32 @@ impl<R: Runtime> TaskTransitionService<R> {
                         task_id.as_str()
                     ))
                 })?;
+            let failure_kind =
+                crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                    &full_error,
+                );
+            if matches!(
+                failure_kind,
+                crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+            ) {
+                return Err(AppError::Conflict(format!(
+                    "Task {} has a commit-hook environment failure, not code feedback",
+                    task_id.as_str()
+                )));
+            }
+            let fingerprint =
+                crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                    &full_error,
+                );
+            if crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                &task,
+                &fingerprint,
+            ) {
+                return Err(AppError::Conflict(format!(
+                    "Task {} has repeated the same commit-hook failure after re-execution",
+                    task_id.as_str()
+                )));
+            }
             let feedback =
                 crate::domain::state_machine::transition_handler::build_commit_hook_revision_feedback(
                     &full_error,
@@ -1637,6 +1663,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                 &serde_json::json!({
                     "merge_revision_feedback": feedback,
                     "merge_revision_error": full_error,
+                    "merge_hook_failure_kind": failure_kind.as_str(),
+                    "merge_hook_failure_fingerprint": fingerprint,
+                    "merge_hook_failure_repeat_count": 0,
                     "merge_hook_reexecution_requested": true,
                 }),
             );
@@ -1666,6 +1695,119 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
 
             Ok(updated)
+        }
+    }
+
+    /// Mark a repository hook failure as merge-blocking infrastructure/repeat state.
+    ///
+    /// This intentionally does not create review notes or run RevisionNeeded entry actions:
+    /// the hook did not produce trustworthy code feedback, or the same feedback already
+    /// repeated after re-execution.
+    #[track_caller]
+    pub fn mark_commit_hook_merge_failure_blocked<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        explicit_error: Option<String>,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        async move {
+            let mut task = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            let full_error = explicit_error
+                .or_else(|| {
+                    crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                        &task,
+                    )
+                })
+                .ok_or_else(|| {
+                    AppError::Conflict(format!(
+                        "Task {} is not a commit-hook merge failure",
+                        task_id.as_str()
+                    ))
+                })?;
+            let failure_kind =
+                crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                    &full_error,
+                );
+            let fingerprint =
+                crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                    &full_error,
+                );
+            let repeated =
+                crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                    &task,
+                    &fingerprint,
+                );
+
+            let blocked_reason = if repeated {
+                "repeated_hook_failure"
+            } else if matches!(
+                failure_kind,
+                crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+            ) {
+                "hook_environment_failure"
+            } else {
+                "hook_failure_blocked"
+            };
+            let repeat_count = if repeated {
+                crate::domain::state_machine::transition_handler::commit_hook_repeat_count(
+                    &task,
+                    &fingerprint,
+                ) + 1
+            } else {
+                crate::domain::state_machine::transition_handler::commit_hook_repeat_count(
+                    &task,
+                    &fingerprint,
+                )
+            };
+
+            let mut metadata = serde_json::json!({
+                "error": full_error,
+                "merge_revision_error": full_error,
+                "merge_hook_failure_kind": failure_kind.as_str(),
+                "merge_hook_failure_fingerprint": fingerprint,
+                "merge_hook_failure_repeat_count": repeat_count,
+                "merge_hook_blocked_reason": blocked_reason,
+                "merge_hook_reexecution_requested": false,
+            });
+            if let Some(obj) = metadata.as_object_mut() {
+                if repeated {
+                    obj.insert(
+                        "merge_hook_repeated_error".to_string(),
+                        serde_json::json!(full_error),
+                    );
+                } else if matches!(
+                    failure_kind,
+                    crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                ) {
+                    obj.insert(
+                        "merge_hook_environment_error".to_string(),
+                        serde_json::json!(full_error),
+                    );
+                }
+            }
+
+            crate::domain::state_machine::transition_handler::merge_metadata_into(
+                &mut task, &metadata,
+            );
+            task.touch();
+            self.task_repo.update(&task).await?;
+
+            if task.internal_status == InternalStatus::MergeIncomplete {
+                return Ok(task);
+            }
+
+            self.transition_task_corrective_with_exit(
+                task_id,
+                InternalStatus::MergeIncomplete,
+                None,
+                history_actor,
+            )
+            .await
         }
     }
 

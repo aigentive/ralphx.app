@@ -333,6 +333,52 @@ describe("MergeIncompleteTaskDetail", () => {
     expect(screen.getByText("Git error: branch locked")).toBeInTheDocument();
   });
 
+  it("explains hook environment failures as setup issues, not code changes", () => {
+    const metadata = JSON.stringify({
+      error:
+        "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\nsrc/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod'",
+      merge_hook_failure_kind: "environment_failure",
+      merge_hook_blocked_reason: "hook_environment_failure",
+      merge_hook_failure_repeat_count: 0,
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByText("Merge Blocked")).toBeInTheDocument();
+    expect(
+      screen.getByText("Repository hook environment failed — action required"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/could not run reliably in this isolated worktree environment/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Fix the hook dependencies or worktree setup/i),
+    ).toBeInTheDocument();
+  });
+
+  it("explains repeated hook failures as a stopped loop", () => {
+    const metadata = JSON.stringify({
+      error:
+        "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed",
+      merge_hook_failure_kind: "policy_failure",
+      merge_hook_blocked_reason: "repeated_hook_failure",
+      merge_hook_failure_repeat_count: 1,
+    });
+
+    const task = createTestTask({ metadata });
+    render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByText("Merge Blocked")).toBeInTheDocument();
+    expect(
+      screen.getByText("Same repository hook failure repeated — loop stopped"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Repeat count: 1/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/stopped the automatic loop/i),
+    ).toBeInTheDocument();
+  });
+
   it("truncates oversized What Happened output and opens full output in a dialog", async () => {
     const user = userEvent.setup();
     const longError =

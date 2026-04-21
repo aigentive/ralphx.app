@@ -314,17 +314,49 @@ async fn retry_merge_inner(
             &task,
         )
     {
+        let hook_error =
+            crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                &task,
+            );
+        let should_reroute = hook_error
+            .as_deref()
+            .map(|error| {
+                let kind =
+                    crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                        error,
+                    );
+                let fingerprint =
+                    crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                        error,
+                    );
+                !matches!(
+                    kind,
+                    crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                ) && !crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                    &task,
+                    &fingerprint,
+                )
+            })
+            .unwrap_or(false);
+
+        if should_reroute {
+            tracing::info!(
+                task_id = task_id_parsed.as_str(),
+                "Manual retry detected commit-hook MergeIncomplete — rerouting to revision flow"
+            );
+            let transition_service = app_state
+                .build_transition_service_with_execution_state(Arc::clone(&execution_state));
+            transition_service
+                .reroute_commit_hook_merge_failure(&task_id_parsed, None, true, "manual_retry")
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+
         tracing::info!(
             task_id = task_id_parsed.as_str(),
-            "Manual retry detected commit-hook MergeIncomplete — rerouting to revision flow"
+            "Manual retry detected blocked/repeated commit-hook MergeIncomplete — retrying merge path"
         );
-        let transition_service =
-            app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
-        transition_service
-            .reroute_commit_hook_merge_failure(&task_id_parsed, None, true, "manual_retry")
-            .await
-            .map_err(|e| e.to_string())?;
-        return Ok(());
     }
 
     // Check if merge retry is already in progress

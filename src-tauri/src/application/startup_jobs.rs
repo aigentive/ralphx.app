@@ -2012,6 +2012,60 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                 tracing::info!(
                     task_id = task.id.as_str(),
+                    "Phase 0.9: Inspecting legacy commit-hook MergeIncomplete task"
+                );
+
+                if let Some(error) =
+                    crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                        &task,
+                    )
+                {
+                    let kind =
+                        crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                            &error,
+                        );
+                    let fingerprint =
+                        crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                            &error,
+                        );
+                    let repeated =
+                        crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                            &task,
+                            &fingerprint,
+                        );
+
+                    if matches!(
+                        kind,
+                        crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                    ) || repeated
+                    {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            kind = kind.as_str(),
+                            repeated,
+                            "Phase 0.9: Marking commit-hook MergeIncomplete task as blocked"
+                        );
+                        if let Err(e) = self
+                            .transition_service
+                            .mark_commit_hook_merge_failure_blocked(
+                                &task.id,
+                                Some(error),
+                                "startup_recovery",
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Phase 0.9: Failed to mark commit-hook MergeIncomplete task as blocked"
+                            );
+                        }
+                        continue;
+                    }
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
                     "Phase 0.9: Rerouting legacy commit-hook MergeIncomplete task into revision flow"
                 );
 

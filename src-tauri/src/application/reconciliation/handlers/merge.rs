@@ -600,6 +600,57 @@ impl<R: Runtime> ReconciliationRunner<R> {
         if crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(
             task,
         ) {
+            let commit_hook_error =
+                crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                    task,
+                );
+            if let Some(error) = commit_hook_error.as_deref() {
+                let kind =
+                    crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                        error,
+                    );
+                let fingerprint =
+                    crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                        error,
+                    );
+                let repeated =
+                    crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                        task,
+                        &fingerprint,
+                    );
+                if matches!(
+                    kind,
+                    crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                ) || repeated
+                {
+                    tracing::info!(
+                        task_id = task.id.as_str(),
+                        kind = kind.as_str(),
+                        repeated,
+                        "MergeIncomplete commit-hook failure is blocked, not rerouted"
+                    );
+                    return match self
+                        .transition_service
+                        .mark_commit_hook_merge_failure_blocked(
+                            &task.id,
+                            Some(error.to_string()),
+                            "system",
+                        )
+                        .await
+                    {
+                        Ok(_) => true,
+                        Err(e) => {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Failed to mark commit-hook MergeIncomplete as blocked"
+                            );
+                            false
+                        }
+                    };
+                }
+            }
+
             tracing::info!(
                 task_id = task.id.as_str(),
                 "MergeIncomplete commit-hook failure detected — rerouting to revision flow"

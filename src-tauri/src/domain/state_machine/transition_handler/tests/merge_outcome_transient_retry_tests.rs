@@ -188,6 +188,53 @@ fn test_plain_commit_failure_without_hook_marker_is_not_commit_hook_error() {
     );
 }
 
+#[test]
+fn test_commit_hook_failure_classifier_detects_environment_failures() {
+    use super::super::merge_helpers::{classify_commit_hook_failure_text, CommitHookFailureKind};
+
+    let text = "Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\n\
+        src/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod' or its corresponding type declarations.\n\
+        /bin/sh: eslint: command not found";
+
+    assert_eq!(
+        classify_commit_hook_failure_text(text),
+        CommitHookFailureKind::EnvironmentFailure,
+        "missing modules/tools mean the hook environment failed before policy could be trusted"
+    );
+}
+
+#[test]
+fn test_commit_hook_failure_classifier_detects_policy_failures() {
+    use super::super::merge_helpers::{classify_commit_hook_failure_text, CommitHookFailureKind};
+
+    let text =
+        "Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards\n\
+        Guard 1: primitive tokens in components\n\
+        ERROR: primitive-tier token used in frontend/src/components/Button.tsx";
+
+    assert_eq!(
+        classify_commit_hook_failure_text(text),
+        CommitHookFailureKind::PolicyFailure,
+        "hook policy findings tied to repository rules should be sent as code feedback"
+    );
+}
+
+#[test]
+fn test_commit_hook_failure_fingerprint_normalizes_paths_and_noise() {
+    use super::super::merge_helpers::commit_hook_failure_fingerprint;
+
+    let left = "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit]\n\
+        /Users/dev/worktrees/task-a/frontend/src/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod'";
+    let right = "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit]\n\
+        /tmp/runner/work/project/frontend/src/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod'";
+
+    assert_eq!(
+        commit_hook_failure_fingerprint(left),
+        commit_hook_failure_fingerprint(right),
+        "same hook failure should fingerprint the same across machines/worktree paths"
+    );
+}
+
 // ==================
 // B. Transient git error → deferred (not MergeIncomplete)
 // ==================
@@ -408,7 +455,7 @@ async fn test_permanent_git_error_transitions_to_merge_incomplete() {
 }
 
 #[tokio::test]
-async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
+async fn test_commit_hook_policy_error_reroutes_back_to_reexecuting() {
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
     use super::super::merge_strategies::MergeOutcome;
 
@@ -448,7 +495,7 @@ async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
     let handler = TransitionHandler::new(&mut machine);
 
     let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
-        "Failed to commit rebase+squash in worktree: stdout=[pre-commit][design-token guards] error TS2307: Cannot find module 'zod'".to_string(),
+        "Failed to commit rebase+squash in worktree: stdout=[pre-commit][design-token guards] ERROR primitive token in frontend/src/components/Button.tsx".to_string(),
     ));
     let opts = MergeHandlerOptions::rebase_squash();
     let task_repo_arc = Arc::clone(&app_state.task_repo) as Arc<dyn TaskRepository>;
@@ -532,6 +579,115 @@ async fn test_commit_hook_git_error_reroutes_back_to_reexecuting() {
     assert!(
         !note_body.contains('\u{001b}'),
         "hook reroute note bodies should strip ANSI escape codes before persistence"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_hook_environment_error_blocks_without_reexecution() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let real_repo = setup_real_git_repo();
+    let repo_path = real_repo.path();
+
+    let app_state = AppState::new_test();
+    let transition_service = build_transition_service(&app_state);
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let mut project = Project::new("test".to_string(), repo_path.to_string_lossy().to_string());
+    project.base_branch = Some("main".to_string());
+    project.merge_validation_mode = MergeValidationMode::Off;
+    let project_id = project.id.clone();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Hook environment test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(real_repo.task_branch.clone());
+    task.worktree_path = Some(repo_path.to_string_lossy().to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    )
+    .with_transition_service(Arc::clone(&transition_service));
+
+    let context = create_context_with_services(task_id.as_str(), project_id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
+        "Failed to commit rebase+squash in worktree: stdout=, stderr=[pre-commit] typecheck\n\
+        src/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod' or its corresponding type declarations."
+            .to_string(),
+    ));
+    let opts = MergeHandlerOptions::rebase_squash();
+    let task_repo_arc = Arc::clone(&app_state.task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path,
+        source_branch: &real_repo.task_branch,
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task to exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "environment/bootstrap hook failures should block merge instead of re-executing code"
+    );
+
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_failure_kind"),
+        Some(&serde_json::json!("environment_failure"))
+    );
+    assert!(
+        meta.get("merge_hook_environment_error")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .contains("Cannot find module 'zod'"),
+        "environment hook error should be preserved for UI/debugging"
+    );
+    assert!(
+        meta.get("merge_hook_failure_fingerprint").is_some(),
+        "environment hook failures should store a normalized fingerprint for loop prevention"
+    );
+
+    let notes = app_state
+        .review_repo
+        .get_notes_by_task_id(&task_id)
+        .await
+        .expect("review notes query should succeed");
+    assert!(
+        notes.is_empty(),
+        "environment hook failures must not be persisted as code review changes_requested notes"
     );
 }
 

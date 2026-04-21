@@ -62,6 +62,9 @@ interface MergeErrorContext {
   diagnosticInfo: string | null;
   hasValidationFailures: boolean;
   recoveryEvents: MergeRecoveryEvent[];
+  hookFailureKind: string | null;
+  hookBlockedReason: string | null;
+  hookFailureRepeatCount: number | null;
   metadata: TaskMetadata | null;
 }
 
@@ -96,6 +99,9 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
       diagnosticInfo: m.diagnostic_info ?? null,
       hasValidationFailures: Array.isArray(m.validation_failures) && m.validation_failures.length > 0,
       recoveryEvents: m.merge_recovery?.events ?? [],
+      hookFailureKind: m.merge_hook_failure_kind ?? null,
+      hookBlockedReason: m.merge_hook_blocked_reason ?? null,
+      hookFailureRepeatCount: m.merge_hook_failure_repeat_count ?? null,
       metadata: m,
     };
   } catch {
@@ -103,11 +109,38 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
   }
 }
 
+function getHookBlockCopy(mergeError: MergeErrorContext | null): {
+  title: string;
+  subtitle: string;
+  explanation: string;
+} | null {
+  if (mergeError?.hookBlockedReason === "hook_environment_failure") {
+    return {
+      title: "Merge Blocked",
+      subtitle: "Repository hook environment failed — action required",
+      explanation:
+        "The repository hook could not run reliably in this isolated worktree environment, so RalphX did not ask the agent to change code.",
+    };
+  }
+
+  if (mergeError?.hookBlockedReason === "repeated_hook_failure") {
+    return {
+      title: "Merge Blocked",
+      subtitle: "Same repository hook failure repeated — loop stopped",
+      explanation:
+        "The same commit hook failure repeated after re-execution, so RalphX stopped the automatic revision loop.",
+    };
+  }
+
+  return null;
+}
+
 /**
  * ErrorContextCard - Shows actual error details or generic fallback
  */
 function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { mergeError: MergeErrorContext | null; resolvedSource?: string; resolvedTarget?: string | null }) {
   const [selectedErrorOutput, setSelectedErrorOutput] = useState<string | null>(null);
+  const hookBlockCopy = getHookBlockCopy(mergeError);
 
   if (!mergeError) {
     return (
@@ -132,6 +165,16 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
   return (
     <>
       <div className="space-y-3">
+        {hookBlockCopy && (
+          <div className="rounded-md px-3 py-2 text-[13px] text-text-primary/70 bg-[var(--overlay-faint)]">
+            {hookBlockCopy.explanation}
+            {mergeError?.hookFailureRepeatCount != null && mergeError.hookFailureRepeatCount > 0 && (
+              <span className="ml-1 text-text-primary/50">
+                Repeat count: {mergeError.hookFailureRepeatCount}.
+              </span>
+            )}
+          </div>
+        )}
         {mergeError.error && (
           <div className="space-y-2">
             <div
@@ -200,10 +243,47 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
 /**
  * RecoverySteps - Numbered steps for manual recovery
  */
-function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { branchName: string; targetBranch?: string | null; hasValidationFailures: boolean }) {
+function RecoverySteps({
+  branchName,
+  targetBranch,
+  hasValidationFailures,
+  hookBlockedReason,
+}: {
+  branchName: string;
+  targetBranch?: string | null;
+  hasValidationFailures: boolean;
+  hookBlockedReason?: string | null;
+}) {
   return (
     <div className="space-y-3">
-      {hasValidationFailures ? (
+      {hookBlockedReason === "hook_environment_failure" ? (
+        <>
+          <p className="text-[13px] text-text-primary/60">
+            A repository commit hook could not bootstrap its environment in the merge worktree.
+            Fix the hook dependencies or worktree setup, then retry the merge.
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
+            <li>Check the hook output for missing tools, dependencies, permissions, or symlinks</li>
+            <li>Repair the worktree setup or install the missing dependencies outside the task agent flow</li>
+            <li>
+              Click <strong className="text-text-primary/70">Retry Merge</strong> after the environment is fixed
+            </li>
+          </ol>
+        </>
+      ) : hookBlockedReason === "repeated_hook_failure" ? (
+        <>
+          <p className="text-[13px] text-text-primary/60">
+            The same repository hook failure repeated after re-execution, so RalphX stopped the automatic loop.
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
+            <li>Review the full hook output to decide whether this is code feedback or environment setup</li>
+            <li>Fix the root cause manually or update the hook/worktree setup</li>
+            <li>
+              Click <strong className="text-text-primary/70">Retry Merge</strong> only after the cause is addressed
+            </li>
+          </ol>
+        </>
+      ) : hasValidationFailures ? (
         <>
           <p className="text-[13px] text-text-primary/60">
             Your validation commands (build, type checks, linting) failed,
@@ -645,6 +725,7 @@ export function MergeIncompleteTaskDetail({
   const { confirm } = useConfirmation();
 
   const mergeError = parseMergeError(task.metadata);
+  const hookBlockCopy = getHookBlockCopy(mergeError);
   const { data: planBranch } = usePlanBranchForTask(task.id);
 
   // Use merge pipeline data for correct branch resolution (metadata may have stale target_branch)
@@ -776,9 +857,11 @@ export function MergeIncompleteTaskDetail({
       {/* Status Banner - error (red) variant */}
       <StatusBanner
         icon={AlertTriangle}
-        title="Merge Incomplete"
+        title={hookBlockCopy?.title ?? "Merge Incomplete"}
         subtitle={
-          mergeError?.hasValidationFailures
+          hookBlockCopy
+            ? hookBlockCopy.subtitle
+            : mergeError?.hasValidationFailures
             ? isHistorical
               ? "Merge validation failed"
               : "Merge validation failed — action required"
@@ -877,7 +960,12 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} targetBranch={resolvedTargetBranch} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
+            <RecoverySteps
+              branchName={branchName}
+              targetBranch={resolvedTargetBranch}
+              hasValidationFailures={mergeError?.hasValidationFailures ?? false}
+              hookBlockedReason={mergeError?.hookBlockedReason ?? null}
+            />
           </DetailCard>
         </section>
       )}

@@ -62,8 +62,10 @@ pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata,
 pub(crate) use merge_helpers::{
     build_commit_hook_review_note_body,
     build_commit_hook_revision_feedback,
+    classify_commit_hook_failure_text,
     create_draft_pr_if_needed,
     clear_main_merge_deferred_metadata, clear_merge_deferred_metadata,
+    commit_hook_failure_fingerprint, commit_hook_repeat_count,
     compute_merge_worktree_path, get_trigger_origin,
     extract_commit_hook_merge_error,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
@@ -72,7 +74,8 @@ pub(crate) use merge_helpers::{
     plan_branch_has_reviewable_diff, resolve_plan_branch_pr_base, set_source_conflict_resolved,
     set_conflict_metadata, sync_plan_branch_pr_if_needed,
     task_has_commit_hook_merge_failure,
-    is_merge_worktree_path, restore_task_worktree,
+    is_merge_worktree_path, is_repeated_commit_hook_failure, restore_task_worktree,
+    CommitHookFailureKind,
 };
 #[doc(hidden)]
 pub use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;

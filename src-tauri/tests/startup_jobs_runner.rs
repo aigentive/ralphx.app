@@ -894,6 +894,77 @@ async fn test_merge_incomplete_commit_hook_rows_are_rerouted_on_startup() {
 }
 
 #[tokio::test]
+async fn test_merge_incomplete_commit_hook_environment_rows_are_not_rerouted_on_startup() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+    let repo = setup_git_repo();
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Legacy Hook Environment MergeIncomplete".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\nsrc/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod' or its corresponding type declarations."
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let exec_convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert!(
+        exec_convs.is_empty(),
+        "startup should not start task re-execution for hook environment failures"
+    );
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "environment hook failures should remain blocked in MergeIncomplete on startup"
+    );
+    let meta: serde_json::Value =
+        serde_json::from_str(updated_task.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_failure_kind"),
+        Some(&serde_json::json!("environment_failure"))
+    );
+    assert_eq!(
+        meta.get("merge_hook_blocked_reason"),
+        Some(&serde_json::json!("hook_environment_failure"))
+    );
+}
+
+#[tokio::test]
 async fn test_approved_auto_transitions_on_startup() {
     // Approved is in AUTO_TRANSITION_STATES
     // Tasks stuck in Approved should auto-transition to PendingMerge

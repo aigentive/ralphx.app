@@ -810,9 +810,36 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
 
-        if super::is_commit_hook_merge_error_text(&error.to_string()) {
+        let full_error = error.to_string();
+        if super::is_commit_hook_merge_error_text(&full_error) {
+            let kind = super::classify_commit_hook_failure_text(&full_error);
+            let fingerprint = super::commit_hook_failure_fingerprint(&full_error);
+            let repeated = super::is_repeated_commit_hook_failure(task, &fingerprint);
+
+            if matches!(kind, super::CommitHookFailureKind::EnvironmentFailure) || repeated {
+                self.block_commit_hook_failure_as_merge_incomplete(
+                    super::TaskCore {
+                        task: &mut *task,
+                        task_id,
+                        task_id_str,
+                        task_repo,
+                    },
+                    super::BranchPair {
+                        source_branch,
+                        target_branch,
+                    },
+                    &full_error,
+                    kind,
+                    &fingerprint,
+                    repeated,
+                    opts,
+                )
+                .await;
+                return;
+            }
+
             if self
-                .route_commit_hook_failure_to_revision(task_id, &error.to_string())
+                .route_commit_hook_failure_to_revision(task_id, &full_error)
                 .await
             {
                 tracing::warn!(
@@ -880,6 +907,148 @@ impl<'a> super::TransitionHandler<'a> {
                 }).to_string());
             }
         }
+
+        transition_to_merge_incomplete(
+            task,
+            task_id,
+            task_id_str,
+            task_repo,
+            &self.machine.context.services.event_emitter,
+        )
+        .await;
+    }
+
+    async fn block_commit_hook_failure_as_merge_incomplete(
+        &self,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        full_error: &str,
+        kind: super::CommitHookFailureKind,
+        fingerprint: &str,
+        repeated: bool,
+        opts: &MergeHandlerOptions,
+    ) {
+        let (task, task_id, task_id_str, task_repo) =
+            (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let mut recovery = get_or_create_recovery(task);
+        let attempt = retry_attempt_count(&recovery);
+        let repeat_count = if repeated {
+            super::commit_hook_repeat_count(task, fingerprint) + 1
+        } else {
+            super::commit_hook_repeat_count(task, fingerprint)
+        };
+        let failure_source = if repeated {
+            MergeFailureSource::RepeatedHookFailure
+        } else {
+            MergeFailureSource::HookEnvironment
+        };
+        let reason = if repeated {
+            "repeated_hook_failure"
+        } else {
+            "hook_environment_failure"
+        };
+        let message = if repeated {
+            format!(
+                "Merge blocked: repository hook failure repeated after re-execution ({})",
+                opts.strategy_label
+            )
+        } else {
+            format!(
+                "Merge blocked: repository hook environment failed ({})",
+                opts.strategy_label
+            )
+        };
+
+        let failed_event = MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AttemptFailed,
+            MergeRecoverySource::System,
+            MergeRecoveryReasonCode::GitError,
+            format!("{message}: {full_error}"),
+        )
+        .with_target_branch(target_branch)
+        .with_source_branch(source_branch)
+        .with_attempt(attempt)
+        .with_failure_source(failure_source);
+        recovery.append_event_with_state(failed_event, MergeRecoveryState::Failed);
+
+        match recovery.update_task_metadata(task.metadata.as_deref()) {
+            Ok(updated_json) => {
+                let mut meta = serde_json::from_str::<serde_json::Value>(&updated_json)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.insert("error".to_string(), serde_json::json!(full_error));
+                    obj.insert(
+                        "source_branch".to_string(),
+                        serde_json::json!(source_branch),
+                    );
+                    obj.insert(
+                        "target_branch".to_string(),
+                        serde_json::json!(target_branch),
+                    );
+                    obj.insert(
+                        "merge_hook_failure_kind".to_string(),
+                        serde_json::json!(kind.as_str()),
+                    );
+                    obj.insert(
+                        "merge_hook_failure_fingerprint".to_string(),
+                        serde_json::json!(fingerprint),
+                    );
+                    obj.insert(
+                        "merge_hook_failure_repeat_count".to_string(),
+                        serde_json::json!(repeat_count),
+                    );
+                    obj.insert(
+                        "merge_hook_blocked_reason".to_string(),
+                        serde_json::json!(reason),
+                    );
+                    obj.insert(
+                        "merge_hook_reexecution_requested".to_string(),
+                        serde_json::json!(false),
+                    );
+                    obj.insert(
+                        "merge_revision_error".to_string(),
+                        serde_json::json!(full_error),
+                    );
+                    if repeated {
+                        obj.insert(
+                            "merge_hook_repeated_error".to_string(),
+                            serde_json::json!(full_error),
+                        );
+                    } else {
+                        obj.insert(
+                            "merge_hook_environment_error".to_string(),
+                            serde_json::json!(full_error),
+                        );
+                    }
+                }
+                task.metadata = Some(meta.to_string());
+            }
+            Err(e) => {
+                tracing::error!(task_id = task_id_str, error = %e, "Failed to serialize hook failure metadata");
+                task.metadata = Some(
+                    serde_json::json!({
+                        "error": full_error,
+                        "source_branch": source_branch,
+                        "target_branch": target_branch,
+                        "merge_hook_failure_kind": kind.as_str(),
+                        "merge_hook_failure_fingerprint": fingerprint,
+                        "merge_hook_failure_repeat_count": repeat_count,
+                        "merge_hook_blocked_reason": reason,
+                        "merge_hook_reexecution_requested": false,
+                    })
+                    .to_string(),
+                );
+            }
+        }
+
+        tracing::warn!(
+            task_id = task_id_str,
+            kind = kind.as_str(),
+            repeated,
+            strategy = opts.strategy_label,
+            "Commit-hook merge failure blocked without code re-execution"
+        );
 
         transition_to_merge_incomplete(
             task,

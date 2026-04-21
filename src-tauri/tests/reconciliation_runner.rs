@@ -2710,6 +2710,155 @@ async fn reconcile_merge_incomplete_reroutes_commit_hook_failures_to_reexecution
     );
 }
 
+#[tokio::test]
+async fn reconcile_merge_incomplete_blocks_commit_hook_environment_failures() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.set_max_concurrent(10);
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Hook Environment MergeIncomplete".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\nsrc/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod' or its corresponding type declarations.",
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        reconciled,
+        "environment hook failures should be handled as infra-blocked merge state"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "environment hook failure should not be rerouted into ReExecuting"
+    );
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_failure_kind"),
+        Some(&serde_json::json!("environment_failure"))
+    );
+    assert_eq!(
+        meta.get("merge_hook_blocked_reason"),
+        Some(&serde_json::json!("hook_environment_failure"))
+    );
+    assert_eq!(
+        meta.get("merge_hook_reexecution_requested"),
+        Some(&serde_json::json!(false))
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_blocks_repeated_commit_hook_fingerprint() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.set_max_concurrent(10);
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let error = "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed";
+    let mut task = Task::new(
+        project.id.clone(),
+        "Repeated Hook MergeIncomplete".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": error,
+            "merge_hook_failure_kind": "policy_failure",
+            "merge_hook_failure_fingerprint": error.to_lowercase(),
+            "merge_hook_reexecution_requested": true,
+            "merge_hook_failure_repeat_count": 0,
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        reconciled,
+        "repeated hook fingerprints should be handled as blocked merge state"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "repeated hook failure should not re-enter revision flow"
+    );
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_blocked_reason"),
+        Some(&serde_json::json!("repeated_hook_failure"))
+    );
+    assert_eq!(
+        meta.get("merge_hook_failure_repeat_count"),
+        Some(&serde_json::json!(1))
+    );
+}
+
 // ── SHA comparison guard ──
 
 #[test]
