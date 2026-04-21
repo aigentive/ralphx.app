@@ -1566,6 +1566,7 @@ function TaskGraphViewInner({
       timelineContent={
         <FloatingTimeline
           projectId={projectId}
+          executionPlanId={activeExecutionPlanId}
           onTaskClick={onTimelineTaskClick}
           highlightedTaskId={highlightedTaskId}
           variant={rightPanelMode === "overlay" || overlayClosing ? "overlay" : "panel"}
