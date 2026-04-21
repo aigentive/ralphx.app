@@ -21,6 +21,9 @@ use crate::domain::repositories::{
     TaskRepository,
 };
 use crate::domain::services::github_service::GithubServiceTrait;
+use crate::domain::state_machine::transition_handler::{
+    complete_merge_internal_with_pr_sync, PlanBranchPrSyncServices,
+};
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::infrastructure::memory::{
     MemoryArtifactRepository, MemoryIdeationSessionRepository, MemoryPlanBranchRepository,
@@ -637,6 +640,190 @@ async fn test_regular_plan_task_merged_state_creates_draft_pr_after_first_merge(
     assert!(body.contains("<details>"));
     assert!(body.contains("Thread `executionPlanId` through the timeline components"));
     assert!(body.contains("[RalphX](https://github.com/aigentive/ralphx)"));
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_completion_creates_draft_pr_after_first_local_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let project = project_repo
+        .get_by_id(&ProjectId::from_string("proj-1".to_string()))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged by programmatic merge".to_string(),
+    );
+    task.id = TaskId::from_string("task-programmatic-plan-merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    task.plan_artifact_id = Some(ArtifactId::from_string("artifact-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch = make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", branch_name])
+        .current_dir(repo.path())
+        .output()
+        .expect("read plan branch sha");
+    assert!(commit_output.status.success(), "rev-parse plan branch should succeed");
+    let commit_sha = String::from_utf8_lossy(&commit_output.stdout).trim().to_string();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    mock_github.will_create_pr(456, "https://github.com/owner/repo/pull/456");
+
+    let mut task_for_merge = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let task_repo_dyn: Arc<dyn TaskRepository> = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+    let result = complete_merge_internal_with_pr_sync::<tauri::Wry>(
+        &mut task_for_merge,
+        &project,
+        &commit_sha,
+        "task/feature",
+        branch_name,
+        &task_repo_dyn,
+        None,
+        None,
+        None,
+        None,
+        Some(PlanBranchPrSyncServices {
+            plan_branch_repo: Some(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>),
+            pr_creation_guard: Some(Arc::new(dashmap::DashMap::new())),
+            github_service: Some(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>),
+            ideation_session_repo: None,
+            artifact_repo: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal_with_pr_sync should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "programmatic local plan-task merge should push the plan branch"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 1,
+        "programmatic local plan-task merge should create the first draft PR"
+    );
+    drop(state);
+
+    let final_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(final_task.internal_status, InternalStatus::Merged);
+
+    let updated_plan_branch = plan_branch_repo.get_by_id(&branch_id).await.unwrap().unwrap();
+    assert_eq!(updated_plan_branch.pr_number, Some(456));
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_completion_pushes_existing_pr_after_local_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/existing-pr-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let project = project_repo
+        .get_by_id(&ProjectId::from_string("proj-1".to_string()))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged follow-up via programmatic merge".to_string(),
+    );
+    task.id = TaskId::from_string("task-programmatic-plan-pr-sync".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch = make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    plan_branch.pr_number = Some(789);
+    plan_branch.pr_url = Some("https://github.com/owner/repo/pull/789".to_string());
+    plan_branch.pr_push_status = crate::domain::entities::plan_branch::PrPushStatus::Pushed;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", branch_name])
+        .current_dir(repo.path())
+        .output()
+        .expect("read plan branch sha");
+    assert!(commit_output.status.success(), "rev-parse plan branch should succeed");
+    let commit_sha = String::from_utf8_lossy(&commit_output.stdout).trim().to_string();
+
+    let mock_github = Arc::new(MockGithubService::new());
+
+    let mut task_for_merge = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let task_repo_dyn: Arc<dyn TaskRepository> = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+    let result = complete_merge_internal_with_pr_sync::<tauri::Wry>(
+        &mut task_for_merge,
+        &project,
+        &commit_sha,
+        "task/feature",
+        branch_name,
+        &task_repo_dyn,
+        None,
+        None,
+        None,
+        None,
+        Some(PlanBranchPrSyncServices {
+            plan_branch_repo: Some(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>),
+            pr_creation_guard: Some(Arc::new(dashmap::DashMap::new())),
+            github_service: Some(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>),
+            ideation_session_repo: None,
+            artifact_repo: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal_with_pr_sync should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "programmatic local plan-task merge should push existing PR branch updates"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 0,
+        "existing PR-backed branches should sync instead of creating another PR"
+    );
+    assert_eq!(
+        state.last_push_branch_name.as_deref(),
+        Some(branch_name),
+        "push should target the plan branch"
+    );
+    drop(state);
+
+    let updated_plan_branch = plan_branch_repo.get_by_id(&branch_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_plan_branch.pr_push_status,
+        crate::domain::entities::plan_branch::PrPushStatus::Pushed
+    );
 }
 
 #[tokio::test]

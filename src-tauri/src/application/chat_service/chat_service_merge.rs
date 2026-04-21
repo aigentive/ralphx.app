@@ -31,7 +31,9 @@ use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
-use crate::domain::state_machine::transition_handler::complete_merge_internal;
+use crate::domain::state_machine::transition_handler::{
+    complete_merge_internal_with_pr_sync, PlanBranchPrSyncServices,
+};
 use crate::application::harness_runtime_registry::{
     default_reconciliation_merge_watcher_grace_secs,
     default_reconciliation_merge_watcher_poll_secs,
@@ -1004,8 +1006,33 @@ async fn complete_merge_and_schedule<R: Runtime>(
         "attempt_merge_auto_complete: merge verified on target branch, completing"
     );
 
-    if let Err(e) =
-        complete_merge_internal(task, project, commit_sha, source_branch, target_branch, ctx.task_repo, None, None, ctx.app_handle, None).await
+    let app_state = ctx
+        .app_handle
+        .and_then(|handle| handle.try_state::<AppState>());
+    let pr_sync_services = PlanBranchPrSyncServices {
+        plan_branch_repo: ctx.plan_branch_repo.clone(),
+        pr_creation_guard: app_state
+            .as_ref()
+            .map(|state| Arc::clone(&state.pr_poller_registry.pr_creation_guard)),
+        github_service: app_state.as_ref().and_then(|state| state.github_service.clone()),
+        ideation_session_repo: Some(Arc::clone(ctx.ideation_session_repo)),
+        artifact_repo: Some(Arc::clone(ctx.artifact_repo)),
+    };
+
+    if let Err(e) = complete_merge_internal_with_pr_sync(
+        task,
+        project,
+        commit_sha,
+        source_branch,
+        target_branch,
+        ctx.task_repo,
+        None,
+        None,
+        ctx.app_handle,
+        None,
+        Some(pr_sync_services),
+    )
+    .await
     {
         tracing::error!(
             task_id = ctx.task_id_str,

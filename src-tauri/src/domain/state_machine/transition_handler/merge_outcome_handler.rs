@@ -20,7 +20,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 
-use super::merge_completion::complete_merge_internal;
+use super::merge_completion::complete_merge_internal_with_pr_sync;
 use super::merge_helpers::{compute_merge_worktree_path, parse_metadata};
 use super::merge_strategies::MergeOutcome;
 use super::merge_validation::{
@@ -399,7 +399,7 @@ impl<'a> super::TransitionHandler<'a> {
         let app_handle = self.machine.context.services.app_handle.as_ref();
         let external_events_repo = self.machine.context.services.external_events_repo.as_ref();
         let webhook_publisher = self.machine.context.services.webhook_publisher.as_ref();
-        if let Err(e) = complete_merge_internal(
+        if let Err(e) = complete_merge_internal_with_pr_sync(
             task,
             project,
             commit_sha,
@@ -410,6 +410,9 @@ impl<'a> super::TransitionHandler<'a> {
             webhook_publisher,
             app_handle,
             None,
+            Some(super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
+                &self.machine.context.services,
+            )),
         )
         .await
         {

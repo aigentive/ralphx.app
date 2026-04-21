@@ -21,6 +21,7 @@ use crate::domain::repositories::{
     ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, TaskRepository,
 };
 use crate::domain::services::GithubServiceTrait;
+use crate::domain::state_machine::context::TaskServices;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::git_runtime_config;
 
@@ -1290,6 +1291,82 @@ pub(crate) async fn sync_plan_branch_pr_if_needed(
     }
 
     push_pr_branch_to_remote(project, pb, github, plan_branch_repo).await;
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct PlanBranchPrSyncServices {
+    pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    pub pr_creation_guard: Option<Arc<dashmap::DashMap<PlanBranchId, ()>>>,
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    pub ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    pub artifact_repo: Option<Arc<dyn ArtifactRepository>>,
+}
+
+impl PlanBranchPrSyncServices {
+    pub(crate) fn from_task_services(services: &TaskServices) -> Self {
+        Self {
+            plan_branch_repo: services.plan_branch_repo.clone(),
+            pr_creation_guard: services.pr_creation_guard.clone(),
+            github_service: services.github_service.clone(),
+            ideation_session_repo: services.ideation_session_repo.clone(),
+            artifact_repo: services.artifact_repo.clone(),
+        }
+    }
+}
+
+pub(crate) async fn sync_plan_branch_pr_after_regular_task_merge(
+    task: &Task,
+    project: &Project,
+    services: &PlanBranchPrSyncServices,
+) {
+    if task.category == TaskCategory::PlanMerge {
+        return;
+    }
+
+    let Some(plan_branch_repo) = services.plan_branch_repo.as_ref() else {
+        return;
+    };
+    let Some(plan_branch) = resolve_task_plan_branch_record(task, plan_branch_repo).await else {
+        return;
+    };
+
+    if !plan_branch.pr_eligible || plan_branch.status != PlanBranchStatus::Active {
+        return;
+    }
+
+    if plan_branch.pr_number.is_some() {
+        let _ = plan_branch_repo
+            .update_pr_push_status(&plan_branch.id, PrPushStatus::Pending)
+            .await;
+    }
+
+    let Some(github_service) = services.github_service.as_ref() else {
+        return;
+    };
+
+    if plan_branch.pr_number.is_some() {
+        let mut refreshed_plan_branch = plan_branch.clone();
+        refreshed_plan_branch.pr_push_status = PrPushStatus::Pending;
+        sync_plan_branch_pr_if_needed(
+            project,
+            &refreshed_plan_branch,
+            github_service,
+            plan_branch_repo,
+        )
+        .await;
+    } else if let Some(pr_creation_guard) = services.pr_creation_guard.as_ref() {
+        create_draft_pr_if_needed(
+            task,
+            project,
+            &plan_branch,
+            pr_creation_guard,
+            github_service,
+            plan_branch_repo,
+            services.ideation_session_repo.as_ref(),
+            services.artifact_repo.as_ref(),
+        )
+        .await;
+    }
 }
 
 pub(crate) fn resolve_plan_branch_pr_base(project: &Project, pb: &PlanBranch) -> String {
