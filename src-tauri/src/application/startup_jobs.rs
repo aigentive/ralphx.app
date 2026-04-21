@@ -202,7 +202,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
         plan_branch_repo: Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
     ) -> Self {
-        let reconciler = ReconciliationRunner::new(
+        let mut reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
             Arc::clone(&task_dep_repo),
             Arc::clone(&project_repo),
@@ -221,6 +221,9 @@ impl<R: Runtime> StartupJobRunner<R> {
             None,
         )
         .with_execution_settings_repo(Arc::clone(&execution_settings_repo));
+        if let Some(repo) = plan_branch_repo.as_ref() {
+            reconciler = reconciler.with_plan_branch_repo(Arc::clone(repo));
+        }
 
         Self {
             task_repo,
