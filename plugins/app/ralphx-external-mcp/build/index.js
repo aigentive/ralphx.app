@@ -14,8 +14,10 @@
  *   - Token bucket rate limiting per key + IP-based auth throttle
  *   - X-RalphX-Project-Scope header injected for backend enforcement
  */
+import { realpathSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -346,8 +348,20 @@ function sendError(res, status, message) {
     });
     res.end(body);
 }
-// Entry point — parse config from environment and start
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+function isMainEntry(scriptPath) {
+    try {
+        return (realpathSync(fileURLToPath(import.meta.url)) === realpathSync(scriptPath));
+    }
+    catch {
+        return false;
+    }
+}
+// Entry point — parse config from environment and start.
+// Resolve both sides through realpathSync so the check survives symlinks
+// (the app launches this from a symlinked plugin dir under ~/Library/Application Support,
+// which makes import.meta.url point at the repo realpath while process.argv[1]
+// keeps the symlinked path).
+if (process.argv[1] && isMainEntry(process.argv[1])) {
     const port = process.env.EXTERNAL_MCP_PORT
         ? parseInt(process.env.EXTERNAL_MCP_PORT, 10)
         : 3848;
