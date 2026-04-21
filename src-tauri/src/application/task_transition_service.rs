@@ -135,6 +135,21 @@ impl<R: Runtime> TauriEventEmitter<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     ) -> Self {
         self.external_events_repo = Some(external_events_repo);
+        self = self.with_enrichment_repos(task_repo, project_repo, ideation_session_repo);
+        self
+    }
+
+    /// Attach lookup repos used to enrich UI status-change payloads.
+    ///
+    /// This must work even when external event persistence is not configured; otherwise
+    /// live Tauri status-change emits can be skipped and the Kanban board can retain
+    /// stale task statuses.
+    pub fn with_enrichment_repos(
+        mut self,
+        task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    ) -> Self {
         self.task_repo_for_emit = Some(task_repo);
         self.project_repo_for_emit = Some(project_repo);
         self.ideation_session_repo_for_emit = Some(ideation_session_repo);
@@ -1018,7 +1033,11 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Create other services
         let event_emitter: Arc<dyn EventEmitter> =
-            Arc::new(TauriEventEmitter::new(app_handle.clone()));
+            Arc::new(TauriEventEmitter::new(app_handle.clone()).with_enrichment_repos(
+                Arc::clone(&task_repo),
+                Arc::clone(&project_repo),
+                Arc::clone(&ideation_session_repo),
+            ));
         let notifier: Arc<dyn Notifier> = Arc::new(LoggingNotifier);
         // Use real dependency manager for automatic blocking/unblocking based on dependency graph
         let dependency_manager: Arc<dyn DependencyManager> =

@@ -266,6 +266,10 @@ export const mockTasksApi = {
     };
   },
 
+  retryMerge: async (_taskId: string, _skipValidation?: boolean): Promise<null> => {
+    return null;
+  },
+
   inject: async (input: InjectTaskInput): Promise<InjectTaskResponse> => {
     const task = createMockTask({
       id: generateTestUuid(),

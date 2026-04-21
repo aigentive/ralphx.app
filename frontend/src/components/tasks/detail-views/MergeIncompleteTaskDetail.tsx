@@ -116,7 +116,7 @@ function getHookBlockCopy(mergeError: MergeErrorContext | null): {
 } | null {
   if (mergeError?.hookBlockedReason === "hook_environment_failure") {
     return {
-      title: "Merge Blocked",
+      title: "Escalated",
       subtitle: "Repository hook environment failed — action required",
       explanation:
         "The repository hook could not run reliably in this isolated worktree environment, so RalphX did not ask the agent to change code.",
@@ -125,7 +125,7 @@ function getHookBlockCopy(mergeError: MergeErrorContext | null): {
 
   if (mergeError?.hookBlockedReason === "repeated_hook_failure") {
     return {
-      title: "Merge Blocked",
+      title: "Escalated",
       subtitle: "Same repository hook failure repeated — loop stopped",
       explanation:
         "The same commit hook failure repeated after re-execution, so RalphX stopped the automatic revision loop.",
@@ -266,7 +266,7 @@ function RecoverySteps({
             <li>Check the hook output for missing tools, dependencies, permissions, or symlinks</li>
             <li>Repair the worktree setup or install the missing dependencies outside the task agent flow</li>
             <li>
-              Click <strong className="text-text-primary/70">Retry Merge</strong> after the environment is fixed
+              Click <strong className="text-text-primary/70">Retry after environment fix</strong> after the environment is fixed
             </li>
           </ol>
         </>
@@ -279,7 +279,7 @@ function RecoverySteps({
             <li>Review the full hook output to decide whether this is code feedback or environment setup</li>
             <li>Fix the root cause manually or update the hook/worktree setup</li>
             <li>
-              Click <strong className="text-text-primary/70">Retry Merge</strong> only after the cause is addressed
+              Click <strong className="text-text-primary/70">Retry after fix</strong> only after the cause is addressed
             </li>
           </ol>
         </>
@@ -631,12 +631,14 @@ function ActionButtons({
   onResolve,
   onCancel,
   isProcessing,
+  retryLabel = "Retry Merge",
 }: {
   onRetry: () => void;
   onRetrySkipValidation?: (() => void) | undefined;
   onResolve: () => void;
   onCancel: () => void;
   isProcessing: boolean;
+  retryLabel?: string;
 }) {
   return (
     <div className="flex gap-2 justify-end flex-wrap">
@@ -655,7 +657,7 @@ function ActionButtons({
         ) : (
           <RefreshCw className="w-4 h-4" />
         )}
-        Retry Merge
+        {retryLabel}
       </Button>
       {onRetrySkipValidation && (
         <Button
@@ -726,6 +728,8 @@ export function MergeIncompleteTaskDetail({
 
   const mergeError = parseMergeError(task.metadata);
   const hookBlockCopy = getHookBlockCopy(mergeError);
+  const isHookEscalation = mergeError?.hookBlockedReason === "hook_environment_failure"
+    || mergeError?.hookBlockedReason === "repeated_hook_failure";
   const { data: planBranch } = usePlanBranchForTask(task.id);
 
   // Use merge pipeline data for correct branch resolution (metadata may have stale target_branch)
@@ -869,12 +873,12 @@ export function MergeIncompleteTaskDetail({
               ? "A git error prevented the merge"
               : "A git error prevented the merge — action required"
         }
-        variant="error"
+        variant={isHookEscalation ? "warning" : "error"}
         badge={
           <StatusPill
             icon={AlertTriangle}
-            label="Error"
-            variant="error"
+            label={isHookEscalation ? "Escalated" : "Error"}
+            variant={isHookEscalation ? "warning" : "error"}
             size="md"
           />
         }
@@ -992,6 +996,13 @@ export function MergeIncompleteTaskDetail({
             onResolve={handleMarkResolved}
             onCancel={handleCancel}
             isProcessing={isProcessing}
+            retryLabel={
+              mergeError?.hookBlockedReason === "hook_environment_failure"
+                ? "Retry after environment fix"
+                : mergeError?.hookBlockedReason === "repeated_hook_failure"
+                  ? "Retry after fix"
+                  : "Retry Merge"
+            }
           />
         </section>
       )}

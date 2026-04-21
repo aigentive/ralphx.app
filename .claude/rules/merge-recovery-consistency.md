@@ -24,6 +24,7 @@ Prevent drift between merge failure classification, manual recovery actions, run
 | One failure classification | If a merge failure class needs special handling, identify it through shared helpers, not ad-hoc string checks in each caller. |
 | All entry points stay aligned | Any behavior change for merge recovery must audit `merge_outcome_handler`, `retry_merge`, merge reconciliation, startup recovery, and MergeIncomplete UI copy/CTA semantics together. |
 | Corrective failures reroute, not loop | Failures that require code changes (for example commit-hook / commit-time validation rejection) must route to `RevisionNeeded -> ReExecuting`, not back to `PendingMerge`. |
+| Environment failures escalate, not block | Hook/worktree environment failures are operator intervention states. UI must say `Escalated` / environment action required, not `Blocked`, `Merging`, or a generic retry promise. |
 | Retryable failures stay retryable | Only genuinely retryable merge failures (lock contention, transient git state, deferred target branch busy) should auto-retry through merge reconciliation. |
 | Startup matches live behavior | If runtime reconciliation/manual recovery can heal a merge failure class, startup recovery must also repair persisted rows for that same class. |
 | Manual CTA semantics must match backend action | If the primary user action no longer retries merge literally, update the MergeIncomplete UI text/CTA so the app does not lie about what will happen. |

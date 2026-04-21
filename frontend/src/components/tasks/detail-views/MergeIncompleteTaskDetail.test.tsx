@@ -333,7 +333,7 @@ describe("MergeIncompleteTaskDetail", () => {
     expect(screen.getByText("Git error: branch locked")).toBeInTheDocument();
   });
 
-  it("explains hook environment failures as setup issues, not code changes", () => {
+  it("explains hook environment failures as escalated setup issues, not code changes", () => {
     const metadata = JSON.stringify({
       error:
         "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\nsrc/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod'",
@@ -345,7 +345,7 @@ describe("MergeIncompleteTaskDetail", () => {
     const task = createTestTask({ metadata });
     render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
 
-    expect(screen.getByText("Merge Blocked")).toBeInTheDocument();
+    expect(screen.getAllByText("Escalated").length).toBeGreaterThan(0);
     expect(
       screen.getByText("Repository hook environment failed — action required"),
     ).toBeInTheDocument();
@@ -354,6 +354,9 @@ describe("MergeIncompleteTaskDetail", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Fix the hook dependencies or worktree setup/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Retry after environment fix/i }),
     ).toBeInTheDocument();
   });
 
@@ -369,7 +372,7 @@ describe("MergeIncompleteTaskDetail", () => {
     const task = createTestTask({ metadata });
     render(<MergeIncompleteTaskDetail task={task} />, { wrapper: TestWrapper });
 
-    expect(screen.getByText("Merge Blocked")).toBeInTheDocument();
+    expect(screen.getAllByText("Escalated").length).toBeGreaterThan(0);
     expect(
       screen.getByText("Same repository hook failure repeated — loop stopped"),
     ).toBeInTheDocument();

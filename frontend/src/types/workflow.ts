@@ -433,7 +433,7 @@ export const defaultWorkflow: WorkflowSchema = {
         },
         {
           id: "needs_attention",
-          label: "Needs Attention",
+          label: "Escalated",
           statuses: ["merge_incomplete", "merge_conflict"],
           icon: "AlertTriangle",
           accentColor: "hsl(var(--warning))",

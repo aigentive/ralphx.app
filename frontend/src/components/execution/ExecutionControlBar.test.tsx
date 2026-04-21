@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { ExecutionControlBar } from "./ExecutionControlBar";
+import type { MergePipelineTask } from "@/api/merge-pipeline";
 
 vi.mock("./RunningProcessPopover", () => ({
   RunningProcessPopover: ({
@@ -63,6 +64,22 @@ function renderBar(
   );
 }
 
+const makeMergeTask = (
+  overrides: Partial<MergePipelineTask> = {}
+): MergePipelineTask => ({
+  taskId: "merge-task-1",
+  title: "Merge task",
+  internalStatus: "merging",
+  sourceBranch: "ralphx/app/task-1",
+  targetBranch: "main",
+  isDeferred: false,
+  isMainMergeDeferred: false,
+  blockingBranch: null,
+  conflictFiles: null,
+  errorContext: null,
+  ...overrides,
+});
+
 describe("ExecutionControlBar", () => {
   describe("basic rendering", () => {
     it("renders with data-testid", () => {
@@ -78,6 +95,43 @@ describe("ExecutionControlBar", () => {
     it("displays queued tasks count", () => {
       renderBar({ queuedCount: 5 });
       expect(screen.getByTestId("queued-count")).toHaveTextContent(/(Queued|Q): 5/);
+    });
+
+    it("shows escalated merge attention instead of labeling it as merging", () => {
+      renderBar({
+        mergingCount: 0,
+        mergeAttentionCount: 1,
+        hasAttentionMerges: true,
+        mergePipelineData: {
+          active: [],
+          waiting: [],
+          needsAttention: [
+            makeMergeTask({
+              internalStatus: "merge_incomplete",
+              errorContext: "Repository hook environment failed",
+            }),
+          ],
+        },
+      });
+
+      expect(screen.getByTestId("merging-count")).not.toHaveTextContent(/Merging:\s*1/);
+      expect(screen.getByTestId("merge-attention-count")).toHaveTextContent(/(Escalated|E):\s*1/);
+    });
+
+    it("separates active merge work from escalated merge attention", () => {
+      renderBar({
+        mergingCount: 2,
+        mergeAttentionCount: 1,
+        hasAttentionMerges: true,
+        mergePipelineData: {
+          active: [makeMergeTask({ taskId: "active-1", internalStatus: "merging" })],
+          waiting: [makeMergeTask({ taskId: "waiting-1", internalStatus: "pending_merge" })],
+          needsAttention: [makeMergeTask({ taskId: "attention-1", internalStatus: "merge_incomplete" })],
+        },
+      });
+
+      expect(screen.getByTestId("merging-count")).toHaveTextContent(/(Merging|M):\s*2/);
+      expect(screen.getByTestId("merge-attention-count")).toHaveTextContent(/(Escalated|E):\s*1/);
     });
 
     it("includes queued agent messages in the status region label", () => {
