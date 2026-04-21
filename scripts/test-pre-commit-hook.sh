@@ -8,6 +8,9 @@ set -uo pipefail
 HOOK_DIR="$(cd "$(dirname "$0")/.." && pwd)/.githooks"
 PASS=0
 FAIL=0
+FAKE_BIN=""
+FAKE_NPM_LOG=""
+FAKE_NPX_LOG=""
 
 # ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -23,6 +26,104 @@ setup_repo() {
 
 pass() { echo "  PASS: $1"; ((PASS++)); }
 fail() { echo "  FAIL: $1"; ((FAIL++)); }
+
+setup_fake_node_tools() {
+  FAKE_BIN=$(mktemp -d)
+  FAKE_NPM_LOG=$(mktemp)
+  FAKE_NPX_LOG=$(mktemp)
+  export FAKE_NPM_LOG FAKE_NPX_LOG
+
+  cat > "$FAKE_BIN/npm" <<'EOF'
+#!/usr/bin/env bash
+echo "npm $*" >> "$FAKE_NPM_LOG"
+case "$1" in
+  ci|install)
+    mkdir -p node_modules/.bin
+    ;;
+esac
+exit 0
+EOF
+  chmod +x "$FAKE_BIN/npm"
+
+  cat > "$FAKE_BIN/npx" <<'EOF'
+#!/usr/bin/env bash
+echo "npx $*" >> "$FAKE_NPX_LOG"
+exit 0
+EOF
+  chmod +x "$FAKE_BIN/npx"
+}
+
+write_frontend_validation_fixture() {
+  local dir="$1"
+
+  mkdir -p "$dir/frontend/src" "$dir/frontend/scripts" "$dir/src-tauri"
+  echo "frontend/node_modules" > "$dir/.gitignore"
+
+  cat > "$dir/frontend/src/index.ts" <<'EOF'
+export const x = 1;
+EOF
+
+  cat > "$dir/frontend/scripts/check-design-tokens.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "token guard ok"
+EOF
+  chmod +x "$dir/frontend/scripts/check-design-tokens.sh"
+
+  cat > "$dir/frontend/package.json" <<'EOF'
+{
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1"
+  }
+}
+EOF
+
+  cat > "$dir/frontend/package-lock.json" <<'EOF'
+{
+  "name": "test",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "dependencies": {
+        "@tauri-apps/api": "^2.10.1"
+      }
+    },
+    "node_modules/@tauri-apps/api": { "version": "2.10.1" }
+  }
+}
+EOF
+
+  cat > "$dir/src-tauri/Cargo.toml" <<'EOF'
+[dependencies]
+tauri = { version = "2.10.3", features = ["devtools"] }
+EOF
+
+  cat > "$dir/src-tauri/Cargo.lock" <<'EOF'
+[[package]]
+name = "tauri"
+version = "2.10.3"
+EOF
+}
+
+setup_primary_with_worktree() {
+  local root primary wt
+  root=$(mktemp -d)
+  primary="$root/primary"
+  wt="$root/worktree"
+  mkdir -p "$primary"
+  git -C "$primary" init -q
+  git -C "$primary" config user.email "test@test.com"
+  git -C "$primary" config user.name "Test"
+  git -C "$primary" config core.hooksPath "$HOOK_DIR"
+  write_frontend_validation_fixture "$primary"
+  git -C "$primary" add .
+  git -C "$primary" commit --no-verify -m "initial" >/dev/null
+  mkdir -p "$primary/frontend/node_modules/.bin"
+  git -C "$primary" worktree add -q -b test-worktree "$wt" HEAD
+  echo "$root|$primary|$wt"
+}
 
 write_aligned_tauri_files() {
   local dir="$1"
@@ -203,6 +304,78 @@ else
   fail "Test 6: should have allowed aligned staged Tauri version files"
 fi
 rm -rf "$T6"
+
+# ─── Test 7: ALLOW — frontend worktree reuses primary node_modules ──────────
+
+setup_fake_node_tools
+IFS='|' read -r T7 PRIMARY7 WT7 < <(setup_primary_with_worktree)
+echo "export const y = 2;" >> "$WT7/frontend/src/index.ts"
+git -C "$WT7" add frontend/src/index.ts
+if PATH="$FAKE_BIN:$PATH" git -C "$WT7" commit -m "test" >/tmp/ralphx-hook-t7.out 2>&1; then
+  if [ -L "$WT7/frontend/node_modules" ] &&
+    [ "$(cd "$WT7/frontend/node_modules" && pwd -P)" = "$(cd "$PRIMARY7/frontend/node_modules" && pwd -P)" ] &&
+    ! grep -Eq 'npm (ci|install)( |$)' "$FAKE_NPM_LOG"; then
+    pass "Test 7: frontend worktree symlinks primary node_modules without install"
+  else
+    fail "Test 7: expected primary node_modules symlink and no install"
+  fi
+else
+  fail "Test 7: commit should have succeeded with primary node_modules fallback"
+fi
+rm -rf "$T7"
+
+# ─── Test 8: ALLOW — changed dependency manifests install in worktree ───────
+
+setup_fake_node_tools
+IFS='|' read -r T8 _PRIMARY8 WT8 < <(setup_primary_with_worktree)
+python3 - <<'PY' "$WT8/frontend/package.json" "$WT8/frontend/package-lock.json"
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+lock_path = Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text())
+manifest.setdefault("dependencies", {})["left-pad"] = "^1.3.0"
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+lock = json.loads(lock_path.read_text())
+lock.setdefault("packages", {})[""]["dependencies"]["left-pad"] = "^1.3.0"
+lock["packages"]["node_modules/left-pad"] = {"version": "1.3.0"}
+lock_path.write_text(json.dumps(lock, indent=2) + "\n")
+PY
+echo "export const z = 3;" >> "$WT8/frontend/src/index.ts"
+git -C "$WT8" add frontend/package.json frontend/package-lock.json frontend/src/index.ts
+if PATH="$FAKE_BIN:$PATH" git -C "$WT8" commit -m "test" >/tmp/ralphx-hook-t8.out 2>&1; then
+  if [ -d "$WT8/frontend/node_modules" ] &&
+    [ ! -L "$WT8/frontend/node_modules" ] &&
+    grep -Eq 'npm ci --prefer-offline --no-audit --no-fund$' "$FAKE_NPM_LOG"; then
+    pass "Test 8: dependency manifest changes install worktree-local node_modules"
+  else
+    fail "Test 8: expected npm ci and worktree-local node_modules"
+  fi
+else
+  fail "Test 8: commit should have succeeded after worktree-local install"
+fi
+rm -rf "$T8"
+
+# ─── Test 9: REJECT — no dependency source available ────────────────────────
+
+setup_fake_node_tools
+IFS='|' read -r T9 PRIMARY9 WT9 < <(setup_primary_with_worktree)
+rm -rf "$PRIMARY9/frontend/node_modules"
+echo "export const missingDeps = true;" >> "$WT9/frontend/src/index.ts"
+git -C "$WT9" add frontend/src/index.ts
+if PATH="$FAKE_BIN:$PATH" git -C "$WT9" commit -m "test" >/tmp/ralphx-hook-t9.out 2>&1; then
+  fail "Test 9: should fail when no frontend node_modules source exists"
+else
+  if grep -q "frontend/node_modules is missing" /tmp/ralphx-hook-t9.out; then
+    pass "Test 9: missing frontend dependencies fail with clear infrastructure error"
+  else
+    fail "Test 9: missing dependency failure message was not clear"
+  fi
+fi
+rm -rf "$T9"
 
 # ─── Results ─────────────────────────────────────────────────────────────────
 

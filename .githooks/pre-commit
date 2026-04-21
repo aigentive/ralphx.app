@@ -7,6 +7,8 @@
 #   2. Tauri version alignment (frontend/package.json, src-tauri/Cargo.toml
 #      and their lockfiles must stay in sync).
 #   3. Design-token guards + typecheck + lint on staged frontend changes.
+#      Worktree commits reuse primary checkout dependencies unless staged
+#      dependency manifests require a worktree-local install.
 #
 # Install: `npm --prefix frontend run hooks:install` (sets core.hooksPath)
 # Bypass with `git commit --no-verify` only when absolutely necessary.
@@ -55,7 +57,71 @@ if [ -z "$staged_frontend" ]; then
   exit 0
 fi
 
+resolve_primary_root() {
+  local common_git_dir
+
+  if ! common_git_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
+    common_git_dir="$(git rev-parse --git-common-dir)"
+    case "$common_git_dir" in
+      /*) ;;
+      *) common_git_dir="$REPO_ROOT/$common_git_dir" ;;
+    esac
+  fi
+
+  cd "$common_git_dir/.." && pwd
+}
+
+ensure_frontend_dependencies() {
+  local dependency_manifest_changes primary_root primary_node_modules
+
+  dependency_manifest_changes=$(echo "$staged" | grep -E '^frontend/(package\.json|package-lock\.json)$' || true)
+
+  if [ -n "$dependency_manifest_changes" ]; then
+    if [ -L node_modules ]; then
+      rm -f node_modules
+    fi
+
+    printf '\033[1m[pre-commit]\033[0m dependency manifests changed; installing worktree frontend deps…\n'
+    if [ -f package-lock.json ]; then
+      npm ci --prefer-offline --no-audit --no-fund
+    else
+      npm install --prefer-offline --no-audit --no-fund
+    fi
+    return
+  fi
+
+  if [ -d node_modules ]; then
+    return
+  fi
+
+  if [ -L node_modules ]; then
+    rm -f node_modules
+  elif [ -e node_modules ]; then
+    echo "ERROR: frontend/node_modules exists but is not a directory or symlink."
+    echo "Remove it and retry the commit."
+    exit 1
+  fi
+
+  primary_root="$(resolve_primary_root)"
+  primary_node_modules="$primary_root/frontend/node_modules"
+
+  if [ "$primary_root" != "$REPO_ROOT" ] && [ -d "$primary_node_modules" ]; then
+    printf '\033[1m[pre-commit]\033[0m linking frontend/node_modules from primary checkout…\n'
+    ln -s "$primary_node_modules" node_modules
+    return
+  fi
+
+  echo "ERROR: frontend/node_modules is missing in this worktree and no primary checkout dependency install is available."
+  echo ""
+  echo "Install frontend dependencies in the primary checkout, then retry:"
+  echo "  npm --prefix \"$primary_root/frontend\" install"
+  echo ""
+  echo "If this commit changes frontend dependencies, stage the updated lockfile so the hook can run npm ci in this worktree."
+  exit 1
+}
+
 cd frontend
+ensure_frontend_dependencies
 
 printf '\033[1m[pre-commit]\033[0m design-token guards…\n'
 ./scripts/check-design-tokens.sh
