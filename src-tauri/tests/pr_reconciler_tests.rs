@@ -115,6 +115,33 @@ fn build_transition_service(
     ))
 }
 
+fn build_pr_transition_service(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: Arc<dyn PlanBranchRepository>,
+    pr_registry: Arc<PrPollerRegistry>,
+) -> Arc<TaskTransitionService<tauri::Wry>> {
+    TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(execution_state),
+        None,
+        Arc::clone(&app_state.memory_event_repo),
+    )
+    .with_plan_branch_repo(plan_branch_repo)
+    .with_pr_poller_registry(pr_registry)
+    .into_arc()
+}
+
 fn setup_plan_git_repo(branch_name: &str, ahead_of_base: bool) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path();
@@ -341,6 +368,70 @@ async fn test_reconciler_detects_dead_poller_and_restarts() {
     );
 }
 
+#[tokio::test]
+async fn test_reconciler_skips_pr_merging_when_poller_registry_unavailable() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "PR merge waiting for approval".to_string(),
+    );
+    task.category = TaskCategory::PlanMerge;
+    task.internal_status = InternalStatus::Merging;
+    task.updated_at = Utc::now() - chrono::Duration::hours(24);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let pb = make_pr_plan_branch(
+        project.id.clone(),
+        &task.id,
+        68,
+        true,
+        Some(Utc::now() - chrono::Duration::minutes(30)),
+    );
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let reconciler = build_reconciler(&app_state, &execution_state)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
+
+    let result = reconciler
+        .reconcile_task(&task, InternalStatus::Merging)
+        .await;
+
+    assert!(
+        result,
+        "PR-backed Merging task should be handled even when the poller registry is unavailable during startup"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merging,
+        "PR-backed Merging task must keep waiting for GitHub instead of becoming MergeIncomplete"
+    );
+    assert!(
+        !updated
+            .metadata
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Merge timed out"),
+        "PR-backed Merging task must not record local complete_merge timeout metadata"
+    );
+}
+
 // ============================================================================
 // Test 3: mode_switch metadata bypasses guards in reconcile_merge_incomplete_task
 // ============================================================================
@@ -511,6 +602,71 @@ async fn test_startup_recovery_restarts_pollers() {
     assert!(
         pb_after.pr_polling_active,
         "startup recovery should not clear pr_polling_active — only stop_polling does"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_restores_pr_merge_incomplete_caused_by_local_timeout() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "PR merge task falsely timed out".to_string(),
+    );
+    task.category = TaskCategory::PlanMerge;
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Merge timed out after 1200s without complete_merge callback",
+            "merge_timeout_seconds": 1200
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_pr_plan_branch(project.id.clone(), &task.id, 68, true, Some(Utc::now()));
+    pb.pr_url = Some("https://github.com/owner/repo/pull/68".to_string());
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let pr_registry = Arc::new(PrPollerRegistry::new(
+        None,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+    ));
+    let transition_service = build_pr_transition_service(
+        &app_state,
+        &execution_state,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&pr_registry),
+    );
+
+    recover_pr_pollers(
+        Arc::clone(&app_state.task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&pr_registry),
+        Arc::clone(&app_state.project_repo) as Arc<dyn ProjectRepository>,
+        transition_service,
+    )
+    .await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merging,
+        "startup recovery should restore false local-timeout PR merges to Merging so polling can resume"
     );
 }
 

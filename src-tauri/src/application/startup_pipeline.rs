@@ -133,6 +133,8 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         memory_event_repo: Arc::clone(&memory_event_repo),
         agent_clients: agent_clients.clone(),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
+        github_service: github_service.as_ref().map(Arc::clone),
+        pr_poller_registry: Arc::clone(&pr_poller_registry),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         app_handle: app_handle.clone(),
     });
@@ -165,12 +167,16 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&message_queue),
         Arc::clone(&running_agent_registry),
         Arc::clone(&memory_event_repo),
+    )
+    .with_github_runtime_support(
+        github_service.as_ref().map(Arc::clone),
+        Some(Arc::clone(&pr_poller_registry)),
     );
 
     let transition_service =
         Arc::new(startup_transition_factory.build(core_runtime_deps.clone(), app_handle.clone()));
 
-    if let Some(github_service) = github_service {
+    if let Some(github_service) = github_service.as_ref() {
         tracing::info!("Running startup PR creation recovery...");
         crate::application::pr_startup_recovery::recover_missing_draft_prs(
             Arc::clone(&task_repo),
@@ -179,7 +185,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
             Arc::clone(&execution_plan_repo),
             Arc::clone(&ideation_session_repo),
             Arc::clone(&artifact_repo),
-            github_service,
+            Arc::clone(github_service),
         )
         .await;
     }
@@ -295,6 +301,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         execution_state: Arc::clone(&execution_state),
         execution_settings_repo: Arc::clone(&execution_settings_repo),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
+        pr_poller_registry: Arc::clone(&pr_poller_registry),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         review_repo: Arc::clone(&review_repo),
         app_handle: app_handle.clone(),

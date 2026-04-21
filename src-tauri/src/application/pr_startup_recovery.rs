@@ -125,17 +125,12 @@ pub async fn recover_missing_draft_prs(
                 continue;
             }
 
-            let review_state = if plan_regular_tasks_complete(
-                &merge_task,
-                &plan_branch,
-                Some(&task_repo),
-            )
-            .await
-            {
-                PrReviewState::Ready
-            } else {
-                PrReviewState::Draft
-            };
+            let review_state =
+                if plan_regular_tasks_complete(&merge_task, &plan_branch, Some(&task_repo)).await {
+                    PrReviewState::Ready
+                } else {
+                    PrReviewState::Draft
+                };
 
             if plan_branch.pr_number.is_some() {
                 if !matches!(
@@ -510,8 +505,7 @@ pub async fn recover_pr_pollers(
     );
 
     for task_id in task_ids {
-        // Verify task still in Merging status
-        let task = match task_repo.get_by_id(&task_id).await {
+        let mut task = match task_repo.get_by_id(&task_id).await {
             Ok(Some(t)) => t,
             Ok(None) => {
                 tracing::debug!(
@@ -529,15 +523,6 @@ pub async fn recover_pr_pollers(
                 continue;
             }
         };
-
-        if task.internal_status != InternalStatus::Merging {
-            tracing::debug!(
-                task_id = task_id.as_str(),
-                status = ?task.internal_status,
-                "PR startup recovery: task not in Merging, skipping"
-            );
-            continue;
-        }
 
         // Load plan branch
         let plan_branch = match plan_branch_repo.get_by_merge_task_id(&task_id).await {
@@ -558,6 +543,41 @@ pub async fn recover_pr_pollers(
                 continue;
             }
         };
+
+        if should_restore_false_pr_merge_timeout(&task, &plan_branch) {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                branch_id = plan_branch.id.as_str(),
+                branch = %plan_branch.branch_name,
+                pr_number = ?plan_branch.pr_number,
+                "PR startup recovery: restoring PR-backed merge task that was incorrectly escalated by local merge timeout"
+            );
+            match transition_service
+                .transition_task(&task.id, InternalStatus::Merging)
+                .await
+            {
+                Ok(restored) => {
+                    task = restored;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %e,
+                        "PR startup recovery: failed to restore PR-backed merge timeout task"
+                    );
+                    continue;
+                }
+            }
+        }
+
+        if task.internal_status != InternalStatus::Merging {
+            tracing::debug!(
+                task_id = task_id.as_str(),
+                status = ?task.internal_status,
+                "PR startup recovery: task not in Merging, skipping"
+            );
+            continue;
+        }
 
         let pr_number = match plan_branch.pr_number {
             Some(n) => n,
@@ -617,4 +637,31 @@ pub async fn recover_pr_pollers(
             Arc::clone(&transition_service),
         );
     }
+}
+
+fn should_restore_false_pr_merge_timeout(task: &Task, plan_branch: &PlanBranch) -> bool {
+    task.internal_status == InternalStatus::MergeIncomplete
+        && task.category == TaskCategory::PlanMerge
+        && task.archived_at.is_none()
+        && plan_branch.pr_eligible
+        && plan_branch.pr_polling_active
+        && plan_branch.pr_number.is_some()
+        && metadata_indicates_local_merge_timeout(task.metadata.as_deref())
+}
+
+fn metadata_indicates_local_merge_timeout(metadata: Option<&str>) -> bool {
+    let Some(metadata) = metadata else {
+        return false;
+    };
+
+    if metadata.contains("Merge timed out")
+        && (metadata.contains("complete_merge") || metadata.contains("completion signal"))
+    {
+        return true;
+    }
+
+    serde_json::from_str::<serde_json::Value>(metadata)
+        .ok()
+        .and_then(|value| value.get("merge_timeout_seconds").cloned())
+        .is_some()
 }
