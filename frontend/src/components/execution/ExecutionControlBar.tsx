@@ -5,7 +5,7 @@
  * and pause/stop controls. Follows the design spec from specs/design/pages/execution-control-bar.md
  *
  * Responsive breakpoints:
- * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merging: 1", "Escalated: 1"
+ * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merge: 1", "Escalated: 1"
  * - Medium (800-1200px): Abbreviated "R: 2/3", "Q: 5", "M: 1"
  * - Narrow (<800px): Counts only "2/3", "5", "1"
  */
@@ -183,7 +183,7 @@ export function ExecutionControlBar({
   const queuedMessageLabel =
     breakpoint === "wide" ? "Msgs: " : breakpoint === "medium" ? "Msg: " : "";
   const pausedLabel = breakpoint === "wide" ? "Paused: " : breakpoint === "medium" ? "P: " : "";
-  const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
+  const mergingLabel = breakpoint === "wide" ? "Merge: " : breakpoint === "medium" ? "M: " : "";
   const mergeAttentionLabel = breakpoint === "wide" ? "Escalated: " : breakpoint === "medium" ? "E: " : "";
   const ideationLabel = breakpoint === "wide" ? "Ideation: " : breakpoint === "medium" ? "I: " : "";
   const attentionCount = mergeAttentionCount ?? (hasAttentionMerges ? 1 : 0);
@@ -221,7 +221,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued tasks, ${queuedMessageCount} queued messages, ${pausedCount} paused, ${mergingCount} merging, ${attentionCount} escalated merge tasks`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued tasks, ${queuedMessageCount} queued messages, ${pausedCount} paused, ${mergingCount} merge tasks, ${attentionCount} escalated merge tasks`}
         >
           {/* Animated Status Indicator (anchor for all popovers) */}
           <div

@@ -593,7 +593,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 self.reconcile_completed_execution(task, status).await
             }
             InternalStatus::Reviewing => self.reconcile_reviewing_task(task, status).await,
-            InternalStatus::Merging => self.reconcile_merging_task(task, status).await,
+            InternalStatus::Merging | InternalStatus::WaitingOnPr => {
+                self.reconcile_merging_task(task, status).await
+            }
             InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
             InternalStatus::MergeIncomplete => {
                 self.reconcile_merge_incomplete_task(task, status).await

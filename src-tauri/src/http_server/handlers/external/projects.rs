@@ -157,6 +157,7 @@ pub async fn get_project_status_http(
             InternalStatus::Approved => counts.other += 1,
             InternalStatus::PendingMerge => counts.pending_merge += 1,
             InternalStatus::Merging
+            | InternalStatus::WaitingOnPr
             | InternalStatus::MergeIncomplete
             | InternalStatus::MergeConflict => counts.merging += 1,
             InternalStatus::Merged => counts.merged += 1,

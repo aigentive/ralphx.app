@@ -9,8 +9,8 @@ impl<'a> TransitionHandler<'a> {
     /// PR-mode PendingMerge path (AD17).
     ///
     /// Called when pr_eligible=true AND github_service is available.
-    /// Pushes the plan branch and marks the PR ready, then transitions to Merging.
-    /// The Merging entry point (on_enter_states.rs) will start the poller.
+    /// Pushes the plan branch and marks the PR ready, then transitions to WaitingOnPr.
+    /// The WaitingOnPr entry point starts the PR poller.
     #[allow(clippy::too_many_arguments)]
     pub(in crate::domain::state_machine::transition_handler::side_effects) async fn run_pr_mode_pending_merge(
         &self,
@@ -197,18 +197,17 @@ impl<'a> TransitionHandler<'a> {
         // 7. Handle result
         match pr_op_result {
             Ok(_pr_number) => {
-                // Success: transition PendingMerge → Merging
-                // on_enter(Merging) will check pr_eligible+pr_number and start the poller
-                tracing::info!(task_id = task_id_str, "PR-mode: success, transitioning to Merging");
-                task.internal_status = InternalStatus::Merging;
+                // Success: transition PendingMerge → WaitingOnPr.
+                tracing::info!(task_id = task_id_str, "PR-mode: success, transitioning to WaitingOnPr");
+                task.internal_status = InternalStatus::WaitingOnPr;
                 if self.persist_merge_transition(
                     TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
-                    InternalStatus::PendingMerge, InternalStatus::Merging,
+                    InternalStatus::PendingMerge, InternalStatus::WaitingOnPr,
                     "pr_mode_mark_ready",
                 ).await {
-                    // Trigger on_enter(Merging) to start the PR poller
-                    if let Err(e) = Box::pin(self.on_enter_dispatch(&State::Merging)).await {
-                        tracing::error!(task_id = task_id_str, error = %e, "on_enter(Merging) failed in PR mode");
+                    // Trigger on_enter(WaitingOnPr) to start the PR poller.
+                    if let Err(e) = Box::pin(self.on_enter_dispatch(&State::WaitingOnPr)).await {
+                        tracing::error!(task_id = task_id_str, error = %e, "on_enter(WaitingOnPr) failed in PR mode");
                     }
                 }
             }

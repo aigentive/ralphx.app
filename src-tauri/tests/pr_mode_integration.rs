@@ -231,7 +231,7 @@ async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge()
     let task_after = task_repo.get_by_id(&merge_task_id).await.unwrap().unwrap();
     assert_eq!(
         task_after.internal_status,
-        InternalStatus::Merging,
+        InternalStatus::WaitingOnPr,
         "plan merge should take the PR-mode PendingMerge path"
     );
     assert!(
@@ -244,7 +244,7 @@ async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge()
     );
     assert!(
         app_state.pr_poller_registry.is_polling(&merge_task_id),
-        "Merging PR-mode task should start the PR poller"
+        "WaitingOnPr task should start the PR poller"
     );
 }
 

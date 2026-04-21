@@ -665,8 +665,8 @@ async fn test_startup_recovery_restores_pr_merge_incomplete_caused_by_local_time
         .unwrap();
     assert_eq!(
         updated.internal_status,
-        InternalStatus::Merging,
-        "startup recovery should restore false local-timeout PR merges to Merging so polling can resume"
+        InternalStatus::WaitingOnPr,
+        "startup recovery should restore false local-timeout PR merges to WaitingOnPr so polling can resume"
     );
 }
 

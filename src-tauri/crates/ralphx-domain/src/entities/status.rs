@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// The 24 internal statuses that a task can be in.
+/// The internal statuses that a task can be in.
 /// These map to external Kanban columns via WorkflowSchema (Phase 11).
 ///
 /// State machine transitions are validated - not all transitions are allowed.
@@ -47,6 +47,8 @@ pub enum InternalStatus {
     PendingMerge,
     /// Merge agent attempting to resolve conflicts
     Merging,
+    /// Waiting for an external pull request review/merge in PR mode
+    WaitingOnPr,
     /// Merge failed due to non-conflict errors (agent/git operation failure)
     MergeIncomplete,
     /// Merge failed, needs manual resolution
@@ -95,16 +97,41 @@ impl InternalStatus {
             Approved => &[PendingMerge, Ready],
 
             // Merge states
-            PendingMerge => &[Merged, Merging, MergeIncomplete, Stopped, Paused, Cancelled], // Success → Merged, Conflict → Merging (agent), Error → MergeIncomplete
+            PendingMerge => &[
+                Merged,
+                Merging,
+                WaitingOnPr,
+                MergeIncomplete,
+                Stopped,
+                Paused,
+                Cancelled,
+            ], // Success → Merged, Conflict → Merging (agent), PR mode → WaitingOnPr, Error → MergeIncomplete
             Merging => &[
                 Merged,
+                WaitingOnPr,
                 MergeConflict,
                 MergeIncomplete,
                 Stopped,
                 Paused,
                 Cancelled,
             ], // Agent success → Merged, Agent failure → MergeConflict, Non-conflict error → MergeIncomplete
-            MergeIncomplete => &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled], // Retry → PendingMerge (re-attempt programmatic merge), Agent spawn → Merging, Manual resolution → Merged
+            WaitingOnPr => &[
+                Merged,
+                MergeIncomplete,
+                PendingMerge,
+                Stopped,
+                Paused,
+                Cancelled,
+            ], // PR merged → Merged, closed/error → MergeIncomplete, retry → PendingMerge
+            MergeIncomplete => &[
+                PendingMerge,
+                Merging,
+                WaitingOnPr,
+                Merged,
+                Stopped,
+                Paused,
+                Cancelled,
+            ], // Retry → PendingMerge, agent spawn → Merging, PR repair → WaitingOnPr, manual resolution → Merged
             MergeConflict => &[PendingMerge, Merging, Merged, Stopped, Paused, Cancelled], // Retry → PendingMerge, Agent spawn → Merging, Manual resolution → Merged
 
             // Terminal states (can be re-opened)
@@ -122,6 +149,7 @@ impl InternalStatus {
                 QaTesting,
                 Reviewing,
                 Merging,
+                WaitingOnPr,
             ],
         }
     }
@@ -153,6 +181,7 @@ impl InternalStatus {
             Approved,
             PendingMerge,
             Merging,
+            WaitingOnPr,
             MergeIncomplete,
             MergeConflict,
             Merged,
@@ -207,6 +236,7 @@ impl InternalStatus {
             InternalStatus::Approved => "approved",
             InternalStatus::PendingMerge => "pending_merge",
             InternalStatus::Merging => "merging",
+            InternalStatus::WaitingOnPr => "waiting_on_pr",
             InternalStatus::MergeIncomplete => "merge_incomplete",
             InternalStatus::MergeConflict => "merge_conflict",
             InternalStatus::Merged => "merged",
@@ -260,6 +290,7 @@ impl FromStr for InternalStatus {
             "approved" => Ok(InternalStatus::Approved),
             "pending_merge" => Ok(InternalStatus::PendingMerge),
             "merging" => Ok(InternalStatus::Merging),
+            "waiting_on_pr" => Ok(InternalStatus::WaitingOnPr),
             "merge_incomplete" => Ok(InternalStatus::MergeIncomplete),
             "merge_conflict" => Ok(InternalStatus::MergeConflict),
             "merged" => Ok(InternalStatus::Merged),

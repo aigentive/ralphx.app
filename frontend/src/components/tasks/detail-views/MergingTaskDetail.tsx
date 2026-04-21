@@ -403,6 +403,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
   const isProgrammaticPhase = status === "pending_merge";
   const isAgentPhase = status === "merging";
+  const isWaitingOnPr = status === "waiting_on_pr";
   const historicalOutcome = isHistorical
     ? task.internalStatus === "merged" || task.internalStatus === "merge_conflict"
       ? task.internalStatus
@@ -502,7 +503,11 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
 
   // PR mode: fetch plan branch for PR status display
   const { data: planBranch } = usePlanBranchForTask(task.id);
-  const isPrMode = isAgentPhase && planBranch?.prEligible === true && planBranch?.prNumber != null;
+  const isPrMode =
+    (isWaitingOnPr || isAgentPhase) &&
+    planBranch?.prEligible === true &&
+    planBranch?.prNumber != null;
+  const isPrWait = isWaitingOnPr || isPrMode;
 
   // Resolve target branch: pipeline (most accurate) → metadata fallback
   const { data: pipelineData } = useMergePipeline(task.projectId);
@@ -526,7 +531,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     ? historicalOutcome === "merged"
       ? "Merged"
       : "Conflict"
-    : isPrMode
+    : isPrWait
     ? "Waiting on PR"
     : isHistorical
     ? isProgrammaticPhase
@@ -547,7 +552,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     ? historicalOutcome === "merged"
       ? CheckCircle2
       : AlertTriangle
-    : isPrMode
+    : isPrWait
     ? GitPullRequest
     : isHistorical
     ? isProgrammaticPhase
@@ -588,6 +593,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             ? historicalOutcome === "merged"
               ? CheckCircle2
               : AlertTriangle
+            : isPrWait
+            ? GitPullRequest
             : isHistorical
             ? isProgrammaticPhase
               ? GitMerge
@@ -621,7 +628,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "Resolving Conflicts"
             : isProgrammaticPhase
             ? "Merging Changes..."
-            : isPrMode
+            : isPrWait
             ? "Waiting on Pull Request"
             : isValidationRecovery
             ? "Fixing Validation Errors..."
@@ -648,7 +655,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? "Attempting to merge..."
-            : isPrMode
+            : isPrWait
             ? planBranch?.prNumber
               ? `Review and merge PR #${planBranch.prNumber} in GitHub. RalphX will finish this plan after GitHub reports it merged.`
               : "Review and merge the GitHub PR. RalphX will finish this plan after GitHub reports it merged."
@@ -675,7 +682,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "warning"
             : isProgrammaticPhase
             ? "accent"
-            : isPrMode
+            : isPrWait
             ? "info"
             : isValidationRecovery
             ? "accent"
@@ -703,7 +710,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                   : "warning"
                 : isProgrammaticPhase
                 ? "accent"
-                : isPrMode
+                : isPrWait
                 ? "info"
                 : isValidationRecovery
                 ? "accent"
@@ -718,7 +725,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       />
 
       {/* PR Mode: show PR status when polling */}
-      {isPrMode && planBranch && (
+      {isPrWait && planBranch && planBranch.prNumber != null && (
         <section data-testid="pr-mode-section">
           <SectionTitle>Pull Request</SectionTitle>
           <PrModeCard
@@ -733,7 +740,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}
-      {(isHistorical || (!isPrMode && isAgentPhase) || (isValidationRecovery && !isRevalidating)) && (
+      {(isHistorical || (!isPrWait && isAgentPhase) || (isValidationRecovery && !isRevalidating)) && (
         <section data-testid="merge-progress-section">
           <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
           <DetailCard variant="default">
@@ -776,7 +783,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       />
 
       {/* Conflict Files (only for agent phase, non-recovery) */}
-      {isAgentPhase && !isPrMode && !isValidationRecovery && (conflictFiles.length > 0 || (isConflictDetectionEnabled && isLoadingConflicts)) && (
+      {isAgentPhase && !isPrWait && !isValidationRecovery && (conflictFiles.length > 0 || (isConflictDetectionEnabled && isLoadingConflicts)) && (
         <section data-testid="conflict-files-section">
           <SectionTitle>
             Conflict Files ({conflictFiles.length})
@@ -798,7 +805,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       )}
 
       {/* Actions — only for active (non-historical) agent-assisted merges */}
-      {!isHistorical && isAgentPhase && !isPrMode && (
+      {!isHistorical && isAgentPhase && !isPrWait && (
         <section data-testid="merging-actions-section">
           <SectionTitle>Actions</SectionTitle>
           <DetailCard>
@@ -830,7 +837,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Branch Info */}
       <section data-testid="branch-info-section">
         <SectionTitle muted>Branch</SectionTitle>
-        {isPrMode && planBranch ? (
+        {isPrWait && planBranch ? (
           <BranchFlow source={planBranch.branchName} target={planBranch.sourceBranch} size="sm" />
         ) : mergeConflictContext?.type === "plan_update" ? (
           <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
@@ -843,7 +850,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         )}
       </section>
     </TwoColumnLayout>
-    {!isHistorical && isAgentPhase && !isPrMode && <ConfirmationDialog {...confirmationDialogProps} />}
+    {!isHistorical && isAgentPhase && !isPrWait && <ConfirmationDialog {...confirmationDialogProps} />}
     </>
   );
 }

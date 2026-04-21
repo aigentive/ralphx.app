@@ -739,12 +739,17 @@ impl<R: Runtime> StartupJobRunner<R> {
         self.remediate_commit_hook_merge_incomplete_tasks(&projects)
             .await;
 
-        // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
+        // Phase 1: Merge-first recovery — process PendingMerge, local Merging,
+        // and PR-waiting tasks
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
         // programmatic merges complete before agent-based merges.
         const MERGE_RECOVERY_STATES: &[InternalStatus] =
-            &[InternalStatus::PendingMerge, InternalStatus::Merging];
+            &[
+                InternalStatus::PendingMerge,
+                InternalStatus::Merging,
+                InternalStatus::WaitingOnPr,
+            ];
 
         info!("Phase 1: Merge-first recovery — processing merge states before agent spawning");
 
@@ -808,7 +813,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                         task
                     };
 
-                    if !self.execution_state.can_start_any_execution_context() {
+                    let requires_execution_capacity = *status != InternalStatus::WaitingOnPr;
+
+                    if requires_execution_capacity
+                        && !self.execution_state.can_start_any_execution_context()
+                    {
                         info!(
                             global_max_concurrent = self.execution_state.global_max_concurrent(),
                             running_count = self.execution_state.running_count(),
@@ -817,7 +826,9 @@ impl<R: Runtime> StartupJobRunner<R> {
                         break 'merge_recovery;
                     }
 
-                    if !self.project_has_execution_capacity(&task.project_id).await {
+                    if requires_execution_capacity
+                        && !self.project_has_execution_capacity(&task.project_id).await
+                    {
                         info!(
                             task_id = task.id.as_str(),
                             project_id = task.project_id.as_str(),

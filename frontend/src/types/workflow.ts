@@ -426,7 +426,7 @@ export const defaultWorkflow: WorkflowSchema = {
         {
           id: "merging",
           label: "Merging",
-          statuses: ["pending_merge", "merging"],
+          statuses: ["pending_merge", "merging", "waiting_on_pr"],
           icon: "GitMerge",
           canDragFrom: false, // System-managed
           canDropTo: false,

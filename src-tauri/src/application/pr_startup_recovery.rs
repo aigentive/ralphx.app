@@ -1,4 +1,4 @@
-//! PR startup recovery: restart pollers for Merging+PR tasks after app restart.
+//! PR startup recovery: restart pollers for PR-backed merge tasks after app restart.
 //!
 //! On shutdown, pollers are killed without cleanup. On next startup,
 //! this module scans for tasks that were actively polling (`pr_polling_active = true`)
@@ -6,7 +6,7 @@
 //!
 //! Called from `lib.rs` after dual-AppState block, inside the startup async task,
 //! BEFORE `StartupJobRunner::run()` to ensure pollers exist before the reconciler
-//! can re-enter on_enter(Merging) for PR-mode tasks.
+//! can re-enter PR-mode entry actions for waiting-on-PR tasks.
 
 use std::sync::Arc;
 
@@ -553,7 +553,7 @@ pub async fn recover_pr_pollers(
                 "PR startup recovery: restoring PR-backed merge task that was incorrectly escalated by local merge timeout"
             );
             match transition_service
-                .transition_task(&task.id, InternalStatus::Merging)
+                .transition_task(&task.id, InternalStatus::WaitingOnPr)
                 .await
             {
                 Ok(restored) => {
@@ -570,11 +570,34 @@ pub async fn recover_pr_pollers(
             }
         }
 
-        if task.internal_status != InternalStatus::Merging {
+        if task.internal_status == InternalStatus::Merging {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                "PR startup recovery: migrating legacy PR-backed Merging task to WaitingOnPr"
+            );
+            match transition_service
+                .transition_task(&task.id, InternalStatus::WaitingOnPr)
+                .await
+            {
+                Ok(restored) => {
+                    task = restored;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %e,
+                        "PR startup recovery: failed to migrate PR-backed Merging task"
+                    );
+                    continue;
+                }
+            }
+        }
+
+        if task.internal_status != InternalStatus::WaitingOnPr {
             tracing::debug!(
                 task_id = task_id.as_str(),
                 status = ?task.internal_status,
-                "PR startup recovery: task not in Merging, skipping"
+                "PR startup recovery: task not in WaitingOnPr, skipping"
             );
             continue;
         }

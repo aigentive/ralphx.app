@@ -194,6 +194,16 @@ async fn test_pr_mode_with_existing_pr_number_calls_push_and_mark_ready() {
         state.create_draft_pr_calls, 0,
         "create_draft_pr should NOT be called when pr_number already exists"
     );
+    let updated_task = task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::WaitingOnPr,
+        "PR-backed final merge should wait on the GitHub PR instead of entering local Merging"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,6 +277,16 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
         updated_pb.pr_number,
         Some(99),
         "pr_number should be persisted after creation"
+    );
+    let updated_task = task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::WaitingOnPr,
+        "newly-created final PR should put the merge task into WaitingOnPr"
     );
 }
 

@@ -36,12 +36,16 @@ impl<R: Runtime> ReconciliationRunner<R> {
         task: &crate::domain::entities::Task,
         status: InternalStatus,
     ) -> bool {
-        if status != InternalStatus::Merging {
+        if !matches!(
+            status,
+            InternalStatus::Merging | InternalStatus::WaitingOnPr
+        ) {
             return false;
         }
 
-        // PR-mode check: Merging+PR tasks have no IPR/agent because they are
-        // waiting for GitHub. Never let them fall through to local merge-agent
+        // PR-mode check: WaitingOnPr tasks have no IPR/agent because they are
+        // waiting for GitHub. Legacy Merging+PR rows are treated the same during
+        // migration. Never let them fall through to local merge-agent
         // timeout recovery, even if startup wiring has not attached a registry yet.
         if let Some(ref repo) = self.plan_branch_repo {
             if let Ok(Some(plan_branch)) = repo.get_by_merge_task_id(&task.id).await {
@@ -119,6 +123,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     return true;
                 }
             }
+        }
+
+        if status == InternalStatus::WaitingOnPr {
+            warn!(
+                task_id = task.id.as_str(),
+                "WaitingOnPr task has no PR metadata — skipping local merge reconciliation"
+            );
+            return true;
         }
 
         // Skip if there's a live interactive process — the agent is alive between turns.
