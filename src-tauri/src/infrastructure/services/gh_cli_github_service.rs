@@ -240,6 +240,18 @@ fn build_create_pr_args(
     args
 }
 
+fn build_update_pr_args(pr_number: i64, title: &str, body_file: &str) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "edit".to_string(),
+        pr_number.to_string(),
+        "--title".to_string(),
+        title.to_string(),
+        "--body-file".to_string(),
+        body_file.to_string(),
+    ]
+}
+
 fn is_duplicate_pr_error(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     DUPLICATE_PR_FRAGMENTS.iter().any(|fragment| lower.contains(fragment))
@@ -356,6 +368,22 @@ impl GithubServiceTrait for GhCliGithubService {
     async fn mark_pr_ready(&self, working_dir: &Path, pr_number: i64) -> AppResult<()> {
         // gh pr ready <number>
         let args = vec!["pr".to_string(), "ready".to_string(), pr_number.to_string()];
+        self.runner.run_gh(working_dir, &args).await?;
+        Ok(())
+    }
+
+    async fn update_pr_details(
+        &self,
+        working_dir: &Path,
+        pr_number: i64,
+        title: &str,
+        body_file: &Path,
+    ) -> AppResult<()> {
+        let body_file_str = body_file
+            .to_str()
+            .ok_or_else(|| AppError::Infrastructure("body_file path is not valid UTF-8".to_string()))?
+            .to_string();
+        let args = build_update_pr_args(pr_number, title, &body_file_str);
         self.runner.run_gh(working_dir, &args).await?;
         Ok(())
     }

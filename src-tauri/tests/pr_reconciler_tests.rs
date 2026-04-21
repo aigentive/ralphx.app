@@ -1019,6 +1019,149 @@ async fn test_startup_recovery_pushes_existing_pr_branch_when_local_sync_pending
         0,
         "startup recovery should not recreate an already-open PR when only branch sync is pending"
     );
+    assert_eq!(
+        mock_github.update_pr_details_calls(),
+        1,
+        "startup recovery should refresh PR title/body after syncing an existing PR branch"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_refreshes_existing_pushed_pr_metadata() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
+
+    let branch_name = "ralphx/test/metadata-refresh";
+    let working_dir = setup_plan_git_repo(branch_name, true);
+    let project = Project::new(
+        "Startup PR Metadata Refresh".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge refreshed plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-startup-metadata-refresh".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-metadata-refresh".to_string()),
+        session_id,
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
+    branch.pr_eligible = true;
+    branch.pr_number = Some(88);
+    branch.pr_url = Some("https://github.com/owner/repo/pull/88".to_string());
+    branch.pr_push_status = PrPushStatus::Pushed;
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    assert_eq!(
+        mock_github.push_calls(),
+        0,
+        "already-pushed PR branches do not need a startup push"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "startup recovery should not recreate existing PRs"
+    );
+    assert_eq!(
+        mock_github.update_pr_details_calls(),
+        1,
+        "startup recovery should refresh title/body for every eligible existing PR"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_refreshes_existing_pr_metadata_without_local_diff() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
+
+    let branch_name = "ralphx/test/metadata-refresh-no-diff";
+    let working_dir = setup_plan_git_repo(branch_name, false);
+    let project = Project::new(
+        "Startup PR Metadata Refresh Without Diff".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge refreshed plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let session_id =
+        IdeationSessionId::from_string("session-startup-metadata-refresh-no-diff".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-metadata-refresh-no-diff".to_string()),
+        session_id,
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
+    branch.pr_eligible = true;
+    branch.pr_number = Some(89);
+    branch.pr_url = Some("https://github.com/owner/repo/pull/89".to_string());
+    branch.pr_push_status = PrPushStatus::Pushed;
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    assert_eq!(
+        mock_github.update_pr_details_calls(),
+        1,
+        "startup recovery should force-refresh eligible existing PR metadata even when no new local commits need pushing"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "existing PRs should not be recreated when the branch has no diff"
+    );
 }
 
 #[tokio::test]

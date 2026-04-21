@@ -16,6 +16,7 @@ pub mod text_similarity;
 pub mod index_rewriter;
 pub mod message_queue;
 pub mod methodology_service;
+pub mod pr_publish_service;
 pub mod research_service;
 pub mod rule_ingestion_service;
 pub mod rule_parser;
@@ -48,6 +49,7 @@ pub use index_rewriter::{IndexRewriter, RewriteResult};
 // Unified message queue - keyed by (context_type, context_id)
 pub use message_queue::{MessageQueue, QueueKey, QueuedMessage};
 pub use methodology_service::{MethodologyActivationResult, MethodologyService};
+pub use pr_publish_service::{PlanPrPublisher, PrReviewState};
 pub use research_service::ResearchService;
 pub use rule_ingestion_service::{IngestionResult, RuleIngestionService};
 pub use rule_parser::{MarkdownChunk, ParsedRuleFile, RuleFrontmatter, RuleParser};

@@ -17,6 +17,7 @@ pub struct MockGithubState {
     // --- Configurable responses ---
     pub create_draft_pr_result: Option<AppResult<(i64, String)>>,
     pub mark_pr_ready_result: Option<AppResult<()>>,
+    pub update_pr_details_result: Option<AppResult<()>>,
     pub check_pr_status_result: Option<AppResult<PrStatus>>,
     pub push_branch_result: Option<AppResult<()>>,
     pub close_pr_result: Option<AppResult<()>>,
@@ -27,6 +28,7 @@ pub struct MockGithubState {
     // --- Call tracking ---
     pub create_draft_pr_calls: u32,
     pub mark_pr_ready_calls: u32,
+    pub update_pr_details_calls: u32,
     pub check_pr_status_calls: u32,
     pub push_branch_calls: u32,
     pub close_pr_calls: u32,
@@ -38,6 +40,8 @@ pub struct MockGithubState {
     pub last_create_draft_pr_args: Option<(String, String, String, String)>,
     pub last_create_draft_pr_body: Option<String>,
     pub last_mark_pr_ready_number: Option<i64>,
+    pub last_update_pr_details_args: Option<(i64, String, String)>,
+    pub last_update_pr_details_body: Option<String>,
     pub last_check_pr_status_number: Option<i64>,
     pub last_push_branch_name: Option<String>,
     pub last_close_pr_number: Option<i64>,
@@ -85,8 +89,7 @@ impl MockGithubService {
 
     /// Shorthand: configure any method to fail with the given message (Infrastructure error).
     pub fn will_fail_create_pr(&self, msg: impl Into<String>) {
-        self.state().create_draft_pr_result =
-            Some(Err(AppError::Infrastructure(msg.into())));
+        self.state().create_draft_pr_result = Some(Err(AppError::Infrastructure(msg.into())));
     }
 
     /// Shorthand: configure find_pr_by_head_branch to return the given result.
@@ -131,6 +134,24 @@ impl GithubServiceTrait for MockGithubService {
         s.mark_pr_ready_calls += 1;
         s.last_mark_pr_ready_number = Some(pr_number);
         s.mark_pr_ready_result.take().unwrap_or(Ok(()))
+    }
+
+    async fn update_pr_details(
+        &self,
+        _working_dir: &Path,
+        pr_number: i64,
+        title: &str,
+        body_file: &Path,
+    ) -> AppResult<()> {
+        let mut s = self.state.lock().expect("lock poisoned");
+        s.update_pr_details_calls += 1;
+        s.last_update_pr_details_args = Some((
+            pr_number,
+            title.to_string(),
+            body_file.to_string_lossy().into_owned(),
+        ));
+        s.last_update_pr_details_body = std::fs::read_to_string(body_file).ok();
+        s.update_pr_details_result.take().unwrap_or(Ok(()))
     }
 
     async fn check_pr_status(&self, _working_dir: &Path, pr_number: i64) -> AppResult<PrStatus> {

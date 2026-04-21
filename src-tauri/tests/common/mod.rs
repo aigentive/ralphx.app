@@ -28,6 +28,7 @@ pub struct MockGithubService {
     pub push_branch_calls: Arc<Mutex<u32>>,
     pub create_draft_pr_calls: Arc<Mutex<u32>>,
     pub mark_pr_ready_calls: Arc<Mutex<u32>>,
+    pub update_pr_details_calls: Arc<Mutex<u32>>,
     pub close_pr_calls: Arc<Mutex<u32>>,
     pub delete_remote_branch_calls: Arc<Mutex<u32>>,
     pub find_pr_by_head_branch_calls: Arc<Mutex<u32>>,
@@ -35,6 +36,7 @@ pub struct MockGithubService {
     #[allow(clippy::type_complexity)]
     create_draft_pr_result: Arc<Mutex<Option<AppResult<(i64, String)>>>>,
     mark_pr_ready_result: Arc<Mutex<Option<AppResult<()>>>>,
+    update_pr_details_result: Arc<Mutex<Option<AppResult<()>>>>,
     #[allow(clippy::type_complexity)]
     find_pr_by_head_branch_result: Arc<Mutex<Option<AppResult<Option<(i64, String)>>>>>,
 }
@@ -48,12 +50,14 @@ impl MockGithubService {
             push_branch_calls: Arc::new(Mutex::new(0)),
             create_draft_pr_calls: Arc::new(Mutex::new(0)),
             mark_pr_ready_calls: Arc::new(Mutex::new(0)),
+            update_pr_details_calls: Arc::new(Mutex::new(0)),
             close_pr_calls: Arc::new(Mutex::new(0)),
             delete_remote_branch_calls: Arc::new(Mutex::new(0)),
             find_pr_by_head_branch_calls: Arc::new(Mutex::new(0)),
             push_branch_result: Arc::new(Mutex::new(None)),
             create_draft_pr_result: Arc::new(Mutex::new(None)),
             mark_pr_ready_result: Arc::new(Mutex::new(None)),
+            update_pr_details_result: Arc::new(Mutex::new(None)),
             find_pr_by_head_branch_result: Arc::new(Mutex::new(None)),
         }
     }
@@ -106,6 +110,9 @@ impl MockGithubService {
     pub fn mark_ready_calls(&self) -> u32 {
         *self.mark_pr_ready_calls.lock().unwrap()
     }
+    pub fn update_pr_details_calls(&self) -> u32 {
+        *self.update_pr_details_calls.lock().unwrap()
+    }
     pub fn delete_branch_calls(&self) -> u32 {
         *self.delete_remote_branch_calls.lock().unwrap()
     }
@@ -140,6 +147,20 @@ impl GithubServiceTrait for MockGithubService {
     async fn mark_pr_ready(&self, _wd: &Path, _pr_number: i64) -> AppResult<()> {
         *self.mark_pr_ready_calls.lock().unwrap() += 1;
         if let Some(result) = self.mark_pr_ready_result.lock().unwrap().take() {
+            return result;
+        }
+        Ok(())
+    }
+
+    async fn update_pr_details(
+        &self,
+        _wd: &Path,
+        _pr_number: i64,
+        _title: &str,
+        _body: &Path,
+    ) -> AppResult<()> {
+        *self.update_pr_details_calls.lock().unwrap() += 1;
+        if let Some(result) = self.update_pr_details_result.lock().unwrap().take() {
             return result;
         }
         Ok(())

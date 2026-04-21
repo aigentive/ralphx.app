@@ -1010,6 +1010,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
         .app_handle
         .and_then(|handle| handle.try_state::<AppState>());
     let pr_sync_services = PlanBranchPrSyncServices {
+        task_repo: Some(Arc::clone(ctx.task_repo)),
         plan_branch_repo: ctx.plan_branch_repo.clone(),
         pr_creation_guard: app_state
             .as_ref()

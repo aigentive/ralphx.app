@@ -61,8 +61,7 @@ fn parse_pr_create_plain_output_extracts_url_from_wrapped_text() {
 
 #[test]
 fn parse_pr_create_plain_output_fails_without_url() {
-    let err = parse_pr_create_plain_output("created pull request successfully")
-        .unwrap_err();
+    let err = parse_pr_create_plain_output("created pull request successfully").unwrap_err();
     assert!(matches!(err, AppError::Infrastructure(_)));
 }
 
@@ -186,7 +185,10 @@ fn scrub_token_urls_leaves_normal_url_unchanged() {
 fn scrub_token_urls_handles_multiple_occurrences() {
     let s = "https://tok1@github.com/a and https://tok2@github.com/b";
     let result = scrub_token_urls(s);
-    assert_eq!(result, "https://***@github.com/a and https://***@github.com/b");
+    assert_eq!(
+        result,
+        "https://***@github.com/a and https://***@github.com/b"
+    );
 }
 
 #[test]
@@ -307,10 +309,7 @@ mod mock_roundtrip {
             merge_commit_sha: Some("deadbeef".to_string()),
         });
 
-        let status = mock
-            .check_pr_status(Path::new("/tmp"), 42)
-            .await
-            .unwrap();
+        let status = mock.check_pr_status(Path::new("/tmp"), 42).await.unwrap();
 
         assert_eq!(
             status,
@@ -330,6 +329,9 @@ mod mock_roundtrip {
         mock.push_branch(p, "feat/foo").await.unwrap();
         mock.fetch_remote(p, "main").await.unwrap();
         mock.mark_pr_ready(p, 7).await.unwrap();
+        mock.update_pr_details(p, 7, "Updated", Path::new("/tmp/body.md"))
+            .await
+            .unwrap();
         mock.close_pr(p, 7).await.unwrap();
         mock.delete_remote_branch(p, "feat/foo").await.unwrap();
 
@@ -337,13 +339,23 @@ mod mock_roundtrip {
         assert_eq!(s.push_branch_calls, 1);
         assert_eq!(s.fetch_remote_calls, 1);
         assert_eq!(s.mark_pr_ready_calls, 1);
+        assert_eq!(s.update_pr_details_calls, 1);
         assert_eq!(s.close_pr_calls, 1);
         assert_eq!(s.delete_remote_branch_calls, 1);
         assert_eq!(s.last_push_branch_name.as_deref(), Some("feat/foo"));
         assert_eq!(s.last_fetch_remote_branch_name.as_deref(), Some("main"));
         assert_eq!(s.last_mark_pr_ready_number, Some(7));
+        assert_eq!(
+            s.last_update_pr_details_args
+                .as_ref()
+                .map(|(num, title, _)| (*num, title.as_str())),
+            Some((7, "Updated"))
+        );
         assert_eq!(s.last_close_pr_number, Some(7));
-        assert_eq!(s.last_delete_remote_branch_name.as_deref(), Some("feat/foo"));
+        assert_eq!(
+            s.last_delete_remote_branch_name.as_deref(),
+            Some("feat/foo")
+        );
     }
 
     #[tokio::test]
@@ -430,6 +442,38 @@ mod mock_roundtrip {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn update_pr_details_uses_gh_pr_edit_with_body_file() {
+        let runner = Arc::new(MockGhCliRunner::with_gh_results(vec![Ok(Vec::new())]));
+        let service = GhCliGithubService::with_runner(runner.clone());
+
+        service
+            .update_pr_details(
+                Path::new("/tmp"),
+                68,
+                "Fix graph crash when no active plan selected",
+                Path::new("/tmp/body.md"),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            runner.gh_calls(),
+            vec![vec![
+                "pr",
+                "edit",
+                "68",
+                "--title",
+                "Fix graph crash when no active plan selected",
+                "--body-file",
+                "/tmp/body.md",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()]
         );
     }
 

@@ -35,6 +35,15 @@ pub trait GithubServiceTrait: Send + Sync {
     /// Convert an existing draft PR to ready-for-review.
     async fn mark_pr_ready(&self, working_dir: &Path, pr_number: i64) -> AppResult<()>;
 
+    /// Update an existing pull request title/body.
+    async fn update_pr_details(
+        &self,
+        working_dir: &Path,
+        pr_number: i64,
+        title: &str,
+        body_file: &Path,
+    ) -> AppResult<()>;
+
     /// Check the current status of a PR.
     async fn check_pr_status(&self, working_dir: &Path, pr_number: i64) -> AppResult<PrStatus>;
 

@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::application::GitService;
-use crate::domain::entities::ArtifactContent;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
 use crate::domain::entities::InternalStatus;
 use crate::domain::entities::{
@@ -20,14 +19,11 @@ use crate::domain::entities::{
 use crate::domain::repositories::{
     ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, TaskRepository,
 };
-use crate::domain::services::GithubServiceTrait;
+use crate::domain::services::{GithubServiceTrait, PlanPrPublisher, PrReviewState};
 use crate::domain::state_machine::context::TaskServices;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::git_runtime_config;
 
-const RALPHX_REPOSITORY_URL: &str = "https://github.com/aigentive/ralphx";
-const MAX_PLAN_MARKDOWN_CHARS_IN_PR_BODY: usize = 6_000;
-const MAX_CHANGED_FILES_IN_PR_BODY: usize = 12;
 const COMMIT_HOOK_PATTERNS: &[&str] = &[
     "pre-commit",
     "[pre-commit]",
@@ -372,9 +368,7 @@ pub(crate) fn build_commit_hook_review_note_body(error: &str) -> String {
     let summary = build_commit_hook_revision_feedback(&sanitized);
     let fenced_output = sanitized.replace("```", "``\u{200B}`");
 
-    format!(
-        "{summary}\n\nFull hook output:\n```text\n{fenced_output}\n```"
-    )
+    format!("{summary}\n\nFull hook output:\n```text\n{fenced_output}\n```")
 }
 
 // ===== Pre-merge validation =====
@@ -1121,195 +1115,60 @@ pub(crate) async fn resolve_effective_base_branch(
     }
 }
 
-async fn read_pull_request_template(repo_path: &Path) -> Option<String> {
-    let template_path = repo_path.join(".github").join("PULL_REQUEST_TEMPLATE.md");
-    if !template_path.exists() {
-        return None;
-    }
-
-    match tokio::fs::read_to_string(&template_path).await {
-        Ok(content) if !content.trim().is_empty() => Some(content.trim().to_string()),
-        _ => None,
-    }
-}
-
-async fn resolve_pr_display_title(
-    task: &Task,
-    pb: &crate::domain::entities::PlanBranch,
-    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
-    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
-) -> String {
-    if let Some(repo) = ideation_session_repo {
-        if let Ok(Some(session)) = repo.get_by_id(&pb.session_id).await {
-            if let Some(title) = session.title.filter(|title| !title.trim().is_empty()) {
-                return title.trim().to_string();
-            }
-        }
-    }
-
-    if let Some(repo) = artifact_repo {
-        if let Ok(Some(artifact)) = repo.get_by_id(&pb.plan_artifact_id).await {
-            if !artifact.name.trim().is_empty() {
-                return artifact.name.trim().to_string();
-            }
-        }
-    }
-
-    if !task.title.trim().is_empty() {
-        return task.title.trim().to_string();
-    }
-
-    pb.branch_name.clone()
-}
-
-async fn read_plan_artifact_markdown(
-    pb: &crate::domain::entities::PlanBranch,
-    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
-) -> Option<String> {
-    let repo = artifact_repo?;
-    let artifact = repo.get_by_id(&pb.plan_artifact_id).await.ok().flatten()?;
-    let raw = match artifact.content {
-        ArtifactContent::Inline { text } => text,
-        ArtifactContent::File { path } => tokio::fs::read_to_string(path).await.ok()?,
+pub(crate) async fn plan_regular_tasks_complete(
+    current_task: &Task,
+    pb: &PlanBranch,
+    task_repo: Option<&Arc<dyn TaskRepository>>,
+) -> bool {
+    let Some(task_repo) = task_repo else {
+        return false;
     };
 
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if trimmed.chars().count() <= MAX_PLAN_MARKDOWN_CHARS_IN_PR_BODY {
-        return Some(trimmed.to_string());
-    }
-
-    let truncated = trimmed
-        .chars()
-        .take(MAX_PLAN_MARKDOWN_CHARS_IN_PR_BODY)
-        .collect::<String>();
-    Some(format!(
-        "{}\n\n_Excerpt truncated by RalphX for GitHub display._",
-        truncated.trim_end()
-    ))
-}
-
-fn build_pr_title(display_title: &str) -> String {
-    format!("Plan: {}", display_title.trim())
-}
-
-async fn build_pr_change_summary(repo_path: &Path, base: &str, head: &str) -> Option<String> {
-    let diff = GitService::get_diff_stats_between(repo_path, base, head)
-        .await
-        .ok()?;
-    let commit_count = GitService::count_commits_not_on_branch(repo_path, head, base)
-        .await
-        .ok();
-
-    if diff.files_changed == 0 && diff.changed_files.is_empty() && commit_count.unwrap_or(0) == 0 {
-        return None;
-    }
-
-    let mut lines = Vec::new();
-    if let Some(commit_count) = commit_count {
-        lines.push(format!(
-            "- Scope: `{}` commit{}, `{}` file{} changed, `+{}` / `-{}`",
-            commit_count,
-            if commit_count == 1 { "" } else { "s" },
-            diff.files_changed,
-            if diff.files_changed == 1 { "" } else { "s" },
-            diff.insertions,
-            diff.deletions
-        ));
+    let tasks = if let Some(execution_plan_id) = pb.execution_plan_id.as_ref() {
+        match task_repo
+            .list_paginated(
+                &pb.project_id,
+                None,
+                0,
+                10_000,
+                false,
+                None,
+                Some(execution_plan_id.as_str()),
+                None,
+            )
+            .await
+        {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    "PR mode: failed to query execution-plan tasks for ready check"
+                );
+                return false;
+            }
+        }
     } else {
-        lines.push(format!(
-            "- Scope: `{}` file{} changed, `+{}` / `-{}`",
-            diff.files_changed,
-            if diff.files_changed == 1 { "" } else { "s" },
-            diff.insertions,
-            diff.deletions
-        ));
-    }
-
-    if !diff.changed_files.is_empty() {
-        lines.push(String::new());
-        lines.push("<details>".to_string());
-        lines.push("<summary>Changed files</summary>".to_string());
-        lines.push(String::new());
-        for file in diff.changed_files.iter().take(MAX_CHANGED_FILES_IN_PR_BODY) {
-            lines.push(format!("- `{}`", file));
+        match task_repo.get_by_ideation_session(&pb.session_id).await {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    session_id = pb.session_id.as_str(),
+                    "PR mode: failed to query session tasks for ready check"
+                );
+                return false;
+            }
         }
-        let remaining = diff
-            .changed_files
-            .len()
-            .saturating_sub(MAX_CHANGED_FILES_IN_PR_BODY);
-        if remaining > 0 {
-            let suffix = if remaining == 1 { "" } else { "s" };
-            lines.push(format!("- _{} more file{}_", remaining, suffix));
-        }
-        lines.push(String::new());
-        lines.push("</details>".to_string());
-    }
+    };
 
-    Some(lines.join("\n"))
-}
-
-/// Build the PR body content.
-/// If a pull request template exists, preserve it and append RalphX plan metadata below it.
-async fn build_pr_body(
-    task: &Task,
-    project: &Project,
-    pb: &crate::domain::entities::PlanBranch,
-    repo_path: &Path,
-    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
-    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
-) -> String {
-    let display_title = resolve_pr_display_title(task, pb, ideation_session_repo, artifact_repo).await;
-    let pr_base = resolve_plan_branch_pr_base(project, pb);
-    let template = read_pull_request_template(repo_path).await;
-    let plan_markdown = read_plan_artifact_markdown(pb, artifact_repo).await;
-    let change_summary =
-        build_pr_change_summary(repo_path, &pr_base, &pb.branch_name).await;
-
-    let mut sections = Vec::new();
-    if let Some(template) = template {
-        sections.push(template);
-    }
-
-    sections.push(format!(
-        "## Summary\n\nRalphX opened this draft PR for **{}** after reviewable plan work landed on the plan branch.",
-        display_title
-    ));
-
-    if let Some(change_summary) = change_summary {
-        sections.push(format!("## Delivered Changes\n\n{}", change_summary));
-    }
-
-    sections.push(
-        "## Review Focus\n\n\
-         - Review the delivered diff and any repository checks.\n\
-         - Merge this PR in GitHub when the plan branch is ready; RalphX will detect the merge and finish the plan."
-            .to_string(),
-    );
-
-    sections.push(format!(
-        "## RalphX Status\n\n- State: Draft plan PR, waiting for GitHub review/merge\n- Current RalphX task: **{}**\n- Base branch: `{}`\n- Plan branch: `{}`",
-        task.title.trim(),
-        pr_base,
-        pb.branch_name
-    ));
-
-    if let Some(plan_markdown) = plan_markdown {
-        sections.push(format!(
-            "## Plan Artifact\n\n<details>\n<summary>View current plan</summary>\n\n{}\n\n</details>",
-            plan_markdown
-        ));
-    }
-
-    sections.push(format!(
-        "---\n\n_Generated by [RalphX]({})_",
-        RALPHX_REPOSITORY_URL
-    ));
-
-    sections.join("\n\n")
+    tasks
+        .iter()
+        .filter(|task| task.archived_at.is_none())
+        .filter(|task| task.category != TaskCategory::PlanMerge)
+        .all(|task| {
+            task.id == current_task.id || matches!(task.internal_status, InternalStatus::Merged)
+        })
 }
 
 async fn push_pr_branch_to_remote(
@@ -1317,7 +1176,7 @@ async fn push_pr_branch_to_remote(
     pb: &PlanBranch,
     github: &Arc<dyn GithubServiceTrait>,
     plan_branch_repo: &Arc<dyn PlanBranchRepository>,
-) {
+) -> bool {
     let repo_path = Path::new(&project.working_directory);
     tracing::info!(
         branch = %pb.branch_name,
@@ -1333,6 +1192,7 @@ async fn push_pr_branch_to_remote(
             {
                 tracing::warn!(error = %e, "Failed to update pr_push_status=pushed");
             }
+            true
         }
         Err(e) => {
             tracing::warn!(
@@ -1343,6 +1203,7 @@ async fn push_pr_branch_to_remote(
             let _ = plan_branch_repo
                 .update_pr_push_status(&pb.id, PrPushStatus::Failed)
                 .await;
+            false
         }
     }
 }
@@ -1361,11 +1222,26 @@ pub(crate) async fn sync_plan_branch_pr_if_needed(
         return;
     }
 
-    push_pr_branch_to_remote(project, pb, github, plan_branch_repo).await;
+    let _ = push_pr_branch_to_remote(project, pb, github, plan_branch_repo).await;
+}
+
+pub(crate) async fn sync_existing_plan_branch_pr_details(
+    task: &Task,
+    project: &Project,
+    pb: &PlanBranch,
+    github: &Arc<dyn GithubServiceTrait>,
+    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
+    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
+    review_state: PrReviewState,
+) -> AppResult<()> {
+    PlanPrPublisher::new(github, ideation_session_repo, artifact_repo)
+        .sync_existing_pr(task, project, pb, review_state)
+        .await
 }
 
 #[derive(Clone, Default)]
 pub(crate) struct PlanBranchPrSyncServices {
+    pub task_repo: Option<Arc<dyn TaskRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub pr_creation_guard: Option<Arc<dashmap::DashMap<PlanBranchId, ()>>>,
     pub github_service: Option<Arc<dyn GithubServiceTrait>>,
@@ -1376,6 +1252,7 @@ pub(crate) struct PlanBranchPrSyncServices {
 impl PlanBranchPrSyncServices {
     pub(crate) fn from_task_services(services: &TaskServices) -> Self {
         Self {
+            task_repo: services.task_repo.clone(),
             plan_branch_repo: services.plan_branch_repo.clone(),
             pr_creation_guard: services.pr_creation_guard.clone(),
             github_service: services.github_service.clone(),
@@ -1415,16 +1292,58 @@ pub(crate) async fn sync_plan_branch_pr_after_regular_task_merge(
         return;
     };
 
+    let ready_for_review =
+        plan_regular_tasks_complete(task, &plan_branch, services.task_repo.as_ref()).await;
+
     if plan_branch.pr_number.is_some() {
         let mut refreshed_plan_branch = plan_branch.clone();
         refreshed_plan_branch.pr_push_status = PrPushStatus::Pending;
-        sync_plan_branch_pr_if_needed(
+        let pushed = push_pr_branch_to_remote(
             project,
             &refreshed_plan_branch,
             github_service,
             plan_branch_repo,
         )
         .await;
+        if pushed {
+            let review_state = if ready_for_review {
+                PrReviewState::Ready
+            } else {
+                PrReviewState::Draft
+            };
+            if let Err(e) = sync_existing_plan_branch_pr_details(
+                task,
+                project,
+                &refreshed_plan_branch,
+                github_service,
+                services.ideation_session_repo.as_ref(),
+                services.artifact_repo.as_ref(),
+                review_state,
+            )
+            .await
+            {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "PR mode: failed to refresh PR details after plan branch push"
+                );
+            }
+            if ready_for_review {
+                if let Some(pr_number) = refreshed_plan_branch.pr_number {
+                    if let Err(e) = github_service
+                        .mark_pr_ready(Path::new(&project.working_directory), pr_number)
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            pr_number,
+                            error = %e,
+                            "PR mode: failed to mark PR ready after final plan task merge"
+                        );
+                    }
+                }
+            }
+        }
     } else if let Some(pr_creation_guard) = services.pr_creation_guard.as_ref() {
         create_draft_pr_if_needed(
             task,
@@ -1437,6 +1356,50 @@ pub(crate) async fn sync_plan_branch_pr_after_regular_task_merge(
             services.artifact_repo.as_ref(),
         )
         .await;
+        if ready_for_review {
+            match plan_branch_repo.get_by_id(&plan_branch.id).await {
+                Ok(Some(refreshed_plan_branch)) if refreshed_plan_branch.pr_number.is_some() => {
+                    if let Err(e) = sync_existing_plan_branch_pr_details(
+                        task,
+                        project,
+                        &refreshed_plan_branch,
+                        github_service,
+                        services.ideation_session_repo.as_ref(),
+                        services.artifact_repo.as_ref(),
+                        PrReviewState::Ready,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "PR mode: failed to refresh newly-created PR details before ready"
+                        );
+                    }
+                    if let Some(pr_number) = refreshed_plan_branch.pr_number {
+                        if let Err(e) = github_service
+                            .mark_pr_ready(Path::new(&project.working_directory), pr_number)
+                            .await
+                        {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                pr_number,
+                                error = %e,
+                                "PR mode: failed to mark newly-created PR ready after final plan task merge"
+                            );
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "PR mode: failed to reload plan branch after draft PR creation"
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -1522,7 +1485,9 @@ pub(crate) async fn create_draft_pr_if_needed(
         return;
     }
 
-    let reviewable_commit_count = match plan_branch_reviewable_commit_count(project, &current_pb).await {
+    let reviewable_commit_count = match plan_branch_reviewable_commit_count(project, &current_pb)
+        .await
+    {
         Ok(count) => count,
         Err(e) => {
             tracing::warn!(
@@ -1572,44 +1537,14 @@ pub(crate) async fn create_draft_pr_if_needed(
 
         // --- CREATE DRAFT PR ---
         let base = resolve_plan_branch_pr_base(project, &current_pb);
-        let display_title =
-            resolve_pr_display_title(task, &current_pb, ideation_session_repo, artifact_repo).await;
-        let pr_title = build_pr_title(&display_title);
-
-        // Build PR body
-        let pr_body = build_pr_body(
-            task,
-            project,
-            &current_pb,
-            repo_path,
-            ideation_session_repo,
-            artifact_repo,
-        )
-        .await;
-
-        // Write body to temp file
-        let body_file = match tempfile::NamedTempFile::new() {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::warn!(error = %e, "create_draft_pr_if_needed: failed to create temp file");
-                return;
-            }
-        };
-        use std::io::Write as _;
-        if let Err(e) = (&body_file).write_all(pr_body.as_bytes()) {
-            tracing::warn!(error = %e, "create_draft_pr_if_needed: failed to write body to temp file");
-            return;
-        }
+        let publisher = PlanPrPublisher::new(github, ideation_session_repo, artifact_repo);
 
         tracing::info!(
             branch = %branch_name,
             base = %base,
             "create_draft_pr_if_needed: creating draft PR"
         );
-        match github
-            .create_draft_pr(repo_path, &base, &branch_name, &pr_title, body_file.path())
-            .await
-        {
+        match publisher.create_draft_pr(task, project, &current_pb).await {
             Ok((pr_number, pr_url)) => {
                 tracing::info!(pr_number, %pr_url, "Draft PR created");
                 if let Err(e) = plan_branch_repo
@@ -1638,13 +1573,25 @@ pub(crate) async fn create_draft_pr_if_needed(
                             .update_pr_info(
                                 &plan_branch_id,
                                 pr_number,
-                                pr_url,
+                                pr_url.clone(),
                                 PrStatus::Open,
                                 true,
                             )
                             .await
                         {
                             tracing::warn!(error = %e, "Failed to persist recovered PR info");
+                        }
+                        let mut recovered_pb = current_pb.clone();
+                        recovered_pb.pr_number = Some(pr_number);
+                        recovered_pb.pr_url = Some(pr_url);
+                        if let Err(e) = publisher
+                            .sync_existing_pr(task, project, &recovered_pb, PrReviewState::Draft)
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to refresh recovered existing PR after duplicate error"
+                            );
                         }
                     }
                     Ok(None) => {
