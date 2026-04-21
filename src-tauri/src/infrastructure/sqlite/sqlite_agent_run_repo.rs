@@ -70,7 +70,7 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
         parent_run_id: row.get("parent_run_id")?,
     })
 }
-use crate::domain::repositories::AgentRunRepository;
+use crate::domain::repositories::{AgentRunRepository, ORPHANED_AGENT_RUN_ON_APP_RESTART};
 use crate::error::AppResult;
 
 use super::DbConnection;
@@ -387,8 +387,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .run(move |conn| {
                 let changes = conn.execute(
-                    "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = 'Orphaned on app restart' WHERE status = 'running'",
-                    rusqlite::params![Utc::now().to_rfc3339()],
+                    "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = ?2 WHERE status = 'running'",
+                    rusqlite::params![Utc::now().to_rfc3339(), ORPHANED_AGENT_RUN_ON_APP_RESTART],
                 )?;
                 Ok(changes as u32)
             })
@@ -443,7 +443,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         OR c.claude_session_id IS NOT NULL
                     )
                       AND ar.status = 'cancelled'
-                      AND ar.error_message = 'Orphaned on app restart'
+                      AND ar.error_message = ?1
                       AND ar.id = (
                         SELECT ar2.id FROM agent_runs ar2
                         WHERE ar2.conversation_id = c.id
@@ -453,7 +453,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 )?;
 
                 let results = stmt
-                    .query_map([], |row| {
+                    .query_map([ORPHANED_AGENT_RUN_ON_APP_RESTART], |row| {
                         let context_type_str: String = row.get("context_type")?;
                         let claude_session_id: Option<String> = row.get("claude_session_id")?;
                         let provider_session_id: Option<String> =

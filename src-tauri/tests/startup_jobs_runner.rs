@@ -6,14 +6,15 @@ use ralphx_lib::commands::execution_commands::{
 use ralphx_lib::commands::{ActiveProjectState, ExecutionState};
 use ralphx_lib::domain::entities::{
     app_state::ExecutionHaltMode,
-    ChatContextType, IdeationSessionBuilder, InternalStatus, Project, ProjectId, Task,
-    TaskCategory,
+    AgentRun, AgentRunStatus, ChatContextType, ChatConversation, IdeationSessionBuilder,
+    InternalStatus, Project, ProjectId, Task, TaskCategory,
 };
 use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::repositories::AppStateRepository;
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::mocks::MockTaskScheduler;
 use ralphx_lib::domain::state_machine::TaskScheduler;
+use chrono::{Duration, Utc};
 use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -259,6 +260,94 @@ async fn test_resumption_spawns_agents() {
         updated_task.internal_status,
         InternalStatus::Failed,
         "Task should transition to Failed when on_enter encounters ExecutionBlocked"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_resumes_orphaned_executing_task_before_wall_clock_timeout() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Orphaned Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.updated_at = Utc::now() - Duration::minutes(743);
+    task.blocked_reason = Some("stale missing worktree failure".to_string());
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "stale previous failure"
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let conversation = ChatConversation::new_task_execution(task_id.clone());
+    let conversation_id = conversation.id.clone();
+    app_state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .unwrap();
+
+    let mut run = AgentRun::new(conversation_id);
+    run.status = AgentRunStatus::Cancelled;
+    run.started_at = Utc::now() - Duration::minutes(743);
+    run.completed_at = Some(Utc::now() - Duration::minutes(742));
+    run.error_message = Some("Orphaned on app restart".to_string());
+    app_state.agent_run_repo.create(run).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let metadata: serde_json::Value = updated_task
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    assert_eq!(
+        metadata
+            .get("startup_recovery_source")
+            .and_then(|value| value.as_str()),
+        Some("orphaned_agent_run"),
+        "startup must classify orphaned active executions for resume before wall-clock timeout reconciliation"
+    );
+    assert_eq!(
+        metadata
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "startup resume preparation should consume the one-shot recovery attempt"
+    );
+    let metadata_text = metadata.to_string();
+    assert!(
+        !metadata_text.contains("WallClockExceeded")
+            && !metadata_text.contains("WallClockTimeout"),
+        "startup resume ordering must not let wall-clock timeout metadata win before resumption"
+    );
+    assert_ne!(
+        updated_task.blocked_reason.as_deref(),
+        Some("stale missing worktree failure"),
+        "startup resume preparation should clear stale failure details before attempting re-entry"
     );
 }
 

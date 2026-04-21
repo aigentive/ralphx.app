@@ -31,14 +31,15 @@ use crate::commands::execution_commands::{
 };
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{
-    app_state::ExecutionHaltMode, ChatContextType, IdeationSessionId, InternalStatus, ProjectId,
-    ReviewNote, ReviewOutcome, ReviewerType,
+    app_state::ExecutionHaltMode, AgentRunStatus, ChatContextType, IdeationSessionId,
+    InternalStatus, ProjectId, ReviewNote, ReviewOutcome, ReviewerType,
 };
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository,
+    TaskDependencyRepository, TaskRepository, ORPHANED_AGENT_RUN_ON_APP_RESTART,
 };
+use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppResult;
 
@@ -103,6 +104,18 @@ fn startup_resume_context_for_status(status: InternalStatus) -> Option<&'static 
     }
 }
 
+fn startup_resume_chat_context_for_status(status: InternalStatus) -> Option<ChatContextType> {
+    match status {
+        InternalStatus::Executing
+        | InternalStatus::ReExecuting
+        | InternalStatus::QaRefining
+        | InternalStatus::QaTesting => Some(ChatContextType::TaskExecution),
+        InternalStatus::Reviewing => Some(ChatContextType::Review),
+        InternalStatus::PendingMerge | InternalStatus::Merging => Some(ChatContextType::Merge),
+        _ => None,
+    }
+}
+
 /// Runs startup jobs, primarily task resumption.
 ///
 /// Finds all tasks that were in agent-active states when the app shut down
@@ -115,6 +128,7 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dep_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: Arc<TaskTransitionService<R>>,
     execution_state: Arc<ExecutionState>,
@@ -212,6 +226,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             task_repo,
             task_dep_repo,
             project_repo,
+            chat_conversation_repo,
             agent_run_repo,
             transition_service,
             execution_state,
@@ -331,39 +346,68 @@ impl<R: Runtime> StartupJobRunner<R> {
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
+        interrupted_contexts: &HashSet<RunningAgentKey>,
     ) -> Option<crate::domain::entities::Task> {
         let expected_context = startup_resume_context_for_status(status)?;
+        let chat_context = startup_resume_chat_context_for_status(status)?;
         let mut meta: serde_json::Value = task
             .metadata
             .as_deref()
             .and_then(|raw| serde_json::from_str(raw).ok())
             .unwrap_or_else(|| serde_json::json!({}));
 
-        if !should_auto_recover(&meta) {
+        let recovery_attempts = meta
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        if recovery_attempts >= 1 {
             return None;
         }
 
         let actual_context = meta
             .get("last_agent_error_context")
-            .and_then(|value| value.as_str())?;
-        if actual_context != expected_context {
+            .and_then(|value| value.as_str());
+        let metadata_claim = should_auto_recover(&meta)
+            && actual_context
+                .map(|context| context == expected_context)
+                .unwrap_or(true);
+
+        let registry_claim = interrupted_contexts.contains(&RunningAgentKey::new(
+            chat_context.to_string(),
+            task.id.as_str(),
+        ));
+
+        let orphaned_run_claim = self
+            .latest_run_was_orphaned_on_startup(task, chat_context)
+            .await;
+
+        let recovery_source = if metadata_claim {
+            "shutdown_interrupted_metadata"
+        } else if registry_claim {
+            "persisted_running_agent"
+        } else if orphaned_run_claim {
+            "orphaned_agent_run"
+        } else {
             return None;
-        }
+        };
 
         if let Some(obj) = meta.as_object_mut() {
-            let attempts = obj
-                .get("startup_recovery_attempts")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
             obj.insert(
                 "startup_recovery_attempts".to_string(),
-                serde_json::json!(attempts + 1),
+                serde_json::json!(recovery_attempts + 1),
+            );
+            obj.insert(
+                "startup_recovery_source".to_string(),
+                serde_json::json!(recovery_source),
             );
             obj.remove("shutdown_interrupted");
+            obj.remove("is_timeout");
+            obj.remove("failure_error");
         }
 
         let mut updated_task = task.clone();
         updated_task.metadata = Some(meta.to_string());
+        updated_task.blocked_reason = None;
         updated_task.touch();
 
         if let Err(error) = self.task_repo.update(&updated_task).await {
@@ -384,6 +428,51 @@ impl<R: Runtime> StartupJobRunner<R> {
         );
 
         Some(updated_task)
+    }
+
+    async fn latest_run_was_orphaned_on_startup(
+        &self,
+        task: &crate::domain::entities::Task,
+        chat_context: ChatContextType,
+    ) -> bool {
+        let conversation = match self
+            .chat_conversation_repo
+            .get_active_for_context(chat_context, task.id.as_str())
+            .await
+        {
+            Ok(Some(conversation)) => conversation,
+            Ok(None) => return false,
+            Err(error) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    context_type = %chat_context,
+                    error = %error,
+                    "Failed to load startup resume conversation"
+                );
+                return false;
+            }
+        };
+
+        match self
+            .agent_run_repo
+            .get_latest_for_conversation(&conversation.id)
+            .await
+        {
+            Ok(Some(run)) => {
+                run.status == AgentRunStatus::Cancelled
+                    && run.error_message.as_deref() == Some(ORPHANED_AGENT_RUN_ON_APP_RESTART)
+            }
+            Ok(None) => false,
+            Err(error) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    conversation_id = conversation.id.as_str(),
+                    error = %error,
+                    "Failed to load startup resume agent run"
+                );
+                false
+            }
+        }
     }
 
     /// Set the task scheduler for auto-starting Ready tasks (builder pattern).
@@ -480,6 +569,8 @@ impl<R: Runtime> StartupJobRunner<R> {
         // SIGTERM old processes before spawning new ones.
         // Now uses process-tree kill (children first, then parent).
         let killed = self.running_agent_registry.stop_all().await;
+        let interrupted_agent_contexts: HashSet<RunningAgentKey> =
+            killed.iter().cloned().collect();
         if !killed.is_empty() {
             info!(
                 count = killed.len(),
@@ -696,7 +787,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     let task = if let Some(updated_task) = self
-                        .prepare_active_task_startup_resume(&task, *status)
+                        .prepare_active_task_startup_resume(
+                            &task,
+                            *status,
+                            &interrupted_agent_contexts,
+                        )
                         .await
                     {
                         updated_task
@@ -790,7 +885,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     let task = if let Some(updated_task) = self
-                        .prepare_active_task_startup_resume(&task, *status)
+                        .prepare_active_task_startup_resume(
+                            &task,
+                            *status,
+                            &interrupted_agent_contexts,
+                        )
                         .await
                     {
                         updated_task

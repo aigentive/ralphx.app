@@ -220,8 +220,13 @@ async fn test_prepare_active_task_startup_resume_marks_execution_for_resume() {
         .unwrap()
         .expect("task should exist");
 
+    let interrupted_contexts = std::collections::HashSet::new();
     let resumed = runner
-        .prepare_active_task_startup_resume(&stored, InternalStatus::Executing)
+        .prepare_active_task_startup_resume(
+            &stored,
+            InternalStatus::Executing,
+            &interrupted_contexts,
+        )
         .await
         .expect("shutdown-interrupted execution task should be resumed");
 
@@ -237,6 +242,13 @@ async fn test_prepare_active_task_startup_resume_marks_execution_for_resume() {
             .and_then(|v| v.as_u64()),
         Some(1),
         "startup auto-resume must increment the attempt counter"
+    );
+    assert_eq!(
+        resumed_meta
+            .get("startup_recovery_source")
+            .and_then(|v| v.as_str()),
+        Some("shutdown_interrupted_metadata"),
+        "startup auto-resume should record why the task was claimed before generic reconciliation"
     );
     assert!(
         resumed_meta.get("shutdown_interrupted").is_none(),
@@ -276,8 +288,13 @@ async fn test_prepare_active_task_startup_resume_rejects_mismatched_context() {
         .unwrap()
         .expect("task should exist");
 
+    let interrupted_contexts = std::collections::HashSet::new();
     let resumed = runner
-        .prepare_active_task_startup_resume(&stored, InternalStatus::Executing)
+        .prepare_active_task_startup_resume(
+            &stored,
+            InternalStatus::Executing,
+            &interrupted_contexts,
+        )
         .await;
     assert!(
         resumed.is_none(),
@@ -308,6 +325,63 @@ async fn test_prepare_active_task_startup_resume_rejects_mismatched_context() {
             .and_then(|v| v.as_bool()),
         Some(true),
         "non-resumable active tasks must keep the interruption marker unchanged"
+    );
+}
+
+#[tokio::test]
+async fn test_prepare_active_task_startup_resume_accepts_persisted_registry_claim() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    let project_id = project.id.clone();
+    app_state.project_repo.create(project).await.unwrap();
+
+    let task = make_active_task(
+        &project_id,
+        InternalStatus::Executing,
+        serde_json::json!({ "startup_recovery_attempts": 0 }),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let runner = build_runner_for_tests(&app_state);
+    let stored = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    let interrupted_contexts = std::collections::HashSet::from([RunningAgentKey::new(
+        "task_execution",
+        task_id.as_str(),
+    )]);
+    let resumed = runner
+        .prepare_active_task_startup_resume(
+            &stored,
+            InternalStatus::Executing,
+            &interrupted_contexts,
+        )
+        .await
+        .expect("persisted running-agent registry claim should be resumed");
+
+    let resumed_meta: serde_json::Value = resumed
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    assert_eq!(
+        resumed_meta
+            .get("startup_recovery_source")
+            .and_then(|v| v.as_str()),
+        Some("persisted_running_agent"),
+        "persisted registry claims should bypass generic stale-task reconciliation once"
+    );
+    assert_eq!(
+        resumed_meta
+            .get("startup_recovery_attempts")
+            .and_then(|v| v.as_u64()),
+        Some(1),
+        "persisted registry claims should consume the one-shot startup recovery budget"
     );
 }
 

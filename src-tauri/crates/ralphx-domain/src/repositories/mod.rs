@@ -52,7 +52,7 @@ pub use activity_event_repository::{
 };
 pub use agent_lane_settings_repository::AgentLaneSettingsRepository;
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
-pub use agent_run_repository::AgentRunRepository;
+pub use agent_run_repository::{AgentRunRepository, ORPHANED_AGENT_RUN_ON_APP_RESTART};
 pub use api_key_repository::{ApiKeyRepository, CreateKeyParams, RotateKeyParams};
 pub use app_state_repository::AppStateRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;

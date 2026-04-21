@@ -11,6 +11,9 @@ use crate::domain::entities::{
 };
 use crate::error::AppResult;
 
+/// Error marker used when startup cancels a run that was left active by a prior app session.
+pub const ORPHANED_AGENT_RUN_ON_APP_RESTART: &str = "Orphaned on app restart";
+
 /// Repository trait for AgentRun persistence.
 /// Implementations can use SQLite, PostgreSQL, in-memory, etc.
 #[async_trait]
@@ -86,7 +89,7 @@ pub trait AgentRunRepository: Send + Sync {
     /// Returns conversations where:
     /// - a provider session ID is present (can use provider-specific resume)
     /// - latest agent_run status is 'cancelled'
-    /// - latest agent_run error_message is 'Orphaned on app restart'
+    /// - latest agent_run error_message is `ORPHANED_AGENT_RUN_ON_APP_RESTART`
     ///
     /// Used by ChatResumptionRunner to resume interrupted conversations on startup.
     async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>>;
