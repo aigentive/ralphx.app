@@ -176,6 +176,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
             Arc::clone(&task_repo),
             Arc::clone(&plan_branch_repo),
             Arc::clone(&project_repo),
+            Arc::clone(&execution_plan_repo),
             Arc::clone(&ideation_session_repo),
             Arc::clone(&artifact_repo),
             github_service,

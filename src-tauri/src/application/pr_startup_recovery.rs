@@ -12,10 +12,13 @@ use std::sync::Arc;
 
 use crate::application::services::PrPollerRegistry;
 use crate::application::TaskTransitionService;
-use crate::domain::entities::{InternalStatus, PlanBranchStatus};
+use crate::domain::entities::{
+    ExecutionPlanId, ExecutionPlanStatus, InternalStatus, PlanBranch, PlanBranchStatus, Project,
+    Task, TaskCategory,
+};
 use crate::domain::repositories::{
-    ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
-    TaskRepository,
+    ArtifactRepository, ExecutionPlanRepository, IdeationSessionRepository, PlanBranchRepository,
+    ProjectRepository, TaskRepository,
 };
 use crate::domain::services::GithubServiceTrait;
 use crate::domain::state_machine::transition_handler::{
@@ -35,6 +38,7 @@ pub async fn recover_missing_draft_prs(
     task_repo: Arc<dyn TaskRepository>,
     plan_branch_repo: Arc<dyn PlanBranchRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
     github_service: Arc<dyn GithubServiceTrait>,
@@ -63,10 +67,6 @@ pub async fn recover_missing_draft_prs(
         };
 
         for plan_branch in plan_branches {
-            if !plan_branch.pr_eligible || plan_branch.status != PlanBranchStatus::Active {
-                continue;
-            }
-
             let Some(merge_task_id) = plan_branch.merge_task_id.as_ref() else {
                 tracing::debug!(
                     branch_id = plan_branch.id.as_str(),
@@ -99,14 +99,15 @@ pub async fn recover_missing_draft_prs(
                 }
             };
 
-            if merge_task.is_terminal() {
-                tracing::debug!(
-                    branch_id = plan_branch.id.as_str(),
-                    branch = %plan_branch.branch_name,
-                    merge_task_id = merge_task.id.as_str(),
-                    status = ?merge_task.internal_status,
-                    "PR startup recovery: skipping terminal merge task with no PR"
-                );
+            if !plan_branch_needs_pr_recovery(
+                &task_repo,
+                &execution_plan_repo,
+                &project,
+                &plan_branch,
+                &merge_task,
+            )
+            .await
+            {
                 continue;
             }
 
@@ -177,6 +178,165 @@ pub async fn recover_missing_draft_prs(
                     &plan_branch_repo,
                 )
                 .await;
+            }
+        }
+    }
+}
+
+async fn plan_branch_needs_pr_recovery(
+    task_repo: &Arc<dyn TaskRepository>,
+    execution_plan_repo: &Arc<dyn ExecutionPlanRepository>,
+    project: &Project,
+    plan_branch: &PlanBranch,
+    merge_task: &Task,
+) -> bool {
+    if project.archived_at.is_some() {
+        tracing::debug!(
+            project_id = project.id.as_str(),
+            branch_id = plan_branch.id.as_str(),
+            branch = %plan_branch.branch_name,
+            "PR startup recovery: skipping archived project"
+        );
+        return false;
+    }
+
+    if !project.github_pr_enabled {
+        tracing::debug!(
+            project_id = project.id.as_str(),
+            branch_id = plan_branch.id.as_str(),
+            branch = %plan_branch.branch_name,
+            "PR startup recovery: skipping project with GitHub PR mode disabled"
+        );
+        return false;
+    }
+
+    if !plan_branch.pr_eligible || plan_branch.status != PlanBranchStatus::Active {
+        return false;
+    }
+
+    if merge_task.project_id != project.id
+        || merge_task.category != TaskCategory::PlanMerge
+        || merge_task.archived_at.is_some()
+        || merge_task.is_terminal()
+    {
+        tracing::debug!(
+            branch_id = plan_branch.id.as_str(),
+            branch = %plan_branch.branch_name,
+            merge_task_id = merge_task.id.as_str(),
+            status = ?merge_task.internal_status,
+            category = %merge_task.category,
+            archived = merge_task.archived_at.is_some(),
+            "PR startup recovery: skipping inactive plan merge task"
+        );
+        return false;
+    }
+
+    let Some(execution_plan_id) =
+        active_execution_plan_id_for_branch(execution_plan_repo, plan_branch).await
+    else {
+        return false;
+    };
+
+    match task_repo.get_by_project_filtered(&project.id, false).await {
+        Ok(tasks) => {
+            let has_merged_plan_task = tasks.iter().any(|task| {
+                task.category == TaskCategory::Regular
+                    && task.internal_status == InternalStatus::Merged
+                    && task.archived_at.is_none()
+                    && task.ideation_session_id.as_ref() == Some(&plan_branch.session_id)
+                    && task.execution_plan_id.as_ref() == Some(&execution_plan_id)
+            });
+
+            if !has_merged_plan_task {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    "PR startup recovery: skipping active plan branch with no merged regular task"
+                );
+            }
+
+            has_merged_plan_task
+        }
+        Err(e) => {
+            tracing::warn!(
+                branch_id = plan_branch.id.as_str(),
+                branch = %plan_branch.branch_name,
+                execution_plan_id = execution_plan_id.as_str(),
+                error = %e,
+                "PR startup recovery: failed to inspect plan tasks"
+            );
+            false
+        }
+    }
+}
+
+async fn active_execution_plan_id_for_branch(
+    execution_plan_repo: &Arc<dyn ExecutionPlanRepository>,
+    plan_branch: &PlanBranch,
+) -> Option<ExecutionPlanId> {
+    if let Some(execution_plan_id) = plan_branch.execution_plan_id.as_ref() {
+        match execution_plan_repo.get_by_id(execution_plan_id).await {
+            Ok(Some(plan))
+                if plan.status == ExecutionPlanStatus::Active
+                    && plan.session_id == plan_branch.session_id =>
+            {
+                Some(plan.id)
+            }
+            Ok(Some(plan)) => {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    status = %plan.status,
+                    "PR startup recovery: skipping non-active or mismatched execution plan"
+                );
+                None
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    "PR startup recovery: skipping missing execution plan"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    error = %e,
+                    "PR startup recovery: failed to load execution plan"
+                );
+                None
+            }
+        }
+    } else {
+        match execution_plan_repo
+            .get_active_for_session(&plan_branch.session_id)
+            .await
+        {
+            Ok(Some(plan)) => Some(plan.id),
+            Ok(None) => {
+                tracing::debug!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    session_id = plan_branch.session_id.as_str(),
+                    "PR startup recovery: skipping branch with no active execution plan"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    branch_id = plan_branch.id.as_str(),
+                    branch = %plan_branch.branch_name,
+                    session_id = plan_branch.session_id.as_str(),
+                    error = %e,
+                    "PR startup recovery: failed to load active execution plan"
+                );
+                None
             }
         }
     }

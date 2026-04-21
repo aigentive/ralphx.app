@@ -15,12 +15,15 @@ use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    plan_branch::PrPushStatus, ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project,
-    Task, TaskCategory, TaskId,
+    plan_branch::PrPushStatus, ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSessionId,
+    InternalStatus, PlanBranch, Project, ProjectId, Task, TaskCategory, TaskId,
 };
-use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use ralphx_lib::domain::repositories::{
+    ExecutionPlanRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
+};
 use ralphx_lib::infrastructure::memory::{
-    MemoryArtifactRepository, MemoryIdeationSessionRepository, MemoryPlanBranchRepository,
+    MemoryArtifactRepository, MemoryExecutionPlanRepository, MemoryIdeationSessionRepository,
+    MemoryPlanBranchRepository, MemoryTaskRepository,
 };
 
 // ============================================================================
@@ -170,6 +173,30 @@ fn setup_plan_git_repo(branch_name: &str, ahead_of_base: bool) -> tempfile::Temp
         .expect("checkout main");
 
     dir
+}
+
+async fn seed_active_execution_plan(
+    execution_plan_repo: &Arc<MemoryExecutionPlanRepository>,
+    session_id: IdeationSessionId,
+) -> ExecutionPlan {
+    execution_plan_repo
+        .create(ExecutionPlan::new(session_id))
+        .await
+        .unwrap()
+}
+
+async fn seed_merged_regular_plan_task(
+    task_repo: &Arc<MemoryTaskRepository>,
+    project_id: &ProjectId,
+    session_id: &IdeationSessionId,
+    execution_plan_id: &ExecutionPlanId,
+) {
+    let mut task = Task::new(project_id.clone(), "Merged plan task".to_string());
+    task.category = TaskCategory::Regular;
+    task.internal_status = InternalStatus::Merged;
+    task.ideation_session_id = Some(session_id.clone());
+    task.execution_plan_id = Some(execution_plan_id.clone());
+    task_repo.create(task).await.unwrap();
 }
 
 // ============================================================================
@@ -492,6 +519,7 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
     let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
 
     let branch_name = "ralphx/test/startup-create";
     let working_dir = setup_plan_git_repo(branch_name, true);
@@ -506,14 +534,19 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
     merge_task.internal_status = InternalStatus::Blocked;
     let merge_task = task_repo.create(merge_task).await.unwrap();
 
+    let session_id = IdeationSessionId::from_string("session-startup-create".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
     let mut branch = PlanBranch::new(
         ArtifactId::from_string("artifact-startup-create".to_string()),
-        IdeationSessionId::from_string("session-startup-create".to_string()),
+        session_id,
         project.id.clone(),
         branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
     branch.pr_eligible = true;
     let branch_id = branch.id.clone();
     plan_branch_repo.create(branch).await.unwrap();
@@ -526,6 +559,7 @@ async fn test_startup_recovery_creates_missing_draft_pr_for_active_plan() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
         Arc::new(MemoryIdeationSessionRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
         github_service,
@@ -559,6 +593,7 @@ async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff()
     let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
 
     let branch_name = "ralphx/test/startup-empty";
     let working_dir = setup_plan_git_repo(branch_name, false);
@@ -573,14 +608,19 @@ async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff()
     merge_task.internal_status = InternalStatus::Blocked;
     let merge_task = task_repo.create(merge_task).await.unwrap();
 
+    let session_id = IdeationSessionId::from_string("session-startup-empty".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
     let mut branch = PlanBranch::new(
         ArtifactId::from_string("artifact-startup-empty".to_string()),
-        IdeationSessionId::from_string("session-startup-empty".to_string()),
+        session_id,
         project.id.clone(),
         branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
     branch.pr_eligible = true;
     let branch_id = branch.id.clone();
     plan_branch_repo.create(branch).await.unwrap();
@@ -593,6 +633,7 @@ async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff()
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
         Arc::new(MemoryIdeationSessionRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
         github_service,
@@ -621,10 +662,212 @@ async fn test_startup_recovery_skips_empty_plan_branch_without_reviewable_diff()
 }
 
 #[tokio::test]
+async fn test_startup_recovery_skips_plan_branch_without_merged_regular_task() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
+
+    let branch_name = "ralphx/test/startup-diff-no-merged-task";
+    let working_dir = setup_plan_git_repo(branch_name, true);
+    let project = Project::new(
+        "Startup PR Diff Without Merged Task".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge active plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let session_id =
+        IdeationSessionId::from_string("session-startup-diff-no-merged-task".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-startup-diff-no-merged-task".to_string()),
+        session_id,
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        branch_after.pr_number.is_none(),
+        "startup recovery must not create a PR before any active plan task has merged"
+    );
+    assert_eq!(
+        mock_github.create_calls(),
+        0,
+        "branch diff alone must not create a PR"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_skips_superseded_execution_plan() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
+
+    let branch_name = "ralphx/test/superseded-plan";
+    let working_dir = setup_plan_git_repo(branch_name, true);
+    let project = Project::new(
+        "Startup PR Superseded Plan".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge superseded plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-superseded-plan".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    execution_plan_repo
+        .mark_superseded(&execution_plan.id)
+        .await
+        .unwrap();
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-superseded-plan".to_string()),
+        session_id,
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        branch_after.pr_number.is_none(),
+        "startup recovery must not create PRs for superseded execution plans"
+    );
+    assert_eq!(mock_github.create_calls(), 0);
+}
+
+#[tokio::test]
+async fn test_startup_recovery_skips_when_project_pr_mode_disabled() {
+    let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
+    let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
+
+    let branch_name = "ralphx/test/pr-disabled";
+    let working_dir = setup_plan_git_repo(branch_name, true);
+    let mut project = Project::new(
+        "Startup PR Disabled".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    project.github_pr_enabled = false;
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge disabled PR plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Blocked;
+    let merge_task = task_repo.create(merge_task).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-pr-disabled".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-pr-disabled".to_string()),
+        session_id,
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
+    branch.pr_eligible = true;
+    let branch_id = branch.id.clone();
+    plan_branch_repo.create(branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_service: Arc<dyn ralphx_lib::domain::services::GithubServiceTrait> =
+        mock_github.clone();
+
+    recover_missing_draft_prs(
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
+        Arc::new(MemoryIdeationSessionRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        github_service,
+    )
+    .await;
+
+    let branch_after = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        branch_after.pr_number.is_none(),
+        "startup recovery must not create PRs while project PR mode is disabled"
+    );
+    assert_eq!(mock_github.create_calls(), 0);
+}
+
+#[tokio::test]
 async fn test_startup_recovery_skips_terminal_or_already_open_prs() {
     let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
 
     let working_dir = tempfile::tempdir().unwrap();
     let project = Project::new(
@@ -676,6 +919,7 @@ async fn test_startup_recovery_skips_terminal_or_already_open_prs() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
         Arc::new(MemoryIdeationSessionRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
         github_service,
@@ -708,6 +952,7 @@ async fn test_startup_recovery_pushes_existing_pr_branch_when_local_sync_pending
     let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
 
     let branch_name = "ralphx/test/pending-sync";
     let working_dir = setup_plan_git_repo(branch_name, true);
@@ -722,14 +967,19 @@ async fn test_startup_recovery_pushes_existing_pr_branch_when_local_sync_pending
     merge_task.internal_status = InternalStatus::Blocked;
     let merge_task = task_repo.create(merge_task).await.unwrap();
 
+    let session_id = IdeationSessionId::from_string("session-startup-sync".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
     let mut branch = PlanBranch::new(
         ArtifactId::from_string("artifact-startup-sync".to_string()),
-        IdeationSessionId::from_string("session-startup-sync".to_string()),
+        session_id,
         project.id.clone(),
         branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
     branch.pr_eligible = true;
     branch.pr_number = Some(77);
     branch.pr_url = Some("https://github.com/owner/repo/pull/77".to_string());
@@ -745,6 +995,7 @@ async fn test_startup_recovery_pushes_existing_pr_branch_when_local_sync_pending
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
         Arc::new(MemoryIdeationSessionRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
         github_service,
@@ -775,6 +1026,7 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
     let task_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryTaskRepository::new());
     let project_repo = Arc::new(ralphx_lib::infrastructure::memory::MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let execution_plan_repo = Arc::new(MemoryExecutionPlanRepository::new());
 
     let branch_name = "ralphx/test/duplicate";
     let working_dir = setup_plan_git_repo(branch_name, true);
@@ -789,14 +1041,19 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
     merge_task.internal_status = InternalStatus::Blocked;
     let merge_task = task_repo.create(merge_task).await.unwrap();
 
+    let session_id = IdeationSessionId::from_string("session-duplicate".to_string());
+    let execution_plan = seed_active_execution_plan(&execution_plan_repo, session_id.clone()).await;
+    seed_merged_regular_plan_task(&task_repo, &project.id, &session_id, &execution_plan.id).await;
+
     let mut branch = PlanBranch::new(
         ArtifactId::from_string("artifact-duplicate".to_string()),
-        IdeationSessionId::from_string("session-duplicate".to_string()),
+        session_id,
         project.id.clone(),
         branch_name.to_string(),
         "main".to_string(),
     );
     branch.merge_task_id = Some(merge_task.id.clone());
+    branch.execution_plan_id = Some(execution_plan.id.clone());
     branch.pr_eligible = true;
     let branch_id = branch.id.clone();
     plan_branch_repo.create(branch).await.unwrap();
@@ -811,6 +1068,7 @@ async fn test_startup_recovery_recovers_duplicate_pr() {
         Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
         Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&execution_plan_repo) as Arc<dyn ExecutionPlanRepository>,
         Arc::new(MemoryIdeationSessionRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
         github_service,
