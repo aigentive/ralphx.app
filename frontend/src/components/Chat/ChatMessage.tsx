@@ -16,6 +16,7 @@ import type { ChatMessage as ChatMessageType, MessageRole } from "@/types/ideati
 import { AGENT_ORCHESTRATOR } from "@/constants/agents";
 import { withAlpha } from "@/lib/theme-colors";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 
 // ============================================================================
 // Types
@@ -277,6 +278,10 @@ export function ChatMessage({
       return [];
     }
   }, [message.toolCalls]);
+  const visibleToolCalls = useMemo(
+    () => toolCalls.filter((toolCall) => !shouldHideCompletedProjectOrchestrationToolCall(toolCall)),
+    [toolCalls],
+  );
 
   // Use content blocks if available, otherwise fall back to legacy rendering
   const hasContentBlocks = contentBlocks.length > 0;
@@ -319,6 +324,9 @@ export function ChatMessage({
                 arguments: block.arguments,
                 result: block.result,
               };
+              if (shouldHideCompletedProjectOrchestrationToolCall(toolCall)) {
+                return null;
+              }
               return (
                 <div key={`block-${index}`} className="max-w-[85%]">
                   <ToolCallIndicator toolCall={toolCall} />
@@ -339,9 +347,9 @@ export function ChatMessage({
           />
 
           {/* Tool calls (if any) */}
-          {toolCalls.length > 0 && (
+          {visibleToolCalls.length > 0 && (
             <div className="mt-1.5 max-w-[85%] space-y-1.5" data-testid="chat-message-tool-calls">
-              {toolCalls.map((toolCall) => (
+              {visibleToolCalls.map((toolCall) => (
                 <ToolCallIndicator key={toolCall.id} toolCall={toolCall} />
               ))}
             </div>

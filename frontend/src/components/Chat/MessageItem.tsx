@@ -13,6 +13,7 @@ import React, { useMemo } from "react";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
@@ -144,6 +145,10 @@ export const MessageItem = React.memo(function MessageItem({
     }),
     [contentBlocks, toolCalls],
   );
+  const visibleParsedToolCalls = useMemo(
+    () => parsedToolCalls.filter((tc) => !shouldHideCompletedProjectOrchestrationToolCall(tc)),
+    [parsedToolCalls],
+  );
   const hasContentBlocks = parsedContentBlocks.length > 0;
 
   // Collect IDs of child tool calls that belong to Task subagents.
@@ -250,6 +255,9 @@ export const MessageItem = React.memo(function MessageItem({
               if (block.diffContext) {
                 toolCall.diffContext = block.diffContext;
               }
+              if (shouldHideCompletedProjectOrchestrationToolCall(toolCall)) {
+                return null;
+              }
               return <ToolCallIndicator key={`block-${index}`} toolCall={toolCall} />;
             }
             return null;
@@ -257,9 +265,9 @@ export const MessageItem = React.memo(function MessageItem({
         ) : (
           // Legacy rendering: tool calls first, then content
           <>
-            {!isUser && parsedToolCalls.length > 0 && (
+            {!isUser && visibleParsedToolCalls.length > 0 && (
               <div className="space-y-1.5 overflow-hidden">
-                {parsedToolCalls.map((tc) => (
+                {visibleParsedToolCalls.map((tc) => (
                   <ToolCallIndicator key={tc.id} toolCall={tc} />
                 ))}
               </div>

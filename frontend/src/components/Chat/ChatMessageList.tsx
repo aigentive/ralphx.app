@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext";
+import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
 import { isProviderRole } from "@/lib/chat/provider-role";
@@ -790,6 +791,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             }
             // Non-diff tool call — render inline to preserve visual ordering with text blocks
+            if (shouldHideCompletedProjectOrchestrationToolCall(block.toolCall)) {
+              return null;
+            }
             return (
               <ToolCallIndicator
                 key={`streaming-tool-${idx}`}
@@ -806,12 +810,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           {shouldShowFooterFallback && (
             <>
               {streamingToolCalls.length > 0 && streamingToolCalls.map((tc, idx) => (
-                <ToolCallIndicator
-                  key={`pending-tool-${idx}`}
-                  toolCall={tc}
-                  isStreaming={tc.result == null && !tc.error}
-                  className="mb-2"
-                />
+                shouldHideCompletedProjectOrchestrationToolCall(tc)
+                  ? null
+                  : (
+                    <ToolCallIndicator
+                      key={`pending-tool-${idx}`}
+                      toolCall={tc}
+                      isStreaming={tc.result == null && !tc.error}
+                      className="mb-2"
+                    />
+                  )
               ))}
               <TypingIndicator />
             </>
