@@ -90,4 +90,47 @@ describe("AccessibilitySection", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     expect(localStorage.getItem("ralphx-theme")).toBe("dark");
   });
+
+  it("selecting Large font scale updates store, localStorage, and root attribute", async () => {
+    render(<AccessibilitySection />);
+
+    openSelect("font-scale");
+    fireEvent.click(screen.getByRole("option", { name: /Large/ }));
+
+    await waitFor(() => {
+      expect(useThemeStore.getState().fontScale).toBe("lg");
+    });
+
+    expect(document.documentElement).toHaveAttribute("data-font-scale", "lg");
+    expect(localStorage.getItem("ralphx-font-scale")).toBe("lg");
+  });
+
+  it("selecting Extra large font scale updates store, localStorage, and root attribute", async () => {
+    render(<AccessibilitySection />);
+
+    openSelect("font-scale");
+    fireEvent.click(screen.getByRole("option", { name: /Extra large/ }));
+
+    await waitFor(() => {
+      expect(useThemeStore.getState().fontScale).toBe("xl");
+    });
+
+    expect(document.documentElement).toHaveAttribute("data-font-scale", "xl");
+    expect(localStorage.getItem("ralphx-font-scale")).toBe("xl");
+  });
+
+  it("resetting font scale to Default removes attribute and clears localStorage", async () => {
+    useThemeStore.getState().setFontScale("lg");
+    render(<AccessibilitySection />);
+
+    openSelect("font-scale");
+    fireEvent.click(screen.getByRole("option", { name: /Default/ }));
+
+    await waitFor(() => {
+      expect(useThemeStore.getState().fontScale).toBe("default");
+    });
+
+    expect(document.documentElement).not.toHaveAttribute("data-font-scale");
+    expect(localStorage.getItem("ralphx-font-scale")).toBeNull();
+  });
 });

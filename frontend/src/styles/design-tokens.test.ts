@@ -135,6 +135,47 @@ describe("design-tokens", () => {
     });
   });
 
+  describe("font-scale contract", () => {
+    it("should set 18px as the baseline root font-size", () => {
+      expect(cssContent).toMatch(/html\s*\{[^}]*font-size:\s*18px/);
+    });
+
+    it("should map lg to an explicit absolute size above the 18px baseline (19.8px)", () => {
+      // 110% of 16px (browser default) = 17.6px — SMALLER than 18px baseline.
+      // The fix: html[data-font-scale="lg"] must use 19.8px (18 * 1.1).
+      expect(cssContent).toMatch(
+        /\[data-font-scale="lg"\]\s*\{[^}]*font-size:\s*19\.8px/
+      );
+    });
+
+    it("should map xl to an explicit absolute size above lg (22.5px)", () => {
+      // 125% of 16px = 20px — not relative to the 18px baseline.
+      // The fix: html[data-font-scale="xl"] must use 22.5px (18 * 1.25).
+      expect(cssContent).toMatch(
+        /\[data-font-scale="xl"\]\s*\{[^}]*font-size:\s*22\.5px/
+      );
+    });
+
+    it("should be monotonic: 18px < 19.8px < 22.5px", () => {
+      // Verify the three literal values appear in the file and are monotonic.
+      const baselineMatch = cssContent.match(/html\s*\{[^}]*font-size:\s*([\d.]+)px/);
+      const lgMatch = cssContent.match(
+        /\[data-font-scale="lg"\]\s*\{[^}]*font-size:\s*([\d.]+)px/
+      );
+      const xlMatch = cssContent.match(
+        /\[data-font-scale="xl"\]\s*\{[^}]*font-size:\s*([\d.]+)px/
+      );
+      expect(baselineMatch).not.toBeNull();
+      expect(lgMatch).not.toBeNull();
+      expect(xlMatch).not.toBeNull();
+      const baseline = parseFloat(baselineMatch![1]);
+      const lg = parseFloat(lgMatch![1]);
+      const xl = parseFloat(xlMatch![1]);
+      expect(lg).toBeGreaterThan(baseline);
+      expect(xl).toBeGreaterThan(lg);
+    });
+  });
+
   describe("anti-AI-slop guardrails", () => {
     it("should NOT use purple gradients", () => {
       // Check no purple hex codes in accents
