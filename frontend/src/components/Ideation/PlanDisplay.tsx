@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ListPlus, MoreHorizontal, Copy } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, ChevronRight, FileText, Sparkles, History, Loader2, ArrowLeft, ListPlus, MoreHorizontal, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,11 @@ export interface PlanDisplayProps {
 }
 
 // ============================================================================
-// Markdown Components - Minimal styling
+// Markdown Components — theme-aware typography
+//
+// Tokens only — no hard-coded white/[0.0X] alphas. Light/HC themes override
+// --overlay-*, --border-*, --text-*, --accent-* so the same classes reskin
+// cleanly in all three palettes.
 // ============================================================================
 
 const markdownComponents = {
@@ -77,7 +81,12 @@ const markdownComponents = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-accent-primary hover:text-accent-primary/80 underline underline-offset-2 decoration-accent-primary/30 hover:decoration-accent-primary/60 transition-colors"
+      className="underline underline-offset-[3px] transition-colors duration-150 hover:brightness-110"
+      style={{
+        color: "var(--accent-primary)",
+        textDecorationColor: "var(--accent-border)",
+        textDecorationThickness: "1px",
+      }}
       {...props}
     >
       {children}
@@ -89,10 +98,14 @@ const markdownComponents = {
       return (
         <code
           className={cn(
-            "block p-3 rounded-md text-[13px] font-mono overflow-x-auto",
-            "bg-white/[0.02] border border-white/[0.04]",
+            "block p-4 rounded-lg text-[12.5px] font-mono overflow-x-auto leading-[1.6]",
             className
           )}
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--border-subtle)",
+            color: "var(--text-primary)",
+          }}
           {...props}
         >
           {children}
@@ -101,7 +114,11 @@ const markdownComponents = {
     }
     return (
       <code
-        className="px-1.5 py-0.5 rounded text-[13px] font-mono bg-white/[0.04] text-text-primary"
+        className="px-[6px] py-[2px] rounded-[4px] text-[12px] font-mono"
+        style={{
+          background: "var(--overlay-moderate)",
+          color: "var(--text-primary)",
+        }}
         {...props}
       >
         {children}
@@ -109,69 +126,179 @@ const markdownComponents = {
     );
   },
   pre: ({ children, ...props }: React.HTMLAttributes<HTMLPreElement>) => (
-    <pre className="my-3 rounded-md overflow-hidden" {...props}>
+    <pre className="my-4 rounded-lg overflow-hidden" {...props}>
       {children}
     </pre>
   ),
   p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
-    <p className="mb-3 last:mb-0 leading-relaxed text-text-secondary" {...props}>
+    <p
+      className="mb-3.5 last:mb-0 leading-[1.65] text-[13px]"
+      style={{ color: "var(--text-secondary)" }}
+      {...props}
+    >
       {children}
     </p>
   ),
   ul: ({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) => (
-    <ul className="mb-3 space-y-1.5 pl-4" {...props}>
+    <ul className="mb-4 last:mb-0 space-y-1.5 list-none pl-0" {...props}>
       {children}
     </ul>
   ),
   ol: ({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) => (
-    <ol className="list-decimal mb-3 space-y-1.5 pl-4" {...props}>
+    <ol
+      className="mb-4 last:mb-0 space-y-1.5 pl-6 list-decimal marker:font-semibold marker:text-[12px]"
+      style={{ color: "var(--text-secondary)" }}
+      {...props}
+    >
       {children}
     </ol>
   ),
-  li: ({ children, ...props }: React.LiHTMLAttributes<HTMLLIElement>) => (
-    <li className="text-text-secondary leading-relaxed relative before:content-['•'] before:absolute before:-left-3 before:text-accent-primary/50" {...props}>
-      {children}
-    </li>
-  ),
+  li: ({ children, ordered: _ordered, ...props }: React.LiHTMLAttributes<HTMLLIElement> & { ordered?: boolean }) => {
+    // `ordered` is injected by react-markdown to distinguish ol/ul children.
+    // Unordered items get a custom accent dot; ordered items inherit marker
+    // styles from <ol> and only need text color + leading.
+    if (_ordered) {
+      return (
+        <li
+          className="leading-[1.65] text-[13px] pl-1"
+          style={{ color: "var(--text-secondary)" }}
+          {...props}
+        >
+          {children}
+        </li>
+      );
+    }
+    return (
+      <li
+        className="pl-5 leading-[1.65] text-[13px] relative"
+        style={{ color: "var(--text-secondary)" }}
+        {...props}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute left-1 top-[9px] w-[5px] h-[5px] rounded-full"
+          style={{ background: "var(--text-muted)" }}
+        />
+        {children}
+      </li>
+    );
+  },
+  // H1 — plan title. Large, tight tracking, accent-tinted bottom divider.
   h1: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h1 className="text-lg font-medium text-text-primary mb-3 mt-6 first:mt-0 pb-2 border-b border-white/[0.06]" {...props}>
+    <h1
+      className="text-[20px] font-semibold tracking-[-0.02em] mt-0 mb-5 pb-3 first:mt-0"
+      style={{
+        color: "var(--text-primary)",
+        borderBottom: "1px solid var(--border-subtle)",
+      }}
+      {...props}
+    >
       {children}
     </h1>
   ),
+  // H2 — major section. Accent bar on the left makes sections scannable.
   h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h2 className="text-base font-medium text-text-primary mb-2 mt-5" {...props}>
-      {children}
+    <h2
+      className="text-[15px] font-semibold tracking-[-0.015em] mt-7 mb-3 first:mt-0 flex items-center gap-2.5"
+      style={{ color: "var(--text-primary)" }}
+      {...props}
+    >
+      <span
+        aria-hidden="true"
+        className="inline-block w-[3px] h-[15px] rounded-full flex-shrink-0"
+        style={{ background: "var(--accent-primary)" }}
+      />
+      <span>{children}</span>
     </h2>
   ),
+  // H3 — subsection. Compact uppercase eyebrow in accent color with a
+  // leading chevron icon so it reads as a labelled child of the parent H2.
   h3: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
-    <h3 className="text-sm font-medium text-text-primary mb-2 mt-4" {...props}>
-      {children}
+    <h3
+      className="text-[11px] font-semibold uppercase mt-5 mb-2 flex items-center gap-1.5"
+      style={{
+        color: "var(--accent-primary)",
+        letterSpacing: "0.08em",
+      }}
+      {...props}
+    >
+      <ChevronRight
+        aria-hidden="true"
+        className="w-[13px] h-[13px] flex-shrink-0"
+        style={{ color: "var(--accent-primary)" }}
+      />
+      <span>{children}</span>
     </h3>
+  ),
+  h4: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => (
+    <h4
+      className="text-[13px] font-semibold mt-4 mb-1.5"
+      style={{ color: "var(--text-primary)" }}
+      {...props}
+    >
+      {children}
+    </h4>
   ),
   blockquote: ({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
-      className="border-l-2 border-accent-primary/30 pl-4 my-3 text-text-muted italic"
+      className="my-4 pl-4 pr-3 py-2 rounded-r-md"
+      style={{
+        borderLeft: "3px solid var(--accent-primary)",
+        background: "var(--overlay-faint)",
+        color: "var(--text-secondary)",
+      }}
       {...props}
     >
       {children}
     </blockquote>
   ),
   hr: ({ ...props }: React.HTMLAttributes<HTMLHRElement>) => (
-    <hr className="my-6 border-white/[0.06]" {...props} />
+    <hr
+      className="my-6"
+      style={{
+        border: "none",
+        borderTop: "1px solid var(--border-subtle)",
+      }}
+      {...props}
+    />
   ),
-  // Table support (GFM)
+  strong: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+    <strong
+      className="font-semibold"
+      style={{ color: "var(--text-primary)" }}
+      {...props}
+    >
+      {children}
+    </strong>
+  ),
+  em: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+    <em
+      className="italic"
+      style={{ color: "var(--text-secondary)" }}
+      {...props}
+    >
+      {children}
+    </em>
+  ),
+  // Table (GFM)
   table: ({ children, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
-    <div className="my-3 overflow-x-auto rounded-lg border border-white/[0.06]">
-      <table
-        className="w-full text-sm border-collapse"
-        {...props}
-      >
+    <div
+      className="my-4 overflow-x-auto rounded-lg"
+      style={{ border: "1px solid var(--border-subtle)" }}
+    >
+      <table className="w-full text-[12.5px] border-collapse" {...props}>
         {children}
       </table>
     </div>
   ),
   thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
-    <thead className="bg-white/[0.02]" {...props}>
+    <thead
+      style={{
+        background: "var(--overlay-faint)",
+        borderBottom: "1px solid var(--border-subtle)",
+      }}
+      {...props}
+    >
       {children}
     </thead>
   ),
@@ -180,7 +307,8 @@ const markdownComponents = {
   ),
   tr: ({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
     <tr
-      className="border-b border-white/[0.06] last:border-b-0"
+      className="last:border-b-0"
+      style={{ borderBottom: "1px solid var(--border-subtle)" }}
       {...props}
     >
       {children}
@@ -188,7 +316,11 @@ const markdownComponents = {
   ),
   th: ({ children, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
     <th
-      className="px-3 py-2 text-left text-xs font-medium text-text-primary uppercase tracking-wider"
+      className="px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase"
+      style={{
+        color: "var(--text-primary)",
+        letterSpacing: "0.05em",
+      }}
       {...props}
     >
       {children}
@@ -196,7 +328,8 @@ const markdownComponents = {
   ),
   td: ({ children, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
     <td
-      className="px-3 py-2 text-text-secondary"
+      className="px-3.5 py-2.5 leading-[1.6] align-top"
+      style={{ color: "var(--text-secondary)" }}
       {...props}
     >
       {children}
