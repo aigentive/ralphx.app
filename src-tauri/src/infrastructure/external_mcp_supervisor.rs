@@ -583,24 +583,22 @@ async fn http_get_status(host: &str, port: u16, path: &str) -> Result<u16, std::
 }
 
 /// Check whether a PID belongs to an external-mcp Node process.
-/// Uses `ps` on macOS, `/proc` on Linux.
 fn is_external_mcp_process(pid: i32) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("ps")
-            .args(["-p", &pid.to_string(), "-o", "command="])
-            .output();
-        if let Ok(o) = output {
-            let cmd = String::from_utf8_lossy(&o.stdout);
-            return cmd.contains("external-mcp") || cmd.contains("external_mcp");
-        }
-        false
+    if pid <= 0 {
+        return false;
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let cmdline = std::fs::read_to_string(format!("/proc/{}/cmdline", pid)).unwrap_or_default();
-        cmdline.contains("external-mcp") || cmdline.contains("external_mcp")
+
+    let pid_arg = pid.to_string();
+    let output = std::process::Command::new("ps")
+        .args(["-p", pid_arg.as_str(), "-o", "command="])
+        .output();
+
+    if let Ok(o) = output {
+        let cmd = String::from_utf8_lossy(&o.stdout);
+        return cmd.contains("external-mcp") || cmd.contains("external_mcp");
     }
+
+    false
 }
 
 /// Returns true if a process with the given PID still exists.
