@@ -16,8 +16,8 @@ import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
 import { artifactApi } from "@/api/artifact";
-import { ideationApi } from "@/api/ideation";
-import { useTaskGraph } from "@/components/TaskGraph";
+import { ideationApi, toTaskProposal } from "@/api/ideation";
+import { TaskGraphView } from "@/components/TaskGraph";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,23 +26,26 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { VerificationBadge } from "@/components/Ideation/VerificationBadge";
-import { VerificationGapList } from "@/components/Ideation/VerificationGapList";
-import { VerificationHistory } from "@/components/Ideation/VerificationHistory";
+import { ProposalsTabContent } from "@/components/Ideation/ProposalsTabContent";
+import { VerificationPanel } from "@/components/Ideation/VerificationPanel";
 import type {
   AgentArtifactTab,
   AgentTaskArtifactMode,
 } from "@/stores/agentSessionStore";
 import { useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
+import { useDependencyGraph } from "@/hooks/useDependencyGraph";
+import { useVerificationStatus } from "@/hooks/useVerificationStatus";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
-import type {
-  TaskProposalResponse,
-  VerificationStatusResponse,
-} from "@/api/ideation";
 import type { Artifact } from "@/types/artifact";
+import type { IdeationSession, TaskProposal } from "@/types/ideation";
+import type { DependencyGraphResponse } from "@/api/ideation.types";
 import type { AgentConversation } from "./agentConversations";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
+
+const EMPTY_PROPOSAL_HIGHLIGHTS = new Set<string>();
+
+function noop() {}
 
 const ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -99,9 +102,19 @@ export function AgentsArtifactPane({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedSessionId!),
     enabled: !!attachedSessionId,
-    staleTime: 5_000,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      query.state.data?.session.verificationInProgress ||
+      query.state.data?.session.acceptanceStatus === "pending"
+        ? 3_000
+        : false,
   });
   const sessionData = sessionQuery.data ?? null;
+  const session = sessionData?.session ? (sessionData.session as IdeationSession) : null;
+  const proposals = useMemo<TaskProposal[]>(
+    () => (sessionData?.proposals ?? []).map(toTaskProposal),
+    [sessionData?.proposals],
+  );
   const planArtifactId =
     sessionData?.session.planArtifactId ?? sessionData?.session.inheritedPlanArtifactId ?? null;
   const planArtifactQuery = useQuery({
@@ -110,16 +123,9 @@ export function AgentsArtifactPane({
     enabled: !!planArtifactId,
     staleTime: 5_000,
   });
-  const verificationQuery = useQuery({
-    queryKey: attachedSessionId
-      ? ["agents", "ideation-verification", attachedSessionId]
-      : ["agents", "ideation-verification", ""],
-    queryFn: () => ideationApi.verification.getStatus(attachedSessionId!),
-    enabled: !!attachedSessionId && activeTab === "verification",
-    staleTime: 5_000,
-    refetchInterval: (query) => query.state.data?.inProgress ? 5_000 : false,
-  });
-  const proposalCount = sessionData?.proposals.length ?? 0;
+  const verificationQuery = useVerificationStatus(attachedSessionId ?? undefined);
+  const dependencyQuery = useDependencyGraph(attachedSessionId ?? "");
+  const proposalCount = proposals.length;
   const verificationState =
     verificationQuery.data?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
@@ -298,13 +304,13 @@ export function AgentsArtifactPane({
           isLoading={conversationQuery.isLoading || sessionQuery.isLoading}
           attachedSessionId={attachedSessionId}
           projectId={conversation?.projectId ?? null}
+          session={session}
           sessionTitle={sessionData?.session.title ?? null}
           taskMode={taskMode}
           planContent={getArtifactText(planArtifactQuery.data)}
           isPlanLoading={planArtifactQuery.isLoading}
-          verification={verificationQuery.data ?? null}
-          isVerificationLoading={verificationQuery.isLoading}
-          proposals={sessionData?.proposals ?? []}
+          dependencyGraph={dependencyQuery.data ?? null}
+          proposals={proposals}
         />
       </div>
     </aside>
@@ -316,13 +322,13 @@ type ArtifactContentProps = {
   isLoading: boolean;
   attachedSessionId: string | null;
   projectId: string | null;
+  session: IdeationSession | null;
   sessionTitle: string | null;
   taskMode: AgentTaskArtifactMode;
   planContent: string | null;
   isPlanLoading: boolean;
-  verification: VerificationStatusResponse | null;
-  isVerificationLoading: boolean;
-  proposals: TaskProposalResponse[];
+  dependencyGraph: DependencyGraphResponse | null;
+  proposals: TaskProposal[];
 };
 
 function ArtifactContent({
@@ -330,12 +336,12 @@ function ArtifactContent({
   isLoading,
   attachedSessionId,
   projectId,
+  session,
   sessionTitle,
   taskMode,
   planContent,
   isPlanLoading,
-  verification,
-  isVerificationLoading,
+  dependencyGraph,
   proposals,
 }: ArtifactContentProps) {
   if (isLoading) {
@@ -367,20 +373,39 @@ function ArtifactContent({
   }
 
   if (activeTab === "verification") {
-    if (isVerificationLoading) {
-      return <EmptyArtifactState title="Loading verification..." />;
-    }
-    if (!verification) {
+    if (!session) {
       return <EmptyArtifactState title="No verification data yet" />;
     }
-    return <VerificationSummary verification={verification} />;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <VerificationPanel session={session} />
+      </div>
+    );
   }
 
   if (activeTab === "proposal") {
-    if (proposals.length === 0) {
+    if (!session || proposals.length === 0) {
       return <EmptyArtifactState title="No proposals yet" />;
     }
-    return <ProposalSummary proposals={proposals} />;
+    return (
+      <ProposalsTabContent
+        session={session}
+        proposals={proposals}
+        dependencyGraph={dependencyGraph}
+        criticalPathSet={new Set(dependencyGraph?.criticalPath ?? [])}
+        highlightedIds={EMPTY_PROPOSAL_HIGHLIGHTS}
+        isReadOnly
+        onEditProposal={noop}
+        onNavigateToTask={noop}
+        onViewHistoricalPlan={noop}
+        onImportPlan={noop}
+        onClearAll={noop}
+        onAcceptPlan={noop}
+        onReviewSync={noop}
+        onUndoSync={noop}
+        onDismissSync={noop}
+      />
+    );
   }
 
   return (
@@ -467,193 +492,6 @@ function MarkdownBody({
   );
 }
 
-function VerificationSummary({
-  verification,
-}: {
-  verification: VerificationStatusResponse;
-}) {
-  const gaps = verification.gaps ?? [];
-  const rounds = verification.rounds ?? [];
-  const roundDetails = verification.roundDetails ?? [];
-  const gapScore = verification.gapScore;
-  const hasGaps = gaps.length > 0;
-  const hasRounds = rounds.length > 0 || roundDetails.length > 0;
-  const latestRun = [...(verification.runHistory ?? [])].sort(
-    (a, b) => b.generation - a.generation
-  )[0];
-  const statusText = verification.status.replace(/_/g, " ");
-  const runSummary = latestRun
-    ? `${statusText} - ${latestRun.roundCount} rounds - ${latestRun.gapCount} gaps remaining`
-    : [
-        statusText,
-        verification.currentRound != null && verification.maxRounds != null
-          ? `${verification.currentRound}/${verification.maxRounds} rounds`
-          : null,
-        typeof gapScore === "number" ? `gap score ${gapScore}` : null,
-      ].filter(Boolean).join(" - ");
-
-  return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div
-          className="rounded-lg px-3 py-2"
-          style={{
-            background: "var(--overlay-faint)",
-            border: "1px solid var(--overlay-faint)",
-          }}
-        >
-          <div className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
-            Latest verification
-          </div>
-          <div className="mt-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
-            {runSummary}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <VerificationBadge
-          status={verification.status}
-          inProgress={verification.inProgress}
-          {...(verification.currentRound !== undefined && {
-            currentRound: verification.currentRound,
-          })}
-          {...(verification.maxRounds !== undefined && {
-            maxRounds: verification.maxRounds,
-          })}
-          {...(verification.convergenceReason !== undefined && {
-            convergenceReason: verification.convergenceReason,
-          })}
-        />
-      </div>
-
-      {hasGaps && (
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "var(--overlay-faint)",
-            border: "1px solid var(--overlay-faint)",
-          }}
-        >
-          <div
-            className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Verification Gaps
-          </div>
-          {(verification.status === "verified" ||
-            verification.status === "imported_verified") && (
-            <div className="text-[11px] mb-2" style={{ color: "var(--text-secondary)" }}>
-              Verified with acceptable gaps - no critical issues remain.
-            </div>
-          )}
-          <VerificationGapList
-            gaps={gaps}
-            {...(rounds.length > 0 && { rounds })}
-            {...(gapScore !== undefined && { gapScore })}
-          />
-        </div>
-      )}
-
-      {hasRounds && (
-        <div
-          className="rounded-lg p-3"
-          style={{
-            background: "var(--overlay-faint)",
-            border: "1px solid var(--overlay-faint)",
-          }}
-        >
-          <div
-            className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-            style={{ color: "var(--text-muted)" }}
-          >
-            Verification History
-          </div>
-          <VerificationHistory
-            rounds={rounds}
-            roundDetails={roundDetails}
-            {...(hasGaps && { currentGaps: gaps })}
-            {...(gapScore !== undefined && { gapScore })}
-            status={verification.status}
-            {...(verification.convergenceReason !== undefined && {
-              convergenceReason: verification.convergenceReason,
-            })}
-          />
-        </div>
-      )}
-
-      {!hasGaps && !hasRounds && (
-        <div
-          className="rounded-lg p-4 text-[12px]"
-          style={{
-            background: "var(--overlay-faint)",
-            border: "1px solid var(--overlay-faint)",
-            color: "var(--text-muted)",
-          }}
-        >
-          Verification has no recorded gaps or round history yet.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProposalSummary({ proposals }: { proposals: ArtifactContentProps["proposals"] }) {
-  return (
-    <div className="p-5 space-y-3">
-      {proposals.map((proposal) => (
-        <div key={proposal.id} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)]">{proposal.title}</h3>
-            <span className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
-              {proposal.suggestedPriority}
-            </span>
-          </div>
-          {proposal.description && (
-            <MarkdownBody content={proposal.description} className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]" />
-          )}
-          {proposal.steps.length > 0 && (
-            <div className="mt-3">
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                Proposal Tasks
-              </div>
-              <ol className="list-decimal space-y-1 pl-4 text-sm text-[var(--text-secondary)]">
-                {proposal.steps.map((step, index) => (
-                  <li key={`${proposal.id}-step-${index}`}>
-                    <MarkdownBody compact content={step} />
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-          {proposal.acceptanceCriteria.length > 0 && (
-            <div className="mt-3">
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                Acceptance
-              </div>
-              <ul className="list-disc space-y-1 pl-4 text-sm text-[var(--text-secondary)]">
-                {proposal.acceptanceCriteria.map((criterion, index) => (
-                  <li key={`${proposal.id}-criterion-${index}`}>
-                    <MarkdownBody compact content={criterion} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {proposal.createdTaskId && (
-            <div className="mt-3 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2">
-              <div className="text-xs font-medium text-[var(--text-muted)]">Kanban task</div>
-              <div className="mt-1 font-mono text-[11px] text-[var(--text-secondary)]">
-                {proposal.createdTaskId}
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function TaskArtifactSurface({
   projectId,
   sessionId,
@@ -675,96 +513,9 @@ function TaskArtifactSurface({
     );
   }
 
-  return <TaskGraphSummary projectId={projectId} sessionId={sessionId} />;
-}
-
-function TaskGraphSummary({
-  projectId,
-  sessionId,
-}: {
-  projectId: string;
-  sessionId: string;
-}) {
-  const graphQuery = useTaskGraph(projectId, false, null, sessionId);
-
-  if (graphQuery.isLoading) {
-    return <EmptyArtifactState title="Loading graph..." />;
-  }
-  if (graphQuery.error) {
-    return <EmptyArtifactState title="Failed to load graph" detail={graphQuery.error.message} />;
-  }
-
-  const graph = graphQuery.data;
-  if (!graph || graph.nodes.length === 0) {
-    return (
-      <EmptyArtifactState
-        title="No graph tasks yet"
-        detail="Apply proposals to Kanban to populate the graph for this plan."
-      />
-    );
-  }
-
-  const nodeTitleById = new Map(graph.nodes.map((node) => [node.taskId, node.title]));
-
   return (
-    <div className="p-5 space-y-4">
-      <div className="grid grid-cols-3 gap-2">
-        <MetricCard label="Tasks" value={graph.nodes.length} />
-        <MetricCard label="Edges" value={graph.edges.length} />
-        <MetricCard label="Critical" value={graph.criticalPath.length} />
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Task Graph</h3>
-        {graph.nodes.map((node) => (
-          <div key={node.taskId} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 text-sm font-medium text-[var(--text-primary)]">
-                {node.title}
-              </div>
-              <span className="shrink-0 rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
-                {node.internalStatus}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-[var(--text-muted)]">
-              <span>Tier {node.tier}</span>
-              <span>{node.inDegree} in</span>
-              <span>{node.outDegree} out</span>
-              <span className="font-mono">{node.taskId}</span>
-            </div>
-            {node.description && (
-              <MarkdownBody compact content={node.description} className="mt-2 text-xs text-[var(--text-secondary)]" />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {graph.edges.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Dependencies</h3>
-          {graph.edges.map((edge) => (
-            <div key={`${edge.source}-${edge.target}`} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-xs text-[var(--text-secondary)]">
-              <span>{nodeTitleById.get(edge.source) ?? edge.source}</span>
-              <span className="mx-2 text-[var(--text-muted)]">→</span>
-              <span>{nodeTitleById.get(edge.target) ?? edge.target}</span>
-              {edge.isCriticalPath && (
-                <span className="ml-2 rounded-full bg-[var(--status-warning-muted)] px-1.5 py-0.5 text-[10px] text-[var(--status-warning)]">
-                  critical
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{value}</div>
+    <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
+      <TaskGraphView projectId={projectId} ideationSessionId={sessionId} />
     </div>
   );
 }
