@@ -14,9 +14,11 @@ import {
   CreateChildSessionResponseSchema,
   ParentSessionContextResponseSchema,
   VerificationResponseSchema,
+  SessionListResponseSchema,
 } from "./ideation.schemas";
 import {
   transformSession,
+  transformSessionList,
   transformProposal,
   transformSessionWithData,
   transformPriorityAssessment,
@@ -27,6 +29,10 @@ import {
   transformParentSessionContext,
 } from "./ideation.transforms";
 export { toTaskProposal } from "./ideation.transforms";
+import type {
+  SessionGroupKey,
+  SessionListResponse,
+} from "../types/ideation";
 import type {
   IdeationSessionResponse,
   TaskProposalResponse,
@@ -203,6 +209,27 @@ export const ideationApi = {
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);
+    },
+
+    listByGroup: async (
+      projectId: string,
+      group: SessionGroupKey,
+      offset = 0,
+      limit = 200,
+      search?: string
+    ): Promise<SessionListResponse> => {
+      const raw = await typedInvoke(
+        "list_sessions_by_group",
+        {
+          projectId,
+          group,
+          offset,
+          limit,
+          ...(search ? { search } : {}),
+        },
+        SessionListResponseSchema
+      );
+      return transformSessionList(raw);
     },
 
     /**

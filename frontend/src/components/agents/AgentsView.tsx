@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { chatApi } from "@/api/chat";
 import { executionApi } from "@/api/execution";
+import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { chatKeys } from "@/hooks/useChat";
+import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getModelLabel } from "@/lib/model-utils";
@@ -34,9 +36,13 @@ import {
   type AgentArtifactTab,
   type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
-import type { ChatConversation } from "@/types/chat-conversation";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
+import {
+  sortAgentConversations,
+  toIdeationAgentConversation,
+  type AgentConversation,
+} from "./agentConversations";
 import {
   deriveAgentTitleFromMessages,
   isDefaultAgentTitle,
@@ -46,7 +52,10 @@ import {
   normalizeRuntimeSelection,
 } from "./agentOptions";
 import { NewAgentDialog } from "./NewAgentDialog";
-import { useProjectAgentConversations } from "./useProjectAgentConversations";
+import {
+  agentConversationKeys,
+  useProjectAgentConversations,
+} from "./useProjectAgentConversations";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -98,9 +107,6 @@ export function AgentsView({
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
   const artifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
-  const activeChatConversationId = useChatStore((s) =>
-    activeProjectId ? s.activeConversationIds[buildStoreKey("project", activeProjectId)] ?? null : null
-  );
 
   const activeConversation = useMemo(() => {
     if (!selectedConversationId) {
@@ -129,7 +135,10 @@ export function AgentsView({
     const firstConversation = focusedConversations.data?.[0];
     if (firstConversation) {
       selectConversation(activeProjectId, firstConversation.id);
-      setActiveConversation(buildStoreKey("project", activeProjectId), firstConversation.id);
+      setActiveConversation(
+        buildStoreKey(firstConversation.contextType, firstConversation.contextId),
+        firstConversation.id
+      );
     }
   }, [
     activeProjectId,
@@ -151,7 +160,10 @@ export function AgentsView({
       const replacement = focusedConversations.data?.[0];
       if (replacement) {
         selectConversation(activeProjectId, replacement.id);
-        setActiveConversation(buildStoreKey("project", activeProjectId), replacement.id);
+        setActiveConversation(
+          buildStoreKey(replacement.contextType, replacement.contextId),
+          replacement.id
+        );
       } else {
         clearSelection();
       }
@@ -164,28 +176,6 @@ export function AgentsView({
     selectConversation,
     selectedConversationId,
     setActiveConversation,
-  ]);
-
-  useEffect(() => {
-    if (
-      !activeProjectId ||
-      !activeChatConversationId ||
-      activeChatConversationId === selectedConversationId
-    ) {
-      return;
-    }
-    const conversation = focusedConversations.data?.find(
-      (item) => item.id === activeChatConversationId
-    );
-    if (conversation) {
-      selectConversation(activeProjectId, conversation.id);
-    }
-  }, [
-    activeChatConversationId,
-    activeProjectId,
-    focusedConversations.data,
-    selectConversation,
-    selectedConversationId,
   ]);
 
   useEffect(() => {
@@ -230,9 +220,12 @@ export function AgentsView({
   ]);
 
   const handleSelectConversation = useCallback(
-    (conversationProjectId: string, conversation: ChatConversation) => {
+    (conversationProjectId: string, conversation: AgentConversation) => {
       selectConversation(conversationProjectId, conversation.id);
-      setActiveConversation(buildStoreKey("project", conversationProjectId), conversation.id);
+      setActiveConversation(
+        buildStoreKey(conversation.contextType, conversation.contextId),
+        conversation.id
+      );
     },
     [selectConversation, setActiveConversation]
   );
@@ -247,15 +240,48 @@ export function AgentsView({
       title: string;
       runtime: AgentRuntimeSelection;
     }) => {
-      const conversation = await chatApi.createConversation("project", targetProjectId, title);
+      const trimmedTitle = title.trim();
+      const session = await ideationApi.sessions.create(
+        targetProjectId,
+        trimmedTitle || undefined,
+        undefined,
+        "solo"
+      );
+      const conversation = await chatApi.createConversation(
+        "ideation",
+        session.id,
+        trimmedTitle
+      );
+      const agentConversation = toIdeationAgentConversation(session, conversation);
+      for (const includeArchived of [false, true]) {
+        queryClient.setQueryData<AgentConversation[]>(
+          agentConversationKeys.projectList(targetProjectId, includeArchived),
+          (previous) =>
+            sortAgentConversations([
+              agentConversation,
+              ...(previous ?? []).filter((item) => item.id !== agentConversation.id),
+            ])
+        );
+      }
       setRuntimeForConversation(conversation.id, targetProjectId, runtime);
       selectConversation(targetProjectId, conversation.id);
-      setActiveConversation(buildStoreKey("project", targetProjectId), conversation.id);
-      await queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList("project", targetProjectId),
-      });
+      setActiveConversation(buildStoreKey("ideation", session.id), conversation.id);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: agentConversationKeys.project(targetProjectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversationList("ideation", session.id),
+        }),
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
+      ]);
     },
-    [queryClient, selectConversation, setActiveConversation, setRuntimeForConversation]
+    [
+      queryClient,
+      selectConversation,
+      setActiveConversation,
+      setRuntimeForConversation,
+    ]
   );
 
   const handleQuickCreateAgent = useCallback(async (quickProjectId?: string) => {
@@ -316,9 +342,15 @@ export function AgentsView({
 
   const invalidateProjectConversations = useCallback(
     async (targetProjectId: string) => {
-      await queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList("project", targetProjectId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: agentConversationKeys.project(targetProjectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversationList("project", targetProjectId),
+        }),
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
+      ]);
     },
     [queryClient]
   );
@@ -357,13 +389,16 @@ export function AgentsView({
   );
 
   const handleArchiveConversation = useCallback(
-    async (conversation: ChatConversation) => {
+    async (conversation: AgentConversation) => {
       try {
+        if (conversation.contextType === "ideation") {
+          await ideationApi.sessions.archive(conversation.contextId);
+        }
         await chatApi.archiveConversation(conversation.id);
         if (selectedConversationId === conversation.id) {
           clearSelection();
         }
-        await invalidateProjectConversations(conversation.contextId);
+        await invalidateProjectConversations(conversation.projectId);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to archive session");
       }
@@ -372,10 +407,13 @@ export function AgentsView({
   );
 
   const handleRestoreConversation = useCallback(
-    async (conversation: ChatConversation) => {
+    async (conversation: AgentConversation) => {
       try {
+        if (conversation.contextType === "ideation") {
+          await ideationApi.sessions.reopen(conversation.contextId);
+        }
         await chatApi.restoreConversation(conversation.id);
-        await invalidateProjectConversations(conversation.contextId);
+        await invalidateProjectConversations(conversation.projectId);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to restore session");
       }
@@ -392,9 +430,16 @@ export function AgentsView({
       const conversation = focusedConversations.data?.find(
         (item) => item.id === conversationId
       );
-      await chatApi.updateConversationTitle(conversationId, trimmed);
+      if (conversation?.contextType === "ideation") {
+        await Promise.all([
+          chatApi.updateConversationTitle(conversationId, trimmed),
+          ideationApi.sessions.updateTitle(conversation.contextId, trimmed),
+        ]);
+      } else {
+        await chatApi.updateConversationTitle(conversationId, trimmed);
+      }
       autoTitleStateRef.current.delete(conversationId);
-      await invalidateProjectConversations(conversation?.contextId ?? activeProjectId ?? projectId);
+      await invalidateProjectConversations(conversation?.projectId ?? activeProjectId ?? projectId);
     },
     [activeProjectId, focusedConversations.data, invalidateProjectConversations, projectId]
   );
@@ -433,11 +478,20 @@ export function AgentsView({
 
       state.lastTitle = nextTitle;
       autoTitleStateRef.current.set(conversationId, state);
-      void chatApi.updateConversationTitle(conversationId, nextTitle).then(() => {
-        void invalidateProjectConversations(activeProjectId);
-      }).catch(() => {
-        // Auto-titling is best-effort; manual title editing remains available.
-      });
+      const titleUpdate =
+        conversation?.contextType === "ideation"
+          ? Promise.all([
+              chatApi.updateConversationTitle(conversationId, nextTitle),
+              ideationApi.sessions.updateTitle(conversation.contextId, nextTitle),
+            ])
+          : chatApi.updateConversationTitle(conversationId, nextTitle);
+      void titleUpdate
+        .then(() => {
+          void invalidateProjectConversations(conversation?.projectId ?? activeProjectId);
+        })
+        .catch(() => {
+          // Auto-titling is best-effort; manual title editing remains available.
+        });
     },
     [
       activeProjectId,
@@ -477,10 +531,13 @@ export function AgentsView({
         />
 
         <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
-          {activeProjectId && selectedConversationId ? (
+          {activeProjectId && selectedConversationId && activeConversation ? (
             <div className="flex-1 min-w-0 h-full">
               <IntegratedChatPanel
                 projectId={activeProjectId}
+                {...(activeConversation.contextType === "ideation"
+                  ? { ideationSessionId: activeConversation.contextId }
+                  : {})}
                 conversationIdOverride={selectedConversationId}
                 sendOptions={{
                   conversationId: selectedConversationId,
@@ -546,7 +603,7 @@ export function AgentsView({
 }
 
 interface AgentsChatHeaderProps {
-  conversation: ChatConversation | null;
+  conversation: AgentConversation | null;
   runtime: AgentRuntimeSelection;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
@@ -684,7 +741,7 @@ function AgentsChatHeader({
 }
 
 function runtimeFromConversation(
-  conversation: ChatConversation | null
+  conversation: AgentConversation | null
 ): AgentRuntimeSelection | null {
   if (!conversation?.providerHarness) {
     return null;
