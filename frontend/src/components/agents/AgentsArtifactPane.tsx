@@ -55,6 +55,22 @@ const ARTIFACT_TABS: Array<{
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
 
+const PLAN_MARKDOWN_CLASSNAME = cn(
+  "p-6 text-[13px] leading-[1.65] text-[var(--text-secondary)]",
+  "[&_p]:mb-3.5 [&_p]:text-[13px] [&_p]:leading-[1.65] [&_p:last-child]:mb-0",
+  "[&_h1]:mb-5 [&_h1]:mt-0 [&_h1]:border-b [&_h1]:border-[var(--border-subtle)] [&_h1]:pb-3 [&_h1]:text-[20px] [&_h1]:font-semibold [&_h1]:tracking-normal [&_h1]:text-[var(--text-primary)]",
+  "[&_h2]:mb-3 [&_h2]:mt-7 [&_h2]:border-l-[3px] [&_h2]:border-[var(--accent-primary)] [&_h2]:pl-2.5 [&_h2]:text-[15px] [&_h2]:font-semibold [&_h2]:tracking-normal [&_h2]:text-[var(--text-primary)]",
+  "[&_h3]:mb-2 [&_h3]:mt-5 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:tracking-normal [&_h3]:text-[var(--accent-primary)]",
+  "[&_h4]:mb-1.5 [&_h4]:mt-4 [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:tracking-normal [&_h4]:text-[var(--text-primary)]",
+  "[&_ul]:mb-4 [&_ul]:space-y-1.5 [&_ul]:pl-5 [&_ol]:mb-4 [&_ol]:space-y-1.5 [&_ol]:pl-6",
+  "[&_li]:mb-0 [&_li]:text-[13px] [&_li]:leading-[1.65] [&_li]:text-[var(--text-secondary)]",
+  "[&_blockquote]:my-4 [&_blockquote]:rounded-r-md [&_blockquote]:border-l-[3px] [&_blockquote]:border-[var(--accent-primary)] [&_blockquote]:bg-[var(--overlay-faint)] [&_blockquote]:py-2 [&_blockquote]:pl-4 [&_blockquote]:pr-3",
+  "[&_hr]:my-6 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-[var(--border-subtle)]",
+  "[&_strong]:font-semibold [&_strong]:text-[var(--text-primary)]",
+  "[&_code]:text-[12px] [&_pre_code]:text-[12px]",
+  "[&_table]:w-full [&_table]:text-[12.5px] [&_th]:px-3.5 [&_th]:py-2.5 [&_td]:px-3.5 [&_td]:py-2.5"
+);
+
 interface AgentsArtifactPaneProps {
   conversation: AgentConversation | null;
   activeTab: AgentArtifactTab;
@@ -422,7 +438,7 @@ function MarkdownPanel({ content }: { content: string }) {
           Copy Markdown
         </Button>
       </div>
-      <MarkdownBody content={content} className="p-5 text-sm leading-relaxed text-[var(--text-secondary)]" />
+      <MarkdownBody content={content} className={PLAN_MARKDOWN_CLASSNAME} />
     </div>
   );
 }

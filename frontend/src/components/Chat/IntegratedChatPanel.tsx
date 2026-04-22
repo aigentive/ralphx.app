@@ -103,6 +103,10 @@ interface IntegratedChatPanelProps {
   inputContainerClassName?: string;
   /** Custom header content to replace default context indicator */
   headerContent?: React.ReactNode;
+  /** Hide provider/model/stat chips and conversation switcher in the header. */
+  hideHeaderSessionControls?: boolean;
+  /** Hide the secondary session toolbar below the header. */
+  hideSessionToolbar?: boolean;
   /** Called when Escape is pressed with input blurred - used to close the panel */
   onClose?: () => void;
   /** Whether to autofocus chat input on mount */
@@ -132,6 +136,8 @@ export function IntegratedChatPanel({
   showHelperTextAlways = false,
   inputContainerClassName,
   headerContent,
+  hideHeaderSessionControls = false,
+  hideSessionToolbar = false,
   onClose,
   autoFocusInput = true,
   isVisible = true,
@@ -873,68 +879,72 @@ export function IntegratedChatPanel({
                 ConversationSelector — per 2026-04-19 feedback, the CODEX
                 badge / model / effort / stats popover live in the header
                 row, not in a separate toolbar strip below. */}
-            <div className="ml-auto flex items-center gap-2 min-w-0">
-              <ChatSessionChips
-                contextType={currentContextType as ContextType}
-                contextId={ideationSessionId || selectedTaskId || null}
-                isAgentActive={isAgentActive}
-                conversationId={effectiveConversationId}
-                providerHarness={activeConversationMeta?.providerHarness ?? null}
-                providerSessionId={activeConversationMeta?.providerSessionId ?? null}
-                upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
-                providerProfile={activeConversationMeta?.providerProfile ?? null}
-                fallbackConversation={activeConversationMeta}
-                fallbackMessages={sortedMessages}
-                {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
-              />
+            {!hideHeaderSessionControls && (
+              <div className="ml-auto flex items-center gap-2 min-w-0">
+                <ChatSessionChips
+                  contextType={currentContextType as ContextType}
+                  contextId={ideationSessionId || selectedTaskId || null}
+                  isAgentActive={isAgentActive}
+                  conversationId={effectiveConversationId}
+                  providerHarness={activeConversationMeta?.providerHarness ?? null}
+                  providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+                  upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+                  providerProfile={activeConversationMeta?.providerProfile ?? null}
+                  fallbackConversation={activeConversationMeta}
+                  fallbackMessages={sortedMessages}
+                  {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+                />
 
-              {/* Conversation Selector */}
-              <ConversationSelector
-              contextType={
-                ideationSessionId
-                  ? "ideation"
-                  : isMergeMode
-                    ? "merge"
-                    : isExecutionMode
-                      ? "task_execution"
-                      : isReviewMode
-                        ? "review"
-                        : selectedTaskId
-                          ? "task"
-                          : "project"
-              }
-              contextId={ideationSessionId || selectedTaskId || projectId}
-              conversations={conversations.data ?? []}
-              activeConversationId={activeConversationId}
-              onSelectConversation={handleSelectConversation}
-              onNewConversation={handleNewConversation}
-              isLoading={conversations.isLoading}
-            />
-            </div>
+                {/* Conversation Selector */}
+                <ConversationSelector
+                  contextType={
+                    ideationSessionId
+                      ? "ideation"
+                      : isMergeMode
+                        ? "merge"
+                        : isExecutionMode
+                          ? "task_execution"
+                          : isReviewMode
+                            ? "review"
+                            : selectedTaskId
+                              ? "task"
+                              : "project"
+                  }
+                  contextId={ideationSessionId || selectedTaskId || projectId}
+                  conversations={conversations.data ?? []}
+                  activeConversationId={activeConversationId}
+                  onSelectConversation={handleSelectConversation}
+                  onNewConversation={handleNewConversation}
+                  isLoading={conversations.isLoading}
+                />
+              </div>
+            )}
           </div>
 
           {/* Session Toolbar — houses StatusActivityBadge + optional back
               action. Provider-context chips are now rendered inline in
               the integrated-chat-header (above), so suppress them here
               via `hideProviderContext` to avoid duplication. */}
-          <ChatSessionToolbar
-            isAgentActive={isAgentActive}
-            agentType={agentType}
-            contextType={currentContextType as ContextType}
-            contextId={ideationSessionId || selectedTaskId || null}
-            agentStatus={isHistoryMode ? "idle" : agentStatus}
-            storeKey={storeContextKey}
-            conversationId={effectiveConversationId}
-            providerHarness={activeConversationMeta?.providerHarness ?? null}
-            providerSessionId={activeConversationMeta?.providerSessionId ?? null}
-            upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
-            providerProfile={activeConversationMeta?.providerProfile ?? null}
-            fallbackConversation={activeConversationMeta}
-            fallbackMessages={sortedMessages}
-            hideProviderContext
-            {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
-            {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
-          />
+          {!hideSessionToolbar && (
+            <ChatSessionToolbar
+              isAgentActive={isAgentActive}
+              agentType={agentType}
+              contextType={currentContextType as ContextType}
+              contextId={ideationSessionId || selectedTaskId || null}
+              agentStatus={isHistoryMode ? "idle" : agentStatus}
+              storeKey={storeContextKey}
+              conversationId={effectiveConversationId}
+              providerHarness={activeConversationMeta?.providerHarness ?? null}
+              providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+              providerProfile={activeConversationMeta?.providerProfile ?? null}
+              fallbackConversation={activeConversationMeta}
+              fallbackMessages={sortedMessages}
+              hideProviderContext
+              {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
+              {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
+            />
+          )}
 
           {/* Team Context Bar (team mode only) */}
           {isTeamActive && teammates.length > 0 && (
