@@ -141,6 +141,7 @@ Entry points:
 - PR poller checks freshness while the app is running.
 - Startup recovery checks freshness before restarting PR pollers, so PRs that became stale while the app was closed are repaired on the next boot.
 - Startup poller recovery uses bounded concurrency (`PR_POLLER_RECOVERY_CONCURRENCY`) so several independent PRs can reconcile without serializing app boot.
+- PR freshness updates use an isolated plan-update path and must not merge directly inside `project.working_directory`; if the plan branch is checked out in the primary repo, the background repair refuses to mutate that checkout.
 
 Eligibility guard:
 

@@ -2024,7 +2024,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             GitService::fetch_origin(repo_path).await?;
             let remote_base = remote_tracking_ref(&sync_state.base_ref_name);
             let update_result =
-                crate::domain::state_machine::transition_handler::update_plan_from_main(
+                crate::domain::state_machine::transition_handler::update_plan_from_main_isolated(
                     repo_path,
                     &plan_branch.branch_name,
                     &remote_base,

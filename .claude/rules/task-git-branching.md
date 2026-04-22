@@ -134,6 +134,7 @@ IdeationSession (has plan proposals)
 | App restarts while PR is open | Startup recovery checks PR freshness before restarting poller; independent PR tasks may reconcile with bounded parallelism |
 
 **Invariant:** PR freshness work updates the PR branch only; GitHub remains final merge authority, so this path must not mark the plan merge task `Merged`.
+**Worktree invariant:** PR freshness must never merge directly inside `project.working_directory`; use isolated worktrees and refuse background repair if the plan branch is checked out in the primary repo.
 
 ---
 

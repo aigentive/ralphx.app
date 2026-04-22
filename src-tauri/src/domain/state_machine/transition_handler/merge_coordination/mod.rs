@@ -23,7 +23,9 @@ mod plan_update;
 mod source_update;
 
 pub(crate) use deferral::check_main_merge_deferral;
-pub(crate) use plan_update::{update_plan_from_main, PlanUpdateResult};
+pub(crate) use plan_update::{
+    update_plan_from_main, update_plan_from_main_isolated, PlanUpdateResult,
+};
 pub(crate) use source_update::{update_source_from_target, SourceUpdateResult};
 
 /// Metadata keys that indicate a prior merge attempt has been made.
