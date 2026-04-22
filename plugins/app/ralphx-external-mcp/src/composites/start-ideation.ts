@@ -19,6 +19,7 @@ export interface StartIdeationResult {
   status: "started" | "blocked";
   agentSpawned: boolean;
   agentSpawnBlockedReason?: string;
+  pendingInitialPrompt?: string;
   existingActiveSessions?: Array<{
     sessionId: string;
     title?: string;
@@ -38,6 +39,7 @@ interface StartIdeationBackendResponse {
   status: string;
   agent_spawned?: boolean;
   agent_spawn_blocked_reason?: string;
+  pending_initial_prompt?: string;
   existing_active_sessions?: Array<{
     session_id: string;
     title?: string;
@@ -95,6 +97,9 @@ export async function startIdeation(
     agentSpawned,
     ...(b.agent_spawn_blocked_reason !== undefined
       ? { agentSpawnBlockedReason: b.agent_spawn_blocked_reason }
+      : {}),
+    ...(b.pending_initial_prompt !== undefined
+      ? { pendingInitialPrompt: b.pending_initial_prompt }
       : {}),
     ...(b.existing_active_sessions !== undefined
       ? {

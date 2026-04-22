@@ -855,7 +855,7 @@ async fn test_chat_service_spawn_blocked_in_test_mode() {
 }
 
 #[tokio::test]
-async fn test_chat_service_queues_new_ideation_message_when_execution_paused() {
+async fn test_chat_service_persists_idle_ideation_message_when_execution_paused() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
 
@@ -870,11 +870,11 @@ async fn test_chat_service_queues_new_ideation_message_when_execution_paused() {
             SendMessageOptions::default(),
         )
         .await
-        .expect("paused ideation send should queue instead of failing");
+        .expect("paused ideation send should be deferred durably");
 
     assert!(
-        result.was_queued,
-        "paused ideation send must be queued rather than spawned"
+        result.was_queued && result.queued_as_pending,
+        "paused idle ideation send must persist as pending rather than volatile queue"
     );
     assert_eq!(
         state
@@ -882,8 +882,21 @@ async fn test_chat_service_queues_new_ideation_message_when_execution_paused() {
             .message_queue
             .get_queued(ChatContextType::Ideation, session_id.as_str())
             .len(),
-        1,
-        "queued message must remain pending while paused"
+        0,
+        "idle ideation prompt must not enter the volatile in-memory queue while paused"
+    );
+
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+    assert_eq!(
+        session.pending_initial_prompt.as_deref(),
+        Some("Queue during pause"),
+        "paused idle ideation prompt must survive restart via pending_initial_prompt"
     );
 
     let key = RunningAgentKey::new("ideation", session_id.as_str());

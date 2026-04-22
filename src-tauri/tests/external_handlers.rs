@@ -612,6 +612,54 @@ async fn test_start_ideation_no_prompt_agent_not_spawned() {
     assert!(!response.agent_spawned, "agent_spawned must be false when no prompt is given");
 }
 
+#[tokio::test]
+async fn test_start_ideation_persists_prompt_when_execution_paused() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-paused-prompt";
+    let prompt = "Verify and fix the app-wide font scaling issue";
+    let p = make_project(project_id, "Paused Prompt Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+    state.execution_state.pause();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some(prompt.to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "paused start must return a durable deferred session");
+    let response = result.unwrap().0;
+    assert!(!response.agent_spawned, "paused ideation must not report a spawned agent");
+    assert_eq!(response.next_action, "wait_for_resume");
+    assert_eq!(response.pending_initial_prompt.as_deref(), Some(prompt));
+    assert!(
+        response
+            .agent_spawn_blocked_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("execution paused")),
+        "paused start must surface a concrete blocked reason"
+    );
+
+    let session_id = IdeationSessionId::from_string(response.session_id);
+    let stored = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(stored.pending_initial_prompt.as_deref(), Some(prompt));
+}
+
 /// With title → session created with that title preserved in the response session_id and
 /// verifiable by fetching the session from the repo.
 #[tokio::test]
