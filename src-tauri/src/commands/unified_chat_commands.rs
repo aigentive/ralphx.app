@@ -18,8 +18,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::State;
 
+use crate::application::chat_service::SendMessageOptions;
 use crate::application::{AppChatService, AppState, ChatService, SendResult};
 use crate::commands::ExecutionState;
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
     DelegatedSessionId, IdeationSessionId, TaskId,
@@ -37,6 +39,12 @@ pub struct SendAgentMessageInput {
     pub context_type: String,
     pub context_id: String,
     pub content: String,
+    /// Optional existing conversation to continue.
+    pub conversation_id: Option<String>,
+    /// Optional provider harness override for the first spawn of a conversation.
+    pub provider_harness: Option<String>,
+    /// Optional explicit model override for the spawned agent.
+    pub model_override: Option<String>,
     /// Optional target for team message routing.
     /// When set to a teammate name, the message is routed to that teammate's stdin
     /// instead of the lead's. "lead" or None routes to the lead (default behavior).
@@ -694,8 +702,36 @@ pub async fn send_agent_message(
         );
     }
 
+    let harness_override = input
+        .provider_harness
+        .as_deref()
+        .map(str::parse::<AgentHarnessKind>)
+        .transpose()?;
+    let model_override = input
+        .model_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string);
+    let conversation_id_override = input
+        .conversation_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|conversation_id| !conversation_id.is_empty())
+        .map(ChatConversationId::from_string);
+
     service
-        .send_message(context_type, &input.context_id, &input.content, Default::default())
+        .send_message(
+            context_type,
+            &input.context_id,
+            &input.content,
+            SendMessageOptions {
+                harness_override,
+                model_override,
+                conversation_id_override,
+                ..Default::default()
+            },
+        )
         .await
         .map(SendAgentMessageResponse::from)
         .map_err(|e| e.to_string())
@@ -1051,6 +1087,7 @@ pub async fn is_agent_running(
 pub struct CreateAgentConversationInput {
     pub context_type: String,
     pub context_id: String,
+    pub title: Option<String>,
 }
 
 /// Create a new conversation for a context
@@ -1065,7 +1102,7 @@ pub async fn create_agent_conversation(
 
     let context_type = parse_context_type(&input.context_type)?;
 
-    let conversation = match context_type {
+    let mut conversation = match context_type {
         ChatContextType::Ideation => {
             ChatConversation::new_ideation(IdeationSessionId::from_string(&input.context_id))
         }
@@ -1088,6 +1125,15 @@ pub async fn create_agent_conversation(
             ChatConversation::new_merge(TaskId::from_string(input.context_id.clone()))
         }
     };
+
+    if let Some(title) = input
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+    {
+        conversation.set_title(title.to_string());
+    }
 
     state
         .chat_conversation_repo

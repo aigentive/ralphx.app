@@ -676,7 +676,8 @@ export async function getConversationStats(
  */
 export async function createConversation(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  title?: string
 ): Promise<ChatConversation> {
   const raw = await typedInvoke(
     "create_agent_conversation",
@@ -684,6 +685,7 @@ export async function createConversation(
       input: {
         contextType,
         contextId,
+        ...(title !== undefined && title.trim().length > 0 && { title: title.trim() }),
       },
     },
     ChatConversationResponseSchema
@@ -813,7 +815,12 @@ export async function sendAgentMessage(
   contextId: string,
   content: string,
   attachmentIds?: string[],
-  target?: string
+  target?: string,
+  options?: {
+    conversationId?: string | null;
+    providerHarness?: string | null;
+    modelId?: string | null;
+  }
 ): Promise<SendAgentMessageResult> {
   const raw = await typedInvoke(
     "send_agent_message",
@@ -824,6 +831,9 @@ export async function sendAgentMessage(
         content,
         ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
         ...(target !== undefined && { target }),
+        ...(options?.conversationId ? { conversationId: options.conversationId } : {}),
+        ...(options?.providerHarness ? { providerHarness: options.providerHarness } : {}),
+        ...(options?.modelId ? { modelOverride: options.modelId } : {}),
       },
     },
     SendAgentMessageResponseSchema

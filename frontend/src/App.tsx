@@ -22,6 +22,7 @@ import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import SettingsDialog from "@/components/settings/SettingsDialog";
 import { InsightsView } from "@/components/views/InsightsView";
+import { AgentsView } from "@/components/agents";
 import { TeamSplitView } from "@/components/Team";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
@@ -195,6 +196,7 @@ function AppContent() {
   const selectProject = useProjectStore((s) => s.selectProject);
 
   const prevProjectIdRef = useRef<string | null>(activeProjectId);
+  const agentsReturnViewRef = useRef<ViewType>("kanban");
 
   // Fetch projects from backend
   const { data: fetchedProjects, isLoading: isLoadingProjects } = useProjects();
@@ -203,6 +205,7 @@ function AppContent() {
   const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
+  const [isNewAgentDialogOpen, setIsNewAgentDialogOpen] = useState(false);
 
   // Plan quick switcher state
   const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
@@ -712,8 +715,26 @@ function AppContent() {
   const handleViewChange = useCallback((view: ViewType) => {
     // Close any open task detail panel when switching views
     setSelectedTaskId(null);
+    if (view === "agents") {
+      if (currentView === "agents") {
+        setCurrentView(agentsReturnViewRef.current);
+        return;
+      }
+      agentsReturnViewRef.current =
+        currentView === "task_detail" || currentView === "team" ? "kanban" : currentView;
+    }
     setCurrentView(view);
-  }, [setSelectedTaskId, setCurrentView]);
+  }, [currentView, setSelectedTaskId, setCurrentView]);
+
+  const handleOpenNewAgent = useCallback(() => {
+    if (currentView !== "agents") {
+      agentsReturnViewRef.current =
+        currentView === "task_detail" || currentView === "team" ? "kanban" : currentView;
+      setSelectedTaskId(null);
+      setCurrentView("agents");
+    }
+    setIsNewAgentDialogOpen(true);
+  }, [currentView, setSelectedTaskId, setCurrentView]);
 
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   const handleToggleGraphRightPanel = useCallback(() => {
@@ -747,6 +768,7 @@ function AppContent() {
     openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
     onBattleModeToggle: handleBattleModeToggle,
     openSettings: handleOpenSettings,
+    openNewAgent: handleOpenNewAgent,
     featureFlags,
   });
 
@@ -837,8 +859,8 @@ function AppContent() {
             <div className="mr-2">
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
-            {/* Chat Panel Toggle - hidden on ideation (has built-in chat) */}
-            {currentView !== "ideation" && (() => {
+            {/* Chat Panel Toggle - hidden on views with built-in chat */}
+            {currentView !== "ideation" && currentView !== "agents" && (() => {
               // Unified per-view visibility - same logic for all views
               const isExpanded = chatVisibleByView[currentView];
               const handleToggle = () => toggleChatVisible(currentView);
@@ -1111,6 +1133,14 @@ function AppContent() {
                   }
                 />
               )}
+              {currentView === "agents" && (
+                <AgentsView
+                  projectId={currentProjectId}
+                  isNewAgentDialogOpen={isNewAgentDialogOpen}
+                  onNewAgentDialogOpenChange={setIsNewAgentDialogOpen}
+                  onCreateProject={handleOpenProjectWizard}
+                />
+              )}
               {currentView === "extensibility" && (
                 isViewEnabled("extensibility", featureFlags)
                   ? <ExtensibilityView />
@@ -1168,8 +1198,8 @@ function AppContent() {
             </div>
           )}
 
-          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban or ideation) */}
-          {currentView !== "kanban" && currentView !== "ideation" && <ChatPanel context={chatContext} />}
+          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban, ideation, or agents) */}
+          {currentView !== "kanban" && currentView !== "ideation" && currentView !== "agents" && <ChatPanel context={chatContext} />}
         </div>
       )}
 
