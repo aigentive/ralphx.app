@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ClipboardList,
@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { chatKeys } from "@/hooks/useChat";
+import { chatKeys, useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { getModelLabel } from "@/lib/model-utils";
@@ -56,6 +56,7 @@ import {
   agentConversationKeys,
   useProjectAgentConversations,
 } from "./useProjectAgentConversations";
+import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -87,6 +88,7 @@ export function AgentsView({
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
+  const childArchiveSyncRef = useRef<Set<string>>(new Set());
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -114,6 +116,19 @@ export function AgentsView({
     }
     return focusedConversations.data?.find((conversation) => conversation.id === selectedConversationId) ?? null;
   }, [focusedConversations.data, selectedConversationId]);
+  const selectedConversationQuery = useConversation(selectedConversationId, {
+    enabled: !!selectedConversationId,
+  });
+  const attachedIdeationSessionId = useMemo(
+    () => resolveAttachedIdeationSessionId(activeConversation, selectedConversationQuery.data?.messages ?? []),
+    [activeConversation, selectedConversationQuery.data?.messages],
+  );
+  const attachedIdeationSessionQuery = useQuery({
+    queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
+    queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
+    enabled: !!attachedIdeationSessionId && activeConversation?.contextType === "project",
+    staleTime: 5_000,
+  });
 
   const activeRuntime = selectedConversationId
     ? runtimeByConversationId[selectedConversationId] ??
@@ -348,6 +363,33 @@ export function AgentsView({
     [queryClient]
   );
 
+  useEffect(() => {
+    if (
+      activeConversation?.contextType !== "project" ||
+      !attachedIdeationSessionQuery.data ||
+      activeConversation.archivedAt ||
+      childArchiveSyncRef.current.has(activeConversation.id)
+    ) {
+      return;
+    }
+    const session = attachedIdeationSessionQuery.data.session;
+    const sessionArchived = session.status === "archived" || Boolean(session.archivedAt);
+    if (!sessionArchived) {
+      return;
+    }
+    childArchiveSyncRef.current.add(activeConversation.id);
+    void chatApi.archiveConversation(activeConversation.id)
+      .then(() => invalidateProjectConversations(activeConversation.projectId))
+      .catch(() => {
+        childArchiveSyncRef.current.delete(activeConversation.id);
+        // Status sync is best-effort; manual archive remains available.
+      });
+  }, [
+    activeConversation,
+    attachedIdeationSessionQuery.data,
+    invalidateProjectConversations,
+  ]);
+
   const handleRemoveProject = useCallback(
     async (targetProjectId: string) => {
       try {
@@ -548,6 +590,9 @@ export function AgentsView({
                 hideHeaderSessionControls
                 hideSessionToolbar
                 surfaceBackground="var(--bg-base)"
+                {...(activeConversation.contextType === "project" && attachedIdeationSessionId
+                  ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
+                  : {})}
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
