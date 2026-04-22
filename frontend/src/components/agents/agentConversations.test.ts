@@ -89,12 +89,20 @@ describe("agent conversations", () => {
     expect(result.archivedAt).toBe("2026-04-22T11:00:00Z");
   });
 
-  it("sorts by most recent chat activity", () => {
+  it("sorts by creation time newest first", () => {
     const older = toProjectAgentConversation(
-      conversation({ id: "older", lastMessageAt: "2026-04-22T10:00:00Z" })
+      conversation({
+        id: "older",
+        createdAt: "2026-04-22T10:00:00Z",
+        lastMessageAt: "2026-04-22T12:00:00Z",
+      })
     );
     const newer = toProjectAgentConversation(
-      conversation({ id: "newer", lastMessageAt: "2026-04-22T11:00:00Z" })
+      conversation({
+        id: "newer",
+        createdAt: "2026-04-22T11:00:00Z",
+        lastMessageAt: "2026-04-22T11:01:00Z",
+      })
     );
 
     expect(sortAgentConversations([older, newer]).map((item) => item.id)).toEqual([
