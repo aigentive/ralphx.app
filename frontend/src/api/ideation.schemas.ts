@@ -42,6 +42,28 @@ export const IdeationSessionResponseSchema = z.object({
   last_effective_model: z.string().nullable().optional(),
 });
 
+export const SessionProgressResponseSchema = z.object({
+  idle: z.number(),
+  active: z.number(),
+  done: z.number(),
+  total: z.number(),
+});
+
+export const IdeationSessionWithProgressResponseSchema =
+  IdeationSessionResponseSchema.extend({
+    progress: SessionProgressResponseSchema.nullable(),
+    parentSessionTitle: z.string().nullable(),
+    verificationChildCount: z.number(),
+    hasPendingPrompt: z.boolean(),
+  });
+
+export const SessionListResponseSchema = z.object({
+  sessions: z.array(IdeationSessionWithProgressResponseSchema),
+  total: z.number(),
+  hasMore: z.boolean(),
+  offset: z.number(),
+});
+
 /**
  * API gap schema (snake_case from HTTP server) — transforms to VerificationGap shape.
  * Reuses VerificationGapSchema as the output type (single source of truth).

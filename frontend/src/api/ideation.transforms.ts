@@ -7,6 +7,7 @@ import type {
 } from "../types/ideation-config";
 import type {
   IdeationSessionStatus,
+  SessionListResponse,
   TaskProposal,
   Priority,
   Complexity,
@@ -33,6 +34,7 @@ import {
   ApplyProposalsResultResponseSchema,
   CreateChildSessionResponseSchema,
   ParentSessionContextResponseSchema,
+  SessionListResponseSchema,
 } from "./ideation.schemas";
 
 export function transformSession(raw: z.infer<typeof IdeationSessionResponseSchema>): IdeationSessionResponse {
@@ -70,6 +72,30 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     sessionPurpose: raw.session_purpose ?? "general",
     acceptanceStatus: raw.acceptance_status ?? null,
     lastEffectiveModel: raw.last_effective_model ?? null,
+  };
+}
+
+export function transformSessionList(
+  raw: z.infer<typeof SessionListResponseSchema>
+): SessionListResponse {
+  return {
+    sessions: raw.sessions.map((item) => ({
+      ...transformSession(item),
+      progress: item.progress
+        ? {
+            idle: item.progress.idle,
+            active: item.progress.active,
+            done: item.progress.done,
+            total: item.progress.total,
+          }
+        : null,
+      parentSessionTitle: item.parentSessionTitle,
+      verificationChildCount: item.verificationChildCount,
+      hasPendingPrompt: item.hasPendingPrompt,
+    })),
+    total: raw.total,
+    hasMore: raw.hasMore,
+    offset: raw.offset,
   };
 }
 

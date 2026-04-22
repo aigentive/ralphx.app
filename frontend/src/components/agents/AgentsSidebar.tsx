@@ -33,10 +33,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildStoreKey } from "@/lib/chat-context-registry";
-import { selectAgentStatus, useChatStore } from "@/stores/chatStore";
+import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
-import type { ChatConversation } from "@/types/chat-conversation";
+import type { AgentConversation } from "./agentConversations";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
 
 interface AgentsSidebarProps {
@@ -44,13 +44,13 @@ interface AgentsSidebarProps {
   focusedProjectId: string | null;
   selectedConversationId: string | null;
   onFocusProject: (projectId: string) => void;
-  onSelectConversation: (projectId: string, conversation: ChatConversation) => void;
+  onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onCreateAgent: () => void;
   onCreateProject: () => void;
   onQuickCreateAgent: (projectId?: string) => void;
   onRemoveProject: (projectId: string) => void;
-  onArchiveConversation: (conversation: ChatConversation) => void;
-  onRestoreConversation: (conversation: ChatConversation) => void;
+  onArchiveConversation: (conversation: AgentConversation) => void;
+  onRestoreConversation: (conversation: AgentConversation) => void;
   isCreatingAgent: boolean;
   showArchived: boolean;
   onShowArchivedChange: (showArchived: boolean) => void;
@@ -233,11 +233,11 @@ interface ProjectSessionGroupProps {
   selectedConversationId: string | null;
   searchQuery: string;
   onFocusProject: (projectId: string) => void;
-  onSelectConversation: (projectId: string, conversation: ChatConversation) => void;
+  onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onQuickCreateAgent: (projectId?: string) => void;
   onRemoveProject: (projectId: string) => void;
-  onArchiveConversation: (conversation: ChatConversation) => void;
-  onRestoreConversation: (conversation: ChatConversation) => void;
+  onArchiveConversation: (conversation: AgentConversation) => void;
+  onRestoreConversation: (conversation: AgentConversation) => void;
   isCreatingAgent: boolean;
   showArchived: boolean;
 }
@@ -259,9 +259,8 @@ function ProjectSessionGroup({
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
   const conversations = useProjectAgentConversations(project.id, showArchived);
-  const contextKey = buildStoreKey("project", project.id);
-  const activeConversationId = useChatStore((s) => s.activeConversationIds[contextKey] ?? null);
-  const agentStatus = useChatStore(selectAgentStatus(contextKey));
+  const activeConversationIds = useChatStore((s) => s.activeConversationIds);
+  const agentStatuses = useChatStore((s) => s.agentStatus);
 
   const sortedConversations = [...(conversations.data ?? [])].sort((a, b) => {
     const aTime = a.lastMessageAt ?? a.createdAt;
@@ -275,11 +274,17 @@ function ProjectSessionGroup({
     }
     return sortedConversations.filter((conversation) => {
       const title = conversation.title || "Untitled agent";
-      const provider = conversation.providerHarness ?? "agent";
+      const provider = conversation.providerHarness ?? (conversation.contextType === "ideation" ? "ideation" : "agent");
       return `${title} ${provider}`.toLowerCase().includes(searchQuery);
     });
   }, [projectMatchesSearch, searchQuery, sortedConversations]);
-  const activeRuntimeCount = activeConversationId && agentStatus !== "idle" ? 1 : 0;
+  const activeRuntimeCount = sortedConversations.filter((conversation) => {
+    const rowKey = buildStoreKey(conversation.contextType, conversation.contextId);
+    return (
+      activeConversationIds[rowKey] === conversation.id &&
+      (agentStatuses[rowKey] ?? "idle") !== "idle"
+    );
+  }).length;
 
   if (
     searchQuery &&
@@ -386,10 +391,13 @@ function ProjectSessionGroup({
       {expanded && (
         <div className="mt-1 ml-4 space-y-0.5">
           {visibleConversations.map((conversation) => {
+            const rowKey = buildStoreKey(conversation.contextType, conversation.contextId);
+            const activeConversationId = activeConversationIds[rowKey] ?? null;
+            const agentStatus = agentStatuses[rowKey] ?? "idle";
             const isSelected = selectedConversationId === conversation.id;
             const isActiveRuntime = activeConversationId === conversation.id;
             const title = conversation.title || "Untitled agent";
-            const provider = conversation.providerHarness ?? "agent";
+            const provider = conversation.providerHarness ?? (conversation.contextType === "ideation" ? "ideation" : "agent");
             const statusLabel =
               conversation.archivedAt
                 ? "archived"

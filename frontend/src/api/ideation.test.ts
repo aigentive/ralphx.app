@@ -317,6 +317,47 @@ describe("ideationApi.sessions", () => {
     });
   });
 
+  describe("listByGroup", () => {
+    it("should call list_sessions_by_group and transform sessions", async () => {
+      mockInvoke.mockResolvedValue({
+        sessions: [
+          {
+            ...createMockSessionRaw({
+              id: "archived-session",
+              title: "Archived agent",
+              status: "archived",
+              archived_at: "2026-04-22T12:00:00Z",
+            }),
+            progress: null,
+            parentSessionTitle: null,
+            verificationChildCount: 2,
+            hasPendingPrompt: false,
+          },
+        ],
+        total: 1,
+        hasMore: false,
+        offset: 0,
+      });
+
+      const result = await ideationApi.sessions.listByGroup(
+        "project-1",
+        "archived"
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("list_sessions_by_group", {
+        projectId: "project-1",
+        group: "archived",
+        offset: 0,
+        limit: 200,
+      });
+      expect(result.sessions[0]?.id).toBe("archived-session");
+      expect(result.sessions[0]?.title).toBe("Archived agent");
+      expect(result.sessions[0]?.archivedAt).toBe("2026-04-22T12:00:00Z");
+      expect(result.sessions[0]?.verificationChildCount).toBe(2);
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
   describe("archive", () => {
     it("should call archive_ideation_session with id", async () => {
       mockInvoke.mockResolvedValue(undefined);
