@@ -64,7 +64,7 @@ describe("agent conversations", () => {
     expect(result.title).toBe("Project chat");
   });
 
-  it("projects an ideation session conversation into an agent sidebar row", () => {
+  it("can project an ideation session conversation for direct ideation routing", () => {
     const result = toIdeationAgentConversation(
       session({ title: "Fix flaky tests" }),
       conversation({ id: "conversation-2", contextType: "ideation", contextId: "session-1" })

@@ -33,6 +33,7 @@ harnesses:
       - v1_get_pipeline_overview
       - v1_start_ideation
       - v1_get_ideation_status
+      - v1_send_ideation_message
       - v1_get_ideation_messages
       - v1_list_ideation_sessions
       - v1_get_plan
