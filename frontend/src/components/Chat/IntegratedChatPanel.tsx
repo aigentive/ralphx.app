@@ -107,6 +107,8 @@ interface IntegratedChatPanelProps {
   hideHeaderSessionControls?: boolean;
   /** Hide the secondary session toolbar below the header. */
   hideSessionToolbar?: boolean;
+  /** Optional override for the chat surface background. */
+  surfaceBackground?: string;
   /** Called when Escape is pressed with input blurred - used to close the panel */
   onClose?: () => void;
   /** Whether to autofocus chat input on mount */
@@ -138,6 +140,7 @@ export function IntegratedChatPanel({
   headerContent,
   hideHeaderSessionControls = false,
   hideSessionToolbar = false,
+  surfaceBackground,
   onClose,
   autoFocusInput = true,
   isVisible = true,
@@ -855,7 +858,7 @@ export function IntegratedChatPanel({
         <div
           className="flex-1 flex flex-col overflow-hidden"
           style={{
-            background: withAlpha("var(--bg-surface)", 92),
+            background: surfaceBackground ?? withAlpha("var(--bg-surface)", 92),
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
           }}

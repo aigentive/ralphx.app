@@ -5,8 +5,8 @@ import {
   GitPullRequestArrow,
   LayoutGrid,
   Network,
-  PanelRightClose,
   ClipboardList,
+  X,
 } from "lucide-react";
 import type { ElementType } from "react";
 import { useMemo } from "react";
@@ -26,6 +26,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { VerificationBadge } from "@/components/Ideation/VerificationBadge";
+import { VerificationGapList } from "@/components/Ideation/VerificationGapList";
+import { VerificationHistory } from "@/components/Ideation/VerificationHistory";
 import type {
   AgentArtifactTab,
   AgentTaskArtifactMode,
@@ -279,7 +282,7 @@ export function AgentsArtifactPane({
                 aria-label="Close artifacts"
                 data-testid="agents-artifact-close"
               >
-                <PanelRightClose className="w-4 h-4" />
+                <X className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
@@ -472,71 +475,126 @@ function VerificationSummary({
 }: {
   verification: VerificationStatusResponse;
 }) {
+  const gaps = verification.gaps ?? [];
+  const rounds = verification.rounds ?? [];
+  const roundDetails = verification.roundDetails ?? [];
+  const gapScore = verification.gapScore;
+  const hasGaps = gaps.length > 0;
+  const hasRounds = rounds.length > 0 || roundDetails.length > 0;
+  const latestRun = [...(verification.runHistory ?? [])].sort(
+    (a, b) => b.generation - a.generation
+  )[0];
+  const statusText = verification.status.replace(/_/g, " ");
+  const runSummary = latestRun
+    ? `${statusText} - ${latestRun.roundCount} rounds - ${latestRun.gapCount} gaps remaining`
+    : [
+        statusText,
+        verification.currentRound != null && verification.maxRounds != null
+          ? `${verification.currentRound}/${verification.maxRounds} rounds`
+          : null,
+        typeof gapScore === "number" ? `gap score ${gapScore}` : null,
+      ].filter(Boolean).join(" - ");
+
   return (
-    <div className="p-5 space-y-4">
-      <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-[var(--text-primary)]">
-            {verification.status.replace("_", " ")}
-          </span>
-          {verification.inProgress && (
-            <span className="rounded-full bg-[var(--status-success-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--status-success)]">
-              Running
-            </span>
-          )}
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div
+          className="rounded-lg px-3 py-2"
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-faint)",
+          }}
+        >
+          <div className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+            Latest verification
+          </div>
+          <div className="mt-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {runSummary}
+          </div>
         </div>
-        <div className="mt-2 text-xs text-[var(--text-muted)]">
-          Round {verification.currentRound ?? 0}/{verification.maxRounds ?? 0}
-          {typeof verification.gapScore === "number" ? ` · Gap score ${verification.gapScore}` : ""}
-        </div>
-        {verification.convergenceReason && (
-          <MarkdownBody
-            compact
-            content={verification.convergenceReason}
-            className="mt-3 text-sm text-[var(--text-secondary)]"
-          />
-        )}
       </div>
 
-      {verification.gaps.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Gaps</h3>
-          {verification.gaps.map((gap, index) => (
-            <div key={`${gap.severity}-${index}`} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-              <div className="flex items-center gap-2">
-                <div className="text-xs font-medium text-[var(--accent-primary)]">{gap.severity}</div>
-                <div className="text-xs text-[var(--text-muted)]">{gap.category}</div>
-              </div>
-              <MarkdownBody compact content={gap.description} className="mt-1 text-sm text-[var(--text-secondary)]" />
-              {gap.whyItMatters && (
-                <MarkdownBody compact content={gap.whyItMatters} className="mt-2 text-xs text-[var(--text-muted)]" />
-              )}
+      <div className="flex items-center justify-between gap-3">
+        <VerificationBadge
+          status={verification.status}
+          inProgress={verification.inProgress}
+          {...(verification.currentRound !== undefined && {
+            currentRound: verification.currentRound,
+          })}
+          {...(verification.maxRounds !== undefined && {
+            maxRounds: verification.maxRounds,
+          })}
+          {...(verification.convergenceReason !== undefined && {
+            convergenceReason: verification.convergenceReason,
+          })}
+        />
+      </div>
+
+      {hasGaps && (
+        <div
+          className="rounded-lg p-3"
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-faint)",
+          }}
+        >
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wider mb-3"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Verification Gaps
+          </div>
+          {(verification.status === "verified" ||
+            verification.status === "imported_verified") && (
+            <div className="text-[11px] mb-2" style={{ color: "var(--text-secondary)" }}>
+              Verified with acceptable gaps - no critical issues remain.
             </div>
-          ))}
+          )}
+          <VerificationGapList
+            gaps={gaps}
+            {...(rounds.length > 0 && { rounds })}
+            {...(gapScore !== undefined && { gapScore })}
+          />
         </div>
       )}
 
-      {verification.roundDetails.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Rounds</h3>
-          {verification.roundDetails.map((round) => (
-            <div key={round.round} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="font-medium text-[var(--text-primary)]">Round {round.round}</span>
-                <span className="text-[var(--text-muted)]">
-                  {round.gapCount} gaps · score {round.gapScore}
-                </span>
-              </div>
-              {round.gaps.slice(0, 3).map((gap, index) => (
-                <MarkdownBody
-                  key={`${round.round}-${gap.severity}-${index}`}
-                  compact
-                  content={gap.description}
-                  className="mt-2 text-xs text-[var(--text-secondary)]"
-                />
-              ))}
-            </div>
-          ))}
+      {hasRounds && (
+        <div
+          className="rounded-lg p-3"
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-faint)",
+          }}
+        >
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wider mb-3"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Verification History
+          </div>
+          <VerificationHistory
+            rounds={rounds}
+            roundDetails={roundDetails}
+            {...(hasGaps && { currentGaps: gaps })}
+            {...(gapScore !== undefined && { gapScore })}
+            status={verification.status}
+            {...(verification.convergenceReason !== undefined && {
+              convergenceReason: verification.convergenceReason,
+            })}
+          />
+        </div>
+      )}
+
+      {!hasGaps && !hasRounds && (
+        <div
+          className="rounded-lg p-4 text-[12px]"
+          style={{
+            background: "var(--overlay-faint)",
+            border: "1px solid var(--overlay-faint)",
+            color: "var(--text-muted)",
+          }}
+        >
+          Verification has no recorded gaps or round history yet.
         </div>
       )}
     </div>
