@@ -28,6 +28,7 @@ interface UseAppKeyboardShortcutsProps {
   openPlanQuickSwitcher?: () => void;
   onBattleModeToggle?: () => void;
   openSettings?: () => void;
+  openNewAgent?: () => void;
   featureFlags?: FeatureFlags;
 }
 
@@ -46,6 +47,7 @@ export function useAppKeyboardShortcuts({
   openPlanQuickSwitcher,
   onBattleModeToggle,
   openSettings,
+  openNewAgent,
   featureFlags = ALL_ENABLED_FLAGS,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
@@ -62,6 +64,10 @@ export function useAppKeyboardShortcuts({
       }
 
       if (e.metaKey || e.ctrlKey) {
+        if (currentView === "agents" && ["1", "2", "3", "4"].includes(e.key)) {
+          return;
+        }
+
         // Order reflects workflow: plan ideas → visualize dependencies → execute tasks
         switch (e.key) {
           case "1":
@@ -96,7 +102,7 @@ export function useAppKeyboardShortcuts({
           case "k":
           case "K": {
             // Cmd+K to toggle chat panel (skip if in input/textarea or on ideation)
-            if (currentView === "ideation") {
+            if (currentView === "ideation" || currentView === "agents") {
               return; // Ideation has built-in chat, no toggle needed
             }
             const activeElement = document.activeElement;
@@ -113,7 +119,7 @@ export function useAppKeyboardShortcuts({
           case "n":
           case "N": {
             // Cmd+Shift+N: Always open project wizard (global)
-            // Cmd+N: Open project wizard only on welcome screen (no projects)
+            // Cmd+N: Open new agent in Agents view, otherwise project wizard only on welcome screen
             if (!openProjectWizard) {
               return;
             }
@@ -132,7 +138,26 @@ export function useAppKeyboardShortcuts({
               // Cmd+N: Only on welcome screen (no projects)
               e.preventDefault();
               openProjectWizard();
+            } else if (currentView === "agents" && openNewAgent) {
+              e.preventDefault();
+              openNewAgent();
             }
+            break;
+          }
+          case "a":
+          case "A": {
+            if (!e.shiftKey) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            setCurrentView("agents");
             break;
           }
           case "w":
@@ -237,7 +262,7 @@ export function useAppKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, openSettings, featureFlags]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, openSettings, openNewAgent, featureFlags]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

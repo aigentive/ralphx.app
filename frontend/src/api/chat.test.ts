@@ -409,6 +409,28 @@ describe("chat api", () => {
     });
   });
 
+  it("creates titled conversation", async () => {
+    mockInvoke.mockResolvedValue({
+      id: "c-title",
+      context_type: "project",
+      context_id: "p1",
+      claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
+      title: "Build agent",
+      message_count: 0,
+      last_message_at: null,
+      created_at: "2026-01-24T10:00:00Z",
+      updated_at: "2026-01-24T10:00:00Z",
+    });
+
+    await createConversation("project", "p1", " Build agent ");
+
+    expect(mockInvoke).toHaveBeenCalledWith("create_agent_conversation", {
+      input: { contextType: "project", contextId: "p1", title: "Build agent" },
+    });
+  });
+
   it("gets nullable agent run status", async () => {
     mockInvoke.mockResolvedValue(null);
     const result = await getAgentRunStatus("c1");
@@ -463,6 +485,31 @@ describe("chat api", () => {
       wasQueued: false,
       queuedAsPending: true,
       queuedMessageId: undefined,
+    });
+  });
+
+  it("sends unified agent message with provider and model overrides", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation_id: "c1",
+      agent_run_id: "r1",
+      is_new_conversation: true,
+    });
+
+    await sendAgentMessage("project", "p1", "Hello", undefined, undefined, {
+      conversationId: "c1",
+      providerHarness: "codex",
+      modelId: "gpt-5.4",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("send_agent_message", {
+      input: {
+        contextType: "project",
+        contextId: "p1",
+        content: "Hello",
+        conversationId: "c1",
+        providerHarness: "codex",
+        modelOverride: "gpt-5.4",
+      },
     });
   });
 

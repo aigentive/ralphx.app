@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Network,
   Lightbulb,
+  Bot,
   Puzzle,
   Activity,
   SlidersHorizontal,
@@ -56,6 +57,13 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     label: "Kanban",
     icon: LayoutGrid,
     shortcut: "⌘3",
+    visible: () => true,
+  },
+  {
+    view: "agents",
+    label: "Agents",
+    icon: Bot,
+    shortcut: "⌘⇧A",
     visible: () => true,
   },
   {

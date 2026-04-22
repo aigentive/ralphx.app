@@ -303,6 +303,11 @@ export function useChat(
     storeKey?: string;
     disableAutoSelect?: boolean;
     skipActiveConversationQuery?: boolean;
+    sendOptions?: {
+      conversationId?: string | null;
+      providerHarness?: string | null;
+      modelId?: string | null;
+    };
   }
 ) {
   const queryClient = useQueryClient();
@@ -382,7 +387,7 @@ export function useChat(
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[]; target?: string }>({
     mutationFn: async ({ content, attachmentIds, target }) => {
-      return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target);
+      return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target, options?.sendOptions);
     },
     onMutate: () => {
       setSending(effectiveStoreKey, true);

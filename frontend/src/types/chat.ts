@@ -14,6 +14,7 @@ export const VIEW_TYPE_VALUES = [
   "kanban",
   "graph",
   "ideation",
+  "agents",
   "extensibility",
   "activity",
   "insights",
@@ -142,7 +143,7 @@ export function createTaskDetailContext(
  */
 export function createProjectContext(
   projectId: string,
-  view: "activity" | "insights"
+  view: "activity" | "insights" | "agents"
 ): ChatContext {
   return {
     view,

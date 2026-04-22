@@ -339,6 +339,8 @@ pub struct SendMessageOptions {
     pub agent_name_override: Option<String>,
     /// Optional explicit model override for this send.
     pub model_override: Option<String>,
+    /// Optional conversation override for surfaces that own explicit session selection.
+    pub conversation_id_override: Option<ChatConversationId>,
     /// Optional explicit logical-effort override for this send.
     pub logical_effort_override: Option<LogicalEffort>,
     /// Optional explicit approval-policy override for this send.
@@ -647,6 +649,47 @@ impl<R: Runtime> AppChatService<R> {
             },
         );
         queued
+    }
+
+    async fn get_or_create_conversation_for_send(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        options: &SendMessageOptions,
+    ) -> Result<(ChatConversation, bool), ChatServiceError> {
+        let Some(conversation_id) = options.conversation_id_override else {
+            return chat_service_repository::get_or_create_conversation(
+                Arc::clone(&self.conversation_repo),
+                context_type,
+                context_id,
+            )
+            .await;
+        };
+
+        let conversation = self
+            .conversation_repo
+            .get_by_id(&conversation_id)
+            .await
+            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+            .ok_or_else(|| {
+                ChatServiceError::ConversationNotFound(format!(
+                    "Conversation not found: {}",
+                    conversation_id
+                ))
+            })?;
+
+        if conversation.context_type != context_type || conversation.context_id != context_id {
+            return Err(ChatServiceError::ContextNotFound(format!(
+                "Conversation {} belongs to {}/{} not {}/{}",
+                conversation_id,
+                conversation.context_type,
+                conversation.context_id,
+                context_type,
+                context_id
+            )));
+        }
+
+        Ok((conversation, false))
     }
 
     pub fn with_question_state(mut self, state: Arc<QuestionState>) -> Self {
@@ -1163,7 +1206,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         // instead of failing the user-facing send.
         if claude_launches_paused(context_type, self.execution_state.as_ref()) {
             let (conversation, is_new_conversation) = self
-                .get_or_create_conversation(context_type, context_id)
+                .get_or_create_conversation_for_send(context_type, context_id, &options)
                 .await?;
             let queued =
                 self.enqueue_pending_send(context_type, context_id, message, &options);
@@ -1270,7 +1313,13 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                                 context_id,
                                 "Gate 1: no existing conversation found despite IPR entry, creating new"
                             );
-                            let (conversation, _) = self.get_or_create_conversation(context_type, context_id).await?;
+                            let (conversation, _) = self
+                                .get_or_create_conversation_for_send(
+                                    context_type,
+                                    context_id,
+                                    &options,
+                                )
+                                .await?;
                             conversation
                         }
                     };
@@ -1363,7 +1412,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
         //    which is correct for new spawns.
         let (mut conversation, spawn_path_is_new_conversation) = self
-            .get_or_create_conversation(context_type, context_id)
+            .get_or_create_conversation_for_send(context_type, context_id, &options)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
         let task_metadata = if spawn_settings_require_task_metadata(context_type) {

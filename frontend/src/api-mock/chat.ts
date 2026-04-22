@@ -226,14 +226,15 @@ export async function mockGetConversationStats(
 
 export async function mockCreateConversation(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  title?: string
 ): Promise<ChatConversation> {
   const conversation: ChatConversation = {
     id: generateTestUuid(),
     contextType,
     contextId,
     ...normalizeConversationProviderMetadata({}),
-    title: null,
+    title: title?.trim() || null,
     messageCount: 0,
     lastMessageAt: null,
     createdAt: new Date().toISOString(),

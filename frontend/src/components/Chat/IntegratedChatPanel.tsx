@@ -113,6 +113,14 @@ interface IntegratedChatPanelProps {
   isVisible?: boolean;
   /** Back navigation action rendered in the toolbar (e.g. "Back to Plan") */
   toolbarBackAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
+  /** Force a specific conversation ID for externally-owned session lists. */
+  conversationIdOverride?: string;
+  /** Optional first-spawn provider/model overrides. */
+  sendOptions?: {
+    conversationId?: string | null;
+    providerHarness?: string | null;
+    modelId?: string | null;
+  };
 }
 
 export function IntegratedChatPanel({
@@ -126,6 +134,8 @@ export function IntegratedChatPanel({
   autoFocusInput = true,
   isVisible = true,
   toolbarBackAction,
+  conversationIdOverride,
+  sendOptions,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -216,7 +226,7 @@ export function IntegratedChatPanel({
     isMergeMode,
     isHistoryMode,
     // Pass history mode overrides for conversation selection
-    overrideConversationId: taskHistoryState?.conversationId,
+    overrideConversationId: conversationIdOverride ?? taskHistoryState?.conversationId,
     overrideAgentRunId: taskHistoryState?.agentRunId,
     isVisible,
   });
@@ -428,6 +438,7 @@ export function IntegratedChatPanel({
     storeKey: storeContextKey,
     disableAutoSelect: true,
     skipActiveConversationQuery: !!ideationSessionId,
+    ...(sendOptions !== undefined ? { sendOptions } : {}),
   });
 
   // Single dynamic query for all agent contexts (execution/review/merge)
