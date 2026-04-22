@@ -17,6 +17,8 @@ import { toast } from "sonner";
 
 import { artifactApi } from "@/api/artifact";
 import { ideationApi } from "@/api/ideation";
+import { useTaskGraph } from "@/components/TaskGraph";
+import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -102,7 +104,6 @@ export function AgentsArtifactPane({
     refetchInterval: (query) => query.state.data?.inProgress ? 5_000 : false,
   });
   const proposalCount = sessionData?.proposals.length ?? 0;
-  const taskCount = sessionData?.proposals.filter((proposal) => proposal.createdTaskId).length ?? 0;
   const verificationState =
     verificationQuery.data?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
@@ -127,8 +128,7 @@ export function AgentsArtifactPane({
         <div className="flex items-center gap-0 min-w-0">
           {ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
             const isActive = activeTab === id;
-            const count =
-              id === "proposal" ? proposalCount : id === "tasks" ? taskCount : 0;
+            const count = id === "proposal" ? proposalCount : 0;
             const showVerificationDot =
               id === "verification" &&
               (verificationInProgress ||
@@ -281,7 +281,9 @@ export function AgentsArtifactPane({
           activeTab={activeTab}
           isLoading={conversationQuery.isLoading || sessionQuery.isLoading}
           attachedSessionId={attachedSessionId}
+          projectId={conversation?.projectId ?? null}
           sessionTitle={sessionData?.session.title ?? null}
+          taskMode={taskMode}
           planContent={getArtifactText(planArtifactQuery.data)}
           isPlanLoading={planArtifactQuery.isLoading}
           verification={verificationQuery.data ?? null}
@@ -297,7 +299,9 @@ type ArtifactContentProps = {
   activeTab: AgentArtifactTab;
   isLoading: boolean;
   attachedSessionId: string | null;
+  projectId: string | null;
   sessionTitle: string | null;
+  taskMode: AgentTaskArtifactMode;
   planContent: string | null;
   isPlanLoading: boolean;
   verification: VerificationStatusResponse | null;
@@ -309,7 +313,9 @@ function ArtifactContent({
   activeTab,
   isLoading,
   attachedSessionId,
+  projectId,
   sessionTitle,
+  taskMode,
   planContent,
   isPlanLoading,
   verification,
@@ -361,21 +367,12 @@ function ArtifactContent({
     return <ProposalSummary proposals={proposals} />;
   }
 
-  const createdTasks = proposals.filter((proposal) => proposal.createdTaskId);
   return (
-    <div className="p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Tasks</h3>
-      {createdTasks.length === 0 ? (
-        <p className="text-sm text-[var(--text-muted)]">No tasks have been created from this run yet.</p>
-      ) : (
-        createdTasks.map((proposal) => (
-          <div key={proposal.id} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-            <div className="text-sm font-medium text-[var(--text-primary)]">{proposal.title}</div>
-            <div className="mt-1 font-mono text-[11px] text-[var(--text-muted)]">{proposal.createdTaskId}</div>
-          </div>
-        ))
-      )}
-    </div>
+    <TaskArtifactSurface
+      projectId={projectId}
+      sessionId={attachedSessionId}
+      mode={taskMode}
+    />
   );
 }
 
@@ -425,11 +422,31 @@ function MarkdownPanel({ content }: { content: string }) {
           Copy Markdown
         </Button>
       </div>
-      <div className="p-5 text-sm leading-relaxed text-[var(--text-secondary)]">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {content}
-        </ReactMarkdown>
-      </div>
+      <MarkdownBody content={content} className="p-5 text-sm leading-relaxed text-[var(--text-secondary)]" />
+    </div>
+  );
+}
+
+function MarkdownBody({
+  content,
+  className,
+  compact = false,
+}: {
+  content: string;
+  className?: string | undefined;
+  compact?: boolean | undefined;
+}) {
+  return (
+    <div
+      className={cn(
+        "max-w-none overflow-hidden break-words [&_*]:max-w-full",
+        compact && "[&>p]:mb-0 [&_ul]:mb-0 [&_ol]:mb-0",
+        className,
+      )}
+    >
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -457,7 +474,11 @@ function VerificationSummary({
           {typeof verification.gapScore === "number" ? ` · Gap score ${verification.gapScore}` : ""}
         </div>
         {verification.convergenceReason && (
-          <div className="mt-3 text-sm text-[var(--text-secondary)]">{verification.convergenceReason}</div>
+          <MarkdownBody
+            compact
+            content={verification.convergenceReason}
+            className="mt-3 text-sm text-[var(--text-secondary)]"
+          />
         )}
       </div>
 
@@ -466,8 +487,38 @@ function VerificationSummary({
           <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Gaps</h3>
           {verification.gaps.map((gap, index) => (
             <div key={`${gap.severity}-${index}`} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-              <div className="text-xs font-medium text-[var(--accent-primary)]">{gap.severity}</div>
-              <div className="mt-1 text-sm text-[var(--text-secondary)]">{gap.description}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-[var(--accent-primary)]">{gap.severity}</div>
+                <div className="text-xs text-[var(--text-muted)]">{gap.category}</div>
+              </div>
+              <MarkdownBody compact content={gap.description} className="mt-1 text-sm text-[var(--text-secondary)]" />
+              {gap.whyItMatters && (
+                <MarkdownBody compact content={gap.whyItMatters} className="mt-2 text-xs text-[var(--text-muted)]" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {verification.roundDetails.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Rounds</h3>
+          {verification.roundDetails.map((round) => (
+            <div key={round.round} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="font-medium text-[var(--text-primary)]">Round {round.round}</span>
+                <span className="text-[var(--text-muted)]">
+                  {round.gapCount} gaps · score {round.gapScore}
+                </span>
+              </div>
+              {round.gaps.slice(0, 3).map((gap, index) => (
+                <MarkdownBody
+                  key={`${round.round}-${gap.severity}-${index}`}
+                  compact
+                  content={gap.description}
+                  className="mt-2 text-xs text-[var(--text-secondary)]"
+                />
+              ))}
             </div>
           ))}
         </div>
@@ -488,17 +539,161 @@ function ProposalSummary({ proposals }: { proposals: ArtifactContentProps["propo
             </span>
           </div>
           {proposal.description && (
-            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{proposal.description}</p>
+            <MarkdownBody content={proposal.description} className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]" />
           )}
           {proposal.steps.length > 0 && (
-            <ol className="mt-3 list-decimal space-y-1 pl-4 text-sm text-[var(--text-secondary)]">
-              {proposal.steps.slice(0, 5).map((step, index) => (
-                <li key={`${proposal.id}-step-${index}`}>{step}</li>
-              ))}
-            </ol>
+            <div className="mt-3">
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                Proposal Tasks
+              </div>
+              <ol className="list-decimal space-y-1 pl-4 text-sm text-[var(--text-secondary)]">
+                {proposal.steps.map((step, index) => (
+                  <li key={`${proposal.id}-step-${index}`}>
+                    <MarkdownBody compact content={step} />
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {proposal.acceptanceCriteria.length > 0 && (
+            <div className="mt-3">
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                Acceptance
+              </div>
+              <ul className="list-disc space-y-1 pl-4 text-sm text-[var(--text-secondary)]">
+                {proposal.acceptanceCriteria.map((criterion, index) => (
+                  <li key={`${proposal.id}-criterion-${index}`}>
+                    <MarkdownBody compact content={criterion} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {proposal.createdTaskId && (
+            <div className="mt-3 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2">
+              <div className="text-xs font-medium text-[var(--text-muted)]">Kanban task</div>
+              <div className="mt-1 font-mono text-[11px] text-[var(--text-secondary)]">
+                {proposal.createdTaskId}
+              </div>
+            </div>
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function TaskArtifactSurface({
+  projectId,
+  sessionId,
+  mode,
+}: {
+  projectId: string | null;
+  sessionId: string;
+  mode: AgentTaskArtifactMode;
+}) {
+  if (!projectId) {
+    return <EmptyArtifactState title="No project selected" />;
+  }
+
+  if (mode === "kanban") {
+    return (
+      <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
+        <TaskBoard projectId={projectId} ideationSessionId={sessionId} />
+      </div>
+    );
+  }
+
+  return <TaskGraphSummary projectId={projectId} sessionId={sessionId} />;
+}
+
+function TaskGraphSummary({
+  projectId,
+  sessionId,
+}: {
+  projectId: string;
+  sessionId: string;
+}) {
+  const graphQuery = useTaskGraph(projectId, false, null, sessionId);
+
+  if (graphQuery.isLoading) {
+    return <EmptyArtifactState title="Loading graph..." />;
+  }
+  if (graphQuery.error) {
+    return <EmptyArtifactState title="Failed to load graph" detail={graphQuery.error.message} />;
+  }
+
+  const graph = graphQuery.data;
+  if (!graph || graph.nodes.length === 0) {
+    return (
+      <EmptyArtifactState
+        title="No graph tasks yet"
+        detail="Apply proposals to Kanban to populate the graph for this plan."
+      />
+    );
+  }
+
+  const nodeTitleById = new Map(graph.nodes.map((node) => [node.taskId, node.title]));
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <MetricCard label="Tasks" value={graph.nodes.length} />
+        <MetricCard label="Edges" value={graph.edges.length} />
+        <MetricCard label="Critical" value={graph.criticalPath.length} />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Task Graph</h3>
+        {graph.nodes.map((node) => (
+          <div key={node.taskId} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 text-sm font-medium text-[var(--text-primary)]">
+                {node.title}
+              </div>
+              <span className="shrink-0 rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+                {node.internalStatus}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-[var(--text-muted)]">
+              <span>Tier {node.tier}</span>
+              <span>{node.inDegree} in</span>
+              <span>{node.outDegree} out</span>
+              <span className="font-mono">{node.taskId}</span>
+            </div>
+            {node.description && (
+              <MarkdownBody compact content={node.description} className="mt-2 text-xs text-[var(--text-secondary)]" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {graph.edges.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Dependencies</h3>
+          {graph.edges.map((edge) => (
+            <div key={`${edge.source}-${edge.target}`} className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-base)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <span>{nodeTitleById.get(edge.source) ?? edge.source}</span>
+              <span className="mx-2 text-[var(--text-muted)]">→</span>
+              <span>{nodeTitleById.get(edge.target) ?? edge.target}</span>
+              {edge.isCriticalPath && (
+                <span className="ml-2 rounded-full bg-[var(--status-warning-muted)] px-1.5 py-0.5 text-[10px] text-[var(--status-warning)]">
+                  critical
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{value}</div>
     </div>
   );
 }
@@ -539,7 +734,11 @@ function resolveAttachedIdeationSessionId(
 
 function extractAttachedSessionId(toolCall: ToolCall): string | null {
   const name = toolCall.name.toLowerCase();
-  if (!name.includes("start_ideation_session") && !name.includes("create_child_session")) {
+  if (
+    !name.includes("start_ideation_session") &&
+    !name.includes("v1_start_ideation") &&
+    !name.includes("create_child_session")
+  ) {
     return null;
   }
   return extractSessionIdFromValue(toolCall.result);

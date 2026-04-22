@@ -78,6 +78,8 @@ import { BattleModeV2Overlay } from "./battle-v2/BattleModeV2Overlay";
 
 export interface TaskGraphViewProps {
   projectId: string;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
   /** Opens the global plan quick switcher with source attribution */
@@ -264,6 +266,8 @@ const edgeTypes: EdgeTypes = {
 
 interface TaskGraphViewInnerProps {
   projectId: string;
+  /** Optional ideation session ID to filter tasks by plan */
+  ideationSessionId?: string | null;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
   /** Opens the global plan quick switcher with source attribution */
@@ -272,6 +276,7 @@ interface TaskGraphViewInnerProps {
 
 function TaskGraphViewInner({
   projectId,
+  ideationSessionId,
   footer,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewInnerProps) {
@@ -288,7 +293,13 @@ function TaskGraphViewInner({
     usePlanStore.getState().loadActivePlan(projectId);
   }, [projectId]);
 
-  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activeExecutionPlanId);
+  const effectiveExecutionPlanId = ideationSessionId ? null : activeExecutionPlanId;
+  const { data: graphData, isLoading, error } = useTaskGraph(
+    projectId,
+    filters.showArchived,
+    effectiveExecutionPlanId,
+    ideationSessionId ?? null,
+  );
   const {
     fitNodeInView,
     fitNode,
@@ -1718,6 +1729,7 @@ function TaskGraphViewInner({
 
 export function TaskGraphView({
   projectId,
+  ideationSessionId,
   footer,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewProps) {
@@ -1725,6 +1737,7 @@ export function TaskGraphView({
     <ReactFlowProvider>
       <TaskGraphViewInner
         projectId={projectId}
+        ideationSessionId={ideationSessionId ?? null}
         footer={footer}
         {...(onOpenPlanQuickSwitcher
           ? { onOpenPlanQuickSwitcher }

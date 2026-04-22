@@ -348,4 +348,18 @@ describe("ChildSessionWidget", () => {
     expect(screen.getByText("Agent spawned")).toBeInTheDocument();
     expect(screen.getByText("Open Run")).toBeInTheDocument();
   });
+
+  it("renders external MCP v1 ideation start tool calls as ideation run cards", () => {
+    const toolCall = makeToolCall({
+      name: "mcp__ralphx__v1_start_ideation",
+      arguments: {},
+      result: mcpWrap({ sessionId: "uuid-project", agentSpawned: true }),
+    });
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+    expect(screen.getByText("Ideation Session")).toBeInTheDocument();
+    expect(screen.getByText("Ideation run")).toBeInTheDocument();
+    expect(screen.getByText("ideation")).toBeInTheDocument();
+    expect(screen.getByText("Agent spawned")).toBeInTheDocument();
+    expect(screen.getByText("Open Run")).toBeInTheDocument();
+  });
 });

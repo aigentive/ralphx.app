@@ -157,9 +157,10 @@ export const mockTaskGraphApi = {
   getDependencyGraph: async (
     projectId: string,
     _includeArchived: boolean = false,
-    executionPlanId?: string | null
+    executionPlanId?: string | null,
+    sessionId?: string | null
   ): Promise<TaskDependencyGraphResponseRaw> =>
-    buildGraphResponse(projectId, undefined, executionPlanId),
+    buildGraphResponse(projectId, sessionId ?? undefined, executionPlanId),
 
   getTimelineEvents: async (
     _projectId: string,

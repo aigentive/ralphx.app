@@ -86,7 +86,28 @@ describe("useTaskGraph", () => {
       expect(mockGetDependencyGraph).toHaveBeenCalledWith(
         "project-1",
         false,
-        "exec-plan-xyz"
+        "exec-plan-xyz",
+        null
+      );
+    });
+
+    it("should be enabled for a session-scoped graph while executionPlanId is unresolved", async () => {
+      mockGetDependencyGraph.mockResolvedValue(mockGraphResponse);
+      usePlanStore.setState({
+        activePlanByProject: { "project-1": "session-abc" },
+      });
+
+      const { result } = renderHook(
+        () => useTaskGraph("project-1", false, null, "session-abc"),
+        { wrapper }
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGetDependencyGraph).toHaveBeenCalledWith(
+        "project-1",
+        false,
+        null,
+        "session-abc"
       );
     });
 
@@ -119,7 +140,8 @@ describe("useTaskGraph", () => {
       expect(mockGetDependencyGraph).toHaveBeenCalledWith(
         "project-1",
         false,
-        "exec-plan-xyz"
+        "exec-plan-xyz",
+        null
       );
     });
   });
