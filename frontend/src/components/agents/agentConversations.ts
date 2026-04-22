@@ -44,9 +44,7 @@ export function sortAgentConversations(
   conversations: AgentConversation[]
 ): AgentConversation[] {
   return [...conversations].sort((a, b) => {
-    const aTime = a.lastMessageAt ?? a.updatedAt ?? a.createdAt;
-    const bTime = b.lastMessageAt ?? b.updatedAt ?? b.createdAt;
-    return new Date(bTime).getTime() - new Date(aTime).getTime();
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 }
 

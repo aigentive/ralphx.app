@@ -33,10 +33,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildStoreKey } from "@/lib/chat-context-registry";
+import { formatDateTime } from "@/lib/formatters";
 import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
-import type { AgentConversation } from "./agentConversations";
+import { sortAgentConversations, type AgentConversation } from "./agentConversations";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
 
 interface AgentsSidebarProps {
@@ -175,16 +176,6 @@ export function AgentsSidebar({
           <Plus className="w-4 h-4" />
           <span className="text-xs font-medium">New agent</span>
         </Button>
-        <label className="mt-2 px-2 h-7 flex items-center justify-between gap-2">
-          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Archived
-          </span>
-          <Switch
-            checked={showArchived}
-            onCheckedChange={onShowArchivedChange}
-            aria-label="Show archived sessions"
-          />
-        </label>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
@@ -222,6 +213,22 @@ export function AgentsSidebar({
             />
           ))
         )}
+      </div>
+
+      <div
+        className="p-3 border-t shrink-0"
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
+        <label className="h-8 flex items-center justify-between gap-3">
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Archived
+          </span>
+          <Switch
+            checked={showArchived}
+            onCheckedChange={onShowArchivedChange}
+            aria-label="Show archived sessions"
+          />
+        </label>
       </div>
     </aside>
   );
@@ -262,11 +269,10 @@ function ProjectSessionGroup({
   const activeConversationIds = useChatStore((s) => s.activeConversationIds);
   const agentStatuses = useChatStore((s) => s.agentStatus);
 
-  const sortedConversations = [...(conversations.data ?? [])].sort((a, b) => {
-    const aTime = a.lastMessageAt ?? a.createdAt;
-    const bTime = b.lastMessageAt ?? b.createdAt;
-    return new Date(bTime).getTime() - new Date(aTime).getTime();
-  });
+  const sortedConversations = useMemo(
+    () => sortAgentConversations(conversations.data ?? []),
+    [conversations.data]
+  );
   const projectMatchesSearch = project.name.toLowerCase().includes(searchQuery);
   const visibleConversations = useMemo(() => {
     if (!searchQuery || projectMatchesSearch) {
@@ -274,8 +280,9 @@ function ProjectSessionGroup({
     }
     return sortedConversations.filter((conversation) => {
       const title = conversation.title || "Untitled agent";
-      const provider = conversation.providerHarness ?? (conversation.contextType === "ideation" ? "ideation" : "agent");
-      return `${title} ${provider}`.toLowerCase().includes(searchQuery);
+      return `${title} ${formatDateTime(conversation.createdAt)}`
+        .toLowerCase()
+        .includes(searchQuery);
     });
   }, [projectMatchesSearch, searchQuery, sortedConversations]);
   const activeRuntimeCount = sortedConversations.filter((conversation) => {
@@ -397,11 +404,10 @@ function ProjectSessionGroup({
             const isSelected = selectedConversationId === conversation.id;
             const isActiveRuntime = activeConversationId === conversation.id;
             const title = conversation.title || "Untitled agent";
-            const provider = conversation.providerHarness ?? (conversation.contextType === "ideation" ? "ideation" : "agent");
-            const statusLabel =
-              conversation.archivedAt
-                ? "archived"
-                : isActiveRuntime && agentStatus !== "idle" ? agentStatus.replace(/_/g, " ") : provider;
+            const createdLabel = formatDateTime(conversation.createdAt);
+            const statusLabel = conversation.archivedAt
+              ? `Archived - ${createdLabel}`
+              : createdLabel;
 
             return (
               <div
