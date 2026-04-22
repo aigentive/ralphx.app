@@ -208,9 +208,11 @@ a:not([class*="no-underline"]):hover {
   scroll-behavior: auto !important;
 }
 
-/* Font scale — data-font-scale cascades via rem */
-[data-font-scale="lg"] { font-size: 110%; }
-[data-font-scale="xl"] { font-size: 125%; }
+/* Font scale — explicit px values derived from the 18px app baseline so
+   percentages don't resolve from the browser 16px default instead of 18px.
+   lg = 18px × 1.10 = 19.8px, xl = 18px × 1.25 = 22.5px. */
+html[data-font-scale="lg"] { font-size: 19.8px; }
+html[data-font-scale="xl"] { font-size: 22.5px; }
 
 /* Scrollbar (WebKit) — macOS Tahoe style */
 ::-webkit-scrollbar {

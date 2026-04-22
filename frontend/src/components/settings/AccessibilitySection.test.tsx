@@ -90,4 +90,81 @@ describe("AccessibilitySection", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     expect(localStorage.getItem("ralphx-theme")).toBe("dark");
   });
+
+  describe("font scale selector", () => {
+    it("selecting Large persists to Zustand, localStorage, and data-font-scale", async () => {
+      render(<AccessibilitySection />);
+
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Large/ }));
+
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("lg");
+      });
+
+      expect(localStorage.getItem("ralphx-font-scale")).toBe("lg");
+      expect(document.documentElement).toHaveAttribute("data-font-scale", "lg");
+    });
+
+    it("selecting Extra large persists to Zustand, localStorage, and data-font-scale", async () => {
+      render(<AccessibilitySection />);
+
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Extra large/ }));
+
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("xl");
+      });
+
+      expect(localStorage.getItem("ralphx-font-scale")).toBe("xl");
+      expect(document.documentElement).toHaveAttribute("data-font-scale", "xl");
+    });
+
+    it("Default (100%) removes localStorage key and data-font-scale attribute", async () => {
+      // Pre-set to lg so we can verify the removal on return to default.
+      useThemeStore.getState().setFontScale("lg");
+      render(<AccessibilitySection />);
+
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Default/ }));
+
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("default");
+      });
+
+      expect(localStorage.getItem("ralphx-font-scale")).toBeNull();
+      expect(document.documentElement).not.toHaveAttribute("data-font-scale");
+    });
+
+    it("full round-trip default → Large → Extra large → Default", async () => {
+      render(<AccessibilitySection />);
+
+      // → Large
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Large/ }));
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("lg");
+      });
+      expect(localStorage.getItem("ralphx-font-scale")).toBe("lg");
+      expect(document.documentElement).toHaveAttribute("data-font-scale", "lg");
+
+      // → Extra large
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Extra large/ }));
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("xl");
+      });
+      expect(localStorage.getItem("ralphx-font-scale")).toBe("xl");
+      expect(document.documentElement).toHaveAttribute("data-font-scale", "xl");
+
+      // → Default (removes storage + attribute)
+      openSelect("font-scale");
+      fireEvent.click(screen.getByRole("option", { name: /Default/ }));
+      await waitFor(() => {
+        expect(useThemeStore.getState().fontScale).toBe("default");
+      });
+      expect(localStorage.getItem("ralphx-font-scale")).toBeNull();
+      expect(document.documentElement).not.toHaveAttribute("data-font-scale");
+    });
+  });
 });

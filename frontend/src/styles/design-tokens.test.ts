@@ -135,6 +135,118 @@ describe("design-tokens", () => {
     });
   });
 
+  describe("font scale (root font-size monotonic guard)", () => {
+    // APP_BASE_PX is the intentional 18px baseline set on `html` in globals.css.
+    // lg = 110% of base = 19.8px, xl = 125% of base = 22.5px.
+    // The bug: percentage values resolve from the browser 16px default (not app
+    // 18px base), making 110% = 17.6px (smaller than 18px).
+    const APP_BASE_PX = 18;
+    const EXPECTED_LG_PX = APP_BASE_PX * 1.1; // 19.8
+    const EXPECTED_XL_PX = APP_BASE_PX * 1.25; // 22.5
+
+    function extractRootFontSize(css: string): number {
+      // Match `html { ... font-size: <value> ... }` (single-line block only)
+      const m = css.match(/\bhtml\s*\{[^}]*font-size:\s*([^;}\n]+)/);
+      if (!m) throw new Error("No html { font-size } rule found in globals.css");
+      const val = m[1].trim();
+      if (!val.endsWith("px")) throw new Error(`html font-size is not px: ${val}`);
+      return parseFloat(val);
+    }
+
+    function extractScaleFontSize(css: string, scale: "lg" | "xl"): { raw: string; px: number | null } {
+      // Match `html[data-font-scale="<scale>"] { font-size: <value> }`
+      const re = new RegExp(
+        `html\\[data-font-scale="${scale}"\\]\\s*\\{[^}]*font-size:\\s*([^;\\}\\n]+)`,
+      );
+      const m = css.match(re);
+      if (!m) return { raw: "", px: null };
+      const raw = m[1].trim();
+      const px = raw.endsWith("px") ? parseFloat(raw) : null;
+      return { raw, px };
+    }
+
+    it("html base font-size is the 18px app baseline", () => {
+      // Read only globals.css for the root rules
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const base = extractRootFontSize(globalsCss);
+      expect(base).toBe(APP_BASE_PX);
+    });
+
+    it("lg and xl scale selectors target html[data-font-scale], not bare [data-font-scale]", () => {
+      // Bare `[data-font-scale="lg"]` selectors set percentage font-size on
+      // <html>, which resolves from the browser 16px default instead of the
+      // app 18px base. The fix is `html[data-font-scale="lg"]`.
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      // Must NOT contain bare attribute selector for lg/xl font-size
+      expect(globalsCss).not.toMatch(
+        /(?<![a-z])\[data-font-scale="lg"\]\s*\{[^}]*font-size:/,
+      );
+      expect(globalsCss).not.toMatch(
+        /(?<![a-z])\[data-font-scale="xl"\]\s*\{[^}]*font-size:/,
+      );
+    });
+
+    it("lg root font-size is explicit px value (not a percentage)", () => {
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const { raw, px } = extractScaleFontSize(globalsCss, "lg");
+      expect(raw, "lg font-size must use explicit px, not a percentage").not.toMatch(/%/);
+      expect(px, "lg font-size must be a valid px number").not.toBeNull();
+    });
+
+    it("xl root font-size is explicit px value (not a percentage)", () => {
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const { raw, px } = extractScaleFontSize(globalsCss, "xl");
+      expect(raw, "xl font-size must use explicit px, not a percentage").not.toMatch(/%/);
+      expect(px, "xl font-size must be a valid px number").not.toBeNull();
+    });
+
+    it("font scale is monotonic: default (18px) < lg < xl", () => {
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const base = extractRootFontSize(globalsCss);
+      const lg = extractScaleFontSize(globalsCss, "lg");
+      const xl = extractScaleFontSize(globalsCss, "xl");
+
+      expect(lg.px).not.toBeNull();
+      expect(xl.px).not.toBeNull();
+
+      expect(lg.px!).toBeGreaterThan(base);
+      expect(xl.px!).toBeGreaterThan(lg.px!);
+    });
+
+    it("lg font-size resolves to ~19.8px (110% of 18px app baseline)", () => {
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const { px } = extractScaleFontSize(globalsCss, "lg");
+      expect(px).toBeCloseTo(EXPECTED_LG_PX, 1);
+    });
+
+    it("xl font-size resolves to ~22.5px (125% of 18px app baseline)", () => {
+      const globalsCss = fs.readFileSync(
+        path.resolve(__dirname, "./globals.css"),
+        "utf-8",
+      );
+      const { px } = extractScaleFontSize(globalsCss, "xl");
+      expect(px).toBeCloseTo(EXPECTED_XL_PX, 1);
+    });
+  });
+
   describe("anti-AI-slop guardrails", () => {
     it("should NOT use purple gradients", () => {
       // Check no purple hex codes in accents
