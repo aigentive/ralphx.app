@@ -59,6 +59,46 @@ function AgentStatusBadge({
   return null;
 }
 
+function getVerificationBadge(status: string | null | undefined): {
+  label: string;
+  variant: BadgeVariant;
+} | null {
+  switch (status) {
+    case "reviewing":
+      return { label: "Verifying", variant: "blue" };
+    case "verified":
+      return { label: "Verified", variant: "success" };
+    case "needs_revision":
+      return { label: "Needs revision", variant: "warning" };
+    case "skipped":
+      return { label: "Skipped", variant: "muted" };
+    case "imported_verified":
+      return { label: "Imported verified", variant: "success" };
+    default:
+      return null;
+  }
+}
+
+function getVerificationSummary(
+  verification: {
+    status: string;
+    current_round: number | null;
+    gap_score: number | null;
+  } | null | undefined
+): string | null {
+  const badge = getVerificationBadge(verification?.status);
+  if (!verification || !badge) {
+    return null;
+  }
+  const details = [
+    verification.current_round ? `round ${verification.current_round}` : null,
+    typeof verification.gap_score === "number" ? `gap score ${verification.gap_score}` : null,
+  ].filter(Boolean);
+  return details.length > 0
+    ? `Verification: ${badge.label.toLowerCase()} (${details.join(", ")})`
+    : `Verification: ${badge.label.toLowerCase()}`;
+}
+
 function LoadingSkeleton() {
   const lineStyle: React.CSSProperties = {
     height: 12,
@@ -203,10 +243,15 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   }
 
   const purposeVariant: BadgeVariant = purpose === "verification" ? "blue" : "muted";
+  const displayTitle = data?.title || title;
+  const verificationBadge = getVerificationBadge(data?.verification?.status);
+  const verificationSummary = getVerificationSummary(data?.verification);
   const agentStatus = data?.agent_state.estimated_status ?? "idle";
   const isPendingCapacity = !!(data?.pending_initial_prompt);
   const latestMessage = data?.recent_messages[data.recent_messages.length - 1];
-  const snippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
+  const latestMessageSnippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
+  const snippet = verificationSummary ?? latestMessageSnippet;
+  const verificationIsActive = data?.verification?.status === "reviewing";
   const visualState =
     isLoading
       ? "loading"
@@ -214,6 +259,8 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
         ? "error"
         : isPendingCapacity
           ? "pending"
+          : verificationIsActive
+            ? "active"
           : agentStatus === "idle"
             ? "idle"
             : "active";
@@ -237,7 +284,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             badge={
               <>
                 {purpose && <Badge variant={purposeVariant} compact>{purpose}</Badge>}
-                {orchestrationTriggered === true && (
+                {verificationBadge && (
+                  <Badge variant={verificationBadge.variant} compact>{verificationBadge.label}</Badge>
+                )}
+                {orchestrationTriggered === true && !verificationBadge && (
                   <Badge variant="success" compact>Agent spawned</Badge>
                 )}
                 {isPendingCapacity && agentStatus === "idle" && (
@@ -278,7 +328,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             marginBottom: 4,
           }}
         >
-          {title}
+          {displayTitle}
         </span>
 
         {/* Collapsed body: snippet (single line — stable height) */}

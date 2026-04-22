@@ -235,11 +235,22 @@ export interface ChildSessionAgentState {
   estimated_status: "idle" | "likely_generating" | "likely_waiting";
 }
 
+export interface ChildSessionVerificationInfo {
+  status: string;
+  generation: number;
+  current_round: number | null;
+  gap_score: number | null;
+}
+
 export interface ChildSessionStatusResponse {
   session_id: string;
   title: string | null;
+  session_status?: string | null;
+  session_purpose?: string | null;
+  parent_session_id?: string | null;
   agent_state: ChildSessionAgentState;
   recent_messages: ChildSessionMessage[];
+  verification?: ChildSessionVerificationInfo | null;
   pending_initial_prompt?: string | null;
   lastEffectiveModel: string | null;
 }
@@ -267,22 +278,35 @@ export async function getChildSessionStatus(
     throw new Error(`Failed to get child session status: ${res.status}`);
   }
   const raw = (await res.json()) as {
-    session_id: string;
-    title: string | null;
+    session_id?: string;
+    title?: string | null;
+    session?: {
+      id?: string;
+      title?: string | null;
+      status?: string | null;
+      session_purpose?: string | null;
+      parent_session_id?: string | null;
+      last_effective_model?: string | null;
+    };
     agent_state: ChildSessionAgentState;
-    recent_messages: ChildSessionMessage[];
+    recent_messages?: ChildSessionMessage[] | null;
+    verification?: ChildSessionVerificationInfo | null;
     pending_initial_prompt?: string | null;
     last_effective_model?: string | null;
   };
   return {
-    session_id: raw.session_id,
-    title: raw.title,
+    session_id: raw.session_id ?? raw.session?.id ?? sessionId,
+    title: raw.title ?? raw.session?.title ?? null,
+    session_status: raw.session?.status ?? null,
+    session_purpose: raw.session?.session_purpose ?? null,
+    parent_session_id: raw.session?.parent_session_id ?? null,
     agent_state: raw.agent_state,
-    recent_messages: raw.recent_messages,
+    recent_messages: raw.recent_messages ?? [],
+    verification: raw.verification ?? null,
     ...(raw.pending_initial_prompt !== undefined && {
       pending_initial_prompt: raw.pending_initial_prompt,
     }),
-    lastEffectiveModel: raw.last_effective_model ?? null,
+    lastEffectiveModel: raw.last_effective_model ?? raw.session?.last_effective_model ?? null,
   };
 }
 

@@ -242,6 +242,12 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
       queryKey: ["childSessions", "parent-session-456", "verification"],
     });
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["child-session-status", "parent-session-456"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["child-session-status", "child-session-123"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["verification", "parent-session-456"],
     });
   });

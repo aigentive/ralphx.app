@@ -35,8 +35,12 @@ function makeStatusResponse(
   return {
     session_id: "uuid-123",
     title: "Test Session",
+    session_status: "active",
+    session_purpose: "general",
+    parent_session_id: null,
     agent_state: { estimated_status: estimatedStatus },
     recent_messages: messages,
+    verification: null,
     lastEffectiveModel: null,
   };
 }
@@ -361,5 +365,36 @@ describe("ChildSessionWidget", () => {
     expect(screen.getByText("ideation")).toBeInTheDocument();
     expect(screen.getByText("Agent spawned")).toBeInTheDocument();
     expect(screen.getByText("Open Run")).toBeInTheDocument();
+  });
+
+  it("shows verification status from the attached ideation run instead of stale spawned-only state", () => {
+    mockedUseChildSessionStatus.mockReturnValue({
+      data: {
+        ...makeStatusResponse("idle", [
+          { role: "assistant", content: "Plan verification finished.", created_at: null },
+        ]),
+        verification: {
+          status: "verified",
+          generation: 2,
+          current_round: 1,
+          gap_score: 0,
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useChildSessionStatus>);
+
+    const toolCall = makeToolCall({
+      name: "mcp__ralphx__v1_start_ideation",
+      arguments: {},
+      result: mcpWrap({ sessionId: "uuid-project", agentSpawned: true }),
+    });
+
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Verification: verified (round 1, gap score 0)")).toBeInTheDocument();
+    expect(screen.queryByText("Agent spawned")).not.toBeInTheDocument();
   });
 });

@@ -331,6 +331,7 @@ async function updateVerificationQueryCache({
 
   // Invalidate child sessions so history picker and VerificationPanel stay fresh.
   queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId, "verification"] });
+  queryClient.invalidateQueries({ queryKey: ["child-session-status", sessionId] });
 
   // Always invalidate session queries (different data source, no race risk)
   queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });

@@ -35,6 +35,12 @@ harnesses:
       - v1_get_ideation_status
       - v1_get_ideation_messages
       - v1_list_ideation_sessions
+      - v1_get_plan
+      - v1_get_plan_verification
+      - v1_trigger_plan_verification
+      - v1_list_proposals
+      - v1_get_proposal_detail
+      - v1_get_session_tasks
     runtime_features:
       shell_tool: false
 delegation:

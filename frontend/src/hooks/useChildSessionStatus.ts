@@ -10,6 +10,7 @@ export type { ChildSessionStatusResponse };
  *
  * Polling strategy:
  * - 5s interval when estimated_status !== "idle"
+ * - 5s interval while the session's verification snapshot is reviewing
  * - Disabled when idle (or when sessionId is null/undefined)
  *
  * History mode guard:
@@ -52,6 +53,7 @@ export function useChildSessionStatus(
       // Keep polling when agent is active OR when a pending prompt is waiting to be drained
       if (data.agent_state.estimated_status !== "idle") return 5_000;
       if (data.pending_initial_prompt) return 5_000;
+      if (data.verification?.status === "reviewing") return 5_000;
       return false;
     },
   });

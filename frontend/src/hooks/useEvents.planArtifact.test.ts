@@ -209,9 +209,19 @@ describe("usePlanArtifactEvents", () => {
         });
       });
 
-      // Tier 1 returned early — only one setPlanArtifact and one invalidateQueries call
+      // Tier 1 returned early — one store update, plus the session and artifact
+      // cache invalidations owned by that tier only.
       expect(mockSetPlanArtifact).toHaveBeenCalledTimes(1);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["ideation", "session", "session-1", "with-data"],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["agents", "artifact", "artifact-2"],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["agents", "artifact", "artifact-1"],
+      });
     });
 
     it("updated event increments planUpdateSeq when linking the session to the new version", () => {
@@ -391,7 +401,7 @@ describe("usePlanArtifactEvents", () => {
       });
 
       expect(mockSetPlanArtifact).toHaveBeenCalledTimes(1);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
     });
 
     it("same created event emitted twice → only processed once", () => {
