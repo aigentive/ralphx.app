@@ -61,6 +61,15 @@ export interface ChatMessageResponse {
   createdAt: string;
 }
 
+export interface AppendAgentBridgeMessageInput {
+  conversationId: string;
+  sourceSessionId: string;
+  eventType: string;
+  eventKey: string;
+  content: string;
+  metadata?: unknown;
+}
+
 // ============================================================================
 // Parsing Utilities
 // ============================================================================
@@ -757,6 +766,17 @@ export async function restoreConversation(
   return transformConversation(raw);
 }
 
+export async function appendAgentBridgeMessage(
+  input: AppendAgentBridgeMessageInput
+): Promise<ChatMessageResponse | null> {
+  const raw = await typedInvoke(
+    "append_agent_bridge_message",
+    { input },
+    AgentMessageSchema.nullable()
+  );
+  return raw ? transformAgentMessage(raw) : null;
+}
+
 /**
  * Get the current agent run status for a conversation
  * @param conversationId The conversation ID
@@ -812,6 +832,7 @@ export const chatApi = {
   updateConversationTitle,
   archiveConversation,
   restoreConversation,
+  appendAgentBridgeMessage,
   getAgentRunStatus,
   // Message sending & queue
   sendAgentMessage,

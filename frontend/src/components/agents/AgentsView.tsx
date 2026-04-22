@@ -57,6 +57,7 @@ import {
   useProjectAgentConversations,
 } from "./useProjectAgentConversations";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
+import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 
 const HEADER_ARTIFACT_TABS: Array<{
   id: AgentArtifactTab;
@@ -128,6 +129,11 @@ export function AgentsView({
     queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
     enabled: !!attachedIdeationSessionId && activeConversation?.contextType === "project",
     staleTime: 5_000,
+  });
+  useProjectAgentBridgeEvents({
+    conversation: activeConversation,
+    attachedIdeationSessionId,
+    projectId: activeProjectId,
   });
 
   const activeRuntime = selectedConversationId
