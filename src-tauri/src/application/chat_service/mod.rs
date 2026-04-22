@@ -38,8 +38,8 @@ use crate::application::harness_runtime_registry::{
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
-    AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    IdeationSessionId, InternalStatus, ProjectId, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
+    ChatMessageId, IdeationSessionId, InternalStatus, ProjectId, TaskId,
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
@@ -52,8 +52,8 @@ use crate::domain::repositories::{
     TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{
-    is_process_alive, MessageQueue, QueuedMessage, RunningAgentInfo, RunningAgentKey,
-    RunningAgentRegistry,
+    is_process_alive, kill_process, MessageQueue, QueuedMessage, RunningAgentInfo,
+    RunningAgentKey, RunningAgentRegistry,
 };
 use async_trait::async_trait;
 use serde::Serialize;
@@ -154,6 +154,25 @@ fn registry_entry_blocks_send_but_is_stale(
     }
 
     !is_process_alive(info.pid)
+}
+
+fn registry_entry_blocks_send_because_run_inactive(
+    info: &RunningAgentInfo,
+    run_status: Option<AgentRunStatus>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    if info.agent_run_id.is_empty() {
+        return false;
+    }
+
+    match run_status {
+        Some(AgentRunStatus::Running) => false,
+        Some(_) => true,
+        None => {
+            let age = now.signed_duration_since(info.started_at);
+            age >= chrono::Duration::seconds(REGISTRY_PID_ZERO_GRACE_SECONDS)
+        }
+    }
 }
 
 fn resume_in_place_requested(metadata: Option<&str>) -> bool {
@@ -834,6 +853,94 @@ impl<R: Runtime> AppChatService<R> {
                 false
             }
         }
+    }
+
+    async fn cleanup_inactive_registry_block(
+        &self,
+        registry_key: &RunningAgentKey,
+        existing: &RunningAgentInfo,
+        context_type: ChatContextType,
+        context_id: &str,
+        source: &'static str,
+    ) -> bool {
+        let run = match self
+            .agent_run_repo
+            .get_by_id(&AgentRunId::from_string(&existing.agent_run_id))
+            .await
+        {
+            Ok(run) => run,
+            Err(error) => {
+                tracing::warn!(
+                    %context_type,
+                    context_id,
+                    existing_pid = existing.pid,
+                    existing_run_id = %existing.agent_run_id,
+                    error = %error,
+                    source,
+                    "Failed to load blocking agent run before chat send; keeping registry entry"
+                );
+                return false;
+            }
+        };
+        let run_status = run.as_ref().map(|run| run.status);
+
+        if !registry_entry_blocks_send_because_run_inactive(
+            existing,
+            run_status,
+            chrono::Utc::now(),
+        ) {
+            return false;
+        }
+
+        let reason = match run_status {
+            Some(status) => status.to_string(),
+            None => "run_missing".to_string(),
+        };
+
+        let Some(info) = self
+            .running_agent_registry
+            .unregister(registry_key, &existing.agent_run_id)
+            .await
+        else {
+            tracing::debug!(
+                %context_type,
+                context_id,
+                existing_pid = existing.pid,
+                existing_run_id = %existing.agent_run_id,
+                source,
+                reason = %reason,
+                "Inactive registry entry was already replaced before cleanup"
+            );
+            return false;
+        };
+
+        if is_process_alive(info.pid) {
+            if let Some(token) = info.cancellation_token.as_ref() {
+                token.cancel();
+            }
+            if info.pid == std::process::id() {
+                tracing::warn!(
+                    %context_type,
+                    context_id,
+                    pid = info.pid,
+                    source,
+                    "Refusing to kill current process while cleaning inactive registry entry"
+                );
+            } else {
+                kill_process(info.pid);
+            }
+        }
+
+        tracing::warn!(
+            %context_type,
+            context_id,
+            stale_pid = info.pid,
+            stale_run_id = %info.agent_run_id,
+            source,
+            reason = %reason,
+            "Cleaned inactive running-agent registry entry before chat send"
+        );
+        true
     }
 
     async fn count_active_ideation_slots(&self) -> Result<u32, ChatServiceError> {
@@ -1565,7 +1672,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .await;
 
         if let Err(existing) = registration_result.as_ref() {
-            if self
+            let cleaned_stale_entry = self
                 .cleanup_stale_registry_block(
                     &registry_key,
                     existing,
@@ -1573,8 +1680,21 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                     context_id,
                     "send_message_gate_2",
                 )
-                .await
-            {
+                .await;
+            let cleaned_inactive_entry = if cleaned_stale_entry {
+                false
+            } else {
+                self
+                    .cleanup_inactive_registry_block(
+                        &registry_key,
+                        existing,
+                        context_type,
+                        context_id,
+                        "send_message_gate_2",
+                    )
+                    .await
+            };
+            if cleaned_stale_entry || cleaned_inactive_entry {
                 registration_result = self
                     .running_agent_registry
                     .try_register(
@@ -2658,6 +2778,15 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 "is_agent_running",
             )
             .await
+            || self
+                .cleanup_inactive_registry_block(
+                    &key,
+                    &info,
+                    context_type,
+                    context_id,
+                    "is_agent_running",
+                )
+                .await
         {
             return false;
         }
@@ -2684,7 +2813,10 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
 
 #[cfg(test)]
 mod stale_registry_gate_tests {
-    use super::{registry_entry_blocks_send_but_is_stale, RunningAgentInfo};
+    use super::{
+        registry_entry_blocks_send_because_run_inactive,
+        registry_entry_blocks_send_but_is_stale, AgentRunStatus, RunningAgentInfo,
+    };
 
     fn registry_info(
         pid: u32,
@@ -2724,6 +2856,60 @@ mod stale_registry_gate_tests {
         let info = registry_info(std::process::id(), now - chrono::Duration::minutes(5));
 
         assert!(!registry_entry_blocks_send_but_is_stale(&info, now));
+    }
+
+    #[test]
+    fn running_agent_run_keeps_registry_entry_active() {
+        let now = chrono::Utc::now();
+        let info = registry_info(pid_zero(), now - chrono::Duration::minutes(5));
+
+        assert!(!registry_entry_blocks_send_because_run_inactive(
+            &info,
+            Some(AgentRunStatus::Running),
+            now,
+        ));
+    }
+
+    #[test]
+    fn terminal_agent_run_unblocks_registry_entry() {
+        let now = chrono::Utc::now();
+        let info = registry_info(std::process::id(), now - chrono::Duration::minutes(5));
+
+        assert!(registry_entry_blocks_send_because_run_inactive(
+            &info,
+            Some(AgentRunStatus::Completed),
+            now,
+        ));
+        assert!(registry_entry_blocks_send_because_run_inactive(
+            &info,
+            Some(AgentRunStatus::Failed),
+            now,
+        ));
+        assert!(registry_entry_blocks_send_because_run_inactive(
+            &info,
+            Some(AgentRunStatus::Cancelled),
+            now,
+        ));
+    }
+
+    #[test]
+    fn young_missing_agent_run_does_not_unblock_in_flight_registration() {
+        let now = chrono::Utc::now();
+        let info = registry_info(pid_zero(), now - chrono::Duration::seconds(5));
+
+        assert!(!registry_entry_blocks_send_because_run_inactive(
+            &info, None, now
+        ));
+    }
+
+    #[test]
+    fn old_missing_agent_run_unblocks_registry_entry() {
+        let now = chrono::Utc::now();
+        let info = registry_info(pid_zero(), now - chrono::Duration::seconds(31));
+
+        assert!(registry_entry_blocks_send_because_run_inactive(
+            &info, None, now
+        ));
     }
 
     fn pid_zero() -> u32 {
