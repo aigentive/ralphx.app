@@ -4,6 +4,7 @@ import type { IdeationSessionResponse } from "@/api/ideation";
 import type { ChatConversation } from "@/types/chat-conversation";
 import {
   formatAgentConversationCreatedAt,
+  getAgentConversationStoreKey,
   sortAgentConversations,
   toIdeationAgentConversation,
   toProjectAgentConversation,
@@ -110,6 +111,29 @@ describe("agent conversations", () => {
       "newer",
       "older",
     ]);
+  });
+
+  it("scopes project-agent runtime state by conversation", () => {
+    const result = getAgentConversationStoreKey(
+      toProjectAgentConversation(conversation({ id: "conversation-42" }))
+    );
+
+    expect(result).toBe("project:conversation-42");
+  });
+
+  it("keeps ideation runtime state scoped by ideation session", () => {
+    const result = getAgentConversationStoreKey(
+      toIdeationAgentConversation(
+        session({ id: "session-42" }),
+        conversation({
+          id: "conversation-42",
+          contextType: "ideation",
+          contextId: "session-42",
+        })
+      )
+    );
+
+    expect(result).toBe("session:session-42");
   });
 
   it("formats sidebar timestamps as time then date", () => {

@@ -1,4 +1,5 @@
 import type { IdeationSessionResponse } from "@/api/ideation";
+import { buildAgentEventStoreKey } from "@/lib/agent-store-key";
 import type { ChatConversation } from "@/types/chat-conversation";
 
 export type AgentIdeationSession = Pick<
@@ -46,6 +47,16 @@ export function sortAgentConversations(
   return [...conversations].sort((a, b) => {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+}
+
+export function getAgentConversationStoreKey(
+  conversation: Pick<AgentConversation, "contextType" | "contextId" | "id">
+): string {
+  return buildAgentEventStoreKey(
+    conversation.contextType,
+    conversation.contextId,
+    conversation.id
+  );
 }
 
 export function formatAgentConversationCreatedAt(

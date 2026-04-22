@@ -118,7 +118,11 @@ interface IntegratedChatPanelProps {
   /** Back navigation action rendered in the toolbar (e.g. "Back to Plan") */
   toolbarBackAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
   /** Force a specific conversation ID for externally-owned session lists. */
-  conversationIdOverride?: string;
+  conversationIdOverride?: string | undefined;
+  /** Force a specific store key for externally-owned queue/running state. */
+  storeContextKeyOverride?: string | undefined;
+  /** Override the backend process/queue context id used for recovery, stop, and queued-message edits. */
+  agentProcessContextIdOverride?: string | undefined;
   /** Optional first-spawn provider/model overrides. */
   sendOptions?: {
     conversationId?: string | null;
@@ -146,6 +150,8 @@ export function IntegratedChatPanel({
   isVisible = true,
   toolbarBackAction,
   conversationIdOverride,
+  storeContextKeyOverride,
+  agentProcessContextIdOverride,
   sendOptions,
   onUserMessageSent,
 }: IntegratedChatPanelProps) {
@@ -241,9 +247,11 @@ export function IntegratedChatPanel({
     isHistoryMode,
     // Pass history mode overrides for conversation selection
     overrideConversationId: conversationIdOverride ?? taskHistoryState?.conversationId,
+    storeContextKeyOverride,
     overrideAgentRunId: taskHistoryState?.agentRunId,
     isVisible,
   });
+  const agentProcessContextId = agentProcessContextIdOverride ?? currentContextId;
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -554,7 +562,7 @@ export function IntegratedChatPanel({
     activeConversationId,
     storeContextKey,
     currentContextType,
-    currentContextId,
+    currentContextId: agentProcessContextId,
     isHistoryMode,
     isAgentContext,
     isAgentRunning,
@@ -654,10 +662,12 @@ export function IntegratedChatPanel({
   } = useChatActions({
     contextType: currentContextType,
     contextId: currentContextId,
+    queueContextId: agentProcessContextId,
     storeContextKey,
     selectedTaskId: selectedTaskId ?? undefined,
     ideationSessionId,
     sendMessage,
+    sendOptions,
     messageCount: messagesData.length,
     onUserMessageSent,
   });

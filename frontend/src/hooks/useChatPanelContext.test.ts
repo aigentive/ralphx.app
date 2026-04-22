@@ -177,6 +177,34 @@ describe("useChatPanelContext", () => {
       // isSending is per-panel UI state — should still be cleared
       expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
     });
+
+    it("uses an explicit store key for externally owned project conversations", async () => {
+      const { result } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: undefined,
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            overrideConversationId: "conversation-1",
+            storeContextKeyOverride: "project:conversation-1",
+          },
+        }
+      );
+
+      expect(result.current.storeContextKey).toBe("project:conversation-1");
+      await waitFor(() => {
+        expect(mockStore.setActiveConversation).toHaveBeenCalledWith(
+          "project:conversation-1",
+          "conversation-1"
+        );
+      });
+    });
   });
 
   describe("context switching", () => {

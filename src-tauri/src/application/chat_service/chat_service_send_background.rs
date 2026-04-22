@@ -75,6 +75,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     // Context identification
     pub context_type: ChatContextType,
     pub context_id: String,
+    pub runtime_context_id: String,
     pub conversation_id: ChatConversationId,
     pub agent_run_id: String,
     pub stored_session_id: Option<String>,
@@ -432,6 +433,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         run_chain_id = ctx.run_chain_id.as_deref().unwrap_or("none"),
         %ctx.context_type,
         context_id = %ctx.context_id,
+        runtime_context_id = %ctx.runtime_context_id,
         conversation_id = ctx.conversation_id.as_str(),
     );
 
@@ -441,6 +443,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             harness,
             context_type,
             context_id,
+            runtime_context_id,
             conversation_id,
             agent_run_id,
             stored_session_id,
@@ -507,7 +510,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             if matches!(context_type, ChatContextType::Merge | ChatContextType::Review) {
                 if let Some(ref registry) = interactive_process_registry {
                     let ipr_key =
-                        InteractiveProcessKey::new(context_type.to_string(), &context_id);
+                        InteractiveProcessKey::new(context_type.to_string(), &runtime_context_id);
                     registry.get_completion_signal(&ipr_key).await
                 } else {
                     None
@@ -534,7 +537,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         let resolved_project_id_typed = resolved_project_id.as_ref().map(|s| crate::domain::entities::ProjectId::from_string(s.clone()));
 
         // Create key for unregistering
-        let registry_key = RunningAgentKey::new(context_type.to_string(), &context_id);
+        let registry_key = RunningAgentKey::new(context_type.to_string(), &runtime_context_id);
 
         // Create empty assistant message BEFORE streaming starts (crash recovery)
         let pre_assistant_msg = chat_service_context::create_assistant_message(
@@ -609,7 +612,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         if let Some(ref ipr) = interactive_process_registry {
             let ipr_key = InteractiveProcessKey::new(
                 context_type.to_string(),
-                &context_id,
+                &runtime_context_id,
             );
 
             ipr.remove(&ipr_key).await;
@@ -617,6 +620,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 tracing::info!(
                     %context_type,
                     context_id = %context_id,
+                    runtime_context_id = %runtime_context_id,
                     "[IPR_REMOVE_TEAM] Removed IPR — team active but lead exited. \
                      Teammate nudges trigger re-spawn via standard IPR-miss path."
                 );
@@ -624,6 +628,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 tracing::info!(
                     %context_type,
                     context_id = %context_id,
+                    runtime_context_id = %runtime_context_id,
                     "[IPR_REMOVE] Removed interactive process stdin on stream exit"
                 );
             }
@@ -1019,15 +1024,18 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(300);
-                let stale_dropped =
-                    message_queue.remove_stale(context_type, &context_id, staleness_threshold_secs);
+                let stale_dropped = message_queue.remove_stale(
+                    context_type,
+                    &runtime_context_id,
+                    staleness_threshold_secs,
+                );
                 for msg in &stale_dropped {
                     tracing::warn!(
                         "[QUEUE] Dropped stale queued message (age > {}s) id={} for context {}:{}",
                         staleness_threshold_secs,
                         msg.id,
                         context_type,
-                        context_id,
+                        runtime_context_id,
                     );
                 }
 
@@ -1036,7 +1044,9 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Use the stream's session_id if available, otherwise fall back to stored session_id
                 let effective_session_id =
                     provider_session_id.clone().or(stored_session_id.clone());
-                let initial_queue_count = message_queue.get_queued(context_type, &context_id).len();
+                let initial_queue_count = message_queue
+                    .get_queued(context_type, &runtime_context_id)
+                    .len();
                 let has_session_for_queue = effective_session_id.is_some();
                 let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
 
@@ -1155,6 +1165,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         context_type,
                         harness,
                         &context_id,
+                        &runtime_context_id,
                         conversation_id,
                         sess_id,
                         &message_queue,
@@ -1238,7 +1249,9 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 } else {
                     // effective_session_id is None - no session ID from stream OR stored conversation
                     // run_completed was emitted via the no-queue path above (if not skipped)
-                    let queue_count = message_queue.get_queued(context_type, &context_id).len();
+                    let queue_count = message_queue
+                        .get_queued(context_type, &runtime_context_id)
+                        .len();
                     tracing::warn!(
                         context_type = %context_type,
                         context_id = %context_id,
@@ -1313,7 +1326,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
 
                 if !recovery_spawned {
                     let queued_resume_in_place = message_queue
-                        .get_queued(context_type, &context_id)
+                        .get_queued(context_type, &runtime_context_id)
                         .iter()
                         .any(|queued_msg| {
                             super::chat_service_queue::queued_message_resume_in_place(
@@ -1341,6 +1354,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                                 context_type,
                                 harness,
                                 &context_id,
+                                &runtime_context_id,
                                 conversation_id,
                                 session_id,
                                 &message_queue,

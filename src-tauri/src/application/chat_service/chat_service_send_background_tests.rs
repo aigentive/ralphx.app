@@ -105,6 +105,7 @@ async fn queue_processing_leaves_messages_pending_when_execution_paused() {
         ChatContextType::Ideation,
         crate::domain::agents::AgentHarnessKind::Claude,
         "session-paused",
+        "session-paused",
         conversation_id,
         "session-cli",
         &app_state.message_queue,

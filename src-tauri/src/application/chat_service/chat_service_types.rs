@@ -400,6 +400,8 @@ pub struct AgentMessageQueuedPayload {
     pub content: String,
     pub context_type: String,
     pub context_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     pub created_at: String,
 }
 

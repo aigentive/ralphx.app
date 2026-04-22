@@ -32,12 +32,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { buildStoreKey } from "@/lib/chat-context-registry";
 import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
 import {
   formatAgentConversationCreatedAt,
+  getAgentConversationStoreKey,
   sortAgentConversations,
   type AgentConversation,
 } from "./agentConversations";
@@ -289,7 +289,7 @@ function ProjectSessionGroup({
     });
   }, [projectMatchesSearch, searchQuery, sortedConversations]);
   const activeRuntimeCount = sortedConversations.filter((conversation) => {
-    const rowKey = buildStoreKey(conversation.contextType, conversation.contextId);
+    const rowKey = getAgentConversationStoreKey(conversation);
     return (
       activeConversationIds[rowKey] === conversation.id &&
       (agentStatuses[rowKey] ?? "idle") !== "idle"
@@ -401,7 +401,7 @@ function ProjectSessionGroup({
       {expanded && (
         <div className="mt-1 ml-4 space-y-0.5">
           {visibleConversations.map((conversation) => {
-            const rowKey = buildStoreKey(conversation.contextType, conversation.contextId);
+            const rowKey = getAgentConversationStoreKey(conversation);
             const activeConversationId = activeConversationIds[rowKey] ?? null;
             const agentStatus = agentStatuses[rowKey] ?? "idle";
             const isSelected = selectedConversationId === conversation.id;
