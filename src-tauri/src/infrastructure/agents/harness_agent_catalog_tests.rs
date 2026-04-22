@@ -596,6 +596,31 @@ fn codex_runtime_features_load_from_harness_metadata() {
 }
 
 #[test]
+fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
+    let root = project_root();
+    let metadata = load_canonical_codex_metadata(&root, "ralphx-chat-project");
+    let prompt = load_harness_agent_prompt(
+        &root,
+        "ralphx-chat-project",
+        AgentPromptHarness::Codex,
+    )
+    .expect("missing codex prompt for ralphx-chat-project");
+
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_send_ideation_message"),
+        "project chat must be able to advance external MCP next_action=send_message flows"
+    );
+    assert!(
+        prompt.contains("next_action` yourself")
+            && prompt.contains("v1_send_ideation_message"),
+        "project chat prompt must tell the agent to consume send_message actions itself"
+    );
+}
+
+#[test]
 fn codex_runtime_features_prefer_root_agent_metadata_over_legacy_harness_file() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let agent_dir = temp.path().join("agents/test-agent");
