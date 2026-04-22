@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
 import { useChatStore, selectToolCallStartTimes, selectLastToolCallCompletionTimestamp } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
-import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
+import { AGENT_MERGER, AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
 import type { AgentStatus } from "@/stores/chatStore";
 import { ModelChip } from "./ModelChip";
@@ -38,7 +38,12 @@ const POST_STREAM_THRESHOLD_MS = 3_000;
 // Types
 // ============================================================================
 
-export type AgentType = typeof AGENT_WORKER | typeof AGENT_REVIEWER | "agent" | "idle";
+export type AgentType =
+  | typeof AGENT_WORKER
+  | typeof AGENT_REVIEWER
+  | typeof AGENT_MERGER
+  | "agent"
+  | "idle";
 
 export interface StatusActivityBadgeProps {
   /** Whether an agent is currently active (running/sending) */
@@ -73,6 +78,8 @@ function getStatusText(agentType: AgentType): string {
       return "Worker running...";
     case AGENT_REVIEWER:
       return "Reviewing...";
+    case AGENT_MERGER:
+      return "Merger running...";
     case "agent":
       return "Agent responding...";
     default:

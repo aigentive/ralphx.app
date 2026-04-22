@@ -396,7 +396,7 @@ describe("useChatActions", () => {
       expect(mutateAsync).toHaveBeenCalledWith({ content: "do the work", attachmentIds: undefined });
     });
 
-    it("merge context routes through sendMessage.mutateAsync", async () => {
+    it("merge context routes directly through merge send API", async () => {
       const { result, mutateAsync } = setup({
         contextType: "merge",
         contextId: "task-99",
@@ -407,7 +407,14 @@ describe("useChatActions", () => {
         await result.current.handleSend("merge it");
       });
 
-      expect(mutateAsync).toHaveBeenCalledWith({ content: "merge it", attachmentIds: undefined });
+      expect(mockSendAgentMessage).toHaveBeenCalledWith(
+        "merge",
+        "task-99",
+        "merge it",
+        undefined,
+        undefined
+      );
+      expect(mutateAsync).not.toHaveBeenCalled();
     });
 
     it("error during task_execution send resets isAgentRunning with correct key", async () => {
@@ -428,13 +435,13 @@ describe("useChatActions", () => {
     });
 
     it("error during merge send resets isAgentRunning with merge key", async () => {
-      const { result, mutateAsync } = setup({
+      const { result } = setup({
         contextType: "merge",
         contextId: "task-merge-err",
         storeContextKey: "merge:task-merge-err",
       });
 
-      mutateAsync.mockRejectedValue(new Error("merge failed"));
+      mockSendAgentMessage.mockRejectedValue(new Error("merge failed"));
 
       await act(async () => {
         await result.current.handleSend("will fail");

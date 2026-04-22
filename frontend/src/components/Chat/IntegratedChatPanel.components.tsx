@@ -2,7 +2,7 @@
  * IntegratedChatPanel.components - Sub-components for IntegratedChatPanel
  */
 
-import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, History } from "lucide-react";
+import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, History, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { withAlpha } from "@/lib/theme-colors";
 import type { ChatContext } from "@/types/chat";
@@ -222,15 +222,24 @@ interface ContextIndicatorProps {
   context: ChatContext;
   isExecutionMode?: boolean;
   isReviewMode?: boolean;
+  isMergeMode?: boolean;
 }
 
-export function ContextIndicator({ context, isExecutionMode = false, isReviewMode = false }: ContextIndicatorProps) {
+export function ContextIndicator({
+  context,
+  isExecutionMode = false,
+  isReviewMode = false,
+  isMergeMode = false,
+}: ContextIndicatorProps) {
   const getContextInfo = () => {
     if (isExecutionMode) {
       return { icon: Hammer, label: "Worker" };
     }
     if (isReviewMode) {
       return { icon: Bot, label: "AI Review" };
+    }
+    if (isMergeMode) {
+      return { icon: GitMerge, label: "Merger" };
     }
 
     switch (context.view) {

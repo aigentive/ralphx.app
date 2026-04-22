@@ -640,6 +640,46 @@ describe("MergingTaskDetail", () => {
       expect(screen.getByTitle("main")).toBeInTheDocument();
     });
 
+    it("shows merger-agent copy for PR branch update conflicts instead of PR waiting copy", () => {
+      mockPlanBranchState.current = createTestPlanBranch({
+        prPollingActive: false,
+      });
+      const metadata = JSON.stringify({
+        plan_update_conflict: true,
+        pr_branch_update_conflict: true,
+        base_branch: "origin/main",
+        target_branch: "ralphx/ralphx/plan-a3612efd",
+        conflict_files: ["src/app.ts"],
+      });
+      const task = createTestTask({
+        internalStatus: "merging",
+        category: "plan_merge",
+        taskBranch: null,
+        metadata,
+      });
+
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByText("Updating PR Branch")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "A merger agent is updating PR #68 with the latest changes from origin/main so GitHub review can continue."
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("merge-progress-section")).toBeInTheDocument();
+      expect(screen.getByTestId("conflict-files-section")).toBeInTheDocument();
+      expect(screen.getByTestId("merging-actions-section")).toBeInTheDocument();
+      expect(screen.getByText("Stop Merge")).toBeInTheDocument();
+      expect(screen.queryByText("Waiting on Pull Request")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          "Review and merge PR #68 in GitHub. RalphX will finish this plan after GitHub reports it merged."
+        )
+      ).not.toBeInTheDocument();
+      expect(screen.getByTitle("origin/main")).toBeInTheDocument();
+      expect(screen.getByTitle("ralphx/ralphx/plan-a3612efd")).toBeInTheDocument();
+    });
+
     it("shows conflict files when present in metadata", () => {
       const metadata = JSON.stringify({
         conflict_files: ["src/main.ts", "src/lib/utils.ts"],
