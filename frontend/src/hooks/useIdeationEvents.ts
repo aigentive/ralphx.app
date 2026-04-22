@@ -284,6 +284,12 @@ export function useIdeationEvents() {
             queryKey: ["childSessions", parsed.data.parentSessionId, "verification"],
           });
           queryClient.invalidateQueries({
+            queryKey: ["child-session-status", parsed.data.parentSessionId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["child-session-status", parsed.data.sessionId],
+          });
+          queryClient.invalidateQueries({
             queryKey: ["verification", parsed.data.parentSessionId],
           });
           queryClient.invalidateQueries({
