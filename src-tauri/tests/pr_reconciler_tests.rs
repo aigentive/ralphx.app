@@ -16,11 +16,13 @@ use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionServ
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     plan_branch::PrPushStatus, ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSessionId,
-    InternalStatus, PlanBranch, Project, ProjectId, Task, TaskCategory, TaskId,
+    InternalStatus, PlanBranch, Project, ProjectId, ReviewOutcome, ReviewerType, Task,
+    TaskCategory, TaskId,
 };
 use ralphx_lib::domain::repositories::{
     ExecutionPlanRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
 };
+use ralphx_lib::domain::services::github_service::{PrReviewCommentFeedback, PrReviewFeedback};
 use ralphx_lib::infrastructure::memory::{
     MemoryArtifactRepository, MemoryExecutionPlanRepository, MemoryIdeationSessionRepository,
     MemoryPlanBranchRepository, MemoryTaskRepository,
@@ -139,6 +141,7 @@ fn build_pr_transition_service(
     )
     .with_plan_branch_repo(plan_branch_repo)
     .with_pr_poller_registry(pr_registry)
+    .with_review_repo(Arc::clone(&app_state.review_repo))
     .into_arc()
 }
 
@@ -602,6 +605,164 @@ async fn test_startup_recovery_restarts_pollers() {
     assert!(
         pb_after.pr_polling_active,
         "startup recovery should not clear pr_polling_active — only stop_polling does"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_recovery_routes_github_requested_changes_before_polling() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let execution_plan_id = ExecutionPlanId::from_string("exec-plan-startup-pr-review");
+    let session_id = IdeationSessionId::from_string("test-session-startup-pr-review");
+    let artifact_id = ArtifactId::from_string("test-artifact-startup-pr-review");
+    let mut task = Task::new_with_category(
+        project.id.clone(),
+        "Merge plan into main".to_string(),
+        TaskCategory::PlanMerge,
+    );
+    task.internal_status = InternalStatus::WaitingOnPr;
+    task.execution_plan_id = Some(execution_plan_id.clone());
+    task.ideation_session_id = Some(session_id.clone());
+    task.plan_artifact_id = Some(artifact_id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = PlanBranch::new(
+        artifact_id,
+        session_id,
+        project.id.clone(),
+        "plan/feature".to_string(),
+        "main".to_string(),
+    );
+    pb.merge_task_id = Some(task.id.clone());
+    pb.execution_plan_id = Some(execution_plan_id.clone());
+    pb.pr_number = Some(42);
+    pb.pr_eligible = true;
+    pb.pr_polling_active = true;
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let mock = Arc::new(MockGithubService::new());
+    mock.will_return_review_feedback(PrReviewFeedback {
+        review_id: "4136652897".to_string(),
+        author: "octocat".to_string(),
+        submitted_at: Some("2026-04-22T08:00:00Z".to_string()),
+        body: Some("Please fix this before merging.".to_string()),
+        comments: vec![PrReviewCommentFeedback {
+            id: "3107615689".to_string(),
+            author: "octocat".to_string(),
+            path: Some("src/lib.rs".to_string()),
+            line: Some(17),
+            body: "The nil case is still missing.".to_string(),
+        }],
+    });
+    let pr_registry = Arc::new(PrPollerRegistry::new(
+        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::GithubServiceTrait>),
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+    ));
+    let transition_service = build_pr_transition_service(
+        &app_state,
+        &execution_state,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&pr_registry),
+    );
+
+    recover_pr_pollers(
+        Arc::clone(&app_state.task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+        Arc::clone(&pr_registry),
+        Arc::clone(&app_state.project_repo) as Arc<dyn ProjectRepository>,
+        transition_service,
+    )
+    .await;
+
+    assert_eq!(
+        mock.review_feedback_calls(),
+        1,
+        "startup recovery must inspect PR review feedback before restarting polling"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Blocked);
+    assert!(updated
+        .blocked_reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("GitHub PR #42 requested changes"));
+
+    let tasks = app_state
+        .task_repo
+        .list_paginated(
+            &project.id,
+            None,
+            0,
+            100,
+            false,
+            None,
+            Some(execution_plan_id.as_str()),
+            None,
+        )
+        .await
+        .unwrap();
+    let correction = tasks
+        .iter()
+        .find(|candidate| {
+            candidate.category == TaskCategory::Regular
+                && candidate
+                    .title
+                    .contains("Address GitHub PR #42 review feedback")
+        })
+        .expect("startup review ingestion should create a regular correction task");
+    assert_eq!(correction.internal_status, InternalStatus::Ready);
+    assert!(
+        app_state
+            .task_dependency_repo
+            .has_dependency(&task.id, &correction.id)
+            .await
+            .unwrap(),
+        "final plan merge must wait for the GitHub correction task"
+    );
+
+    let notes = app_state
+        .review_repo
+        .get_notes_by_task_id(&correction.id)
+        .await
+        .unwrap();
+    let note = notes
+        .iter()
+        .find(|note| note.outcome == ReviewOutcome::ChangesRequested)
+        .expect("correction task should carry GitHub review feedback");
+    assert_eq!(note.reviewer, ReviewerType::Human);
+    assert!(note
+        .notes
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Please fix this before merging"));
+
+    let pb_after = plan_branch_repo
+        .get_by_merge_task_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !pb_after.pr_polling_active,
+        "startup review ingestion should stop PR polling while correction work is active"
+    );
+    assert!(
+        !pr_registry.is_polling(&task.id),
+        "startup should not restart a PR poller after routing requested changes"
     );
 }
 

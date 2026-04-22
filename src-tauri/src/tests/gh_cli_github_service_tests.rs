@@ -6,8 +6,9 @@
 use crate::domain::services::github_service::PrStatus;
 use crate::error::AppError;
 use crate::infrastructure::services::gh_cli_github_service::{
-    parse_pr_create_output, parse_pr_create_plain_output, parse_pr_status_output,
-    sanitize_stderr_line, scrub_token_urls,
+    parse_pr_create_output, parse_pr_create_plain_output, parse_pr_review_decision_output,
+    parse_pr_review_feedback_output, parse_pr_status_output, sanitize_stderr_line,
+    scrub_token_urls,
 };
 
 // ── parse_pr_create_output ─────────────────────────────────────────────────
@@ -119,6 +120,96 @@ fn parse_pr_status_missing_state_errors() {
     let json = r#"{"mergedAt": null}"#;
     let err = parse_pr_status_output(json).unwrap_err();
     assert!(matches!(err, AppError::Infrastructure(_)));
+}
+
+#[test]
+fn parse_pr_review_decision_detects_requested_changes() {
+    assert!(parse_pr_review_decision_output(r#"{"reviewDecision":"CHANGES_REQUESTED"}"#).unwrap());
+    assert!(!parse_pr_review_decision_output(r#"{"reviewDecision":"APPROVED"}"#).unwrap());
+    assert!(!parse_pr_review_decision_output(r#"{"reviewDecision":""}"#).unwrap());
+}
+
+#[test]
+fn parse_pr_review_feedback_returns_latest_outstanding_requested_changes() {
+    let reviews = r#"[
+        [
+            {
+                "id": 11,
+                "state": "CHANGES_REQUESTED",
+                "body": "old request",
+                "submitted_at": "2026-04-21T08:00:00Z",
+                "user": {"login": "alice"}
+            },
+            {
+                "id": 12,
+                "state": "APPROVED",
+                "body": "resolved",
+                "submitted_at": "2026-04-21T09:00:00Z",
+                "user": {"login": "alice"}
+            },
+            {
+                "id": 13,
+                "state": "CHANGES_REQUESTED",
+                "body": "Please fix the edge case.",
+                "submitted_at": "2026-04-22T08:00:00Z",
+                "user": {"login": "bob"}
+            }
+        ]
+    ]"#;
+    let comments = r#"[
+        [
+            {
+                "id": 201,
+                "pull_request_review_id": 13,
+                "path": "src/lib.rs",
+                "line": 17,
+                "body": "Nil case is still uncovered.",
+                "user": {"login": "bob"}
+            },
+            {
+                "id": 202,
+                "pull_request_review_id": 11,
+                "path": "src/old.rs",
+                "line": 3,
+                "body": "Old comment.",
+                "user": {"login": "alice"}
+            }
+        ]
+    ]"#;
+
+    let feedback = parse_pr_review_feedback_output(reviews, comments)
+        .unwrap()
+        .expect("requested-changes feedback");
+
+    assert_eq!(feedback.review_id, "13");
+    assert_eq!(feedback.author, "bob");
+    assert_eq!(feedback.body.as_deref(), Some("Please fix the edge case."));
+    assert_eq!(feedback.comments.len(), 1);
+    assert_eq!(feedback.comments[0].path.as_deref(), Some("src/lib.rs"));
+    assert_eq!(feedback.comments[0].line, Some(17));
+}
+
+#[test]
+fn parse_pr_review_feedback_ignores_resolved_requested_changes() {
+    let reviews = r#"[
+        {
+            "id": 11,
+            "state": "CHANGES_REQUESTED",
+            "body": "old request",
+            "submitted_at": "2026-04-21T08:00:00Z",
+            "user": {"login": "alice"}
+        },
+        {
+            "id": 12,
+            "state": "APPROVED",
+            "body": "resolved",
+            "submitted_at": "2026-04-21T09:00:00Z",
+            "user": {"login": "alice"}
+        }
+    ]"#;
+
+    let feedback = parse_pr_review_feedback_output(reviews, "[]").unwrap();
+    assert!(feedback.is_none());
 }
 
 // ── sanitize_stderr_line ───────────────────────────────────────────────────
@@ -474,6 +565,80 @@ mod mock_roundtrip {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>()]
+        );
+    }
+
+    #[tokio::test]
+    async fn check_pr_review_feedback_uses_review_decision_and_review_api() {
+        let runner = Arc::new(MockGhCliRunner::with_gh_results(vec![
+            Ok(vec![r#"{"reviewDecision":"CHANGES_REQUESTED"}"#.to_string()]),
+            Ok(vec![r#"[[
+                    {
+                        "id": 99,
+                        "state": "CHANGES_REQUESTED",
+                        "body": "Please revise this.",
+                        "submitted_at": "2026-04-22T08:00:00Z",
+                        "user": {"login": "octocat"}
+                    }
+                ]]"#
+            .to_string()]),
+            Ok(vec![r#"[[
+                    {
+                        "id": 1001,
+                        "pull_request_review_id": 99,
+                        "path": "src/lib.rs",
+                        "line": 10,
+                        "body": "This still needs a guard.",
+                        "user": {"login": "octocat"}
+                    }
+                ]]"#
+            .to_string()]),
+        ]));
+        let service = GhCliGithubService::with_runner(runner.clone());
+
+        let feedback = service
+            .check_pr_review_feedback(Path::new("/tmp"), 68)
+            .await
+            .unwrap()
+            .expect("requested-changes feedback");
+
+        assert_eq!(feedback.review_id, "99");
+        assert_eq!(feedback.author, "octocat");
+        assert_eq!(feedback.comments.len(), 1);
+        assert_eq!(feedback.comments[0].path.as_deref(), Some("src/lib.rs"));
+
+        let calls = runner.gh_calls();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(
+            calls[0],
+            vec!["pr", "view", "68", "--json", "reviewDecision"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            calls[1],
+            vec![
+                "api",
+                "repos/{owner}/{repo}/pulls/68/reviews",
+                "--paginate",
+                "--slurp",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            calls[2],
+            vec![
+                "api",
+                "repos/{owner}/{repo}/pulls/68/comments",
+                "--paginate",
+                "--slurp",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
         );
     }
 

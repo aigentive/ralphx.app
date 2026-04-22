@@ -19,6 +19,26 @@ pub enum PrStatus {
     },
 }
 
+/// Inline review comment attached to a GitHub pull request review.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrReviewCommentFeedback {
+    pub id: String,
+    pub author: String,
+    pub path: Option<String>,
+    pub line: Option<i64>,
+    pub body: String,
+}
+
+/// Actionable GitHub review feedback that should re-enter RalphX revision flow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrReviewFeedback {
+    pub review_id: String,
+    pub author: String,
+    pub submitted_at: Option<String>,
+    pub body: Option<String>,
+    pub comments: Vec<PrReviewCommentFeedback>,
+}
+
 /// Abstraction over GitHub operations (production: `gh` CLI, tests: mock)
 #[async_trait]
 pub trait GithubServiceTrait: Send + Sync {
@@ -46,6 +66,15 @@ pub trait GithubServiceTrait: Send + Sync {
 
     /// Check the current status of a PR.
     async fn check_pr_status(&self, working_dir: &Path, pr_number: i64) -> AppResult<PrStatus>;
+
+    /// Return the latest outstanding GitHub requested-changes review, if any.
+    async fn check_pr_review_feedback(
+        &self,
+        _working_dir: &Path,
+        _pr_number: i64,
+    ) -> AppResult<Option<PrReviewFeedback>> {
+        Ok(None)
+    }
 
     /// Push a branch to origin.
     async fn push_branch(&self, working_dir: &Path, branch: &str) -> AppResult<()>;

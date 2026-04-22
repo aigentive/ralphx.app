@@ -17,30 +17,28 @@ use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::application::agent_client_bundle::{
-    AgentClientBundle, AgentClientFactoryBundle,
-};
+use crate::application::agent_client_bundle::{AgentClientBundle, AgentClientFactoryBundle};
 use crate::application::runtime_factory::{
-    ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
 };
 use crate::application::{AppChatService, AppState, ChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
-    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
-    ReviewNote, ReviewOutcome, ReviewerType, Task, TaskId,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    InternalStatus, ReviewNote, ReviewOutcome, ReviewerType, Task, TaskCategory, TaskId,
 };
-use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
-    ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
-    ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
-    ArtifactRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    ReviewRepository, TaskRepository, TaskStepRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    ExecutionSettingsRepository, ExternalEventsRepository, IdeationSessionRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{
+    github_service::PrReviewFeedback,
     payload_enrichment::{PresentationKind, WebhookPresentationContext},
     MessageQueue, RunningAgentRegistry,
 };
@@ -48,13 +46,13 @@ use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler, WebhookPublisher,
 };
-use ralphx_domain::entities::EventType;
 use crate::domain::state_machine::transition_handler::metadata_builder::{
     build_stop_metadata, build_trigger_origin_metadata, MetadataUpdate,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
+use ralphx_domain::entities::EventType;
 
 #[allow(clippy::too_many_arguments)]
 fn build_transition_chat_service_fallback<R: Runtime>(
@@ -90,6 +88,83 @@ fn build_transition_chat_service_fallback<R: Runtime>(
     );
 
     build_chat_service_with_fallback(&app_handle, Some(execution_state), &deps)
+}
+
+fn github_pr_review_feedback_title(pr_number: i64) -> String {
+    format!("Address GitHub PR #{pr_number} review feedback")
+}
+
+fn format_github_pr_review_feedback(pr_number: i64, feedback: &PrReviewFeedback) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "GitHub PR #{pr_number} requested changes from @{}.\n",
+        feedback.author
+    ));
+    if let Some(submitted_at) = feedback.submitted_at.as_deref() {
+        out.push_str(&format!("Submitted: {submitted_at}\n"));
+    }
+    out.push_str(&format!("GitHub review id: {}\n", feedback.review_id));
+
+    if let Some(body) = feedback
+        .body
+        .as_deref()
+        .filter(|body| !body.trim().is_empty())
+    {
+        out.push_str("\nReview body:\n");
+        out.push_str(body.trim());
+        out.push('\n');
+    }
+
+    if !feedback.comments.is_empty() {
+        out.push_str("\nInline comments:\n");
+        for comment in &feedback.comments {
+            let location = match (comment.path.as_deref(), comment.line) {
+                (Some(path), Some(line)) => format!("{path}:{line}"),
+                (Some(path), None) => path.to_string(),
+                (None, Some(line)) => format!("line {line}"),
+                (None, None) => "inline comment".to_string(),
+            };
+            out.push_str(&format!(
+                "- @{} on {}: {}\n",
+                comment.author,
+                location,
+                comment.body.trim()
+            ));
+        }
+    }
+
+    out
+}
+
+fn task_metadata_value(task: &Task) -> Option<serde_json::Value> {
+    task.metadata
+        .as_deref()
+        .and_then(|metadata| serde_json::from_str::<serde_json::Value>(metadata).ok())
+}
+
+fn is_github_pr_review_correction_task(
+    task: &Task,
+    merge_task_id: &TaskId,
+    review_id: &str,
+) -> bool {
+    let Some(metadata) = task_metadata_value(task) else {
+        return false;
+    };
+
+    let correction_kind_matches = metadata
+        .get("github_pr_review_correction")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let source_task_matches = metadata
+        .get("github_pr_correction_for_task_id")
+        .and_then(|value| value.as_str())
+        == Some(merge_task_id.as_str());
+    let review_matches = metadata
+        .get("github_pr_review_id")
+        .and_then(|value| value.as_str())
+        == Some(review_id);
+
+    correction_kind_matches && source_task_matches && review_matches
 }
 
 // ============================================================================
@@ -279,7 +354,9 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
             if crate::application::ThrottledEmitter::<R>::is_batchable(event_type) {
-                if let Some(throttled) = handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
+                if let Some(throttled) =
+                    handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>()
+                {
                     throttled.emit(event_type, payload);
                     return;
                 }
@@ -303,17 +380,19 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
 
     async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
         // Build enriched payload once; skip all sinks if task not found.
-        let (project_id, payload) =
-            match self.build_enriched_payload(task_id, old_status, new_status).await {
-                Some(pair) => pair,
-                None => {
-                    tracing::warn!(
-                        task_id = task_id,
-                        "emit_status_change: build_enriched_payload returned None — skipping all sinks"
-                    );
-                    return;
-                }
-            };
+        let (project_id, payload) = match self
+            .build_enriched_payload(task_id, old_status, new_status)
+            .await
+        {
+            Some(pair) => pair,
+            None => {
+                tracing::warn!(
+                    task_id = task_id,
+                    "emit_status_change: build_enriched_payload returned None — skipping all sinks"
+                );
+                return;
+            }
+        };
 
         // Sink 1: Tauri UI event.
         if let Some(ref handle) = self.app_handle {
@@ -327,7 +406,8 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
         }
 
         // Sink 2: external_events DB table.
-        self.write_external_event(&project_id, payload.clone()).await;
+        self.write_external_event(&project_id, payload.clone())
+            .await;
 
         // Sink 3: webhook publisher.
         if let Some(ref publisher) = self.webhook_publisher {
@@ -1034,12 +1114,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         };
 
         // Create other services
-        let event_emitter: Arc<dyn EventEmitter> =
-            Arc::new(TauriEventEmitter::new(app_handle.clone()).with_enrichment_repos(
+        let event_emitter: Arc<dyn EventEmitter> = Arc::new(
+            TauriEventEmitter::new(app_handle.clone()).with_enrichment_repos(
                 Arc::clone(&task_repo),
                 Arc::clone(&project_repo),
                 Arc::clone(&ideation_session_repo),
-            ));
+            ),
+        );
         let notifier: Arc<dyn Notifier> = Arc::new(LoggingNotifier);
         // Use real dependency manager for automatic blocking/unblocking based on dependency graph
         let dependency_manager: Arc<dyn DependencyManager> =
@@ -1265,23 +1346,19 @@ impl<R: Runtime> TaskTransitionService<R> {
 
     /// Attach an external events repository so every state transition is also written
     /// to the `external_events` DB table (dual-emit for poll/SSE consumers).
-    pub fn with_external_events_repo(
-        mut self,
-        repo: Arc<dyn ExternalEventsRepository>,
-    ) -> Self {
+    pub fn with_external_events_repo(mut self, repo: Arc<dyn ExternalEventsRepository>) -> Self {
         // Rebuild the event emitter with external events + enrichment repos + optional webhook publisher.
         let ideation_session_repo = self
             .ideation_session_repo
             .as_ref()
             .expect("ideation_session_repo set in new()")
             .clone();
-        let emitter = TauriEventEmitter::new(self._app_handle.clone())
-            .with_external_events(
-                Arc::clone(&repo),
-                Arc::clone(&self.task_repo),
-                Arc::clone(&self.project_repo),
-                ideation_session_repo,
-            );
+        let emitter = TauriEventEmitter::new(self._app_handle.clone()).with_external_events(
+            Arc::clone(&repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            ideation_session_repo,
+        );
         let emitter = if let Some(ref pub_) = self.webhook_publisher {
             emitter.with_webhook_publisher(Arc::clone(pub_))
         } else {
@@ -1314,7 +1391,10 @@ impl<R: Runtime> TaskTransitionService<R> {
     ///
     /// Must be called BEFORE `with_external_events_repo()` — that method reads
     /// this field when rebuilding the event emitter.
-    pub fn with_webhook_publisher_for_emitter(mut self, publisher: Arc<dyn WebhookPublisher>) -> Self {
+    pub fn with_webhook_publisher_for_emitter(
+        mut self,
+        publisher: Arc<dyn WebhookPublisher>,
+    ) -> Self {
         self.webhook_publisher = Some(publisher);
         self
     }
@@ -1583,6 +1663,221 @@ impl<R: Runtime> TaskTransitionService<R> {
                 caller,
             )
             .await
+        }
+    }
+
+    async fn find_existing_github_pr_review_correction(
+        &self,
+        merge_task: &Task,
+        review_id: &str,
+    ) -> AppResult<Option<Task>> {
+        let candidates = if let Some(execution_plan_id) = merge_task.execution_plan_id.as_ref() {
+            self.task_repo
+                .list_paginated(
+                    &merge_task.project_id,
+                    None,
+                    0,
+                    1000,
+                    false,
+                    None,
+                    Some(execution_plan_id.as_str()),
+                    None,
+                )
+                .await?
+        } else if let Some(session_id) = merge_task.ideation_session_id.as_ref() {
+            self.task_repo.get_by_ideation_session(session_id).await?
+        } else {
+            self.task_repo
+                .get_by_project_filtered(&merge_task.project_id, false)
+                .await?
+        };
+
+        Ok(candidates.into_iter().find(|candidate| {
+            candidate.archived_at.is_none()
+                && is_github_pr_review_correction_task(candidate, &merge_task.id, review_id)
+        }))
+    }
+
+    async fn persist_github_pr_review_note_once(
+        &self,
+        correction_task: &Task,
+        pr_number: i64,
+        feedback: &PrReviewFeedback,
+    ) {
+        let Some(review_repo) = self.review_repo.as_ref() else {
+            return;
+        };
+
+        match review_repo.get_notes_by_task_id(&correction_task.id).await {
+            Ok(notes)
+                if notes.iter().any(|note| {
+                    note.notes
+                        .as_deref()
+                        .map(|notes| notes.contains(&feedback.review_id))
+                        .unwrap_or(false)
+                }) =>
+            {
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    task_id = correction_task.id.as_str(),
+                    error = %error,
+                    "Failed to inspect existing GitHub PR review notes"
+                );
+            }
+        }
+
+        let note_body = format_github_pr_review_feedback(pr_number, feedback);
+        let note = ReviewNote::with_content(
+            correction_task.id.clone(),
+            ReviewerType::Human,
+            ReviewOutcome::ChangesRequested,
+            Some(format!(
+                "GitHub PR #{pr_number} requested changes from @{}",
+                feedback.author
+            )),
+            Some(note_body),
+            None,
+        );
+
+        if let Err(error) = review_repo.add_note(&note).await {
+            tracing::warn!(
+                task_id = correction_task.id.as_str(),
+                error = %error,
+                "Failed to persist GitHub PR changes_requested review note"
+            );
+        }
+    }
+
+    /// Convert an actionable GitHub requested-changes review into normal plan work.
+    ///
+    /// The final plan merge task is system-managed, so it should not be re-executed as
+    /// an implementation worker. Instead, RalphX creates one regular correction task on
+    /// the same execution plan, blocks the final merge behind it, and lets the existing
+    /// worker/review/merge pipeline bring the plan PR back to a reviewable state.
+    #[track_caller]
+    pub fn route_github_pr_changes_requested<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        pr_number: i64,
+        feedback: PrReviewFeedback,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        async move {
+            let mut merge_task = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            if merge_task.archived_at.is_some() {
+                return Err(AppError::Validation(format!(
+                    "Cannot route GitHub PR review for archived task {}",
+                    task_id.as_str()
+                )));
+            }
+
+            if merge_task.category != TaskCategory::PlanMerge {
+                return Err(AppError::Conflict(format!(
+                    "Task {} is not a plan merge task",
+                    task_id.as_str()
+                )));
+            }
+
+            let correction_task = match self
+                .find_existing_github_pr_review_correction(&merge_task, &feedback.review_id)
+                .await?
+            {
+                Some(existing) => existing,
+                None => {
+                    let mut correction = Task::new(
+                        merge_task.project_id.clone(),
+                        github_pr_review_feedback_title(pr_number),
+                    );
+                    correction.internal_status = InternalStatus::Ready;
+                    correction.priority = merge_task.priority.saturating_add(1);
+                    correction.description =
+                        Some(format_github_pr_review_feedback(pr_number, &feedback));
+                    correction.plan_artifact_id = merge_task.plan_artifact_id.clone();
+                    correction.ideation_session_id = merge_task.ideation_session_id.clone();
+                    correction.execution_plan_id = merge_task.execution_plan_id.clone();
+                    correction.metadata = Some(
+                        serde_json::json!({
+                            "github_pr_review_correction": true,
+                            "github_pr_number": pr_number,
+                            "github_pr_review_id": feedback.review_id,
+                            "github_pr_review_author": feedback.author,
+                            "github_pr_review_submitted_at": feedback.submitted_at,
+                            "github_pr_correction_for_task_id": merge_task.id.as_str(),
+                        })
+                        .to_string(),
+                    );
+                    self.task_repo.create(correction).await?
+                }
+            };
+
+            if !self
+                .task_dependency_repo
+                .has_dependency(&merge_task.id, &correction_task.id)
+                .await?
+            {
+                self.task_dependency_repo
+                    .add_dependency(&merge_task.id, &correction_task.id)
+                    .await?;
+            }
+
+            self.persist_github_pr_review_note_once(&correction_task, pr_number, &feedback)
+                .await;
+
+            crate::domain::state_machine::transition_handler::merge_metadata_into(
+                &mut merge_task,
+                &serde_json::json!({
+                    "github_pr_review_id": feedback.review_id,
+                    "github_pr_review_author": feedback.author,
+                    "github_pr_review_pr_number": pr_number,
+                    "github_pr_review_correction_task_id": correction_task.id.as_str(),
+                    "github_pr_review_routed_at": chrono::Utc::now().to_rfc3339(),
+                }),
+            );
+            self.task_repo.update(&merge_task).await?;
+
+            if let Some(plan_branch_repo) = self.plan_branch_repo.as_ref() {
+                if let Err(error) = plan_branch_repo.clear_polling_active_by_task(task_id).await {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %error,
+                        "Failed to clear PR polling after GitHub requested changes"
+                    );
+                }
+            }
+
+            let blocked_reason = format!(
+                "GitHub PR #{pr_number} requested changes; waiting for correction task `{}`",
+                correction_task.title
+            );
+
+            let updated = if merge_task.internal_status == InternalStatus::Blocked {
+                merge_task.blocked_reason = Some(blocked_reason);
+                merge_task.touch();
+                self.task_repo.update(&merge_task).await?;
+                merge_task
+            } else {
+                self.transition_task_corrective_with_exit(
+                    task_id,
+                    InternalStatus::Blocked,
+                    Some(blocked_reason),
+                    history_actor,
+                )
+                .await?
+            };
+
+            if let Some(scheduler) = self.task_scheduler.as_ref() {
+                scheduler.try_schedule_ready_tasks().await;
+            }
+
+            Ok(updated)
         }
     }
 
@@ -2111,9 +2406,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         status: InternalStatus,
     ) {
         use crate::domain::state_machine::{
-            context::TaskContext,
-            machine::TaskStateMachine,
-            transition_handler::TransitionHandler,
+            context::TaskContext, machine::TaskStateMachine, transition_handler::TransitionHandler,
         };
 
         let state = internal_status_to_state(status);
@@ -2160,7 +2453,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         {
             let locked = self.self_arc.lock().unwrap();
             if let Some(ref any_arc) = *locked {
-                if let Ok(ts_wry) = Arc::clone(any_arc).downcast::<TaskTransitionService<tauri::Wry>>() {
+                if let Ok(ts_wry) =
+                    Arc::clone(any_arc).downcast::<TaskTransitionService<tauri::Wry>>()
+                {
                     services = services.with_transition_service(ts_wry);
                 }
             }
@@ -2241,7 +2536,8 @@ impl<R: Runtime> TaskTransitionService<R> {
                     task_id = task_id.as_str(),
                     "BranchFreshnessConflict during initial on_enter — delegating to corrective handler"
                 );
-                self.handle_branch_freshness_conflict(&handler, task_id, &state).await;
+                self.handle_branch_freshness_conflict(&handler, task_id, &state)
+                    .await;
             } else if matches!(&e, AppError::ReviewWorktreeMissing) {
                 use crate::domain::state_machine::machine::State as MState;
                 tracing::warn!(
@@ -2250,12 +2546,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 );
                 handler.on_exit(&state, &MState::Escalated).await;
                 if let Some(result) = self
-                    .apply_corrective_transition(
-                        task_id,
-                        InternalStatus::Escalated,
-                        None,
-                        "system",
-                    )
+                    .apply_corrective_transition(task_id, InternalStatus::Escalated, None, "system")
                     .await
                 {
                     if let Some(ref handle) = self._app_handle {
@@ -2321,7 +2612,10 @@ impl<R: Runtime> TaskTransitionService<R> {
             };
 
             if matches!(current_state, crate::domain::state_machine::State::Approved)
-                && matches!(auto_state, crate::domain::state_machine::State::PendingMerge)
+                && matches!(
+                    auto_state,
+                    crate::domain::state_machine::State::PendingMerge
+                )
             {
                 if let Ok(Some(task)) = self.task_repo.get_by_id(task_id).await {
                     let is_branchless = task.task_branch.is_none();
@@ -2411,7 +2705,8 @@ impl<R: Runtime> TaskTransitionService<R> {
                 // preserving review requirement). "executing"/"re_executing"/absent → Merging
                 // (existing behavior for execution-phase conflicts).
                 if matches!(&e, AppError::BranchFreshnessConflict) {
-                    self.handle_branch_freshness_conflict(&handler, task_id, &auto_state).await;
+                    self.handle_branch_freshness_conflict(&handler, task_id, &auto_state)
+                        .await;
                 } else if matches!(&e, AppError::ReviewWorktreeMissing) {
                     use crate::domain::state_machine::machine::State;
 
@@ -2508,12 +2803,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 
         // Step 1: Read freshness metadata written by on_enter before the error.
-        let fresh_task = self
-            .task_repo
-            .get_by_id(task_id)
-            .await
-            .ok()
-            .flatten();
+        let fresh_task = self.task_repo.get_by_id(task_id).await.ok().flatten();
         let task_meta_val: serde_json::Value = fresh_task
             .as_ref()
             .and_then(|t| t.metadata.as_deref())
@@ -2527,8 +2817,12 @@ impl<R: Runtime> TaskTransitionService<R> {
         let has_merge_conflict_evidence = task_meta_val["conflict_markers_detected"]
             .as_bool()
             .unwrap_or(false)
-            || task_meta_val["source_update_conflict"].as_bool().unwrap_or(false)
-            || task_meta_val["plan_update_conflict"].as_bool().unwrap_or(false);
+            || task_meta_val["source_update_conflict"]
+                .as_bool()
+                .unwrap_or(false)
+            || task_meta_val["plan_update_conflict"]
+                .as_bool()
+                .unwrap_or(false);
 
         // Step 2: Conditional increment — only for the conflict marker scan path
         // (which doesn't call ensure_branches_fresh and never sets
@@ -2555,13 +2849,18 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Step 3: Cap enforcement — >= 5 during review → escalate to Failed.
         const FRESHNESS_RETRY_LIMIT: u32 = 5;
-        if reviewing_origin && !has_merge_conflict_evidence && conflict_count >= FRESHNESS_RETRY_LIMIT {
+        if reviewing_origin
+            && !has_merge_conflict_evidence
+            && conflict_count >= FRESHNESS_RETRY_LIMIT
+        {
             tracing::warn!(
                 task_id = task_id.as_str(),
                 conflict_count = conflict_count,
                 "Freshness retry limit exceeded during review — escalating to Failed"
             );
-            handler.on_exit(current_state, &State::Failed(Default::default())).await;
+            handler
+                .on_exit(current_state, &State::Failed(Default::default()))
+                .await;
             if let Some(result) = self
                 .apply_corrective_transition(
                     task_id,
@@ -2588,11 +2887,16 @@ impl<R: Runtime> TaskTransitionService<R> {
             return;
         }
 
-        let (target_state, corrective_status, to_str) = if reviewing_origin && !has_merge_conflict_evidence {
-            (State::PendingReview, InternalStatus::PendingReview, "pending_review")
-        } else {
-            (State::Merging, InternalStatus::Merging, "merging")
-        };
+        let (target_state, corrective_status, to_str) =
+            if reviewing_origin && !has_merge_conflict_evidence {
+                (
+                    State::PendingReview,
+                    InternalStatus::PendingReview,
+                    "pending_review",
+                )
+            } else {
+                (State::Merging, InternalStatus::Merging, "merging")
+            };
 
         tracing::warn!(
             task_id = task_id.as_str(),
@@ -2668,12 +2972,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Step 6: apply_corrective_transition.
         if let Some(result) = self
-            .apply_corrective_transition(
-                task_id,
-                corrective_status,
-                None,
-                "system",
-            )
+            .apply_corrective_transition(task_id, corrective_status, None, "system")
             .await
         {
             let reason = if reviewing_origin && !has_merge_conflict_evidence {
@@ -2732,9 +3031,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         to_status: InternalStatus,
     ) {
         use crate::domain::state_machine::{
-            context::TaskContext,
-            machine::TaskStateMachine,
-            transition_handler::TransitionHandler,
+            context::TaskContext, machine::TaskStateMachine, transition_handler::TransitionHandler,
         };
 
         let from_state = internal_status_to_state(from_status);

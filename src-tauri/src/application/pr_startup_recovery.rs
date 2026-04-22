@@ -645,6 +645,35 @@ pub async fn recover_pr_pollers(
         // source_branch = the base branch the plan was branched from (e.g. "main")
         let base_branch = plan_branch.source_branch.clone();
 
+        match pr_poller_registry
+            .process_review_feedback_once(
+                &task_id,
+                pr_number,
+                &working_dir,
+                Arc::clone(&transition_service),
+                "github_pr_startup_recovery",
+            )
+            .await
+        {
+            Ok(true) => {
+                tracing::info!(
+                    task_id = task_id.as_str(),
+                    pr_number = pr_number,
+                    "PR startup recovery: routed GitHub requested-changes review before restarting poller"
+                );
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    pr_number = pr_number,
+                    error = %e,
+                    "PR startup recovery: failed to inspect GitHub review feedback before poller restart"
+                );
+            }
+        }
+
         tracing::info!(
             task_id = task_id.as_str(),
             pr_number = pr_number,

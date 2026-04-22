@@ -8,6 +8,8 @@
 //  - Stderr sanitized: secrets filtered, token-embedded URLs scrubbed
 
 use async_trait::async_trait;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -15,7 +17,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::time::{timeout, Duration};
 use tracing::{debug, warn};
 
-use crate::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use crate::domain::services::github_service::{
+    GithubServiceTrait, PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
+};
 use crate::error::AppError;
 use crate::utils::secret_redactor::redact;
 use crate::AppResult;
@@ -24,7 +28,14 @@ const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Secret keyword fragments to filter from stderr output (case-insensitive match)
 const SECRET_KEYWORDS: &[&str] = &[
-    "token", "bearer", "auth", "credential", "password", "secret", "ghp_", "gho_",
+    "token",
+    "bearer",
+    "auth",
+    "credential",
+    "password",
+    "secret",
+    "ghp_",
+    "gho_",
 ];
 
 /// Known error message fragments from `gh pr create` when a PR already exists for this branch.
@@ -75,12 +86,14 @@ impl GhCliGithubService {
     async fn collect_output(
         child: &mut tokio::process::Child,
     ) -> AppResult<(Vec<String>, Vec<String>)> {
-        let stdout = child.stdout.take().ok_or_else(|| {
-            AppError::Infrastructure("Failed to capture stdout pipe".to_string())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            AppError::Infrastructure("Failed to capture stderr pipe".to_string())
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| AppError::Infrastructure("Failed to capture stdout pipe".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| AppError::Infrastructure("Failed to capture stderr pipe".to_string()))?;
 
         let stdout_task = tokio::spawn(async move {
             let mut lines = Vec::new();
@@ -101,12 +114,12 @@ impl GhCliGithubService {
             lines
         });
 
-        let stdout_lines = stdout_task.await.map_err(|e| {
-            AppError::Infrastructure(format!("stdout task panicked: {e}"))
-        })?;
-        let stderr_lines = stderr_task.await.map_err(|e| {
-            AppError::Infrastructure(format!("stderr task panicked: {e}"))
-        })?;
+        let stdout_lines = stdout_task
+            .await
+            .map_err(|e| AppError::Infrastructure(format!("stdout task panicked: {e}")))?;
+        let stderr_lines = stderr_task
+            .await
+            .map_err(|e| AppError::Infrastructure(format!("stderr task panicked: {e}")))?;
 
         Ok((stdout_lines, stderr_lines))
     }
@@ -252,9 +265,39 @@ fn build_update_pr_args(pr_number: i64, title: &str, body_file: &str) -> Vec<Str
     ]
 }
 
+fn build_pr_review_decision_args(pr_number: i64) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "view".to_string(),
+        pr_number.to_string(),
+        "--json".to_string(),
+        "reviewDecision".to_string(),
+    ]
+}
+
+fn build_pr_reviews_api_args(pr_number: i64) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews"),
+        "--paginate".to_string(),
+        "--slurp".to_string(),
+    ]
+}
+
+fn build_pr_review_comments_api_args(pr_number: i64) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/pulls/{pr_number}/comments"),
+        "--paginate".to_string(),
+        "--slurp".to_string(),
+    ]
+}
+
 fn is_duplicate_pr_error(msg: &str) -> bool {
     let lower = msg.to_lowercase();
-    DUPLICATE_PR_FRAGMENTS.iter().any(|fragment| lower.contains(fragment))
+    DUPLICATE_PR_FRAGMENTS
+        .iter()
+        .any(|fragment| lower.contains(fragment))
 }
 
 fn is_create_pr_json_unsupported_error(msg: &str) -> bool {
@@ -381,7 +424,9 @@ impl GithubServiceTrait for GhCliGithubService {
     ) -> AppResult<()> {
         let body_file_str = body_file
             .to_str()
-            .ok_or_else(|| AppError::Infrastructure("body_file path is not valid UTF-8".to_string()))?
+            .ok_or_else(|| {
+                AppError::Infrastructure("body_file path is not valid UTF-8".to_string())
+            })?
             .to_string();
         let args = build_update_pr_args(pr_number, title, &body_file_str);
         self.runner.run_gh(working_dir, &args).await?;
@@ -403,13 +448,34 @@ impl GithubServiceTrait for GhCliGithubService {
         parse_pr_status_output(&json_str)
     }
 
+    async fn check_pr_review_feedback(
+        &self,
+        working_dir: &Path,
+        pr_number: i64,
+    ) -> AppResult<Option<PrReviewFeedback>> {
+        let decision_stdout = self
+            .runner
+            .run_gh(working_dir, &build_pr_review_decision_args(pr_number))
+            .await?;
+        if !parse_pr_review_decision_output(&decision_stdout.join("\n"))? {
+            return Ok(None);
+        }
+
+        let reviews_stdout = self
+            .runner
+            .run_gh(working_dir, &build_pr_reviews_api_args(pr_number))
+            .await?;
+        let comments_stdout = self
+            .runner
+            .run_gh(working_dir, &build_pr_review_comments_api_args(pr_number))
+            .await?;
+
+        parse_pr_review_feedback_output(&reviews_stdout.join("\n"), &comments_stdout.join("\n"))
+    }
+
     async fn push_branch(&self, working_dir: &Path, branch: &str) -> AppResult<()> {
         // git push origin <branch> — fire-and-forget style (stdout null, stderr piped for safety)
-        let args = vec![
-            "push".to_string(),
-            "origin".to_string(),
-            branch.to_string(),
-        ];
+        let args = vec!["push".to_string(), "origin".to_string(), branch.to_string()];
         self.runner.run_git(working_dir, &args).await
     }
 
@@ -516,12 +582,14 @@ impl GithubServiceTrait for GhCliGithubService {
 
 pub(crate) fn parse_pr_create_output(json_str: &str) -> AppResult<(i64, String)> {
     let v: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-        AppError::Infrastructure(format!("Failed to parse gh pr create JSON: {e}\nRaw: {json_str}"))
+        AppError::Infrastructure(format!(
+            "Failed to parse gh pr create JSON: {e}\nRaw: {json_str}"
+        ))
     })?;
 
-    let number = v["number"]
-        .as_i64()
-        .ok_or_else(|| AppError::Infrastructure("gh pr create: missing 'number' field".to_string()))?;
+    let number = v["number"].as_i64().ok_or_else(|| {
+        AppError::Infrastructure("gh pr create: missing 'number' field".to_string())
+    })?;
     let url = v["url"]
         .as_str()
         .ok_or_else(|| AppError::Infrastructure("gh pr create: missing 'url' field".to_string()))?
@@ -534,7 +602,11 @@ pub(crate) fn parse_pr_create_plain_output(stdout_str: &str) -> AppResult<(i64, 
     let url = stdout_str
         .split_whitespace()
         .map(|token| token.trim_matches(|c: char| "()[]<>{},'\"".contains(c)))
-        .find(|token| token.starts_with("https://") && token.contains("github.com/") && token.contains("/pull/"))
+        .find(|token| {
+            token.starts_with("https://")
+                && token.contains("github.com/")
+                && token.contains("/pull/")
+        })
         .ok_or_else(|| {
             AppError::Infrastructure(format!(
                 "gh pr create fallback: could not find PR URL in output: {stdout_str}"
@@ -563,7 +635,9 @@ pub(crate) fn parse_pr_create_plain_output(stdout_str: &str) -> AppResult<(i64, 
 
 pub(crate) fn parse_pr_list_output(json_str: &str) -> AppResult<Option<(i64, String)>> {
     let arr: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-        AppError::Infrastructure(format!("Failed to parse gh pr list JSON: {e}\nRaw: {json_str}"))
+        AppError::Infrastructure(format!(
+            "Failed to parse gh pr list JSON: {e}\nRaw: {json_str}"
+        ))
     })?;
 
     let items = arr.as_array().ok_or_else(|| {
@@ -575,9 +649,9 @@ pub(crate) fn parse_pr_list_output(json_str: &str) -> AppResult<Option<(i64, Str
     }
 
     let first = &items[0];
-    let number = first["number"]
-        .as_i64()
-        .ok_or_else(|| AppError::Infrastructure("gh pr list: missing 'number' field".to_string()))?;
+    let number = first["number"].as_i64().ok_or_else(|| {
+        AppError::Infrastructure("gh pr list: missing 'number' field".to_string())
+    })?;
     let url = first["url"]
         .as_str()
         .ok_or_else(|| AppError::Infrastructure("gh pr list: missing 'url' field".to_string()))?
@@ -588,7 +662,9 @@ pub(crate) fn parse_pr_list_output(json_str: &str) -> AppResult<Option<(i64, Str
 
 pub(crate) fn parse_pr_status_output(json_str: &str) -> AppResult<PrStatus> {
     let v: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-        AppError::Infrastructure(format!("Failed to parse gh pr view JSON: {e}\nRaw: {json_str}"))
+        AppError::Infrastructure(format!(
+            "Failed to parse gh pr view JSON: {e}\nRaw: {json_str}"
+        ))
     })?;
 
     let state = v["state"]
@@ -601,10 +677,163 @@ pub(crate) fn parse_pr_status_output(json_str: &str) -> AppResult<PrStatus> {
         "MERGED" => {
             // mergeCommit is an object with "oid" when merged, null otherwise
             let sha = v["mergeCommit"]["oid"].as_str().map(str::to_string);
-            Ok(PrStatus::Merged { merge_commit_sha: sha })
+            Ok(PrStatus::Merged {
+                merge_commit_sha: sha,
+            })
         }
         other => Err(AppError::Infrastructure(format!(
             "gh pr view: unknown state '{other}'"
         ))),
     }
+}
+
+pub(crate) fn parse_pr_review_decision_output(json_str: &str) -> AppResult<bool> {
+    let v: Value = serde_json::from_str(json_str).map_err(|e| {
+        AppError::Infrastructure(format!(
+            "Failed to parse gh pr view reviewDecision JSON: {e}\nRaw: {json_str}"
+        ))
+    })?;
+
+    Ok(v["reviewDecision"].as_str() == Some("CHANGES_REQUESTED"))
+}
+
+pub(crate) fn parse_pr_review_feedback_output(
+    reviews_json: &str,
+    comments_json: &str,
+) -> AppResult<Option<PrReviewFeedback>> {
+    let reviews_value: Value = serde_json::from_str(reviews_json).map_err(|e| {
+        AppError::Infrastructure(format!(
+            "Failed to parse gh reviews JSON: {e}\nRaw: {reviews_json}"
+        ))
+    })?;
+    let comments_value: Value = serde_json::from_str(comments_json).map_err(|e| {
+        AppError::Infrastructure(format!(
+            "Failed to parse gh review comments JSON: {e}\nRaw: {comments_json}"
+        ))
+    })?;
+
+    let reviews = flatten_paginated_array(&reviews_value).ok_or_else(|| {
+        AppError::Infrastructure(format!(
+            "gh reviews: expected JSON array/pages, got: {reviews_json}"
+        ))
+    })?;
+    let comments = flatten_paginated_array(&comments_value).ok_or_else(|| {
+        AppError::Infrastructure(format!(
+            "gh review comments: expected JSON array/pages, got: {comments_json}"
+        ))
+    })?;
+
+    let mut latest_by_author: HashMap<String, &Value> = HashMap::new();
+    for review in reviews {
+        let author = review
+            .get("user")
+            .and_then(|user| user.get("login"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let replace = latest_by_author
+            .get(&author)
+            .map(|existing| review_sort_key(review) > review_sort_key(existing))
+            .unwrap_or(true);
+        if replace {
+            latest_by_author.insert(author, review);
+        }
+    }
+
+    let Some(review) = latest_by_author
+        .values()
+        .filter(|review| review.get("state").and_then(Value::as_str) == Some("CHANGES_REQUESTED"))
+        .max_by_key(|review| review_sort_key(review))
+        .copied()
+    else {
+        return Ok(None);
+    };
+
+    let review_id = json_id_to_string(review.get("id")).ok_or_else(|| {
+        AppError::Infrastructure("gh reviews: requested-changes review missing id".to_string())
+    })?;
+    let author = review
+        .get("user")
+        .and_then(|user| user.get("login"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let submitted_at = review
+        .get("submitted_at")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let body = review
+        .get("body")
+        .and_then(Value::as_str)
+        .filter(|body| !body.trim().is_empty())
+        .map(str::to_string);
+
+    let review_comments = comments
+        .into_iter()
+        .filter(|comment| {
+            json_id_to_string(comment.get("pull_request_review_id")).as_deref()
+                == Some(review_id.as_str())
+        })
+        .map(|comment| PrReviewCommentFeedback {
+            id: json_id_to_string(comment.get("id")).unwrap_or_default(),
+            author: comment
+                .get("user")
+                .and_then(|user| user.get("login"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+            path: comment
+                .get("path")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            line: comment
+                .get("line")
+                .and_then(Value::as_i64)
+                .or_else(|| comment.get("original_line").and_then(Value::as_i64)),
+            body: comment
+                .get("body")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        })
+        .collect();
+
+    Ok(Some(PrReviewFeedback {
+        review_id,
+        author,
+        submitted_at,
+        body,
+        comments: review_comments,
+    }))
+}
+
+fn flatten_paginated_array(value: &Value) -> Option<Vec<&Value>> {
+    let array = value.as_array()?;
+    if array.iter().all(Value::is_array) {
+        Some(
+            array
+                .iter()
+                .flat_map(|page| page.as_array().into_iter().flatten())
+                .collect(),
+        )
+    } else {
+        Some(array.iter().collect())
+    }
+}
+
+fn json_id_to_string(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    if let Some(id) = value.as_i64() {
+        return Some(id.to_string());
+    }
+    value.as_str().map(str::to_string)
+}
+
+fn review_sort_key(review: &Value) -> String {
+    review
+        .get("submitted_at")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| json_id_to_string(review.get("id")))
+        .unwrap_or_default()
 }

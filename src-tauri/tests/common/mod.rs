@@ -9,7 +9,9 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use ralphx_lib::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use ralphx_lib::domain::services::github_service::{
+    GithubServiceTrait, PrReviewFeedback, PrStatus,
+};
 use ralphx_lib::{AppError, AppResult};
 
 // ============================================================================
@@ -24,7 +26,9 @@ use ralphx_lib::{AppError, AppResult};
 pub struct MockGithubService {
     /// Status responses to return in sequence (last entry repeats when exhausted).
     status_responses: Arc<Mutex<VecDeque<AppResult<PrStatus>>>>,
+    review_feedback_responses: Arc<Mutex<VecDeque<AppResult<Option<PrReviewFeedback>>>>>,
     pub check_pr_status_calls: Arc<Mutex<u32>>,
+    pub check_pr_review_feedback_calls: Arc<Mutex<u32>>,
     pub push_branch_calls: Arc<Mutex<u32>>,
     pub create_draft_pr_calls: Arc<Mutex<u32>>,
     pub mark_pr_ready_calls: Arc<Mutex<u32>>,
@@ -46,7 +50,9 @@ impl MockGithubService {
     pub fn new() -> Self {
         Self {
             status_responses: Arc::new(Mutex::new(VecDeque::new())),
+            review_feedback_responses: Arc::new(Mutex::new(VecDeque::new())),
             check_pr_status_calls: Arc::new(Mutex::new(0)),
+            check_pr_review_feedback_calls: Arc::new(Mutex::new(0)),
             push_branch_calls: Arc::new(Mutex::new(0)),
             create_draft_pr_calls: Arc::new(Mutex::new(0)),
             mark_pr_ready_calls: Arc::new(Mutex::new(0)),
@@ -66,6 +72,13 @@ impl MockGithubService {
     /// queue is exhausted, subsequent calls return `PrStatus::Open`.
     pub fn will_return_status(&self, status: PrStatus) {
         self.status_responses.lock().unwrap().push_back(Ok(status));
+    }
+
+    pub fn will_return_review_feedback(&self, feedback: PrReviewFeedback) {
+        self.review_feedback_responses
+            .lock()
+            .unwrap()
+            .push_back(Ok(Some(feedback)));
     }
 
     /// Make the next `push_branch` call fail with the given message.
@@ -100,6 +113,9 @@ impl MockGithubService {
 
     pub fn check_calls(&self) -> u32 {
         *self.check_pr_status_calls.lock().unwrap()
+    }
+    pub fn review_feedback_calls(&self) -> u32 {
+        *self.check_pr_review_feedback_calls.lock().unwrap()
     }
     pub fn push_calls(&self) -> u32 {
         *self.push_branch_calls.lock().unwrap()
@@ -173,6 +189,19 @@ impl GithubServiceTrait for MockGithubService {
             return result;
         }
         Ok(PrStatus::Open)
+    }
+
+    async fn check_pr_review_feedback(
+        &self,
+        _wd: &Path,
+        _pr_number: i64,
+    ) -> AppResult<Option<PrReviewFeedback>> {
+        *self.check_pr_review_feedback_calls.lock().unwrap() += 1;
+        let mut q = self.review_feedback_responses.lock().unwrap();
+        if let Some(result) = q.pop_front() {
+            return result;
+        }
+        Ok(None)
     }
 
     async fn push_branch(&self, _wd: &Path, _branch: &str) -> AppResult<()> {
