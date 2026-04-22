@@ -1056,39 +1056,6 @@ fn test_create_mcp_config_injects_agent_type() {
     let _ = std::fs::remove_file(&config_path);
 }
 
-#[test]
-fn test_create_mcp_config_injects_mcp_trace_dir_outside_plugin_or_target_root() {
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_dir = tmp.path();
-
-    let config_path = create_mcp_config(plugin_dir, "ralphx-ideation", false)
-        .expect("create_mcp_config should succeed");
-
-    let json_str = std::fs::read_to_string(&config_path).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-
-    let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
-    let trace_dir = json["mcpServers"][mcp_server_name]["env"]["RALPHX_MCP_TRACE_DIR"]
-        .as_str()
-        .expect("MCP config must pass a backend-owned trace directory");
-    let trace_path = std::path::Path::new(trace_dir);
-
-    assert!(
-        trace_path.is_absolute(),
-        "MCP trace dir must be absolute so it cannot resolve under target project cwd: {trace_dir}"
-    );
-    assert!(
-        trace_path.ends_with("mcp-proxy"),
-        "MCP trace dir should be scoped under the app log root: {trace_dir}"
-    );
-    assert!(
-        !trace_path.starts_with(plugin_dir),
-        "MCP trace dir must not live under the plugin or target project root: {trace_dir}"
-    );
-
-    let _ = std::fs::remove_file(&config_path);
-}
-
 // ==================== Effort Flag Tests (build_teammate_cli_args) ====================
 
 #[test]

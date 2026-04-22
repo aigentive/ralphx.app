@@ -3005,6 +3005,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "dashmap",
+ "dirs",
  "dotenvy",
  "futures",
  "hmac",

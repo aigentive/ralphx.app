@@ -684,21 +684,6 @@ pub fn create_mcp_config(
             );
         }
 
-        let trace_dir =
-            crate::utils::runtime_log_paths::mcp_proxy_trace_dir().to_string_lossy().into_owned();
-        let env_entry = server_obj
-            .entry("env".to_string())
-            .or_insert_with(|| serde_json::json!({}));
-        if !env_entry.is_object() {
-            *env_entry = serde_json::json!({});
-        }
-        if let Some(env_obj) = env_entry.as_object_mut() {
-            env_obj.insert(
-                "RALPHX_MCP_TRACE_DIR".to_string(),
-                serde_json::Value::String(trace_dir),
-            );
-        }
-
         // Always resolve bare "node" to its full path so macOS GUI apps (which have
         // stripped PATH) can find node even when it's installed via nvm/Homebrew.
         let current_command = server_obj

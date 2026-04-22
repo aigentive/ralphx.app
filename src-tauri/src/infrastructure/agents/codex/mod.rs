@@ -1,12 +1,10 @@
 mod codex_cli_client;
 pub mod stream_processor;
 
-use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use std::fs;
 use tracing::warn;
-use uuid::Uuid;
 
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
@@ -193,9 +191,6 @@ pub fn build_codex_mcp_overrides(
         mcp_args.push(format!("--allowed-tools={arg_value}"));
     }
 
-    let trace_dir =
-        crate::utils::runtime_log_paths::mcp_proxy_trace_dir().to_string_lossy().into_owned();
-
     let mut overrides = vec![
         format!(
             "mcp_servers.{mcp_server_name}.command={}",
@@ -206,10 +201,6 @@ pub fn build_codex_mcp_overrides(
             encode_codex_string_array(&mcp_args)?
         ),
         format!("mcp_servers.{mcp_server_name}.enabled=true"),
-        format!(
-            "mcp_servers.{mcp_server_name}.env.RALPHX_MCP_TRACE_DIR={}",
-            encode_codex_string_literal(&trace_dir)?
-        ),
     ];
 
     if let Some(tools) = enabled_tools {
@@ -603,13 +594,7 @@ fn write_codex_prompt_debug_artifact(
         )
     })?;
 
-    let filename = format!(
-        "{}-{}-{}.txt",
-        Utc::now().format("%Y%m%dT%H%M%S%.3fZ"),
-        mode,
-        Uuid::new_v4()
-    );
-    let path = prompt_dir.join(filename);
+    let path = crate::utils::runtime_log_paths::codex_prompt_debug_file(mode);
     fs::write(&path, prompt).map_err(|error| {
         format!(
             "Failed to write Codex prompt log artifact {}: {error}",

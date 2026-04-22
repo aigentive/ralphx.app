@@ -134,12 +134,9 @@ describe("safeError — integration", () => {
     });
 });
 describe("safeTrace — file logging", () => {
-    it("uses backend-provided trace dir instead of creating target-project .artifacts", async () => {
+    it("uses module-owned trace dir instead of creating target-project .artifacts", async () => {
         const originalCwd = process.cwd();
         const targetProject = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-target-project-"));
-        const ralphxLogRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-owned-logs-"));
-        const expectedTraceDir = path.join(ralphxLogRoot, "mcp-proxy");
-        process.env.RALPHX_MCP_TRACE_DIR = expectedTraceDir;
         process.env.RALPHX_WORKING_DIRECTORY = targetProject;
         try {
             process.chdir(targetProject);
@@ -149,7 +146,8 @@ describe("safeTrace — file logging", () => {
                 api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
             });
             const logPath = isolated.getTraceLogPath();
-            expect(logPath.startsWith(expectedTraceDir)).toBe(true);
+            expect(logPath.startsWith(targetProject)).toBe(false);
+            expect(logPath).toContain(`${path.sep}.artifacts${path.sep}logs${path.sep}mcp-proxy${path.sep}`);
             expect(fs.existsSync(path.join(targetProject, ".artifacts"))).toBe(false);
         }
         finally {
@@ -157,9 +155,6 @@ describe("safeTrace — file logging", () => {
         }
     });
     it("writes only minimal allowlisted trace metadata under the safe trace root", () => {
-        const ralphxLogRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-owned-logs-"));
-        const expectedRoot = path.join(ralphxLogRoot, "mcp-proxy");
-        process.env.RALPHX_MCP_TRACE_DIR = expectedRoot;
         process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
         process.env.RALPHX_CONTEXT_TYPE = "ideation";
         process.env.RALPHX_CONTEXT_ID = "session-123";
@@ -168,7 +163,7 @@ describe("safeTrace — file logging", () => {
         });
         const logPath = getTraceLogPath();
         const contents = fs.readFileSync(logPath, "utf8");
-        expect(logPath.startsWith(expectedRoot)).toBe(true);
+        expect(logPath).toContain(`${path.sep}.artifacts${path.sep}logs${path.sep}mcp-proxy${path.sep}`);
         expect(contents).toContain("\"event\":\"tool.request\"");
         expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
         expect(contents).not.toContain("sk-ant-***REDACTED***");

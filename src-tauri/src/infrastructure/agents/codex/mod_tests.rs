@@ -167,39 +167,6 @@ fn build_codex_mcp_overrides_includes_runtime_feature_flags_from_agent_metadata(
 }
 
 #[test]
-fn build_codex_mcp_overrides_injects_backend_owned_trace_dir() {
-    let temp_dir = tempfile::tempdir().expect("temp dir");
-    let root = temp_dir.path();
-    let plugin_dir = create_plugin_dir(root);
-    std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build"))
-        .expect("create fake mcp build dir");
-    std::fs::write(
-        plugin_dir.join("ralphx-mcp-server/build/index.js"),
-        "// fake mcp server",
-    )
-    .expect("write fake mcp server");
-
-    let overrides =
-        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
-            .expect("overrides");
-    let trace_dir = crate::utils::runtime_log_paths::mcp_proxy_trace_dir()
-        .to_string_lossy()
-        .into_owned();
-    let encoded_trace_dir = serde_json::to_string(&trace_dir).expect("encode trace dir");
-    let expected_trace_override =
-        format!("mcp_servers.ralphx.env.RALPHX_MCP_TRACE_DIR={encoded_trace_dir}");
-
-    assert!(
-        overrides.iter().any(|entry| entry == &expected_trace_override),
-        "Codex MCP overrides must pass the app-owned trace dir: {overrides:?}"
-    );
-    assert!(
-        !std::path::Path::new(&trace_dir).starts_with(root),
-        "trace dir must not be under the target/plugin project root: {trace_dir}"
-    );
-}
-
-#[test]
 fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path();

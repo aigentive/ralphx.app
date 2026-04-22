@@ -29,6 +29,7 @@ Primary project docs:
 - When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
 - When touching plugin/root resolution, canonical agent loading, generated plugin bundles, or runtime log placement, read `.claude/rules/runtime-root-vs-target-project.md` first.
 - When touching filesystem sinks or any path influenced by external/runtime state, read `.claude/rules/codeql-path-safety.md` first.
+- CodeQL path findings block PRs: test code is scanned too; never introduce raw env-rooted filesystem sinks or raw runtime strings as path components.
 - When touching merge failure recovery, merge retry/resolve actions, merge reconciliation, or startup merge remediation, read `.claude/rules/merge-recovery-consistency.md` first.
 - When touching release automation, read `.claude/rules/release-script-validation.md` first.
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
