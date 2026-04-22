@@ -32,7 +32,7 @@ import { useTaskStore } from "@/stores/taskStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chatApi } from "@/api/chat";
+import { chatApi, type SendAgentMessageResult } from "@/api/chat";
 import { api } from "@/lib/tauri";
 import { withAlpha } from "@/lib/theme-colors";
 import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
@@ -121,6 +121,10 @@ interface IntegratedChatPanelProps {
     providerHarness?: string | null;
     modelId?: string | null;
   };
+  onUserMessageSent?: (payload: {
+    content: string;
+    result: SendAgentMessageResult;
+  }) => void | Promise<void>;
 }
 
 export function IntegratedChatPanel({
@@ -136,6 +140,7 @@ export function IntegratedChatPanel({
   toolbarBackAction,
   conversationIdOverride,
   sendOptions,
+  onUserMessageSent,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -645,6 +650,7 @@ export function IntegratedChatPanel({
     ideationSessionId,
     sendMessage,
     messageCount: messagesData.length,
+    onUserMessageSent,
   });
 
   // Wrap handleSend to include attachment IDs, team target, and clear attachments after send.

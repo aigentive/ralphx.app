@@ -233,6 +233,8 @@ pub struct ChatConversation {
     pub created_at: DateTime<Utc>,
     /// When this conversation was last updated
     pub updated_at: DateTime<Utc>,
+    /// When this conversation was archived (soft-deleted). None = active.
+    pub archived_at: Option<DateTime<Utc>>,
     /// ID of the prior execution's conversation (for TaskExecution re-runs only).
     /// Enables UI navigation between execution generations.
     pub parent_conversation_id: Option<String>,
@@ -263,6 +265,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -290,6 +293,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -317,6 +321,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -344,6 +349,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -372,6 +378,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -399,6 +406,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -426,6 +434,7 @@ impl ChatConversation {
             last_message_at: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
             parent_conversation_id: None,
             attribution_backfill_status: None,
             attribution_backfill_source: None,
@@ -496,6 +505,24 @@ impl ChatConversation {
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.title = Some(title.into());
         self.updated_at = Utc::now();
+    }
+
+    /// Archive this conversation.
+    pub fn archive(&mut self) {
+        let now = Utc::now();
+        self.archived_at = Some(now);
+        self.updated_at = now;
+    }
+
+    /// Restore this conversation from archive.
+    pub fn restore(&mut self) {
+        self.archived_at = None;
+        self.updated_at = Utc::now();
+    }
+
+    /// Returns true when this conversation is archived.
+    pub fn is_archived(&self) -> bool {
+        self.archived_at.is_some()
     }
 
     /// Check if this conversation has a Claude session (can use --resume)

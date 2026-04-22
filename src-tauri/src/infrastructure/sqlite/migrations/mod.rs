@@ -305,9 +305,12 @@ mod v20260414123000_drop_verification_metadata_column_tests;
 mod v20260415164250_merge_validation_mode_off;
 #[cfg(test)]
 mod v20260415164250_merge_validation_mode_off_tests;
+mod v20260422140039_chat_conversation_archived_at;
+#[cfg(test)]
+mod v20260422140039_chat_conversation_archived_at_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260415164250;
+pub const SCHEMA_VERSION: i64 = 20260422140039;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -871,6 +874,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260415164250,
         name: "merge_validation_mode_off",
         migrate: v20260415164250_merge_validation_mode_off::migrate,
+    },
+    Migration {
+        version: 20260422140039,
+        name: "chat_conversation_archived_at",
+        migrate: v20260422140039_chat_conversation_archived_at::migrate,
     },
 ];
 

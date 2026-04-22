@@ -105,6 +105,7 @@ pub fn start_teammate_stream<R: Runtime>(
                     last_message_at: None,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
+                    archived_at: None,
                     parent_conversation_id: None,
                     attribution_backfill_status: None,
                     attribution_backfill_source: None,

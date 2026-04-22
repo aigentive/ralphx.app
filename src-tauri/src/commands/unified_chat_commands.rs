@@ -127,6 +127,7 @@ pub struct AgentConversationResponse {
     pub last_message_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub archived_at: Option<String>,
 }
 
 impl From<ChatConversation> for AgentConversationResponse {
@@ -148,6 +149,7 @@ impl From<ChatConversation> for AgentConversationResponse {
             last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
             created_at: c.created_at.to_rfc3339(),
             updated_at: c.updated_at.to_rfc3339(),
+            archived_at: c.archived_at.map(|dt| dt.to_rfc3339()),
         }
     }
 }
@@ -818,24 +820,74 @@ pub async fn delete_queued_agent_message(
 pub async fn list_agent_conversations(
     context_type: String,
     context_id: String,
+    include_archived: Option<bool>,
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Vec<AgentConversationResponse>, String> {
     let context_type_enum = parse_context_type(&context_type)?;
 
-    let service = create_chat_service(&state, app, &execution_state, None);
+    let include_archived = include_archived.unwrap_or(false);
+    let conversations = if include_archived {
+        state
+            .chat_conversation_repo
+            .get_by_context_filtered(context_type_enum, &context_id, true)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        let service = create_chat_service(&state, app, &execution_state, None);
+        service
+            .list_conversations(context_type_enum, &context_id)
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
-    service
-        .list_conversations(context_type_enum, &context_id)
+    Ok(conversations
+        .into_iter()
+        .map(AgentConversationResponse::from)
+        .collect())
+}
+
+/// Archive a conversation.
+#[tauri::command]
+pub async fn archive_agent_conversation(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    state
+        .chat_conversation_repo
+        .archive(&conversation_id)
         .await
-        .map(|convs| {
-            convs
-                .into_iter()
-                .map(AgentConversationResponse::from)
-                .collect()
-        })
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(AgentConversationResponse::from)
+        .ok_or_else(|| "Conversation not found".to_string())
+}
+
+/// Restore an archived conversation.
+#[tauri::command]
+pub async fn restore_agent_conversation(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    state
+        .chat_conversation_repo
+        .restore(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(AgentConversationResponse::from)
+        .ok_or_else(|| "Conversation not found".to_string())
 }
 
 /// Get a conversation with all its messages
@@ -1090,6 +1142,14 @@ pub struct CreateAgentConversationInput {
     pub title: Option<String>,
 }
 
+/// Input for update_agent_conversation_title command
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAgentConversationTitleInput {
+    pub conversation_id: String,
+    pub title: String,
+}
+
 /// Create a new conversation for a context
 #[tauri::command]
 pub async fn create_agent_conversation(
@@ -1141,6 +1201,33 @@ pub async fn create_agent_conversation(
         .await
         .map(AgentConversationResponse::from)
         .map_err(|e| e.to_string())
+}
+
+/// Update an existing conversation title.
+#[tauri::command]
+pub async fn update_agent_conversation_title(
+    input: UpdateAgentConversationTitleInput,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationResponse, String> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err("Conversation title cannot be empty".to_string());
+    }
+
+    let conversation_id = ChatConversationId::from_string(input.conversation_id);
+    state
+        .chat_conversation_repo
+        .update_title(&conversation_id, title)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(AgentConversationResponse::from)
+        .ok_or_else(|| "Conversation not found".to_string())
 }
 
 #[cfg(test)]

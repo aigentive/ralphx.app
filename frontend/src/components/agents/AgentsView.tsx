@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ElementType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -11,8 +11,11 @@ import {
 import { toast } from "sonner";
 
 import { chatApi } from "@/api/chat";
+import { executionApi } from "@/api/execution";
+import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -20,7 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { chatKeys } from "@/hooks/useChat";
-import { useProjects } from "@/hooks/useProjects";
+import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getModelLabel } from "@/lib/model-utils";
 import { cn } from "@/lib/utils";
@@ -34,6 +37,10 @@ import {
 import type { ChatConversation } from "@/types/chat-conversation";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
+import {
+  deriveAgentTitleFromMessages,
+  isDefaultAgentTitle,
+} from "./agentTitle";
 import {
   DEFAULT_AGENT_RUNTIME,
   normalizeRuntimeSelection,
@@ -67,6 +74,10 @@ export function AgentsView({
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
   const [isQuickCreating, setIsQuickCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const autoTitleStateRef = useRef<
+    Map<string, { messages: string[]; lastTitle: string | null }>
+  >(new Map());
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -85,7 +96,7 @@ export function AgentsView({
 
   const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
   const activeProjectId = selectedProjectId || defaultProjectId;
-  const focusedConversations = useProjectAgentConversations(activeProjectId);
+  const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
   const artifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
   const activeChatConversationId = useChatStore((s) =>
     activeProjectId ? s.activeConversationIds[buildStoreKey("project", activeProjectId)] ?? null : null
@@ -303,6 +314,139 @@ export function AgentsView({
     ]
   );
 
+  const invalidateProjectConversations = useCallback(
+    async (targetProjectId: string) => {
+      await queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList("project", targetProjectId),
+      });
+    },
+    [queryClient]
+  );
+
+  const handleRemoveProject = useCallback(
+    async (targetProjectId: string) => {
+      try {
+        try {
+          await projectsApi.archive(targetProjectId);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!message.includes("currently active project")) {
+            throw err;
+          }
+          await executionApi.setActiveProject(undefined);
+          await projectsApi.archive(targetProjectId);
+        }
+        if (focusedProjectId === targetProjectId) {
+          setFocusedProject(null);
+        }
+        if (selectedProjectId === targetProjectId) {
+          clearSelection();
+        }
+        await queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to remove project");
+      }
+    },
+    [
+      clearSelection,
+      focusedProjectId,
+      queryClient,
+      selectedProjectId,
+      setFocusedProject,
+    ]
+  );
+
+  const handleArchiveConversation = useCallback(
+    async (conversation: ChatConversation) => {
+      try {
+        await chatApi.archiveConversation(conversation.id);
+        if (selectedConversationId === conversation.id) {
+          clearSelection();
+        }
+        await invalidateProjectConversations(conversation.contextId);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to archive session");
+      }
+    },
+    [clearSelection, invalidateProjectConversations, selectedConversationId]
+  );
+
+  const handleRestoreConversation = useCallback(
+    async (conversation: ChatConversation) => {
+      try {
+        await chatApi.restoreConversation(conversation.id);
+        await invalidateProjectConversations(conversation.contextId);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to restore session");
+      }
+    },
+    [invalidateProjectConversations]
+  );
+
+  const handleRenameConversation = useCallback(
+    async (conversationId: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed) {
+        return;
+      }
+      const conversation = focusedConversations.data?.find(
+        (item) => item.id === conversationId
+      );
+      await chatApi.updateConversationTitle(conversationId, trimmed);
+      autoTitleStateRef.current.delete(conversationId);
+      await invalidateProjectConversations(conversation?.contextId ?? activeProjectId ?? projectId);
+    },
+    [activeProjectId, focusedConversations.data, invalidateProjectConversations, projectId]
+  );
+
+  const handleAgentUserMessageSent = useCallback(
+    ({ content, result }: { content: string; result: { conversationId: string } }) => {
+      const conversationId = result.conversationId || selectedConversationId;
+      if (!conversationId || !activeProjectId) {
+        return;
+      }
+
+      const conversation = focusedConversations.data?.find(
+        (item) => item.id === conversationId
+      );
+      const titleIsAutoManaged =
+        isDefaultAgentTitle(conversation?.title) ||
+        autoTitleStateRef.current.get(conversationId)?.lastTitle === conversation?.title;
+      if (!titleIsAutoManaged) {
+        return;
+      }
+
+      const state = autoTitleStateRef.current.get(conversationId) ?? {
+        messages: [],
+        lastTitle: null,
+      };
+      if (state.messages.length >= 3) {
+        return;
+      }
+
+      state.messages = [...state.messages, content].slice(0, 3);
+      const nextTitle = deriveAgentTitleFromMessages(state.messages);
+      if (!nextTitle || nextTitle === conversation?.title || nextTitle === state.lastTitle) {
+        autoTitleStateRef.current.set(conversationId, state);
+        return;
+      }
+
+      state.lastTitle = nextTitle;
+      autoTitleStateRef.current.set(conversationId, state);
+      void chatApi.updateConversationTitle(conversationId, nextTitle).then(() => {
+        void invalidateProjectConversations(activeProjectId);
+      }).catch(() => {
+        // Auto-titling is best-effort; manual title editing remains available.
+      });
+    },
+    [
+      activeProjectId,
+      focusedConversations.data,
+      invalidateProjectConversations,
+      selectedConversationId,
+    ]
+  );
+
   const defaultRuntime =
     (defaultProjectId ? lastRuntimeByProjectId[defaultProjectId] : null) ??
     (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
@@ -324,7 +468,12 @@ export function AgentsView({
           onCreateAgent={() => onNewAgentDialogOpenChange(true)}
           onCreateProject={onCreateProject}
           onQuickCreateAgent={handleQuickCreateAgent}
+          onRemoveProject={handleRemoveProject}
+          onArchiveConversation={handleArchiveConversation}
+          onRestoreConversation={handleRestoreConversation}
           isCreatingAgent={isQuickCreating}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
         />
 
         <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
@@ -338,12 +487,14 @@ export function AgentsView({
                   providerHarness: normalizedActiveRuntime.provider,
                   modelId: normalizedActiveRuntime.modelId,
                 }}
+                onUserMessageSent={handleAgentUserMessageSent}
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
                     runtime={normalizedActiveRuntime}
                     artifactOpen={artifactState.isOpen}
                     activeArtifactTab={artifactState.activeTab}
+                    onRenameConversation={handleRenameConversation}
                     onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
                     onSelectArtifact={handleSelectArtifact}
                   />
@@ -399,6 +550,7 @@ interface AgentsChatHeaderProps {
   runtime: AgentRuntimeSelection;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
+  onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onToggleArtifacts: () => void;
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
@@ -408,18 +560,70 @@ function AgentsChatHeader({
   runtime,
   artifactOpen,
   activeArtifactTab,
+  onRenameConversation,
   onToggleArtifacts,
   onSelectArtifact,
 }: AgentsChatHeaderProps) {
   const title = conversation?.title || "Untitled agent";
   const modelLabel = getModelLabel(runtime.modelId);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftTitle(title);
+    }
+  }, [isEditing, title]);
+
+  const commitTitle = useCallback(async () => {
+    if (!conversation) {
+      setIsEditing(false);
+      return;
+    }
+    const trimmed = draftTitle.trim();
+    if (!trimmed || trimmed === title) {
+      setDraftTitle(title);
+      setIsEditing(false);
+      return;
+    }
+    await onRenameConversation(conversation.id, trimmed);
+    setIsEditing(false);
+  }, [conversation, draftTitle, onRenameConversation, title]);
 
   return (
     <div className="flex items-center gap-3 min-w-0">
       <div className="min-w-0">
-        <div className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-          {title}
-        </div>
+        {isEditing ? (
+          <Input
+            value={draftTitle}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            onBlur={() => void commitTitle()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitTitle();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setDraftTitle(title);
+                setIsEditing(false);
+              }
+            }}
+            className="h-7 max-w-[260px] text-sm font-semibold"
+            autoFocus
+            aria-label="Agent title"
+          />
+        ) : (
+          <button
+            type="button"
+            className="block max-w-[260px] text-left text-sm font-semibold truncate"
+            style={{ color: "var(--text-primary)" }}
+            onClick={() => conversation && setIsEditing(true)}
+            aria-label="Edit agent title"
+          >
+            {title}
+          </button>
+        )}
         <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
           {runtime.provider} · {modelLabel}
         </div>

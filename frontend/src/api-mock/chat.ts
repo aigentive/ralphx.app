@@ -178,10 +178,14 @@ exposeMockChatController();
 
 export async function mockListConversations(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  includeArchived = false
 ): Promise<ChatConversation[]> {
   return Array.from(mockConversations.values()).filter(
-    (c) => c.contextType === contextType && c.contextId === contextId
+    (c) =>
+      c.contextType === contextType &&
+      c.contextId === contextId &&
+      (includeArchived || !c.archivedAt)
   );
 }
 
@@ -201,6 +205,7 @@ export async function mockGetConversation(
       lastMessageAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      archivedAt: null,
     };
     return { conversation: newConversation, messages: [] };
   }
@@ -239,9 +244,59 @@ export async function mockCreateConversation(
     lastMessageAt: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    archivedAt: null,
   };
   mockConversations.set(conversation.id, conversation);
   return conversation;
+}
+
+export async function mockUpdateConversationTitle(
+  conversationId: string,
+  title: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    title: title.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
+}
+
+export async function mockArchiveConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    archivedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
+}
+
+export async function mockRestoreConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} not found`);
+  }
+  const updated = {
+    ...conversation,
+    archivedAt: null,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversationId, updated);
+  return cloneConversation(updated);
 }
 
 function cloneChildSessionStatus(
@@ -371,6 +426,9 @@ export const mockChatApi = {
   listConversations: mockListConversations,
   getConversation: mockGetConversation,
   createConversation: mockCreateConversation,
+  updateConversationTitle: mockUpdateConversationTitle,
+  archiveConversation: mockArchiveConversation,
+  restoreConversation: mockRestoreConversation,
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
   sendAgentMessage: mockSendAgentMessage,

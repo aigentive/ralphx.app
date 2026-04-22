@@ -29,6 +29,14 @@ pub trait ChatConversationRepository: Send + Sync {
         context_id: &str,
     ) -> AppResult<Vec<ChatConversation>>;
 
+    /// Get all conversations for a specific context, optionally including archived rows.
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>>;
+
     /// Get the active (most recent) conversation for a context
     async fn get_active_for_context(
         &self,
@@ -77,6 +85,12 @@ pub trait ChatConversationRepository: Send + Sync {
 
     /// Update conversation title
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()>;
+
+    /// Archive a conversation.
+    async fn archive(&self, id: &ChatConversationId) -> AppResult<()>;
+
+    /// Restore an archived conversation.
+    async fn restore(&self, id: &ChatConversationId) -> AppResult<()>;
 
     /// Update message count and last message timestamp
     /// This is typically called by a database trigger, but can be manually updated if needed

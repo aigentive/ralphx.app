@@ -75,6 +75,7 @@ export const ChatConversationSchema = z.object({
   lastMessageAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  archivedAt: z.string().datetime().nullable().optional(),
 });
 
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
