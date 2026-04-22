@@ -7,6 +7,7 @@ export interface ApiKeyContext {
   keyId: string;
   projectIds: string[];
   permissions: number; // bitmask: 1=read, 2=write, 4=admin
+  tauriOrigin?: boolean;
 }
 
 /** External MCP server configuration */

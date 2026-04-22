@@ -15,10 +15,12 @@
 use async_trait::async_trait;
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, HeaderMap, StatusCode},
 };
 
-use crate::domain::entities::{ApiKeyId, PERMISSION_CREATE_PROJECT};
+use crate::domain::entities::{
+    ApiKeyId, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_READ, PERMISSION_WRITE,
+};
 use crate::http_server::types::{HttpError, HttpServerState};
 
 /// Header that identifies a request as coming from the external MCP server.
@@ -28,6 +30,9 @@ pub const EXTERNAL_MCP_HEADER: &str = "x-ralphx-external-mcp";
 /// Header carrying the opaque API key ID (UUID), injected by the external MCP server.
 /// The extractor uses this to load the key from the DB and validate permissions.
 pub const EXTERNAL_KEY_ID_HEADER: &str = "x-ralphx-key-id";
+
+/// Header injected by the external MCP server for local Tauri-owned calls.
+pub const TAURI_MCP_HEADER: &str = "x-ralphx-tauri-mcp";
 
 /// A validated external API key with CREATE_PROJECT permission.
 ///
@@ -47,6 +52,14 @@ pub struct ValidatedExternalKey {
     pub permissions: i32,
 }
 
+fn header_is_one(headers: &HeaderMap, name: &str) -> bool {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
 #[async_trait]
 impl FromRequestParts<HttpServerState> for ValidatedExternalKey {
     type Rejection = HttpError;
@@ -56,17 +69,22 @@ impl FromRequestParts<HttpServerState> for ValidatedExternalKey {
         state: &HttpServerState,
     ) -> Result<Self, Self::Rejection> {
         // 1. Verify this is an external MCP request
-        let is_external_mcp = parts
-            .headers
-            .get(EXTERNAL_MCP_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v == "1")
-            .unwrap_or(false);
+        let is_external_mcp = header_is_one(&parts.headers, EXTERNAL_MCP_HEADER);
 
         if !is_external_mcp {
             return Err(HttpError {
                 status: StatusCode::UNAUTHORIZED,
                 message: Some("Not an external MCP request".to_string()),
+            });
+        }
+
+        if header_is_one(&parts.headers, TAURI_MCP_HEADER) {
+            return Ok(ValidatedExternalKey {
+                key_id: "tauri-local".to_string(),
+                permissions: PERMISSION_READ
+                    | PERMISSION_WRITE
+                    | PERMISSION_ADMIN
+                    | PERMISSION_CREATE_PROJECT,
             });
         }
 
@@ -126,5 +144,20 @@ impl FromRequestParts<HttpServerState> for ValidatedExternalKey {
             key_id: key_id_str,
             permissions: key.permissions,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_is_one_accepts_exact_one_only() {
+        let mut headers = HeaderMap::new();
+        headers.insert(TAURI_MCP_HEADER, "1".parse().expect("valid header"));
+        assert!(header_is_one(&headers, TAURI_MCP_HEADER));
+
+        headers.insert(TAURI_MCP_HEADER, "true".parse().expect("valid header"));
+        assert!(!header_is_one(&headers, TAURI_MCP_HEADER));
     }
 }

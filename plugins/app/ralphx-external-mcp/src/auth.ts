@@ -6,11 +6,13 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { ApiKeyContext, ValidateKeyResponse } from "./types.js";
+import { Permission, type ApiKeyContext, type ValidateKeyResponse } from "./types.js";
 
 const CACHE_TTL_MS = 30_000;
 const BEARER_PREFIX = "Bearer ";
 const KEY_PREFIX = "rxk_live_";
+const TAURI_BYPASS_TOKEN_ENV = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
+const TAURI_BYPASS_KEY_ID = "tauri-local";
 
 interface CacheEntry {
   context: ApiKeyContext;
@@ -131,6 +133,15 @@ export async function authMiddleware(
     return undefined;
   }
 
+  const tauriBypass = getTauriBypassContext(req, token);
+  if (tauriBypass === "forbidden") {
+    sendError(res, 403, "Tauri MCP bypass is restricted to loopback clients");
+    return undefined;
+  }
+  if (tauriBypass) {
+    return tauriBypass;
+  }
+
   if (!token.startsWith(KEY_PREFIX)) {
     sendError(res, 401, "Invalid API key format — expected rxk_live_ prefix");
     return undefined;
@@ -146,6 +157,43 @@ export async function authMiddleware(
     }
     return undefined;
   }
+}
+
+function getTauriBypassContext(
+  req: IncomingMessage,
+  token: string
+): ApiKeyContext | "forbidden" | undefined {
+  const expected = process.env[TAURI_BYPASS_TOKEN_ENV];
+  if (!expected || token !== expected) {
+    return undefined;
+  }
+
+  if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    return "forbidden";
+  }
+
+  return {
+    keyId: TAURI_BYPASS_KEY_ID,
+    projectIds: [],
+    permissions:
+      Permission.READ |
+      Permission.WRITE |
+      Permission.ADMIN |
+      Permission.CREATE_PROJECT,
+    tauriOrigin: true,
+  };
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) {
+    return false;
+  }
+  return (
+    address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1" ||
+    address === "localhost"
+  );
 }
 
 export class AuthError extends Error {

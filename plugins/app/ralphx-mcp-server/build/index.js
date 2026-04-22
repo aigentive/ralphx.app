@@ -430,19 +430,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     try {
         // Forward to Tauri backend
-        const rawArgs = args || {};
-        const dispatchArgs = name === "start_ideation_session"
-            ? {
-                ...rawArgs,
-                prompt: typeof rawArgs.prompt === "string"
-                    ? `[${rawArgs.prompt.length} chars]`
-                    : undefined,
-                initial_prompt: typeof rawArgs.initial_prompt === "string"
-                    ? `[${rawArgs.initial_prompt.length} chars]`
-                    : undefined,
-            }
-            : args;
-        safeError(`[RalphX MCP] Calling Tauri: ${name} with args:`, JSON.stringify(dispatchArgs));
+        safeError(`[RalphX MCP] Calling Tauri: ${name} with args:`, JSON.stringify(args));
         safeTrace("tool.dispatch", { name });
         let result;
         // Special handling for GET endpoints with path parameters
@@ -712,42 +700,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
             result = await callTauri(`execution/tasks/${task_id}/complete`, body);
-        }
-        else if (name === "start_ideation_session") {
-            // POST /api/external/start_ideation
-            const { project_id, title, prompt, initial_prompt, idempotency_key } = args;
-            const resolvedProjectId = project_id || RALPHX_PROJECT_ID;
-            if (!resolvedProjectId) {
-                throw new Error("start_ideation_session requires project_id when MCP project context is unavailable");
-            }
-            const resolvedPrompt = prompt || initial_prompt;
-            if (!resolvedPrompt) {
-                throw new Error("start_ideation_session requires prompt");
-            }
-            safeError("[RalphX MCP] start_ideation_session request", {
-                project_id: resolvedProjectId,
-                title,
-                prompt_len: resolvedPrompt.length,
-                idempotency_key_present: Boolean(idempotency_key),
-            });
-            result = await callTauri("external/start_ideation", {
-                project_id: resolvedProjectId,
-                title,
-                prompt: resolvedPrompt,
-                initial_prompt: resolvedPrompt,
-                idempotency_key,
-            });
-            const startResult = result;
-            safeError("[RalphX MCP] start_ideation_session response", {
-                session_id: startResult.session_id,
-                status: startResult.status,
-                agent_spawned: startResult.agent_spawned,
-                agent_spawn_blocked_reason: startResult.agent_spawn_blocked_reason,
-                duplicate_detected: startResult.duplicate_detected,
-                exists: startResult.exists,
-                next_action: startResult.next_action,
-                hint: startResult.hint,
-            });
         }
         else if (name === "list_projects") {
             // GET /api/internal/projects

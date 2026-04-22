@@ -1,21 +1,24 @@
 mod codex_cli_client;
 pub mod stream_processor;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
-use std::fs;
 use tracing::warn;
 
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
 use crate::infrastructure::agents::claude::{
-    claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
-    get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
+    claude_runtime_config, external_mcp_config, filter_interactive_tools,
+    format_allowed_tools_arg_value, get_agent_config, load_agent_system_prompt, mcp_agent_type,
+    node_utils, validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
     has_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir,
-    AgentPromptHarness,
+    resolve_project_root_from_plugin_dir, AgentPromptHarness, CanonicalCodexAgentMetadata,
+};
+use crate::infrastructure::external_mcp_supervisor::{
+    ensure_tauri_mcp_bypass_token, TAURI_MCP_BYPASS_TOKEN_ENV,
 };
 pub use codex_cli_client::CodexCliClient;
 
@@ -128,6 +131,11 @@ pub fn build_codex_mcp_overrides(
     let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
     let short_name = mcp_agent_type(agent_name);
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
+    let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
+    if codex_metadata.mcp_transport.as_deref() == Some("external") {
+        return build_codex_external_mcp_overrides(&mcp_server_name, codex_metadata);
+    }
+
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     if !mcp_server_path.exists() {
         return Err(format!(
@@ -210,7 +218,39 @@ pub fn build_codex_mcp_overrides(
         ));
     }
 
-    let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
+    for (feature_name, enabled) in codex_metadata.runtime_features {
+        overrides.push(format!("features.{feature_name}={enabled}"));
+    }
+
+    Ok(overrides)
+}
+
+fn build_codex_external_mcp_overrides(
+    mcp_server_name: &str,
+    codex_metadata: CanonicalCodexAgentMetadata,
+) -> Result<Vec<String>, String> {
+    let cfg = external_mcp_config();
+    let _token = ensure_tauri_mcp_bypass_token();
+    let url = format!("http://{}:{}/mcp", cfg.host, cfg.port);
+    let mut overrides = vec![
+        format!(
+            "mcp_servers.{mcp_server_name}.url={}",
+            encode_codex_string_literal(&url)?
+        ),
+        format!(
+            "mcp_servers.{mcp_server_name}.bearer_token_env_var={}",
+            encode_codex_string_literal(TAURI_MCP_BYPASS_TOKEN_ENV)?
+        ),
+        format!("mcp_servers.{mcp_server_name}.enabled=true"),
+    ];
+
+    if !codex_metadata.mcp_tools.is_empty() {
+        overrides.push(format!(
+            "mcp_servers.{mcp_server_name}.enabled_tools={}",
+            encode_codex_string_array(&codex_metadata.mcp_tools)?
+        ));
+    }
+
     for (feature_name, enabled) in codex_metadata.runtime_features {
         overrides.push(format!("features.{feature_name}={enabled}"));
     }
@@ -231,14 +271,16 @@ pub fn compose_codex_prompt(
     };
 
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
-    let system_prompt = load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex)
-        .or_else(|| {
-            if has_canonical_agent_definition(&project_root, agent_name) {
-                None
-            } else {
-                load_agent_system_prompt(plugin_dir, agent_name)
-            }
-        });
+    let system_prompt =
+        load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex).or_else(
+            || {
+                if has_canonical_agent_definition(&project_root, agent_name) {
+                    None
+                } else {
+                    load_agent_system_prompt(plugin_dir, agent_name)
+                }
+            },
+        );
     let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
     };

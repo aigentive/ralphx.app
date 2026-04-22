@@ -9,8 +9,7 @@ const CANONICAL_AGENTS_DIR: &str = "agents";
 const PROMPT_FILE_NAME: &str = "prompt.md";
 const AGENT_FILE_NAME: &str = "agent.yaml";
 const SHARED_PROMPT_DIR_NAME: &str = "shared";
-const GENERATED_PLUGIN_RUNTIME_ENTRY_NAMES: &[&str] =
-    &["ralphx-mcp-server", "ralphx-external-mcp"];
+const GENERATED_PLUGIN_RUNTIME_ENTRY_NAMES: &[&str] = &["ralphx-mcp-server", "ralphx-external-mcp"];
 const PRIMARY_PLUGIN_DIR_COMPONENTS: &[&str] = &["plugins", "app"];
 const LEGACY_PLUGIN_DIR_COMPONENTS: &[&str] = &["ralphx-plugin"];
 const GENERATED_PLUGIN_DIR_COMPONENTS: &[&str] = &["generated", "claude-plugin"];
@@ -139,6 +138,18 @@ impl CanonicalClaudeAgentMetadata {
 pub struct CanonicalCodexAgentMetadata {
     #[serde(default)]
     pub runtime_features: BTreeMap<String, bool>,
+    #[serde(default)]
+    pub mcp_transport: Option<String>,
+    #[serde(default)]
+    pub mcp_tools: Vec<String>,
+}
+
+impl CanonicalCodexAgentMetadata {
+    fn is_empty(&self) -> bool {
+        self.runtime_features.is_empty()
+            && self.mcp_transport.is_none()
+            && self.mcp_tools.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,7 +275,8 @@ fn has_canonical_agents_tree(root: &Path) -> bool {
 
 fn trusted_canonical_project_root(project_root: &Path) -> Option<PathBuf> {
     let canonical_root = project_root.canonicalize().ok()?;
-    if !path_has_only_safe_components(&canonical_root) || !has_canonical_agents_tree(&canonical_root)
+    if !path_has_only_safe_components(&canonical_root)
+        || !has_canonical_agents_tree(&canonical_root)
     {
         return None;
     }
@@ -423,8 +435,12 @@ pub fn list_canonical_prompt_backed_agents(
     let mut names = list_canonical_agent_names(project_root)
         .into_iter()
         .filter(|agent_name| {
-            trusted_canonical_agent_file(project_root, agent_name, &[harness.as_dir(), PROMPT_FILE_NAME])
-                .is_some()
+            trusted_canonical_agent_file(
+                project_root,
+                agent_name,
+                &[harness.as_dir(), PROMPT_FILE_NAME],
+            )
+            .is_some()
                 || trusted_canonical_agent_file(
                     project_root,
                     agent_name,
@@ -500,7 +516,7 @@ pub fn try_load_canonical_codex_metadata(
     agent_name: &str,
 ) -> Result<CanonicalCodexAgentMetadata, String> {
     if let Some(definition) = load_canonical_agent_definition(project_root, agent_name) {
-        if !definition.harnesses.codex.runtime_features.is_empty() {
+        if !definition.harnesses.codex.is_empty() {
             if let Some(raw) =
                 load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Codex)
             {
@@ -511,12 +527,12 @@ pub fn try_load_canonical_codex_metadata(
                             canonical_agent_name(agent_name)
                         )
                     })?;
-                if fallback.runtime_features != definition.harnesses.codex.runtime_features {
+                if fallback != definition.harnesses.codex {
                     tracing::debug!(
                         agent = %canonical_agent_name(agent_name),
-                        canonical_runtime_features = ?definition.harnesses.codex.runtime_features,
-                        harness_runtime_features = ?fallback.runtime_features,
-                        "Canonical agent metadata overrides divergent Codex harness runtime features"
+                        canonical_codex_metadata = ?definition.harnesses.codex,
+                        harness_codex_metadata = ?fallback,
+                        "Canonical agent metadata overrides divergent Codex harness metadata"
                     );
                 }
             }
@@ -541,14 +557,20 @@ pub fn resolve_harness_agent_prompt_path(
     harness: AgentPromptHarness,
 ) -> Option<PathBuf> {
     load_canonical_agent_definition(project_root, agent_name)?;
-    let prompt_path =
-        trusted_canonical_agent_file(project_root, agent_name, &[harness.as_dir(), PROMPT_FILE_NAME]);
+    let prompt_path = trusted_canonical_agent_file(
+        project_root,
+        agent_name,
+        &[harness.as_dir(), PROMPT_FILE_NAME],
+    );
     if let Some(prompt_path) = prompt_path {
         return Some(prompt_path);
     }
 
-    let shared_prompt_path =
-        trusted_canonical_agent_file(project_root, agent_name, &[SHARED_PROMPT_DIR_NAME, PROMPT_FILE_NAME]);
+    let shared_prompt_path = trusted_canonical_agent_file(
+        project_root,
+        agent_name,
+        &[SHARED_PROMPT_DIR_NAME, PROMPT_FILE_NAME],
+    );
     if let Some(shared_prompt_path) = shared_prompt_path {
         Some(shared_prompt_path)
     } else {
@@ -578,8 +600,11 @@ fn load_harness_agent_metadata(
     harness: AgentPromptHarness,
 ) -> Option<String> {
     load_canonical_agent_definition(project_root, agent_name)?;
-    let metadata_path =
-        trusted_canonical_agent_file(project_root, agent_name, &[harness.as_dir(), AGENT_FILE_NAME])?;
+    let metadata_path = trusted_canonical_agent_file(
+        project_root,
+        agent_name,
+        &[harness.as_dir(), AGENT_FILE_NAME],
+    )?;
     std::fs::read_to_string(metadata_path).ok()
 }
 

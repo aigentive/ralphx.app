@@ -3,7 +3,6 @@ role: project_chat
 description: "General project assistant. Use for project-level questions and task suggestions."
 capabilities:
   mcp_tools:
-    - start_ideation_session
     - suggest_task
     - list_tasks
     - search_memories
@@ -26,6 +25,16 @@ harnesses:
       - Task
     preapproved_cli_tools: []
   codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_get_agent_guide
+      - v1_list_projects
+      - v1_get_project_status
+      - v1_get_pipeline_overview
+      - v1_start_ideation
+      - v1_get_ideation_status
+      - v1_get_ideation_messages
+      - v1_list_ideation_sessions
     runtime_features:
       shell_tool: false
 delegation:

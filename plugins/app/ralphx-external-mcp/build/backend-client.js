@@ -9,6 +9,8 @@
 export const PROJECT_SCOPE_HEADER = "X-RalphX-Project-Scope";
 /** Header used to mark requests coming from external MCP */
 export const EXTERNAL_MCP_HEADER = "X-RalphX-External-MCP";
+/** Header used for Tauri-owned local bypass calls through the external MCP process */
+export const TAURI_MCP_HEADER = "X-RalphX-Tauri-MCP";
 /** Header for propagating the API key ID to the backend (for permission enforcement) */
 export const KEY_ID_HEADER = "X-RalphX-Key-Id";
 export class BackendClient {
@@ -55,6 +57,9 @@ export class BackendClient {
         };
         // Inject key ID header — allows backend to identify the calling key for permission enforcement
         headers[KEY_ID_HEADER] = keyContext.keyId;
+        if (keyContext.tauriOrigin === true) {
+            headers[TAURI_MCP_HEADER] = "1";
+        }
         // Inject project scope header — comma-separated list of project IDs
         if (keyContext.projectIds.length > 0) {
             headers[PROJECT_SCOPE_HEADER] = keyContext.projectIds.join(",");

@@ -28,6 +28,12 @@ Internet / External Network
 | `:3847` | Internal surface — bound to `127.0.0.1` only. Unreachable from the network. |
 | Localhost processes | Processes running on the same machine as RalphX can call `:3847` directly, bypassing Layer 1. This is an accepted risk: the machine itself is already trusted (it runs the Tauri app). External agents cannot exploit this. |
 
+## Tauri-Owned Local Bypass
+
+RalphX can route native project-chat agents through the external MCP process without issuing a user API key. Tauri generates `RALPHX_TAURI_MCP_BYPASS_TOKEN`, passes it to the external MCP supervisor and Codex child process, and Codex sends it as the MCP Bearer token. The external MCP server accepts that token only from loopback clients and marks proxied backend calls with `X-RalphX-Tauri-MCP: 1`.
+
+This bypass is local-only and intended for app-owned agents. Network clients still need normal `rxk_live_` API keys.
+
 ## API Key Format and Storage
 
 API keys use the format: `rxk_live_{32 random alphanumeric characters}`
