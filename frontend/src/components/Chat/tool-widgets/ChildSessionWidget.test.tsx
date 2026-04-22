@@ -37,6 +37,7 @@ function makeStatusResponse(
     title: "Test Session",
     agent_state: { estimated_status: estimatedStatus },
     recent_messages: messages,
+    lastEffectiveModel: null,
   };
 }
 
@@ -244,7 +245,7 @@ describe("ChildSessionWidget", () => {
       result: mcpWrap({ session_id: "uuid-123" }),
     });
     renderWithProviders(<ChildSessionWidget toolCall={toolCall} />, onNavigate);
-    fireEvent.click(screen.getByText("Open Session"));
+    fireEvent.click(screen.getByText("Open Run"));
     expect(onNavigate).toHaveBeenCalledWith("uuid-123");
   });
 
@@ -261,7 +262,7 @@ describe("ChildSessionWidget", () => {
       result: mcpWrap({}), // no session_id
     });
     renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
-    expect(screen.queryByText("Open Session")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open Run")).not.toBeInTheDocument();
   });
 
   it("passes session_id to useChildSessionStatus hook", () => {
@@ -297,7 +298,7 @@ describe("ChildSessionWidget", () => {
     expect(screen.getByText("Custom Follow-up Title")).toBeInTheDocument();
   });
 
-  it("Open Session button is visible in collapsed (default) state — button lives in header badge area", () => {
+  it("Open Run button is visible in collapsed (default) state — button lives in header badge area", () => {
     const toolCall = makeToolCall({
       arguments: { title: "Collapsed Session" },
       result: mcpWrap({ session_id: "uuid-123" }),
@@ -306,7 +307,7 @@ describe("ChildSessionWidget", () => {
     expect(screen.getByRole("button", { name: "Open Session" })).toBeInTheDocument();
   });
 
-  it("clicking Open Session button calls onNavigate and stops React synthetic event propagation", () => {
+  it("clicking Open Run button calls onNavigate and stops React synthetic event propagation", () => {
     const onNavigate = vi.fn();
     const parentClickHandler = vi.fn();
     const toolCall = makeToolCall({
@@ -332,5 +333,19 @@ describe("ChildSessionWidget", () => {
 
     expect(onNavigate).toHaveBeenCalledWith("uuid-123");
     expect(parentClickHandler).not.toHaveBeenCalled();
+  });
+
+  it("renders project ideation start tool calls as ideation run cards", () => {
+    const toolCall = makeToolCall({
+      name: "mcp__ralphx__start_ideation_session",
+      arguments: {},
+      result: mcpWrap({ sessionId: "uuid-project", agent_spawned: true }),
+    });
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+    expect(screen.getByText("Ideation Session")).toBeInTheDocument();
+    expect(screen.getByText("Ideation run")).toBeInTheDocument();
+    expect(screen.getByText("ideation")).toBeInTheDocument();
+    expect(screen.getByText("Agent spawned")).toBeInTheDocument();
+    expect(screen.getByText("Open Run")).toBeInTheDocument();
   });
 });

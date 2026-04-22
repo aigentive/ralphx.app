@@ -166,13 +166,23 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   toolCall,
   compact,
 }: ToolCallWidgetProps) {
+  const isProjectIdeationRun = toolCall.name.toLowerCase().includes("start_ideation_session");
   const parsed = parseMcpToolResult(toolCall.result);
   const title =
-    getString(toolCall.arguments, "title") ?? getString(parsed, "title");
+    getString(toolCall.arguments, "title") ??
+    getString(parsed, "title") ??
+    (isProjectIdeationRun ? "Ideation run" : undefined);
   const purpose =
-    getString(toolCall.arguments, "purpose") ?? getString(parsed, "purpose");
-  const orchestrationTriggered = getBool(parsed, "orchestration_triggered");
-  const sessionId = getString(parsed, "session_id");
+    getString(toolCall.arguments, "purpose") ??
+    getString(parsed, "purpose") ??
+    (isProjectIdeationRun ? "ideation" : undefined);
+  const orchestrationTriggered =
+    getBool(parsed, "orchestration_triggered") ?? getBool(parsed, "agent_spawned");
+  const sessionId =
+    getString(parsed, "session_id") ??
+    getString(parsed, "sessionId") ??
+    getString(parsed, "child_session_id") ??
+    getString(parsed, "childSessionId");
 
   const onNavigate = useContext(ChildSessionNavigationContext);
 
@@ -211,7 +221,13 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
         header={
           <WidgetHeader
             icon={<GitBranch size={12} />}
-            title={purpose === "verification" ? "Verification Session" : "Follow-up Session"}
+            title={
+              purpose === "verification"
+                ? "Verification Session"
+                : isProjectIdeationRun
+                  ? "Ideation Session"
+                  : "Follow-up Session"
+            }
             {...(compact !== undefined && { compact })}
             badge={
               <>
@@ -239,7 +255,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
                     }}
                     aria-label="Open Session"
                   >
-                    Open Session
+                    Open Run
                   </button>
                 )}
               </>

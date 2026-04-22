@@ -701,6 +701,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             result = await callTauri(`execution/tasks/${task_id}/complete`, body);
         }
+        else if (name === "start_ideation_session") {
+            // POST /api/external/start_ideation
+            const { project_id, title, prompt, initial_prompt, idempotency_key } = args;
+            const resolvedProjectId = project_id || RALPHX_PROJECT_ID;
+            if (!resolvedProjectId) {
+                throw new Error("start_ideation_session requires project_id when MCP project context is unavailable");
+            }
+            const resolvedPrompt = prompt || initial_prompt;
+            if (!resolvedPrompt) {
+                throw new Error("start_ideation_session requires prompt");
+            }
+            result = await callTauri("external/start_ideation", {
+                project_id: resolvedProjectId,
+                title,
+                prompt: resolvedPrompt,
+                initial_prompt: resolvedPrompt,
+                idempotency_key,
+            });
+        }
         else if (name === "list_projects") {
             // GET /api/internal/projects
             result = await callTauriGet("internal/projects");

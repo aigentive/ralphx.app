@@ -40,7 +40,7 @@ import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
 import {
   sortAgentConversations,
-  toIdeationAgentConversation,
+  toProjectAgentConversation,
   type AgentConversation,
 } from "./agentConversations";
 import {
@@ -64,7 +64,7 @@ const HEADER_ARTIFACT_TABS: Array<{
 }> = [
   { id: "plan", label: "Plan", icon: FileText },
   { id: "verification", label: "Verification", icon: CheckCircle2 },
-  { id: "proposal", label: "Proposal", icon: GitPullRequestArrow },
+  { id: "proposal", label: "Proposals", icon: GitPullRequestArrow },
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
 
@@ -241,18 +241,12 @@ export function AgentsView({
       runtime: AgentRuntimeSelection;
     }) => {
       const trimmedTitle = title.trim();
-      const session = await ideationApi.sessions.create(
-        targetProjectId,
-        trimmedTitle || undefined,
-        undefined,
-        "solo"
-      );
       const conversation = await chatApi.createConversation(
-        "ideation",
-        session.id,
+        "project",
+        targetProjectId,
         trimmedTitle
       );
-      const agentConversation = toIdeationAgentConversation(session, conversation);
+      const agentConversation = toProjectAgentConversation(conversation);
       for (const includeArchived of [false, true]) {
         queryClient.setQueryData<AgentConversation[]>(
           agentConversationKeys.projectList(targetProjectId, includeArchived),
@@ -265,15 +259,14 @@ export function AgentsView({
       }
       setRuntimeForConversation(conversation.id, targetProjectId, runtime);
       selectConversation(targetProjectId, conversation.id);
-      setActiveConversation(buildStoreKey("ideation", session.id), conversation.id);
+      setActiveConversation(buildStoreKey("project", targetProjectId), conversation.id);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: agentConversationKeys.project(targetProjectId),
         }),
         queryClient.invalidateQueries({
-          queryKey: chatKeys.conversationList("ideation", session.id),
+          queryKey: chatKeys.conversationList("project", targetProjectId),
         }),
-        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
       ]);
     },
     [
@@ -579,6 +572,7 @@ export function AgentsView({
 
           {selectedConversationId && artifactState.isOpen && (
             <AgentsArtifactPane
+              conversation={activeConversation}
               activeTab={artifactState.activeTab}
               taskMode={artifactState.taskMode}
               onTabChange={handleSelectArtifact}
@@ -648,8 +642,8 @@ function AgentsChatHeader({
   }, [conversation, draftTitle, onRenameConversation, title]);
 
   return (
-    <div className="flex items-center gap-3 min-w-0">
-      <div className="min-w-0">
+    <div className="flex w-full flex-1 items-center justify-between gap-3 min-w-0">
+      <div className="min-w-0 shrink">
         {isEditing ? (
           <Input
             value={draftTitle}
@@ -673,7 +667,7 @@ function AgentsChatHeader({
         ) : (
           <button
             type="button"
-            className="block max-w-[260px] text-left text-sm font-semibold truncate"
+            className="block max-w-[420px] text-left text-sm font-semibold truncate"
             style={{ color: "var(--text-primary)" }}
             onClick={() => conversation && setIsEditing(true)}
             aria-label="Edit agent title"
@@ -686,7 +680,7 @@ function AgentsChatHeader({
         </div>
       </div>
 
-      <div className="hidden md:flex items-center gap-1">
+      <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
         {HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
           const isActive = activeArtifactTab === id && artifactOpen;
           return (

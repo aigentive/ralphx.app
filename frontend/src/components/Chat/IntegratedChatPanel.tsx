@@ -10,7 +10,6 @@
  */
 
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import {
   useChat,
@@ -66,9 +65,8 @@ import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog
 import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
-import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
-import { ideationApi } from "@/api/ideation";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { getModelLabel } from "@/lib/model-utils";
 import { selectIsTeamActive, selectEffectiveModel } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam, selectTeammateByName, type TeammateStatus } from "@/stores/teamStore";
@@ -83,7 +81,7 @@ import { useTeamHistory } from "@/hooks/useTeamHistory";
 import { getTeamStatus } from "@/api/team";
 import { TimeoutWarning } from "./TimeoutWarning";
 import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
-import { toast } from "sonner";
+import { ChildSessionTranscriptModal } from "./ChildSessionTranscriptModal";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -145,6 +143,8 @@ export function IntegratedChatPanel({
   const bus = useEventBus();
   const queryClient = useQueryClient();
   const pollStartRef = useRef<number | null>(null);
+  const [childSessionModalId, setChildSessionModalId] = useState<string | null>(null);
+  const ideationSessionsById = useIdeationStore((s) => s.sessions);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
@@ -724,46 +724,22 @@ export function IntegratedChatPanel({
     handleSend,
   });
 
-  // Ideation store for session navigation
-  const selectSession = useIdeationStore((s) => s.selectSession);
-  const allSessions = useIdeationStore(useShallow((s) => Object.values(s.sessions)));
-
-  // Handler for navigating to child session
-  // Fetches from backend if session not in local store (e.g., newly created child)
+  // Handler for opening a child ideation run without leaving the parent chat.
   const handleNavigateToChildSession = useCallback(async (childSessionId: string) => {
-    // First check local store
-    const session = allSessions.find((s) => s.id === childSessionId);
-    if (session) {
-      selectSession(session);
-      return;
-    }
-
-    // Session not in store - fetch from backend
-    try {
-      const fetchedSession = await ideationApi.sessions.get(childSessionId);
-      if (fetchedSession) {
-        selectSession(fetchedSession);
-      } else {
-        logger.warn("[IntegratedChatPanel] Child session not found:", childSessionId);
-        toast.error("Session not found");
-      }
-    } catch (error) {
-      logger.warn("[IntegratedChatPanel] Failed to fetch child session:", { childSessionId, error });
-      toast.error("Session not found");
-    }
-  }, [allSessions, selectSession]);
+    setChildSessionModalId(childSessionId);
+  }, []);
 
   // Hydrate effectiveModel from HTTP session data for inactive ideation sessions.
   // This covers the case where the user opens a past session that was never live
   // in the current app session — the store will be empty but the DB has the model.
   useEffect(() => {
     if (!ideationSessionId) return;
-    const session = allSessions.find((s) => s.id === ideationSessionId);
+    const session = ideationSessionsById[ideationSessionId];
     const lastEffectiveModel = session?.lastEffectiveModel;
     if (!lastEffectiveModel) return;
     const model = { id: lastEffectiveModel, label: getModelLabel(lastEffectiveModel) };
     useChatStore.getState().setEffectiveModel(storeContextKey, model);
-  }, [ideationSessionId, allSessions, storeContextKey]);
+  }, [ideationSessionId, ideationSessionsById, storeContextKey]);
 
   // Backfill effectiveModel from agentRunQuery for execution/review/merge contexts on reopen/refresh.
   // Guard: skip if live agent:run_started already populated the store, or if modelId is null.
@@ -1073,6 +1049,15 @@ export function IntegratedChatPanel({
               sessionId={ideationSessionId}
             />
           )}
+            <ChildSessionTranscriptModal
+              sessionId={childSessionModalId}
+              open={!!childSessionModalId}
+              onOpenChange={(isOpen) => {
+                if (!isOpen) {
+                  setChildSessionModalId(null);
+                }
+              }}
+            />
           </ChildSessionNavigationContext.Provider>
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}

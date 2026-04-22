@@ -417,7 +417,7 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
         false,
     ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),
-    ("ralphx-chat-project", "base_tools", &["Task"], false),
+    ("ralphx-chat-project", "readonly_tools", &[], false),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
     (
