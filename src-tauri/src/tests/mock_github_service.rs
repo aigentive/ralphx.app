@@ -23,6 +23,7 @@ pub struct MockGithubState {
     pub check_pr_status_result: Option<AppResult<PrStatus>>,
     pub check_pr_sync_state_result: Option<AppResult<PrSyncState>>,
     pub check_pr_review_feedback_result: Option<AppResult<Option<PrReviewFeedback>>>,
+    pub check_pr_review_feedback_delay_ms: u64,
     pub push_branch_result: Option<AppResult<()>>,
     pub close_pr_result: Option<AppResult<()>>,
     pub delete_remote_branch_result: Option<AppResult<()>>,
@@ -36,6 +37,8 @@ pub struct MockGithubState {
     pub check_pr_status_calls: u32,
     pub check_pr_sync_state_calls: u32,
     pub check_pr_review_feedback_calls: u32,
+    pub active_check_pr_review_feedback_calls: u32,
+    pub max_concurrent_check_pr_review_feedback_calls: u32,
     pub push_branch_calls: u32,
     pub close_pr_calls: u32,
     pub delete_remote_branch_calls: u32,
@@ -105,6 +108,13 @@ impl MockGithubService {
     #[allow(dead_code)]
     pub fn will_return_review_feedback(&self, feedback: PrReviewFeedback) {
         self.state().check_pr_review_feedback_result = Some(Ok(Some(feedback)));
+    }
+
+    /// Shorthand: add an artificial delay to review feedback checks so tests can
+    /// observe startup recovery concurrency.
+    #[allow(dead_code)]
+    pub fn with_review_feedback_delay_ms(&self, delay_ms: u64) {
+        self.state().check_pr_review_feedback_delay_ms = delay_ms;
     }
 
     /// Shorthand: configure any method to fail with the given message (Infrastructure error).
@@ -210,10 +220,28 @@ impl GithubServiceTrait for MockGithubService {
         _working_dir: &Path,
         pr_number: i64,
     ) -> AppResult<Option<PrReviewFeedback>> {
+        let (delay_ms, result) = {
+            let mut s = self.state.lock().expect("lock poisoned");
+            s.check_pr_review_feedback_calls += 1;
+            s.active_check_pr_review_feedback_calls += 1;
+            s.max_concurrent_check_pr_review_feedback_calls = s
+                .max_concurrent_check_pr_review_feedback_calls
+                .max(s.active_check_pr_review_feedback_calls);
+            s.last_check_pr_review_feedback_number = Some(pr_number);
+            (
+                s.check_pr_review_feedback_delay_ms,
+                s.check_pr_review_feedback_result.take(),
+            )
+        };
+
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+
         let mut s = self.state.lock().expect("lock poisoned");
-        s.check_pr_review_feedback_calls += 1;
-        s.last_check_pr_review_feedback_number = Some(pr_number);
-        s.check_pr_review_feedback_result.take().unwrap_or(Ok(None))
+        s.active_check_pr_review_feedback_calls =
+            s.active_check_pr_review_feedback_calls.saturating_sub(1);
+        result.unwrap_or(Ok(None))
     }
 
     async fn push_branch(&self, _working_dir: &Path, branch: &str) -> AppResult<()> {

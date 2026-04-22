@@ -140,6 +140,7 @@ Entry points:
 
 - PR poller checks freshness while the app is running.
 - Startup recovery checks freshness before restarting PR pollers, so PRs that became stale while the app was closed are repaired on the next boot.
+- Startup poller recovery uses bounded concurrency (`PR_POLLER_RECOVERY_CONCURRENCY`) so several independent PRs can reconcile without serializing app boot.
 
 Eligibility guard:
 
@@ -173,7 +174,7 @@ The reconciler treats PR-mode merges as a special case:
 
 - live poller + `pr_polling_active=true` means “this merge is waiting on GitHub; do not run normal merge recovery”
 - startup recovery can restart PR polling when needed
-- startup recovery reconciles open PR branch freshness before restarting polling
+- startup recovery reconciles open PR branch freshness before restarting polling, with bounded parallelism across independent PR-backed merge tasks
 - startup recovery leaves active `pr_branch_update_conflict` merger-agent work alone instead of migrating it back to plain PR waiting
 - mode-switch metadata allows a PR-backed merge to be converted back to the direct merge path safely
 
