@@ -1,7 +1,25 @@
 use super::*;
-use crate::domain::state_machine::TransitionHandler;
 use crate::domain::state_machine::transition_handler::merge_helpers;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
+use crate::domain::state_machine::TransitionHandler;
+
+async fn pr_branch_update_conflict_active(
+    services: &crate::domain::state_machine::context::TaskServices,
+    task_id: &TaskId,
+) -> bool {
+    let Some(task_repo) = services.task_repo.as_ref() else {
+        return false;
+    };
+    task_repo
+        .get_by_id(task_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|task| task.metadata)
+        .and_then(|metadata| serde_json::from_str::<serde_json::Value>(&metadata).ok())
+        .and_then(|metadata| metadata.get("pr_branch_update_conflict")?.as_bool())
+        .unwrap_or(false)
+}
 
 impl<'a> TransitionHandler<'a> {
     async fn load_merge_prompt_context(&self, task_id: &str) -> MergePromptContext {
@@ -32,6 +50,10 @@ impl<'a> TransitionHandler<'a> {
                 .as_ref()
                 .and_then(|v| v.get("source_update_conflict")?.as_bool())
                 .unwrap_or(false),
+            is_pr_branch_update_conflict: meta
+                .as_ref()
+                .and_then(|v| v.get("pr_branch_update_conflict")?.as_bool())
+                .unwrap_or(false),
             freshness_conflict_count: meta
                 .as_ref()
                 .and_then(|v| v.get("freshness_conflict_count")?.as_u64())
@@ -56,6 +78,32 @@ impl<'a> TransitionHandler<'a> {
                  Read the validation failures from task context, fix the code, run validation \
                  to confirm, then commit your fixes.",
                 task_id
+            )
+        } else if context.is_pr_branch_update_conflict {
+            let base_branch = context
+                .base_branch
+                .clone()
+                .unwrap_or_else(|| "origin/main".to_string());
+            let plan_branch = context.target_branch.clone().unwrap_or_default();
+            format!(
+                "Resolve the GitHub PR branch update conflict for task {task_id}.\n\n\
+                 The plan branch ({plan_branch}) needs to incorporate {base_branch} \
+                 before PR review can continue, but there are merge conflicts.\n\n\
+                 Your working directory is the merge worktree where the plan branch is \
+                 already checked out. DO NOT merge this PR into the base branch — GitHub \
+                 remains the final merge authority.\n\n\
+                 Steps:\n\
+                 1. Run `git status` to confirm you are on the plan branch ({plan_branch})\n\
+                 2. Run `git merge {base_branch}` to trigger the merge and expose conflicts\n\
+                 3. Resolve all conflict markers in the conflicted files\n\
+                 4. Stage resolved files: `git add <files>`\n\
+                 5. Commit: `git commit --no-edit`\n\
+                 6. Run `git rev-parse HEAD` and call `complete_merge` with that full commit SHA\n\
+                 7. Do not exit silently — `complete_merge` returns the task to PR waiting\n\n\
+                 If the conflict is too complex, call report_incomplete with a description.",
+                task_id = task_id,
+                base_branch = base_branch,
+                plan_branch = plan_branch,
             )
         } else if context.is_plan_update_conflict {
             let base_branch = context
@@ -117,9 +165,7 @@ impl<'a> TransitionHandler<'a> {
                  attempts did not fully resolve the staleness. Take extra care to \
                  resolve ALL conflicts completely. If you cannot resolve cleanly, \
                  call report_incomplete rather than committing a partial resolution.",
-                prompt,
-                context.freshness_conflict_count,
-                config.freshness_max_conflict_retries
+                prompt, context.freshness_conflict_count, config.freshness_max_conflict_retries
             )
         } else {
             prompt
@@ -137,6 +183,13 @@ impl<'a> TransitionHandler<'a> {
                 plan_branch_repo.get_by_merge_task_id(&tid).await,
                 project_repo.get_by_id(&project_id).await,
             ) {
+                if pr_branch_update_conflict_active(&self.machine.context.services, &tid).await {
+                    tracing::info!(
+                        task_id = task_id,
+                        "PR mode: bypassing PR poller because merger agent must resolve PR branch update conflict"
+                    );
+                    return false;
+                }
                 if let (true, Some(pr_number)) = (plan_branch.pr_eligible, plan_branch.pr_number) {
                     tracing::info!(
                         task_id = task_id,
@@ -246,19 +299,12 @@ impl<'a> TransitionHandler<'a> {
                             let task_wt_str =
                                 merge_helpers::compute_task_worktree_path(&project, task_id);
                             let task_wt_path = std::path::PathBuf::from(&task_wt_str);
-                            merge_helpers::pre_delete_worktree(
-                                repo_path,
-                                &task_wt_path,
-                                task_id,
-                            )
-                            .await;
+                            merge_helpers::pre_delete_worktree(repo_path, &task_wt_path, task_id)
+                                .await;
 
                             let plan_update_wt_str =
-                                merge_helpers::compute_plan_update_worktree_path(
-                                    &project, task_id,
-                                );
-                            let plan_update_wt_path =
-                                std::path::PathBuf::from(&plan_update_wt_str);
+                                merge_helpers::compute_plan_update_worktree_path(&project, task_id);
+                            let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt_str);
                             merge_helpers::pre_delete_worktree(
                                 repo_path,
                                 &plan_update_wt_path,
@@ -267,9 +313,7 @@ impl<'a> TransitionHandler<'a> {
                             .await;
 
                             match GitService::checkout_existing_branch_worktree(
-                                repo_path,
-                                &wt_path,
-                                branch,
+                                repo_path, &wt_path, branch,
                             )
                             .await
                             {
@@ -282,7 +326,8 @@ impl<'a> TransitionHandler<'a> {
                                         is_source_conflict = is_source_conflict,
                                         "on_enter(Merging): Created merge worktree for freshness-conflict path"
                                     );
-                                    if let Ok(Some(mut fresh_task)) = task_repo.get_by_id(&tid).await
+                                    if let Ok(Some(mut fresh_task)) =
+                                        task_repo.get_by_id(&tid).await
                                     {
                                         fresh_task.worktree_path =
                                             Some(wt_path.to_string_lossy().to_string());
@@ -294,7 +339,8 @@ impl<'a> TransitionHandler<'a> {
                                                 "on_enter(Merging): Failed to persist worktree_path — cleaning up orphan"
                                             );
                                             let _ =
-                                                GitService::delete_worktree(repo_path, &wt_path).await;
+                                                GitService::delete_worktree(repo_path, &wt_path)
+                                                    .await;
                                         }
                                     }
                                 }
@@ -352,12 +398,14 @@ impl<'a> TransitionHandler<'a> {
     pub(super) async fn enter_merging_state(&self) -> AppResult<()> {
         let task_id = &self.machine.context.task_id;
 
-        if self.maybe_start_pr_mode_merge_poller(task_id).await {
+        let prompt_context = self.load_merge_prompt_context(task_id).await;
+        if !prompt_context.is_pr_branch_update_conflict
+            && self.maybe_start_pr_mode_merge_poller(task_id).await
+        {
             return Ok(());
         }
         self.prepare_merge_worktree_for_entry(task_id).await;
 
-        let prompt_context = self.load_merge_prompt_context(task_id).await;
         let prompt = self.build_merge_prompt(task_id, &prompt_context);
 
         tracing::info!(
@@ -439,13 +487,12 @@ async fn record_merger_spawn_failure(
         + 1;
 
     let error_lower = error.to_lowercase();
-    let spawn_failure_source = if error_lower.contains(ENOENT_MARKER)
-        || error_lower.contains("no such file")
-    {
-        MergeFailureSource::SpawnFailure
-    } else {
-        MergeFailureSource::TransientGit
-    };
+    let spawn_failure_source =
+        if error_lower.contains(ENOENT_MARKER) || error_lower.contains("no such file") {
+            MergeFailureSource::SpawnFailure
+        } else {
+            MergeFailureSource::TransientGit
+        };
     let event = MergeRecoveryEvent::new(
         MergeRecoveryEventKind::AttemptFailed,
         MergeRecoverySource::System,

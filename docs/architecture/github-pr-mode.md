@@ -7,6 +7,8 @@
 > `src-tauri/src/domain/state_machine/transition_handler/side_effects/merge_attempt/pr_mode.rs`,
 > `src-tauri/src/domain/state_machine/transition_handler/on_enter_states/merge.rs`,
 > `src-tauri/src/application/services/pr_merge_poller.rs`,
+> `src-tauri/src/application/task_transition_service.rs`,
+> `src-tauri/src/application/pr_startup_recovery.rs`,
 > `src-tauri/src/application/reconciliation/handlers/merge.rs`,
 > and the frontend task-detail/task-card surfaces.
 > Do not update from older docs alone. Re-audit the code if behavior changes.
@@ -124,11 +126,37 @@ Responsibilities:
 Settlement behavior:
 
 - `Open` -> keep polling, update DB for UI
+- `Open + behind base + mergeable` -> fetch base, update the plan branch, push it, refresh PR title/body, then keep polling
+- `Open + conflicts/dirty` -> route to the merger agent to update the PR branch, then return the task to PR waiting after the agent completes
 - `Merged` -> fetch remote, persist merge SHA, transition task to `Merged`
 - `Closed` -> transition task to `MergeIncomplete`
 - repeated errors / stale PR -> transition task to `MergeIncomplete`
 
-### 7. Post-merge cleanup
+### 7. Open PR branch freshness
+
+Open PR-mode plan PRs are RalphX-managed artifacts, so RalphX keeps their head branch current with the GitHub base branch.
+
+Entry points:
+
+- PR poller checks freshness while the app is running.
+- Startup recovery checks freshness before restarting PR pollers, so PRs that became stale while the app was closed are repaired on the next boot.
+
+Eligibility guard:
+
+- task category must be `plan_merge`
+- task state must be `WaitingOnPr`
+- task and project must not be archived/terminal
+- plan branch must be `Active`, `pr_eligible=true`, and linked to the expected PR number
+- GitHub PR head ref must match the RalphX plan branch
+
+Routing:
+
+- `mergeStateStatus=BEHIND` with non-conflicting mergeability uses the programmatic plan-branch update path.
+- `mergeStateStatus=DIRTY` or `mergeable=CONFLICTING` creates a merge worktree, marks `pr_branch_update_conflict=true`, and transitions through `Merging` to spawn the merger agent.
+- `on_enter(Merging)` bypasses the normal PR-poller shortcut when `pr_branch_update_conflict=true`; otherwise the agent would never spawn.
+- `complete_merge` for this path uses freshness return-routing and transitions back to `WaitingOnPr`, not `Merged`; GitHub remains the final merge authority.
+
+### 8. Post-merge cleanup
 
 PR mode has a different cleanup fork after the task reaches `Merged`.
 
@@ -139,12 +167,14 @@ Instead of only deleting local feature branches, RalphX also:
 
 This keeps GitHub-side branch cleanup aligned with the PR-backed settlement path.
 
-### 8. Recovery and reconciliation
+### 9. Recovery and reconciliation
 
 The reconciler treats PR-mode merges as a special case:
 
 - live poller + `pr_polling_active=true` means “this merge is waiting on GitHub; do not run normal merge recovery”
 - startup recovery can restart PR polling when needed
+- startup recovery reconciles open PR branch freshness before restarting polling
+- startup recovery leaves active `pr_branch_update_conflict` merger-agent work alone instead of migrating it back to plain PR waiting
 - mode-switch metadata allows a PR-backed merge to be converted back to the direct merge path safely
 
 ## UI Contract
@@ -164,4 +194,5 @@ Current user-facing surfaces depend on plan-branch PR metadata:
 - `pr_eligible=true` without a live GitHub service also falls back to the direct-merge path.
 - Active plans can be converted when the project toggle is turned on later because the reconciler updates `pr_eligible` and re-runs pending plan merges.
 - Disabling PR mode mid-plan is destructive to the PR flow by design: RalphX closes the PR and resumes direct merge handling.
+- RalphX only auto-updates PR branches it can prove are active RX-managed plan PRs; arbitrary GitHub PRs are out of scope.
 - The current UI reuses the `Merging` state for both “agent resolving merge work” and “waiting for GitHub PR settlement.” Keep user-facing copy aligned with that dual meaning.

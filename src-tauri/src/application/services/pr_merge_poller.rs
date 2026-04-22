@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 
+use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::plan_branch::PrStatus as DbPrStatus;
 use crate::domain::entities::{InternalStatus, PlanBranchId, TaskId};
@@ -533,6 +534,46 @@ async fn poll_loop(
                             pr_number,
                             error = %error,
                             "PR poller: failed to inspect GitHub review feedback"
+                        );
+                    }
+                }
+
+                match transition_service
+                    .reconcile_pr_branch_freshness(
+                        &task_id,
+                        &plan_branch_id,
+                        pr_number,
+                        "pr_poller",
+                    )
+                    .await
+                {
+                    Ok(PrBranchFreshnessOutcome::ConflictRouted) => {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            pr_number,
+                            "PR poller: routed stale PR branch conflict to merger agent"
+                        );
+                        active.remove(&task_id);
+                        stopping.remove(&task_id);
+                        return;
+                    }
+                    Ok(PrBranchFreshnessOutcome::Updated) => {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            pr_number,
+                            "PR poller: updated stale PR branch from base branch"
+                        );
+                    }
+                    Ok(
+                        PrBranchFreshnessOutcome::NotApplicable
+                        | PrBranchFreshnessOutcome::UpToDate,
+                    ) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            task_id = task_id.as_str(),
+                            pr_number,
+                            error = %error,
+                            "PR poller: failed to reconcile PR branch freshness"
                         );
                     }
                 }

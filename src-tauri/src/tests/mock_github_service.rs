@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::domain::services::github_service::{GithubServiceTrait, PrReviewFeedback, PrStatus};
+use crate::domain::services::github_service::{
+    GithubServiceTrait, PrReviewFeedback, PrStatus, PrSyncState,
+};
 use crate::error::AppError;
 use crate::AppResult;
 
@@ -19,6 +21,7 @@ pub struct MockGithubState {
     pub mark_pr_ready_result: Option<AppResult<()>>,
     pub update_pr_details_result: Option<AppResult<()>>,
     pub check_pr_status_result: Option<AppResult<PrStatus>>,
+    pub check_pr_sync_state_result: Option<AppResult<PrSyncState>>,
     pub check_pr_review_feedback_result: Option<AppResult<Option<PrReviewFeedback>>>,
     pub push_branch_result: Option<AppResult<()>>,
     pub close_pr_result: Option<AppResult<()>>,
@@ -31,6 +34,7 @@ pub struct MockGithubState {
     pub mark_pr_ready_calls: u32,
     pub update_pr_details_calls: u32,
     pub check_pr_status_calls: u32,
+    pub check_pr_sync_state_calls: u32,
     pub check_pr_review_feedback_calls: u32,
     pub push_branch_calls: u32,
     pub close_pr_calls: u32,
@@ -45,6 +49,7 @@ pub struct MockGithubState {
     pub last_update_pr_details_args: Option<(i64, String, String)>,
     pub last_update_pr_details_body: Option<String>,
     pub last_check_pr_status_number: Option<i64>,
+    pub last_check_pr_sync_state_number: Option<i64>,
     pub last_check_pr_review_feedback_number: Option<i64>,
     pub last_push_branch_name: Option<String>,
     pub last_close_pr_number: Option<i64>,
@@ -88,6 +93,12 @@ impl MockGithubService {
     /// Shorthand: configure check_pr_status to return the given status.
     pub fn will_return_status(&self, status: PrStatus) {
         self.state().check_pr_status_result = Some(Ok(status));
+    }
+
+    /// Shorthand: configure check_pr_sync_state to return the given state.
+    #[allow(dead_code)]
+    pub fn will_return_sync_state(&self, state: PrSyncState) {
+        self.state().check_pr_sync_state_result = Some(Ok(state));
     }
 
     /// Shorthand: configure check_pr_review_feedback to return requested changes.
@@ -170,6 +181,28 @@ impl GithubServiceTrait for MockGithubService {
         s.check_pr_status_result
             .take()
             .unwrap_or(Ok(PrStatus::Open))
+    }
+
+    async fn check_pr_sync_state(
+        &self,
+        _working_dir: &Path,
+        pr_number: i64,
+    ) -> AppResult<PrSyncState> {
+        let mut s = self.state.lock().expect("lock poisoned");
+        s.check_pr_sync_state_calls += 1;
+        s.last_check_pr_sync_state_number = Some(pr_number);
+        s.check_pr_sync_state_result.take().unwrap_or_else(|| {
+            Ok(PrSyncState {
+                status: PrStatus::Open,
+                merge_state_status: None,
+                mergeable: None,
+                is_draft: false,
+                head_ref_name: "feature".to_string(),
+                base_ref_name: "main".to_string(),
+                head_ref_oid: None,
+                base_ref_oid: None,
+            })
+        })
     }
 
     async fn check_pr_review_feedback(

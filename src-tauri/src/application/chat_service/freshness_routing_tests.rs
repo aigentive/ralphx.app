@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use crate::application::chat_service::freshness_routing::{
-    FreshnessRouteResult, freshness_return_route,
+    freshness_return_route, FreshnessRouteResult,
 };
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
@@ -32,9 +32,7 @@ use crate::domain::repositories::TaskRepository;
 // ============================================================================
 
 /// Build a minimal TaskTransitionService<tauri::Wry> using in-memory repos.
-fn build_transition_service(
-    app_state: &AppState,
-) -> TaskTransitionService<tauri::Wry> {
+fn build_transition_service(app_state: &AppState) -> TaskTransitionService<tauri::Wry> {
     let execution_state = Arc::new(ExecutionState::new());
     TaskTransitionService::new(
         Arc::clone(&app_state.task_repo),
@@ -65,7 +63,9 @@ async fn insert_task_with_metadata(
     let mut task = Task::new(project_id, "test task".to_owned());
     task.metadata = metadata.map(|v| v.to_string());
     task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
-    repo.create(task.clone()).await.expect("Failed to create task");
+    repo.create(task.clone())
+        .await
+        .expect("Failed to create task");
     task
 }
 
@@ -114,15 +114,10 @@ async fn test_normal_merge_when_plan_update_conflict_absent() {
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should not error");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should not error");
 
     assert!(
         matches!(result, FreshnessRouteResult::NormalMerge),
@@ -151,15 +146,10 @@ async fn test_normal_merge_when_plan_update_conflict_false() {
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should not error");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should not error");
 
     assert!(
         matches!(result, FreshnessRouteResult::NormalMerge),
@@ -177,18 +167,12 @@ async fn test_normal_merge_when_metadata_none() {
     let ts = build_transition_service(&app_state);
     let project = insert_test_project(&app_state).await;
 
-    let task =
-        insert_task_with_metadata(&app_state.task_repo, project.id.clone(), None).await;
+    let task = insert_task_with_metadata(&app_state.task_repo, project.id.clone(), None).await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should not error");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should not error");
 
     assert!(
         matches!(result, FreshnessRouteResult::NormalMerge),
@@ -218,15 +202,10 @@ async fn test_defaults_to_pending_review_when_origin_state_absent() {
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should succeed");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should succeed");
 
     match result {
         FreshnessRouteResult::FreshnessRouted(state) => {
@@ -276,15 +255,10 @@ async fn test_freshness_routed_when_plan_update_conflict_true_reviewing() {
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should succeed");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should succeed");
 
     match result {
         FreshnessRouteResult::FreshnessRouted(state) => {
@@ -328,15 +302,10 @@ async fn test_freshness_routed_routes_to_ready_for_executing_origin() {
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should succeed");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should succeed");
 
     match result {
         FreshnessRouteResult::FreshnessRouted(state) => {
@@ -355,7 +324,69 @@ async fn test_freshness_routed_routes_to_ready_for_executing_origin() {
 }
 
 // ============================================================================
-// Test 7: Targeted field cleanup — plan_update_conflict, branch_freshness_conflict,
+// Test 7: PR branch update conflict returns to WaitingOnPr
+// ============================================================================
+
+#[tokio::test]
+async fn test_freshness_routed_routes_pr_branch_update_conflict_to_waiting_on_pr() {
+    let app_state = AppState::new_test();
+    let ts = build_transition_service(&app_state);
+    let project = insert_test_project(&app_state).await;
+
+    let mut task = insert_task_with_metadata(
+        &app_state.task_repo,
+        project.id.clone(),
+        Some(serde_json::json!({
+            "plan_update_conflict": true,
+            "branch_freshness_conflict": true,
+            "pr_branch_update_conflict": true,
+            "pr_branch_update_source": "test",
+            "freshness_origin_state": "waiting_on_pr",
+        })),
+    )
+    .await;
+    task.internal_status = InternalStatus::Merging;
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should succeed");
+
+    match result {
+        FreshnessRouteResult::FreshnessRouted(state) => {
+            assert_eq!(state, "waiting_on_pr");
+        }
+        FreshnessRouteResult::NormalMerge => panic!("Expected FreshnessRouted"),
+    }
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::WaitingOnPr);
+
+    let meta: serde_json::Value = updated
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    assert!(meta.get("plan_update_conflict").is_none());
+    assert!(meta.get("branch_freshness_conflict").is_none());
+    assert!(meta.get("pr_branch_update_conflict").is_none());
+    assert!(meta.get("pr_branch_update_source").is_none());
+    assert_eq!(
+        meta.get("freshness_origin_state").and_then(|v| v.as_str()),
+        Some("waiting_on_pr"),
+        "origin is preserved for audit/debug"
+    );
+}
+
+// ============================================================================
+// Test 8: Targeted field cleanup — plan_update_conflict, branch_freshness_conflict,
 //         freshness_backoff_until removed; freshness_origin_state preserved
 // ============================================================================
 
@@ -378,15 +409,9 @@ async fn test_targeted_metadata_cleanup_on_success() {
     )
     .await;
 
-    freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should succeed");
+    freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+        .await
+        .expect("Should succeed");
 
     let updated = app_state
         .task_repo
@@ -408,7 +433,10 @@ async fn test_targeted_metadata_cleanup_on_success() {
     );
     assert!(
         meta.get("branch_freshness_conflict").is_none()
-            || meta.get("branch_freshness_conflict").and_then(|v| v.as_bool()) == Some(false),
+            || meta
+                .get("branch_freshness_conflict")
+                .and_then(|v| v.as_bool())
+                == Some(false),
         "branch_freshness_conflict should be removed"
     );
     assert!(
@@ -482,7 +510,8 @@ async fn test_re_inserts_flags_when_transition_fails() {
         "plan_update_conflict should be re-inserted after transition failure"
     );
     assert_eq!(
-        meta.get("branch_freshness_conflict").and_then(|v| v.as_bool()),
+        meta.get("branch_freshness_conflict")
+            .and_then(|v| v.as_bool()),
         Some(true),
         "branch_freshness_conflict should be re-inserted after transition failure"
     );
@@ -568,15 +597,10 @@ async fn test_freshness_routed_when_plan_update_conflict_true_branch_freshness_c
     )
     .await;
 
-    let result = freshness_return_route(
-        &task,
-        Arc::clone(&app_state.task_repo),
-        &ts,
-        &project,
-        None,
-    )
-    .await
-    .expect("Should succeed even when branch_freshness_conflict=false");
+    let result =
+        freshness_return_route(&task, Arc::clone(&app_state.task_repo), &ts, &project, None)
+            .await
+            .expect("Should succeed even when branch_freshness_conflict=false");
 
     // Must return FreshnessRouted — NOT NormalMerge — because plan_update_conflict=true
     match result {
@@ -645,7 +669,10 @@ fn test_normal_merge_returns_without_cleanup() {
     // cleanup logic runs (which is tested implicitly by tests 1-3).
     //
     // We just assert that this assertion compiles and passes trivially.
-    assert!(true, "FreshnessCleanupScope::RoutingOnly is not called in freshness_routing.rs");
+    assert!(
+        true,
+        "FreshnessCleanupScope::RoutingOnly is not called in freshness_routing.rs"
+    );
 }
 
 // ============================================================================
@@ -692,15 +719,18 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
             .await
             .unwrap()
             .expect("Task must exist");
-        stored.metadata = Some(serde_json::json!({
-            "plan_update_conflict": true,
-            "branch_freshness_conflict": true,
-            "freshness_origin_state": "reviewing",
-            "freshness_conflict_count": 1,
-            "freshness_backoff_until": "2099-01-01T00:00:00Z",
-            // Non-freshness key that must survive routing
-            "trigger_origin": "scheduler",
-        }).to_string());
+        stored.metadata = Some(
+            serde_json::json!({
+                "plan_update_conflict": true,
+                "branch_freshness_conflict": true,
+                "freshness_origin_state": "reviewing",
+                "freshness_conflict_count": 1,
+                "freshness_backoff_until": "2099-01-01T00:00:00Z",
+                // Non-freshness key that must survive routing
+                "trigger_origin": "scheduler",
+            })
+            .to_string(),
+        );
         stored.touch();
         app_state.task_repo.update(&stored).await.unwrap();
     }
@@ -739,7 +769,9 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default();
     assert_eq!(
-        merging_meta.get("plan_update_conflict").and_then(|v| v.as_bool()),
+        merging_meta
+            .get("plan_update_conflict")
+            .and_then(|v| v.as_bool()),
         Some(true),
         "plan_update_conflict must still be set after transition to Merging"
     );
@@ -770,7 +802,8 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
     match &route_result {
         FreshnessRouteResult::FreshnessRouted(origin) => {
             assert_eq!(
-                origin.as_str(), "reviewing",
+                origin.as_str(),
+                "reviewing",
                 "Origin state carried in result must be 'reviewing'"
             );
         }
@@ -815,12 +848,18 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
     // Routing trigger flags must be cleared (they were consumed by the intercept)
     assert!(
         final_meta.get("plan_update_conflict").is_none()
-            || final_meta.get("plan_update_conflict").and_then(|v| v.as_bool()) == Some(false),
+            || final_meta
+                .get("plan_update_conflict")
+                .and_then(|v| v.as_bool())
+                == Some(false),
         "plan_update_conflict must be cleared after successful routing"
     );
     assert!(
         final_meta.get("branch_freshness_conflict").is_none()
-            || final_meta.get("branch_freshness_conflict").and_then(|v| v.as_bool()) == Some(false),
+            || final_meta
+                .get("branch_freshness_conflict")
+                .and_then(|v| v.as_bool())
+                == Some(false),
         "branch_freshness_conflict must be cleared after successful routing"
     );
     assert!(

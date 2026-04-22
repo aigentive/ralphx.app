@@ -122,6 +122,19 @@ IdeationSession (has plan proposals)
 
 **Lookup path:** `task.ideation_session_id` → `plan_branch_repo.get_by_session_id()`.
 
+### GitHub PR Mode Plan PR Freshness
+
+**Files:** `pr_merge_poller.rs` + `pr_startup_recovery.rs` + `task_transition_service.rs` + `on_enter_states/merge.rs`
+
+| Condition | Required behavior |
+|-----------|-------------------|
+| Open RX-managed plan PR is behind base and mergeable | Programmatically update plan branch from remote base, push plan branch, refresh PR metadata, stay `WaitingOnPr` |
+| Open RX-managed plan PR is dirty/conflicting | Set `pr_branch_update_conflict=true`, spawn merger agent, return to `WaitingOnPr` after `complete_merge` |
+| `Merging` has `pr_branch_update_conflict=true` | Bypass PR-poller shortcut; merger agent must spawn |
+| App restarts while PR is open | Startup recovery checks PR freshness before restarting poller |
+
+**Invariant:** PR freshness work updates the PR branch only; GitHub remains final merge authority, so this path must not mark the plan merge task `Merged`.
+
 ---
 
 ## Merge Workflow (Two-Phase)

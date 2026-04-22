@@ -13,6 +13,7 @@ use std::sync::Arc;
 use futures::StreamExt as _;
 
 use crate::application::services::PrPollerRegistry;
+use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::{
     ExecutionPlanId, ExecutionPlanStatus, InternalStatus, PlanBranch, PlanBranchStatus, Project,
@@ -570,6 +571,20 @@ pub async fn recover_pr_pollers(
             }
         }
 
+        if task.internal_status == InternalStatus::Merging
+            && task_metadata_bool(&task, "pr_branch_update_conflict")
+        {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                pr_number = ?plan_branch.pr_number,
+                "PR startup recovery: PR branch update conflict is already being resolved; not restarting poller"
+            );
+            let _ = plan_branch_repo
+                .clear_polling_active_by_task(&task_id)
+                .await;
+            continue;
+        }
+
         if task.internal_status == InternalStatus::Merging {
             tracing::info!(
                 task_id = task_id.as_str(),
@@ -674,6 +689,41 @@ pub async fn recover_pr_pollers(
             }
         }
 
+        match transition_service
+            .reconcile_pr_branch_freshness(
+                &task_id,
+                &plan_branch.id,
+                pr_number,
+                "github_pr_startup_recovery",
+            )
+            .await
+        {
+            Ok(PrBranchFreshnessOutcome::ConflictRouted) => {
+                tracing::info!(
+                    task_id = task_id.as_str(),
+                    pr_number = pr_number,
+                    "PR startup recovery: routed stale PR branch conflict before poller restart"
+                );
+                continue;
+            }
+            Ok(PrBranchFreshnessOutcome::Updated) => {
+                tracing::info!(
+                    task_id = task_id.as_str(),
+                    pr_number = pr_number,
+                    "PR startup recovery: updated stale PR branch before poller restart"
+                );
+            }
+            Ok(PrBranchFreshnessOutcome::NotApplicable | PrBranchFreshnessOutcome::UpToDate) => {}
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    pr_number = pr_number,
+                    error = %e,
+                    "PR startup recovery: failed to reconcile PR branch freshness before poller restart"
+                );
+            }
+        }
+
         tracing::info!(
             task_id = task_id.as_str(),
             pr_number = pr_number,
@@ -716,4 +766,109 @@ fn metadata_indicates_local_merge_timeout(metadata: Option<&str>) -> bool {
         .ok()
         .and_then(|value| value.get("merge_timeout_seconds").cloned())
         .is_some()
+}
+
+fn task_metadata_bool(task: &Task, key: &str) -> bool {
+    task.metadata
+        .as_deref()
+        .and_then(|metadata| serde_json::from_str::<serde_json::Value>(metadata).ok())
+        .and_then(|value| value.get(key)?.as_bool())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus as DbPrStatus};
+    use crate::domain::entities::{ArtifactId, IdeationSessionId};
+    use crate::domain::services::github_service::{
+        PrMergeStateStatus, PrMergeableState, PrStatus, PrSyncState,
+    };
+    use crate::tests::mock_github_service::MockGithubService;
+
+    fn open_pr_sync_state(head_ref_name: &str) -> PrSyncState {
+        PrSyncState {
+            status: PrStatus::Open,
+            merge_state_status: Some(PrMergeStateStatus::Clean),
+            mergeable: Some(PrMergeableState::Mergeable),
+            is_draft: false,
+            head_ref_name: head_ref_name.to_owned(),
+            base_ref_name: "main".to_owned(),
+            head_ref_oid: None,
+            base_ref_oid: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn recover_pr_pollers_checks_branch_freshness_before_restarting_poller() {
+        let app_state = AppState::new_test();
+        let github = Arc::new(MockGithubService::new());
+
+        let mut project = Project::new("Test Project".to_owned(), "/tmp/test-repo".to_owned());
+        project.github_pr_enabled = true;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Merge plan into main".to_owned());
+        task.category = TaskCategory::PlanMerge;
+        task.internal_status = InternalStatus::WaitingOnPr;
+        let task = app_state.task_repo.create(task).await.unwrap();
+
+        let mut plan_branch = PlanBranch::new(
+            ArtifactId::from_string("plan-artifact"),
+            IdeationSessionId::from_string("session-1"),
+            project.id.clone(),
+            "plan/feature".to_owned(),
+            "main".to_owned(),
+        );
+        plan_branch.merge_task_id = Some(task.id.clone());
+        plan_branch.pr_eligible = true;
+        plan_branch.pr_polling_active = true;
+        plan_branch.pr_number = Some(68);
+        plan_branch.pr_status = Some(DbPrStatus::Open);
+        plan_branch.pr_push_status = PrPushStatus::Pushed;
+        let plan_branch = app_state
+            .plan_branch_repo
+            .create(plan_branch)
+            .await
+            .unwrap();
+
+        github.will_return_sync_state(open_pr_sync_state(&plan_branch.branch_name));
+
+        let registry = Arc::new(PrPollerRegistry::new(
+            Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+            Arc::clone(&app_state.plan_branch_repo),
+        ));
+        let transition_service = Arc::new(
+            app_state
+                .build_transition_service_for_runtime::<tauri::Wry>(
+                    Arc::new(ExecutionState::new()),
+                    None,
+                )
+                .with_github_service(Arc::clone(&github) as Arc<dyn GithubServiceTrait>)
+                .with_pr_poller_registry(Arc::clone(&registry)),
+        );
+
+        recover_pr_pollers(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.plan_branch_repo),
+            Arc::clone(&registry),
+            Arc::clone(&app_state.project_repo),
+            transition_service,
+        )
+        .await;
+
+        let state = github.state();
+        assert_eq!(state.check_pr_review_feedback_calls, 1);
+        assert_eq!(state.check_pr_sync_state_calls, 1);
+        assert_eq!(state.last_check_pr_sync_state_number, Some(68));
+        drop(state);
+
+        registry.stop_polling(&task.id);
+    }
 }

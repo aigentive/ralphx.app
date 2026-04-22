@@ -53,33 +53,29 @@ mod tests;
 pub use merge_completion::complete_merge_internal;
 pub(crate) use merge_completion::complete_merge_internal_with_pr_sync;
 pub use merge_completion::{
-    deferred_merge_cleanup, has_pending_cleanup_metadata, set_pending_cleanup_metadata,
-    clear_pending_cleanup_metadata, has_no_code_changes_metadata, set_no_code_changes_metadata,
+    clear_pending_cleanup_metadata, deferred_merge_cleanup, has_no_code_changes_metadata,
+    has_pending_cleanup_metadata, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
+pub(crate) use merge_coordination::{update_plan_from_main, PlanUpdateResult};
 pub use merge_helpers::resolve_merge_branches;
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
 
 // -- Crate-visible re-exports (merge_helpers) --
-pub(crate) use merge_helpers::{
-    build_commit_hook_review_note_body,
-    build_commit_hook_revision_feedback,
-    classify_commit_hook_failure_text,
-    create_draft_pr_if_needed,
-    clear_main_merge_deferred_metadata, clear_merge_deferred_metadata,
-    commit_hook_failure_fingerprint, commit_hook_repeat_count,
-    compute_merge_worktree_path, get_trigger_origin,
-    extract_commit_hook_merge_error,
-    has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
-    is_commit_hook_merge_error_text,
-    is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, merge_metadata_into,
-    plan_branch_has_reviewable_diff, plan_regular_tasks_complete, resolve_plan_branch_pr_base,
-    set_source_conflict_resolved, set_conflict_metadata, sync_plan_branch_pr_if_needed,
-    task_has_commit_hook_merge_failure,
-    is_merge_worktree_path, is_repeated_commit_hook_failure, restore_task_worktree,
-    CommitHookFailureKind, PlanBranchPrSyncServices,
-};
 #[doc(hidden)]
 pub use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
+pub(crate) use merge_helpers::{
+    build_commit_hook_review_note_body, build_commit_hook_revision_feedback,
+    classify_commit_hook_failure_text, clear_main_merge_deferred_metadata,
+    clear_merge_deferred_metadata, commit_hook_failure_fingerprint, commit_hook_repeat_count,
+    compute_merge_worktree_path, create_draft_pr_if_needed, extract_commit_hook_merge_error,
+    get_trigger_origin, has_branch_missing_metadata, has_main_merge_deferred_metadata,
+    has_merge_deferred_metadata, is_commit_hook_merge_error_text, is_main_merge_deferred_timed_out,
+    is_merge_deferred_timed_out, is_merge_worktree_path, is_repeated_commit_hook_failure,
+    merge_metadata_into, plan_branch_has_reviewable_diff, plan_regular_tasks_complete,
+    resolve_plan_branch_pr_base, restore_task_worktree, set_conflict_metadata,
+    set_source_conflict_resolved, sync_plan_branch_pr_if_needed,
+    task_has_commit_hook_merge_failure, CommitHookFailureKind, PlanBranchPrSyncServices,
+};
 #[doc(hidden)]
 pub use merge_helpers::{parse_metadata, set_trigger_origin};
 
@@ -87,7 +83,7 @@ pub use merge_helpers::{parse_metadata, set_trigger_origin};
 pub(crate) use merge_validation::{format_validation_error_metadata, run_validation_commands};
 
 // -- Public re-exports (merge_validation for testing) --
-pub use merge_validation::{PreExecSetupResult, run_pre_execution_setup};
+pub use merge_validation::{run_pre_execution_setup, PreExecSetupResult};
 
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +173,8 @@ impl<'a> TransitionHandler<'a> {
                             "BranchFreshnessConflict detected, routing to Merging via BranchFreshnessConflict event"
                         );
                         let freshness_event = crate::domain::state_machine::events::TaskEvent::BranchFreshnessConflict;
-                        let freshness_response = self.machine.dispatch(&new_state, &freshness_event);
+                        let freshness_response =
+                            self.machine.dispatch(&new_state, &freshness_event);
                         if let Response::Transition(merging_state) = freshness_response {
                             self.on_exit(&new_state, &merging_state).await;
                             if let Err(e) = self.on_enter(&merging_state).await {
@@ -205,14 +202,9 @@ impl<'a> TransitionHandler<'a> {
                     if matches!(new_state, State::Approved)
                         && matches!(auto_state, State::PendingMerge)
                     {
-                        if let Some(ref task_repo) =
-                            self.machine.context.services.task_repo
-                        {
-                            let task_id = TaskId::from_string(
-                                self.machine.context.task_id.clone(),
-                            );
-                            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await
-                            {
+                        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                            let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
                                 let is_branchless = task.task_branch.is_none();
                                 let has_no_changes = has_no_code_changes_metadata(&task);
 

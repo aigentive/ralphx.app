@@ -15,6 +15,7 @@ GitHub PR Mode changes how RalphX lands a completed **plan** on your base branch
 | Do tasks inside the plan still merge normally? | Yes. Tasks still merge into the plan branch through RalphX's normal merge pipeline |
 | Does it affect existing plans? | Yes. Turning it on retrofits active plans, and new plans inherit it automatically |
 | What if I turn it off mid-plan? | RalphX closes the active PR, clears the PR metadata, and falls back to the direct-merge path |
+| What if the PR gets behind `main`? | RalphX updates RX-managed plan PR branches automatically when safe, or asks a merger agent to resolve conflicts |
 
 ---
 
@@ -84,6 +85,12 @@ If the remote is not GitHub, RalphX disables the toggle in Settings. If GitHub i
 8. You open the PR in GitHub, review it, and merge it using your normal GitHub workflow.
 9. RalphX detects the merged PR, records the merge, cleans up the plan branch/task branches, and marks the task **Merged**.
 
+If new commits land on the PR base branch while the PR is open, RalphX keeps the RX-managed plan PR branch fresh:
+
+- If GitHub reports the PR branch is behind and can be updated cleanly, RalphX updates the plan branch, pushes it, and refreshes the PR.
+- If updating the PR branch has conflicts, RalphX starts a merger agent to resolve that branch update, then returns the task to the PR-waiting flow.
+- If the app was closed when the PR became stale, RalphX checks and repairs eligible open PRs during startup recovery.
+
 ---
 
 ## What You See in the App
@@ -120,6 +127,8 @@ After GitHub merges the PR, the completed task detail shows:
 |-----------|------------------|------------|
 | PR closed without merging | Task moves to **MergeIncomplete** | Re-open or recreate the plan PR flow, then retry |
 | PR operation fails (push, create, mark ready) | Task moves to **MergeIncomplete** | Fix the GitHub/auth/repo issue and retry |
+| PR branch is behind the base branch | RalphX updates and pushes the plan branch automatically when GitHub says it is mergeable | No action needed unless conflicts appear |
+| PR branch update conflicts with the base branch | RalphX starts a merger agent, then returns the task to PR waiting after the branch is updated | Review the task if the agent reports it cannot resolve the conflict |
 | GitHub integration unavailable | RalphX falls back to the direct-merge path | Use the normal merge pipeline or restore GitHub integration |
 | PR mode turned off mid-plan | RalphX closes the active PR and resumes direct merge handling | Let RalphX retry, or manually retry the merge task later |
 

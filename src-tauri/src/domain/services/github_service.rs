@@ -19,6 +19,42 @@ pub enum PrStatus {
     },
 }
 
+/// GitHub's merge-state status for an open pull request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrMergeStateStatus {
+    Clean,
+    Behind,
+    Dirty,
+    Blocked,
+    Draft,
+    Unknown,
+    Unstable,
+    HasHooks,
+    Other(String),
+}
+
+/// GitHub's coarse mergeability value for a pull request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrMergeableState {
+    Mergeable,
+    Conflicting,
+    Unknown,
+    Other(String),
+}
+
+/// Rich GitHub pull-request state used by PR-mode freshness reconciliation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrSyncState {
+    pub status: PrStatus,
+    pub merge_state_status: Option<PrMergeStateStatus>,
+    pub mergeable: Option<PrMergeableState>,
+    pub is_draft: bool,
+    pub head_ref_name: String,
+    pub base_ref_name: String,
+    pub head_ref_oid: Option<String>,
+    pub base_ref_oid: Option<String>,
+}
+
 /// Inline review comment attached to a GitHub pull request review.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrReviewCommentFeedback {
@@ -66,6 +102,13 @@ pub trait GithubServiceTrait: Send + Sync {
 
     /// Check the current status of a PR.
     async fn check_pr_status(&self, working_dir: &Path, pr_number: i64) -> AppResult<PrStatus>;
+
+    /// Check the current status and branch-freshness state of a PR.
+    async fn check_pr_sync_state(
+        &self,
+        working_dir: &Path,
+        pr_number: i64,
+    ) -> AppResult<PrSyncState>;
 
     /// Return the latest outstanding GitHub requested-changes review, if any.
     async fn check_pr_review_feedback(
