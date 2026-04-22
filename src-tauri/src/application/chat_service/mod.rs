@@ -229,15 +229,7 @@ fn claude_launches_paused(
     context_type: ChatContextType,
     execution_state: Option<&Arc<crate::commands::ExecutionState>>,
 ) -> bool {
-    matches!(
-        context_type,
-        ChatContextType::TaskExecution
-            | ChatContextType::Review
-            | ChatContextType::Merge
-            | ChatContextType::Ideation
-            | ChatContextType::Task
-            | ChatContextType::Project
-    ) && execution_state.is_some_and(|exec| exec.is_paused())
+    uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
 fn is_ideation_registry_context(context_type: &str) -> bool {
@@ -2874,10 +2866,12 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
 #[cfg(test)]
 mod stale_registry_gate_tests {
     use super::{
-        registry_entry_blocks_send_because_run_inactive,
+        claude_launches_paused, registry_entry_blocks_send_because_run_inactive,
         registry_entry_blocks_send_but_is_stale, runtime_context_id_for_send, AgentRunStatus,
         ChatContextType, ChatConversationId, RunningAgentInfo,
     };
+    use crate::commands::ExecutionState;
+    use std::sync::Arc;
 
     fn registry_info(
         pid: u32,
@@ -2933,6 +2927,44 @@ mod stale_registry_gate_tests {
             ),
             "session-1"
         );
+    }
+
+    #[test]
+    fn paused_execution_blocks_slot_consuming_contexts() {
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.pause();
+
+        assert!(claude_launches_paused(
+            ChatContextType::TaskExecution,
+            Some(&execution_state),
+        ));
+        assert!(claude_launches_paused(
+            ChatContextType::Ideation,
+            Some(&execution_state),
+        ));
+        assert!(claude_launches_paused(
+            ChatContextType::Review,
+            Some(&execution_state),
+        ));
+        assert!(claude_launches_paused(
+            ChatContextType::Merge,
+            Some(&execution_state),
+        ));
+    }
+
+    #[test]
+    fn paused_execution_does_not_block_regular_chat_contexts() {
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.pause();
+
+        assert!(!claude_launches_paused(
+            ChatContextType::Project,
+            Some(&execution_state),
+        ));
+        assert!(!claude_launches_paused(
+            ChatContextType::Task,
+            Some(&execution_state),
+        ));
     }
 
     #[test]
