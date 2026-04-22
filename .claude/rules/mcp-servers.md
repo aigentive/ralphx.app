@@ -43,12 +43,12 @@ Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 
 ## 2. External API MCP — `plugins/app/ralphx-external-mcp/`
 
-**Purpose:** HTTP+SSE MCP server exposing orchestration tools to external agents (e.g., reefbot.ai) over the network. Auto-started by Tauri app when enabled.
+**Purpose:** HTTP+SSE MCP server exposing orchestration tools to external agents (e.g., reefbot.ai) and Tauri-owned project-chat agents. Auto-started by Tauri app when enabled.
 
 | Aspect | Detail |
 |--------|--------|
 | **Transport** | HTTP+SSE (stateful sessions) |
-| **Audience** | External bots and integrations |
+| **Audience** | External bots, integrations, and local Tauri-owned agents that need the public orchestration surface |
 | **Port** | `:3848` (configurable via `EXTERNAL_MCP_PORT`) |
 | **Auth** | Bearer tokens (`rxk_live_` prefix), 30s TTL cache, TLS required for non-localhost |
 | **Rate limiting** | Token bucket (10 req/s per key) + IP-based auth throttle |
@@ -60,13 +60,14 @@ Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 
 ```
 External Agent → Bearer token → ralphx-external-mcp (:3848) → HTTP :3847 → Tauri Backend
+Tauri-owned Agent → loopback bypass token → ralphx-external-mcp (:3848) → HTTP :3847 → Tauri Backend
 ```
 
 ## Key Disambiguation
 
 | Question | Internal (`ralphx-mcp-server`) | External (`ralphx-external-mcp`) |
 |----------|-------------------------------|----------------------------------|
-| Who calls it? | RalphX internal harness runtimes (today mostly Claude) | Third-party bots, external integrations |
+| Who calls it? | RalphX internal harness runtimes for private implementation helpers (today mostly Claude) | Third-party bots, external integrations, Tauri-owned agents for public orchestration |
 | How is it started? | Claude path is registered via `claude mcp add-json` by Tauri app; other harnesses may use different runtime adapters | Auto-started by `ExternalMcpSupervisor` (when enabled in `config/ralphx.yaml`) |
 | Where are tools defined? | `src/tools.ts` + `config/ralphx.yaml` | `src/tools/*.ts` (discovery, ideation, pipeline, events, tasks, guide) |
 | Domain logic? | ❌ Pure proxy + authz | ❌ Pure proxy + authz + rate limiting |

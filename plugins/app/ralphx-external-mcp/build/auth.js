@@ -4,9 +4,12 @@
  * Validates rxk_live_ API keys against :3847/api/auth/validate-key with 30s TTL cache.
  * Cache entries are invalidated immediately on key rotation events.
  */
+import { Permission } from "./types.js";
 const CACHE_TTL_MS = 30_000;
 const BEARER_PREFIX = "Bearer ";
 const KEY_PREFIX = "rxk_live_";
+const TAURI_BYPASS_TOKEN_ENV = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
+const TAURI_BYPASS_KEY_ID = "tauri-local";
 /** In-memory auth cache with TTL */
 const cache = new Map();
 let backendUrl = "http://127.0.0.1:3847";
@@ -103,6 +106,14 @@ export async function authMiddleware(req, res) {
         sendError(res, 401, "Missing Authorization header");
         return undefined;
     }
+    const tauriBypass = getTauriBypassContext(req, token);
+    if (tauriBypass === "forbidden") {
+        sendError(res, 403, "Tauri MCP bypass is restricted to loopback clients");
+        return undefined;
+    }
+    if (tauriBypass) {
+        return tauriBypass;
+    }
     if (!token.startsWith(KEY_PREFIX)) {
         sendError(res, 401, "Invalid API key format — expected rxk_live_ prefix");
         return undefined;
@@ -119,6 +130,33 @@ export async function authMiddleware(req, res) {
         }
         return undefined;
     }
+}
+function getTauriBypassContext(req, token) {
+    const expected = process.env[TAURI_BYPASS_TOKEN_ENV];
+    if (!expected || token !== expected) {
+        return undefined;
+    }
+    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+        return "forbidden";
+    }
+    return {
+        keyId: TAURI_BYPASS_KEY_ID,
+        projectIds: [],
+        permissions: Permission.READ |
+            Permission.WRITE |
+            Permission.ADMIN |
+            Permission.CREATE_PROJECT,
+        tauriOrigin: true,
+    };
+}
+function isLoopbackAddress(address) {
+    if (!address) {
+        return false;
+    }
+    return (address === "127.0.0.1" ||
+        address === "::1" ||
+        address === "::ffff:127.0.0.1" ||
+        address === "localhost");
 }
 export class AuthError extends Error {
     statusCode;

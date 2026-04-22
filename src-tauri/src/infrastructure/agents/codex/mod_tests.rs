@@ -31,7 +31,11 @@ fn compose_codex_prompt_prefers_canonical_codex_prompt_when_available() {
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
     assert!(
         composed.contains("Canonical Codex Prompt"),
@@ -55,7 +59,11 @@ fn compose_codex_prompt_falls_back_to_legacy_claude_prompt_when_canonical_prompt
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
     assert!(
         composed.contains("Legacy Claude Prompt"),
@@ -87,7 +95,11 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-utility-session-namer"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-utility-session-namer"),
+    );
 
     assert!(
         composed.contains("Shared Session Namer Prompt"),
@@ -100,7 +112,8 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
 }
 
 #[test]
-fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent_lacks_codex_prompt() {
+fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent_lacks_codex_prompt(
+) {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path();
     let plugin_dir = create_plugin_dir(root);
@@ -123,7 +136,11 @@ fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent
     )
     .expect("write legacy prompt");
 
-    let composed = compose_codex_prompt("User prompt", Some(&plugin_dir), Some("ralphx-ideation-team-lead"));
+    let composed = compose_codex_prompt(
+        "User prompt",
+        Some(&plugin_dir),
+        Some("ralphx-ideation-team-lead"),
+    );
 
     assert_eq!(
         composed, "User prompt",
@@ -156,12 +173,13 @@ fn build_codex_mcp_overrides_includes_runtime_feature_flags_from_agent_metadata(
     )
     .expect("write fake mcp server");
 
-    let overrides =
-        build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
-            .expect("overrides");
+    let overrides = build_codex_mcp_overrides(&plugin_dir, "ralphx-plan-verifier", false, None)
+        .expect("overrides");
 
     assert!(
-        overrides.iter().any(|entry| entry == "features.shell_tool=false"),
+        overrides
+            .iter()
+            .any(|entry| entry == "features.shell_tool=false"),
         "Codex runtime feature flags should flow into config overrides: {overrides:?}"
     );
 }
@@ -232,5 +250,61 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
     assert!(
         args_override.contains("--lead-session-id"),
         "expected lead-session-id CLI arg in overrides: {args_override}"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_uses_external_mcp_transport_when_declared() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project"))
+        .expect("create canonical agent dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+harnesses:
+  codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_start_ideation
+      - v1_get_ideation_status
+    runtime_features:
+      shell_tool: false
+"#,
+    )
+    .expect("write shared definition");
+
+    let overrides = build_codex_mcp_overrides(&plugin_dir, "ralphx-chat-project", false, None)
+        .expect("overrides");
+
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry.starts_with("mcp_servers.ralphx.url=")),
+        "external MCP transport should use a streamable HTTP URL: {overrides:?}"
+    );
+    assert!(
+        overrides.iter().any(|entry| {
+            entry == "mcp_servers.ralphx.bearer_token_env_var=\"RALPHX_TAURI_MCP_BYPASS_TOKEN\""
+        }),
+        "external MCP transport should use the Tauri bypass token env var: {overrides:?}"
+    );
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry == "mcp_servers.ralphx.enabled_tools=[\"v1_start_ideation\",\"v1_get_ideation_status\"]"),
+        "external MCP enabled tools should come from Codex metadata: {overrides:?}"
+    );
+    assert!(
+        !overrides.iter().any(|entry| entry.contains(".command=") || entry.contains(".args=")),
+        "external MCP transport must not point Codex at the bundled stdio MCP server: {overrides:?}"
+    );
+    assert!(
+        overrides
+            .iter()
+            .any(|entry| entry == "features.shell_tool=false"),
+        "runtime feature flags should still be preserved: {overrides:?}"
     );
 }

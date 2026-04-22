@@ -566,7 +566,8 @@ fn project_root() -> PathBuf {
 fn lexical_project_root_with_parent_segments_loads_canonical_prompts() {
     let lexical_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
 
-    let prompt = load_harness_agent_prompt(&lexical_root, "ralphx-ideation", AgentPromptHarness::Claude);
+    let prompt =
+        load_harness_agent_prompt(&lexical_root, "ralphx-ideation", AgentPromptHarness::Claude);
 
     assert!(
         prompt.is_some(),

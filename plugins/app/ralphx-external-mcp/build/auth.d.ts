@@ -5,7 +5,7 @@
  * Cache entries are invalidated immediately on key rotation events.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { ApiKeyContext } from "./types.js";
+import { type ApiKeyContext } from "./types.js";
 export declare function configureAuth(options: {
     backendUrl: string;
 }): void;

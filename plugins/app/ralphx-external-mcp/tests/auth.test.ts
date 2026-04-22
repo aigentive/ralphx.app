@@ -9,12 +9,23 @@ import {
   configureAuth,
   AuthError,
 } from "../src/auth.js";
+import { Permission } from "../src/types.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
+
+const BYPASS_ENV = "RALPHX_TAURI_MCP_BYPASS_TOKEN";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeReq(headers: Record<string, string> = {}): IncomingMessage {
-  return { headers } as unknown as IncomingMessage;
+function makeReq(
+  headers: Record<string, string> = {},
+  remoteAddress?: string
+): IncomingMessage {
+  return {
+    headers,
+    socket: {
+      remoteAddress,
+    },
+  } as unknown as IncomingMessage;
 }
 
 function makeRes(): {
@@ -157,6 +168,7 @@ describe("authMiddleware", () => {
   });
 
   afterEach(() => {
+    delete process.env[BYPASS_ENV];
     vi.unstubAllGlobals();
     clearAuthCache();
   });
@@ -200,6 +212,40 @@ describe("authMiddleware", () => {
     const result = await authMiddleware(req, res);
     expect(result).not.toBeUndefined();
     expect(result?.keyId).toBe("key-valid");
+  });
+
+  it("accepts the configured Tauri bypass token from loopback", async () => {
+    process.env[BYPASS_ENV] = "rx_tauri_test";
+    const req = makeReq({ authorization: "Bearer rx_tauri_test" }, "127.0.0.1");
+    const { res, state } = makeRes();
+
+    const result = await authMiddleware(req, res);
+
+    expect(result).toEqual({
+      keyId: "tauri-local",
+      projectIds: [],
+      permissions:
+        Permission.READ |
+        Permission.WRITE |
+        Permission.ADMIN |
+        Permission.CREATE_PROJECT,
+      tauriOrigin: true,
+    });
+    expect(state.statusCode).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects the Tauri bypass token from non-loopback clients", async () => {
+    process.env[BYPASS_ENV] = "rx_tauri_test";
+    const req = makeReq({ authorization: "Bearer rx_tauri_test" }, "203.0.113.10");
+    const { res, state } = makeRes();
+
+    const result = await authMiddleware(req, res);
+
+    expect(result).toBeUndefined();
+    expect(state.statusCode).toBe(403);
+    expect(state.body).toContain("loopback");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
