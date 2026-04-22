@@ -80,13 +80,6 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     shortcut: "⌘6",
     visible: (_flags, taskCount) => taskCount >= 10,
   },
-  {
-    view: "agents",
-    label: "Agents",
-    icon: Bot,
-    shortcut: "⌘⇧A",
-    visible: () => true,
-  },
 ];
 
 interface NavigationProps {
@@ -200,6 +193,15 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
           Settings <kbd className="ml-1 opacity-70">⌘,</kbd>
         </TooltipContent>
       </Tooltip>
+
+      <NavItem
+        view="agents"
+        label="Agents"
+        icon={Bot}
+        shortcut="⌘⇧A"
+        currentView={currentView}
+        onViewChange={onViewChange}
+      />
 
       {/* Team active indicator */}
       {hasActiveTeam && (
