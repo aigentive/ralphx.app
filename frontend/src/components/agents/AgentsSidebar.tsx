@@ -33,11 +33,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildStoreKey } from "@/lib/chat-context-registry";
-import { formatDateTime } from "@/lib/formatters";
 import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import type { Project } from "@/types/project";
-import { sortAgentConversations, type AgentConversation } from "./agentConversations";
+import {
+  formatAgentConversationCreatedAt,
+  sortAgentConversations,
+  type AgentConversation,
+} from "./agentConversations";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
 
 interface AgentsSidebarProps {
@@ -280,7 +283,7 @@ function ProjectSessionGroup({
     }
     return sortedConversations.filter((conversation) => {
       const title = conversation.title || "Untitled agent";
-      return `${title} ${formatDateTime(conversation.createdAt)}`
+      return `${title} ${formatAgentConversationCreatedAt(conversation.createdAt)}`
         .toLowerCase()
         .includes(searchQuery);
     });
@@ -404,9 +407,9 @@ function ProjectSessionGroup({
             const isSelected = selectedConversationId === conversation.id;
             const isActiveRuntime = activeConversationId === conversation.id;
             const title = conversation.title || "Untitled agent";
-            const createdLabel = formatDateTime(conversation.createdAt);
+            const createdLabel = formatAgentConversationCreatedAt(conversation.createdAt);
             const statusLabel = conversation.archivedAt
-              ? `Archived - ${createdLabel}`
+              ? `Archived * ${createdLabel}`
               : createdLabel;
 
             return (
