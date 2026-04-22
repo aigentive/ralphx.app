@@ -34,6 +34,9 @@ export async function startIdeation(input, context) {
         ...(b.agent_spawn_blocked_reason !== undefined
             ? { agentSpawnBlockedReason: b.agent_spawn_blocked_reason }
             : {}),
+        ...(b.pending_initial_prompt !== undefined
+            ? { pendingInitialPrompt: b.pending_initial_prompt }
+            : {}),
         ...(b.existing_active_sessions !== undefined
             ? {
                 existingActiveSessions: b.existing_active_sessions.map((s) => ({

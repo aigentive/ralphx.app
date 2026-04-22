@@ -15,6 +15,7 @@ export interface StartIdeationResult {
     status: "started" | "blocked";
     agentSpawned: boolean;
     agentSpawnBlockedReason?: string;
+    pendingInitialPrompt?: string;
     existingActiveSessions?: Array<{
         sessionId: string;
         title?: string;

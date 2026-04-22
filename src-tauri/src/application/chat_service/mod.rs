@@ -1404,12 +1404,76 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
 
         // Runtime halt barrier for all slot-consuming contexts: do not start new
         // task/review/merge/ideation work while the global execution state is
-        // paused/stopped. Preserve the message in queue so it can be resumed later
-        // instead of failing the user-facing send.
+        // paused/stopped. Fresh idle ideation prompts must be durable because
+        // the in-memory queue is not replayed after an app restart.
         if claude_launches_paused(context_type, self.execution_state.as_ref()) {
             let (conversation, is_new_conversation) = self
                 .get_or_create_conversation_for_send(context_type, context_id, &options)
                 .await?;
+
+            if context_type == ChatContextType::Ideation
+                && options.caller_context == SendCallerContext::UserInitiated
+            {
+                let paused_ideation_key =
+                    RunningAgentKey::new(context_type.to_string(), &runtime_context_id);
+                let paused_ideation_ipr_key =
+                    InteractiveProcessKey::new(context_type.to_string(), &runtime_context_id);
+                let paused_ideation_has_live_agent = self
+                    .running_agent_registry
+                    .is_running(&paused_ideation_key)
+                    .await
+                    || self.ipr().has_process(&paused_ideation_ipr_key).await;
+
+                if !paused_ideation_has_live_agent {
+                    match self
+                        .ideation_session_repo
+                        .set_pending_initial_prompt_if_unset(context_id, message.to_string())
+                        .await
+                    {
+                        Ok(true) => {
+                            tracing::info!(
+                                %context_type,
+                                context_id,
+                                runtime_context_id = %runtime_context_id,
+                                "chat_service.send_message: execution paused, persisted idle ideation prompt as pending_initial_prompt"
+                            );
+                            return Ok(SendResult {
+                                conversation_id: conversation.id.as_str().to_string(),
+                                agent_run_id: String::new(),
+                                is_new_conversation,
+                                was_queued: true,
+                                queued_message_id: None,
+                                queued_as_pending: true,
+                            });
+                        }
+                        Ok(false) => {
+                            tracing::warn!(
+                                %context_type,
+                                context_id,
+                                runtime_context_id = %runtime_context_id,
+                                "chat_service.send_message: execution paused and ideation pending_initial_prompt already exists"
+                            );
+                            return Err(ChatServiceError::SpawnFailed(
+                                "execution paused; ideation session already has a pending prompt"
+                                    .to_string(),
+                            ));
+                        }
+                        Err(error) => {
+                            tracing::error!(
+                                %context_type,
+                                context_id,
+                                runtime_context_id = %runtime_context_id,
+                                error = %error,
+                                "chat_service.send_message: execution paused and failed to persist ideation prompt"
+                            );
+                            return Err(ChatServiceError::SpawnFailed(
+                                "execution paused; failed to persist ideation prompt".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+
             let queued = self.enqueue_pending_send(
                 context_type,
                 &runtime_context_id,

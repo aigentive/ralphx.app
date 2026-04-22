@@ -28,6 +28,8 @@ pub struct StartIdeationResponse {
     pub agent_spawned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_spawn_blocked_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_initial_prompt: Option<String>,
     /// All active external sessions for the project (for agent visibility)
     pub existing_active_sessions: Vec<ExternalSessionSummary>,
     /// True if this response reuses an existing session due to idempotency key match
@@ -110,6 +112,7 @@ pub async fn start_ideation_http(
                 status: existing.status.to_string(),
                 agent_spawned: false,
                 agent_spawn_blocked_reason: None,
+                pending_initial_prompt: existing.pending_initial_prompt.clone(),
                 existing_active_sessions: active_sessions,
                 exists: Some(true),
                 duplicate_detected: None,
@@ -180,6 +183,7 @@ pub async fn start_ideation_http(
                 status: matched_session.status.to_string(),
                 agent_spawned: false,
                 agent_spawn_blocked_reason: None,
+                pending_initial_prompt: matched_session.pending_initial_prompt.clone(),
                 existing_active_sessions: active_summaries,
                 exists: None,
                 duplicate_detected: Some(true),
@@ -234,6 +238,7 @@ pub async fn start_ideation_http(
                         status: existing.status.to_string(),
                         agent_spawned: false,
                         agent_spawn_blocked_reason: None,
+                        pending_initial_prompt: existing.pending_initial_prompt.clone(),
                         existing_active_sessions: active_summaries,
                         exists: Some(true),
                         duplicate_detected: None,
@@ -337,6 +342,7 @@ pub async fn start_ideation_http(
 
     let mut agent_spawned = false;
     let mut agent_spawn_blocked_reason: Option<String> = None;
+    let mut pending_initial_prompt: Option<String> = None;
     if let Some(ref prompt_str) = effective_prompt {
         let chat_service = build_chat_service(&state.app_state, &state.execution_state);
 
@@ -353,7 +359,14 @@ pub async fn start_ideation_http(
             .await
         {
             Ok(result) if result.was_queued => {
-                agent_spawned = true;
+                if result.queued_as_pending {
+                    pending_initial_prompt = Some(prompt_str.clone());
+                    agent_spawn_blocked_reason = Some(
+                        "execution paused; ideation prompt saved for resume".to_string(),
+                    );
+                } else {
+                    agent_spawned = true;
+                }
             }
             Ok(_) => {
                 agent_spawned = true;
@@ -375,16 +388,31 @@ pub async fn start_ideation_http(
         }
     }
 
+    let deferred_for_resume = pending_initial_prompt.is_some();
+
     Ok(Json(StartIdeationResponse {
         session_id: session_id_str,
         status: "ideating".to_string(),
         agent_spawned,
         agent_spawn_blocked_reason,
+        pending_initial_prompt,
         existing_active_sessions: existing_summaries,
         exists: None,
         duplicate_detected: None,
         similarity_score: None,
-        next_action: "poll_status".to_string(),
-        hint: Some("Poll v1_get_ideation_status to track agent progress.".to_string()),
+        next_action: if agent_spawned {
+            "poll_status".to_string()
+        } else if deferred_for_resume {
+            "wait_for_resume".to_string()
+        } else {
+            "poll_status".to_string()
+        },
+        hint: Some(if agent_spawned {
+            "Poll v1_get_ideation_status to track agent progress.".to_string()
+        } else if deferred_for_resume {
+            "The ideation prompt is saved, but execution is paused. Resume execution to launch the run.".to_string()
+        } else {
+            "Poll v1_get_ideation_status to track agent progress.".to_string()
+        }),
     }))
 }
