@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { IdeationSessionResponse } from "@/api/ideation";
 import type { ChatConversation } from "@/types/chat-conversation";
 import {
+  formatAgentConversationCreatedAt,
   sortAgentConversations,
   toIdeationAgentConversation,
   toProjectAgentConversation,
@@ -109,5 +110,14 @@ describe("agent conversations", () => {
       "newer",
       "older",
     ]);
+  });
+
+  it("formats sidebar timestamps as time then date", () => {
+    const result = formatAgentConversationCreatedAt("2026-04-22T10:30:00Z");
+
+    expect(result).toContain(" * ");
+    expect(result).toMatch(/AM|PM/i);
+    expect(result).toMatch(/Apr/);
+    expect(result).toMatch(/22/);
   });
 });

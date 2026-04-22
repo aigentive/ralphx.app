@@ -48,6 +48,35 @@ export function sortAgentConversations(
   });
 }
 
+export function formatAgentConversationCreatedAt(
+  input: string | number | Date
+): string {
+  try {
+    const date = input instanceof Date ? input : new Date(input);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+
+    const timeLabel = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      month: "short",
+      day: "numeric",
+    };
+
+    if (date.getFullYear() !== new Date().getFullYear()) {
+      dateOptions.year = "numeric";
+    }
+
+    return `${timeLabel} * ${date.toLocaleDateString("en-US", dateOptions)}`;
+  } catch {
+    return "-";
+  }
+}
+
 function newestTimestamp(
   left: string | null | undefined,
   right: string | null | undefined
