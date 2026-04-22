@@ -117,6 +117,7 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_pending_confirmations": VerificationWidget,
   // Child session creation → ChildSessionWidget
   "mcp__ralphx__create_child_session": ChildSessionWidget,
+  "mcp__ralphx__start_ideation_session": ChildSessionWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets

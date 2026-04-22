@@ -369,6 +369,38 @@ export const WORKFLOW_TOOLS = [
     // PROJECT TOOLS (ralphx-chat-project agent)
     // ========================================================================
     {
+        name: "start_ideation_session",
+        description: "Start a new ideation plan session for the current project and spawn the ideation agent in the background. " +
+            "Use this from project chat when the user asks for planning, implementation prep, verification, proposal work, or a confirmed change. " +
+            "The current project_id is inferred from context when omitted. The parent chat should summarize the launch and let the UI show the run card instead of pasting the child transcript.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                project_id: {
+                    type: "string",
+                    description: "Optional project ID. Omit in normal project chat; the MCP runtime context provides it.",
+                },
+                title: {
+                    type: "string",
+                    description: "Short title for the ideation run.",
+                },
+                prompt: {
+                    type: "string",
+                    description: "The full planning/implementation prompt to send to the ideation agent.",
+                },
+                initial_prompt: {
+                    type: "string",
+                    description: "Alias for prompt. Use prompt unless preserving an upstream payload shape.",
+                },
+                idempotency_key: {
+                    type: "string",
+                    description: "Optional stable key to avoid duplicate ideation sessions for the same parent-chat request.",
+                },
+            },
+            required: ["prompt"],
+        },
+    },
+    {
         name: "suggest_task",
         description: "Suggest a new task based on project analysis. Use when you've identified something that should be done based on codebase exploration.",
         inputSchema: {

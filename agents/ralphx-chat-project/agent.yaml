@@ -3,6 +3,7 @@ role: project_chat
 description: "General project assistant. Use for project-level questions and task suggestions."
 capabilities:
   mcp_tools:
+    - start_ideation_session
     - suggest_task
     - list_tasks
     - search_memories
@@ -16,11 +17,17 @@ harnesses:
   claude:
     model: sonnet
     tools:
-      extends: base_tools
-      include:
-        - Task
-    preapproved_cli_tools:
-      - Task(Plan)
+      extends: readonly_tools
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
+      - Task
+    preapproved_cli_tools: []
+  codex:
+    runtime_features:
+      shell_tool: false
 delegation:
   allowed_targets:
     - ralphx-general-explorer

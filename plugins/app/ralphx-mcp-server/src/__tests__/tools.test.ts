@@ -42,6 +42,7 @@ import {
   REVIEWER,
   WORKER,
   MERGER,
+  CHAT_PROJECT,
 } from '../agentNames.js';
 
 function toolsByAgent(): Record<string, string[]> {
@@ -327,6 +328,19 @@ describe('getFilteredTools', () => {
     expect(toolNames).not.toContain('update_plan_verification');
     expect(toolNames).not.toContain('report_verification_round');
     expect(toolNames).not.toContain('complete_plan_verification');
+  });
+
+  it('should expose project chat ideation launch without ideation mutation tools', () => {
+    setAgentType(CHAT_PROJECT);
+    const tools = getFilteredTools();
+    const toolNames = tools.map((t) => t.name);
+
+    expect(toolNames).toContain('start_ideation_session');
+    expect(toolNames).toContain('suggest_task');
+    expect(toolNames).toContain('list_tasks');
+    expect(toolNames).not.toContain('create_child_session');
+    expect(toolNames).not.toContain('create_task_proposal');
+    expect(toolNames).not.toContain('update_plan_artifact');
   });
 
   it('should scope ralphx-plan-verifier to the narrower verification helpers', () => {
