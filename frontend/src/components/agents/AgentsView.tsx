@@ -541,7 +541,7 @@ export function AgentsView({
                 onUserMessageSent={handleAgentUserMessageSent}
                 hideHeaderSessionControls
                 hideSessionToolbar
-                surfaceBackground="var(--bg-surface)"
+                surfaceBackground="var(--bg-base)"
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
