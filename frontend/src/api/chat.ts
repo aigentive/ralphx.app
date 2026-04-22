@@ -305,6 +305,7 @@ const ChatConversationResponseSchema = z.object({
   last_message_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  archived_at: z.string().nullable().optional(),
 });
 
 const AgentRunResponseSchema = z.object({
@@ -340,6 +341,7 @@ function transformConversation(raw: RawConversation): ChatConversation {
     lastMessageAt: raw.last_message_at,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+    archivedAt: raw.archived_at ?? null,
   };
 }
 
@@ -606,11 +608,12 @@ function transformConversationMessagesPage(
  */
 export async function listConversations(
   contextType: ContextType,
-  contextId: string
+  contextId: string,
+  includeArchived = false
 ): Promise<ChatConversation[]> {
   const raw = await typedInvoke(
     "list_agent_conversations",
-    { contextType, contextId },
+    { contextType, contextId, includeArchived },
     z.array(ChatConversationResponseSchema)
   );
   return raw.map(transformConversation);
@@ -693,6 +696,43 @@ export async function createConversation(
   return transformConversation(raw);
 }
 
+export async function updateConversationTitle(
+  conversationId: string,
+  title: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "update_agent_conversation_title",
+    {
+      conversationId,
+      title: title.trim(),
+    },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+export async function archiveConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "archive_agent_conversation",
+    { conversationId },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
+export async function restoreConversation(
+  conversationId: string
+): Promise<ChatConversation> {
+  const raw = await typedInvoke(
+    "restore_agent_conversation",
+    { conversationId },
+    ChatConversationResponseSchema
+  );
+  return transformConversation(raw);
+}
+
 /**
  * Get the current agent run status for a conversation
  * @param conversationId The conversation ID
@@ -745,6 +785,9 @@ export const chatApi = {
   getConversationMessagesPage,
   getConversationStats,
   createConversation,
+  updateConversationTitle,
+  archiveConversation,
+  restoreConversation,
   getAgentRunStatus,
   // Message sending & queue
   sendAgentMessage,

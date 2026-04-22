@@ -53,7 +53,30 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         let convos = self.conversations.read().await;
         let filtered: Vec<ChatConversation> = convos
             .values()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && !c.is_archived()
+            })
+            .cloned()
+            .collect();
+        Ok(filtered)
+    }
+
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>> {
+        let convos = self.conversations.read().await;
+        let filtered: Vec<ChatConversation> = convos
+            .values()
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && (include_archived || !c.is_archived())
+            })
             .cloned()
             .collect();
         Ok(filtered)
@@ -67,7 +90,11 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         let convos = self.conversations.read().await;
         Ok(convos
             .values()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && !c.is_archived()
+            })
             .max_by_key(|c| c.created_at)
             .cloned())
     }
@@ -113,6 +140,22 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         if let Some(conv) = convos.get_mut(id) {
             conv.title = Some(title.to_string());
             conv.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn archive(&self, id: &ChatConversationId) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conv) = convos.get_mut(id) {
+            conv.archive();
+        }
+        Ok(())
+    }
+
+    async fn restore(&self, id: &ChatConversationId) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conv) = convos.get_mut(id) {
+            conv.restore();
         }
         Ok(())
     }

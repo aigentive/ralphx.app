@@ -38,10 +38,24 @@ impl ChatConversationRepository for MockChatConversationRepository {
         context_type: ChatContextType,
         context_id: &str,
     ) -> AppResult<Vec<ChatConversation>> {
+        self.get_by_context_filtered(context_type, context_id, false)
+            .await
+    }
+
+    async fn get_by_context_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+    ) -> AppResult<Vec<ChatConversation>> {
         Ok(self
             .conversations
             .iter()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && (include_archived || c.archived_at.is_none())
+            })
             .cloned()
             .collect())
     }
@@ -54,7 +68,11 @@ impl ChatConversationRepository for MockChatConversationRepository {
         Ok(self
             .conversations
             .iter()
-            .filter(|c| c.context_type == context_type && c.context_id == context_id)
+            .filter(|c| {
+                c.context_type == context_type
+                    && c.context_id == context_id
+                    && c.archived_at.is_none()
+            })
             .max_by_key(|c| c.created_at)
             .cloned())
     }
@@ -81,6 +99,14 @@ impl ChatConversationRepository for MockChatConversationRepository {
     }
 
     async fn update_title(&self, _id: &ChatConversationId, _title: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn archive(&self, _id: &ChatConversationId) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn restore(&self, _id: &ChatConversationId) -> AppResult<()> {
         Ok(())
     }
 

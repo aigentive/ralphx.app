@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Archive,
   Bot,
   CheckCircle2,
   ChevronDown,
@@ -9,14 +10,23 @@ import {
   MessageSquare,
   MoreHorizontal,
   Plus,
+  RotateCcw,
   Search,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -38,7 +48,12 @@ interface AgentsSidebarProps {
   onCreateAgent: () => void;
   onCreateProject: () => void;
   onQuickCreateAgent: (projectId?: string) => void;
+  onRemoveProject: (projectId: string) => void;
+  onArchiveConversation: (conversation: ChatConversation) => void;
+  onRestoreConversation: (conversation: ChatConversation) => void;
   isCreatingAgent: boolean;
+  showArchived: boolean;
+  onShowArchivedChange: (showArchived: boolean) => void;
 }
 
 export function AgentsSidebar({
@@ -50,7 +65,12 @@ export function AgentsSidebar({
   onCreateAgent,
   onCreateProject,
   onQuickCreateAgent,
+  onRemoveProject,
+  onArchiveConversation,
+  onRestoreConversation,
   isCreatingAgent,
+  showArchived,
+  onShowArchivedChange,
 }: AgentsSidebarProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -155,6 +175,16 @@ export function AgentsSidebar({
           <Plus className="w-4 h-4" />
           <span className="text-xs font-medium">New agent</span>
         </Button>
+        <label className="mt-2 px-2 h-7 flex items-center justify-between gap-2">
+          <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Archived
+          </span>
+          <Switch
+            checked={showArchived}
+            onCheckedChange={onShowArchivedChange}
+            aria-label="Show archived sessions"
+          />
+        </label>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
@@ -184,7 +214,11 @@ export function AgentsSidebar({
               onFocusProject={onFocusProject}
               onSelectConversation={onSelectConversation}
               onQuickCreateAgent={onQuickCreateAgent}
+              onRemoveProject={onRemoveProject}
+              onArchiveConversation={onArchiveConversation}
+              onRestoreConversation={onRestoreConversation}
               isCreatingAgent={isCreatingAgent}
+              showArchived={showArchived}
             />
           ))
         )}
@@ -201,7 +235,11 @@ interface ProjectSessionGroupProps {
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: ChatConversation) => void;
   onQuickCreateAgent: (projectId?: string) => void;
+  onRemoveProject: (projectId: string) => void;
+  onArchiveConversation: (conversation: ChatConversation) => void;
+  onRestoreConversation: (conversation: ChatConversation) => void;
   isCreatingAgent: boolean;
+  showArchived: boolean;
 }
 
 function ProjectSessionGroup({
@@ -212,11 +250,15 @@ function ProjectSessionGroup({
   onFocusProject,
   onSelectConversation,
   onQuickCreateAgent,
+  onRemoveProject,
+  onArchiveConversation,
+  onRestoreConversation,
   isCreatingAgent,
+  showArchived,
 }: ProjectSessionGroupProps) {
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
-  const conversations = useProjectAgentConversations(project.id);
+  const conversations = useProjectAgentConversations(project.id, showArchived);
   const contextKey = buildStoreKey("project", project.id);
   const activeConversationId = useChatStore((s) => s.activeConversationIds[contextKey] ?? null);
   const agentStatus = useChatStore(selectAgentStatus(contextKey));
@@ -309,23 +351,35 @@ function ProjectSessionGroup({
               New agent
             </TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0"
-                disabled
-                aria-label="Project actions"
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    aria-label="Project actions"
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                Project actions
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="gap-2 text-xs"
+                onClick={() => onRemoveProject(project.id)}
               >
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
-              Project actions
-            </TooltipContent>
-          </Tooltip>
+                <Trash2 className="w-3.5 h-3.5" />
+                Remove project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -337,31 +391,70 @@ function ProjectSessionGroup({
             const title = conversation.title || "Untitled agent";
             const provider = conversation.providerHarness ?? "agent";
             const statusLabel =
-              isActiveRuntime && agentStatus !== "idle" ? agentStatus.replace(/_/g, " ") : provider;
+              conversation.archivedAt
+                ? "archived"
+                : isActiveRuntime && agentStatus !== "idle" ? agentStatus.replace(/_/g, " ") : provider;
 
             return (
-              <button
+              <div
                 key={conversation.id}
-                type="button"
-                className="w-full min-h-9 px-2 py-1.5 flex items-start gap-2 rounded-md text-left"
-                onClick={() => onSelectConversation(project.id, conversation)}
+                className="w-full min-h-9 px-2 py-1.5 flex items-start gap-2 rounded-md"
                 style={{
                   color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
                   background: isSelected ? "var(--accent-muted)" : "transparent",
                   border: isSelected
                     ? "1px solid var(--accent-border)"
                     : "1px solid transparent",
+                  opacity: conversation.archivedAt ? 0.58 : 1,
                 }}
                 data-testid={`agents-session-${conversation.id}`}
               >
-                <SessionStateGlyph isSelected={isSelected} isActiveRuntime={isActiveRuntime} status={agentStatus} />
-                <span className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 flex items-start gap-2 text-left"
+                  onClick={() => onSelectConversation(project.id, conversation)}
+                >
+                  <SessionStateGlyph isSelected={isSelected} isActiveRuntime={isActiveRuntime} status={agentStatus} />
+                  <span className="min-w-0 flex-1">
                   <span className="block text-xs font-medium truncate">{title}</span>
                   <span className="block text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
                     {statusLabel}
                   </span>
-                </span>
-              </button>
+                  </span>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 shrink-0"
+                      aria-label="Session actions"
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {conversation.archivedAt ? (
+                      <DropdownMenuItem
+                        className="gap-2 text-xs"
+                        onClick={() => onRestoreConversation(conversation)}
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore session
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem
+                        className="gap-2 text-xs"
+                        onClick={() => onArchiveConversation(conversation)}
+                      >
+                        <Archive className="w-3.5 h-3.5" />
+                        Archive session
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             );
           })}
 

@@ -8,6 +8,9 @@ import {
   getConversationMessagesPage,
   getConversationStats,
   createConversation,
+  updateConversationTitle,
+  archiveConversation,
+  restoreConversation,
   getAgentRunStatus,
   sendAgentMessage,
   getQueuedAgentMessages,
@@ -85,6 +88,7 @@ describe("chat api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("list_agent_conversations", {
       contextType: "project",
       contextId: "p1",
+      includeArchived: false,
     });
     expect(result[0]).toMatchObject({
       contextType: "project",
@@ -431,6 +435,78 @@ describe("chat api", () => {
     });
   });
 
+  it("updates conversation title", async () => {
+    mockInvoke.mockResolvedValue({
+      id: "c-title",
+      context_type: "project",
+      context_id: "p1",
+      claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
+      title: "Review agent title",
+      message_count: 2,
+      last_message_at: null,
+      created_at: "2026-01-24T10:00:00Z",
+      updated_at: "2026-01-24T10:01:00Z",
+    });
+
+    const result = await updateConversationTitle("c-title", " Review agent title ");
+
+    expect(mockInvoke).toHaveBeenCalledWith("update_agent_conversation_title", {
+      conversationId: "c-title",
+      title: "Review agent title",
+    });
+    expect(result.title).toBe("Review agent title");
+  });
+
+  it("archives conversation", async () => {
+    mockInvoke.mockResolvedValue({
+      id: "c-archive",
+      context_type: "project",
+      context_id: "p1",
+      claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
+      title: "Old agent",
+      message_count: 1,
+      last_message_at: null,
+      created_at: "2026-01-24T10:00:00Z",
+      updated_at: "2026-01-24T10:01:00Z",
+      archived_at: "2026-01-24T10:01:00Z",
+    });
+
+    const result = await archiveConversation("c-archive");
+
+    expect(mockInvoke).toHaveBeenCalledWith("archive_agent_conversation", {
+      conversationId: "c-archive",
+    });
+    expect(result.archivedAt).toBe("2026-01-24T10:01:00Z");
+  });
+
+  it("restores conversation", async () => {
+    mockInvoke.mockResolvedValue({
+      id: "c-restore",
+      context_type: "project",
+      context_id: "p1",
+      claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
+      title: "Old agent",
+      message_count: 1,
+      last_message_at: null,
+      created_at: "2026-01-24T10:00:00Z",
+      updated_at: "2026-01-24T10:02:00Z",
+      archived_at: null,
+    });
+
+    const result = await restoreConversation("c-restore");
+
+    expect(mockInvoke).toHaveBeenCalledWith("restore_agent_conversation", {
+      conversationId: "c-restore",
+    });
+    expect(result.archivedAt).toBeNull();
+  });
+
   it("gets nullable agent run status", async () => {
     mockInvoke.mockResolvedValue(null);
     const result = await getAgentRunStatus("c1");
@@ -541,6 +617,8 @@ describe("chat api", () => {
   it("exports chatApi namespace", () => {
     expect(chatApi.sendAgentMessage).toBe(sendAgentMessage);
     expect(chatApi.listConversations).toBe(listConversations);
+    expect(chatApi.archiveConversation).toBe(archiveConversation);
+    expect(chatApi.restoreConversation).toBe(restoreConversation);
     expect(chatApi.getConversationActiveState).toBe(getConversationActiveState);
   });
 });

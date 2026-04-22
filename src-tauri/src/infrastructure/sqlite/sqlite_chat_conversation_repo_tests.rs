@@ -32,6 +32,7 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         last_message_at: None,
         created_at: now,
         updated_at: now,
+        archived_at: None,
         parent_conversation_id: None,
         attribution_backfill_status: None,
         attribution_backfill_source: None,
@@ -84,6 +85,7 @@ async fn test_create_preserves_optional_fields() {
         last_message_at: Some(now),
         created_at: now,
         updated_at: now,
+        archived_at: None,
         parent_conversation_id: Some(parent_id_str.clone()),
         attribution_backfill_status: None,
         attribution_backfill_source: None,
@@ -318,6 +320,7 @@ async fn test_clear_claude_session_id() {
         last_message_at: None,
         created_at: now,
         updated_at: now,
+        archived_at: None,
         parent_conversation_id: None,
         attribution_backfill_status: None,
         attribution_backfill_source: None,
@@ -370,6 +373,57 @@ async fn test_update_title() {
 
     let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert_eq!(loaded.title, Some("My New Title".to_string()));
+}
+
+// --- archive / restore ---
+
+#[tokio::test]
+async fn test_archive_filters_from_default_context_queries() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Project, "project-1");
+    let conv_id = conv.id.clone();
+    repo.create(conv).await.unwrap();
+
+    repo.archive(&conv_id).await.unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert!(loaded.archived_at.is_some());
+    assert!(repo
+        .get_by_context(ChatContextType::Project, "project-1")
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(repo
+        .get_by_context_filtered(ChatContextType::Project, "project-1", true)
+        .await
+        .unwrap()
+        .iter()
+        .any(|conversation| conversation.id == conv_id));
+}
+
+#[tokio::test]
+async fn test_restore_returns_conversation_to_default_context_queries() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Project, "project-1");
+    let conv_id = conv.id.clone();
+    repo.create(conv).await.unwrap();
+
+    repo.archive(&conv_id).await.unwrap();
+    repo.restore(&conv_id).await.unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert!(loaded.archived_at.is_none());
+    assert_eq!(
+        repo.get_by_context(ChatContextType::Project, "project-1")
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 // --- update_message_stats ---

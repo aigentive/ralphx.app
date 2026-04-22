@@ -157,6 +157,7 @@ fn test_agent_run_status_response_serializes_model_absent() {
 mod ipc_contract {
     use ralphx_lib::commands::unified_chat_commands::{
         CreateAgentConversationInput, QueueAgentMessageInput, SendAgentMessageInput,
+        UpdateAgentConversationTitleInput,
     };
 
     // ── SendAgentMessageInput ───────────────────────────────────────────────
@@ -231,5 +232,13 @@ mod ipc_contract {
             result.is_err(),
             "missing contextId must cause deserialization failure"
         );
+    }
+
+    #[test]
+    fn update_agent_conversation_title_input_deserializes_camel_case() {
+        let json = r#"{"conversationId":"conv-123","title":"Fix title editing"}"#;
+        let input: UpdateAgentConversationTitleInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.conversation_id, "conv-123");
+        assert_eq!(input.title, "Fix title editing");
     }
 }

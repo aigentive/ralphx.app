@@ -41,6 +41,11 @@ interface UseChatActionsProps {
   };
   /** Current message count (for first-message detection in ideation) */
   messageCount?: number;
+  /** Optional callback after a user message is accepted by the backend. */
+  onUserMessageSent?: ((payload: {
+    content: string;
+    result: SendAgentMessageResult;
+  }) => void | Promise<void>) | undefined;
 }
 
 // ============================================================================
@@ -55,6 +60,7 @@ export function useChatActions({
   ideationSessionId,
   sendMessage,
   messageCount = 0,
+  onUserMessageSent,
 }: UseChatActionsProps) {
   const queryClient = useQueryClient();
   const queueMessage = useChatStore((s) => s.queueMessage);
@@ -71,6 +77,7 @@ export function useChatActions({
 
       // Capture first message state before sending (for auto-naming trigger)
       const isFirstIdeationMessage = ideationSessionId && messageCount === 0;
+      let sentResult: SendAgentMessageResult | null = null;
 
       try {
         // Agent side-panels use context-specific conversations. Review and merge must
@@ -81,6 +88,7 @@ export function useChatActions({
           setSending(storeContextKey, true);
           try {
             const result = await chatApi.sendAgentMessage(contextType, agentContextId, content, attachmentIds, target);
+            sentResult = result;
 
             queryClient.invalidateQueries({
               queryKey: chatKeys.conversationList(contextType, agentContextId),
@@ -108,6 +116,7 @@ export function useChatActions({
             params.target = target;
           }
           const result = await sendMessage.mutateAsync(params);
+          sentResult = result;
           if (result.wasQueued && result.queuedMessageId != null) {
             queueMessage(storeContextKey, content, result.queuedMessageId);
           }
@@ -146,6 +155,9 @@ export function useChatActions({
             // Silently ignore — session namer is optional
           });
         }
+        if (sentResult) {
+          void onUserMessageSent?.({ content, result: sentResult });
+        }
       } catch {
         // Reset agent running state on error for the correct store context key.
         // Covers review, task_execution, merge, and ideation (idempotent for ideation
@@ -153,7 +165,7 @@ export function useChatActions({
         setAgentRunning(storeContextKey, false);
       }
     },
-    [sendMessage, contextType, contextId, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage]
+    [sendMessage, contextType, contextId, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage, onUserMessageSent]
   );
 
   // ── Stop Agent ───────────────────────────────────────────────────

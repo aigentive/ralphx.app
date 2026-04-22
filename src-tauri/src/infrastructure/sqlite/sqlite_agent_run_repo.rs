@@ -482,6 +482,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),
                             created_at: parse_datetime(&conv_created_at_str),
                             updated_at: parse_datetime(&conv_updated_at_str),
+                            archived_at: None,
                             parent_conversation_id: None,
                             attribution_backfill_status: None,
                             attribution_backfill_source: None,
