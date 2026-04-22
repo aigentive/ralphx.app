@@ -539,6 +539,8 @@ export function AgentsView({
                   modelId: normalizedActiveRuntime.modelId,
                 }}
                 onUserMessageSent={handleAgentUserMessageSent}
+                hideHeaderSessionControls
+                hideSessionToolbar
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
@@ -618,6 +620,8 @@ function AgentsChatHeader({
 }: AgentsChatHeaderProps) {
   const title = conversation?.title || "Untitled agent";
   const modelLabel = getModelLabel(runtime.modelId);
+  const providerLabel = runtime.provider === "codex" ? "Codex" : "Claude";
+  const modeLabel = runtime.provider === "codex" ? "Medium" : "Default";
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -676,8 +680,10 @@ function AgentsChatHeader({
             {title}
           </button>
         )}
-        <div className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
-          {runtime.provider} · {modelLabel}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-none">
+          <RuntimeMetaItem label="Provider" value={providerLabel} />
+          <RuntimeMetaItem label="Model" value={modelLabel} />
+          <RuntimeMetaItem label="Mode" value={modeLabel} />
         </div>
       </div>
 
@@ -732,6 +738,15 @@ function AgentsChatHeader({
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+function RuntimeMetaItem({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      <span className="text-[var(--text-muted)]">{label}</span>
+      <span className="truncate font-medium text-[var(--text-secondary)]">{value}</span>
+    </span>
   );
 }
 
