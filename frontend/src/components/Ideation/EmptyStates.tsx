@@ -2,11 +2,11 @@
  * EmptyStates - Empty state components for Ideation view
  *
  * - ConversationEmptyState: Shown when no messages in conversation
- * - WaitingForCapacityState: Shown when session has pending_initial_prompt set (waiting for slot)
+ * - WaitingForCapacityState: Shown when session has pending_initial_prompt set (waiting to start)
  */
 
-import { Clock, MessageSquareText, Settings } from "lucide-react";
-import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { Clock, MessageSquareText, PlayCircle, Settings } from "lucide-react";
+import { useExecutionStatus, usePauseExecution } from "@/hooks/useExecutionControl";
 import { useUiStore } from "@/stores/uiStore";
 import { withAlpha } from "@/lib/theme-colors";
 
@@ -15,7 +15,7 @@ import { withAlpha } from "@/lib/theme-colors";
 // ============================================================================
 
 // ============================================================================
-// Waiting for Capacity State
+// Waiting to Start State
 // ============================================================================
 
 interface WaitingForCapacityStateProps {
@@ -27,31 +27,51 @@ interface WaitingForCapacityStateProps {
 
 export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: WaitingForCapacityStateProps) {
   const { data, isLoading, isError } = useExecutionStatus(projectId);
-  const openModal = useUiStore((s) => s.openModal);
+  const { resume, isPending: isResumePending } = usePauseExecution(projectId);
+  const { openModal, executionStatus } = useUiStore((s) => ({
+    openModal: s.openModal,
+    executionStatus: s.executionStatus,
+  }));
 
   const hasCapacityData = !isLoading && !isError && data != null;
+  const fallbackHaltMode = executionStatus.haltMode ?? (executionStatus.isPaused ? "paused" : "running");
+  const haltMode = data?.haltMode ?? fallbackHaltMode;
+  const isPaused = data?.isPaused ?? executionStatus.isPaused;
+  const isExecutionPaused = isPaused || haltMode === "paused" || haltMode === "stopped";
+  const iconColor = isExecutionPaused ? "var(--accent-primary)" : "var(--status-warning)";
+  const iconBackground = isExecutionPaused ? withAlpha("var(--accent-primary)", 12) : "var(--status-warning-muted)";
+  const iconBorder = isExecutionPaused ? "var(--accent-border)" : "var(--status-warning-border)";
+  const stateTitle = haltMode === "stopped"
+    ? "Execution stopped"
+    : isExecutionPaused
+      ? "Execution paused"
+      : "Waiting for capacity";
+  const promptLabel = isExecutionPaused ? "Saved request" : "Queued message";
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-6">
       <div className="text-center max-w-[320px]">
-        {/* Pulsing amber clock icon */}
         <div className="flex items-center justify-center mb-6">
           <div
             className="w-14 h-14 rounded-full flex items-center justify-center animate-pulse"
             style={{
-              background: "var(--status-warning-muted)",
-              border: "1px solid var(--status-warning-border)",
+              background: iconBackground,
+              border: `1px solid ${iconBorder}`,
             }}
           >
-            <Clock className="w-6 h-6" style={{ color: "var(--status-warning)" }} />
+            <Clock className="w-6 h-6" style={{ color: iconColor }} />
           </div>
         </div>
 
         <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Waiting for capacity
+          {stateTitle}
         </h3>
 
-        {hasCapacityData ? (
+        {isExecutionPaused ? (
+          <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            Your request is saved. Resume execution to start this ideation run.
+          </p>
+        ) : hasCapacityData ? (
           <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
             Ideation capacity:{" "}
             <span style={{ color: "var(--text-primary)" }}>
@@ -68,15 +88,32 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
           </p>
         )}
 
-        {/* Settings navigation link */}
-        <button
-          onClick={() => openModal("settings", { section: "ideation-workflow" })}
-          className="mt-3 inline-flex items-center gap-1 text-xs transition-colors"
-          style={{ color: "var(--status-warning)" }}
-        >
-          <Settings className="w-3 h-3" />
-          Adjust limits in Settings →
-        </button>
+        {isExecutionPaused ? (
+          <button
+            type="button"
+            onClick={resume}
+            disabled={isResumePending}
+            className="mt-4 inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            style={{
+              background: withAlpha("var(--accent-primary)", 12),
+              border: "1px solid var(--accent-border)",
+              color: "var(--accent-primary)",
+            }}
+          >
+            <PlayCircle className="w-3.5 h-3.5" />
+            {isResumePending ? "Resuming..." : "Resume execution"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openModal("settings", { section: "ideation-workflow" })}
+            className="mt-3 inline-flex items-center gap-1 text-xs transition-colors"
+            style={{ color: "var(--status-warning)" }}
+          >
+            <Settings className="w-3 h-3" />
+            Adjust limits in Settings
+          </button>
+        )}
 
         {/* Queued message preview */}
         {pendingInitialPrompt && (
@@ -89,7 +126,7 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
             }}
           >
             <p className="text-xs mb-1 font-medium" style={{ color: "var(--text-muted)" }}>
-              Your queued message
+              {promptLabel}
             </p>
             <p
               className="text-sm leading-relaxed line-clamp-4"
@@ -179,5 +216,3 @@ export function ConversationEmptyState() {
     </div>
   );
 }
-
-

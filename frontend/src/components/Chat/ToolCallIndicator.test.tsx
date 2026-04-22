@@ -14,6 +14,32 @@ import { makeToolCall } from "./__tests__/chatRenderFixtures";
  * custom_tool, etc.) and for edit/write error fallback cases.
  */
 describe("ToolCallIndicator", () => {
+  describe("Project orchestration widgets", () => {
+    it("hides completed routine project orchestration reads", () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_get_ideation_status", {
+        id: "call-project-status",
+        result: { ok: true, status: "active" },
+      });
+
+      const { container } = render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByText("mcp__ralphx__v1_get_ideation_status")).not.toBeInTheDocument();
+    });
+
+    it("renders ideation prompt sends as a compact status line", () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
+        id: "call-send-ideation",
+        result: { queuedAsPending: true, nextAction: "wait_for_resume" },
+      });
+
+      render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(screen.getByText("Ideation prompt saved")).toBeInTheDocument();
+      expect(screen.queryByText("mcp__ralphx__v1_send_ideation_message")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Rendering (generic fallback)", () => {
     it("renders collapsed by default", () => {
       const toolCall: ToolCall = makeToolCall("update_task", {

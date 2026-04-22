@@ -367,6 +367,37 @@ describe("ChildSessionWidget", () => {
     expect(screen.getByText("Open Run")).toBeInTheDocument();
   });
 
+  it("shows paused saved-prompt state for deferred external ideation starts", () => {
+    mockedUseChildSessionStatus.mockReturnValue({
+      data: {
+        ...makeStatusResponse("idle"),
+        pending_initial_prompt: "Fix font scaling",
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useChildSessionStatus>);
+
+    const toolCall = makeToolCall({
+      name: "mcp__ralphx__v1_start_ideation",
+      arguments: {},
+      result: mcpWrap({
+        sessionId: "uuid-project",
+        agentSpawned: false,
+        agentSpawnBlockedReason: "execution paused; ideation prompt saved for resume",
+        pendingInitialPrompt: "Fix font scaling",
+        nextAction: "wait_for_resume",
+      }),
+    });
+
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+
+    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByText("Saved prompt. Resume execution to start.")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for capacity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent spawned")).not.toBeInTheDocument();
+  });
+
   it("shows verification status from the attached ideation run instead of stale spawned-only state", () => {
     mockedUseChildSessionStatus.mockReturnValue({
       data: {

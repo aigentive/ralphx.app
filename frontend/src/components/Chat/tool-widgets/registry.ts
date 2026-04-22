@@ -30,6 +30,7 @@ import { BashWidget } from "./BashWidget";
 import { FileChangeWidget } from "./FileChangeWidget";
 import { SkillWidget } from "./SkillWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
+import { ProjectOrchestrationWidget } from "./ProjectOrchestrationWidget";
 import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
 import { SessionContextWidget, TeamSessionStateWidget, SearchMemoriesWidget, TeamPlanWidget } from "./McpContextWidgets";
 import { getToolCallLookupCandidates } from "./tool-name";
@@ -120,6 +121,27 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__start_ideation_session": ChildSessionWidget,
   "mcp__ralphx__v1_start_ideation": ChildSessionWidget,
   "v1_start_ideation": ChildSessionWidget,
+  // Project-agent external MCP orchestration checks -> quiet/no-op widgets after completion
+  "mcp__ralphx__v1_get_agent_guide": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_list_ideation_sessions": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_project_status": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_ideation_status": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_ideation_messages": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_plan": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_plan_verification": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_list_proposals": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_get_session_tasks": ProjectOrchestrationWidget,
+  "mcp__ralphx__v1_send_ideation_message": ProjectOrchestrationWidget,
+  "v1_get_agent_guide": ProjectOrchestrationWidget,
+  "v1_list_ideation_sessions": ProjectOrchestrationWidget,
+  "v1_get_project_status": ProjectOrchestrationWidget,
+  "v1_get_ideation_status": ProjectOrchestrationWidget,
+  "v1_get_ideation_messages": ProjectOrchestrationWidget,
+  "v1_get_plan": ProjectOrchestrationWidget,
+  "v1_get_plan_verification": ProjectOrchestrationWidget,
+  "v1_list_proposals": ProjectOrchestrationWidget,
+  "v1_get_session_tasks": ProjectOrchestrationWidget,
+  "v1_send_ideation_message": ProjectOrchestrationWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets
