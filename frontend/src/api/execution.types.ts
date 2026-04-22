@@ -19,7 +19,7 @@ export interface ExecutionStatusResponse {
   ideationActive: number;
   /** Ideation sessions in waiting_for_input state (NOT consuming slots) */
   ideationIdle: number;
-  /** Sessions with pending_initial_prompt set (queued, waiting for capacity) */
+  /** Sessions with pending_initial_prompt set (queued, waiting to start) */
   ideationWaiting: number;
   /** Per-project maximum concurrent ideation sessions */
   ideationMaxProject: number;

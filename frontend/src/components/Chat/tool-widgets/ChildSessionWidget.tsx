@@ -5,7 +5,7 @@
  * Collapsed body: latest message snippet (80 chars plain text).
  * Expanded body: LoadingSkeleton → MessagePreviewList (5 messages) + "Open Session" button.
  *
- * Polling: 5s when agent is active, disabled when idle.
+ * Polling: 5s when agent is active or waiting to start, disabled when idle.
  * History guard: if first fetch returns idle + no messages, polling is permanently disabled.
  */
 
@@ -247,7 +247,27 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   const verificationBadge = getVerificationBadge(data?.verification?.status);
   const verificationSummary = getVerificationSummary(data?.verification);
   const agentStatus = data?.agent_state.estimated_status ?? "idle";
-  const isPendingCapacity = !!(data?.pending_initial_prompt);
+  const pendingInitialPrompt =
+    data?.pending_initial_prompt ??
+    getString(parsed, "pendingInitialPrompt") ??
+    getString(parsed, "pending_initial_prompt");
+  const blockedReason =
+    getString(parsed, "agentSpawnBlockedReason") ??
+    getString(parsed, "agent_spawn_blocked_reason");
+  const nextAction =
+    getString(parsed, "nextAction") ??
+    getString(parsed, "next_action");
+  const blockedReasonLower = blockedReason?.toLowerCase() ?? "";
+  const isPendingStart = !!pendingInitialPrompt;
+  const isPausedPending =
+    isPendingStart &&
+    (blockedReasonLower.includes("paused") ||
+      blockedReasonLower.includes("resume execution") ||
+      nextAction === "wait_for_resume");
+  const pendingBadgeLabel = isPausedPending ? "Paused" : "Waiting to start";
+  const pendingSnippet = isPausedPending
+    ? "Saved prompt. Resume execution to start."
+    : "Waiting for an ideation slot...";
   const latestMessage = data?.recent_messages[data.recent_messages.length - 1];
   const latestMessageSnippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
   const snippet = verificationSummary ?? latestMessageSnippet;
@@ -257,7 +277,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
       ? "loading"
       : isError
         ? "error"
-        : isPendingCapacity
+        : isPendingStart
           ? "pending"
           : verificationIsActive
             ? "active"
@@ -290,10 +310,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
                 {orchestrationTriggered === true && !verificationBadge && (
                   <Badge variant="success" compact>Agent spawned</Badge>
                 )}
-                {isPendingCapacity && agentStatus === "idle" && (
-                  <Badge variant="warning" compact>Waiting for capacity</Badge>
+                {isPendingStart && agentStatus === "idle" && (
+                  <Badge variant="warning" compact>{pendingBadgeLabel}</Badge>
                 )}
-                {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
+                {!isPendingStart && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
                 {sessionId && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onNavigate(sessionId); }}
@@ -337,10 +357,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             style={{
               ...truncatedTitleStyle(compact),
               fontSize: 11,
-              color: (snippet || isPendingCapacity) ? colors.textMuted : "transparent",
+              color: (snippet || isPendingStart) ? colors.textMuted : "transparent",
             }}
           >
-            {snippet ?? (isPendingCapacity ? "Waiting for capacity..." : "No messages yet")}
+            {snippet ?? (isPendingStart ? pendingSnippet : "No messages yet")}
           </span>
         </WidgetRow>
 
