@@ -311,7 +311,7 @@ export function AgentsView({
   return (
     <TooltipProvider delayDuration={300}>
       <section
-        className="h-full min-h-0 flex overflow-hidden"
+        className="h-full min-h-0 w-full flex overflow-hidden"
         style={{ background: "var(--bg-base)" }}
         data-testid="agents-view"
       >
@@ -329,26 +329,28 @@ export function AgentsView({
 
         <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
           {activeProjectId && selectedConversationId ? (
-            <IntegratedChatPanel
-              projectId={activeProjectId}
-              conversationIdOverride={selectedConversationId}
-              sendOptions={{
-                conversationId: selectedConversationId,
-                providerHarness: normalizedActiveRuntime.provider,
-                modelId: normalizedActiveRuntime.modelId,
-              }}
-              headerContent={
-                <AgentsChatHeader
-                  conversation={activeConversation}
-                  runtime={normalizedActiveRuntime}
-                  artifactOpen={artifactState.isOpen}
-                  activeArtifactTab={artifactState.activeTab}
-                  onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
-                  onSelectArtifact={handleSelectArtifact}
-                />
-              }
-              emptyState={<div />}
-            />
+            <div className="flex-1 min-w-0 h-full">
+              <IntegratedChatPanel
+                projectId={activeProjectId}
+                conversationIdOverride={selectedConversationId}
+                sendOptions={{
+                  conversationId: selectedConversationId,
+                  providerHarness: normalizedActiveRuntime.provider,
+                  modelId: normalizedActiveRuntime.modelId,
+                }}
+                headerContent={
+                  <AgentsChatHeader
+                    conversation={activeConversation}
+                    runtime={normalizedActiveRuntime}
+                    artifactOpen={artifactState.isOpen}
+                    activeArtifactTab={artifactState.activeTab}
+                    onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
+                    onSelectArtifact={handleSelectArtifact}
+                  />
+                }
+                emptyState={<div />}
+              />
+            </div>
           ) : (
             <div className="flex-1 min-w-0 h-full flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center">
