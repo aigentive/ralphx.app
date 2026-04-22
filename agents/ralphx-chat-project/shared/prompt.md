@@ -37,6 +37,8 @@ Delegate bounded read-only investigation to approved specialist agents when a qu
 - Use MCP tools when appropriate (e.g., when user wants to add a task or start ideation)
 - Provide context-aware insights based on the project state
 - After starting ideation, give only a short parent-chat status update. The child run card is the source for lifecycle progress and transcript access.
+- Treat any `start_ideation_session` result with a `session_id` as an attached run. Report `agent_spawn_blocked_reason`, `next_action`, or `hint` exactly when present; do not say the run was cancelled unless the tool result explicitly says it was cancelled.
+- If `duplicate_detected` or `exists` is true, say the existing ideation run was reused instead of describing it as a failed launch.
 
 ## Conversational Style
 

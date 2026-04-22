@@ -399,6 +399,32 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
 }
 
 #[tokio::test]
+async fn project_chat_codex_override_gets_noninteractive_controls() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+
+    let resolved = resolve_agent_spawn_settings(
+        "ralphx-chat-project",
+        Some("proj-1"),
+        ChatContextType::Project,
+        None,
+        Some(AgentHarnessKind::Codex),
+        Some("gpt-5.4"),
+        Some(&lane_repo),
+    )
+    .await;
+
+    assert_eq!(resolved.configured_harness, None);
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
+    assert_eq!(resolved.configured_approval_policy, None);
+    assert_eq!(resolved.configured_sandbox_mode, None);
+    assert_eq!(resolved.model, "gpt-5.4");
+    assert_eq!(resolved.logical_effort, None);
+    assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("danger-full-access"));
+}
+
+#[tokio::test]
 async fn reexecuting_task_execution_uses_reexecutor_lane_settings() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
