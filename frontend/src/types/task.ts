@@ -345,6 +345,16 @@ export interface TaskMetadata {
   error_code?: string;
   /** Structured merge recovery timeline */
   merge_recovery?: MergeRecoveryState;
+  /** Repository hook failure classification from merge recovery */
+  merge_hook_failure_kind?: "policy_failure" | "environment_failure" | "unknown" | string;
+  /** Why RalphX blocked the hook failure instead of rerouting it */
+  merge_hook_blocked_reason?: "hook_environment_failure" | "repeated_hook_failure" | string;
+  /** Full hook environment/bootstrap failure output */
+  merge_hook_environment_error?: string;
+  /** Full repeated hook failure output */
+  merge_hook_repeated_error?: string;
+  /** Repeated hook failure count for loop prevention */
+  merge_hook_failure_repeat_count?: number;
   /** Stop metadata for smart resume */
   stop?: StopMetadata;
 }

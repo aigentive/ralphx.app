@@ -294,6 +294,19 @@ export const tasksApi = {
     ),
 
   /**
+   * Retry a merge using the merge-specific backend path.
+   *
+   * Do not replace this with a generic move to pending_merge; the backend command
+   * preserves hook-failure classification and can reroute corrective failures.
+   */
+  retryMerge: (taskId: string, skipValidation?: boolean): Promise<null> =>
+    typedInvoke(
+      "retry_merge",
+      { taskId, skipValidation: skipValidation ?? null },
+      TauriVoidSchema
+    ),
+
+  /**
    * Inject a task mid-loop
    * Tasks can be sent to backlog (deferred) or planned (immediate queue).
    * If makeNext is true and target is "planned", the task gets the highest priority.

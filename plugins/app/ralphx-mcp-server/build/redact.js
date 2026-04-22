@@ -10,7 +10,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-const TRACE_ROOT_DIR = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+import { fileURLToPath } from "node:url";
+const TRACE_SUBDIR = "mcp-proxy";
 /**
  * Ordered list of secret patterns with their replacements.
  * Patterns are applied in order — specific before generic.
@@ -92,7 +93,8 @@ function buildTraceFilename() {
     return `${timestamp}-${process.pid}.jsonl`;
 }
 function resolveTraceDir() {
-    return TRACE_ROOT_DIR;
+    const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+    return path.resolve(moduleDir, "../../../../.artifacts/logs", TRACE_SUBDIR);
 }
 export function getTraceLogPath() {
     if (traceLogPath) {

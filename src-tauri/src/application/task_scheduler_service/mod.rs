@@ -38,16 +38,16 @@ use crate::domain::entities::{
     ChatContextType, IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
-    ExecutionSettingsRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    ExecutionPlanRepository, ExecutionSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{GithubServiceTrait, MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 
-use super::{AgentClientBundle, InteractiveProcessRegistry, TaskTransitionService};
+use super::{AgentClientBundle, InteractiveProcessRegistry, PrPollerRegistry, TaskTransitionService};
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 
@@ -63,6 +63,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) project_repo: Arc<dyn ProjectRepository>,
     pub(super) task_repo: Arc<dyn TaskRepository>,
     pub(super) task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    pub(super) artifact_repo: Arc<dyn ArtifactRepository>,
     pub(super) chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub(super) chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub(super) conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -85,6 +86,10 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     /// Optional provider-neutral client bundle for fallback transition construction.
     pub(super) agent_clients: Option<AgentClientBundle>,
+    /// Optional PR poller registry so scheduled plan merges can start GitHub polling.
+    pub(super) pr_poller_registry: Option<Arc<PrPollerRegistry>>,
+    /// Optional GitHub service so scheduled plan merges can take the PR-mode path.
+    pub(super) github_service: Option<Arc<dyn GithubServiceTrait>>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     pub(super) self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -111,6 +116,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
         project_repo: Arc<dyn ProjectRepository>,
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -127,6 +133,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             project_repo,
             task_repo,
             task_dependency_repo,
+            artifact_repo,
             chat_message_repo,
             chat_attachment_repo,
             conversation_repo,
@@ -143,6 +150,8 @@ impl<R: Runtime> TaskSchedulerService<R> {
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
             agent_clients: None,
+            pr_poller_registry: None,
+            github_service: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -188,6 +197,16 @@ impl<R: Runtime> TaskSchedulerService<R> {
 
     pub fn with_agent_clients(mut self, agent_clients: AgentClientBundle) -> Self {
         self.agent_clients = Some(agent_clients);
+        self
+    }
+
+    pub fn with_pr_poller_registry(mut self, registry: Arc<PrPollerRegistry>) -> Self {
+        self.pr_poller_registry = Some(registry);
+        self
+    }
+
+    pub fn with_github_service(mut self, github: Arc<dyn GithubServiceTrait>) -> Self {
+        self.github_service = Some(github);
         self
     }
 
@@ -349,14 +368,15 @@ impl<R: Runtime> TaskSchedulerService<R> {
     ///
     /// Creates a fresh instance to avoid circular dependency issues when
     /// the scheduler is called from within TransitionHandler.
-    pub(super) fn build_transition_service(&self) -> TaskTransitionService<R>
+    pub(super) fn build_transition_service(&self) -> Arc<TaskTransitionService<R>>
     where
-        R: Runtime,
+        R: Runtime + 'static,
     {
         let deps = RuntimeFactoryDeps::from_core(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
+            Arc::clone(&self.artifact_repo),
             Arc::clone(&self.chat_message_repo),
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.conversation_repo),
@@ -373,6 +393,10 @@ impl<R: Runtime> TaskSchedulerService<R> {
             self.agent_lane_settings_repo.as_ref().map(Arc::clone),
             self.plan_branch_repo.as_ref().map(Arc::clone),
             self.interactive_process_registry.as_ref().map(Arc::clone),
+        )
+        .with_github_runtime_support(
+            self.github_service.as_ref().map(Arc::clone),
+            self.pr_poller_registry.as_ref().map(Arc::clone),
         );
         let mut service = build_transition_service_with_fallback(
             &self.app_handle,
@@ -382,12 +406,12 @@ impl<R: Runtime> TaskSchedulerService<R> {
         if let Some(ref sched) = *self.self_ref.lock().unwrap() {
             service = service.with_task_scheduler(Arc::clone(sched));
         }
-        service
+        service.into_arc()
     }
 }
 
 #[async_trait]
-impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
+impl<R: Runtime + 'static> TaskScheduler for TaskSchedulerService<R> {
     /// Try to schedule Ready tasks if execution slots are available.
     ///
     /// This method loops to fill all available execution slots:

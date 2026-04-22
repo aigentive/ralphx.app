@@ -111,6 +111,8 @@ pub use streaming_state_cache::{
 };
 #[doc(hidden)]
 pub use chat_service_send_background::finalize_assistant_message_for_test;
+#[doc(hidden)]
+pub use chat_service_send_background::finalize_structured_assistant_message_for_test;
 
 // Types and errors are now in chat_service_types.rs
 

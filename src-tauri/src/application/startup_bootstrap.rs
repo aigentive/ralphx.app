@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use tracing::{info, warn};
 use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
@@ -17,12 +15,7 @@ pub(crate) fn initialize_process_bootstrap(
     let file_logging_enabled = crate::infrastructure::agents::claude::resolve_file_logging_early();
 
     let (log_guard, file_layer) = if file_logging_enabled {
-        let log_dir = if cfg!(debug_assertions) {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.artifacts/logs")
-        } else {
-            let home = std::env::var("HOME").expect("HOME environment variable not set");
-            PathBuf::from(home).join("Library/Application Support/com.ralphx.app/logs")
-        };
+        let log_dir = crate::utils::runtime_log_paths::app_log_dir();
         std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
 
         let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
@@ -50,8 +43,8 @@ pub(crate) fn initialize_process_bootstrap(
         .init();
 
     let dotenv_paths = [
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env"),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env"),
     ];
     for dotenv_path in dotenv_paths {
         match dotenvy::from_path(&dotenv_path) {

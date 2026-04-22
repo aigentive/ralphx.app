@@ -38,6 +38,7 @@ import { PlanVerificationStatusChangedSchema } from "@/types/events";
 import type { EventVerificationGap } from "@/types/events";
 import { verificationApi } from "@/api/verification";
 import { PendingVerificationEventSchema } from "@/types/verification-config";
+import { verificationStatusKey } from "./useVerificationStatus";
 export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedPayload } from "@/types/events";
 
 // ============================================================================
@@ -232,15 +233,17 @@ async function updateVerificationQueryCache({
   currentGaps,
   rounds,
 }: UpdateVerificationQueryCacheParams): Promise<void> {
+  const currentVerificationKey = verificationStatusKey(sessionId);
+
   // 1. Cancel in-flight verification fetches BEFORE setQueryData.
   //    This closes the race window where a background refetch started by a
   //    previous event could complete after setQueryData and overwrite fresh data.
-  await queryClient.cancelQueries({ queryKey: ["verification", sessionId] });
+  await queryClient.cancelQueries({ queryKey: currentVerificationKey });
 
   // 2. Fast path: if event carries full gap/round data, populate cache directly
   //    so UI updates instantly without waiting for a refetch round-trip.
   if (currentGaps !== undefined && rounds !== undefined) {
-    const cached = queryClient.getQueryData<VerificationStatusResponse>(["verification", sessionId]);
+    const cached = queryClient.getQueryData<VerificationStatusResponse>(currentVerificationKey);
     const generationChanged =
       generation !== undefined && generation !== cached?.generation;
     const generationAdvanced =
@@ -299,7 +302,7 @@ async function updateVerificationQueryCache({
         runHistory: cached?.runHistory ?? [],
         ...(planVersion !== undefined && { planVersion }),
       };
-      queryClient.setQueryData(["verification", sessionId], cacheData);
+      queryClient.setQueryData(currentVerificationKey, cacheData);
       logger.debug(
         "[VerificationEvents] setQueryData fast path for",
         sessionId,
@@ -315,7 +318,7 @@ async function updateVerificationQueryCache({
     // not get clobbered by a behind-persistence response from the server.
     if (generationChanged || !inProgress) {
       queryClient.invalidateQueries({
-        queryKey: ["verification", sessionId],
+        queryKey: currentVerificationKey,
         refetchType: generationChanged ? "active" : "none",
       });
     }
@@ -323,7 +326,7 @@ async function updateVerificationQueryCache({
     // No fast path data — must invalidate to trigger refetch.
     // This branch currently never fires (all emission points include full data)
     // but serves as safety net for future emission points.
-    queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+    queryClient.invalidateQueries({ queryKey: currentVerificationKey });
   }
 
   // Invalidate child sessions so history picker and VerificationPanel stay fresh.

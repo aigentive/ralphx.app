@@ -44,6 +44,7 @@ pub enum State {
     // Merge states
     PendingMerge,
     Merging,
+    WaitingOnPr,
     MergeIncomplete,
     MergeConflict,
     Merged,
@@ -89,6 +90,7 @@ impl State {
             self,
             State::PendingMerge
                 | State::Merging
+                | State::WaitingOnPr
                 | State::MergeIncomplete
                 | State::MergeConflict
                 | State::Merged
@@ -139,6 +141,7 @@ impl TaskStateMachine {
             State::Approved => self.approved(event),
             State::PendingMerge => self.pending_merge(event),
             State::Merging => self.merging(event),
+            State::WaitingOnPr => self.waiting_on_pr(event),
             State::MergeIncomplete => self.merge_incomplete(event),
             State::MergeConflict => self.merge_conflict(event),
             State::Merged => self.merged(event),
@@ -205,6 +208,7 @@ impl State {
             State::Approved => "Approved",
             State::PendingMerge => "PendingMerge",
             State::Merging => "Merging",
+            State::WaitingOnPr => "WaitingOnPr",
             State::MergeIncomplete => "MergeIncomplete",
             State::MergeConflict => "MergeConflict",
             State::Merged => "Merged",
@@ -238,6 +242,7 @@ impl State {
             State::Approved => "approved",
             State::PendingMerge => "pending_merge",
             State::Merging => "merging",
+            State::WaitingOnPr => "waiting_on_pr",
             State::MergeIncomplete => "merge_incomplete",
             State::MergeConflict => "merge_conflict",
             State::Merged => "merged",
@@ -295,6 +300,7 @@ impl FromStr for State {
             "approved" => Ok(State::Approved),
             "pending_merge" => Ok(State::PendingMerge),
             "merging" => Ok(State::Merging),
+            "waiting_on_pr" => Ok(State::WaitingOnPr),
             "merge_incomplete" => Ok(State::MergeIncomplete),
             "merge_conflict" => Ok(State::MergeConflict),
             "merged" => Ok(State::Merged),

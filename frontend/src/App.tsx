@@ -269,11 +269,14 @@ function AppContent() {
   const { data: mergePipelineData } = useMergePipeline(activeProjectId ?? undefined);
   const mergingCount = useMemo(() => {
     if (!mergePipelineData) return 0;
-    return mergePipelineData.active.length + mergePipelineData.waiting.length + mergePipelineData.needsAttention.length;
+    return mergePipelineData.active.length + mergePipelineData.waiting.length;
+  }, [mergePipelineData]);
+  const mergeAttentionCount = useMemo(() => {
+    return mergePipelineData?.needsAttention.length ?? 0;
   }, [mergePipelineData]);
   const hasAttentionMerges = useMemo(() => {
-    return (mergePipelineData?.needsAttention.length ?? 0) > 0;
-  }, [mergePipelineData]);
+    return mergeAttentionCount > 0;
+  }, [mergeAttentionCount]);
 
   // Paused tasks (provider errors)
   // useShallow prevents infinite re-renders: selectTasksByStatus returns a new array
@@ -1005,6 +1008,7 @@ function AppContent() {
                       ideationMax={executionStatus.ideationMaxProject}
                       ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
+                      mergeAttentionCount={mergeAttentionCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
@@ -1044,6 +1048,7 @@ function AppContent() {
                       ideationMax={executionStatus.ideationMaxProject}
                       ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
+                      mergeAttentionCount={mergeAttentionCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
@@ -1088,6 +1093,7 @@ function AppContent() {
                       ideationMax={executionStatus.ideationMaxProject}
                       ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
+                      mergeAttentionCount={mergeAttentionCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}

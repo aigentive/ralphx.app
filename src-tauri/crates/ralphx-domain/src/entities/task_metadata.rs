@@ -335,6 +335,10 @@ pub enum MergeFailureSource {
     TeardownRace,
     /// merge_pipeline_active TTL expired — possible crash during prior merge attempt — safe to auto-retry
     PipelineActiveExpired,
+    /// Repository hook failed because its worktree environment/tooling could not bootstrap
+    HookEnvironment,
+    /// Same repository hook failure repeated after a corrective re-execution attempt
+    RepeatedHookFailure,
     /// Unrecognized failure source from stored metadata (backward compat)
     #[serde(other)]
     Unknown,
@@ -366,7 +370,10 @@ impl MergeFailureSource {
     /// Returns the retry strategy for this failure source.
     pub fn retry_strategy(&self) -> RetryStrategy {
         match self {
-            Self::AgentReported | Self::ValidationFailed => RetryStrategy::NoAutomaticRetry,
+            Self::AgentReported
+            | Self::ValidationFailed
+            | Self::HookEnvironment
+            | Self::RepeatedHookFailure => RetryStrategy::NoAutomaticRetry,
             Self::TargetBranchBusy => RetryStrategy::AutoRetryNoCB,
             _ => RetryStrategy::AutoRetry,
         }

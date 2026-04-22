@@ -1,11 +1,11 @@
 /**
  * ExecutionControlBar - Premium execution status and controls
  *
- * Fixed bottom bar displaying running/queued/merging tasks count with animated status indicator
+ * Fixed bottom bar displaying running/queued/merge status counts with animated status indicator
  * and pause/stop controls. Follows the design spec from specs/design/pages/execution-control-bar.md
  *
  * Responsive breakpoints:
- * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merging: 1"
+ * - Wide (>1200px): Full labels "Running: 2/3", "Queued: 5", "Merge: 1", "Escalated: 1"
  * - Medium (800-1200px): Abbreviated "R: 2/3", "Q: 5", "M: 1"
  * - Narrow (<800px): Counts only "2/3", "5", "1"
  */
@@ -52,8 +52,10 @@ interface ExecutionControlBarProps {
   ideationMax?: number;
   /** Number of ideation sessions waiting for capacity (pending_initial_prompt) */
   ideationWaiting?: number;
-  /** Number of tasks in the merge pipeline */
+  /** Number of merge tasks actively merging or waiting to merge */
   mergingCount: number;
+  /** Number of merge tasks requiring user/operator attention */
+  mergeAttentionCount?: number;
   /** Whether any merge tasks need attention (conflict/incomplete) */
   hasAttentionMerges: boolean;
   /** Merge pipeline data for popover */
@@ -130,6 +132,7 @@ export function ExecutionControlBar({
   ideationMax = 0,
   ideationWaiting = 0,
   mergingCount,
+  mergeAttentionCount,
   hasAttentionMerges,
   mergePipelineData,
   isPaused,
@@ -180,8 +183,12 @@ export function ExecutionControlBar({
   const queuedMessageLabel =
     breakpoint === "wide" ? "Msgs: " : breakpoint === "medium" ? "Msg: " : "";
   const pausedLabel = breakpoint === "wide" ? "Paused: " : breakpoint === "medium" ? "P: " : "";
-  const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
+  const mergingLabel = breakpoint === "wide" ? "Merge: " : breakpoint === "medium" ? "M: " : "";
+  const mergeAttentionLabel = breakpoint === "wide" ? "Escalated: " : breakpoint === "medium" ? "E: " : "";
   const ideationLabel = breakpoint === "wide" ? "Ideation: " : breakpoint === "medium" ? "I: " : "";
+  const attentionCount = mergeAttentionCount ?? (hasAttentionMerges ? 1 : 0);
+  const showAttentionCount = attentionCount > 0;
+  const showMergeWorkCount = mergingCount > 0 || !showAttentionCount;
 
   // Only show ideation indicator when max > 0
   const showIdeation = ideationMax > 0;
@@ -214,7 +221,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued tasks, ${queuedMessageCount} queued messages, ${pausedCount} paused, ${mergingCount} merging`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued tasks, ${queuedMessageCount} queued messages, ${pausedCount} paused, ${mergingCount} merge tasks, ${attentionCount} escalated merge tasks`}
         >
           {/* Animated Status Indicator (anchor for all popovers) */}
           <div
@@ -428,17 +435,26 @@ export function ExecutionControlBar({
               <button
                 data-testid="merging-count"
                 className="flex items-center gap-1.5 text-[13px] cursor-pointer hover:opacity-80 transition-opacity"
-                style={{ color: mergingCount > 0 ? STATUS_COLORS.pendingMerge : "var(--text-secondary)" }}
+                style={{
+                  color: showAttentionCount && mergingCount === 0
+                    ? STATUS_COLORS.mergeAttention
+                    : mergingCount > 0
+                      ? STATUS_COLORS.pendingMerge
+                      : "var(--text-secondary)",
+                }}
               >
-                {mergingLabel}{mergingCount}
-                {hasAttentionMerges && (
+                {showMergeWorkCount && <span>{mergingLabel}{mergingCount}</span>}
+                {showAttentionCount && (
                   <span
                     data-testid="merge-attention-indicator"
-                    className="text-sm"
+                    className="inline-flex items-center gap-1"
                     style={{ color: STATUS_COLORS.mergeAttention }}
-                    title="Some merges need attention"
+                    title="Some merge tasks are escalated"
                   >
-                    ⚠
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    <span data-testid="merge-attention-count">
+                      {mergeAttentionLabel}{attentionCount}
+                    </span>
                   </span>
                 )}
               </button>
@@ -447,17 +463,24 @@ export function ExecutionControlBar({
             <span
               data-testid="merging-count"
               className="flex items-center gap-1.5 text-[13px]"
-              style={{ color: "var(--text-secondary)" }}
+              style={{
+                color: showAttentionCount && mergingCount === 0
+                  ? STATUS_COLORS.mergeAttention
+                  : "var(--text-secondary)",
+              }}
             >
-              {mergingLabel}{mergingCount}
-              {hasAttentionMerges && (
+              {showMergeWorkCount && <span>{mergingLabel}{mergingCount}</span>}
+              {showAttentionCount && (
                 <span
                   data-testid="merge-attention-indicator"
-                  className="text-sm"
+                  className="inline-flex items-center gap-1"
                   style={{ color: STATUS_COLORS.mergeAttention }}
-                  title="Some merges need attention"
+                  title="Some merge tasks are escalated"
                 >
-                  ⚠
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span data-testid="merge-attention-count">
+                    {mergeAttentionLabel}{attentionCount}
+                  </span>
                 </span>
               )}
             </span>

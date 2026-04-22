@@ -7,7 +7,9 @@
 // - merge_validation: post-merge validation gate (setup + validate phases)
 // - merge_orchestrator: sub-functions extracted from attempt_programmatic_merge
 
-use super::merge_helpers::{resolve_merge_branches, validate_plan_merge_preconditions};
+use super::merge_helpers::{
+    plan_branch_has_reviewable_diff, resolve_merge_branches, validate_plan_merge_preconditions,
+};
 use crate::utils::truncate_str;
 use super::merge_orchestrator::ConcurrentGuardResult;
 use super::merge_validation::{format_validation_error_metadata, ValidationLogEntry};
@@ -91,12 +93,47 @@ impl<'a> super::TransitionHandler<'a> {
             if let Ok(Some(plan_branch)) = pbr.get_by_merge_task_id(&task_id_for_fork).await {
                 let pr_mode = plan_branch.pr_eligible && github_service.is_some();
                 if pr_mode {
-                    let github = github_service.expect("pr_mode implies github_service is Some");
-                    let pbr_arc = Arc::clone(pbr);
-                    Box::pin(self.run_pr_mode_pending_merge(
-                        &mut task, &project, plan_branch, task_id_for_fork, task_id_str, task_repo, &github, &pbr_arc,
-                    )).await;
-                    return;
+                    let should_use_pr_path = if plan_branch.pr_number.is_some() {
+                        true
+                    } else {
+                        match plan_branch_has_reviewable_diff(&project, &plan_branch).await {
+                            Ok(true) => true,
+                            Ok(false) => {
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %plan_branch.branch_name,
+                                    "PR-mode PendingMerge: no reviewable diff yet, falling back to local merge path"
+                                );
+                                false
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    branch = %plan_branch.branch_name,
+                                    error = %e,
+                                    "PR-mode PendingMerge: failed to determine whether the plan branch is ahead of base; falling back to local merge path"
+                                );
+                                false
+                            }
+                        }
+                    };
+                    if should_use_pr_path {
+                        let github =
+                            github_service.expect("pr_mode implies github_service is Some");
+                        let pbr_arc = Arc::clone(pbr);
+                        Box::pin(self.run_pr_mode_pending_merge(
+                            &mut task,
+                            &project,
+                            plan_branch,
+                            task_id_for_fork,
+                            task_id_str,
+                            task_repo,
+                            &github,
+                            &pbr_arc,
+                        ))
+                        .await;
+                        return;
+                    }
                 }
             }
         }

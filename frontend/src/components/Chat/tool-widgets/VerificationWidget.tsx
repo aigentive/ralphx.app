@@ -84,6 +84,13 @@ function convergenceLabel(reason: string | undefined): string | undefined {
   return map[reason] ?? reason;
 }
 
+function isTerminalVerificationStatus(status: string | undefined): boolean {
+  return status === "verified"
+    || status === "needs_revision"
+    || status === "skipped"
+    || status === "imported_verified";
+}
+
 function statusBadgeVariant(status: string | undefined): BadgeVariant {
   switch (status) {
     case "reviewing":
@@ -598,13 +605,28 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const raw = extractRawText(toolCall.result);
   const sessionId = getVerificationSessionId(parsed, args);
   const { data: authoritative } = useVerificationStatus(sessionId);
-  const status = authoritative?.status ?? getString(parsed, "status");
-  const settlement = getRecord(parsed["settlement"]);
+  const parsedStatus = getString(parsed, "status");
+  const argStatus = getString(args, "status");
+  const hasSealedAbort = raw === "aborted" || parsedStatus === "aborted";
+  const useTerminalRequestFallback =
+    authoritative?.status == null
+    && hasSealedAbort
+    && isTerminalVerificationStatus(argStatus);
+  const status =
+    authoritative?.status
+    ?? (useTerminalRequestFallback ? argStatus : undefined)
+    ?? parsedStatus
+    ?? argStatus;
+  const settlement = authoritative?.status == null ? getRecord(parsed["settlement"]) : null;
   const settlementClassification = getString(settlement, "classification");
   const settlementSummary = getString(settlement, "summary");
   const convergence = convergenceLabel(
-    authoritative?.convergenceReason ?? getString(parsed, "convergence_reason"),
+    authoritative?.convergenceReason
+      ?? (useTerminalRequestFallback ? getString(args, "convergence_reason") : undefined)
+      ?? getString(parsed, "convergence_reason")
+      ?? getString(args, "convergence_reason"),
   );
+  const showAborted = hasSealedAbort && !useTerminalRequestFallback && authoritative?.status == null;
 
   if (!status && raw == null) {
     return (
@@ -616,7 +638,7 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
   }
 
   const variant =
-    raw === "aborted"
+    showAborted
       ? "warning"
       : statusBadgeVariant(settlementClassification ?? status);
   const compactProps = compact === undefined ? {} : { compact };
@@ -625,12 +647,12 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
     <VerificationCard
       {...compactProps}
       icon={
-        raw === "aborted"
+        showAborted
           ? <ShieldAlert size={12} style={{ color: badgeStyles.warning.color }} />
           : <ShieldCheck size={12} style={{ color: iconColorForVariant(variant) }} />
       }
       title="Final cleanup"
-      badge={<Badge variant={variant} compact>{raw === "aborted" ? "Aborted" : (settlementClassification ?? status ?? "Unknown")}</Badge>}
+      badge={<Badge variant={variant} compact>{showAborted ? "Aborted" : (settlementClassification ?? status ?? "Unknown")}</Badge>}
     >
       <WidgetRow compact={compact}>
         {status && <Badge variant={statusBadgeVariant(status)} compact>{status}</Badge>}
@@ -641,7 +663,7 @@ function CompleteVerification({ toolCall, compact }: ToolCallWidgetProps) {
           {settlementSummary}
         </div>
       )}
-      {raw === "aborted" && !settlementSummary && (
+      {showAborted && !settlementSummary && (
         <div style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted }}>
           Cleanup aborted before a canonical terminal result was returned.
         </div>

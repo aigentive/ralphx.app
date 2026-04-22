@@ -1000,7 +1000,7 @@ pub async fn finalize_proposals_impl(
 pub async fn apply_proposals_core_for_session(
     state: &AppState,
     session_id: &str,
-) -> AppResult<()> {
+) -> AppResult<crate::commands::ideation_commands::ApplyProposalsResult> {
     let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
 
     let session = state
@@ -1040,8 +1040,7 @@ pub async fn apply_proposals_core_for_session(
         base_branch_override: None,
     };
 
-    apply_proposals_core(state, input).await?;
-    Ok(())
+    apply_proposals_core(state, input).await
 }
 
 // ============================================================================

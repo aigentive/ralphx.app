@@ -74,6 +74,12 @@ function getStatusBadgeStyle(status: string): {
         bgColor,
         label: "Merging",
       };
+    case "waiting_on_pr":
+      return {
+        color: statusConfig.color,
+        bgColor,
+        label: "Waiting on PR",
+      };
     default:
       return {
         color: statusConfig.color,

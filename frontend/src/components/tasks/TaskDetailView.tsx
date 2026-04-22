@@ -44,6 +44,7 @@ const STATUS_CONFIG: Record<InternalStatus, { label: string; color: string }> = 
   re_executing: { label: "Re-executing", color: "var(--accent-primary)" },
   pending_merge: { label: "Pending Merge", color: "var(--accent-primary)" },
   merging: { label: "Merging", color: "var(--accent-primary)" },
+  waiting_on_pr: { label: "Waiting on PR", color: "var(--status-info)" },
   merge_incomplete: { label: "Merge Incomplete", color: "var(--status-warning)" },
   merge_conflict: { label: "Merge Conflict", color: "var(--status-warning)" },
   merged: { label: "Merged", color: "var(--status-success)" },

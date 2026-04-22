@@ -3,6 +3,7 @@ use ralphx_lib::application::chat_service::{
     build_command, build_initial_prompt, build_resume_command,
     build_resume_command_for_harness, build_resume_initial_prompt,
     create_assistant_message, finalize_assistant_message_for_test,
+    finalize_structured_assistant_message_for_test,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
     is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
     ProviderResumeMode,
@@ -12,6 +13,7 @@ use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::AppResult;
+use ralphx_lib::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 use ralphx_lib::infrastructure::memory::*;
 use ralphx_lib::testing::create_mock_app;
 use std::fs;
@@ -296,6 +298,143 @@ async fn finalize_assistant_message_emits_delegated_conversation_id() {
         Some(ChatContextType::Delegation.to_string().as_str())
     );
     assert_eq!(payload["context_id"].as_str(), Some("delegated-session"));
+}
+
+#[tokio::test]
+async fn finalize_structured_assistant_message_splits_verification_transcript_segments() {
+    let state = AppState::new_test();
+    let conversation_id = ChatConversationId::new();
+    let context_id = IdeationSessionId::new();
+
+    let message = create_assistant_message(
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        "",
+        conversation_id.clone(),
+        &[],
+        &[],
+    );
+    let message_id = message.id.as_str().to_string();
+    let role = message.role.to_string();
+    state
+        .chat_message_repo
+        .create(message)
+        .await
+        .expect("insert verification assistant message");
+
+    let tool_calls = vec![
+        ToolCall {
+            id: Some("tool-1".to_string()),
+            name: "mcp__ralphx__fs_read_file".to_string(),
+            arguments: serde_json::json!({ "path": "frontend/src/api/task-graph.ts" }),
+            result: Some(serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }])),
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+        ToolCall {
+            id: Some("tool-2".to_string()),
+            name: "mcp__ralphx__fs_grep".to_string(),
+            arguments: serde_json::json!({ "pattern": "getTimelineEvents" }),
+            result: Some(serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }])),
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+        ToolCall {
+            id: Some("tool-3".to_string()),
+            name: "mcp__ralphx__run_verification_round".to_string(),
+            arguments: serde_json::json!({ "round": 2 }),
+            result: Some(serde_json::json!({ "status": "running" })),
+            parent_tool_use_id: None,
+            diff_context: None,
+            stats: None,
+        },
+    ];
+    let content_blocks = vec![
+        ContentBlockItem::Text {
+            text: "Round 1: needs_revision. Reading source to address gaps.".to_string(),
+        },
+        ContentBlockItem::ToolUse {
+            id: Some("tool-1".to_string()),
+            name: "mcp__ralphx__fs_read_file".to_string(),
+            arguments: serde_json::json!({ "path": "frontend/src/api/task-graph.ts" }),
+            result: Some(serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }])),
+            parent_tool_use_id: None,
+            diff_context: None,
+        },
+        ContentBlockItem::ToolUse {
+            id: Some("tool-2".to_string()),
+            name: "mcp__ralphx__fs_grep".to_string(),
+            arguments: serde_json::json!({ "pattern": "getTimelineEvents" }),
+            result: Some(serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }])),
+            parent_tool_use_id: None,
+            diff_context: None,
+        },
+        ContentBlockItem::Text {
+            text: "Plan revised. Running round 2.".to_string(),
+        },
+        ContentBlockItem::ToolUse {
+            id: Some("tool-3".to_string()),
+            name: "mcp__ralphx__run_verification_round".to_string(),
+            arguments: serde_json::json!({ "round": 2 }),
+            result: Some(serde_json::json!({ "status": "running" })),
+            parent_tool_use_id: None,
+            diff_context: None,
+        },
+    ];
+
+    finalize_structured_assistant_message_for_test::<tauri::Wry>(
+        &state.chat_message_repo,
+        None,
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        &conversation_id,
+        &message_id,
+        &role,
+        "Round 1: needs_revision. Reading source to address gaps.Plan revised. Running round 2.",
+        &tool_calls,
+        &content_blocks,
+        true,
+    )
+    .await;
+
+    let messages = state
+        .chat_message_repo
+        .get_by_conversation(&conversation_id)
+        .await
+        .expect("load conversation messages");
+    let assistant_messages: Vec<_> = messages
+        .into_iter()
+        .filter(|message| message.role == MessageRole::Orchestrator)
+        .collect();
+
+    assert_eq!(assistant_messages.len(), 2, "verification transcript should split into step-level messages");
+    assert_eq!(assistant_messages[0].id.as_str(), message_id);
+    assert_eq!(
+        assistant_messages[0].content,
+        "Round 1: needs_revision. Reading source to address gaps."
+    );
+    assert_eq!(assistant_messages[1].content, "Plan revised. Running round 2.");
+
+    let first_tools: Vec<ToolCall> = serde_json::from_str(
+        assistant_messages[0]
+            .tool_calls
+            .as_deref()
+            .expect("first assistant tool calls"),
+    )
+    .expect("parse first tool_calls");
+    let second_tools: Vec<ToolCall> = serde_json::from_str(
+        assistant_messages[1]
+            .tool_calls
+            .as_deref()
+            .expect("second assistant tool calls"),
+    )
+    .expect("parse second tool_calls");
+
+    assert_eq!(first_tools.len(), 2);
+    assert_eq!(second_tools.len(), 1);
+    assert_eq!(second_tools[0].name, "mcp__ralphx__run_verification_round");
 }
 
 #[tokio::test]

@@ -352,10 +352,13 @@ export interface ParsedSearchResult {
 }
 
 /** Metadata/header lines to skip in search results */
-const SEARCH_METADATA_RE = /^(Found \d+ files?|Showing|Page \d|Results? \d)/i;
+const SEARCH_METADATA_RE = /^(Found \d+ files?|Showing|Page \d|Results? \d|ROOT:|PATTERN:|FILE_PATTERN:|BASE_PATH:|MATCHES:|INCLUDE_HIDDEN:|RESPECT_GITIGNORE:)/i;
 
 /** Explicit no-result markers */
 const SEARCH_EMPTY_RE = /^No (matches|files|results)( found| matched)?\.?$/i;
+
+/** Explicit search error marker emitted by the fs MCP tools */
+const SEARCH_ERROR_RE = /^ERROR:\s*(.+)$/i;
 
 /**
  * Parse a search result (Grep/Glob) into deduplicated, normalized file paths.
@@ -378,6 +381,11 @@ export function parseSearchResult(result: unknown): ParsedSearchResult {
     // Detect no-result markers
     if (SEARCH_EMPTY_RE.test(line)) {
       return { paths: [], isEmpty: true, note: line };
+    }
+
+    const errorMatch = line.match(SEARCH_ERROR_RE);
+    if (errorMatch?.[1]) {
+      return { paths: [], isEmpty: true, note: `ERROR: ${errorMatch[1].trim()}` };
     }
 
     // Extract path from `path:lineNum:content` (grep content mode)
@@ -412,10 +420,16 @@ export interface ParsedReadOutput {
 }
 
 /** Match tool-added line-number prefixes like "   500→" or "     1→" */
-const LINE_PREFIX_RE = /^\s*(\d+)[→\t]/;
+const LINE_PREFIX_RE = /^\s*(\d+)(?:→|\||\t)(.*)$/;
 
 /** Match XML error wrapper */
 const TOOL_ERROR_RE = /<tool_use_error>([\s\S]*?)<\/tool_use_error>/;
+
+/** Metadata/header lines emitted by fs read_file MCP results */
+const READ_METADATA_RE = /^(FILE|LINES|TRUNCATED):/;
+
+/** Explicit read error marker emitted by the fs MCP tools */
+const READ_ERROR_RE = /^ERROR:\s*(.+)$/i;
 
 /**
  * Parse raw Read tool output:
@@ -444,12 +458,29 @@ export function parseReadOutput(
     };
   }
 
+  const readErrorMatch = raw.match(READ_ERROR_RE);
+  if (readErrorMatch?.[1]) {
+    return {
+      lines: [],
+      inferredStartLine: offset ?? 1,
+      error: `ERROR: ${readErrorMatch[1].trim()}`,
+    };
+  }
+
   const rawLines = raw.split("\n");
   const parsedLines: string[] = [];
   let inferredStartLine = offset ?? 0;
   let firstPrefixSeen = false;
 
   for (const line of rawLines) {
+    if (READ_METADATA_RE.test(line.trim())) {
+      continue;
+    }
+
+    if (!firstPrefixSeen && line.trim() === "") {
+      continue;
+    }
+
     const prefixMatch = line.match(LINE_PREFIX_RE);
     if (prefixMatch) {
       if (!firstPrefixSeen) {
@@ -458,19 +489,7 @@ export function parseReadOutput(
           inferredStartLine = parseInt(prefixMatch[1], 10);
         }
       }
-      // Strip the prefix — everything after the arrow/tab
-      const arrowIdx = line.indexOf("→");
-      if (arrowIdx !== -1) {
-        parsedLines.push(line.slice(arrowIdx + 1));
-      } else {
-        // Tab separator fallback
-        const tabIdx = line.indexOf("\t");
-        if (tabIdx !== -1) {
-          parsedLines.push(line.slice(tabIdx + 1));
-        } else {
-          parsedLines.push(line);
-        }
-      }
+      parsedLines.push(prefixMatch[2] ?? "");
     } else {
       // No prefix — pass through as-is
       parsedLines.push(line);

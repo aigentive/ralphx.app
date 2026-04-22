@@ -157,6 +157,11 @@ const STATUS_CONFIG: Record<
     bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
   },
+  waiting_on_pr: {
+    label: "Waiting on PR",
+    bg: "var(--status-info-muted)",
+    text: "var(--status-info)",
+  },
   merge_incomplete: {
     label: "Merge Incomplete",
     bg: "var(--status-warning-muted)",

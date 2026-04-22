@@ -229,6 +229,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         None,                                       // no agent_run_id for recovery
         None,                                       // no execution state for recovery
         None,                                       // no conversation_repo for recovery
+        false,                                      // no verification transcript splitting
     )
     .await
     {

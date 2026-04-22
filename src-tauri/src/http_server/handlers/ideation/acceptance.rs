@@ -11,6 +11,7 @@ use axum::{
 use serde::Deserialize;
 use tracing::error;
 
+use crate::application::spawn_ready_task_scheduler_if_needed;
 use crate::domain::entities::{AcceptanceStatus, IdeationSessionId};
 use crate::http_server::helpers::apply_proposals_core_for_session;
 use crate::http_server::types::{
@@ -54,12 +55,19 @@ pub async fn accept_finalize(
     }
 
     // Apply proposals (same as finalize_proposals_impl does normally)
-    apply_proposals_core_for_session(&state.app_state, &req.session_id)
+    let result = apply_proposals_core_for_session(&state.app_state, &req.session_id)
         .await
         .map_err(|e| {
             error!("Failed to apply proposals after acceptance: {}", e);
             json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
+
+    spawn_ready_task_scheduler_if_needed(
+        &state.app_state,
+        std::sync::Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+        result.any_ready_tasks,
+    );
 
     Ok(Json(AcceptanceActionResponse {
         status: "accepted".to_string(),

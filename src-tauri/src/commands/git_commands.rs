@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
 use crate::application::runtime_factory::{
@@ -283,15 +283,81 @@ pub async fn retry_merge(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<(), String> {
-    let task_id_parsed = TaskId::from_string(task_id);
+    retry_merge_inner(
+        TaskId::from_string(task_id),
+        skip_validation,
+        state.inner(),
+        Arc::clone(execution_state.inner()),
+    )
+    .await
+}
 
+async fn retry_merge_inner(
+    task_id_parsed: TaskId,
+    skip_validation: Option<bool>,
+    app_state: &AppState,
+    execution_state: Arc<ExecutionState>,
+) -> Result<(), String> {
     // Get task
-    let mut task = state
+    let mut task = app_state
         .task_repo
         .get_by_id(&task_id_parsed)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id_parsed.as_str()))?;
+
+    // Validate task is in a mergeable retry state
+    ensure_retry_merge_status(task.internal_status)?;
+
+    if task.internal_status == InternalStatus::MergeIncomplete
+        && crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(
+            &task,
+        )
+    {
+        let hook_error =
+            crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                &task,
+            );
+        let should_reroute = hook_error
+            .as_deref()
+            .map(|error| {
+                let kind =
+                    crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                        error,
+                    );
+                let fingerprint =
+                    crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                        error,
+                    );
+                !matches!(
+                    kind,
+                    crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                ) && !crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                    &task,
+                    &fingerprint,
+                )
+            })
+            .unwrap_or(false);
+
+        if should_reroute {
+            tracing::info!(
+                task_id = task_id_parsed.as_str(),
+                "Manual retry detected commit-hook MergeIncomplete — rerouting to revision flow"
+            );
+            let transition_service = app_state
+                .build_transition_service_with_execution_state(Arc::clone(&execution_state));
+            transition_service
+                .reroute_commit_hook_merge_failure(&task_id_parsed, None, true, "manual_retry")
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+
+        tracing::info!(
+            task_id = task_id_parsed.as_str(),
+            "Manual retry detected blocked/repeated commit-hook MergeIncomplete — retrying merge path"
+        );
+    }
 
     // Check if merge retry is already in progress
     let metadata_json = task
@@ -327,9 +393,6 @@ pub async fn retry_merge(
         return Ok(());
     }
 
-    // Validate task is in a mergeable retry state
-    ensure_retry_merge_status(task.internal_status)?;
-
     // Set in-flight guard and optional skip_validation flag
     let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
     meta_obj.insert(
@@ -361,7 +424,7 @@ pub async fn retry_merge(
     }
 
     task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
-    state
+    app_state
         .task_repo
         .update(&task)
         .await
@@ -374,25 +437,26 @@ pub async fn retry_merge(
     );
 
     // Clone necessary repositories and state for background task
-    let task_repo = Arc::clone(&state.task_repo);
-    let task_dependency_repo = Arc::clone(&state.task_dependency_repo);
-    let project_repo = Arc::clone(&state.project_repo);
-    let chat_message_repo = Arc::clone(&state.chat_message_repo);
-    let chat_attachment_repo = Arc::clone(&state.chat_attachment_repo);
-    let chat_conversation_repo = Arc::clone(&state.chat_conversation_repo);
-    let agent_run_repo = Arc::clone(&state.agent_run_repo);
-    let ideation_session_repo = Arc::clone(&state.ideation_session_repo);
-    let activity_event_repo = Arc::clone(&state.activity_event_repo);
-    let message_queue = Arc::clone(&state.message_queue);
-    let running_agent_registry = Arc::clone(&state.running_agent_registry);
-    let plan_branch_repo = Arc::clone(&state.plan_branch_repo);
-    let memory_event_repo = Arc::clone(&state.memory_event_repo);
-    let execution_settings_repo = Arc::clone(&state.execution_settings_repo);
-    let agent_lane_settings_repo = Arc::clone(&state.agent_lane_settings_repo);
-    let execution_state_clone = Arc::clone(execution_state.inner());
-    let app_handle_opt = state.app_handle.clone();
+    let task_repo = Arc::clone(&app_state.task_repo);
+    let task_dependency_repo = Arc::clone(&app_state.task_dependency_repo);
+    let project_repo = Arc::clone(&app_state.project_repo);
+    let artifact_repo = Arc::clone(&app_state.artifact_repo);
+    let chat_message_repo = Arc::clone(&app_state.chat_message_repo);
+    let chat_attachment_repo = Arc::clone(&app_state.chat_attachment_repo);
+    let chat_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
+    let agent_run_repo = Arc::clone(&app_state.agent_run_repo);
+    let ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
+    let activity_event_repo = Arc::clone(&app_state.activity_event_repo);
+    let message_queue = Arc::clone(&app_state.message_queue);
+    let running_agent_registry = Arc::clone(&app_state.running_agent_registry);
+    let plan_branch_repo = Arc::clone(&app_state.plan_branch_repo);
+    let memory_event_repo = Arc::clone(&app_state.memory_event_repo);
+    let execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
+    let agent_lane_settings_repo = Arc::clone(&app_state.agent_lane_settings_repo);
+    let execution_state_clone = Arc::clone(&execution_state);
+    let app_handle_opt = app_state.app_handle.clone();
     let task_id_for_spawn = task_id_parsed.clone();
-    let ipr = Arc::clone(&state.interactive_process_registry);
+    let ipr = Arc::clone(&app_state.interactive_process_registry);
 
     // Spawn background task for merge execution
     tokio::spawn(async move {
@@ -401,6 +465,7 @@ pub async fn retry_merge(
             task_repo,
             task_dependency_repo,
             project_repo,
+            artifact_repo,
             chat_message_repo,
             chat_attachment_repo,
             chat_conversation_repo,
@@ -433,6 +498,7 @@ async fn execute_merge_retry_background(
     task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
     task_dependency_repo: Arc<dyn crate::domain::repositories::TaskDependencyRepository>,
     project_repo: Arc<dyn crate::domain::repositories::ProjectRepository>,
+    artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
     chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
     chat_attachment_repo: Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
     chat_conversation_repo: Arc<dyn crate::domain::repositories::ChatConversationRepository>,
@@ -458,6 +524,7 @@ async fn execute_merge_retry_background(
         task_repo: Arc::clone(&task_repo),
         task_dependency_repo: Arc::clone(&task_dependency_repo),
         project_repo: Arc::clone(&project_repo),
+        artifact_repo: Arc::clone(&artifact_repo),
         chat_message_repo: Arc::clone(&chat_message_repo),
         chat_attachment_repo: Arc::clone(&chat_attachment_repo),
         conversation_repo: Arc::clone(&chat_conversation_repo),
@@ -471,8 +538,14 @@ async fn execute_merge_retry_background(
         execution_plan_repo: None,
         execution_settings_repo: Some(Arc::clone(&execution_settings_repo)),
         agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
+        review_repo: app_handle_opt
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.review_repo)),
         plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
         interactive_process_registry: Some(Arc::clone(&interactive_process_registry)),
+        github_service: None,
+        pr_poller_registry: None,
     };
 
     // Create transition service with all necessary dependencies
@@ -632,6 +705,10 @@ pub async fn cleanup_task_branch(
 #[cfg(test)]
 mod transition_guard_tests {
     use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::{Project, Task};
+    use std::sync::Arc;
 
     #[test]
     fn resolve_merge_accepts_conflict_states() {
@@ -661,6 +738,69 @@ mod transition_guard_tests {
             ensure_retry_merge_status(InternalStatus::Merged).expect_err("merged task must reject retry");
         assert!(error.contains("allows merge retry"));
         assert!(error.contains("Merged"));
+    }
+
+    #[tokio::test]
+    async fn retry_merge_reroutes_commit_hook_failures_to_reexecution() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        execution_state.set_max_concurrent(10);
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Commit Hook Retry".to_string());
+        task.internal_status = InternalStatus::MergeIncomplete;
+        task.metadata = Some(
+            serde_json::json!({
+                "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed"
+            })
+            .to_string(),
+        );
+        let task_id = task.id.clone();
+        app_state.task_repo.create(task).await.unwrap();
+
+        retry_merge_inner(task_id.clone(), None, &app_state, Arc::clone(&execution_state))
+            .await
+            .expect("retry_merge should reroute hook failures");
+
+        let updated = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated.internal_status,
+            InternalStatus::ReExecuting,
+            "manual retry should reroute commit-hook merge failures into re-execution"
+        );
+
+        let meta: serde_json::Value =
+            serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+        assert_eq!(
+            meta.get("merge_hook_reexecution_requested"),
+            Some(&serde_json::json!(true))
+        );
+        assert!(
+            meta.get("merge_retry_in_progress").is_none(),
+            "manual reroute must not arm merge retry guard"
+        );
+
+        let review_notes = app_state
+            .review_repo
+            .get_notes_by_task_id(&task_id)
+            .await
+            .expect("review notes query should succeed");
+        assert_eq!(review_notes.len(), 1);
+        assert_eq!(
+            review_notes[0].reviewer,
+            crate::domain::entities::ReviewerType::System
+        );
     }
 }
 

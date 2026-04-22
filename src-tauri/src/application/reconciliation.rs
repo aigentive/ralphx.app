@@ -28,10 +28,11 @@ use crate::application::interactive_process_registry::InteractiveProcessRegistry
 use crate::application::TaskTransitionService;
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository, ExecutionSettingsRepository,
+    ActivityEventRepository, AgentRunRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
+    PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -45,6 +46,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) task_repo: Arc<dyn TaskRepository>,
     pub(crate) task_dep_repo: Arc<dyn TaskDependencyRepository>,
     pub(crate) project_repo: Arc<dyn ProjectRepository>,
+    pub(crate) artifact_repo: Arc<dyn ArtifactRepository>,
     pub(crate) chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     pub(crate) chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub(crate) chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -73,6 +75,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
         chat_conversation_repo: Arc<dyn ChatConversationRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -90,6 +93,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             task_repo,
             task_dep_repo,
             project_repo,
+            artifact_repo,
             chat_conversation_repo,
             chat_message_repo,
             chat_attachment_repo,

@@ -126,7 +126,7 @@ impl<'a> TransitionHandler<'a> {
         }
     }
 
-    async fn maybe_start_pr_mode_merge_poller(&self, task_id: &str) -> bool {
+    pub(super) async fn maybe_start_pr_mode_merge_poller(&self, task_id: &str) -> bool {
         if let (Some(ref plan_branch_repo), Some(ref project_repo)) = (
             &self.machine.context.services.plan_branch_repo,
             &self.machine.context.services.project_repo,
@@ -141,7 +141,7 @@ impl<'a> TransitionHandler<'a> {
                     tracing::info!(
                         task_id = task_id,
                         pr_number = pr_number,
-                        "on_enter(Merging): PR mode — skipping merger agent, starting poller"
+                        "PR mode: starting PR merge poller"
                     );
 
                     let already_polling = self
@@ -153,16 +153,13 @@ impl<'a> TransitionHandler<'a> {
                         .map(|r| r.is_polling(&tid))
                         .unwrap_or(false);
 
-                    if !already_polling {
-                        if let Some(ref execution_state) =
-                            self.machine.context.services.execution_state
-                        {
-                            execution_state.increment_running();
-                            tracing::debug!(
-                                task_id = task_id,
-                                "PR-mode Merging: incremented execution slot"
-                            );
-                        }
+                    if already_polling {
+                        tracing::debug!(
+                            task_id = task_id,
+                            pr_number = pr_number,
+                            "PR mode: poller already running"
+                        );
+                        return true;
                     }
 
                     if let Some(ref registry) = self.machine.context.services.pr_poller_registry {
@@ -184,13 +181,13 @@ impl<'a> TransitionHandler<'a> {
                                 tracing::info!(
                                     task_id = task_id,
                                     pr_number = pr_number,
-                                    "on_enter(Merging): started PR merge poller"
+                                    "PR mode: started PR merge poller"
                                 );
                             } else {
                                 tracing::warn!(
                                     task_id = task_id,
                                     pr_number = pr_number,
-                                    "on_enter(Merging): PR mode but transition_service not wired — poller not started"
+                                    "PR mode: transition_service not wired — poller not started"
                                 );
                             }
                         }

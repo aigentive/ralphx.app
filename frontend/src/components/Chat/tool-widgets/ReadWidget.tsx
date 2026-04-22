@@ -33,6 +33,7 @@ function extractFilePath(args: unknown): string {
   if (args && typeof args === "object") {
     const a = args as Record<string, unknown>;
     if (typeof a.file_path === "string") return a.file_path;
+    if (typeof a.path === "string") return a.path;
   }
   return "file";
 }
@@ -47,6 +48,10 @@ function computeLineCountLabel(lineCount: number, args: unknown): string | null 
   if (args && typeof args === "object") {
     const a = args as Record<string, unknown>;
     if (typeof a.limit === "number") return `${a.limit} lines`;
+    if (typeof a.start_line === "number" && typeof a.end_line === "number") {
+      const requested = a.end_line - a.start_line + 1;
+      if (requested > 0) return `${requested} lines`;
+    }
   }
 
   return null;

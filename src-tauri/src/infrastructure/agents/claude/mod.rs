@@ -683,6 +683,7 @@ pub fn create_mcp_config(
                 serde_json::Value::String("stdio".to_string()),
             );
         }
+
         // Always resolve bare "node" to its full path so macOS GUI apps (which have
         // stripped PATH) can find node even when it's installed via nvm/Homebrew.
         let current_command = server_obj

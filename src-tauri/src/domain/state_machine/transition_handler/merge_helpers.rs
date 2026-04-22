@@ -7,16 +7,93 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
 use crate::application::GitService;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
 use crate::domain::entities::InternalStatus;
 use crate::domain::entities::{
     IdeationSessionId, PlanBranch, PlanBranchStatus, Project, Task, TaskCategory, TaskId,
 };
-use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
-use crate::domain::services::GithubServiceTrait;
+use crate::domain::repositories::{
+    ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, TaskRepository,
+};
+use crate::domain::services::{GithubServiceTrait, PlanPrPublisher, PrReviewState};
+use crate::domain::state_machine::context::TaskServices;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::git_runtime_config;
+
+const COMMIT_HOOK_PATTERNS: &[&str] = &[
+    "pre-commit",
+    "[pre-commit]",
+    "commit-msg",
+    "prepare-commit-msg",
+    "husky",
+    "hook declined",
+];
+
+const COMMIT_HOOK_ENVIRONMENT_PATTERNS: &[&str] = &[
+    "cannot find module",
+    "module not found",
+    "modulenotfounderror",
+    "no module named",
+    "importerror",
+    "command not found",
+    "no such file or directory",
+    "enoent",
+    "permission denied",
+    "node_modules is missing",
+    "could not find executable",
+    "failed to spawn",
+    "failed to load config",
+];
+
+const COMMIT_HOOK_POLICY_PATTERNS: &[&str] = &[
+    "design-token",
+    "eslint",
+    "lint",
+    "typecheck",
+    "tsc",
+    "prettier",
+    "clippy",
+    "fmt",
+    "test failed",
+    "tests failed",
+    "error:",
+];
+
+lazy_static! {
+    static ref ANSI_ESCAPE_RE: Regex =
+        Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]").expect("valid ansi escape regex");
+    static ref ABSOLUTE_PATH_RE: Regex =
+        Regex::new(r#"(?m)(^|[\s=])(?:/[^\s:'"`]+)+"#).expect("valid path regex");
+    static ref WINDOWS_PATH_RE: Regex =
+        Regex::new(r#"(?i)[a-z]:\\[^\s:'"`]+(?:\\[^\s:'"`]+)*"#).expect("valid windows path regex");
+    static ref UUID_RE: Regex =
+        Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b")
+            .expect("valid uuid regex");
+    static ref SHA_RE: Regex = Regex::new(r"\b[0-9a-f]{12,40}\b").expect("valid sha regex");
+    static ref TIMESTAMP_RE: Regex =
+        Regex::new(r"\b\d{4}-\d{2}-\d{2}[t ][0-9:.+-z]+\b").expect("valid timestamp regex");
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CommitHookFailureKind {
+    PolicyFailure,
+    EnvironmentFailure,
+    Unknown,
+}
+
+impl CommitHookFailureKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::PolicyFailure => "policy_failure",
+            Self::EnvironmentFailure => "environment_failure",
+            Self::Unknown => "unknown",
+        }
+    }
+}
 
 // ===== Stale git state cleanup =====
 
@@ -139,6 +216,159 @@ pub(crate) fn merge_metadata_into(task: &mut Task, new_fields: &serde_json::Valu
         }
     }
     task.metadata = Some(existing.to_string());
+}
+
+pub(crate) fn is_commit_hook_merge_error_text(message: &str) -> bool {
+    let lowered = message.to_lowercase();
+    lowered.contains("failed to commit")
+        && COMMIT_HOOK_PATTERNS
+            .iter()
+            .any(|pattern| lowered.contains(pattern))
+}
+
+pub(crate) fn strip_ansi_escape_sequences(text: &str) -> String {
+    ANSI_ESCAPE_RE.replace_all(text, "").into_owned()
+}
+
+pub(crate) fn sanitize_commit_hook_feedback_text(text: &str) -> String {
+    strip_ansi_escape_sequences(text)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim()
+        .to_string()
+}
+
+pub(crate) fn classify_commit_hook_failure_text(text: &str) -> CommitHookFailureKind {
+    let lowered = sanitize_commit_hook_feedback_text(text).to_lowercase();
+
+    if COMMIT_HOOK_ENVIRONMENT_PATTERNS
+        .iter()
+        .any(|pattern| lowered.contains(pattern))
+    {
+        return CommitHookFailureKind::EnvironmentFailure;
+    }
+
+    if COMMIT_HOOK_POLICY_PATTERNS
+        .iter()
+        .any(|pattern| lowered.contains(pattern))
+    {
+        return CommitHookFailureKind::PolicyFailure;
+    }
+
+    CommitHookFailureKind::Unknown
+}
+
+pub(crate) fn commit_hook_failure_fingerprint(text: &str) -> String {
+    let mut normalized = sanitize_commit_hook_feedback_text(text).to_lowercase();
+    normalized = TIMESTAMP_RE
+        .replace_all(&normalized, "<timestamp>")
+        .into_owned();
+    normalized = UUID_RE.replace_all(&normalized, "<uuid>").into_owned();
+    normalized = SHA_RE.replace_all(&normalized, "<sha>").into_owned();
+    normalized = WINDOWS_PATH_RE
+        .replace_all(&normalized, "<path>")
+        .into_owned();
+    normalized = ABSOLUTE_PATH_RE
+        .replace_all(&normalized, |captures: &regex::Captures<'_>| {
+            format!(
+                "{}<path>",
+                captures.get(1).map(|m| m.as_str()).unwrap_or("")
+            )
+        })
+        .into_owned();
+    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(crate) fn extract_commit_hook_merge_error(task: &Task) -> Option<String> {
+    let meta = parse_metadata(task)?;
+    for key in ["merge_revision_error", "error"] {
+        if let Some(candidate) = meta.get(key).and_then(|value| value.as_str()) {
+            if is_commit_hook_merge_error_text(candidate) {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+
+    meta.get("merge_recovery")
+        .and_then(|value| value.get("events"))
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .rev()
+        .filter_map(|event| event.get("message").and_then(|value| value.as_str()))
+        .find(|message| is_commit_hook_merge_error_text(message))
+        .map(str::to_string)
+}
+
+pub(crate) fn task_has_commit_hook_merge_failure(task: &Task) -> bool {
+    extract_commit_hook_merge_error(task).is_some()
+}
+
+pub(crate) fn is_repeated_commit_hook_failure(task: &Task, fingerprint: &str) -> bool {
+    let Some(meta) = parse_metadata(task) else {
+        return false;
+    };
+
+    meta.get("merge_hook_failure_fingerprint")
+        .and_then(|value| value.as_str())
+        .map(|existing| existing == fingerprint)
+        .unwrap_or(false)
+        && meta
+            .get("merge_hook_reexecution_requested")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+}
+
+pub(crate) fn commit_hook_repeat_count(task: &Task, fingerprint: &str) -> u64 {
+    let Some(meta) = parse_metadata(task) else {
+        return 0;
+    };
+
+    if meta
+        .get("merge_hook_failure_fingerprint")
+        .and_then(|value| value.as_str())
+        .map(|existing| existing == fingerprint)
+        .unwrap_or(false)
+    {
+        meta.get("merge_hook_failure_repeat_count")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+pub(crate) fn build_commit_hook_revision_feedback(error: &str) -> String {
+    let sanitized = sanitize_commit_hook_feedback_text(error);
+    let condensed = sanitized.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lowered = condensed.to_lowercase();
+    let excerpt = if let Some(start) = COMMIT_HOOK_PATTERNS
+        .iter()
+        .filter_map(|pattern| lowered.find(pattern))
+        .min()
+    {
+        condensed[start..].to_string()
+    } else {
+        condensed
+    };
+    let excerpt = if excerpt.chars().count() > 220 {
+        let truncated = excerpt.chars().take(220).collect::<String>();
+        format!("{truncated}...")
+    } else {
+        excerpt
+    };
+    format!(
+        "Repository commit hooks rejected the merge commit. Rework the task so it passes the repository's commit-time checks before merge. Key hook output: {}",
+        excerpt
+    )
+}
+
+pub(crate) fn build_commit_hook_review_note_body(error: &str) -> String {
+    let sanitized = sanitize_commit_hook_feedback_text(error);
+    let summary = build_commit_hook_revision_feedback(&sanitized);
+    let fenced_output = sanitized.replace("```", "``\u{200B}`");
+
+    format!("{summary}\n\nFull hook output:\n```text\n{fenced_output}\n```")
 }
 
 // ===== Pre-merge validation =====
@@ -812,6 +1042,8 @@ pub(super) async fn resolve_task_base_branch(
                         guard,
                         gh_svc,
                         &Arc::clone(plan_branch_repo),
+                        None,
+                        None,
                     )
                     .await;
                 }
@@ -822,14 +1054,6 @@ pub(super) async fn resolve_task_base_branch(
                 feature_branch = %pb.branch_name,
                 "Resolved task base branch to plan feature branch"
             );
-            // Draft PR creation (AD10: CAS guard, idempotent)
-            // Note: plan_branch_repo is already &Arc<dyn PlanBranchRepository> (destructured above)
-            if pb.pr_eligible {
-                if let (Some(ref guard), Some(ref github)) = (pr_creation_guard, github_service) {
-                    create_draft_pr_if_needed(task, project, &pb, guard, github, plan_branch_repo)
-                        .await;
-                }
-            }
             pb.branch_name
         }
         PlanBranchStatus::Merged => {
@@ -891,32 +1115,323 @@ pub(crate) async fn resolve_effective_base_branch(
     }
 }
 
-/// Build the PR body content.
-/// Checks for `.github/PULL_REQUEST_TEMPLATE.md` — uses it if present.
-/// Otherwise generates a body with task info.
-async fn build_pr_body(
+pub(crate) async fn plan_regular_tasks_complete(
+    current_task: &Task,
+    pb: &PlanBranch,
+    task_repo: Option<&Arc<dyn TaskRepository>>,
+) -> bool {
+    let Some(task_repo) = task_repo else {
+        return false;
+    };
+
+    let tasks = if let Some(execution_plan_id) = pb.execution_plan_id.as_ref() {
+        match task_repo
+            .list_paginated(
+                &pb.project_id,
+                None,
+                0,
+                10_000,
+                false,
+                None,
+                Some(execution_plan_id.as_str()),
+                None,
+            )
+            .await
+        {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    execution_plan_id = execution_plan_id.as_str(),
+                    "PR mode: failed to query execution-plan tasks for ready check"
+                );
+                return false;
+            }
+        }
+    } else {
+        match task_repo.get_by_ideation_session(&pb.session_id).await {
+            Ok(tasks) => tasks,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    session_id = pb.session_id.as_str(),
+                    "PR mode: failed to query session tasks for ready check"
+                );
+                return false;
+            }
+        }
+    };
+
+    tasks
+        .iter()
+        .filter(|task| task.archived_at.is_none())
+        .filter(|task| task.category != TaskCategory::PlanMerge)
+        .all(|task| {
+            task.id == current_task.id || matches!(task.internal_status, InternalStatus::Merged)
+        })
+}
+
+async fn push_pr_branch_to_remote(
+    project: &Project,
+    pb: &PlanBranch,
+    github: &Arc<dyn GithubServiceTrait>,
+    plan_branch_repo: &Arc<dyn PlanBranchRepository>,
+) -> bool {
+    let repo_path = Path::new(&project.working_directory);
+    tracing::info!(
+        branch = %pb.branch_name,
+        pr_number = ?pb.pr_number,
+        "sync_plan_branch_pr_if_needed: pushing updated plan branch to GitHub"
+    );
+
+    match github.push_branch(repo_path, &pb.branch_name).await {
+        Ok(()) => {
+            if let Err(e) = plan_branch_repo
+                .update_pr_push_status(&pb.id, PrPushStatus::Pushed)
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to update pr_push_status=pushed");
+            }
+            true
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                branch = %pb.branch_name,
+                "sync_plan_branch_pr_if_needed: push failed — leaving PR branch out of date until retry"
+            );
+            let _ = plan_branch_repo
+                .update_pr_push_status(&pb.id, PrPushStatus::Failed)
+                .await;
+            false
+        }
+    }
+}
+
+pub(crate) async fn sync_plan_branch_pr_if_needed(
+    project: &Project,
+    pb: &PlanBranch,
+    github: &Arc<dyn GithubServiceTrait>,
+    plan_branch_repo: &Arc<dyn PlanBranchRepository>,
+) {
+    if !pb.pr_eligible
+        || pb.status != PlanBranchStatus::Active
+        || pb.pr_number.is_none()
+        || matches!(pb.pr_push_status, PrPushStatus::Pushed)
+    {
+        return;
+    }
+
+    let _ = push_pr_branch_to_remote(project, pb, github, plan_branch_repo).await;
+}
+
+pub(crate) async fn sync_existing_plan_branch_pr_details(
     task: &Task,
-    _project: &Project,
-    pb: &crate::domain::entities::PlanBranch,
-    repo_path: &Path,
-) -> String {
-    // Check for pull request template
-    let template_path = repo_path.join(".github").join("PULL_REQUEST_TEMPLATE.md");
-    if template_path.exists() {
-        if let Ok(content) = tokio::fs::read_to_string(&template_path).await {
-            if !content.trim().is_empty() {
-                return content;
+    project: &Project,
+    pb: &PlanBranch,
+    github: &Arc<dyn GithubServiceTrait>,
+    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
+    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
+    review_state: PrReviewState,
+) -> AppResult<()> {
+    PlanPrPublisher::new(github, ideation_session_repo, artifact_repo)
+        .sync_existing_pr(task, project, pb, review_state)
+        .await
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct PlanBranchPrSyncServices {
+    pub task_repo: Option<Arc<dyn TaskRepository>>,
+    pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    pub pr_creation_guard: Option<Arc<dashmap::DashMap<PlanBranchId, ()>>>,
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    pub ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    pub artifact_repo: Option<Arc<dyn ArtifactRepository>>,
+}
+
+impl PlanBranchPrSyncServices {
+    pub(crate) fn from_task_services(services: &TaskServices) -> Self {
+        Self {
+            task_repo: services.task_repo.clone(),
+            plan_branch_repo: services.plan_branch_repo.clone(),
+            pr_creation_guard: services.pr_creation_guard.clone(),
+            github_service: services.github_service.clone(),
+            ideation_session_repo: services.ideation_session_repo.clone(),
+            artifact_repo: services.artifact_repo.clone(),
+        }
+    }
+}
+
+pub(crate) async fn sync_plan_branch_pr_after_regular_task_merge(
+    task: &Task,
+    project: &Project,
+    services: &PlanBranchPrSyncServices,
+) {
+    if task.category == TaskCategory::PlanMerge {
+        return;
+    }
+
+    let Some(plan_branch_repo) = services.plan_branch_repo.as_ref() else {
+        return;
+    };
+    let Some(plan_branch) = resolve_task_plan_branch_record(task, plan_branch_repo).await else {
+        return;
+    };
+
+    if !plan_branch.pr_eligible || plan_branch.status != PlanBranchStatus::Active {
+        return;
+    }
+
+    if plan_branch.pr_number.is_some() {
+        let _ = plan_branch_repo
+            .update_pr_push_status(&plan_branch.id, PrPushStatus::Pending)
+            .await;
+    }
+
+    let Some(github_service) = services.github_service.as_ref() else {
+        return;
+    };
+
+    let ready_for_review =
+        plan_regular_tasks_complete(task, &plan_branch, services.task_repo.as_ref()).await;
+
+    if plan_branch.pr_number.is_some() {
+        let mut refreshed_plan_branch = plan_branch.clone();
+        refreshed_plan_branch.pr_push_status = PrPushStatus::Pending;
+        let pushed = push_pr_branch_to_remote(
+            project,
+            &refreshed_plan_branch,
+            github_service,
+            plan_branch_repo,
+        )
+        .await;
+        if pushed {
+            let review_state = if ready_for_review {
+                PrReviewState::Ready
+            } else {
+                PrReviewState::Draft
+            };
+            if let Err(e) = sync_existing_plan_branch_pr_details(
+                task,
+                project,
+                &refreshed_plan_branch,
+                github_service,
+                services.ideation_session_repo.as_ref(),
+                services.artifact_repo.as_ref(),
+                review_state,
+            )
+            .await
+            {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "PR mode: failed to refresh PR details after plan branch push"
+                );
+            }
+            if ready_for_review {
+                if let Some(pr_number) = refreshed_plan_branch.pr_number {
+                    if let Err(e) = github_service
+                        .mark_pr_ready(Path::new(&project.working_directory), pr_number)
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            pr_number,
+                            error = %e,
+                            "PR mode: failed to mark PR ready after final plan task merge"
+                        );
+                    }
+                }
+            }
+        }
+    } else if let Some(pr_creation_guard) = services.pr_creation_guard.as_ref() {
+        create_draft_pr_if_needed(
+            task,
+            project,
+            &plan_branch,
+            pr_creation_guard,
+            github_service,
+            plan_branch_repo,
+            services.ideation_session_repo.as_ref(),
+            services.artifact_repo.as_ref(),
+        )
+        .await;
+        if ready_for_review {
+            match plan_branch_repo.get_by_id(&plan_branch.id).await {
+                Ok(Some(refreshed_plan_branch)) if refreshed_plan_branch.pr_number.is_some() => {
+                    if let Err(e) = sync_existing_plan_branch_pr_details(
+                        task,
+                        project,
+                        &refreshed_plan_branch,
+                        github_service,
+                        services.ideation_session_repo.as_ref(),
+                        services.artifact_repo.as_ref(),
+                        PrReviewState::Ready,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "PR mode: failed to refresh newly-created PR details before ready"
+                        );
+                    }
+                    if let Some(pr_number) = refreshed_plan_branch.pr_number {
+                        if let Err(e) = github_service
+                            .mark_pr_ready(Path::new(&project.working_directory), pr_number)
+                            .await
+                        {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                pr_number,
+                                error = %e,
+                                "PR mode: failed to mark newly-created PR ready after final plan task merge"
+                            );
+                        }
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "PR mode: failed to reload plan branch after draft PR creation"
+                    );
+                }
             }
         }
     }
+}
 
-    // Generate body: plan branch name + task info + footer
-    let mut body = String::new();
-    body.push_str(&format!("## {}\n\n", pb.branch_name));
-    body.push_str(&format!("**Executing task:** {}\n\n", task.title));
-    body.push_str("---\n");
-    body.push_str("\n_Generated by [RalphX](https://ralphx.com)_\n");
-    body
+pub(crate) fn resolve_plan_branch_pr_base(project: &Project, pb: &PlanBranch) -> String {
+    pb.base_branch_override
+        .clone()
+        .or_else(|| project.base_branch.clone())
+        .unwrap_or_else(|| pb.source_branch.clone())
+}
+
+pub(crate) async fn plan_branch_reviewable_commit_count(
+    project: &Project,
+    pb: &PlanBranch,
+) -> AppResult<u32> {
+    let repo_path = Path::new(&project.working_directory);
+    let pr_base = resolve_plan_branch_pr_base(project, pb);
+
+    if !GitService::branch_exists(repo_path, &pb.branch_name)
+        .await
+        .unwrap_or(false)
+    {
+        return Ok(0);
+    }
+
+    GitService::count_commits_not_on_branch(repo_path, &pb.branch_name, &pr_base).await
+}
+
+pub(crate) async fn plan_branch_has_reviewable_diff(
+    project: &Project,
+    pb: &PlanBranch,
+) -> AppResult<bool> {
+    Ok(plan_branch_reviewable_commit_count(project, pb).await? > 0)
 }
 
 /// Create a draft PR for the plan branch if not already created.
@@ -925,13 +1440,15 @@ async fn build_pr_body(
 /// Idempotent: re-reads pr_number from DB inside guard — skips if already set.
 /// Non-blocking: errors are logged and silently skipped (PR can be created at PendingMerge time).
 /// Timeout: entire flow wrapped in 30s timeout.
-async fn create_draft_pr_if_needed(
+pub(crate) async fn create_draft_pr_if_needed(
     task: &Task,
     project: &Project,
     pb: &crate::domain::entities::PlanBranch,
     guard: &Arc<dashmap::DashMap<crate::domain::entities::PlanBranchId, ()>>,
     github: &Arc<dyn GithubServiceTrait>,
     plan_branch_repo: &Arc<dyn PlanBranchRepository>,
+    ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
+    artifact_repo: Option<&Arc<dyn ArtifactRepository>>,
 ) {
     use tokio::time::{timeout, Duration};
 
@@ -968,6 +1485,27 @@ async fn create_draft_pr_if_needed(
         return;
     }
 
+    let reviewable_commit_count = match plan_branch_reviewable_commit_count(project, &current_pb)
+        .await
+    {
+        Ok(count) => count,
+        Err(e) => {
+            tracing::warn!(
+                branch = %branch_name,
+                error = %e,
+                "create_draft_pr_if_needed: failed to determine whether the plan branch is ahead of base"
+            );
+            return;
+        }
+    };
+    if reviewable_commit_count == 0 {
+        tracing::debug!(
+            branch = %branch_name,
+            "create_draft_pr_if_needed: skipping PR creation because the plan branch has no reviewable changes yet"
+        );
+        return;
+    }
+
     // Run with timeout — task proceeds normally on timeout
     let timed_out = timeout(Duration::from_secs(30), async {
         // --- PUSH ---
@@ -998,35 +1536,15 @@ async fn create_draft_pr_if_needed(
         }
 
         // --- CREATE DRAFT PR ---
-        let base = project.base_branch.as_deref().unwrap_or("main");
-        let pr_title = format!("Draft: {}", branch_name);
-
-        // Build PR body
-        let pr_body = build_pr_body(task, project, pb, repo_path).await;
-
-        // Write body to temp file
-        let body_file = match tempfile::NamedTempFile::new() {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::warn!(error = %e, "create_draft_pr_if_needed: failed to create temp file");
-                return;
-            }
-        };
-        use std::io::Write as _;
-        if let Err(e) = (&body_file).write_all(pr_body.as_bytes()) {
-            tracing::warn!(error = %e, "create_draft_pr_if_needed: failed to write body to temp file");
-            return;
-        }
+        let base = resolve_plan_branch_pr_base(project, &current_pb);
+        let publisher = PlanPrPublisher::new(github, ideation_session_repo, artifact_repo);
 
         tracing::info!(
             branch = %branch_name,
             base = %base,
             "create_draft_pr_if_needed: creating draft PR"
         );
-        match github
-            .create_draft_pr(repo_path, base, &branch_name, &pr_title, body_file.path())
-            .await
-        {
+        match publisher.create_draft_pr(task, project, &current_pb).await {
             Ok((pr_number, pr_url)) => {
                 tracing::info!(pr_number, %pr_url, "Draft PR created");
                 if let Err(e) = plan_branch_repo
@@ -1055,13 +1573,25 @@ async fn create_draft_pr_if_needed(
                             .update_pr_info(
                                 &plan_branch_id,
                                 pr_number,
-                                pr_url,
+                                pr_url.clone(),
                                 PrStatus::Open,
                                 true,
                             )
                             .await
                         {
                             tracing::warn!(error = %e, "Failed to persist recovered PR info");
+                        }
+                        let mut recovered_pb = current_pb.clone();
+                        recovered_pb.pr_number = Some(pr_number);
+                        recovered_pb.pr_url = Some(pr_url);
+                        if let Err(e) = publisher
+                            .sync_existing_pr(task, project, &recovered_pb, PrReviewState::Draft)
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %e,
+                                "Failed to refresh recovered existing PR after duplicate error"
+                            );
                         }
                     }
                     Ok(None) => {

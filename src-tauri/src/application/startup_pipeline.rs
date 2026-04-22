@@ -18,12 +18,11 @@ use crate::commands::{ActiveProjectState, ExecutionState};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, AppStateRepository,
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, ExecutionSettingsRepository, ExternalEventsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository,
-    PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
-    TaskRepository, ExecutionPlanRepository,
-    TaskStepRepository,
+    ChatMessageRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
+    ExternalEventsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryArchiveRepository, MemoryEntryRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::WebhookPublisher;
@@ -58,6 +57,7 @@ pub(crate) struct StartupPipelineDeps {
     pub interactive_process_registry: Arc<InteractiveProcessRegistry>,
     pub review_repo: Arc<dyn ReviewRepository>,
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
+    pub github_service: Option<Arc<dyn crate::domain::services::GithubServiceTrait>>,
     pub pr_poller_registry: Arc<crate::application::PrPollerRegistry>,
     pub agent_clients: AgentClientBundle,
     pub webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
@@ -107,6 +107,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         interactive_process_registry,
         review_repo,
         external_events_repo,
+        github_service,
         pr_poller_registry,
         agent_clients,
         webhook_publisher,
@@ -119,6 +120,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         project_repo: Arc::clone(&project_repo),
         task_repo: Arc::clone(&task_repo),
         task_dependency_repo: Arc::clone(&task_dependency_repo),
+        artifact_repo: Arc::clone(&artifact_repo),
         execution_plan_repo: Arc::clone(&execution_plan_repo),
         chat_message_repo: Arc::clone(&chat_message_repo),
         chat_attachment_repo: Arc::clone(&chat_attachment_repo),
@@ -131,6 +133,8 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         memory_event_repo: Arc::clone(&memory_event_repo),
         agent_clients: agent_clients.clone(),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
+        github_service: github_service.as_ref().map(Arc::clone),
+        pr_poller_registry: Arc::clone(&pr_poller_registry),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         app_handle: app_handle.clone(),
     });
@@ -153,6 +157,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&task_repo),
         Arc::clone(&task_dependency_repo),
         Arc::clone(&project_repo),
+        Arc::clone(&artifact_repo),
         Arc::clone(&chat_message_repo),
         Arc::clone(&chat_attachment_repo),
         Arc::clone(&conversation_repo),
@@ -162,12 +167,28 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&message_queue),
         Arc::clone(&running_agent_registry),
         Arc::clone(&memory_event_repo),
+    )
+    .with_github_runtime_support(
+        github_service.as_ref().map(Arc::clone),
+        Some(Arc::clone(&pr_poller_registry)),
     );
 
-    let transition_service = Arc::new(startup_transition_factory.build(
-        core_runtime_deps.clone(),
-        app_handle.clone(),
-    ));
+    let transition_service =
+        Arc::new(startup_transition_factory.build(core_runtime_deps.clone(), app_handle.clone()));
+
+    if let Some(github_service) = github_service.as_ref() {
+        tracing::info!("Running startup PR creation recovery...");
+        crate::application::pr_startup_recovery::recover_missing_draft_prs(
+            Arc::clone(&task_repo),
+            Arc::clone(&plan_branch_repo),
+            Arc::clone(&project_repo),
+            Arc::clone(&execution_plan_repo),
+            Arc::clone(&ideation_session_repo),
+            Arc::clone(&artifact_repo),
+            Arc::clone(github_service),
+        )
+        .await;
+    }
 
     tracing::info!("Running PR startup recovery...");
     crate::application::pr_startup_recovery::recover_pr_pollers(
@@ -214,6 +235,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&task_repo),
         Arc::clone(&task_dependency_repo),
         Arc::clone(&project_repo),
+        Arc::clone(&artifact_repo),
         Arc::clone(&conversation_repo),
         Arc::clone(&chat_message_repo),
         Arc::clone(&chat_attachment_repo),
@@ -258,15 +280,14 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
     });
     chat_resumption.run().await;
 
-    let reconcile_transition_service = Arc::new(startup_transition_factory.build(
-        core_runtime_deps,
-        app_handle.clone(),
-    ));
+    let reconcile_transition_service =
+        Arc::new(startup_transition_factory.build(core_runtime_deps, app_handle.clone()));
 
     let reconcile_runner = build_startup_reconciliation_runner(StartupReconciliationDeps {
         task_repo: Arc::clone(&task_repo),
         task_dependency_repo: Arc::clone(&task_dependency_repo),
         project_repo: Arc::clone(&project_repo),
+        artifact_repo: Arc::clone(&artifact_repo),
         conversation_repo: Arc::clone(&conversation_repo),
         chat_message_repo: Arc::clone(&chat_message_repo),
         chat_attachment_repo: Arc::clone(&chat_attachment_repo),
@@ -280,6 +301,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         execution_state: Arc::clone(&execution_state),
         execution_settings_repo: Arc::clone(&execution_settings_repo),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
+        pr_poller_registry: Arc::clone(&pr_poller_registry),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         review_repo: Arc::clone(&review_repo),
         app_handle: app_handle.clone(),
@@ -307,9 +329,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         use crate::application::reconciliation::recovery_queue::{
             create_recovery_queue, RecoveryQueueConfig,
         };
-        use crate::application::reconciliation::verification_reconciliation::{
-            VerificationReconciliationService,
-        };
+        use crate::application::reconciliation::verification_reconciliation::VerificationReconciliationService;
 
         let recovery_config = RecoveryQueueConfig::default();
         let recovery_queue_chat_deps = recovery_chat_service_deps.clone();

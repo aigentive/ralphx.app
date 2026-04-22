@@ -144,6 +144,28 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
+  it("uses the canonical current verification query key", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const { verificationStatusKey } = await import("@/hooks/useVerificationStatus");
+    const verificationData = {
+      sessionId: "session-1",
+      status: "reviewing",
+      inProgress: true,
+      gaps: [],
+      rounds: [],
+      roundDetails: [],
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    const firstQueryConfig = vi.mocked(useQuery).mock.calls[0]?.[0] as { queryKey?: unknown } | undefined;
+    expect(firstQueryConfig?.queryKey).toEqual(verificationStatusKey("session-1"));
+  });
+
   it("keeps verification history visible when only roundDetails remain after current gaps are cleared", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const verificationData = {
@@ -251,7 +273,7 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
-  it("keeps verification history visible and does not replace the tab with the child transcript", async () => {
+  it("keeps verification history visible when a verification child session exists", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const childSession = {
       id: "child-run-1",
@@ -282,7 +304,7 @@ describe("VerificationPanel — page-load hydration", () => {
     await waitFor(() => {
       expect(screen.getByTestId("verification-history")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("verification-child-transcript")).not.toBeInTheDocument();
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
   });
 
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {
@@ -335,6 +357,8 @@ describe("VerificationPanel — page-load hydration", () => {
       status: "reviewing",
       inProgress: true,
       generation: 20,
+      currentRound: 2,
+      maxRounds: 5,
       gaps: [],
       rounds: [],
       roundDetails: [],
@@ -353,10 +377,11 @@ describe("VerificationPanel — page-load hydration", () => {
         },
         {
           generation: 18,
-          status: "needs_revision",
+          status: "unverified",
           inProgress: false,
           roundCount: 2,
           gapCount: 1,
+          convergenceReason: "agent_error",
         },
       ],
     };
@@ -370,8 +395,22 @@ describe("VerificationPanel — page-load hydration", () => {
     const user = userEvent.setup();
     render(<VerificationPanel session={baseSession} />);
 
+    await waitFor(() => {
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current verification");
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Round 2 of 5");
+      expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Current run");
+    });
+
     await user.click(await screen.findByTestId("verification-run-picker-trigger"));
-    await user.click(await screen.findByTestId("verification-run-option-1"));
+
+    expect(screen.getByTestId("verification-run-option-generation-20")).toHaveTextContent("Current verification");
+    expect(screen.getByTestId("verification-run-option-generation-20")).toHaveTextContent("Round 2 of 5");
+    expect(screen.getByTestId("verification-run-option-generation-18")).toHaveTextContent("Previous verification");
+    expect(screen.getByTestId("verification-run-option-generation-18")).toHaveTextContent("Ended early");
+    expect(screen.getByTestId("verification-run-picker-menu")).not.toHaveTextContent("Gen 20");
+    expect(screen.getByTestId("verification-run-picker-menu")).not.toHaveTextContent("Run 1");
+
+    await user.click(await screen.findByTestId("verification-run-option-generation-20"));
 
     expect(mockSetActiveVerificationChildId).not.toHaveBeenCalled();
     expect(mockSetLastVerificationChildId).not.toHaveBeenCalled();
@@ -434,9 +473,10 @@ describe("VerificationPanel — page-load hydration", () => {
     render(<VerificationPanel session={baseSession} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current run");
+      expect(screen.getByTestId("verification-run-picker-trigger")).toHaveTextContent("Current verification");
     });
     expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Run 1");
+    expect(screen.getByTestId("verification-run-picker-trigger")).not.toHaveTextContent("Gen 21");
     expect(screen.getByTestId("verification-current-run-bootstrap")).toBeInTheDocument();
     expect(screen.getByText("Verification is warming up")).toBeInTheDocument();
     expect(screen.getByText("Bootstrapping the verifier context before round 1.")).toBeInTheDocument();

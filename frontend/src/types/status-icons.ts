@@ -163,6 +163,12 @@ export const STATUS_ICON_CONFIG: Record<InternalStatus, StatusIconConfig> = {
     label: "Merging",
     animate: true,
   },
+  waiting_on_pr: {
+    icon: GitPullRequest,
+    color: "var(--status-info)",
+    bgOpacity: "0.2",
+    label: "Waiting on PR",
+  },
   merge_incomplete: {
     icon: AlertTriangle,
     color: "var(--status-warning)",

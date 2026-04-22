@@ -10,6 +10,7 @@ RalphX automates the entire process of merging your task's code changes into the
 |----------|--------|
 | How do I start a merge? | Approve the task. It automatically enters the merge pipeline. |
 | What merge strategy should I use? | **RebaseSquash** (default) gives the cleanest history. Use **Merge** if you need to preserve individual commits. |
+| What changes in GitHub PR Mode? | The final plan merge happens through a GitHub PR. RalphX opens/monitors the PR and finishes the task after GitHub merges it. |
 | My merge is stuck — what do I do? | Check the merge progress panel. If it says "Needs Attention", click **Retry Merge**. |
 | What does "Deferred" mean? | Another task is merging to the same branch. Yours will start automatically when the other finishes. |
 | Validation failed — now what? | In **Block** mode: fix your code and retry (or use **Retry (Skip Validation)** to bypass validation once). In **AutoFix** mode: a fixer agent attempts the fix automatically — the "Fixing Validation Errors" banner shows while it works. |
@@ -49,6 +50,14 @@ When a task is approved, RalphX automatically merges its code changes into the t
 5. **Finalization** — Commits the merge, cleans up branches and worktrees
 
 If anything goes wrong — merge conflicts, validation failures, git errors — RalphX automatically retries, spawns AI agents to fix issues, or surfaces the problem for you to resolve.
+
+For projects using **GitHub PR Mode**, the final plan-merge task uses a different settlement path:
+
+- RalphX still handles the normal task -> plan-branch merges
+- RalphX creates and updates a GitHub PR for the **plan branch**
+- The final plan-merge task waits for GitHub to merge that PR instead of merging the plan branch directly
+
+See the [GitHub PR Mode User Guide](github-pr-mode.md) for the plan-PR flow and user-facing UI differences.
 
 ### High-Level Flow
 
@@ -96,7 +105,7 @@ Every task in the merge pipeline is in one of five states. Understanding these h
 | State | What's happening | What you see | Action needed? |
 |-------|-----------------|--------------|----------------|
 | **PendingMerge** | RalphX is attempting the merge automatically | Progress phases updating in real-time | No — wait for it to complete |
-| **Merging** | An AI agent is resolving conflicts or fixing validation failures | Agent activity in the merge chat | No — the agent is working on it |
+| **Merging** | Either an AI agent is resolving conflicts/fixing validation, or RalphX is waiting for a GitHub plan PR to merge | Agent activity in the merge chat, or a PR status card with "Waiting for PR Merge" | Usually no — let the agent work, or merge the PR in GitHub if this is a PR-backed plan |
 | **MergeIncomplete** | The merge attempt failed (git error, timeout, or validation failure) | "Needs Attention" badge | Click **Retry Merge** or investigate the error |
 | **MergeConflict** | The AI agent couldn't resolve the conflicts | "Needs Attention" badge with conflict details; click any conflict file to open the inline **ConflictDiffViewer** | Click **Retry Merge** (if code changed) or resolve manually |
 | **Merged** | Merge is complete. Code is on the target branch. | Green checkmark, merge commit SHA shown | None — task is done |
@@ -138,6 +147,8 @@ For Rebase and RebaseSquash strategies, when running via the **worktree path** (
 ## The Merge Pipeline Step by Step
 
 When a task enters PendingMerge, here's exactly what happens:
+
+> **Note:** The detailed phases below describe the standard direct-merge pipeline. In GitHub PR Mode, the final **plan-merge task** switches to a PR-backed flow: RalphX pushes the plan branch, marks the PR ready, waits in `Merging` while polling GitHub, and completes the task after GitHub merges the PR.
 
 ### Phase 1: Preparation
 

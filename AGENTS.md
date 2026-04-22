@@ -13,8 +13,11 @@ Primary project docs:
 - `docs/ai-docs/openai/gpt-5.4-prompting.md` for the GPT-5.4-specific prompt guide and official-source links
 - `.claude/rules/ideation-verification-architecture.md` for the ideation verification feature map: parent-vs-child ownership, runtime flow, UI surfaces, debugging, and tests
 - `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
+- `.claude/rules/runtime-root-vs-target-project.md` for the contract between RalphX-owned runtime/plugin/log roots and the user’s active target project checkout
+- `.claude/rules/codeql-path-safety.md` for CodeQL-safe filesystem sink validation when paths are influenced by env vars, settings, HTTP/MCP payloads, DB state, agent metadata, or repo contents
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `config/ralphx.yaml`, and MCP allowlists
+- `.claude/rules/merge-recovery-consistency.md` for the coupled merge-failure behavior across merge outcome handling, manual retry, reconciliation, startup recovery, and MergeIncomplete UI
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 - `.claude/rules/wkwebview-css-vars.md` for Tauri (WKWebView) CSS custom-property inheritance rules — theme tokens for bg/text/border MUST be literals, not chained `var()` references
 - `.claude/rules/release-script-validation.md` for safe validation of release proposal/wrapper scripts without triggering real publish steps
@@ -24,6 +27,10 @@ Primary project docs:
 - Read project instructions first: check `CLAUDE.md`, subtree docs, and relevant `.claude/rules/*` before substantial work.
 - For GPT-5.4/Codex prompt work, check `.claude/rules/openai-gpt-5.4-prompting.md` and `docs/ai-docs/openai/gpt-5.4-prompting.md` before substantial prompt edits.
 - When touching ideation verification, read `.claude/rules/ideation-verification-architecture.md` first.
+- When touching plugin/root resolution, canonical agent loading, generated plugin bundles, or runtime log placement, read `.claude/rules/runtime-root-vs-target-project.md` first.
+- When touching filesystem sinks or any path influenced by external/runtime state, read `.claude/rules/codeql-path-safety.md` first.
+- CodeQL path findings block PRs: test code is scanned too; never introduce raw env-rooted filesystem sinks or raw runtime strings as path components.
+- When touching merge failure recovery, merge retry/resolve actions, merge reconciliation, or startup merge remediation, read `.claude/rules/merge-recovery-consistency.md` first.
 - When touching release automation, read `.claude/rules/release-script-validation.md` first.
 - Preserve user work: never revert unrelated edits; isolate your diffs in a dirty tree.
 - PR branch freshness (NON-NEGOTIABLE): before opening, updating, or handing off a PR, fetch the base branch, rebase onto the latest `origin/<base>`, and push the rebased branch so GitHub does not show it as behind.
@@ -31,6 +38,7 @@ Primary project docs:
 - PR/commit naming (NON-NEGOTIABLE): do not prefix PR titles or commit subjects with `[codex]`.
 - Legacy harness compatibility (NON-NEGOTIABLE): provider-neutral changes stay additive/derivable from legacy Claude-only persisted data until an explicit migration removes that requirement.
 - Minimal diffs: avoid formatter churn and opportunistic refactors.
+- Context-preservation trackers (NON-NEGOTIABLE): for multi-step investigations or fixes, create and keep updating a local tracker under `.artifacts/specs/<topic>/tracker.md` so findings and decisions survive context compaction.
 - Agent tool alignment: keep prompt frontmatter, canonical agent metadata, `config/ralphx.yaml`, and MCP allowlists aligned. Source: `.claude/rules/agent-mcp-tools.md`.
 - Prompts are not migration diaries (NON-NEGOTIABLE): prompts are clean contracts for the live tool surface and role; migration notes, forbidden legacy paths, and compatibility ballast belong in backend validation, tests, or docs, not prompt prose.
 - Surface-local descriptions only (NON-NEGOTIABLE): tool schemas, recovery hints, and prompt prose must not mention tools that are not on the caller agent’s live tool surface.
@@ -53,6 +61,7 @@ Primary project docs:
 - Verify before commit: review `git diff` against `HEAD` for every touched file.
 - Frontend Playwright visual runs (NON-NEGOTIABLE): run them from `frontend/`, not repo root.
 - Refactor tracker hygiene: when a turn exposes real architectural debt, update `## High-Value Refactor Targets` in the same slice.
+- `.artifacts` tracker hygiene (NON-NEGOTIABLE): for any multi-step investigation/fix likely to outlive the current context window, create/update `.artifacts/specs/<slug>/tracker.md` as soon as substantive findings appear and keep it current before continuing.
 - Turn-level refactor discipline (NON-NEGOTIABLE): if production callsites repeat the same wiring/branching, centralize it or track it before continuing.
 - Factory-first runtime wiring: when scheduler/chat/transition assembly repeats in 3+ production callsites, extend a shared builder/factory instead of adding another copy.
 - Future harness readiness: prefer provider-neutral registries/factories keyed by `AgentHarnessKind` over one-off `claude+codex` branching when safe.
@@ -66,6 +75,7 @@ When working in `src-tauri/`, also follow:
 - `.claude/rules/rust-test-execution.md`
 - `.claude/rules/task-git-branching.md`
 - `.claude/rules/code-quality-standards.md`
+- `.claude/rules/codeql-path-safety.md`
 - `.claude/rules/agent-mcp-tools.md`
 
 ## Optimization Tracking

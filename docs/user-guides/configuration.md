@@ -11,6 +11,7 @@ RalphX is highly configurable — from how tasks execute concurrently to which A
 | Where are project settings? | Sidebar → Settings (gear icon) for the active project |
 | How do I create a new project? | File menu → New Project (or the "+" button in the project switcher) |
 | What merge strategy should I use? | **Block** validation + **RebaseSquash** strategy is the safest default |
+| How do I use a GitHub PR for plan delivery? | Enable **GitHub PR Mode** — RalphX creates a plan-level PR and waits for GitHub to merge it |
 | How do I change my base branch? | Settings → Git → Base Branch (or click "Detect" to auto-detect) |
 | Why are my tasks not running? | Check **Max Concurrent Tasks** — may be at the limit, or global cap reached |
 | How do I run tests after merges? | Settings → Git → Merge Validation, then configure commands in **Project Analysis** |
@@ -99,7 +100,7 @@ When disabled, all tasks merge directly to the base branch.
 | Feature branches off | Task branch → base branch (main) |
 | Feature branches on | Task branch → plan branch → base branch (main) |
 
-This setting applies to new plans only — existing plans keep their current configuration.
+This setting becomes the default for new plans and also reconciles any active plan already in progress.
 
 ### Merge Validation
 
@@ -113,6 +114,26 @@ What happens when post-merge validation (tests, lint, typecheck) fails.
 | **Disabled** | Validation is skipped entirely | Small projects or when testing manually |
 
 Validation commands are configured in [Project Analysis](#project-analysis).
+
+### GitHub PR Mode
+
+GitHub PR Mode changes how RalphX lands a completed **plan** on the base branch.
+
+| Mode | Final plan delivery |
+|------|---------------------|
+| **Off** | RalphX merges the plan branch directly into the base branch |
+| **On** | RalphX creates and monitors a GitHub PR for the plan branch and finishes the task after GitHub merges it |
+
+Important scope rules:
+
+- Only affects the **final plan merge**
+- Individual tasks still merge into the plan branch through RalphX's normal merge pipeline
+- Requires a GitHub remote and an authenticated `gh` CLI
+- New plans inherit the setting automatically
+- Active plans are reconciled when you toggle the setting
+- If you turn it off mid-plan, RalphX closes the active PR and falls back to the direct-merge path
+
+For the full workflow and UI walkthrough, see the [GitHub PR Mode User Guide](github-pr-mode.md).
 
 ---
 

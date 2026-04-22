@@ -23,6 +23,7 @@ import { useGitDiff } from "@/hooks/useGitDiff";
 import { DiffViewer } from "@/components/diff";
 import type { ReviewResponse } from "@/lib/tauri";
 import type { Commit } from "@/components/diff";
+import { getReviewerTypeLabel } from "@/lib/review-feedback";
 
 export type FilterTab = "all" | "ai" | "human";
 
@@ -296,7 +297,7 @@ export function ReviewDetailHeader({
             {taskTitle}
           </h2>
           <p className="text-xs truncate text-[var(--text-muted)]">
-            {review.reviewer_type === "ai" ? "AI Review" : review.reviewer_type === "system" ? "System Escalation" : "Human Review"} •{" "}
+            {getReviewerTypeLabel(review.reviewer_type)} •{" "}
             {review.status}
           </p>
         </div>

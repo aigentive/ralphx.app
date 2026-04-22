@@ -3,9 +3,9 @@ use crate::infrastructure::agents::claude::{
     claude_runtime_config, find_base_plugin_dir, get_agent_config,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, load_harness_agent_prompt,
-    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
-    CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
+    list_canonical_agent_names, load_canonical_agent_definition, load_harness_agent_prompt,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata,
+    AgentPromptHarness, CanonicalAgentDefinition, CanonicalClaudeAgentMetadata,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -231,71 +231,35 @@ fn sync_generated_agent_prompts(
     })?;
 
     let mut reserved_outputs = HashSet::new();
-    let canonical_agents_root = project_root.join("agents");
-    if canonical_agents_root.exists() {
-        for entry in fs::read_dir(&canonical_agents_root).map_err(|error| {
+    for short_name in list_canonical_agent_names(project_root) {
+        let Some(definition) = load_canonical_agent_definition(project_root, &short_name) else {
+            continue;
+        };
+
+        let relative_output = claude_output_relative_path(&definition, &short_name)?;
+        reserved_outputs.insert(relative_output.clone());
+
+        let Some(prompt_body) =
+            load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
+        else {
+            continue;
+        };
+        let claude_metadata = try_load_canonical_claude_metadata(project_root, &short_name)?;
+
+        let generated_target =
+            trusted_generated_plugin_child_path(generated_plugin_dir, &relative_output)?;
+        let rendered = render_generated_agent_markdown(
+            &short_name,
+            &definition,
+            &claude_metadata,
+            &prompt_body,
+        )?;
+        fs::write(&generated_target, rendered).map_err(|error| {
             format!(
-                "Failed to read canonical agents dir {}: {error}",
-                canonical_agents_root.display()
+                "Failed to write generated Claude agent prompt {}: {error}",
+                generated_target.display()
             )
-        })? {
-            let entry = entry.map_err(|error| {
-                format!(
-                    "Failed to inspect canonical agent entry under {}: {error}",
-                    canonical_agents_root.display()
-                )
-            })?;
-            if !entry
-                .file_type()
-                .map_err(|error| {
-                    format!(
-                        "Failed to read canonical agent file type for {}: {error}",
-                        entry.path().display()
-                    )
-                })?
-                .is_dir()
-            {
-                continue;
-            }
-
-            let short_name = entry.file_name().to_string_lossy().to_string();
-            let Some(definition) = load_canonical_agent_definition(project_root, &short_name)
-            else {
-                continue;
-            };
-
-            let relative_output = claude_output_relative_path(&definition, &short_name)?;
-            reserved_outputs.insert(relative_output.clone());
-
-            let Some(prompt_body) =
-                load_harness_agent_prompt(project_root, &short_name, AgentPromptHarness::Claude)
-            else {
-                continue;
-            };
-            let claude_metadata = try_load_canonical_claude_metadata(project_root, &short_name)?;
-
-            let generated_target = generated_plugin_dir.join(&relative_output);
-            if let Some(parent) = generated_target.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    format!(
-                        "Failed to create generated Claude agent parent dir {}: {error}",
-                        parent.display()
-                    )
-                })?;
-            }
-            let rendered = render_generated_agent_markdown(
-                &short_name,
-                &definition,
-                &claude_metadata,
-                &prompt_body,
-            )?;
-            fs::write(&generated_target, rendered).map_err(|error| {
-                format!(
-                    "Failed to write generated Claude agent prompt {}: {error}",
-                    generated_target.display()
-                )
-            })?;
-        }
+        })?;
     }
 
     let base_agents_dir = base_plugin_dir.join("agents");
@@ -329,7 +293,8 @@ fn sync_generated_agent_prompts(
             if reserved_outputs.contains(&relative_output) {
                 continue;
             }
-            let generated_target = generated_plugin_dir.join(&relative_output);
+            let generated_target =
+                trusted_generated_plugin_child_path(generated_plugin_dir, &relative_output)?;
             ensure_symlink(&source_path, &generated_target)?;
         }
     }
@@ -342,6 +307,70 @@ fn claude_output_relative_path(
     short_name: &str,
 ) -> Result<PathBuf, String> {
     Ok(PathBuf::from("agents").join(format!("{short_name}.md")))
+}
+
+fn relative_path_has_only_trusted_components(relative_path: &Path) -> bool {
+    relative_path.components().all(|component| match component {
+        std::path::Component::Normal(part) => {
+            let part = part.to_string_lossy();
+            !part.is_empty() && !part.contains("..")
+        }
+        _ => false,
+    })
+}
+
+fn trusted_generated_plugin_child_path(
+    generated_plugin_dir: &Path,
+    relative_output: &Path,
+) -> Result<PathBuf, String> {
+    if !relative_path_has_only_trusted_components(relative_output) {
+        return Err(format!(
+            "Refusing generated Claude plugin output outside trusted relative path: {}",
+            relative_output.display()
+        ));
+    }
+
+    let generated_root = generated_plugin_dir.canonicalize().map_err(|error| {
+        format!(
+            "Failed to canonicalize generated Claude plugin dir {}: {error}",
+            generated_plugin_dir.display()
+        )
+    })?;
+    let target = generated_root.join(relative_output);
+    let Some(parent) = target.parent() else {
+        return Err(format!(
+            "Generated Claude plugin output has no parent: {}",
+            target.display()
+        ));
+    };
+
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "Failed to create generated Claude plugin output parent dir {}: {error}",
+            parent.display()
+        )
+    })?;
+    let canonical_parent = parent.canonicalize().map_err(|error| {
+        format!(
+            "Failed to canonicalize generated Claude plugin output parent dir {}: {error}",
+            parent.display()
+        )
+    })?;
+    if !canonical_parent.starts_with(&generated_root) {
+        return Err(format!(
+            "Refusing generated Claude plugin output outside {}: {}",
+            generated_root.display(),
+            canonical_parent.display()
+        ));
+    }
+
+    let Some(file_name) = target.file_name() else {
+        return Err(format!(
+            "Generated Claude plugin output has no file name: {}",
+            target.display()
+        ));
+    };
+    Ok(canonical_parent.join(file_name))
 }
 
 fn render_generated_agent_markdown(
@@ -538,7 +567,9 @@ fn symlink_path(source: &Path, target: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::generated_plugin_dir_for_base_with_override;
+    use super::{
+        generated_plugin_dir_for_base_with_override, trusted_generated_plugin_child_path,
+    };
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -550,5 +581,31 @@ mod tests {
         );
 
         assert_eq!(resolved, PathBuf::from(&override_dir));
+    }
+
+    #[test]
+    fn trusted_generated_plugin_child_path_rejects_parent_traversal() {
+        let dir = tempfile::TempDir::new().expect("create temp dir");
+        let err = trusted_generated_plugin_child_path(
+            dir.path(),
+            Path::new("agents").join("..").join("escape.md").as_path(),
+        )
+        .expect_err("parent traversal must be rejected");
+
+        assert!(
+            err.contains("Refusing generated Claude plugin output outside trusted relative path"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn trusted_generated_plugin_child_path_allows_normal_relative_output() {
+        let dir = tempfile::TempDir::new().expect("create temp dir");
+        let target =
+            trusted_generated_plugin_child_path(dir.path(), Path::new("agents/ralphx-test.md"))
+                .expect("trusted relative path should be accepted");
+
+        assert!(target.starts_with(dir.path().canonicalize().unwrap()));
+        assert_eq!(target.file_name().and_then(|name| name.to_str()), Some("ralphx-test.md"));
     }
 }

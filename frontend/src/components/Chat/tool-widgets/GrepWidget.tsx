@@ -22,11 +22,13 @@ function parseGrepArgs(args: unknown): {
   const typed = args as {
     pattern?: string;
     path?: string;
+    file_pattern?: string;
+    base_path?: string;
     output_mode?: string;
   } | undefined;
   return {
     pattern: typed?.pattern || "search",
-    path: typed?.path,
+    path: typed?.path || typed?.file_pattern || typed?.base_path,
     outputMode: typed?.output_mode,
   };
 }

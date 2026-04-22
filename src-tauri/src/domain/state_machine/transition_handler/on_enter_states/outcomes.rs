@@ -184,6 +184,24 @@ impl<'a> TransitionHandler<'a> {
             &self.machine.context.services.project_repo,
         ) {
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                if task.category != TaskCategory::PlanMerge {
+                    if let Ok(Some(project)) = project_repo
+                        .get_by_id(&ProjectId::from_string(self.machine.context.project_id.clone()))
+                        .await
+                    {
+                        let pr_sync_services =
+                            super::super::merge_helpers::PlanBranchPrSyncServices::from_task_services(
+                                &self.machine.context.services,
+                            );
+                        super::super::merge_helpers::sync_plan_branch_pr_after_regular_task_merge(
+                            &task,
+                            &project,
+                            &pr_sync_services,
+                        )
+                        .await;
+                    }
+                }
+
                 if task.category == TaskCategory::PlanMerge {
                     let project_id =
                         ProjectId::from_string(self.machine.context.project_id.clone());

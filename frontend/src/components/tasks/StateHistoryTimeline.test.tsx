@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StateHistoryTimeline } from "./StateHistoryTimeline";
 
@@ -127,10 +128,8 @@ describe("StateHistoryTimeline", () => {
 
       renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
 
-      expect(screen.getByText('"Looks good, nice work"')).toBeInTheDocument();
-      expect(
-        screen.getByText('"Security-sensitive: adds auth bypass"')
-      ).toBeInTheDocument();
+      expect(screen.getByText("Looks good, nice work")).toBeInTheDocument();
+      expect(screen.getByText("Security-sensitive: adds auth bypass")).toBeInTheDocument();
     });
 
     it("should not display notes container when notes are null", () => {
@@ -166,6 +165,48 @@ describe("StateHistoryTimeline", () => {
       // Should show relative time like "just now" or "15 min ago"
       const entries = screen.getAllByTestId(/^timeline-entry-/);
       expect(entries[0]).toHaveAttribute("data-timestamp");
+    });
+
+    it("shows summary previews and a full dialog for large system feedback", async () => {
+      const user = userEvent.setup();
+      mockUseTaskStateHistory.mockReturnValue({
+        data: [
+          {
+            id: "note-system",
+            task_id: "task-123",
+            reviewer: "system" as const,
+            outcome: "changes_requested" as const,
+            summary: "Repository commit hooks rejected the merge commit.",
+            notes: [
+              "Repository commit hooks rejected the merge commit.",
+              "",
+              "Full hook output:",
+              "```text",
+              "\u001b[31m[pre-commit]\u001b[0m design-token guards failed",
+              "TS2307 Cannot find module 'zod'",
+              "```",
+            ].join("\n"),
+            created_at: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+        isEmpty: false,
+      });
+
+      renderWithProviders(<StateHistoryTimeline taskId="task-123" />);
+
+      expect(
+        screen.getByText("Repository commit hooks rejected the merge commit.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("by: System Reviewer")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "View full feedback" }));
+
+      expect(screen.getByText("Full review feedback")).toBeInTheDocument();
+      expect(screen.getByText(/design-token guards failed/)).toBeInTheDocument();
+      expect(
+        screen.queryByText((content) => content.includes("\u001b[31m"))
+      ).not.toBeInTheDocument();
     });
   });
 

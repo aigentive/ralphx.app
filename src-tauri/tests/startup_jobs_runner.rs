@@ -1,26 +1,55 @@
+use chrono::{Duration, Utc};
 use ralphx_lib::application::startup_jobs::is_startup_recovery_disabled_var;
 use ralphx_lib::application::{AppState, StartupJobRunner, TaskTransitionService};
-use ralphx_lib::commands::execution_commands::{
-    AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
-};
+use ralphx_lib::commands::execution_commands::{AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES};
 use ralphx_lib::commands::{ActiveProjectState, ExecutionState};
 use ralphx_lib::domain::entities::{
-    app_state::ExecutionHaltMode,
-    ChatContextType, IdeationSessionBuilder, InternalStatus, Project, ProjectId, Task,
-    TaskCategory,
+    app_state::ExecutionHaltMode, AgentRun, AgentRunStatus, ArtifactId, ChatContextType,
+    ChatConversation, IdeationSessionBuilder, IdeationSessionId, InternalStatus, PlanBranch,
+    Project, ProjectId, Task, TaskCategory,
 };
 use ralphx_lib::domain::execution::ExecutionSettings;
-use ralphx_lib::domain::repositories::AppStateRepository;
+use ralphx_lib::domain::repositories::{AppStateRepository, PlanBranchRepository};
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::mocks::MockTaskScheduler;
 use ralphx_lib::domain::state_machine::TaskScheduler;
+use std::process::Command;
 use std::sync::Arc;
+use tempfile::TempDir;
 
 // Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
     let execution_state = Arc::new(ExecutionState::new());
     let app_state = AppState::new_test();
     (execution_state, app_state)
+}
+
+fn setup_git_repo() -> TempDir {
+    let dir = TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init should succeed");
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("git config user.email should succeed");
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output()
+        .expect("git config user.name should succeed");
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(path)
+        .output()
+        .expect("git commit should succeed");
+
+    dir
 }
 
 /// Helper to build a StartupJobRunner from test state.
@@ -55,6 +84,7 @@ fn build_runner(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.artifact_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_attachment_repo),
@@ -69,7 +99,7 @@ fn build_runner(
         Arc::clone(&active_project_state),
         Arc::clone(&app_state_repo),
         execution_settings_repo,
-        None,
+        Some(Arc::clone(&app_state.plan_branch_repo) as Arc<dyn PlanBranchRepository>),
     );
     (runner, app_state_repo)
 }
@@ -78,15 +108,9 @@ fn build_runner(
 fn test_startup_recovery_flag_detection() {
     use std::ffi::OsStr;
 
-    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
-        "1"
-    ))));
-    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
-        "true"
-    ))));
-    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
-        ""
-    ))));
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new("1"))));
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new("true"))));
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(""))));
     assert!(!is_startup_recovery_disabled_var(None));
 }
 
@@ -232,6 +256,93 @@ async fn test_resumption_spawns_agents() {
 }
 
 #[tokio::test]
+async fn test_startup_resumes_orphaned_executing_task_before_wall_clock_timeout() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Orphaned Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.updated_at = Utc::now() - Duration::minutes(743);
+    task.blocked_reason = Some("stale missing worktree failure".to_string());
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "stale previous failure"
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let conversation = ChatConversation::new_task_execution(task_id.clone());
+    let conversation_id = conversation.id.clone();
+    app_state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .unwrap();
+
+    let mut run = AgentRun::new(conversation_id);
+    run.status = AgentRunStatus::Cancelled;
+    run.started_at = Utc::now() - Duration::minutes(743);
+    run.completed_at = Some(Utc::now() - Duration::minutes(742));
+    run.error_message = Some("Orphaned on app restart".to_string());
+    app_state.agent_run_repo.create(run).await.unwrap();
+
+    execution_state.set_max_concurrent(10);
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let metadata: serde_json::Value = updated_task
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    assert_eq!(
+        metadata
+            .get("startup_recovery_source")
+            .and_then(|value| value.as_str()),
+        Some("orphaned_agent_run"),
+        "startup must classify orphaned active executions for resume before wall-clock timeout reconciliation"
+    );
+    assert_eq!(
+        metadata
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "startup resume preparation should consume the one-shot recovery attempt"
+    );
+    let metadata_text = metadata.to_string();
+    assert!(
+        !metadata_text.contains("WallClockExceeded") && !metadata_text.contains("WallClockTimeout"),
+        "startup resume ordering must not let wall-clock timeout metadata win before resumption"
+    );
+    assert_ne!(
+        updated_task.blocked_reason.as_deref(),
+        Some("stale missing worktree failure"),
+        "startup resume preparation should clear stale failure details before attempting re-entry"
+    );
+}
+
+#[tokio::test]
 async fn test_resumption_handles_empty_projects() {
     let (execution_state, app_state) = setup_test_state().await;
 
@@ -289,7 +400,11 @@ async fn test_resumption_skips_project_when_ideation_already_uses_only_slot() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Capacity Project".to_string(), "/test/capacity".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     app_state
         .execution_settings_repo
@@ -309,7 +424,11 @@ async fn test_resumption_skips_project_when_ideation_already_uses_only_slot() {
         .project_id(project.id.clone())
         .build();
     let session_id = session.id.clone();
-    app_state.ideation_session_repo.create(session).await.unwrap();
+    app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
     app_state
         .running_agent_registry
         .register(
@@ -652,9 +771,13 @@ async fn test_revision_needed_auto_transitions_on_startup() {
     // Tasks stuck in RevisionNeeded should auto-transition to ReExecuting
     // which spawns a worker agent
     let (execution_state, app_state) = setup_test_state().await;
+    let repo = setup_git_repo();
 
     // Create a project with a task in RevisionNeeded state
-    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
     app_state
         .project_repo
         .create(project.clone())
@@ -707,6 +830,139 @@ async fn test_revision_needed_auto_transitions_on_startup() {
         updated_task.internal_status,
         InternalStatus::ReExecuting,
         "Task should have auto-transitioned from RevisionNeeded to ReExecuting"
+    );
+}
+
+#[tokio::test]
+async fn test_merge_incomplete_commit_hook_rows_are_rerouted_on_startup() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+    let repo = setup_git_repo();
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Legacy Hook MergeIncomplete".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] design-token guards failed"
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let exec_convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        exec_convs.len(),
+        1,
+        "startup remediation should reroute hook-blocked merge rows into task re-execution"
+    );
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::ReExecuting,
+        "legacy hook-blocked MergeIncomplete rows should auto-resume through ReExecuting on startup"
+    );
+}
+
+#[tokio::test]
+async fn test_merge_incomplete_commit_hook_environment_rows_are_not_rerouted_on_startup() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+    let repo = setup_git_repo();
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo.path().to_string_lossy().to_string(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Legacy Hook Environment MergeIncomplete".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Git operation error: Failed to commit rebase+squash in worktree: stderr=[pre-commit] typecheck\nsrc/api/task-graph.ts(7,19): error TS2307: Cannot find module 'zod' or its corresponding type declarations."
+        })
+        .to_string(),
+    );
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let exec_convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert!(
+        exec_convs.is_empty(),
+        "startup should not start task re-execution for hook environment failures"
+    );
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "environment hook failures should remain blocked in MergeIncomplete on startup"
+    );
+    let meta: serde_json::Value =
+        serde_json::from_str(updated_task.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("merge_hook_failure_kind"),
+        Some(&serde_json::json!("environment_failure"))
+    );
+    assert_eq!(
+        meta.get("merge_hook_blocked_reason"),
+        Some(&serde_json::json!("hook_environment_failure"))
     );
 }
 
@@ -1748,10 +2004,7 @@ async fn test_startup_quota_sync_before_resumption() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
-    let task = Task::new(
-        ProjectId::new(),
-        "Test".to_string(),
-    );
+    let task = Task::new(ProjectId::new(), "Test".to_string());
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 1
     ));
@@ -1759,10 +2012,7 @@ fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
-    let mut task = Task::new(
-        ProjectId::new(),
-        "Test".to_string(),
-    );
+    let mut task = Task::new(ProjectId::new(), "Test".to_string());
     task.metadata = Some(r#"{"other": "data"}"#.to_string());
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 1
@@ -1771,10 +2021,7 @@ fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agents() {
-    let mut task = Task::new(
-        ProjectId::new(),
-        "Test".to_string(),
-    );
+    let mut task = Task::new(ProjectId::new(), "Test".to_string());
     task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
     // running_count = 0 means all agents completed
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
@@ -1784,10 +2031,7 @@ fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agen
 
 #[test]
 fn is_waiting_for_global_idle_returns_true_when_main_merge_deferred_and_agents_running() {
-    let mut task = Task::new(
-        ProjectId::new(),
-        "Test".to_string(),
-    );
+    let mut task = Task::new(ProjectId::new(), "Test".to_string());
     task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
     // running_count > 0 means agents are still running
     assert!(StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
@@ -2108,6 +2352,92 @@ async fn test_pending_merge_processed_in_phase1() {
         updated.internal_status,
         InternalStatus::PendingMerge,
         "PendingMerge task should be processed in Phase 1 merge-first recovery"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_phase1_keeps_pr_backed_merging_task_waiting_on_pr() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Merge plan into main".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.category = TaskCategory::PlanMerge;
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-04-21T00:00:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "Merge timed out after 1200s without completion signal"
+                    },
+                    {
+                        "at": "2026-04-21T00:10:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "Merge timed out after 1200s without completion signal"
+                    },
+                    {
+                        "at": "2026-04-21T00:20:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "Merge timed out after 1200s without completion signal"
+                    }
+                ],
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let mut plan_branch = PlanBranch::new(
+        ArtifactId::from_string("artifact-pr-backed-startup".to_string()),
+        IdeationSessionId::from_string("session-pr-backed-startup".to_string()),
+        project.id.clone(),
+        "ralphx/test/plan-pr-backed-startup".to_string(),
+        "main".to_string(),
+    );
+    plan_branch.merge_task_id = Some(task.id.clone());
+    plan_branch.pr_eligible = true;
+    plan_branch.pr_number = Some(68);
+    plan_branch.pr_polling_active = true;
+    app_state
+        .plan_branch_repo
+        .create(plan_branch)
+        .await
+        .unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merging,
+        "PR-backed plan merge should stay in Merging while waiting on GitHub, even with stale local merge retry metadata"
     );
 }
 

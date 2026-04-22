@@ -782,6 +782,7 @@ fn categorize_status(status: &InternalStatus, summary: &mut StatusSummary) {
         | InternalStatus::RevisionNeeded => summary.review += 1,
         InternalStatus::PendingMerge
         | InternalStatus::Merging
+        | InternalStatus::WaitingOnPr
         | InternalStatus::MergeIncomplete
         | InternalStatus::MergeConflict => summary.merge += 1,
         InternalStatus::Approved | InternalStatus::Merged => summary.completed += 1,

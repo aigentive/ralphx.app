@@ -18,6 +18,8 @@ import {
 import type { ReviewOutcome, ReviewerType } from "@/types/review";
 import type { ReviewIssue, IssueProgressSummary } from "@/types/review-issue";
 import { IssueProgressBar, SeverityBadge, StatusBadge } from "@/components/reviews";
+import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
+import { getReviewerActorLabel } from "@/lib/review-feedback";
 
 interface StateHistoryTimelineProps {
   taskId: string;
@@ -34,14 +36,7 @@ const OUTCOME_CONFIG: Record<
 };
 
 function mapReviewerToActor(reviewer: ReviewerType): string {
-  switch (reviewer) {
-    case "human":
-      return "Human Reviewer";
-    case "ai":
-      return "AI Reviewer";
-    default:
-      return "System";
-  }
+  return getReviewerActorLabel(reviewer);
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -436,12 +431,19 @@ export function StateHistoryTimeline({ taskId }: StateHistoryTimelineProps) {
               >
                 by: {mapReviewerToActor(entry.reviewer)}
               </div>
-              {entry.notes && (
+              {(entry.summary || entry.notes) && (
                 <div
-                  className="text-xs mt-1 italic"
+                  className="text-xs mt-1"
                   style={{ color: "var(--text-secondary)" }}
                 >
-                  "{entry.notes}"
+                  <ReviewFeedbackBody
+                    summary={entry.summary ?? null}
+                    notes={entry.notes ?? null}
+                    dialogTitle="Full review feedback"
+                    dialogDescription="Full review feedback in a scrollable view."
+                    fullButtonLabel="View full feedback"
+                    previewClassName="text-xs text-text-secondary"
+                  />
                 </div>
               )}
 

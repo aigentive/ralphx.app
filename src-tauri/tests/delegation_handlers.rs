@@ -150,9 +150,16 @@ fn delegate_start_request_accepts_legacy_message_alias_for_prompt() {
 }
 
 async fn create_parent_session(state: &HttpServerState) -> IdeationSession {
+    create_parent_session_in_working_directory(state, &repo_root()).await
+}
+
+async fn create_parent_session_in_working_directory(
+    state: &HttpServerState,
+    working_directory: &std::path::Path,
+) -> IdeationSession {
     let project = Project::new(
         "Delegation Test Project".to_string(),
-        repo_root().display().to_string(),
+        working_directory.display().to_string(),
     );
     let project_id = project.id.clone();
     state.app_state.project_repo.create(project).await.unwrap();
@@ -168,6 +175,20 @@ async fn create_parent_session(state: &HttpServerState) -> IdeationSession {
         .create(session)
         .await
         .unwrap()
+}
+
+fn install_runtime_plugin_dir() -> (TempDir, PathBuf) {
+    let tempdir = TempDir::new().expect("tempdir");
+    let plugin_dir = tempdir.path().join("plugins/app");
+    fs::create_dir_all(&plugin_dir).expect("create temp plugin dir");
+    let source_plugin_dir = repo_root().join("plugins/app");
+
+    for entry in fs::read_dir(&source_plugin_dir).expect("read source plugin dir") {
+        let entry = entry.expect("source plugin entry");
+        symlink_path(entry.path(), plugin_dir.join(entry.file_name()));
+    }
+
+    (tempdir, plugin_dir)
 }
 
 #[tokio::test]
@@ -635,6 +656,82 @@ async fn test_delegate_start_infers_parent_session_from_verification_child_conte
 }
 
 #[tokio::test]
+async fn test_delegate_start_verifier_context_survives_external_generated_plugin_dir() {
+    let _env_lock = codex_cli_env_lock().lock().await;
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let (_runtime_plugin_root, runtime_plugin_dir) = install_runtime_plugin_dir();
+    let target_project_root = TempDir::new().expect("temp target project");
+    let generated_plugin_root = TempDir::new().expect("temp generated plugin root");
+    let generated_plugin_dir = generated_plugin_root.path().join("generated/claude-plugin");
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let _plugin_dir_guard = EnvVarGuard::set(
+        "RALPHX_PLUGIN_DIR",
+        runtime_plugin_dir.to_str().expect("runtime plugin dir utf8"),
+    );
+    let _generated_plugin_guard = EnvVarGuard::set(
+        "RALPHX_GENERATED_PLUGIN_DIR",
+        generated_plugin_dir
+            .to_str()
+            .expect("generated plugin dir utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent =
+        create_parent_session_in_working_directory(&state, target_project_root.path()).await;
+
+    let mut verification_child = IdeationSession::builder()
+        .project_id(parent.project_id.clone())
+        .title("Verification Child")
+        .cross_project_checked(true)
+        .build();
+    verification_child.parent_session_id = Some(parent.id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    let verification_child = state
+        .app_state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(verification_child.id.as_str().to_string()),
+            parent_session_id: None,
+            parent_turn_id: Some("turn-verifier".to_string()),
+            parent_message_id: Some("msg-verifier".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-verifier-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Review the plan for completeness and summarize any gaps.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    assert_eq!(start.parent_context_id, parent.id.as_str());
+    assert!(
+        generated_plugin_dir.exists(),
+        "materialized generated plugin dir should exist for external desktop-style layouts"
+    );
+}
+
+#[tokio::test]
 async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
@@ -746,6 +843,21 @@ async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omit
         .unwrap()
         .unwrap();
     assert_eq!(delegated.harness, AgentHarnessKind::Codex);
+}
+
+#[cfg(unix)]
+fn symlink_path(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path::Path>) {
+    std::os::unix::fs::symlink(source, target).expect("create symlink");
+}
+
+#[cfg(windows)]
+fn symlink_path(source: impl AsRef<std::path::Path>, target: impl AsRef<std::path::Path>) {
+    let source = source.as_ref();
+    if source.is_dir() {
+        std::os::windows::fs::symlink_dir(source, target).expect("create dir symlink");
+    } else {
+        std::os::windows::fs::symlink_file(source, target).expect("create file symlink");
+    }
 }
 
 #[tokio::test]

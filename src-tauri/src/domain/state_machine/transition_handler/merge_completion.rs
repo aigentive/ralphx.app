@@ -29,6 +29,9 @@ use crate::domain::services::payload_enrichment::{
     emit_external_webhook_event, PresentationKind, WebhookPresentationContext,
 };
 
+use super::merge_helpers::{
+    sync_plan_branch_pr_after_regular_task_merge, PlanBranchPrSyncServices,
+};
 use super::merge_validation::emit_merge_progress;
 
 /// Complete a merge operation by transitioning task to Merged (Phase 2 MERGE).
@@ -61,6 +64,7 @@ use super::merge_validation::emit_merge_progress;
 /// Returns `AppError::Validation` if the commit is not on the target branch.
 /// Returns `AppError::GitOperation` if git verification itself fails (protects against
 /// ghost merges — setting Merged status without confirmation is a data integrity error).
+#[allow(clippy::too_many_arguments)]
 pub async fn complete_merge_internal<R: tauri::Runtime>(
     task: &mut Task,
     project: &Project,
@@ -72,6 +76,66 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     webhook_publisher: Option<&Arc<dyn WebhookPublisher>>,
     app_handle: Option<&AppHandle<R>>,
     session_title: Option<String>,
+) -> AppResult<()> {
+    complete_merge_internal_impl(
+        task,
+        project,
+        commit_sha,
+        source_branch,
+        target_branch,
+        task_repo,
+        external_events_repo,
+        webhook_publisher,
+        app_handle,
+        session_title,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn complete_merge_internal_with_pr_sync<R: tauri::Runtime>(
+    task: &mut Task,
+    project: &Project,
+    commit_sha: &str,
+    source_branch: &str,
+    target_branch: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    external_events_repo: Option<&Arc<dyn ExternalEventsRepository>>,
+    webhook_publisher: Option<&Arc<dyn WebhookPublisher>>,
+    app_handle: Option<&AppHandle<R>>,
+    session_title: Option<String>,
+    pr_sync_services: Option<PlanBranchPrSyncServices>,
+) -> AppResult<()> {
+    complete_merge_internal_impl(
+        task,
+        project,
+        commit_sha,
+        source_branch,
+        target_branch,
+        task_repo,
+        external_events_repo,
+        webhook_publisher,
+        app_handle,
+        session_title,
+        pr_sync_services,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn complete_merge_internal_impl<R: tauri::Runtime>(
+    task: &mut Task,
+    project: &Project,
+    commit_sha: &str,
+    source_branch: &str,
+    target_branch: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    external_events_repo: Option<&Arc<dyn ExternalEventsRepository>>,
+    webhook_publisher: Option<&Arc<dyn WebhookPublisher>>,
+    app_handle: Option<&AppHandle<R>>,
+    session_title: Option<String>,
+    pr_sync_services: Option<PlanBranchPrSyncServices>,
 ) -> AppResult<()> {
     // Clone task_id early to avoid borrow conflicts with mutable task
     let task_id = task.id.clone();
@@ -355,6 +419,10 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
                 }
             }
         }
+    }
+
+    if let Some(pr_sync_services) = pr_sync_services.as_ref() {
+        sync_plan_branch_pr_after_regular_task_merge(task, project, pr_sync_services).await;
     }
 
     // Emit finalize success merge progress event

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { VerificationHistory } from "./VerificationHistory";
 import type { RoundSummary, VerificationGap, VerificationRoundDetail } from "@/types/ideation";
 
@@ -139,10 +140,54 @@ describe("VerificationHistory", () => {
     );
 
     expect(screen.getByText(/Round Lineage/i)).toBeInTheDocument();
-    expect(screen.getByText(/Remaining after round 1/i)).toBeInTheDocument();
     expect(screen.getByText(/Remaining after round 2/i)).toBeInTheDocument();
     expect(screen.getByText(/Addressed Since Round 1/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Missing register-project coverage").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Missing migration registration").length).toBeGreaterThan(1);
+    expect(screen.queryByText(/Remaining after round 1/i)).not.toBeInTheDocument();
+  });
+
+  it("renders newest round first in the lineage list", () => {
+    render(
+      <VerificationHistory
+        rounds={mockRounds}
+        roundDetails={mockRoundDetails}
+      />
+    );
+
+    const buttons = screen.getAllByRole("button", { name: /round \d+ summary/i });
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toHaveTextContent("Round 2");
+    expect(buttons[1]).toHaveTextContent("Round 1");
+  });
+
+  it("uses progressive disclosure for round details", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <VerificationHistory
+        rounds={mockRounds}
+        roundDetails={mockRoundDetails}
+      />
+    );
+
+    const round2Button = screen.getByRole("button", { name: /round 2 summary/i });
+    const round1Button = screen.getByRole("button", { name: /round 1 summary/i });
+
+    expect(round2Button).toHaveAttribute("aria-expanded", "true");
+    expect(round1Button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(/Remaining after round 2/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Remaining after round 1/i)).not.toBeInTheDocument();
+
+    await user.click(round1Button);
+
+    expect(round1Button).toHaveAttribute("aria-expanded", "true");
+    expect(round2Button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/Remaining after round 2/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Remaining after round 1/i)).toBeInTheDocument();
+    expect(screen.getByText("Missing migration registration")).toBeInTheDocument();
+
+    await user.click(round1Button);
+
+    expect(round1Button).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/Remaining after round 1/i)).not.toBeInTheDocument();
   });
 });

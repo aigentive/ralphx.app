@@ -12,10 +12,13 @@ import {
   TeamSessionStateWidget,
 } from "./McpContextWidgets";
 import { MergeWidget } from "./MergeWidget";
+import { ReadWidget } from "./ReadWidget";
 import { ReviewWidget } from "./ReviewWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
 import { StepIndicator } from "./StepIndicator";
 import { StepsManifestWidget } from "./StepsManifestWidget";
+import { GrepWidget } from "./GrepWidget";
+import { GlobWidget } from "./GlobWidget";
 import {
   TaskCreateWidget,
   TaskListWidget,
@@ -40,6 +43,9 @@ describe("tool widget registry coverage", () => {
     expect(canonicalizeToolName("ralphx:get_merge_target")).toBe("get_merge_target");
     expect(canonicalizeToolName("ralphx::get_merge_target")).toBe("get_merge_target");
     expect(canonicalizeToolName("mcp__ralphx__start_step")).toBe("start_step");
+    expect(canonicalizeToolName("mcp__ralphx__fs_read_file")).toBe("read");
+    expect(canonicalizeToolName("mcp__ralphx__fs_grep")).toBe("grep");
+    expect(canonicalizeToolName("mcp__ralphx__fs_glob")).toBe("glob");
 
     expect(getToolCallWidget("ralphx:get_merge_target")).toBe(MergeWidget);
     expect(getToolCallWidget("ralphx::get_merge_target")).toBe(MergeWidget);
@@ -51,6 +57,9 @@ describe("tool widget registry coverage", () => {
     expect(getToolCallWidget("ralphx::get_review_notes")).toBe(ReviewWidget);
     expect(getToolCallWidget("ralphx:search_memories")).toBe(SearchMemoriesWidget);
     expect(getToolCallWidget("ralphx::search_memories")).toBe(SearchMemoriesWidget);
+    expect(getToolCallWidget("mcp__ralphx__fs_read_file")).toBe(ReadWidget);
+    expect(getToolCallWidget("mcp__ralphx__fs_grep")).toBe(GrepWidget);
+    expect(getToolCallWidget("mcp__ralphx__fs_glob")).toBe(GlobWidget);
   });
 
   it.each([

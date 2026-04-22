@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tauri::{Manager, State};
 
 use crate::application::{
-    session_namer_prompt::build_session_namer_prompt, AppState, TaskCleanupService,
-    TaskSchedulerService,
+    session_namer_prompt::build_session_namer_prompt, spawn_ready_task_scheduler_if_needed,
+    AppState, TaskCleanupService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -14,7 +14,6 @@ use crate::domain::entities::{
     InternalStatus, PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal,
     TaskProposalId, TaskStep,
 };
-use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::{AppError, AppResult};
 
 use super::ideation_commands_types::{
@@ -1021,31 +1020,13 @@ pub async fn apply_proposals_to_kanban(
         let project_id = ProjectId::from_string(result.project_id.clone());
         emit_queue_changed(&state, &project_id, &app).await;
 
-        // Trigger scheduler to pick up newly Ready tasks (600ms delay for UI settlement)
-        // This is necessary because we set status via direct repo update, bypassing TransitionHandler
         let execution_state = app.state::<Arc<ExecutionState>>();
-        let scheduler = TaskSchedulerService::<tauri::Wry>::new(
+        spawn_ready_task_scheduler_if_needed(
+            &state,
             Arc::clone(&*execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
-        )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
-
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
-            scheduler.try_schedule_ready_tasks().await;
-        });
+            true,
+        );
     }
 
     Ok(result.into())

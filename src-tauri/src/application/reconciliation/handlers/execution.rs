@@ -593,7 +593,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 self.reconcile_completed_execution(task, status).await
             }
             InternalStatus::Reviewing => self.reconcile_reviewing_task(task, status).await,
-            InternalStatus::Merging => self.reconcile_merging_task(task, status).await,
+            InternalStatus::Merging | InternalStatus::WaitingOnPr => {
+                self.reconcile_merging_task(task, status).await
+            }
             InternalStatus::PendingMerge => self.reconcile_pending_merge_task(task, status).await,
             InternalStatus::MergeIncomplete => {
                 self.reconcile_merge_incomplete_task(task, status).await
@@ -2319,6 +2321,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     task_repo: &self.task_repo,
                     task_dependency_repo: &self.task_dep_repo,
                     project_repo: &self.project_repo,
+                    artifact_repo: &self.artifact_repo,
                     chat_message_repo: &self.chat_message_repo,
                     chat_attachment_repo: &self.chat_attachment_repo,
                     conversation_repo: &self.chat_conversation_repo,

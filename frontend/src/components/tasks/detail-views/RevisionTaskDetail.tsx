@@ -4,9 +4,6 @@
  * Shows the revision feedback and attempt count with native styling.
  */
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { StepList } from "../StepList";
 import {
   SectionTitle,
@@ -33,6 +30,8 @@ import {
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { ReviewIssue } from "@/types/review-issue";
+import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
+import { getReviewFeedbackHeading } from "@/lib/review-feedback";
 
 interface RevisionTaskDetailProps {
   task: Task;
@@ -103,18 +102,23 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
         </div>
         <div className="flex-1">
           <span className="text-[13px] font-semibold text-text-primary/80 block">
-            {isAiReviewer ? "AI Review Feedback" : isSystemReviewer ? "System Escalation" : "Human Review Feedback"}
+            {getReviewFeedbackHeading(review.reviewer)}
           </span>
           <span className="text-[11px] text-text-primary/40">{timeAgo}</span>
         </div>
       </div>
 
       {/* Main feedback text (show notes only if no structured issues) */}
-      {issues.length === 0 && review.notes && (
+      {issues.length === 0 && (review.summary || review.notes) && (
         <div className="text-[13px] text-text-primary/55 leading-relaxed mb-4 pl-12" style={{ wordBreak: "break-word" }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {review.notes}
-          </ReactMarkdown>
+          <ReviewFeedbackBody
+            summary={review.summary ?? null}
+            notes={review.notes ?? null}
+            dialogTitle="Full revision feedback"
+            dialogDescription="Full review feedback in a scrollable view."
+            fullButtonLabel="View full feedback"
+            previewClassName="text-[13px] text-text-primary/55 leading-relaxed"
+          />
         </div>
       )}
 

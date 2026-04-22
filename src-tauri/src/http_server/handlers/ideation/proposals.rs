@@ -9,14 +9,15 @@ use axum::{
 use tauri::Emitter;
 use tracing::error;
 
-use crate::application::{CreateProposalOptions, UpdateProposalOptions, UpdateSource};
-use crate::application::harness_runtime_registry::default_scheduler_ready_settle_ms;
+use crate::application::{
+    spawn_ready_task_scheduler_if_needed, CreateProposalOptions, UpdateProposalOptions,
+    UpdateSource,
+};
 use crate::domain::services::{
     emit_external_webhook_event, PresentationKind, WebhookPresentationContext,
 };
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::http_server::handlers::ideation::stop_verification_children;
-use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use crate::http_server::helpers::{
     archive_proposal_impl, create_proposal_impl, finalize_proposals_impl, parse_category,
@@ -313,17 +314,12 @@ pub async fn finalize_proposals(
 
     // Trigger scheduler to pick up newly Ready tasks (ready_settle_ms delay)
     // This is necessary because tasks are set via direct repo update, bypassing TransitionHandler
-    if response.any_ready_tasks {
-        let scheduler = state.app_state.build_task_scheduler_for_runtime(
-            Arc::clone(&state.execution_state),
-            state.app_state.app_handle.as_ref().cloned(),
-        );
-        let settle_ms = default_scheduler_ready_settle_ms();
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(settle_ms)).await;
-            scheduler.try_schedule_ready_tasks().await;
-        });
-    }
+    spawn_ready_task_scheduler_if_needed(
+        &state.app_state,
+        Arc::clone(&state.execution_state),
+        state.app_state.app_handle.as_ref().cloned(),
+        response.any_ready_tasks,
+    );
 
     Ok(Json(response))
 }

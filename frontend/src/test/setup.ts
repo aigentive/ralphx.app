@@ -35,6 +35,14 @@ Object.defineProperty(window, "matchMedia", {
   })),
 });
 
+// jsdom does not implement canvas rendering. Keep canvas unavailable, but avoid
+// noisy "HTMLCanvasElement.getContext() not implemented" warnings in tests.
+Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  writable: true,
+  configurable: true,
+  value: vi.fn(() => null),
+});
+
 // Cleanup after each test case (e.g., clearing jsdom)
 afterEach(() => {
   cleanup();

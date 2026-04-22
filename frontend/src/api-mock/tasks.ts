@@ -266,6 +266,10 @@ export const mockTasksApi = {
     };
   },
 
+  retryMerge: async (_taskId: string, _skipValidation?: boolean): Promise<null> => {
+    return null;
+  },
+
   inject: async (input: InjectTaskInput): Promise<InjectTaskResponse> => {
     const task = createMockTask({
       id: generateTestUuid(),
@@ -344,7 +348,7 @@ export const mockTasksApi = {
     });
 
     // Common progression based on current status
-    // Uses all 21 InternalStatus values from status.ts
+    // Uses all InternalStatus values from status.ts
     const statusProgression: Record<InternalStatus, InternalStatus[]> = {
       backlog: [],
       ready: ["ready"],
@@ -363,6 +367,7 @@ export const mockTasksApi = {
       approved: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved"],
       pending_merge: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge"],
       merging: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging"],
+      waiting_on_pr: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "waiting_on_pr"],
       merge_incomplete: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging", "merge_incomplete"],
       merge_conflict: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merging", "merge_conflict"],
       merged: ["ready", "executing", "pending_review", "reviewing", "review_passed", "approved", "pending_merge", "merged"],

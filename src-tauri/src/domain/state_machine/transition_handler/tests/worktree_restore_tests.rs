@@ -460,3 +460,84 @@ async fn on_enter_reviewing_restores_merge_prefixed_worktree() {
     }
     // If worktree_path is None, ReviewWorktreeMissing was returned and the caller cleared it — acceptable.
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 4: on_enter(ReExecuting) restores/recreates the execution worktree before spawn
+//
+// Regression: merge-hook reroutes previously skipped ensure_executing_branch_and_worktree(),
+// so ReExecuting could try to spawn with a stale merge-prefixed/missing worktree and bounce
+// through Failed -> Ready -> Executing recovery.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn on_enter_reexecuting_restores_execution_worktree_before_spawn() {
+    let git_repo = setup_real_git_repo();
+    let path = git_repo.path();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+
+    let mut task = Task::new(project_id.clone(), "L2 re-executing restore test".to_string());
+    let task_id = task.id.clone();
+    let task_id_str = task_id.as_str().to_string();
+    task.internal_status = InternalStatus::ReExecuting;
+    task.task_branch = Some(git_repo.task_branch.clone());
+    task.worktree_path = Some(format!("/nonexistent/merge-{}", task_id_str));
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        path.to_string_lossy().to_string(),
+    );
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(path.to_string_lossy().to_string());
+    project_repo.create(project).await.unwrap();
+
+    let (chat_service, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let context = crate::domain::state_machine::context::TaskContext::new(
+        task_id_str.as_str(),
+        "proj-1",
+        services,
+    );
+    let mut machine = crate::domain::state_machine::TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::ReExecuting).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(ReExecuting) should restore the execution worktree before spawn: {:?}",
+        result.err()
+    );
+
+    let updated = task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("Task must still exist");
+
+    let restored_wt = updated
+        .worktree_path
+        .as_deref()
+        .expect("ReExecuting must restore a task execution worktree before spawn");
+    assert!(
+        !is_merge_worktree_path(restored_wt),
+        "ReExecuting must not leave a merge-prefixed worktree_path. Got: {}",
+        restored_wt
+    );
+    assert!(
+        std::path::Path::new(restored_wt).exists(),
+        "ReExecuting should recreate the execution worktree before spawn. Path: {}",
+        restored_wt
+    );
+
+    let sent_messages = chat_service.get_sent_messages().await;
+    assert_eq!(
+        sent_messages,
+        vec![format!("Re-execute task (revision): {}", task_id_str)],
+        "ReExecuting should spawn once after worktree restoration"
+    );
+}

@@ -11,8 +11,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const TRACE_ROOT_DIR = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+const TRACE_SUBDIR = "mcp-proxy";
 
 interface RedactPattern {
   regex: RegExp;
@@ -103,7 +104,8 @@ function buildTraceFilename(): string {
 }
 
 function resolveTraceDir(): string {
-  return TRACE_ROOT_DIR;
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(moduleDir, "../../../../.artifacts/logs", TRACE_SUBDIR);
 }
 
 export function getTraceLogPath(): string {
