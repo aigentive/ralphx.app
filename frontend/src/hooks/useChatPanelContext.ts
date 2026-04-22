@@ -31,6 +31,8 @@ interface UseChatPanelContextProps {
   isHistoryMode: boolean;
   /** Override conversation ID for history mode - forces selection of specific conversation */
   overrideConversationId?: string | undefined;
+  /** Override the store key used for queue/running state. */
+  storeContextKeyOverride?: string | undefined;
   /** Override agent run ID for history mode - used for scroll positioning */
   overrideAgentRunId?: string | undefined;
   /** Whether this panel is currently visible — re-triggers autoSelectConversation on false→true transition */
@@ -56,6 +58,7 @@ export function useChatPanelContext({
   isReviewMode,
   isMergeMode,
   overrideConversationId,
+  storeContextKeyOverride,
   overrideAgentRunId,
   isVisible = true,
 }: UseChatPanelContextProps) {
@@ -102,6 +105,9 @@ export function useChatPanelContext({
   // Compute store context key for queue/agent state operations
   // Uses context-aware keys via registry: "task_execution:id", "review:id", "merge:id", or standard keys
   const storeContextKey = useMemo(() => {
+    if (storeContextKeyOverride) {
+      return storeContextKeyOverride;
+    }
     if (isMergeMode && selectedTaskId) {
       return buildStoreKey("merge", selectedTaskId);
     }
@@ -112,7 +118,14 @@ export function useChatPanelContext({
       return buildStoreKey("review", selectedTaskId);
     }
     return getContextKey(chatContext);
-  }, [isMergeMode, isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
+  }, [
+    storeContextKeyOverride,
+    isMergeMode,
+    isExecutionMode,
+    isReviewMode,
+    selectedTaskId,
+    chatContext,
+  ]);
 
   // Active conversation ID scoped to this panel's storeContextKey
   const activeConversationId = useChatStore((s) => s.activeConversationIds[storeContextKey] ?? null);
@@ -122,7 +135,7 @@ export function useChatPanelContext({
     ? `ideation:${ideationSessionId}`
     : selectedTaskId
       ? `${isMergeMode ? "merge" : isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
-      : `project:${projectId}`;
+      : (storeContextKeyOverride ?? `project:${projectId}`);
 
   // Initialize with empty string to ensure cleanup runs on first mount
   const prevContextKeyRef = useRef("");

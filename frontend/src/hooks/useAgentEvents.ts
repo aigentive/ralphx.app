@@ -27,6 +27,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
+import { buildAgentEventStoreKey } from "@/lib/agent-store-key";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import {
   chatKeys,
@@ -210,7 +211,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Update watchdog timestamp only for initial spawns, not queue re-runs.
         // Queue re-runs emit run_started while already in "generating" state —
@@ -273,7 +278,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         // Heartbeat: update watchdog timestamp on every message (active event flow).
         // Prevents watchdog from firing during normal streaming bursts.
-        const msgContextKey = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        const msgContextKey = buildAgentEventStoreKey(
+          payload.context_type,
+          payload.context_id,
+          conversation_id
+        );
         updateLastAgentEvent(msgContextKey);
 
         // Always invalidate the conversation query for this message's conversation.
@@ -361,7 +370,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Final heartbeat — clears the "stuck" condition before transitioning to idle.
         updateLastAgentEvent(eventContextKey);
@@ -392,7 +405,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Agent is still alive but waiting for user input — transition from "generating" to "waiting_for_input"
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         // Heartbeat: agent is alive between turns, reset watchdog timer.
         updateLastAgentEvent(eventContextKey);
@@ -449,7 +466,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { message_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload - unified queue with context-aware keys
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
         // Remove from frontend optimistic queue by exact ID match
         deleteQueuedMessage(eventContextKey, message_id);
       })
@@ -463,11 +484,16 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         content: string;
         context_type: string;
         context_id: string;
+        conversation_id?: string | null;
         created_at: string;
       }>("agent:message_queued", (payload) => {
         const { message_id, content, context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
         queueMessage(eventContextKey, content, message_id);
       })
     );
@@ -487,7 +513,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);
@@ -509,7 +539,11 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
         handleChildTerminationReverseLink(eventContextId);

@@ -346,7 +346,14 @@ describe("useChatActions", () => {
       expect(mockActions.deleteQueuedMessage).toHaveBeenCalledWith("task:task-1", "old-id");
 
       // Sends via sendAgentMessage (not queueAgentMessage)
-      expect(mockSendAgentMessage).toHaveBeenCalledWith("task", "task-1", "updated content");
+      expect(mockSendAgentMessage).toHaveBeenCalledWith(
+        "task",
+        "task-1",
+        "updated content",
+        undefined,
+        undefined,
+        undefined
+      );
     });
 
     it("queues locally when sendAgentMessage returns wasQueued=true", async () => {
@@ -376,6 +383,55 @@ describe("useChatActions", () => {
 
       expect(mockActions.setSending).toHaveBeenCalledWith("task:task-1", true);
       expect(mockActions.setSending).toHaveBeenCalledWith("task:task-1", false);
+    });
+
+    it("uses queue context for delete and original context with send options for edited send", async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({
+        conversationId: "conv-agent",
+        agentRunId: "run-agent",
+        isNewConversation: false,
+        wasQueued: false,
+        queuedAsPending: false,
+      });
+
+      const { result } = renderHook(() =>
+        useChatActions({
+          contextType: "project",
+          contextId: "project-1",
+          queueContextId: "conv-agent",
+          storeContextKey: "project:conv-agent",
+          selectedTaskId: undefined,
+          ideationSessionId: undefined,
+          sendMessage: { isPending: false, mutateAsync },
+          sendOptions: {
+            conversationId: "conv-agent",
+            providerHarness: "codex",
+            modelId: "gpt-5.4",
+          },
+        })
+      );
+
+      await act(async () => {
+        await result.current.handleEditQueuedMessage("old-id", "updated content");
+      });
+
+      expect(mockDeleteQueuedAgentMessage).toHaveBeenCalledWith(
+        "project",
+        "conv-agent",
+        "old-id"
+      );
+      expect(mockSendAgentMessage).toHaveBeenCalledWith(
+        "project",
+        "project-1",
+        "updated content",
+        undefined,
+        undefined,
+        {
+          conversationId: "conv-agent",
+          providerHarness: "codex",
+          modelId: "gpt-5.4",
+        }
+      );
     });
   });
 

@@ -408,6 +408,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
         harness: recovery_harness,
         context_type,
         context_id: context_id.to_string(),
+        runtime_context_id: context_id.to_string(),
         conversation_id,
         agent_run_id: agent_run_id.to_string(),
         stored_session_id: Some(new_session_id.clone()),

@@ -198,6 +198,20 @@ fn strip_resume_in_place_metadata(metadata: Option<String>) -> Option<String> {
     }
 }
 
+fn runtime_context_id_for_send(
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id_override: Option<&ChatConversationId>,
+) -> String {
+    if context_type == ChatContextType::Project {
+        if let Some(conversation_id) = conversation_id_override {
+            return conversation_id.as_str().to_string();
+        }
+    }
+
+    context_id.to_string()
+}
+
 /// Returns true for context types that consume execution slots (running count).
 /// TaskExecution, Review, Merge, and Ideation are tracked against max_concurrent.
 #[doc(hidden)]
@@ -668,6 +682,7 @@ impl<R: Runtime> AppChatService<R> {
         context_id: &str,
         message: &str,
         options: &SendMessageOptions,
+        conversation_id: Option<String>,
     ) -> QueuedMessage {
         let queued = self.message_queue.queue_with_overrides(
             context_type,
@@ -684,6 +699,7 @@ impl<R: Runtime> AppChatService<R> {
                 content: queued.content.clone(),
                 context_type: context_type.to_string(),
                 context_id: context_id.to_string(),
+                conversation_id,
                 created_at: queued.created_at.clone(),
             },
         );
@@ -1217,6 +1233,7 @@ impl<R: Runtime> AppChatService<R> {
         agent_name_override: Option<&str>,
         context_type: ChatContextType,
         context_id: &str,
+        runtime_context_id: &str,
         working_directory: &Path,
         entity_status: Option<&str>,
         project_id: Option<&str>,
@@ -1288,10 +1305,11 @@ impl<R: Runtime> AppChatService<R> {
 
         if let Some(child_stdin) = launched.child_stdin {
             let interactive_key_for_register =
-                InteractiveProcessKey::new(context_type.to_string(), context_id);
+                InteractiveProcessKey::new(context_type.to_string(), runtime_context_id);
             tracing::info!(
                 context_type = %context_type,
                 context_id,
+                runtime_context_id = %runtime_context_id,
                 "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
             );
             self.ipr()
@@ -1371,9 +1389,26 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         tracing::info!(
             %context_type,
             context_id,
+            conversation_id_override = ?options
+                .conversation_id_override
+                .as_ref()
+                .map(|id| id.as_str().to_string()),
             message_len = message.len(),
             "chat_service.send_message start"
         );
+        let runtime_context_id = runtime_context_id_for_send(
+            context_type,
+            context_id,
+            options.conversation_id_override.as_ref(),
+        );
+        if runtime_context_id != context_id {
+            tracing::info!(
+                %context_type,
+                context_id,
+                runtime_context_id = %runtime_context_id,
+                "chat_service.send_message using conversation-scoped runtime key"
+            );
+        }
 
         // Runtime halt barrier for all slot-consuming contexts: do not start new
         // task/review/merge/ideation work while the global execution state is
@@ -1383,11 +1418,17 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             let (conversation, is_new_conversation) = self
                 .get_or_create_conversation_for_send(context_type, context_id, &options)
                 .await?;
-            let queued =
-                self.enqueue_pending_send(context_type, context_id, message, &options);
+            let queued = self.enqueue_pending_send(
+                context_type,
+                &runtime_context_id,
+                message,
+                &options,
+                Some(conversation.id.as_str()),
+            );
             tracing::info!(
                 %context_type,
                 context_id,
+                runtime_context_id = %runtime_context_id,
                 queued_message_id = %queued.id,
                 "chat_service.send_message: execution paused, queued Claude-backed message instead of spawning"
             );
@@ -1409,12 +1450,13 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         //    must use the EXISTING conversation to avoid the frontend thinking a
         //    new execution started.
         let interactive_key =
-            InteractiveProcessKey::new(context_type.to_string(), context_id);
+            InteractiveProcessKey::new(context_type.to_string(), &runtime_context_id);
         let ipr_ref = self.ipr();
         let has_ipr_entry = ipr_ref.has_process(&interactive_key).await;
         tracing::info!(
             %context_type,
             context_id,
+            runtime_context_id = %runtime_context_id,
             gate = "GATE_1_IPR",
             has_ipr_entry,
             "[GATE_TRACE] Gate 1 (IPR lookup)"
@@ -1427,6 +1469,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             tracing::info!(
                 %context_type,
                 context_id,
+                runtime_context_id = %runtime_context_id,
                 "chat_service.send_message: interactive process found, writing to stdin"
             );
 
@@ -1466,11 +1509,18 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                     // Use the EXISTING conversation — not a force-fresh one.
                     // The interactive process was spawned with a conversation, so
                     // get_active_for_context should always find it.
-                    let existing_conv = self
-                        .conversation_repo
-                        .get_active_for_context(context_type, context_id)
-                        .await
-                        .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+                    let existing_conv = match options.conversation_id_override {
+                        Some(conversation_id) => self
+                            .conversation_repo
+                            .get_by_id(&conversation_id)
+                            .await
+                            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?,
+                        None => self
+                            .conversation_repo
+                            .get_active_for_context(context_type, context_id)
+                            .await
+                            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?,
+                    };
 
                     let conversation = match existing_conv {
                         Some(conv) => {
@@ -1655,10 +1705,11 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         let agent_run_id = agent_run.id.as_str().to_string();
         let run_chain_id = agent_run.run_chain_id.clone();
 
-        let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
+        let registry_key = RunningAgentKey::new(context_type.to_string(), &runtime_context_id);
         tracing::info!(
             %context_type,
             context_id,
+            runtime_context_id = %runtime_context_id,
             gate = "GATE_2_REGISTRY",
             "[GATE_TRACE] Gate 2 (running_agent_registry.try_register)"
         );
@@ -1677,7 +1728,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                     &registry_key,
                     existing,
                     context_type,
-                    context_id,
+                    &runtime_context_id,
                     "send_message_gate_2",
                 )
                 .await;
@@ -1689,7 +1740,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                         &registry_key,
                         existing,
                         context_type,
-                        context_id,
+                        &runtime_context_id,
                         "send_message_gate_2",
                     )
                     .await
@@ -1710,13 +1761,19 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             tracing::warn!(
                 %context_type,
                 context_id,
+                runtime_context_id = %runtime_context_id,
                 gate = "GATE_2_BLOCKED",
                 existing_pid = existing.pid,
                 existing_run_id = %existing.agent_run_id,
                 "[GATE_TRACE] Gate 2 blocked — agent already running, queuing message"
             );
-            let queued =
-                self.enqueue_pending_send(context_type, context_id, message, &options);
+            let queued = self.enqueue_pending_send(
+                context_type,
+                &runtime_context_id,
+                message,
+                &options,
+                Some(existing.conversation_id.clone()),
+            );
             return Ok(SendResult {
                 conversation_id: existing.conversation_id.clone(),
                 agent_run_id: existing.agent_run_id.clone(),
@@ -1731,6 +1788,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         tracing::info!(
             %context_type,
             context_id,
+            runtime_context_id = %runtime_context_id,
             gate = "GATE_3_SPAWN",
             "[GATE_TRACE] Gate 3 reached — no IPR entry, no running agent. Will spawn new process."
         );
@@ -2297,6 +2355,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 Some(resolved_agent_name.as_str()),
                 context_type,
                 context_id,
+                &runtime_context_id,
                 &working_directory,
                 entity_status.as_deref(),
                 project_id.as_deref(),
@@ -2396,6 +2455,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             harness: resolved_spawn_settings.effective_harness,
             context_type,
             context_id: context_id.to_string(),
+            runtime_context_id: runtime_context_id.clone(),
             conversation_id,
             agent_run_id: agent_run_id.clone(),
             stored_session_id: stored_session_id.clone(),
@@ -2815,7 +2875,8 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
 mod stale_registry_gate_tests {
     use super::{
         registry_entry_blocks_send_because_run_inactive,
-        registry_entry_blocks_send_but_is_stale, AgentRunStatus, RunningAgentInfo,
+        registry_entry_blocks_send_but_is_stale, runtime_context_id_for_send, AgentRunStatus,
+        ChatContextType, ChatConversationId, RunningAgentInfo,
     };
 
     fn registry_info(
@@ -2832,6 +2893,46 @@ mod stale_registry_gate_tests {
             last_active_at: None,
             model: None,
         }
+    }
+
+    #[test]
+    fn project_send_with_explicit_conversation_uses_conversation_runtime_key() {
+        let conversation_id = ChatConversationId::from_string(
+            "11111111-1111-1111-1111-111111111111".to_string(),
+        );
+
+        assert_eq!(
+            runtime_context_id_for_send(
+                ChatContextType::Project,
+                "project-1",
+                Some(&conversation_id),
+            ),
+            "11111111-1111-1111-1111-111111111111"
+        );
+    }
+
+    #[test]
+    fn project_send_without_explicit_conversation_uses_project_runtime_key() {
+        assert_eq!(
+            runtime_context_id_for_send(ChatContextType::Project, "project-1", None),
+            "project-1"
+        );
+    }
+
+    #[test]
+    fn non_project_send_keeps_context_runtime_key() {
+        let conversation_id = ChatConversationId::from_string(
+            "11111111-1111-1111-1111-111111111111".to_string(),
+        );
+
+        assert_eq!(
+            runtime_context_id_for_send(
+                ChatContextType::Ideation,
+                "session-1",
+                Some(&conversation_id),
+            ),
+            "session-1"
+        );
     }
 
     #[test]

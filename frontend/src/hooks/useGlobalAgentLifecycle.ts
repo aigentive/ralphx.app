@@ -25,8 +25,9 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
+import { buildAgentEventStoreKey } from "@/lib/agent-store-key";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
-import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
+import type { ModelDisplay } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import type {
   AgentRunCompletedPayload,
@@ -118,7 +119,11 @@ export function useGlobalAgentLifecycle() {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
 
         // Guard: only update watchdog on initial spawn, not queue re-runs.
         // Queue re-runs emit run_started while already in "generating" state —
@@ -154,7 +159,11 @@ export function useGlobalAgentLifecycle() {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
 
         // Final heartbeat before transitioning to idle
         useChatStore.getState().updateLastAgentEvent(eventContextKey);
@@ -171,7 +180,11 @@ export function useGlobalAgentLifecycle() {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
 
         // Heartbeat: agent alive between turns
         useChatStore.getState().updateLastAgentEvent(eventContextKey);
@@ -217,7 +230,11 @@ export function useGlobalAgentLifecycle() {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, context_type, payload.conversation_id);
         handleChildTerminationReverseLink(eventContextId);
@@ -237,7 +254,11 @@ export function useGlobalAgentLifecycle() {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
-        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        const eventContextKey = buildAgentEventStoreKey(
+          context_type,
+          eventContextId,
+          payload.conversation_id
+        );
 
         guardedTermination(eventContextKey, eventContextId, context_type, payload.conversation_id);
         handleChildTerminationReverseLink(eventContextId);
@@ -274,7 +295,11 @@ export function useGlobalAgentLifecycle() {
         context_type: string;
         context_id: string;
       }>("agent:conversation_created", (payload) => {
-        const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        const key = buildAgentEventStoreKey(
+          payload.context_type,
+          payload.context_id,
+          payload.conversation_id
+        );
         const existing = useChatStore.getState().activeConversationIds[key];
         if (existing == null) {
           useChatStore.getState().setActiveConversation(key, payload.conversation_id);
@@ -302,9 +327,13 @@ export function useGlobalAgentLifecycle() {
         context_id: string;
         context_type?: string;
       }>("agent:task_started", (payload) => {
-        // Prefer buildStoreKey when context_type available; fall back to scan
+        // Prefer typed event keys when context_type is available; fall back to scan
         if (payload.context_type) {
-          const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+          const key = buildAgentEventStoreKey(
+            payload.context_type,
+            payload.context_id,
+            payload.conversation_id
+          );
           useChatStore.getState().updateLastAgentEvent(key);
         } else {
           const key = findStoreKeyForContextId(payload.context_id);
@@ -321,7 +350,11 @@ export function useGlobalAgentLifecycle() {
         context_type?: string;
       }>("agent:task_completed", (payload) => {
         if (payload.context_type) {
-          const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+          const key = buildAgentEventStoreKey(
+            payload.context_type,
+            payload.context_id,
+            payload.conversation_id
+          );
           useChatStore.getState().updateLastAgentEvent(key);
         } else {
           const key = findStoreKeyForContextId(payload.context_id);

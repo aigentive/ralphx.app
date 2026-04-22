@@ -28,6 +28,8 @@ interface UseChatActionsProps {
   contextType: ContextType;
   /** Context entity ID (task ID, session ID, or project ID) */
   contextId: string;
+  /** Backend queue/process ID. Project-agent conversations use conversation ID here. */
+  queueContextId?: string | undefined;
   /** Store context key for queue/agent state operations */
   storeContextKey: string;
   /** Selected task ID (for execution recovery) */
@@ -41,6 +43,12 @@ interface UseChatActionsProps {
   };
   /** Current message count (for first-message detection in ideation) */
   messageCount?: number;
+  /** Explicit send options used by externally-owned session lists. */
+  sendOptions?: {
+    conversationId?: string | null;
+    providerHarness?: string | null;
+    modelId?: string | null;
+  } | undefined;
   /** Optional callback after a user message is accepted by the backend. */
   onUserMessageSent?: ((payload: {
     content: string;
@@ -55,11 +63,13 @@ interface UseChatActionsProps {
 export function useChatActions({
   contextType,
   contextId,
+  queueContextId,
   storeContextKey,
   selectedTaskId,
   ideationSessionId,
   sendMessage,
   messageCount = 0,
+  sendOptions,
   onUserMessageSent,
 }: UseChatActionsProps) {
   const queryClient = useQueryClient();
@@ -69,6 +79,7 @@ export function useChatActions({
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
   const setSending = useChatStore((s) => s.setSending);
+  const backendQueueContextId = queueContextId ?? contextId;
 
   // ── Send ─────────────────────────────────────────────────────────
   const handleSend = useCallback(
@@ -172,9 +183,14 @@ export function useChatActions({
   const handleStopAgent = useCallback(async () => {
     // Always attempt immediate run cancellation
     try {
-      await stopAgent(contextType, contextId);
+      await stopAgent(contextType, backendQueueContextId);
     } catch (err) {
-      logger.warn("[chat] Failed to stop agent", { contextType, contextId, error: err });
+      logger.warn("[chat] Failed to stop agent", {
+        contextType,
+        contextId,
+        queueContextId: backendQueueContextId,
+        error: err,
+      });
     }
 
     // For execution mode, also run recovery so task status reconciles
@@ -185,7 +201,7 @@ export function useChatActions({
         logger.warn("[chat] Failed to recover task execution after stop", { taskId: selectedTaskId, error: err });
       }
     }
-  }, [contextType, contextId, selectedTaskId]);
+  }, [contextType, contextId, backendQueueContextId, selectedTaskId]);
 
   // ── Delete Queued Message ────────────────────────────────────────
   const handleDeleteQueuedMessage = useCallback(
@@ -195,12 +211,12 @@ export function useChatActions({
 
       // Delete from backend using the same ID
       try {
-        await chatApi.deleteQueuedAgentMessage(contextType, contextId, messageId);
+        await chatApi.deleteQueuedAgentMessage(contextType, backendQueueContextId, messageId);
       } catch {
         // Silently ignore — local state already updated
       }
     },
-    [deleteQueuedMessage, storeContextKey, contextType, contextId]
+    [deleteQueuedMessage, storeContextKey, contextType, backendQueueContextId]
   );
 
   // ── Edit Queued Message ──────────────────────────────────────────
@@ -208,7 +224,7 @@ export function useChatActions({
     async (messageId: string, newContent: string) => {
       // Delete old message from backend
       try {
-        await chatApi.deleteQueuedAgentMessage(contextType, contextId, messageId);
+        await chatApi.deleteQueuedAgentMessage(contextType, backendQueueContextId, messageId);
       } catch {
         // Silently ignore
       }
@@ -219,7 +235,14 @@ export function useChatActions({
       // Send the edited content via sendAgentMessage (delete-before-send pattern)
       setSending(storeContextKey, true);
       try {
-        const result = await chatApi.sendAgentMessage(contextType, contextId, newContent);
+        const result = await chatApi.sendAgentMessage(
+          contextType,
+          contextId,
+          newContent,
+          undefined,
+          undefined,
+          sendOptions
+        );
         if (result.wasQueued && result.queuedMessageId != null) {
           queueMessage(storeContextKey, newContent, result.queuedMessageId);
         }
@@ -229,7 +252,16 @@ export function useChatActions({
         setSending(storeContextKey, false);
       }
     },
-    [deleteQueuedMessage, queueMessage, contextType, contextId, storeContextKey, setSending]
+    [
+      deleteQueuedMessage,
+      queueMessage,
+      contextType,
+      contextId,
+      backendQueueContextId,
+      storeContextKey,
+      setSending,
+      sendOptions,
+    ]
   );
 
   // ── Edit Last Queued ─────────────────────────────────────────────

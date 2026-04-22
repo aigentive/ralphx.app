@@ -26,7 +26,6 @@ import {
 import { chatKeys } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
-import { buildStoreKey } from "@/lib/chat-context-registry";
 import { getModelLabel } from "@/lib/model-utils";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
@@ -39,6 +38,7 @@ import {
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
 import {
+  getAgentConversationStoreKey,
   sortAgentConversations,
   toProjectAgentConversation,
   type AgentConversation,
@@ -136,7 +136,7 @@ export function AgentsView({
     if (firstConversation) {
       selectConversation(activeProjectId, firstConversation.id);
       setActiveConversation(
-        buildStoreKey(firstConversation.contextType, firstConversation.contextId),
+        getAgentConversationStoreKey(firstConversation),
         firstConversation.id
       );
     }
@@ -161,7 +161,7 @@ export function AgentsView({
       if (replacement) {
         selectConversation(activeProjectId, replacement.id);
         setActiveConversation(
-          buildStoreKey(replacement.contextType, replacement.contextId),
+          getAgentConversationStoreKey(replacement),
           replacement.id
         );
       } else {
@@ -223,7 +223,7 @@ export function AgentsView({
     (conversationProjectId: string, conversation: AgentConversation) => {
       selectConversation(conversationProjectId, conversation.id);
       setActiveConversation(
-        buildStoreKey(conversation.contextType, conversation.contextId),
+        getAgentConversationStoreKey(conversation),
         conversation.id
       );
     },
@@ -259,7 +259,7 @@ export function AgentsView({
       }
       setRuntimeForConversation(conversation.id, targetProjectId, runtime);
       selectConversation(targetProjectId, conversation.id);
-      setActiveConversation(buildStoreKey("project", targetProjectId), conversation.id);
+      setActiveConversation(getAgentConversationStoreKey(agentConversation), conversation.id);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: agentConversationKeys.project(targetProjectId),
@@ -533,6 +533,12 @@ export function AgentsView({
                   ? { ideationSessionId: activeConversation.contextId }
                   : {})}
                 conversationIdOverride={selectedConversationId}
+                storeContextKeyOverride={getAgentConversationStoreKey(activeConversation)}
+                agentProcessContextIdOverride={
+                  activeConversation.contextType === "project"
+                    ? selectedConversationId
+                    : undefined
+                }
                 sendOptions={{
                   conversationId: selectedConversationId,
                   providerHarness: normalizedActiveRuntime.provider,
