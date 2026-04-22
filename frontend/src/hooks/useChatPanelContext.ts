@@ -55,7 +55,6 @@ export function useChatPanelContext({
   isExecutionMode,
   isReviewMode,
   isMergeMode,
-  isHistoryMode,
   overrideConversationId,
   overrideAgentRunId,
   isVisible = true,
@@ -307,10 +306,9 @@ export function useChatPanelContext({
       return;
     }
 
-    // In history mode with an explicit conversation override, skip auto-selection.
-    // But if no override is provided (e.g., 'approved' transition has no conversation_id),
-    // allow auto-selection to pick the most recent review conversation.
-    if (isHistoryMode && overrideConversationId) {
+    // Explicit conversation owners such as history and Agents archived/session
+    // lists must not be replaced by the active-list auto-selection path.
+    if (overrideConversationId) {
       return;
     }
 
@@ -376,7 +374,7 @@ export function useChatPanelContext({
         setActiveConversation(storeContextKey, mostRecent.id);
       }
     }
-  }, [isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation, storeContextKey]);
+  }, [isMergeMode, isExecutionMode, isReviewMode, overrideConversationId, setActiveConversation, storeContextKey]);
 
   return {
     chatContext,
