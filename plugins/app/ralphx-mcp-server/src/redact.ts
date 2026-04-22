@@ -10,9 +10,10 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const TRACE_ROOT_DIR = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+const TRACE_SUBDIR = "mcp-proxy";
 
 interface RedactPattern {
   regex: RegExp;
@@ -102,8 +103,51 @@ function buildTraceFilename(): string {
   return `${timestamp}-${process.pid}.jsonl`;
 }
 
+function isInsidePath(candidate: string, parent: string): boolean {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return (
+    relative === ""
+    || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function platformTraceFallbackDir(): string {
+  if (process.platform === "darwin" && process.env.HOME) {
+    return path.join(
+      process.env.HOME,
+      "Library/Application Support/com.ralphx.app/logs",
+      TRACE_SUBDIR,
+    );
+  }
+
+  if (process.platform === "win32" && process.env.APPDATA) {
+    return path.join(process.env.APPDATA, "RalphX", "logs", TRACE_SUBDIR);
+  }
+
+  const stateRoot = process.env.XDG_STATE_HOME
+    ?? (process.env.HOME ? path.join(process.env.HOME, ".local/state") : os.tmpdir());
+  return path.join(stateRoot, "ralphx", "logs", TRACE_SUBDIR);
+}
+
+function isSafeTraceDir(candidate: string | undefined): candidate is string {
+  if (!candidate || !path.isAbsolute(candidate)) {
+    return false;
+  }
+
+  const workingDirectory = process.env.RALPHX_WORKING_DIRECTORY;
+  if (workingDirectory && isInsidePath(candidate, workingDirectory)) {
+    return false;
+  }
+
+  return true;
+}
+
 function resolveTraceDir(): string {
-  return TRACE_ROOT_DIR;
+  if (isSafeTraceDir(process.env.RALPHX_MCP_TRACE_DIR)) {
+    return process.env.RALPHX_MCP_TRACE_DIR;
+  }
+
+  return platformTraceFallbackDir();
 }
 
 export function getTraceLogPath(): string {

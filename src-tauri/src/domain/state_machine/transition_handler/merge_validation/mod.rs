@@ -235,7 +235,7 @@ impl ValidationLogEntry {
 
     /// Attach full log file paths for a failed command.
     ///
-    /// Writes full stdout/stderr to ~/.ralphx/logs/{task_id}/ and stores
+    /// Writes full stdout/stderr under the app-owned log root and stores
     /// the paths on the entry so the fixer agent can read untruncated output.
     pub(crate) fn attach_failure_logs(&mut self, task_id: &str) {
         let (stdout_path, stderr_path) =
@@ -277,7 +277,7 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     }
 }
 
-/// Directory for validation log files: ~/.ralphx/logs/{task_id}/
+/// Directory for validation log files under the app-owned log root.
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).
@@ -447,7 +447,7 @@ pub(crate) async fn run_validation_commands(
     );
 
     // Write full output to disk for failed commands so the fixer agent
-    // can read untruncated logs from ~/.ralphx/logs/{task_id}/
+    // can read untruncated logs.
     if !all_passed {
         for entry in &mut log {
             if entry.status == STATUS_FAILED {

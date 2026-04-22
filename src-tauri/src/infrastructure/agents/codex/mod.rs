@@ -193,6 +193,9 @@ pub fn build_codex_mcp_overrides(
         mcp_args.push(format!("--allowed-tools={arg_value}"));
     }
 
+    let trace_dir =
+        crate::utils::runtime_log_paths::mcp_proxy_trace_dir().to_string_lossy().into_owned();
+
     let mut overrides = vec![
         format!(
             "mcp_servers.{mcp_server_name}.command={}",
@@ -203,6 +206,10 @@ pub fn build_codex_mcp_overrides(
             encode_codex_string_array(&mcp_args)?
         ),
         format!("mcp_servers.{mcp_server_name}.enabled=true"),
+        format!(
+            "mcp_servers.{mcp_server_name}.env.RALPHX_MCP_TRACE_DIR={}",
+            encode_codex_string_literal(&trace_dir)?
+        ),
     ];
 
     if let Some(tools) = enabled_tools {
@@ -585,17 +592,10 @@ fn attach_codex_prompt_debug_artifact(
 
 fn write_codex_prompt_debug_artifact(
     prompt: &str,
-    cwd: Option<&Path>,
+    _cwd: Option<&Path>,
     mode: &str,
 ) -> Result<PathBuf, String> {
-    let root = if let Some(cwd) = cwd {
-        cwd.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .map_err(|error| format!("Failed to resolve current dir for Codex prompt log: {error}"))?
-    };
-
-    let prompt_dir = root.join(".artifacts/logs/codex-prompts");
+    let prompt_dir = crate::utils::runtime_log_paths::codex_prompt_debug_dir();
     fs::create_dir_all(&prompt_dir).map_err(|error| {
         format!(
             "Failed to create Codex prompt log directory {}: {error}",

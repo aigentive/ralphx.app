@@ -9,6 +9,7 @@ use ralphx_lib::infrastructure::agents::{
     build_spawnable_codex_resume_command, compose_codex_prompt, normalize_codex_exec_output,
     parse_codex_cli_capabilities, parse_codex_version, CodexCliCapabilities, CodexExecCliConfig,
 };
+use ralphx_lib::utils::runtime_log_paths;
 
 const ROOT_HELP: &str = r#"
 Codex CLI
@@ -250,9 +251,7 @@ fn build_spawnable_codex_resume_command_uses_resume_subcommand_and_prompt_arg() 
     let debug = format!("{spawnable:?}");
     assert!(
         debug.contains(
-            temp_dir
-                .path()
-                .join(".artifacts/logs/codex-prompts")
+            runtime_log_paths::codex_prompt_debug_dir()
                 .to_string_lossy()
                 .as_ref()
         ),
@@ -269,10 +268,17 @@ fn build_spawnable_codex_exec_command_logs_prompt_to_artifact_and_redacts_debug_
         cwd: Some(temp_dir.path().to_path_buf()),
         ..Default::default()
     };
+    let prompt = format!(
+        "Plan the refactor {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    );
 
     let spawnable = build_spawnable_codex_exec_command(
         std::path::Path::new("/opt/homebrew/bin/codex"),
-        "Plan the refactor",
+        &prompt,
         &capabilities,
         &config,
     )
@@ -280,12 +286,10 @@ fn build_spawnable_codex_exec_command_logs_prompt_to_artifact_and_redacts_debug_
 
     let debug = format!("{spawnable:?}");
     assert!(
-        !debug.contains("Plan the refactor"),
+        !debug.contains(&prompt),
         "debug output should redact the full prompt: {debug}"
     );
-    let artifact_prefix = temp_dir
-        .path()
-        .join(".artifacts/logs/codex-prompts")
+    let artifact_prefix = runtime_log_paths::codex_prompt_debug_dir()
         .to_string_lossy()
         .into_owned();
     assert!(
@@ -293,16 +297,28 @@ fn build_spawnable_codex_exec_command_logs_prompt_to_artifact_and_redacts_debug_
         "debug output should point at the prompt artifact path: {debug}"
     );
 
-    let prompt_dir = temp_dir.path().join(".artifacts/logs/codex-prompts");
+    assert!(
+        !temp_dir.path().join(".artifacts").exists(),
+        "Codex prompt debug artifacts must not contaminate the target cwd"
+    );
+
+    let prompt_dir = runtime_log_paths::codex_prompt_debug_dir();
     let mut entries = std::fs::read_dir(&prompt_dir)
         .expect("prompt dir should exist")
         .collect::<Result<Vec<_>, _>>()
         .expect("prompt entries should be readable");
-    assert_eq!(entries.len(), 1, "expected exactly one logged prompt file");
-    let prompt_path = entries.pop().expect("prompt entry").path();
+    let prompt_path = entries
+        .drain(..)
+        .map(|entry| entry.path())
+        .find(|path| {
+            std::fs::read_to_string(path)
+                .map(|contents| contents == prompt)
+                .unwrap_or(false)
+        })
+        .expect("expected logged prompt file under the app log root");
     assert_eq!(
         std::fs::read_to_string(&prompt_path).expect("read prompt artifact"),
-        "Plan the refactor"
+        prompt
     );
 }
 

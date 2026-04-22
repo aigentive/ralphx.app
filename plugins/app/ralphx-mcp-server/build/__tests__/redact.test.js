@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { getTraceLogPath, redactSecrets, resetTraceLogPathForTests, safeError, safeTrace, } from "../redact.js";
 afterEach(() => {
     delete process.env.RALPHX_MCP_TRACE_DIR;
@@ -13,6 +13,7 @@ afterEach(() => {
     delete process.env.RALPHX_CONTEXT_ID;
     delete process.env.RALPHX_TASK_ID;
     delete process.env.RALPHX_PROJECT_ID;
+    delete process.env.RALPHX_WORKING_DIRECTORY;
     resetTraceLogPathForTests();
 });
 describe("redactSecrets — pattern matching", () => {
@@ -133,8 +134,32 @@ describe("safeError — integration", () => {
     });
 });
 describe("safeTrace — file logging", () => {
+    it("uses backend-provided trace dir instead of creating target-project .artifacts", async () => {
+        const originalCwd = process.cwd();
+        const targetProject = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-target-project-"));
+        const ralphxLogRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-owned-logs-"));
+        const expectedTraceDir = path.join(ralphxLogRoot, "mcp-proxy");
+        process.env.RALPHX_MCP_TRACE_DIR = expectedTraceDir;
+        process.env.RALPHX_WORKING_DIRECTORY = targetProject;
+        try {
+            process.chdir(targetProject);
+            vi.resetModules();
+            const isolated = await import("../redact.js");
+            isolated.safeTrace("tool.request", {
+                api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
+            });
+            const logPath = isolated.getTraceLogPath();
+            expect(logPath.startsWith(expectedTraceDir)).toBe(true);
+            expect(fs.existsSync(path.join(targetProject, ".artifacts"))).toBe(false);
+        }
+        finally {
+            process.chdir(originalCwd);
+        }
+    });
     it("writes only minimal allowlisted trace metadata under the safe trace root", () => {
-        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
+        const ralphxLogRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-owned-logs-"));
+        const expectedRoot = path.join(ralphxLogRoot, "mcp-proxy");
+        process.env.RALPHX_MCP_TRACE_DIR = expectedRoot;
         process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
         process.env.RALPHX_CONTEXT_TYPE = "ideation";
         process.env.RALPHX_CONTEXT_ID = "session-123";
@@ -150,16 +175,25 @@ describe("safeTrace — file logging", () => {
         expect(contents).not.toContain("ralphx-ideation");
         expect(contents).not.toContain("session-123");
     });
-    it("ignores trace dir overrides and keeps traces under the safe root", () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
-        const expectedRoot = path.resolve(process.cwd(), ".artifacts/logs/mcp-proxy");
-        process.env.RALPHX_MCP_TRACE_DIR = tempDir;
-        safeTrace("tool.request", {
-            api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
-        });
-        const logPath = getTraceLogPath();
-        expect(logPath.startsWith(expectedRoot)).toBe(true);
-        expect(logPath.startsWith(tempDir)).toBe(false);
+    it("rejects trace dir overrides inside the target working directory", () => {
+        const originalCwd = process.cwd();
+        const targetProject = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-target-project-"));
+        const unsafeTraceDir = path.join(targetProject, ".artifacts/logs/mcp-proxy");
+        process.env.RALPHX_MCP_TRACE_DIR = unsafeTraceDir;
+        process.env.RALPHX_WORKING_DIRECTORY = targetProject;
+        try {
+            process.chdir(targetProject);
+            safeTrace("tool.request", {
+                api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
+            });
+            const logPath = getTraceLogPath();
+            expect(logPath.startsWith(targetProject)).toBe(false);
+            expect(logPath.startsWith(unsafeTraceDir)).toBe(false);
+            expect(fs.existsSync(path.join(targetProject, ".artifacts"))).toBe(false);
+        }
+        finally {
+            process.chdir(originalCwd);
+        }
     });
     it("normalizes non-allowlisted event names", () => {
         safeTrace("tool.request:user-supplied");
