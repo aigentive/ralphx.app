@@ -109,6 +109,8 @@ interface IntegratedChatPanelProps {
   hideSessionToolbar?: boolean;
   /** Optional override for the chat surface background. */
   surfaceBackground?: string;
+  /** Extra session ids whose ask-user prompts should surface in this chat. */
+  additionalQuestionSessionIds?: string[];
   /** Called when Escape is pressed with input blurred - used to close the panel */
   onClose?: () => void;
   /** Whether to autofocus chat input on mount */
@@ -145,6 +147,7 @@ export function IntegratedChatPanel({
   hideHeaderSessionControls = false,
   hideSessionToolbar = false,
   surfaceBackground,
+  additionalQuestionSessionIds,
   onClose,
   autoFocusInput = true,
   isVisible = true,
@@ -719,7 +722,18 @@ export function IntegratedChatPanel({
     storeKey: storeContextKey,
   });
 
-  // Ask user question state — scoped to current context (ideation session, task, or project)
+  const bridgedQuestionSessionId = useMemo(
+    () => additionalQuestionSessionIds?.find((id) => id && id !== currentContextId),
+    [additionalQuestionSessionIds, currentContextId],
+  );
+
+  // Ask user question state — scoped to current context plus an attached child run when present.
+  const primaryQuestionState = useAskUserQuestion(currentContextId);
+  const bridgedQuestionState = useAskUserQuestion(bridgedQuestionSessionId);
+  const questionState =
+    primaryQuestionState.activeQuestion || primaryQuestionState.answeredQuestion
+      ? primaryQuestionState
+      : bridgedQuestionState;
   const {
     activeQuestion,
     answeredQuestion,
@@ -727,7 +741,7 @@ export function IntegratedChatPanel({
     dismissQuestion,
     clearAnswered,
     isLoading: isSubmittingAnswer,
-  } = useAskUserQuestion(currentContextId);
+  } = questionState;
 
   // Question UI state — chip selection, input sync, question-aware send
   const {
