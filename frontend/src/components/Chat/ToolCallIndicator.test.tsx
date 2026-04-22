@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { makeToolCall } from "./__tests__/chatRenderFixtures";
+
+vi.mock("@/hooks/useChildSessionStatus", () => ({
+  useChildSessionStatus: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
+}));
 
 /**
  * ToolCallIndicator tests.
@@ -27,16 +36,34 @@ describe("ToolCallIndicator", () => {
       expect(screen.queryByText("mcp__ralphx__v1_get_ideation_status")).not.toBeInTheDocument();
     });
 
-    it("renders ideation prompt sends as a compact status line", () => {
+    it("hides completed ideation prompt sends when no session id is available", () => {
       const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
         id: "call-send-ideation",
         result: { queuedAsPending: true, nextAction: "wait_for_resume" },
       });
 
+      const { container } = render(<ToolCallIndicator toolCall={toolCall} />);
+
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByText("mcp__ralphx__v1_send_ideation_message")).not.toBeInTheDocument();
+    });
+
+    it("renders ideation prompt sends with a session id as the attached ideation card", () => {
+      const toolCall: ToolCall = makeToolCall("mcp__ralphx__v1_send_ideation_message", {
+        id: "call-send-ideation",
+        result: {
+          status: "sent",
+          session_id: "session-123",
+          next_action: "poll_status",
+        },
+      });
+
       render(<ToolCallIndicator toolCall={toolCall} />);
 
-      expect(screen.getByText("Ideation prompt saved")).toBeInTheDocument();
-      expect(screen.queryByText("mcp__ralphx__v1_send_ideation_message")).not.toBeInTheDocument();
+      expect(screen.getByText("Ideation Session")).toBeInTheDocument();
+      expect(screen.getByText("Ideation run")).toBeInTheDocument();
+      expect(screen.getByText("Open Run")).toBeInTheDocument();
+      expect(screen.queryByText("Ideation prompt sent")).not.toBeInTheDocument();
     });
   });
 

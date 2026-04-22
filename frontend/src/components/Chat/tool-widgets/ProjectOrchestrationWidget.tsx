@@ -1,29 +1,30 @@
-import { CheckCircle2, Loader2, SendHorizontal, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
+import { ChildSessionWidget } from "./ChildSessionWidget";
 import { InlineIndicator } from "./shared";
 import {
   colors,
-  getBool,
-  getString,
   parseMcpToolResult,
+  type ToolCall,
   type ToolCallWidgetProps,
 } from "./shared.constants";
+import {
+  canonicalProjectToolName,
+  projectIdeationSessionId,
+  shouldHideCompletedProjectOrchestrationToolCall,
+} from "./ProjectOrchestrationWidget.utils";
 
-function iconForState(state: "pending" | "sent" | "saved" | "error") {
+function iconForState(state: "pending" | "error") {
   switch (state) {
     case "pending":
       return <Loader2 size={11} className="animate-spin" style={{ color: colors.accent }} />;
-    case "saved":
-      return <CheckCircle2 size={11} style={{ color: colors.success }} />;
-    case "sent":
-      return <SendHorizontal size={11} style={{ color: colors.accent }} />;
     case "error":
       return <TriangleAlert size={11} style={{ color: colors.error }} />;
   }
 }
 
 export function ProjectOrchestrationWidget({ toolCall }: ToolCallWidgetProps) {
-  const normalizedName = toolCall.name.toLowerCase();
-  const isSendingIdeationPrompt = normalizedName.includes("v1_send_ideation_message");
+  const canonicalName = canonicalProjectToolName(toolCall.name);
+  const isSendingIdeationPrompt = canonicalName === "v1_send_ideation_message";
   const isPending = toolCall.result == null && !toolCall.error;
 
   if (toolCall.error) {
@@ -44,24 +45,24 @@ export function ProjectOrchestrationWidget({ toolCall }: ToolCallWidgetProps) {
     );
   }
 
-  if (!isSendingIdeationPrompt) {
+  if (shouldHideCompletedProjectOrchestrationToolCall(toolCall)) {
     return null;
   }
 
   const parsed = parseMcpToolResult(toolCall.result);
-  const queuedAsPending =
-    getBool(parsed, "queuedAsPending") ??
-    getBool(parsed, "queued_as_pending") ??
-    false;
-  const nextAction =
-    getString(parsed, "nextAction") ??
-    getString(parsed, "next_action");
-  const wasSavedForResume = queuedAsPending || nextAction === "wait_for_resume";
+  const sessionId = projectIdeationSessionId(toolCall);
 
-  return (
-    <InlineIndicator
-      icon={iconForState(wasSavedForResume ? "saved" : "sent")}
-      text={wasSavedForResume ? "Ideation prompt saved" : "Ideation prompt sent"}
-    />
-  );
+  if (isSendingIdeationPrompt && sessionId) {
+    const childToolCall: ToolCall = {
+      ...toolCall,
+      name: "mcp__ralphx__v1_start_ideation",
+      result: {
+        ...parsed,
+        sessionId,
+        session_id: sessionId,
+      },
+    };
+    return <ChildSessionWidget toolCall={childToolCall} />;
+  }
+  return null;
 }
