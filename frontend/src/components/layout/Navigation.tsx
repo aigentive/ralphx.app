@@ -60,13 +60,6 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     visible: () => true,
   },
   {
-    view: "agents",
-    label: "Agents",
-    icon: Bot,
-    shortcut: "⌘⇧A",
-    visible: () => true,
-  },
-  {
     view: "extensibility",
     label: "Extensibility",
     icon: Puzzle,
@@ -86,6 +79,13 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     icon: TrendingUp,
     shortcut: "⌘6",
     visible: (_flags, taskCount) => taskCount >= 10,
+  },
+  {
+    view: "agents",
+    label: "Agents",
+    icon: Bot,
+    shortcut: "⌘⇧A",
+    visible: () => true,
   },
 ];
 

@@ -246,11 +246,11 @@ export function AgentsView({
     [queryClient, selectConversation, setActiveConversation, setRuntimeForConversation]
   );
 
-  const handleQuickCreateAgent = useCallback(async () => {
+  const handleQuickCreateAgent = useCallback(async (quickProjectId?: string) => {
     if (isQuickCreating) {
       return;
     }
-    const targetProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id;
+    const targetProjectId = quickProjectId || focusedProjectId || selectedProjectId || projectId || projects[0]?.id;
     if (!targetProjectId) {
       return;
     }
@@ -282,6 +282,26 @@ export function AgentsView({
     selectedProjectId,
   ]);
 
+  const handleSelectArtifact = useCallback(
+    (tab: AgentArtifactTab) => {
+      if (!selectedConversationId) {
+        return;
+      }
+      if (artifactState.isOpen && artifactState.activeTab === tab) {
+        setArtifactOpen(selectedConversationId, false);
+        return;
+      }
+      setArtifactTab(selectedConversationId, tab);
+    },
+    [
+      artifactState.activeTab,
+      artifactState.isOpen,
+      selectedConversationId,
+      setArtifactOpen,
+      setArtifactTab,
+    ]
+  );
+
   const defaultRuntime =
     (defaultProjectId ? lastRuntimeByProjectId[defaultProjectId] : null) ??
     (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
@@ -300,11 +320,12 @@ export function AgentsView({
         onFocusProject={setFocusedProject}
         onSelectConversation={handleSelectConversation}
         onCreateAgent={() => onNewAgentDialogOpenChange(true)}
+        onCreateProject={onCreateProject}
         onQuickCreateAgent={handleQuickCreateAgent}
         isCreatingAgent={isQuickCreating}
       />
 
-      <div className="flex-1 min-w-0 h-full flex overflow-hidden">
+      <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
         {activeProjectId && selectedConversationId ? (
           <IntegratedChatPanel
             projectId={activeProjectId}
@@ -321,16 +342,26 @@ export function AgentsView({
                 artifactOpen={artifactState.isOpen}
                 activeArtifactTab={artifactState.activeTab}
                 onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
-                onSelectArtifact={(tab) => setArtifactTab(selectedConversationId, tab)}
+                onSelectArtifact={handleSelectArtifact}
               />
             }
             emptyState={<div />}
           />
         ) : (
           <div className="flex-1 min-w-0 h-full flex items-center justify-center">
-            <Button type="button" onClick={() => onNewAgentDialogOpenChange(true)} disabled={isLoadingProjects}>
-              New Agent
-            </Button>
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="space-y-1">
+                <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                  Pick a conversation from the sidebar
+                </div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  or start a new one.
+                </div>
+              </div>
+              <Button type="button" onClick={() => onNewAgentDialogOpenChange(true)} disabled={isLoadingProjects}>
+                New agent
+              </Button>
+            </div>
           </div>
         )}
 
@@ -338,7 +369,7 @@ export function AgentsView({
           <AgentsArtifactPane
             activeTab={artifactState.activeTab}
             taskMode={artifactState.taskMode}
-            onTabChange={(tab) => setArtifactTab(selectedConversationId, tab)}
+            onTabChange={handleSelectArtifact}
             onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
             onClose={() => setArtifactOpen(selectedConversationId, false)}
           />

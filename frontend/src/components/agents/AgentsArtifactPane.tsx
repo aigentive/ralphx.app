@@ -49,7 +49,7 @@ export function AgentsArtifactPane({
 }: AgentsArtifactPaneProps) {
   return (
     <aside
-      className="w-[420px] min-w-[360px] max-w-[42vw] h-full flex flex-col overflow-hidden border-l"
+      className="w-1/2 min-w-[360px] max-w-[720px] h-full flex flex-col overflow-hidden border-l max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:w-[min(100%,420px)] max-lg:min-w-0 max-lg:max-w-none"
       style={{
         background: "var(--bg-surface)",
         borderColor: "var(--border-subtle)",
