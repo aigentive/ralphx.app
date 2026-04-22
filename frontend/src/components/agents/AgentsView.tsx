@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { chatKeys } from "@/hooks/useChat";
@@ -308,84 +309,86 @@ export function AgentsView({
     DEFAULT_AGENT_RUNTIME;
 
   return (
-    <section
-      className="h-full min-h-0 flex overflow-hidden"
-      style={{ background: "var(--bg-base)" }}
-      data-testid="agents-view"
-    >
-      <AgentsSidebar
-        projects={projects}
-        focusedProjectId={focusedProjectId ?? defaultProjectId}
-        selectedConversationId={selectedConversationId}
-        onFocusProject={setFocusedProject}
-        onSelectConversation={handleSelectConversation}
-        onCreateAgent={() => onNewAgentDialogOpenChange(true)}
-        onCreateProject={onCreateProject}
-        onQuickCreateAgent={handleQuickCreateAgent}
-        isCreatingAgent={isQuickCreating}
-      />
+    <TooltipProvider delayDuration={300}>
+      <section
+        className="h-full min-h-0 flex overflow-hidden"
+        style={{ background: "var(--bg-base)" }}
+        data-testid="agents-view"
+      >
+        <AgentsSidebar
+          projects={projects}
+          focusedProjectId={focusedProjectId ?? defaultProjectId}
+          selectedConversationId={selectedConversationId}
+          onFocusProject={setFocusedProject}
+          onSelectConversation={handleSelectConversation}
+          onCreateAgent={() => onNewAgentDialogOpenChange(true)}
+          onCreateProject={onCreateProject}
+          onQuickCreateAgent={handleQuickCreateAgent}
+          isCreatingAgent={isQuickCreating}
+        />
 
-      <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
-        {activeProjectId && selectedConversationId ? (
-          <IntegratedChatPanel
-            projectId={activeProjectId}
-            conversationIdOverride={selectedConversationId}
-            sendOptions={{
-              conversationId: selectedConversationId,
-              providerHarness: normalizedActiveRuntime.provider,
-              modelId: normalizedActiveRuntime.modelId,
-            }}
-            headerContent={
-              <AgentsChatHeader
-                conversation={activeConversation}
-                runtime={normalizedActiveRuntime}
-                artifactOpen={artifactState.isOpen}
-                activeArtifactTab={artifactState.activeTab}
-                onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
-                onSelectArtifact={handleSelectArtifact}
-              />
-            }
-            emptyState={<div />}
-          />
-        ) : (
-          <div className="flex-1 min-w-0 h-full flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="space-y-1">
-                <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                  Pick a conversation from the sidebar
+        <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
+          {activeProjectId && selectedConversationId ? (
+            <IntegratedChatPanel
+              projectId={activeProjectId}
+              conversationIdOverride={selectedConversationId}
+              sendOptions={{
+                conversationId: selectedConversationId,
+                providerHarness: normalizedActiveRuntime.provider,
+                modelId: normalizedActiveRuntime.modelId,
+              }}
+              headerContent={
+                <AgentsChatHeader
+                  conversation={activeConversation}
+                  runtime={normalizedActiveRuntime}
+                  artifactOpen={artifactState.isOpen}
+                  activeArtifactTab={artifactState.activeTab}
+                  onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
+                  onSelectArtifact={handleSelectArtifact}
+                />
+              }
+              emptyState={<div />}
+            />
+          ) : (
+            <div className="flex-1 min-w-0 h-full flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                    Pick a conversation from the sidebar
+                  </div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    or start a new one.
+                  </div>
                 </div>
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  or start a new one.
-                </div>
+                <Button type="button" onClick={() => onNewAgentDialogOpenChange(true)} disabled={isLoadingProjects}>
+                  New agent
+                </Button>
               </div>
-              <Button type="button" onClick={() => onNewAgentDialogOpenChange(true)} disabled={isLoadingProjects}>
-                New agent
-              </Button>
             </div>
-          </div>
-        )}
+          )}
 
-        {selectedConversationId && artifactState.isOpen && (
-          <AgentsArtifactPane
-            activeTab={artifactState.activeTab}
-            taskMode={artifactState.taskMode}
-            onTabChange={handleSelectArtifact}
-            onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
-            onClose={() => setArtifactOpen(selectedConversationId, false)}
-          />
-        )}
-      </div>
+          {selectedConversationId && artifactState.isOpen && (
+            <AgentsArtifactPane
+              activeTab={artifactState.activeTab}
+              taskMode={artifactState.taskMode}
+              onTabChange={handleSelectArtifact}
+              onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+              onClose={() => setArtifactOpen(selectedConversationId, false)}
+            />
+          )}
+        </div>
 
-      <NewAgentDialog
-        open={isNewAgentDialogOpen}
-        projects={projects}
-        defaultProjectId={defaultProjectId}
-        defaultRuntime={normalizeRuntimeSelection(defaultRuntime)}
-        onOpenChange={onNewAgentDialogOpenChange}
-        onCreate={handleCreateAgent}
-        onCreateProject={onCreateProject}
-      />
-    </section>
+        <NewAgentDialog
+          open={isNewAgentDialogOpen}
+          projects={projects}
+          defaultProjectId={defaultProjectId}
+          defaultRuntime={normalizeRuntimeSelection(defaultRuntime)}
+          onOpenChange={onNewAgentDialogOpenChange}
+          onCreate={handleCreateAgent}
+          onCreateProject={onCreateProject}
+        />
+      </section>
+    </TooltipProvider>
   );
 }
 
