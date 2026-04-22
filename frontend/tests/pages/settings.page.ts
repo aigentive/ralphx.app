@@ -1,6 +1,14 @@
 import { Page, Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 
+export type FontScaleOption = "default" | "lg" | "xl";
+
+const FONT_SCALE_LABELS: Record<FontScaleOption, string> = {
+  default: "Default (100%)",
+  lg: "Large (110%)",
+  xl: "Extra large (125%)",
+};
+
 export class SettingsPage extends BasePage {
   // Modal container (replaces old settings-view full-page shell)
   readonly settingsDialog: Locator;
@@ -8,6 +16,9 @@ export class SettingsPage extends BasePage {
   readonly closeButton: Locator;
   readonly savingIndicator: Locator;
   readonly errorBanner: Locator;
+
+  // Accessibility Section — Font scale
+  readonly fontScaleTrigger: Locator;
 
   // Execution Section
   readonly executionSection: Locator;
@@ -40,6 +51,7 @@ export class SettingsPage extends BasePage {
 
     // Main dialog element (modal overlay)
     this.settingsDialog = page.locator('[data-testid="settings-dialog"]');
+    this.fontScaleTrigger = page.locator('[data-testid="font-scale"]');
     this.settingsTitle = this.settingsDialog.locator("text=Settings").first();
     this.closeButton = this.settingsDialog.getByRole("button", { name: "Close settings" });
     this.savingIndicator = page.locator("text=Saving...");
@@ -125,5 +137,17 @@ export class SettingsPage extends BasePage {
 
   async getInputValue(input: Locator): Promise<string> {
     return (await input.inputValue()) || "";
+  }
+
+  /** Open Settings → Accessibility and select a font scale option. */
+  async selectFontScale(scale: FontScaleOption) {
+    await this.openViaStore("accessibility");
+    await this.fontScaleTrigger.waitFor({ state: "visible" });
+    await this.fontScaleTrigger.click();
+    await this.page
+      .locator('[role="option"]')
+      .filter({ has: this.page.locator(`span:text-is("${FONT_SCALE_LABELS[scale]}")`) })
+      .click();
+    await this.waitForAnimations();
   }
 }
