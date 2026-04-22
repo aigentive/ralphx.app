@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::agents::{
-    generic_harness_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings,
-    LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
+    generic_harness_lane_defaults, AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort,
+    StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::AgentLaneSettingsRepository;
@@ -39,6 +39,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
 
     if primary_lane.is_none() {
         let effective_harness = harness_override.unwrap_or(DEFAULT_AGENT_HARNESS);
+        let (approval_policy, sandbox_mode) = non_lane_harness_runtime_controls(effective_harness);
         return ResolvedAgentSpawnSettings {
             configured_harness: None,
             effective_harness,
@@ -51,8 +52,8 @@ pub(crate) async fn resolve_agent_spawn_settings(
                 .unwrap_or_else(|| resolve_model(Some(agent_name))),
             logical_effort: None,
             claude_effort: None,
-            approval_policy: None,
-            sandbox_mode: None,
+            approval_policy,
+            sandbox_mode,
             configured_subagent_model_cap: None,
             subagent_model_cap: None,
         };
@@ -343,3 +344,11 @@ fn nondefault_harness_lane_settings(
     Some(generic_harness_lane_defaults(harness, lane))
 }
 
+fn non_lane_harness_runtime_controls(
+    harness: AgentHarnessKind,
+) -> (Option<String>, Option<String>) {
+    let defaults = nondefault_harness_lane_settings(AgentLane::IdeationPrimary, harness);
+    defaults
+        .map(|settings| (settings.approval_policy, settings.sandbox_mode))
+        .unwrap_or((None, None))
+}

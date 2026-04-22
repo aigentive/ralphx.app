@@ -527,6 +527,7 @@ export function AgentsView({
           {activeProjectId && selectedConversationId && activeConversation ? (
             <div className="flex-1 min-w-0 h-full">
               <IntegratedChatPanel
+                key={selectedConversationId}
                 projectId={activeProjectId}
                 {...(activeConversation.contextType === "ideation"
                   ? { ideationSessionId: activeConversation.contextId }
