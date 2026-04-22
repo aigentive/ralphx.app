@@ -324,7 +324,10 @@ const commandHandlers: Record<
     mockTaskGraphApi.getDependencyGraph(
       args.projectId as string,
       args.includeArchived as boolean | undefined,
-      args.executionPlanId as string | null | undefined ?? args.ideationSessionId as string | null | undefined ?? null
+      (args.executionPlanId as string | null | undefined) ?? null,
+      (args.sessionId as string | null | undefined)
+        ?? (args.ideationSessionId as string | null | undefined)
+        ?? null
     ),
   get_task_timeline_events: async (args) =>
     mockTaskGraphApi.getTimelineEvents(

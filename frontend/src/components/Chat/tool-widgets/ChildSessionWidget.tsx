@@ -166,7 +166,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
   toolCall,
   compact,
 }: ToolCallWidgetProps) {
-  const isProjectIdeationRun = toolCall.name.toLowerCase().includes("start_ideation_session");
+  const normalizedToolName = toolCall.name.toLowerCase();
+  const isProjectIdeationRun =
+    normalizedToolName.includes("start_ideation_session") ||
+    normalizedToolName.includes("v1_start_ideation");
   const parsed = parseMcpToolResult(toolCall.result);
   const title =
     getString(toolCall.arguments, "title") ??
@@ -177,7 +180,9 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
     getString(parsed, "purpose") ??
     (isProjectIdeationRun ? "ideation" : undefined);
   const orchestrationTriggered =
-    getBool(parsed, "orchestration_triggered") ?? getBool(parsed, "agent_spawned");
+    getBool(parsed, "orchestration_triggered") ??
+    getBool(parsed, "agent_spawned") ??
+    getBool(parsed, "agentSpawned");
   const sessionId =
     getString(parsed, "session_id") ??
     getString(parsed, "sessionId") ??
