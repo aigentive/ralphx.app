@@ -126,14 +126,18 @@ pub(crate) fn has_meaningful_output(
     if tool_call_count > 0 {
         return true;
     }
-    // If stderr has errors and no tool calls, agent crashed — not meaningful work
-    if !stderr_text.trim().is_empty() {
-        return false;
-    }
     if chat_service_errors::classify_provider_error(response_text).is_some() {
         return false;
     }
-    !response_text.trim().is_empty()
+    if !response_text.trim().is_empty() {
+        return true;
+    }
+    // If stderr has content and no response/tool calls, the agent did not
+    // produce meaningful work for the UI to show.
+    if !stderr_text.trim().is_empty() {
+        return false;
+    }
+    false
 }
 
 fn resume_in_place_requested(metadata: Option<&str>) -> bool {
