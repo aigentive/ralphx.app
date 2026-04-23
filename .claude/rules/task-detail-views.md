@@ -70,14 +70,26 @@ paths:
 
 ```
 TaskDetailOverlay (useViewRegistry={true})
-  → TaskDetailPanel (viewAsStatus? for history)
+  → TaskDetailPanel (TaskDetailViewMode + TaskDetailContextProvider)
     → TASK_DETAIL_VIEWS[status] ?? BasicTaskDetail
+      → TwoColumnLayout → TaskContextRail + state-specific body
 ```
 
-**Props:** `useViewRegistry` activates registry | `viewAsStatus` enables historical state viewing | Views receive `isHistorical` flag
+**Props:** `useViewRegistry` activates registry | `viewAsStatus` enables historical state viewing | views receive `isHistorical`; common plan/branch/PR context comes from `TaskContextRail`
+
+## Common Context Rail
+
+| Rule | Detail |
+|------|--------|
+| Required | Registry-backed detail views must use `TwoColumnLayout`; do not hand-roll a separate left column |
+| Left rail | `TaskContextRail` owns description, plan/proposal, branch, PR, merge summary, and historical lens note |
+| State body | View components own status banner, progress, validation, recovery, review, and actions only |
+| Plan/PR cards | Prefer shared rail data; one-off right-column plan/PR cards are allowed only for status-specific action/context |
+| Historical views | Current implementation is a historical status lens over latest task data; label plan/branch/PR values as latest unless backend snapshots exist |
 
 ## Adding New Views
 
 1. Create `src/components/tasks/detail-views/NewStatusTaskDetail.tsx`
 2. Implement `TaskDetailProps` interface: `{ task: Task; isHistorical?: boolean }`
-3. Add to `TASK_DETAIL_VIEWS` map in `TaskDetailPanel.tsx`
+3. Render content inside `TwoColumnLayout`; the common rail is injected by `TaskDetailContextProvider`
+4. Add to `TASK_DETAIL_VIEWS` map in `TaskDetailPanel.tsx`

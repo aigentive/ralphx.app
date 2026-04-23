@@ -7,28 +7,44 @@
 
 import { SectionTitle } from "./SectionTitle";
 import { DescriptionBlock } from "./DescriptionBlock";
+import { useTaskDetailContextModel } from "./TaskDetailContext";
+import { TaskContextRail } from "./TaskDetailContextRail";
 
 interface TwoColumnLayoutProps {
   description: string | null | undefined;
   children: React.ReactNode;
   testId?: string;
+  leftRail?: React.ReactNode;
 }
 
 export function TwoColumnLayout({
   description,
   children,
   testId,
+  leftRail,
 }: TwoColumnLayoutProps) {
+  const detailContext = useTaskDetailContextModel();
+  const rail =
+    leftRail ??
+    (detailContext ? (
+      <TaskContextRail
+        model={detailContext}
+        fallbackDescription={description}
+      />
+    ) : (
+      <div className="space-y-2">
+        <SectionTitle>Description</SectionTitle>
+        <DescriptionBlock description={description} />
+      </div>
+    ));
+
   return (
     <div
       data-testid={testId}
       className="grid grid-cols-[280px_1fr] gap-6 min-h-0"
     >
-      {/* Left column - Description */}
-      <div className="space-y-2">
-        <SectionTitle>Description</SectionTitle>
-        <DescriptionBlock description={description} />
-      </div>
+      {/* Left column - common task context */}
+      <div className="min-w-0">{rail}</div>
 
       {/* Right column - Main content */}
       <div className="space-y-6 min-w-0">{children}</div>

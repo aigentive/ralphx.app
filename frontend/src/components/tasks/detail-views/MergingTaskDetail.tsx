@@ -37,6 +37,7 @@ import {
   ChangeReviewSection,
   PlanMergeContextSection,
 } from "./shared";
+import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
 import { useConflictDetection } from "@/hooks/useConflictDetection";
@@ -393,6 +394,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [actionError, setActionError] = useState<string | null>(null);
+  const detailContext = useTaskDetailContextModel();
 
   const stopMutation = useMutation({
     mutationFn: async () => {
@@ -770,7 +772,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         }
       />
 
-      {isPlanMerge && <PlanMergeContextSection taskId={task.id} />}
+      {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
 
       {/* PR Mode: show PR status when polling */}
       {isPrWait && planBranch && planBranch.prNumber != null && (

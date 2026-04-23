@@ -32,6 +32,8 @@ import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
+import { TaskDetailContextProvider } from "./detail-views/shared/TaskDetailContextProvider";
+import type { TaskDetailViewMode } from "./detail-views/shared/TaskDetailContext";
 
 // Import state-specific detail view components
 import {
@@ -60,6 +62,10 @@ interface TaskDetailPanelProps {
   viewAsStatus?: InternalStatus;
   /** Timestamp for historical view context */
   viewTimestamp?: string;
+  /** Conversation ID for historical state context */
+  viewConversationId?: string | undefined;
+  /** Agent run ID for historical state context */
+  viewAgentRunId?: string | undefined;
 }
 
 /**
@@ -360,6 +366,8 @@ export function TaskDetailPanel({
   useViewRegistry = false,
   viewAsStatus,
   viewTimestamp,
+  viewConversationId,
+  viewAgentRunId,
 }: TaskDetailPanelProps) {
   const [showContext, setShowContext] = useState(showContextProp);
 
@@ -379,23 +387,36 @@ export function TaskDetailPanel({
       TASK_DETAIL_VIEWS[statusForView] ?? BasicTaskDetail;
     // Pass isHistorical when viewing a historical state (viewAsStatus is set)
     const isHistorical = viewAsStatus !== undefined;
+    const viewMode: TaskDetailViewMode = isHistorical
+      ? {
+          kind: "historical",
+          status: statusForView,
+          timestamp: viewTimestamp ?? task.updatedAt,
+          conversationId: viewConversationId,
+          agentRunId: viewAgentRunId,
+        }
+      : { kind: "current" };
     if (statusForView === "reviewing") {
       return (
-        <ReviewingTaskDetail
-          key={`reviewing-${isHistorical ? "hist" : "curr"}`}
-          task={task}
-          isHistorical={isHistorical}
-          viewTimestamp={viewTimestamp}
-        />
+        <TaskDetailContextProvider task={task} viewMode={viewMode}>
+          <ReviewingTaskDetail
+            key={`reviewing-${isHistorical ? "hist" : "curr"}`}
+            task={task}
+            isHistorical={isHistorical}
+            viewTimestamp={viewMode.kind === "historical" ? viewMode.timestamp : undefined}
+          />
+        </TaskDetailContextProvider>
       );
     }
     return (
-      <ViewComponent
-        key={`${statusForView}-${isHistorical ? "hist" : "curr"}`}
-        task={task}
-        isHistorical={isHistorical}
-        viewStatus={statusForView}
-      />
+      <TaskDetailContextProvider task={task} viewMode={viewMode}>
+        <ViewComponent
+          key={`${statusForView}-${isHistorical ? "hist" : "curr"}`}
+          task={task}
+          isHistorical={isHistorical}
+          viewStatus={statusForView}
+        />
+      </TaskDetailContextProvider>
     );
   }
 

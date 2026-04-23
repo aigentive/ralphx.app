@@ -693,6 +693,12 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                     {...(isHistoryMode && historyState?.timestamp
                       ? { viewTimestamp: historyState.timestamp }
                       : {})}
+                    {...(isHistoryMode && historyState?.conversationId
+                      ? { viewConversationId: historyState.conversationId }
+                      : {})}
+                    {...(isHistoryMode && historyState?.agentRunId
+                      ? { viewAgentRunId: historyState.agentRunId }
+                      : {})}
                   />
                 </ErrorBoundary>
               </div>

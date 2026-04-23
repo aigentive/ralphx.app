@@ -22,6 +22,7 @@ import {
   ChangeReviewSection,
   PlanMergeContextSection,
 } from "./shared";
+import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
@@ -131,6 +132,7 @@ export function MergedTaskDetail({
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const { data: planBranch } = usePlanBranchForTask(task.id);
+  const detailContext = useTaskDetailContextModel();
 
   const isPlanMerge = task.category === "plan_merge";
   const effectiveMergeCommitSha = task.mergeCommitSha ?? planBranch?.mergeCommitSha ?? null;
@@ -188,10 +190,10 @@ export function MergedTaskDetail({
         </div>
       )}
 
-      {isPlanMerge && <PlanMergeContextSection taskId={task.id} />}
+      {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
 
       {/* Merged via PR */}
-      {hasPrContext && (
+      {hasPrContext && !detailContext && (
         <section data-testid="merged-via-pr-section">
           <SectionTitle>Pull Request</SectionTitle>
           <DetailCard variant="success">
