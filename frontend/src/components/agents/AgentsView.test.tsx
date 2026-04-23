@@ -392,7 +392,14 @@ describe("AgentsView", () => {
 
   it("restores persisted artifact width, enforces 320px mins, and resets to default on double click", async () => {
     window.localStorage.setItem("ralphx-agents-artifact-width", "480");
-    mockAgentViewData();
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+      })
+    );
+    mockSessionWithData({ planArtifactId: "plan-1" });
     resetAgentSessionState({
       artifactByConversationId: {
         "conversation-1": {
@@ -424,7 +431,14 @@ describe("AgentsView", () => {
   });
 
   it("resizes the artifact pane when the handle is dragged", async () => {
-    mockAgentViewData();
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+      })
+    );
+    mockSessionWithData({ planArtifactId: "plan-1" });
     resetAgentSessionState({
       artifactByConversationId: {
         "conversation-1": {
@@ -437,6 +451,8 @@ describe("AgentsView", () => {
 
     renderAgentsView();
     selectSidebarConversationRow();
+
+    await screen.findByTestId("agents-artifact-resizable-pane");
 
     const splitContainer = screen.getByTestId("agents-split-container");
     vi.spyOn(splitContainer, "getBoundingClientRect").mockReturnValue({
@@ -502,6 +518,46 @@ describe("AgentsView", () => {
       "max-w-[980px]"
     );
     expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
+  });
+
+  it("does not auto-restore a persisted artifact pane when the conversation still has nothing to show", async () => {
+    mockAgentViewData();
+    resetAgentSessionState({
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "plan",
+          taskMode: "graph",
+        },
+      },
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Open artifacts")).toBeInTheDocument();
+  });
+
+  it("still allows manually opening the artifact pane when the conversation has nothing to show", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Open artifacts"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
+    );
   });
 
   it("auto-opens the artifact pane when the conversation already has plan data", async () => {
