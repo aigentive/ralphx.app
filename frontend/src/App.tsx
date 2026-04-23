@@ -37,6 +37,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
+import { useAgentSessionStore } from "@/stores/agentSessionStore";
 import { DEFAULT_PROJECT_VIEW, type ChatContext, type ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
@@ -195,6 +196,8 @@ function AppContent() {
   const setProjects = useProjectStore((s) => s.setProjects);
   const addProject = useProjectStore((s) => s.addProject);
   const selectProject = useProjectStore((s) => s.selectProject);
+  const clearAgentSelection = useAgentSessionStore((s) => s.clearSelection);
+  const setFocusedAgentProject = useAgentSessionStore((s) => s.setFocusedProject);
 
   const prevProjectIdRef = useRef<string | null>(activeProjectId);
   const agentsReturnViewRef = useRef<ViewType>(DEFAULT_PROJECT_VIEW);
@@ -206,7 +209,6 @@ function AppContent() {
   const [isProjectWizardOpen, setIsProjectWizardOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectCreationError, setProjectCreationError] = useState<string | null>(null);
-  const [isNewAgentDialogOpen, setIsNewAgentDialogOpen] = useState(false);
 
   // Plan quick switcher state
   const [isPlanQuickSwitcherOpen, setIsPlanQuickSwitcherOpen] = useState(false);
@@ -728,14 +730,26 @@ function AppContent() {
   }, [currentView, setSelectedTaskId, setCurrentView]);
 
   const handleOpenNewAgent = useCallback(() => {
+    const nextProjectId = activeProjectId ?? fetchedProjects?.[0]?.id ?? null;
+    if (nextProjectId) {
+      setFocusedAgentProject(nextProjectId);
+    }
+    clearAgentSelection();
     if (currentView !== "agents") {
       agentsReturnViewRef.current =
         currentView === "task_detail" || currentView === "team" ? "kanban" : currentView;
       setSelectedTaskId(null);
       setCurrentView("agents");
     }
-    setIsNewAgentDialogOpen(true);
-  }, [currentView, setSelectedTaskId, setCurrentView]);
+  }, [
+    activeProjectId,
+    clearAgentSelection,
+    currentView,
+    fetchedProjects,
+    setFocusedAgentProject,
+    setSelectedTaskId,
+    setCurrentView,
+  ]);
 
   // Keyboard shortcuts for view switching, chat toggle, reviews toggle, and project creation
   const handleToggleGraphRightPanel = useCallback(() => {
@@ -1138,8 +1152,6 @@ function AppContent() {
               {currentView === "agents" && (
                 <AgentsView
                   projectId={currentProjectId}
-                  isNewAgentDialogOpen={isNewAgentDialogOpen}
-                  onNewAgentDialogOpenChange={setIsNewAgentDialogOpen}
                   onCreateProject={handleOpenProjectWizard}
                 />
               )}

@@ -800,6 +800,16 @@ export async function updateConversationTitle(
   return transformConversation(raw);
 }
 
+export async function spawnConversationSessionNamer(
+  conversationId: string,
+  firstMessage: string
+): Promise<void> {
+  await invoke("spawn_session_namer", {
+    conversationId,
+    firstMessage,
+  });
+}
+
 export async function archiveConversation(
   conversationId: string
 ): Promise<ChatConversation> {
@@ -887,6 +897,7 @@ export const chatApi = {
   getConversationStats,
   createConversation,
   updateConversationTitle,
+  spawnConversationSessionNamer,
   archiveConversation,
   restoreConversation,
   appendAgentBridgeMessage,

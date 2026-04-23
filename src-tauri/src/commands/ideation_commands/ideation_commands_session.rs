@@ -13,7 +13,8 @@ use crate::application::AppState;
 use crate::application::{StopMode, TaskCleanupService};
 use crate::domain::entities::plan_branch::PlanBranchStatus;
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskId,
+    ChatContextType, ChatConversationId, IdeationSession, IdeationSessionId,
+    IdeationSessionStatus, ProjectId, TaskId,
 };
 
 use super::ideation_commands_types::{
@@ -537,7 +538,8 @@ pub async fn update_ideation_session_title(
 /// which will emit an event for real-time UI updates.
 #[tauri::command]
 pub async fn spawn_session_namer(
-    session_id: String,
+    session_id: Option<String>,
+    conversation_id: Option<String>,
     first_message: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -545,21 +547,45 @@ pub async fn spawn_session_namer(
         default_repo_root_working_directory, resolve_harness_agent_bootstrap,
     };
     use crate::domain::agents::{AgentConfig, AgentRole, DEFAULT_AGENT_HARNESS};
-    use crate::domain::entities::IdeationSessionId;
     use crate::infrastructure::agents::claude::agent_names;
 
-    // Build the prompt with session context (XML-delineated to prevent injection)
-    let prompt = build_session_namer_prompt(&format!(
-        "<session_id>{}</session_id>\n<user_message>{}</user_message>",
-        session_id, first_message
-    ));
-
-    let project_id = state
-        .ideation_session_repo
-        .get_by_id(&IdeationSessionId::from_string(session_id.clone()))
-        .await
-        .map_err(|e| e.to_string())?
-        .map(|session| session.project_id.as_str().to_string());
+    let (prompt, project_id, target_label) = match (session_id.clone(), conversation_id.clone()) {
+        (Some(session_id), None) => {
+            let prompt = build_session_namer_prompt(&format!(
+                "<session_id>{}</session_id>\n<user_message>{}</user_message>",
+                session_id, first_message
+            ));
+            let project_id = state
+                .ideation_session_repo
+                .get_by_id(&IdeationSessionId::from_string(session_id.clone()))
+                .await
+                .map_err(|e| e.to_string())?
+                .map(|session| session.project_id.as_str().to_string());
+            (prompt, project_id, format!("session:{session_id}"))
+        }
+        (None, Some(conversation_id)) => {
+            let prompt = build_session_namer_prompt(&format!(
+                "<conversation_id>{}</conversation_id>\n<user_message>{}</user_message>",
+                conversation_id, first_message
+            ));
+            let project_id = state
+                .chat_conversation_repo
+                .get_by_id(&ChatConversationId::from_string(conversation_id.clone()))
+                .await
+                .map_err(|e| e.to_string())?
+                .and_then(|conversation| {
+                    (conversation.context_type == ChatContextType::Project)
+                        .then_some(conversation.context_id)
+                });
+            (prompt, project_id, format!("conversation:{conversation_id}"))
+        }
+        (Some(_), Some(_)) | (None, None) => {
+            return Err(
+                "spawn_session_namer requires exactly one of sessionId or conversationId"
+                    .to_string(),
+            )
+        }
+    };
     let runtime = state.resolve_session_namer_runtime().await;
     let helper_harness = runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS);
 
@@ -594,7 +620,7 @@ pub async fn spawn_session_namer(
     // Spawn in background (fire-and-forget)
     tokio::spawn(async move {
         tracing::info!(
-            session_id = %session_id,
+            target = %target_label,
             project_id = project_id.as_deref().unwrap_or(""),
             harness = ?harness_for_log,
             "Spawning session namer agent"

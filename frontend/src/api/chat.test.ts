@@ -10,6 +10,7 @@ import {
   getConversationStats,
   createConversation,
   updateConversationTitle,
+  spawnConversationSessionNamer,
   archiveConversation,
   restoreConversation,
   getAgentRunStatus,
@@ -177,6 +178,17 @@ describe("chat api", () => {
       providerSessionId: "thread-unknown",
       providerHarness: "openai",
       claudeSessionId: null,
+    });
+  });
+
+  it("spawns the session namer for an agent conversation", async () => {
+    mockInvoke.mockResolvedValue(undefined);
+
+    await spawnConversationSessionNamer("conversation-42", "fix the agents landing flow");
+
+    expect(mockInvoke).toHaveBeenCalledWith("spawn_session_namer", {
+      conversationId: "conversation-42",
+      firstMessage: "fix the agents landing flow",
     });
   });
 
