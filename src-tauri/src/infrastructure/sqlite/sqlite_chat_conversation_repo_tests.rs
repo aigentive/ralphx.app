@@ -175,6 +175,118 @@ async fn test_get_by_context_empty() {
     assert!(result.is_empty());
 }
 
+#[tokio::test]
+async fn test_get_by_context_page_filtered_paginates_and_searches() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+    let now = Utc::now();
+
+    let mut oldest = make_conversation(ChatContextType::Project, "project-1");
+    oldest.title = Some("Oldest agent".to_string());
+    oldest.created_at = now - chrono::Duration::minutes(3);
+    oldest.updated_at = oldest.created_at;
+
+    let mut middle = make_conversation(ChatContextType::Project, "project-1");
+    middle.title = Some("Fix sidebar search".to_string());
+    middle.created_at = now - chrono::Duration::minutes(2);
+    middle.updated_at = middle.created_at;
+
+    let mut newest = make_conversation(ChatContextType::Project, "project-1");
+    newest.title = Some("Newest agent".to_string());
+    newest.created_at = now - chrono::Duration::minutes(1);
+    newest.updated_at = newest.created_at;
+
+    let mut archived = make_conversation(ChatContextType::Project, "project-1");
+    archived.title = Some("Archived sidebar search".to_string());
+    archived.created_at = now;
+    archived.updated_at = archived.created_at;
+    archived.archived_at = Some(now);
+
+    repo.create(oldest.clone()).await.unwrap();
+    repo.create(middle.clone()).await.unwrap();
+    repo.create(newest.clone()).await.unwrap();
+    repo.create(archived.clone()).await.unwrap();
+
+    let page = repo
+        .get_by_context_page_filtered(ChatContextType::Project, "project-1", false, 0, 2, None)
+        .await
+        .unwrap();
+
+    assert_eq!(page.total_count, 3);
+    assert_eq!(page.limit, 2);
+    assert_eq!(page.offset, 0);
+    assert!(page.has_more());
+    assert_eq!(
+        page.conversations
+            .iter()
+            .map(|conversation| conversation.id.as_str().to_string())
+            .collect::<Vec<_>>(),
+        vec![
+            newest.id.as_str().to_string(),
+            middle.id.as_str().to_string(),
+        ]
+    );
+
+    let second_page = repo
+        .get_by_context_page_filtered(ChatContextType::Project, "project-1", false, 2, 2, None)
+        .await
+        .unwrap();
+
+    assert_eq!(second_page.total_count, 3);
+    assert!(!second_page.has_more());
+    assert_eq!(
+        second_page
+            .conversations
+            .iter()
+            .map(|conversation| conversation.id.as_str().to_string())
+            .collect::<Vec<_>>(),
+        vec![oldest.id.as_str().to_string()]
+    );
+
+    let search_page = repo
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            false,
+            0,
+            10,
+            Some("sidebar search"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(search_page.total_count, 1);
+    assert_eq!(
+        search_page.conversations[0].id.as_str(),
+        middle.id.as_str()
+    );
+
+    let archived_search_page = repo
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            true,
+            0,
+            10,
+            Some("sidebar search"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(archived_search_page.total_count, 2);
+    assert_eq!(
+        archived_search_page
+            .conversations
+            .iter()
+            .map(|conversation| conversation.id.as_str().to_string())
+            .collect::<Vec<_>>(),
+        vec![
+            archived.id.as_str().to_string(),
+            middle.id.as_str().to_string(),
+        ]
+    );
+}
+
 // --- get_active_for_context ---
 
 #[tokio::test]

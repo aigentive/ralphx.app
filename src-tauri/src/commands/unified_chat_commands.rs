@@ -156,6 +156,16 @@ impl From<ChatConversation> for AgentConversationResponse {
     }
 }
 
+/// Response for paginated conversation listing
+#[derive(Debug, Serialize)]
+pub struct AgentConversationListPageResponse {
+    pub conversations: Vec<AgentConversationResponse>,
+    pub total: i64,
+    pub limit: u32,
+    pub offset: u32,
+    pub has_more: bool,
+}
+
 /// Response for conversation with messages
 #[derive(Debug, Serialize)]
 pub struct AgentConversationWithMessagesResponse {
@@ -865,6 +875,49 @@ pub async fn list_agent_conversations(
         .into_iter()
         .map(AgentConversationResponse::from)
         .collect())
+}
+
+/// List a page of conversations for a context with optional title search.
+#[tauri::command]
+pub async fn list_agent_conversations_page(
+    context_type: String,
+    context_id: String,
+    include_archived: Option<bool>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    search: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AgentConversationListPageResponse, String> {
+    let context_type_enum = parse_context_type(&context_type)?;
+    let include_archived = include_archived.unwrap_or(false);
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(6);
+
+    let page = state
+        .chat_conversation_repo
+        .get_by_context_page_filtered(
+            context_type_enum,
+            &context_id,
+            include_archived,
+            offset,
+            limit,
+            search.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let has_more = page.has_more();
+
+    Ok(AgentConversationListPageResponse {
+        conversations: page
+            .conversations
+            .into_iter()
+            .map(AgentConversationResponse::from)
+            .collect(),
+        total: page.total_count,
+        limit: page.limit,
+        offset: page.offset,
+        has_more,
+    })
 }
 
 /// Archive a conversation.

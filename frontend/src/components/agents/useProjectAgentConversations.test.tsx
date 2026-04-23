@@ -1,30 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChatConversation } from "@/types/chat-conversation";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
 
-const { listConversations, listIdeationSessions, listArchivedIdeationSessions } =
-  vi.hoisted(() => ({
-    listConversations: vi.fn(),
-    listIdeationSessions: vi.fn(),
-    listArchivedIdeationSessions: vi.fn(),
-  }));
+const { listConversationsPage } = vi.hoisted(() => ({
+  listConversationsPage: vi.fn(),
+}));
 
 vi.mock("@/api/chat", () => ({
   chatApi: {
-    listConversations,
-  },
-}));
-
-vi.mock("@/api/ideation", () => ({
-  ideationApi: {
-    sessions: {
-      list: listIdeationSessions,
-      listByGroup: listArchivedIdeationSessions,
-    },
+    listConversationsPage,
   },
 }));
 
@@ -62,15 +50,17 @@ function wrapper({ children }: { children: ReactNode }) {
 
 describe("useProjectAgentConversations", () => {
   beforeEach(() => {
-    listConversations.mockReset();
-    listIdeationSessions.mockReset();
-    listArchivedIdeationSessions.mockReset();
+    listConversationsPage.mockReset();
   });
 
-  it("lists only project agent conversations, not child ideation sessions", async () => {
-    listConversations.mockResolvedValueOnce([
-      conversation({ id: "project-conversation" }),
-    ]);
+  it("fetches the first project agent page from the paginated API", async () => {
+    listConversationsPage.mockResolvedValueOnce({
+      conversations: [conversation({ id: "project-conversation" })],
+      limit: 6,
+      offset: 0,
+      total: 1,
+      hasMore: false,
+    });
 
     const { result } = renderHook(
       () => useProjectAgentConversations("project-1", false),
@@ -79,12 +69,77 @@ describe("useProjectAgentConversations", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(listConversations).toHaveBeenCalledTimes(1);
-    expect(listConversations).toHaveBeenCalledWith("project", "project-1", false);
-    expect(listIdeationSessions).not.toHaveBeenCalled();
-    expect(listArchivedIdeationSessions).not.toHaveBeenCalled();
+    expect(listConversationsPage).toHaveBeenCalledTimes(1);
+    expect(listConversationsPage).toHaveBeenCalledWith(
+      "project",
+      "project-1",
+      6,
+      0,
+      false,
+      undefined
+    );
     expect(result.current.data?.map((item) => item.id)).toEqual([
       "project-conversation",
     ]);
+    expect(result.current.total).toBe(1);
+  });
+
+  it("appends pages and threads search into the server request", async () => {
+    listConversationsPage
+      .mockResolvedValueOnce({
+        conversations: [conversation({ id: "conversation-1", title: "Fix bug" })],
+        limit: 6,
+        offset: 0,
+        total: 2,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        conversations: [conversation({ id: "conversation-2", title: "Fix bug again" })],
+        limit: 6,
+        offset: 1,
+        total: 2,
+        hasMore: false,
+      });
+
+    const { result } = renderHook(
+      () =>
+        useProjectAgentConversations("project-1", false, {
+          search: "fix bug",
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.hasNextPage).toBe(true);
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+
+    await waitFor(() =>
+      expect(result.current.data?.map((item) => item.id)).toEqual([
+        "conversation-1",
+        "conversation-2",
+      ])
+    );
+
+    expect(listConversationsPage).toHaveBeenNthCalledWith(
+      1,
+      "project",
+      "project-1",
+      6,
+      0,
+      false,
+      "fix bug"
+    );
+    expect(listConversationsPage).toHaveBeenNthCalledWith(
+      2,
+      "project",
+      "project-1",
+      6,
+      1,
+      false,
+      "fix bug"
+    );
   });
 });

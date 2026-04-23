@@ -10,7 +10,7 @@ use crate::domain::entities::{
     AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
     ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
-use crate::domain::repositories::ChatConversationRepository;
+use crate::domain::repositories::{ChatConversationPage, ChatConversationRepository};
 use crate::error::AppResult;
 
 /// In-memory implementation of ChatConversationRepository for testing
@@ -80,6 +80,56 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             .cloned()
             .collect();
         Ok(filtered)
+    }
+
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage> {
+        let normalized_search = search
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_lowercase());
+        let convos = self.conversations.read().await;
+        let mut filtered: Vec<ChatConversation> = convos
+            .values()
+            .filter(|conversation| {
+                conversation.context_type == context_type
+                    && conversation.context_id == context_id
+                    && (include_archived || !conversation.is_archived())
+                    && normalized_search.as_ref().map_or(true, |term| {
+                        conversation
+                            .title
+                            .as_deref()
+                            .unwrap_or("Untitled agent")
+                            .to_lowercase()
+                            .contains(term)
+                    })
+            })
+            .cloned()
+            .collect();
+        filtered.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+        let total_count = filtered.len() as i64;
+        let start = offset as usize;
+        let end = start.saturating_add(limit as usize).min(filtered.len());
+        let conversations = if start >= filtered.len() {
+            Vec::new()
+        } else {
+            filtered[start..end].to_vec()
+        };
+
+        Ok(ChatConversationPage {
+            conversations,
+            total_count,
+            offset,
+            limit,
+        })
     }
 
     async fn get_active_for_context(

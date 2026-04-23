@@ -12,6 +12,7 @@ import { normalizeConversationProviderMetadata } from "@/types/chat-conversation
 import type {
   ChatMessageResponse,
   ChildSessionStatusResponse,
+  ConversationListPageResponse,
   ConversationStatsResponse,
   QueuedMessageResponse,
   SendAgentMessageResult,
@@ -63,6 +64,14 @@ export interface MockChatController {
     contextType: ContextType,
     contextId: string
   ): Promise<ChatConversation[]>;
+  listConversationsPage(
+    contextType: ContextType,
+    contextId: string,
+    limit: number,
+    offset?: number,
+    includeArchived?: boolean,
+    search?: string
+  ): Promise<ConversationListPageResponse>;
   getConversation(
     conversationId: string
   ): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>;
@@ -165,6 +174,7 @@ function exposeMockChatController(): void {
     setChildSessionStatusOverride: mockSetChildSessionStatusOverride,
     clearChildSessionStatusOverrides: mockClearChildSessionStatusOverrides,
     listConversations: mockListConversations,
+    listConversationsPage: mockListConversationsPage,
     getConversation: mockGetConversation,
     getConversationStats: mockGetConversationStats,
   };
@@ -187,6 +197,43 @@ export async function mockListConversations(
       c.contextId === contextId &&
       (includeArchived || !c.archivedAt)
   );
+}
+
+export async function mockListConversationsPage(
+  contextType: ContextType,
+  contextId: string,
+  limit: number,
+  offset = 0,
+  includeArchived = false,
+  search?: string
+): Promise<ConversationListPageResponse> {
+  const normalizedSearch = search?.trim().toLowerCase();
+  const conversations = (await mockListConversations(
+    contextType,
+    contextId,
+    includeArchived
+  ))
+    .filter((conversation) => {
+      if (!normalizedSearch) {
+        return true;
+      }
+      return (conversation.title ?? "Untitled agent")
+        .toLowerCase()
+        .includes(normalizedSearch);
+    })
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+    );
+  const pagedConversations = conversations.slice(offset, offset + limit);
+
+  return {
+    conversations: pagedConversations,
+    limit,
+    offset,
+    total: conversations.length,
+    hasMore: offset + pagedConversations.length < conversations.length,
+  };
 }
 
 export async function mockGetConversation(
@@ -424,6 +471,7 @@ export const mockChatApi = {
   seedConversation: seedMockConversation,
   replaceMessages: replaceMockConversationMessages,
   listConversations: mockListConversations,
+  listConversationsPage: mockListConversationsPage,
   getConversation: mockGetConversation,
   createConversation: mockCreateConversation,
   updateConversationTitle: mockUpdateConversationTitle,

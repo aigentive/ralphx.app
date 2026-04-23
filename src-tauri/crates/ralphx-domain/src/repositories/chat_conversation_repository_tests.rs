@@ -60,6 +60,53 @@ impl ChatConversationRepository for MockChatConversationRepository {
             .collect())
     }
 
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage> {
+        let mut conversations: Vec<ChatConversation> = self
+            .conversations
+            .iter()
+            .filter(|conversation| {
+                conversation.context_type == context_type
+                    && conversation.context_id == context_id
+                    && (include_archived || conversation.archived_at.is_none())
+                    && search.map_or(true, |term| {
+                        let normalized = term.trim().to_lowercase();
+                        let title = conversation
+                            .title
+                            .as_deref()
+                            .unwrap_or("Untitled agent")
+                            .to_lowercase();
+                        title.contains(&normalized)
+                    })
+            })
+            .cloned()
+            .collect();
+        conversations.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+        let total_count = conversations.len() as i64;
+        let start = offset as usize;
+        let end = start.saturating_add(limit as usize).min(conversations.len());
+        let page_conversations = if start >= conversations.len() {
+            Vec::new()
+        } else {
+            conversations[start..end].to_vec()
+        };
+
+        Ok(ChatConversationPage {
+            conversations: page_conversations,
+            total_count,
+            offset,
+            limit,
+        })
+    }
+
     async fn get_active_for_context(
         &self,
         context_type: ChatContextType,
