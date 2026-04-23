@@ -200,7 +200,7 @@ function ActiveDialog({ sessionId, onViewPlan }: ActiveDialogProps) {
               disabled={isLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
-                color: "var(--text-inverse)",
+                color: "var(--text-on-accent)",
                 background: accept.isPending
                   ? withAlpha("var(--accent-primary)", 85)
                   : "var(--accent-primary)",

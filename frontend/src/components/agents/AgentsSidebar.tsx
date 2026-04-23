@@ -199,7 +199,7 @@ export function AgentsSidebar({
           data-testid="agents-new-agent"
           style={{
             background: "var(--accent-primary)",
-            color: "var(--text-inverse)",
+            color: "var(--text-on-accent)",
             boxShadow: "none",
           }}
           onMouseEnter={(event) => {

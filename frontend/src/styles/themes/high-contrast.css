@@ -51,6 +51,10 @@ html[data-theme="high-contrast"] main {
   --accent-hover:     #ffaa77;
   --accent-muted:     hsla(20 100% 65% / 0.2);
   --accent-border:    hsla(20 100% 65% / 0.5);
+  --chat-user-bubble-bg: hsla(20 100% 65% / 0.10);
+  --chat-user-bubble-border: hsla(20 100% 65% / 0.45);
+  --chat-user-bubble-text: #ffffff;
+  --chat-user-bubble-copy-hover: hsla(0 0% 100% / 0.10);
 
   /* Status — bright + always paired with icons. Literals per WKWebView
      rule; color-mix against the same literal keeps the alpha ladder. */
@@ -801,19 +805,6 @@ html[data-theme="high-contrast"] main {
 }
 [data-theme="high-contrast"] [data-testid="proposals-empty-state"] [style*="border: 1.5px dashed"] {
   border-color: var(--border-subtle) !important;
-}
-
-/* User chat bubble (HC): full-saturation yellow collides with primary
-   buttons/nav pills (color-only affordance smell). Keep yellow as the
-   identity signal via a low-opacity tint + yellow stroke; text reads as
-   normal white. Styleguide §3 — color shouldn't carry two meanings. */
-[data-theme="high-contrast"] [data-testid="text-bubble-user"] {
-  background: hsla(20 100% 65% / 0.10) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid hsla(20 100% 65% / 0.45) !important;
-}
-[data-theme="high-contrast"] [data-testid="text-bubble-user"] button {
-  color: var(--text-primary) !important;
 }
 
 /* Timeline entries (HC): soften the full-white button border from the

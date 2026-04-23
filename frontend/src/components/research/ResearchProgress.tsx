@@ -87,7 +87,7 @@ export function ResearchProgress({ process, onPause, onResume, onStop, isActionP
           )}
           {isPaused && (
             <button data-testid="resume-button" onClick={() => onResume(process.id)} disabled={isActionPending}
-              className="px-3 py-1 text-xs rounded disabled:opacity-50" style={{ backgroundColor: "var(--accent-primary)", color: "var(--bg-base)" }}>Resume</button>
+              className="px-3 py-1 text-xs rounded disabled:opacity-50" style={{ backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }}>Resume</button>
           )}
           {(isActive || isPaused) && (
             <button data-testid="stop-button" onClick={() => onStop(process.id)} disabled={isActionPending}

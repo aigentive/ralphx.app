@@ -27,6 +27,7 @@ import { TeamSplitView } from "@/components/Team";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { UpdateChecker } from "@/components/UpdateChecker";
+import { ThemeSelector } from "@/components/layout/ThemeSelector";
 import { ProjectSelector } from "@/components/projects/ProjectSelector";
 import { ProjectCreationWizard } from "@/components/projects/ProjectCreationWizard";
 import { PlanQuickSwitcherPalette } from "@/components/plan/PlanQuickSwitcherPalette";
@@ -855,6 +856,7 @@ function AppContent() {
             className="flex items-center gap-2"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
+            <ThemeSelector />
             {/* Project selector */}
             <div className="mr-2">
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
