@@ -25,7 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -34,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useChatStore } from "@/stores/chatStore";
 import { useAgentSessionStore } from "@/stores/agentSessionStore";
+import { withAlpha } from "@/lib/theme-colors";
 import type { Project } from "@/types/project";
 import {
   formatAgentConversationCreatedAt,
@@ -90,14 +90,13 @@ export function AgentsSidebar({
       data-testid="agents-sidebar"
     >
       <div
-        className="h-11 px-3 flex items-center gap-2 border-b shrink-0"
+        className="px-4 pt-4 pb-3 flex items-center gap-2 shrink-0"
         style={{
-          backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
           borderColor: "var(--border-subtle)",
         }}
       >
         <Bot className="w-4 h-4 shrink-0" style={{ color: "var(--accent-primary)" }} />
-        <span className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+        <span className="text-[15px] font-semibold tracking-[-0.01em] truncate" style={{ color: "var(--text-primary)" }}>
           Projects
         </span>
         <div className="ml-auto flex items-center gap-1">
@@ -107,10 +106,11 @@ export function AgentsSidebar({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={onCreateProject}
                 aria-label="New project"
                 data-testid="agents-new-project"
+                style={{ boxShadow: "none" }}
               >
                 <Plus className="w-4 h-4" />
               </Button>
@@ -125,7 +125,7 @@ export function AgentsSidebar({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={() => {
                   setIsSearchOpen((open) => {
                     if (open) {
@@ -136,6 +136,7 @@ export function AgentsSidebar({
                 }}
                 aria-label={isSearchOpen ? "Close search" : "Search"}
                 data-testid="agents-search-toggle"
+                style={{ boxShadow: "none" }}
               >
                 {isSearchOpen ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
               </Button>
@@ -148,40 +149,71 @@ export function AgentsSidebar({
       </div>
 
       {isSearchOpen && (
-        <div
-          className="px-3 py-2 border-b shrink-0"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
-          <Input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search"
-            className="h-8 text-xs"
-            autoFocus
-            data-testid="agents-search-input"
-          />
+        <div className="px-4 pb-2 shrink-0">
+          <div
+            className="relative flex items-center"
+            style={{
+              background: "var(--overlay-faint)",
+              border: "1px solid var(--overlay-weak)",
+              borderRadius: "6px",
+            }}
+          >
+            <Search
+              className="absolute left-2.5 w-3.5 h-3.5 pointer-events-none"
+              style={{ color: "var(--text-muted)" }}
+            />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search"
+              className="w-full h-8 pl-8 pr-8 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+              style={{
+                color: "var(--text-primary)",
+                caretColor: "var(--accent-primary)",
+              }}
+              autoFocus
+              data-testid="agents-search-input"
+            />
+            {searchQuery !== "" && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 w-4 h-4 flex items-center justify-center rounded-sm transition-colors duration-100 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      <div
-        className="p-2 border-b shrink-0"
-        style={{ borderColor: "var(--border-subtle)" }}
-      >
+      <div className="px-4 pb-3 shrink-0">
         <Button
           type="button"
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2 h-8"
+          className="w-full justify-center gap-2 h-9 text-[13px] font-medium tracking-[-0.01em] border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors duration-150"
           onClick={onCreateAgent}
           disabled={projects.length === 0}
           data-testid="agents-new-agent"
+          style={{
+            background: "var(--accent-primary)",
+            color: "var(--text-inverse)",
+            boxShadow: "none",
+          }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.background = "var(--accent-primary)";
+          }}
         >
-          <Plus className="w-4 h-4" />
-          <span className="text-xs font-medium">New agent</span>
+          <Plus className="w-4 h-4" strokeWidth={2.5} />
+          <span>New agent</span>
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-2 border-t" style={{ borderColor: "var(--border-subtle)" }}>
         {projects.length === 0 ? (
           <div className="h-full px-5 flex flex-col items-center justify-center text-center gap-3">
             <div className="space-y-1">
@@ -306,17 +338,28 @@ function ProjectSessionGroup({
   }
 
   return (
-    <div className="px-2 py-1" data-testid={`agents-project-${project.id}`}>
+    <div className="mt-2" data-testid={`agents-project-${project.id}`}>
+      <div className="px-4">
       <div
-        className="w-full h-8 px-2 flex items-center gap-2 rounded-md"
+        className="group/project w-full min-h-9 px-3 py-2 flex items-center gap-2 rounded-md transition-colors duration-150"
         style={{
-          color: isFocused ? "var(--text-primary)" : "var(--text-secondary)",
-          background: isFocused ? "var(--bg-hover)" : "transparent",
+          color: isFocused ? "var(--text-primary)" : "var(--text-muted)",
+          background: isFocused ? "var(--overlay-faint)" : "transparent",
+        }}
+        onMouseEnter={(event) => {
+          if (!isFocused) {
+            event.currentTarget.style.background = "var(--overlay-faint)";
+          }
+        }}
+        onMouseLeave={(event) => {
+          if (!isFocused) {
+            event.currentTarget.style.background = "transparent";
+          }
         }}
       >
         <button
           type="button"
-          className="h-6 w-6 flex items-center justify-center rounded"
+          className="h-5 w-5 flex items-center justify-center rounded outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
           onClick={() => toggleProjectExpanded(project.id)}
           aria-label={expanded ? "Collapse project" : "Expand project"}
         >
@@ -333,7 +376,7 @@ function ProjectSessionGroup({
           onDoubleClick={() => toggleProjectExpanded(project.id)}
         >
           <Folder className="w-4 h-4 shrink-0" />
-          <span className="text-xs font-semibold truncate">{project.name}</span>
+          <span className="text-[12px] font-semibold tracking-[-0.01em] truncate">{project.name}</span>
         </button>
         {!expanded && activeRuntimeCount > 0 && (
           <span
@@ -347,17 +390,21 @@ function ProjectSessionGroup({
             {activeRuntimeCount}
           </span>
         )}
-        <div className="flex items-center gap-0.5 opacity-80">
+        <div
+          className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/project:opacity-100"
+          style={isFocused ? { opacity: 1 } : undefined}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={() => onQuickCreateAgent(project.id)}
                 disabled={isCreatingAgent}
                 aria-label={`New agent in ${project.name}`}
+                style={{ boxShadow: "none" }}
               >
                 <Plus className="w-3.5 h-3.5" />
               </Button>
@@ -374,8 +421,9 @@ function ProjectSessionGroup({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0"
+                    className="h-6 w-6 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                     aria-label="Project actions"
+                    style={{ boxShadow: "none" }}
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
                   </Button>
@@ -397,9 +445,10 @@ function ProjectSessionGroup({
           </DropdownMenu>
         </div>
       </div>
+      </div>
 
       {expanded && (
-        <div className="mt-1 ml-4 space-y-0.5">
+        <div className="mt-1 space-y-1">
           {visibleConversations.map((conversation) => {
             const rowKey = getAgentConversationStoreKey(conversation);
             const activeConversationId = activeConversationIds[rowKey] ?? null;
@@ -415,28 +464,53 @@ function ProjectSessionGroup({
             return (
               <div
                 key={conversation.id}
-                className="w-full min-h-9 px-2 py-1.5 flex items-start gap-2 rounded-md"
+                className="group/session relative w-full min-h-[46px] px-4 py-2.5 flex items-start gap-2 cursor-pointer transition-all duration-150 ease-out"
                 style={{
                   color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
-                  background: isSelected ? "var(--accent-muted)" : "transparent",
-                  border: isSelected
-                    ? "1px solid var(--accent-border)"
-                    : "1px solid transparent",
+                  background: isSelected
+                    ? withAlpha("var(--accent-primary)", 12)
+                    : "transparent",
+                  borderTop: "1px solid transparent",
+                  borderBottom: "1px solid transparent",
+                  borderLeft: isSelected ? "2px solid var(--accent-primary)" : "2px solid transparent",
+                  borderRight: "none",
                   opacity: conversation.archivedAt ? 0.58 : 1,
+                }}
+                onMouseEnter={(event) => {
+                  if (!isSelected) {
+                    event.currentTarget.style.background = "var(--overlay-faint)";
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  if (!isSelected) {
+                    event.currentTarget.style.background = "transparent";
+                  }
                 }}
                 data-testid={`agents-session-${conversation.id}`}
               >
                 <button
                   type="button"
-                  className="min-w-0 flex-1 flex items-start gap-2 text-left"
+                  className="min-w-0 flex-1 flex items-start gap-2 text-left outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
                   onClick={() => onSelectConversation(project.id, conversation)}
                 >
-                  <SessionStateGlyph isSelected={isSelected} isActiveRuntime={isActiveRuntime} status={agentStatus} />
-                  <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-medium truncate">{title}</span>
-                  <span className="block text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
-                    {statusLabel}
+                  <span
+                    className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150"
+                    style={{
+                      background: isSelected
+                        ? withAlpha("var(--accent-primary)", 15)
+                        : "var(--overlay-faint)",
+                      border: isSelected
+                        ? "1px solid var(--accent-border)"
+                        : "1px solid var(--overlay-faint)",
+                    }}
+                  >
+                    <SessionStateGlyph isSelected={isSelected} isActiveRuntime={isActiveRuntime} status={agentStatus} />
                   </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12px] font-medium tracking-[-0.01em] truncate">{title}</span>
+                    <span className="block text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
+                      {statusLabel}
+                    </span>
                   </span>
                 </button>
                 <DropdownMenu>
@@ -445,8 +519,12 @@ function ProjectSessionGroup({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 shrink-0"
+                      className="h-6 w-6 p-0 rounded shrink-0 border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 opacity-0 group-hover/session:opacity-100 data-[state=open]:opacity-100"
                       aria-label="Session actions"
+                      style={{
+                        boxShadow: "none",
+                        ...(isSelected ? { opacity: 1 } : {}),
+                      }}
                     >
                       <MoreHorizontal className="w-3.5 h-3.5" />
                     </Button>
@@ -476,7 +554,7 @@ function ProjectSessionGroup({
           })}
 
           {!conversations.isLoading && visibleConversations.length === 0 && !searchQuery && (
-            <div className="px-2 py-1.5 flex items-center gap-2">
+            <div className="px-4 py-2 flex items-center gap-2">
               <span className="text-[11px] min-w-0 flex-1" style={{ color: "var(--text-muted)" }}>
                 No chats yet.
               </span>
@@ -517,7 +595,7 @@ function SessionStateGlyph({
     if (status === "needs_approval") {
       return (
         <AlertTriangle
-          className="w-3.5 h-3.5 shrink-0 mt-0.5"
+          className="w-3.5 h-3.5 shrink-0"
           style={{ color: "var(--status-warning)" }}
         />
       );
@@ -526,7 +604,7 @@ function SessionStateGlyph({
     if (status === "failed" || status === "error") {
       return (
         <XCircle
-          className="w-3.5 h-3.5 shrink-0 mt-0.5"
+          className="w-3.5 h-3.5 shrink-0"
           style={{ color: "var(--status-error)" }}
         />
       );
@@ -535,7 +613,7 @@ function SessionStateGlyph({
     if (status === "completed") {
       return (
         <CheckCircle2
-          className="w-3.5 h-3.5 shrink-0 mt-0.5"
+          className="w-3.5 h-3.5 shrink-0"
           style={{ color: "var(--status-success)" }}
         />
       );
@@ -544,7 +622,7 @@ function SessionStateGlyph({
     if (status !== "idle") {
       return (
         <Circle
-          className="w-3 h-3 shrink-0 mt-1 fill-current"
+          className="w-3 h-3 shrink-0 fill-current"
           style={{ color: "var(--status-info)" }}
         />
       );
@@ -553,10 +631,10 @@ function SessionStateGlyph({
 
   return isSelected ? (
     <Circle
-      className="w-3 h-3 shrink-0 mt-1 fill-current"
+      className="w-3 h-3 shrink-0 fill-current"
       style={{ color: "var(--accent-primary)" }}
     />
   ) : (
-    <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+    <MessageSquare className="w-3.5 h-3.5 shrink-0" />
   );
 }
