@@ -378,7 +378,6 @@ function ProjectSessionGroup({
   const projectActionsWrapperRef = useRef<HTMLDivElement | null>(null);
   const projectActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [projectActionsOpen, setProjectActionsOpen] = useState(false);
-  const [projectActionsHovered, setProjectActionsHovered] = useState(false);
   const [projectActionsTooltipOpen, setProjectActionsTooltipOpen] = useState(false);
   const [projectActionsTooltipSuppressed, setProjectActionsTooltipSuppressed] =
     useState(false);
@@ -415,6 +414,7 @@ function ProjectSessionGroup({
 
       setProjectActionsTooltipOpen(false);
       setProjectActionsTooltipSuppressed(true);
+      projectActionsTriggerRef.current?.blur();
     };
 
     document.addEventListener("pointerdown", handlePointerDown, true);
@@ -496,15 +496,14 @@ function ProjectSessionGroup({
                   : "opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
               }`}
               data-testid={`agents-project-actions-${project.id}`}
-              onPointerEnter={() => setProjectActionsHovered(true)}
-              onPointerLeave={() => {
-                setProjectActionsHovered(false);
+              onPointerEnter={() => {
                 if (!projectActionsOpen) {
                   setProjectActionsTooltipSuppressed(false);
                 }
               }}
-              onBlurCapture={() => {
+              onPointerLeave={() => {
                 if (!projectActionsOpen) {
+                  setProjectActionsTooltipOpen(false);
                   setProjectActionsTooltipSuppressed(false);
                 }
               }}
@@ -515,10 +514,9 @@ function ProjectSessionGroup({
                   if (open) {
                     setProjectActionsTooltipOpen(false);
                     setProjectActionsTooltipSuppressed(true);
-                  } else if (!projectActionsHovered) {
-                    setProjectActionsTooltipSuppressed(false);
                   }
                   if (!open) {
+                    setProjectActionsTooltipOpen(false);
                     requestAnimationFrame(() => {
                       projectActionsTriggerRef.current?.blur();
                     });
@@ -526,7 +524,9 @@ function ProjectSessionGroup({
                 }}
               >
                 <Tooltip
-                  open={projectActionsTooltipOpen}
+                  open={
+                    projectActionsTooltipSuppressed ? false : projectActionsTooltipOpen
+                  }
                   onOpenChange={(open) => {
                     if (projectActionsTooltipSuppressed && open) {
                       return;
@@ -543,6 +543,7 @@ function ProjectSessionGroup({
                         size="sm"
                         className="h-5.5 w-5.5 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                         aria-label="Project actions"
+                        data-theme-button-skip="true"
                         style={{ boxShadow: "none" }}
                       >
                         <MoreHorizontal className="w-3.5 h-3.5" />
