@@ -388,28 +388,10 @@ export function AgentComposerSurface({
                 {...(project.endAction ? { endAction: project.endAction } : {})}
               />
 
-              <ComposerSelectPill
-                icon={Bot}
-                label="Provider"
-                value={provider.value}
-                onValueChange={(value) => provider.onValueChange(value as AgentProvider)}
-                placeholder="Select provider"
-                options={provider.options}
-                {...(provider.disabled !== undefined ? { disabled: provider.disabled } : {})}
-                {...(provider.testId ? { testId: provider.testId } : {})}
-                className={provider.className ?? "max-w-[172px] flex-none"}
-              />
-
-              <ComposerSelectPill
-                icon={Cpu}
-                label="Model"
-                value={model.value}
-                onValueChange={model.onValueChange}
-                placeholder="Select model"
-                options={model.options}
-                {...(model.disabled !== undefined ? { disabled: model.disabled } : {})}
-                {...(model.testId ? { testId: model.testId } : {})}
-                className={model.className ?? "max-w-[188px] flex-none"}
+              <ComposerDualSelectPill
+                provider={provider}
+                model={model}
+                className="max-w-[340px] flex-none"
               />
             </div>
 
@@ -473,6 +455,90 @@ interface ComposerSelectPillProps {
   endAction?: ReactNode;
 }
 
+interface ComposerSelectFieldProps {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: ComposerOption[];
+  placeholder: string;
+  testId?: string;
+  disabled?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  fieldClassName?: string;
+}
+
+function ComposerSelectField({
+  icon: Icon,
+  label,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  testId,
+  disabled = false,
+  onOpenChange,
+  fieldClassName,
+}: ComposerSelectFieldProps) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  return (
+    <div className={cn("flex min-w-0 items-center gap-2", fieldClassName)}>
+      <div
+        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
+        style={{ color: "var(--text-secondary)" }}
+      >
+        <Icon className="h-[13px] w-[13px]" />
+      </div>
+      <div className="min-w-0">
+        <div
+          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {label}
+        </div>
+        <Select
+          {...(value ? { value } : {})}
+          onValueChange={onValueChange}
+          disabled={disabled}
+          onOpenChange={(open) => {
+            onOpenChange?.(open);
+            if (!open) {
+              requestAnimationFrame(() => {
+                triggerRef.current?.blur();
+              });
+            }
+          }}
+        >
+          <SelectTrigger
+            ref={triggerRef}
+            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
+            style={{
+              color: value ? "var(--text-primary)" : "var(--text-secondary)",
+              boxShadow: "none",
+              outline: "none",
+              WebkitAppearance: "none",
+              appearance: "none",
+            }}
+            data-testid={testId}
+            data-theme-button-skip="true"
+            aria-label={label}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.id} value={option.id}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 function ComposerSelectPill({
   icon: Icon,
   label,
@@ -485,10 +551,13 @@ function ComposerSelectPill({
   className,
   endAction,
 }: ComposerSelectPillProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <div
       className={cn(
         "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5 transition-[border-color,box-shadow] focus-within:border-transparent focus-within:shadow-[0_0_0_1px_var(--accent-border)]",
+        isOpen && "border-transparent shadow-[0_0_0_1px_var(--accent-border)]",
         className
       )}
       style={{
@@ -496,48 +565,78 @@ function ComposerSelectPill({
         borderColor: "var(--overlay-weak)",
       }}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <div
-          className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          <Icon className="h-[13px] w-[13px]" />
-        </div>
-        <div className="min-w-0">
-          <div
-            className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
-            style={{ color: "var(--text-muted)" }}
-          >
-            {label}
-          </div>
-          <Select {...(value ? { value } : {})} onValueChange={onValueChange} disabled={disabled}>
-            <SelectTrigger
-              className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
-              style={{
-                color: value ? "var(--text-primary)" : "var(--text-secondary)",
-              }}
-              data-testid={testId}
-              data-theme-button-skip="true"
-              aria-label={label}
-            >
-              <SelectValue placeholder={placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <ComposerSelectField
+        icon={Icon}
+        label={label}
+        value={value}
+        onValueChange={onValueChange}
+        options={options}
+        placeholder={placeholder}
+        {...(testId ? { testId } : {})}
+        {...(disabled !== undefined ? { disabled } : {})}
+        onOpenChange={setIsOpen}
+      />
       {endAction && (
         <>
           <div className="h-6 w-px shrink-0" style={{ background: "var(--overlay-weak)" }} />
           <div className="shrink-0">{endAction}</div>
         </>
       )}
+    </div>
+  );
+}
+
+function ComposerDualSelectPill({
+  provider,
+  model,
+  className,
+}: {
+  provider: ProviderFieldConfig;
+  model: ModelFieldConfig;
+  className?: string;
+}) {
+  const [providerOpen, setProviderOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "inline-flex min-h-10 max-w-full items-center gap-3 rounded-[12px] border px-2.5 py-1.5 transition-[border-color,box-shadow] focus-within:border-transparent focus-within:shadow-[0_0_0_1px_var(--accent-border)]",
+        (providerOpen || modelOpen) && "border-transparent shadow-[0_0_0_1px_var(--accent-border)]",
+        className
+      )}
+      style={{
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+        borderColor: "var(--overlay-weak)",
+      }}
+    >
+      <ComposerSelectField
+        icon={Bot}
+        label="Provider"
+        value={provider.value}
+        onValueChange={(value) => provider.onValueChange(value as AgentProvider)}
+        options={provider.options}
+        placeholder="Select provider"
+        {...(provider.disabled !== undefined ? { disabled: provider.disabled } : {})}
+        {...(provider.testId ? { testId: provider.testId } : {})}
+        {...(provider.className ? { fieldClassName: provider.className } : {})}
+        onOpenChange={setProviderOpen}
+      />
+
+      <div className="h-6 w-px shrink-0" style={{ background: "var(--overlay-weak)" }} />
+
+      <ComposerSelectField
+        icon={Cpu}
+        label="Model"
+        value={model.value}
+        onValueChange={model.onValueChange}
+        options={model.options}
+        placeholder="Select model"
+        {...(model.disabled !== undefined ? { disabled: model.disabled } : {})}
+        {...(model.testId ? { testId: model.testId } : {})}
+        {...(model.className ? { fieldClassName: model.className } : {})}
+        onOpenChange={setModelOpen}
+      />
     </div>
   );
 }

@@ -1,4 +1,14 @@
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   AlertTriangle,
   Archive,
   Bot,
@@ -12,11 +22,10 @@ import {
   Plus,
   RotateCcw,
   Search,
-  Trash2,
   X,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -60,7 +69,7 @@ interface AgentsSidebarProps {
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onCreateAgent: () => void;
-  onRemoveProject: (projectId: string) => void;
+  onArchiveProject: (projectId: string) => void | Promise<void>;
   onArchiveConversation: (conversation: AgentConversation) => void;
   onRestoreConversation: (conversation: AgentConversation) => void;
   showArchived: boolean;
@@ -75,7 +84,7 @@ export function AgentsSidebar({
   onFocusProject,
   onSelectConversation,
   onCreateAgent,
-  onRemoveProject,
+  onArchiveProject,
   onArchiveConversation,
   onRestoreConversation,
   showArchived,
@@ -310,7 +319,7 @@ export function AgentsSidebar({
               searchQuery={normalizedSearch}
               onFocusProject={onFocusProject}
               onSelectConversation={onSelectConversation}
-              onRemoveProject={onRemoveProject}
+              onArchiveProject={onArchiveProject}
               onArchiveConversation={onArchiveConversation}
               onRestoreConversation={onRestoreConversation}
               showArchived={showArchived}
@@ -346,7 +355,7 @@ interface ProjectSessionGroupProps {
   searchQuery: string;
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
-  onRemoveProject: (projectId: string) => void;
+  onArchiveProject: (projectId: string) => void | Promise<void>;
   onArchiveConversation: (conversation: AgentConversation) => void;
   onRestoreConversation: (conversation: AgentConversation) => void;
   showArchived: boolean;
@@ -360,12 +369,20 @@ function ProjectSessionGroup({
   searchQuery,
   onFocusProject,
   onSelectConversation,
-  onRemoveProject,
+  onArchiveProject,
   onArchiveConversation,
   onRestoreConversation,
   showArchived,
   showAllProjects,
 }: ProjectSessionGroupProps) {
+  const projectActionsWrapperRef = useRef<HTMLDivElement | null>(null);
+  const projectActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [projectActionsOpen, setProjectActionsOpen] = useState(false);
+  const [projectActionsHovered, setProjectActionsHovered] = useState(false);
+  const [projectActionsTooltipOpen, setProjectActionsTooltipOpen] = useState(false);
+  const [projectActionsTooltipSuppressed, setProjectActionsTooltipSuppressed] =
+    useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
   const conversations = useProjectAgentConversations(project.id, showArchived, {
@@ -378,7 +395,7 @@ function ProjectSessionGroup({
     () => conversations.data ?? [],
     [conversations.data]
   );
-  const visibleConversationCount = visibleConversations.length;
+  const totalConversationCount = conversations.total;
   const activeRuntimeCount = visibleConversations.filter((conversation) => {
     const rowKey = getAgentConversationStoreKey(conversation);
     return (
@@ -386,6 +403,25 @@ function ProjectSessionGroup({
       (agentStatuses[rowKey] ?? "idle") !== "idle"
     );
   }).length;
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        projectActionsWrapperRef.current?.contains(event.target as Node) ??
+        false
+      ) {
+        return;
+      }
+
+      setProjectActionsTooltipOpen(false);
+      setProjectActionsTooltipSuppressed(true);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, []);
 
   if (
     !conversations.isLoading &&
@@ -429,14 +465,14 @@ function ProjectSessionGroup({
                 <span className="text-[11px] font-semibold tracking-[-0.01em] truncate">
                   {project.name}
                 </span>
-                {visibleConversationCount > 0 && (
+                {totalConversationCount > 0 && (
                   <span
                     className="shrink-0 text-[10px] font-medium leading-none"
                     style={{
                       color: isFocused ? "var(--accent-primary)" : "var(--text-muted)",
                     }}
                   >
-                    {visibleConversationCount}
+                    {totalConversationCount}
                   </span>
                 )}
               </span>
@@ -453,13 +489,55 @@ function ProjectSessionGroup({
               </span>
             )}
             <div
-              className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
+              ref={projectActionsWrapperRef}
+              className={`flex items-center gap-0.5 transition-opacity duration-150 ${
+                projectActionsOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
+              }`}
+              data-testid={`agents-project-actions-${project.id}`}
+              onPointerEnter={() => setProjectActionsHovered(true)}
+              onPointerLeave={() => {
+                setProjectActionsHovered(false);
+                if (!projectActionsOpen) {
+                  setProjectActionsTooltipSuppressed(false);
+                }
+              }}
+              onBlurCapture={() => {
+                if (!projectActionsOpen) {
+                  setProjectActionsTooltipSuppressed(false);
+                }
+              }}
             >
-              <DropdownMenu>
-                <Tooltip>
+              <DropdownMenu
+                onOpenChange={(open) => {
+                  setProjectActionsOpen(open);
+                  if (open) {
+                    setProjectActionsTooltipOpen(false);
+                    setProjectActionsTooltipSuppressed(true);
+                  } else if (!projectActionsHovered) {
+                    setProjectActionsTooltipSuppressed(false);
+                  }
+                  if (!open) {
+                    requestAnimationFrame(() => {
+                      projectActionsTriggerRef.current?.blur();
+                    });
+                  }
+                }}
+              >
+                <Tooltip
+                  open={projectActionsTooltipOpen}
+                  onOpenChange={(open) => {
+                    if (projectActionsTooltipSuppressed && open) {
+                      return;
+                    }
+                    setProjectActionsTooltipOpen(open);
+                  }}
+                >
                   <TooltipTrigger asChild>
                     <DropdownMenuTrigger asChild>
                       <Button
+                        ref={projectActionsTriggerRef}
                         type="button"
                         variant="ghost"
                         size="sm"
@@ -478,15 +556,40 @@ function ProjectSessionGroup({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     className="gap-2 text-xs"
-                    onClick={() => onRemoveProject(project.id)}
+                    onClick={() => setArchiveDialogOpen(true)}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Remove project
+                    <Archive className="w-3.5 h-3.5" />
+                    Archive project
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
+
+          <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Archive project?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes <span className="font-medium">{project.name}</span> from the
+                  sidebar without deleting it. You can add the same repository again later
+                  from the normal project flow.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setArchiveDialogOpen(false);
+                    void onArchiveProject(project.id);
+                  }}
+                  variant="destructive"
+                >
+                  Archive project
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {expanded && (
             <div className="mt-0.5 ml-5 space-y-0.5">
@@ -593,12 +696,12 @@ function ProjectSessionGroup({
                   <div className="py-0.5">
                     <button
                       type="button"
-                      className="text-[11px] font-medium transition-colors"
+                      className="inline-flex items-center pl-[26px] text-[10.75px] font-medium transition-colors"
                       onClick={() => void conversations.fetchNextPage()}
                       disabled={conversations.isFetchingNextPage}
                       data-testid={`agents-load-more-${project.id}`}
                       style={{
-                        color: "var(--accent-primary)",
+                        color: "var(--text-muted)",
                         opacity: conversations.isFetchingNextPage ? 0.7 : 1,
                       }}
                     >

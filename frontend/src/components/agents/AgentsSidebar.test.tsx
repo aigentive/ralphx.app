@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import userEvent from "@testing-library/user-event";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/stores/chatStore";
@@ -12,6 +14,7 @@ import { AgentsSidebar } from "./AgentsSidebar";
 type ConversationsResult = {
   data: AgentConversation[];
   isLoading: boolean;
+  total?: number;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   fetchNextPage?: () => Promise<unknown>;
@@ -23,13 +26,23 @@ const { conversationsByProject } = vi.hoisted(() => ({
 
 vi.mock("./useProjectAgentConversations", () => ({
   useProjectAgentConversations: (projectId: string | null | undefined) =>
-    conversationsByProject.get(projectId ?? "") ?? {
-      data: [],
-      isLoading: false,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-    },
+    (() => {
+      const result = conversationsByProject.get(projectId ?? "");
+      if (result) {
+        return {
+          ...result,
+          total: result.total ?? result.data.length,
+        };
+      }
+      return {
+        data: [],
+        isLoading: false,
+        total: 0,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      };
+    })(),
 }));
 
 const project = (overrides: Partial<Project> = {}): Project => ({
@@ -72,9 +85,12 @@ const conversation = (
   ...overrides,
 });
 
-function renderSidebar(projects: Project[] = [project()]) {
+function renderSidebar(
+  projects: Project[] = [project()],
+  props?: Partial<ComponentProps<typeof AgentsSidebar>>
+) {
   return render(
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <AgentsSidebar
         projects={projects}
         focusedProjectId="project-1"
@@ -82,11 +98,12 @@ function renderSidebar(projects: Project[] = [project()]) {
         onFocusProject={vi.fn()}
         onSelectConversation={vi.fn()}
         onCreateAgent={vi.fn()}
-        onRemoveProject={vi.fn()}
+        onArchiveProject={vi.fn()}
         onArchiveConversation={vi.fn()}
         onRestoreConversation={vi.fn()}
         showArchived={false}
         onShowArchivedChange={vi.fn()}
+        {...props}
       />
     </TooltipProvider>
   );
@@ -162,6 +179,21 @@ describe("AgentsSidebar", () => {
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the backend total session count rather than the loaded page size", () => {
+    conversationsByProject.set("project-1", {
+      data: [conversation({ id: "conversation-1" }), conversation({ id: "conversation-2" })],
+      total: 11,
+      isLoading: false,
+      hasNextPage: true,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar();
+
+    expect(screen.getByText("11")).toBeInTheDocument();
+  });
+
   it("hides empty projects by default", () => {
     conversationsByProject.set("project-1", {
       data: [],
@@ -229,5 +261,61 @@ describe("AgentsSidebar", () => {
       "agents-project-project-1",
       "agents-project-project-2",
     ]);
+  });
+
+  it("keeps project actions visible while open and confirms before archiving", () => {
+    const onArchiveProject = vi.fn();
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      total: 6,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()], { onArchiveProject });
+
+    const actions = screen.getByTestId("agents-project-actions-project-1");
+    const trigger = within(actions).getByRole("button", { name: "Project actions" });
+
+    fireEvent.pointerDown(trigger);
+
+    expect(actions.className).toContain("opacity-100");
+
+    fireEvent.click(screen.getByText("Archive project"));
+
+    expect(screen.getByText("Archive project?")).toBeInTheDocument();
+    expect(onArchiveProject).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+
+    expect(onArchiveProject).toHaveBeenCalledWith("project-1");
+  });
+
+  it("dismisses the project actions tooltip after clicking outside the menu", async () => {
+    const user = userEvent.setup();
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      total: 6,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()]);
+
+    const actions = screen.getByTestId("agents-project-actions-project-1");
+    const trigger = within(actions).getByRole("button", { name: "Project actions" });
+
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Project actions");
+
+    fireEvent.pointerDown(trigger);
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });
