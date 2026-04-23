@@ -94,9 +94,17 @@ export function AgentsArtifactPane({
   const conversationQuery = useConversation(conversation?.id ?? null, {
     enabled: !!conversation?.id,
   });
+  const conversationData = conversationQuery.data;
+  const conversationMessages = useMemo(
+    () =>
+      conversationData && conversationData.conversation?.id === conversation?.id
+        ? conversationData.messages
+        : [],
+    [conversationData, conversation?.id],
+  );
   const attachedSessionId = useMemo(
-    () => resolveAttachedIdeationSessionId(conversation, conversationQuery.data?.messages ?? []),
-    [conversation, conversationQuery.data?.messages],
+    () => resolveAttachedIdeationSessionId(conversation, conversationMessages),
+    [conversation, conversationMessages],
   );
   const sessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedSessionId ?? ""),
@@ -515,7 +523,11 @@ function TaskArtifactSurface({
 
   return (
     <div className="h-full min-h-[520px] overflow-hidden bg-[var(--bg-base)]">
-      <TaskGraphView projectId={projectId} ideationSessionId={sessionId} />
+      <TaskGraphView
+        projectId={projectId}
+        ideationSessionId={sessionId}
+        hideCanvasControls
+      />
     </div>
   );
 }

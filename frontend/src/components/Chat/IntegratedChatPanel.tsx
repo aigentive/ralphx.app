@@ -538,17 +538,35 @@ export function IntegratedChatPanel({
     ideationSessionId && !isTeammateTab
       ? ideationConversationHistory.data
       : activeConversation.data;
+  const currentPrimaryConversationData =
+    activeConversationId &&
+    primaryConversationData &&
+    (!primaryConversationData.conversation?.id ||
+      primaryConversationData.conversation.id === activeConversationId)
+      ? primaryConversationData
+      : null;
+  const currentTeammateConversationData =
+    teammateConversationId &&
+    teammateConversation.data &&
+    (!teammateConversation.data.conversation?.id ||
+      teammateConversation.data.conversation.id === teammateConversationId)
+      ? teammateConversation.data
+      : null;
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = isTeammateTab
-    ? teammateConversation.data?.conversation
-    : (primaryConversationData?.conversation ?? regularChatData.messages.data?.conversation);
+    ? currentTeammateConversationData?.conversation
+    : (
+      currentPrimaryConversationData?.conversation ??
+      conversationsData?.find((conversation) => conversation.id === activeConversationId)
+    );
   const isConversationInCurrentContext = useMemo(
     () =>
+      Boolean(currentPrimaryConversationData && !currentPrimaryConversationData.conversation) ||
       (activeConversationContext?.contextType === currentContextType ||
        (currentContextType === "task" && activeConversationContext?.contextType === "task_execution")) &&
       activeConversationContext?.contextId === currentContextId,
-    [activeConversationContext?.contextType, activeConversationContext?.contextId,
+    [currentPrimaryConversationData, activeConversationContext?.contextType, activeConversationContext?.contextId,
      currentContextType, currentContextId]
   );
 
@@ -607,8 +625,8 @@ export function IntegratedChatPanel({
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
   const activeConversationMeta = useMemo(() => {
     const queriedConversation = isTeammateTab
-      ? teammateConversation.data?.conversation
-      : primaryConversationData?.conversation;
+      ? currentTeammateConversationData?.conversation
+      : currentPrimaryConversationData?.conversation;
 
     if (queriedConversation) {
       return queriedConversation;
@@ -621,8 +639,8 @@ export function IntegratedChatPanel({
     );
   }, [
     isTeammateTab,
-    teammateConversation.data?.conversation,
-    primaryConversationData?.conversation,
+    currentTeammateConversationData?.conversation,
+    currentPrimaryConversationData?.conversation,
     conversationsData,
     effectiveConversationId,
   ]);
@@ -632,18 +650,18 @@ export function IntegratedChatPanel({
   const messagesData = useMemo(
     () => {
       if (isTeammateTab) {
-        return teammateConversation.data?.messages ?? [];
+        return currentTeammateConversationData?.messages ?? [];
       }
-      return activeConversationId && isConversationInCurrentContext
-        ? (primaryConversationData?.messages ?? [])
+      return activeConversationId && isConversationInCurrentContext && currentPrimaryConversationData
+        ? currentPrimaryConversationData.messages
         : [];
     },
     [
       isTeammateTab,
-      teammateConversation.data?.messages,
+      currentTeammateConversationData?.messages,
       activeConversationId,
       isConversationInCurrentContext,
-      primaryConversationData?.messages,
+      currentPrimaryConversationData,
     ]
   );
 
