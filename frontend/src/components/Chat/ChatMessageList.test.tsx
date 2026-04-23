@@ -413,6 +413,48 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(firstVirtuoso).toBeTruthy();
       expect(secondVirtuoso).toBeTruthy();
     });
+
+    it("does not treat a historical trailing user message as a fresh append on conversation open", () => {
+      vi.useFakeTimers();
+      const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+        cb(0);
+        return 1;
+      });
+      const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+      const historicalMessages: ChatMessageData[] = [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "Earlier reply",
+          createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "user-2",
+          role: "user",
+          content: "Last historical user message",
+          createdAt: new Date(2026, 0, 1, 12, 1).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          conversationId="conv-history"
+          messages={historicalMessages}
+        />
+      );
+
+      expect(mockScrollToBottom).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    });
   });
 
   describe("history mode (timestamp scroll)", () => {

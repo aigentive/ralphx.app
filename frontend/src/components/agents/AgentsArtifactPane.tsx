@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { ExportPlanDialog } from "@/components/Ideation/ExportPlanDialog";
 import { PlanDisplay } from "@/components/Ideation/PlanDisplay";
 import type { TeamMetadata } from "@/components/Ideation/PlanDisplay";
@@ -151,13 +152,16 @@ export function AgentsArtifactPane({
       data-testid="agents-artifact-pane"
     >
       <div
+        data-testid="agents-artifact-tab-row"
         className="h-11 px-4 flex items-center gap-0 border-b shrink-0"
         style={{
-          backgroundColor: "color-mix(in srgb, var(--text-primary) 2%, transparent)",
+          background: withAlpha("var(--bg-surface)", 60),
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
           borderColor: "var(--border-subtle)",
         }}
       >
-        <div className="flex items-center gap-0 min-w-0">
+        <div className="flex h-full items-stretch gap-0 min-w-0 self-stretch">
           {ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
             const isActive = activeTab === id;
             const count = id === "proposal" ? proposalCount : 0;
@@ -168,63 +172,60 @@ export function AgentsArtifactPane({
                 verificationState === "imported_verified" ||
                 verificationState === "needs_revision");
             return (
-              <Tooltip key={id}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => onTabChange(id)}
+              <button
+                key={id}
+                type="button"
+                onClick={() => onTabChange(id)}
+                className={cn(
+                  "relative flex h-full self-stretch items-center gap-1.5 bg-transparent px-3 text-[12px] font-medium transition-colors duration-150 rounded-none shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 appearance-none",
+                  id === "tasks" ? "hidden xl:flex" : ""
+                )}
+                style={{
+                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                  background: "transparent",
+                  boxShadow: "none",
+                }}
+                data-testid={`agents-artifact-tab-${id}`}
+                data-theme-button-skip="true"
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{label}</span>
+                {showVerificationDot && (
+                  <span
                     className={cn(
-                      "relative h-11 px-3 flex items-center gap-1.5 text-[12px] font-medium transition-colors duration-150",
-                      id === "tasks" ? "hidden xl:flex" : ""
+                      "w-2 h-2 rounded-full shrink-0",
+                      verificationInProgress ? "animate-pulse" : ""
                     )}
                     style={{
-                      color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                      background:
+                        verificationState === "needs_revision"
+                          ? "var(--status-warning)"
+                          : verificationState === "verified" || verificationState === "imported_verified"
+                            ? "var(--status-success)"
+                            : "var(--accent-primary)",
                     }}
-                    data-testid={`agents-artifact-tab-${id}`}
+                  />
+                )}
+                {count > 0 && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{
+                      background: isActive
+                        ? withAlpha("var(--accent-primary)", 15)
+                        : "var(--overlay-weak)",
+                      color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
+                    }}
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{label}</span>
-                    {showVerificationDot && (
-                      <span
-                        className={cn(
-                          "w-2 h-2 rounded-full shrink-0",
-                          verificationInProgress ? "animate-pulse" : ""
-                        )}
-                        style={{
-                          background:
-                            verificationState === "needs_revision"
-                              ? "var(--status-warning)"
-                              : verificationState === "verified" || verificationState === "imported_verified"
-                                ? "var(--status-success)"
-                                : "var(--accent-primary)",
-                        }}
-                      />
-                    )}
-                    {count > 0 && (
-                      <span
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                        style={{
-                          background: isActive
-                            ? "color-mix(in srgb, var(--accent-primary) 15%, transparent)"
-                            : "var(--bg-hover)",
-                          color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
-                        }}
-                      >
-                        {count}
-                      </span>
-                    )}
-                    {isActive && (
-                      <span
-                        className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                        style={{ background: "var(--accent-primary)" }}
-                      />
-                    )}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs">
-                  {label}
-                </TooltipContent>
-              </Tooltip>
+                    {count}
+                  </span>
+                )}
+                {isActive && (
+                  <span
+                    className="absolute -bottom-px left-3 right-3 h-[2px] rounded-full"
+                    style={{ background: "var(--accent-primary)" }}
+                  />
+                )}
+              </button>
             );
           })}
         </div>

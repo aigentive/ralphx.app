@@ -229,12 +229,22 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const preferredScrollBehavior = shouldUseWebkitSafeScrollBehavior()
       ? "auto"
       : "smooth";
+    const lastMessage = messages[messages.length - 1] ?? null;
+    const lastUserMessageId = lastMessage?.role === "user" ? lastMessage.id : null;
 
     // Internal ref for scroll operations
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const hasScrolledRef = useRef<string | null>(null);
     // Track previous shouldFilterLastAssistant to detect false→true→false transition
     const prevShouldFilterRef = useRef(false);
+    const bottomPinRafIdsRef = useRef<number[]>([]);
+    const bottomPinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastUserMessageIdRef = useRef<string | null>(lastUserMessageId);
+    const agentRunningRef = useRef(isAgentRunning);
+    const conversationLastUserMessageIdRef = useRef<string | null>(lastUserMessageId);
+    conversationLastUserMessageIdRef.current = lastUserMessageId;
+    const conversationAgentRunningRef = useRef(isAgentRunning);
+    conversationAgentRunningRef.current = isAgentRunning;
     // rAF reconciliation refs — used to keep isAtBottom accurate when footer grows
     const scrollerElRef = useRef<HTMLElement | null>(null);
     const reconcileRafRef = useRef<number | null>(null);
@@ -391,36 +401,80 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const scheduleBottomPin = useCallback(
       (reason: string) => {
         logger.debug(`[ChatScroll] scheduleBottomPin: ${reason}`);
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
+        for (const rafId of bottomPinRafIdsRef.current) {
+          cancelAnimationFrame(rafId);
+        }
+        bottomPinRafIdsRef.current = [];
+        if (bottomPinTimeoutRef.current) {
+          clearTimeout(bottomPinTimeoutRef.current);
+          bottomPinTimeoutRef.current = null;
+        }
+
+        const outerRafId = requestAnimationFrame(() => {
+          bottomPinRafIdsRef.current = bottomPinRafIdsRef.current.filter((id) => id !== outerRafId);
+
+          const innerRafId = requestAnimationFrame(() => {
+            bottomPinRafIdsRef.current = bottomPinRafIdsRef.current.filter((id) => id !== innerRafId);
             scrollToTrueBottom("smooth");
             // Second pass catches footer that grows in the same tick.
-            setTimeout(() => scrollToTrueBottom("smooth"), 120);
+            bottomPinTimeoutRef.current = setTimeout(() => {
+              bottomPinTimeoutRef.current = null;
+              scrollToTrueBottom("smooth");
+            }, 120);
           });
+
+          bottomPinRafIdsRef.current.push(innerRafId);
         });
+
+        bottomPinRafIdsRef.current.push(outerRafId);
       },
       [scrollToTrueBottom]
     );
 
-    // Trigger 1: new user message appended → always jump to true bottom.
-    const prevLastUserIdRef = useRef<string | null>(null);
     useEffect(() => {
-      if (messages.length === 0) return;
-      const last = messages[messages.length - 1];
-      if (!last || last.role !== "user") return;
-      if (prevLastUserIdRef.current === last.id) return;
-      prevLastUserIdRef.current = last.id;
-      scheduleBottomPin(`new user message id=${last.id}`);
-    }, [messages, scheduleBottomPin]);
+      return () => {
+        for (const rafId of bottomPinRafIdsRef.current) {
+          cancelAnimationFrame(rafId);
+        }
+        bottomPinRafIdsRef.current = [];
+        if (bottomPinTimeoutRef.current) {
+          clearTimeout(bottomPinTimeoutRef.current);
+          bottomPinTimeoutRef.current = null;
+        }
+      };
+    }, []);
+
+    useEffect(() => {
+      for (const rafId of bottomPinRafIdsRef.current) {
+        cancelAnimationFrame(rafId);
+      }
+      bottomPinRafIdsRef.current = [];
+      if (bottomPinTimeoutRef.current) {
+        clearTimeout(bottomPinTimeoutRef.current);
+        bottomPinTimeoutRef.current = null;
+      }
+      lastUserMessageIdRef.current = conversationLastUserMessageIdRef.current;
+      agentRunningRef.current = conversationAgentRunningRef.current;
+    }, [conversationId]);
+
+    // Trigger 1: new user message appended → always jump to true bottom.
+    useEffect(() => {
+      if (!lastUserMessageId) {
+        lastUserMessageIdRef.current = null;
+        return;
+      }
+      if (lastUserMessageIdRef.current === lastUserMessageId) return;
+      lastUserMessageIdRef.current = lastUserMessageId;
+      scheduleBottomPin(`new user message id=${lastUserMessageId}`);
+    }, [lastUserMessageId, scheduleBottomPin]);
 
     // Trigger 2: streaming starts (transition false → true). User just-sent a
     // message expects the agent's first tokens to appear at bottom of viewport.
-    const prevIsAgentRunningRef = useRef(false);
     useEffect(() => {
-      if (isAgentRunning && !prevIsAgentRunningRef.current) {
+      if (isAgentRunning && !agentRunningRef.current) {
         scheduleBottomPin("streaming started");
       }
-      prevIsAgentRunningRef.current = isAgentRunning;
+      agentRunningRef.current = isAgentRunning;
     }, [isAgentRunning, scheduleBottomPin]);
 
     // Keep scrollToTimestamp accessible via ref (avoids stale closure in ResizeObserver callback)
