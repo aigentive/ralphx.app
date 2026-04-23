@@ -152,6 +152,10 @@ async function handleMcpRequest(req, res, keyContext, _config) {
         sendError(res, 405, "Method not allowed — new sessions require POST");
         return;
     }
+    if (!isInitializeRequest(parsedBody)) {
+        sendJsonRpcServerError(res, jsonRpcIdFromBody(parsedBody), "Server not initialized — send initialize before other MCP requests");
+        return;
+    }
     // Create new MCP server + transport per session (stateful mode)
     const server = createMcpServer();
     // Register tools with key context provider
@@ -324,6 +328,37 @@ function sendJsonRpcParseError(res) {
         "Content-Length": Buffer.byteLength(body),
     });
     res.end(body);
+}
+function sendJsonRpcServerError(res, id, message) {
+    const body = JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        error: {
+            code: -32000,
+            message,
+        },
+    });
+    res.writeHead(400, {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+    });
+    res.end(body);
+}
+function isInitializeRequest(body) {
+    if (Array.isArray(body)) {
+        return body.some(isInitializeRequest);
+    }
+    if (!body || typeof body !== "object") {
+        return false;
+    }
+    return body.method === "initialize";
+}
+function jsonRpcIdFromBody(body) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return null;
+    }
+    const id = body.id;
+    return typeof id === "string" || typeof id === "number" ? id : null;
 }
 async function handleInvalidateCache(req, res) {
     const body = await readJsonBody(req);
