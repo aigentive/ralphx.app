@@ -4,6 +4,7 @@ import {
   parseContentBlocks,
   parseToolCalls,
   listConversations,
+  listConversationsPage,
   getConversation,
   getConversationMessagesPage,
   getConversationStats,
@@ -98,6 +99,58 @@ describe("chat api", () => {
       upstreamProvider: null,
       providerProfile: null,
       claudeSessionId: null,
+    });
+  });
+
+  it("lists paginated conversations with server-side search", async () => {
+    mockInvoke.mockResolvedValue({
+      conversations: [
+        {
+          id: "c-page-1",
+          context_type: "project",
+          context_id: "p-page",
+          claude_session_id: null,
+          provider_session_id: "thread-page",
+          provider_harness: "codex",
+          title: "Fix sidebar pagination",
+          message_count: 2,
+          last_message_at: null,
+          created_at: "2026-01-24T10:00:00Z",
+          updated_at: "2026-01-24T10:00:00Z",
+        },
+      ],
+      limit: 6,
+      offset: 6,
+      total: 11,
+      has_more: true,
+    });
+
+    const result = await listConversationsPage(
+      "project",
+      "p-page",
+      6,
+      6,
+      false,
+      "sidebar"
+    );
+
+    expect(mockInvoke).toHaveBeenCalledWith("list_agent_conversations_page", {
+      contextType: "project",
+      contextId: "p-page",
+      includeArchived: false,
+      limit: 6,
+      offset: 6,
+      search: "sidebar",
+    });
+    expect(result).toMatchObject({
+      limit: 6,
+      offset: 6,
+      total: 11,
+      hasMore: true,
+    });
+    expect(result.conversations[0]).toMatchObject({
+      id: "c-page-1",
+      providerHarness: "codex",
     });
   });
 

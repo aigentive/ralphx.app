@@ -12,6 +12,7 @@ import {
   mockGetConversation,
   mockGetConversationStats,
   mockListConversations,
+  mockListConversationsPage,
 } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
@@ -144,6 +145,39 @@ const commandHandlers: Record<
       args.contextType as ContextType,
       args.contextId as string
     ),
+  list_agent_conversations_page: async (args) => {
+    const response = await mockListConversationsPage(
+      args.contextType as ContextType,
+      args.contextId as string,
+      args.limit as number,
+      (args.offset as number | undefined) ?? 0,
+      (args.includeArchived as boolean | undefined) ?? false,
+      args.search as string | undefined
+    );
+
+    return {
+      conversations: response.conversations.map((conversation) => ({
+        id: conversation.id,
+        context_type: conversation.contextType,
+        context_id: conversation.contextId,
+        claude_session_id: conversation.claudeSessionId,
+        provider_session_id: conversation.providerSessionId,
+        provider_harness: conversation.providerHarness,
+        upstream_provider: conversation.upstreamProvider,
+        provider_profile: conversation.providerProfile,
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        last_message_at: conversation.lastMessageAt,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+        archived_at: conversation.archivedAt,
+      })),
+      limit: response.limit,
+      offset: response.offset,
+      total: response.total,
+      has_more: response.hasMore,
+    };
+  },
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
   get_agent_conversation_stats: async (args) => {

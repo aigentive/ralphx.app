@@ -159,6 +159,14 @@ export interface QueuedMessageResponse {
   isEditing: boolean;
 }
 
+export interface ConversationListPageResponse {
+  conversations: ChatConversation[];
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+}
+
 /**
  * A streaming task in the active state HTTP response from GET /api/conversations/:id/active-state.
  * Mirrors the Rust ActiveStreamingTask struct (snake_case — no rename_all on the Rust struct).
@@ -341,6 +349,14 @@ const ChatConversationResponseSchema = z.object({
   archived_at: z.string().nullable().optional(),
 });
 
+const ConversationListPageResponseSchema = z.object({
+  conversations: z.array(ChatConversationResponseSchema),
+  limit: z.number(),
+  offset: z.number(),
+  total: z.number(),
+  has_more: z.boolean(),
+});
+
 const AgentRunResponseSchema = z.object({
   id: z.string(),
   conversation_id: z.string(),
@@ -353,6 +369,7 @@ const AgentRunResponseSchema = z.object({
 });
 
 type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
+type RawConversationListPage = z.infer<typeof ConversationListPageResponseSchema>;
 type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
 
 function transformConversation(raw: RawConversation): ChatConversation {
@@ -375,6 +392,18 @@ function transformConversation(raw: RawConversation): ChatConversation {
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     archivedAt: raw.archived_at ?? null,
+  };
+}
+
+function transformConversationListPage(
+  raw: RawConversationListPage
+): ConversationListPageResponse {
+  return {
+    conversations: raw.conversations.map(transformConversation),
+    limit: raw.limit,
+    offset: raw.offset,
+    total: raw.total,
+    hasMore: raw.has_more,
   };
 }
 
@@ -653,6 +682,33 @@ export async function listConversations(
 }
 
 /**
+ * List a page of conversations for a given context with optional title search.
+ */
+export async function listConversationsPage(
+  contextType: ContextType,
+  contextId: string,
+  limit: number,
+  offset = 0,
+  includeArchived = false,
+  search?: string
+): Promise<ConversationListPageResponse> {
+  const normalizedSearch = search?.trim();
+  const raw = await typedInvoke(
+    "list_agent_conversations_page",
+    {
+      contextType,
+      contextId,
+      includeArchived,
+      limit,
+      offset,
+      ...(normalizedSearch ? { search: normalizedSearch } : {}),
+    },
+    ConversationListPageResponseSchema
+  );
+  return transformConversationListPage(raw);
+}
+
+/**
  * Get a conversation with its messages
  * @param conversationId The conversation ID
  * @returns The conversation with messages
@@ -825,6 +881,7 @@ function transformQueuedMessage(raw: RawQueuedMessage): QueuedMessageResponse {
 export const chatApi = {
   // Conversation management
   listConversations,
+  listConversationsPage,
   getConversation,
   getConversationMessagesPage,
   getConversationStats,

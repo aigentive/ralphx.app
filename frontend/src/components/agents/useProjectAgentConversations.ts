@@ -1,38 +1,68 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { chatApi } from "@/api/chat";
-import {
-  sortAgentConversations,
-  toProjectAgentConversation,
-  type AgentConversation,
-} from "./agentConversations";
+import { toProjectAgentConversation } from "./agentConversations";
+
+export const AGENT_CONVERSATIONS_PAGE_SIZE = 6;
 
 export const agentConversationKeys = {
   all: ["agents", "project-conversations"] as const,
   project: (projectId: string) => [...agentConversationKeys.all, projectId] as const,
-  projectList: (projectId: string, includeArchived: boolean) =>
-    [...agentConversationKeys.project(projectId), "archived", includeArchived] as const,
+  projectList: (projectId: string, includeArchived: boolean, search = "") =>
+    [
+      ...agentConversationKeys.project(projectId),
+      "archived",
+      includeArchived,
+      "search",
+      search.trim().toLowerCase(),
+    ] as const,
 };
 
 export function useProjectAgentConversations(
   projectId: string | null | undefined,
-  includeArchived = false
+  includeArchived = false,
+  options?: { search?: string; enabled?: boolean }
 ) {
-  return useQuery<AgentConversation[]>({
-    queryKey: agentConversationKeys.projectList(projectId ?? "", includeArchived),
-    queryFn: async () => {
+  const normalizedSearch = options?.search?.trim() ?? "";
+
+  const query = useInfiniteQuery({
+    queryKey: agentConversationKeys.projectList(
+      projectId ?? "",
+      includeArchived,
+      normalizedSearch
+    ),
+    queryFn: async ({ pageParam = 0 }) => {
       const targetProjectId = projectId ?? "";
-      const projectConversations = await chatApi.listConversations(
+      const page = await chatApi.listConversationsPage(
         "project",
         targetProjectId,
-        includeArchived
+        AGENT_CONVERSATIONS_PAGE_SIZE,
+        pageParam,
+        includeArchived,
+        normalizedSearch || undefined
       );
 
-      return sortAgentConversations([
-        ...projectConversations.map(toProjectAgentConversation),
-      ]);
+      return {
+        ...page,
+        conversations: page.conversations.map(toProjectAgentConversation),
+      };
     },
-    enabled: Boolean(projectId),
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore
+        ? lastPage.offset + lastPage.conversations.length
+        : undefined,
+    initialPageParam: 0,
+    enabled: Boolean(projectId) && (options?.enabled ?? true),
     staleTime: 5_000,
   });
+
+  const conversations = query.data?.pages.flatMap((page) => page.conversations) ?? [];
+  const total = query.data?.pages[0]?.total ?? 0;
+
+  return {
+    ...query,
+    data: conversations,
+    conversations,
+    total,
+  };
 }

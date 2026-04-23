@@ -14,7 +14,7 @@ use crate::domain::entities::{
     AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
     ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
-use crate::domain::repositories::ChatConversationRepository;
+use crate::domain::repositories::{ChatConversationPage, ChatConversationRepository};
 use crate::error::AppResult;
 use crate::infrastructure::sqlite::DbConnection;
 
@@ -255,6 +255,110 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(conversations)
         }).await
+    }
+
+    async fn get_by_context_page_filtered(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        include_archived: bool,
+        offset: u32,
+        limit: u32,
+        search: Option<&str>,
+    ) -> AppResult<ChatConversationPage> {
+        let context_type_str = context_type.to_string();
+        let context_id_str = context_id.to_string();
+        let normalized_search = search
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_lowercase());
+
+        self.db
+            .run(move |conn| {
+                let archived_filter = if include_archived {
+                    ""
+                } else {
+                    " AND archived_at IS NULL"
+                };
+                let search_filter = if normalized_search.is_some() {
+                    " AND LOWER(COALESCE(title, 'Untitled agent')) LIKE ?3"
+                } else {
+                    ""
+                };
+
+                let count_sql = format!(
+                    "SELECT COUNT(*)
+                     FROM chat_conversations
+                     WHERE context_type = ?1 AND context_id = ?2{}{}",
+                    archived_filter, search_filter
+                );
+                let list_sql = format!(
+                    "SELECT id, context_type, context_id, claude_session_id, provider_session_id,
+                            provider_harness, upstream_provider, provider_profile, title, message_count, last_message_at, created_at,
+                            updated_at, archived_at, parent_conversation_id, attribution_backfill_status,
+                            attribution_backfill_source, attribution_backfill_source_path,
+                            attribution_backfill_last_attempted_at, attribution_backfill_completed_at,
+                            attribution_backfill_error_summary
+                     FROM chat_conversations
+                     WHERE context_type = ?1 AND context_id = ?2{}{}
+                     ORDER BY created_at DESC
+                     LIMIT ?{} OFFSET ?{}",
+                    archived_filter,
+                    search_filter,
+                    if normalized_search.is_some() { 4 } else { 3 },
+                    if normalized_search.is_some() { 5 } else { 4 }
+                );
+
+                let total_count = if let Some(search_term) = normalized_search.as_deref() {
+                    let search_pattern = format!("%{search_term}%");
+                    conn.query_row(
+                        &count_sql,
+                        rusqlite::params![&context_type_str, &context_id_str, &search_pattern],
+                        |row| row.get::<_, i64>(0),
+                    )?
+                } else {
+                    conn.query_row(
+                        &count_sql,
+                        rusqlite::params![&context_type_str, &context_id_str],
+                        |row| row.get::<_, i64>(0),
+                    )?
+                };
+
+                let mut stmt = conn.prepare(&list_sql)?;
+                let conversations = if let Some(search_term) = normalized_search.as_deref() {
+                    let search_pattern = format!("%{search_term}%");
+                    stmt.query_map(
+                        rusqlite::params![
+                            &context_type_str,
+                            &context_id_str,
+                            &search_pattern,
+                            i64::from(limit),
+                            i64::from(offset)
+                        ],
+                        row_to_conversation,
+                    )?
+                    .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    stmt.query_map(
+                        rusqlite::params![
+                            &context_type_str,
+                            &context_id_str,
+                            i64::from(limit),
+                            i64::from(offset)
+                        ],
+                        row_to_conversation,
+                    )?
+                    .collect::<Result<Vec<_>, _>>()?
+                };
+
+                Ok(ChatConversationPage {
+                    conversations,
+                    total_count,
+                    offset,
+                    limit,
+                })
+            })
+            .await
     }
 
     async fn get_active_for_context(

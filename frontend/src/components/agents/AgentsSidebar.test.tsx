@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,15 +9,27 @@ import type { AgentConversation } from "./agentConversations";
 import { formatAgentConversationCreatedAt } from "./agentConversations";
 import { AgentsSidebar } from "./AgentsSidebar";
 
+type ConversationsResult = {
+  data: AgentConversation[];
+  isLoading: boolean;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  fetchNextPage?: () => Promise<unknown>;
+};
+
 const { conversationsByProject } = vi.hoisted(() => ({
-  conversationsByProject: new Map<string, AgentConversation[]>(),
+  conversationsByProject: new Map<string, ConversationsResult>(),
 }));
 
 vi.mock("./useProjectAgentConversations", () => ({
-  useProjectAgentConversations: (projectId: string | null | undefined) => ({
-    data: conversationsByProject.get(projectId ?? "") ?? [],
-    isLoading: false,
-  }),
+  useProjectAgentConversations: (projectId: string | null | undefined) =>
+    conversationsByProject.get(projectId ?? "") ?? {
+      data: [],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    },
 }));
 
 const project = (overrides: Partial<Project> = {}): Project => ({
@@ -103,7 +115,13 @@ describe("AgentsSidebar", () => {
       createdAt: "2026-04-22T11:00:00Z",
       lastMessageAt: "2026-04-22T11:01:00Z",
     });
-    conversationsByProject.set("project-1", [older, newer]);
+    conversationsByProject.set("project-1", {
+      data: [newer, older],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
 
     renderSidebar();
 
@@ -119,5 +137,21 @@ describe("AgentsSidebar", () => {
       firstRow.getByText(formatAgentConversationCreatedAt(newer.createdAt))
     ).toBeInTheDocument();
     expect(firstRow.queryByText("codex")).not.toBeInTheDocument();
+  });
+
+  it("shows load more per project and calls the paginated fetch when pressed", () => {
+    const fetchNextPage = vi.fn().mockResolvedValue(undefined);
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      isLoading: false,
+      hasNextPage: true,
+      isFetchingNextPage: false,
+      fetchNextPage,
+    });
+
+    renderSidebar();
+
+    fireEvent.click(screen.getByTestId("agents-load-more-project-1"));
+    expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
 });

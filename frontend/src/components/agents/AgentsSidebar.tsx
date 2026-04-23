@@ -38,7 +38,6 @@ import type { Project } from "@/types/project";
 import {
   formatAgentConversationCreatedAt,
   getAgentConversationStoreKey,
-  sortAgentConversations,
   type AgentConversation,
 } from "./agentConversations";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
@@ -302,27 +301,17 @@ function ProjectSessionGroup({
 }: ProjectSessionGroupProps) {
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
-  const conversations = useProjectAgentConversations(project.id, showArchived);
+  const conversations = useProjectAgentConversations(project.id, showArchived, {
+    search: searchQuery,
+  });
   const activeConversationIds = useChatStore((s) => s.activeConversationIds);
   const agentStatuses = useChatStore((s) => s.agentStatus);
-
-  const sortedConversations = useMemo(
-    () => sortAgentConversations(conversations.data ?? []),
+  const projectMatchesSearch = project.name.toLowerCase().includes(searchQuery);
+  const visibleConversations = useMemo(
+    () => conversations.data ?? [],
     [conversations.data]
   );
-  const projectMatchesSearch = project.name.toLowerCase().includes(searchQuery);
-  const visibleConversations = useMemo(() => {
-    if (!searchQuery || projectMatchesSearch) {
-      return sortedConversations;
-    }
-    return sortedConversations.filter((conversation) => {
-      const title = conversation.title || "Untitled agent";
-      return `${title} ${formatAgentConversationCreatedAt(conversation.createdAt)}`
-        .toLowerCase()
-        .includes(searchQuery);
-    });
-  }, [projectMatchesSearch, searchQuery, sortedConversations]);
-  const activeRuntimeCount = sortedConversations.filter((conversation) => {
+  const activeRuntimeCount = visibleConversations.filter((conversation) => {
     const rowKey = getAgentConversationStoreKey(conversation);
     return (
       activeConversationIds[rowKey] === conversation.id &&
@@ -571,6 +560,30 @@ function ProjectSessionGroup({
               >
                 Start
               </Button>
+            </div>
+          )}
+
+          {!conversations.isLoading && visibleConversations.length === 0 && searchQuery && projectMatchesSearch && (
+            <div className="px-4 py-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              No matching agents.
+            </div>
+          )}
+
+          {visibleConversations.length > 0 && conversations.hasNextPage && (
+            <div className="px-4 py-1">
+              <button
+                type="button"
+                className="text-[11px] font-medium transition-colors"
+                onClick={() => void conversations.fetchNextPage()}
+                disabled={conversations.isFetchingNextPage}
+                data-testid={`agents-load-more-${project.id}`}
+                style={{
+                  color: "var(--accent-primary)",
+                  opacity: conversations.isFetchingNextPage ? 0.7 : 1,
+                }}
+              >
+                {conversations.isFetchingNextPage ? "Loading..." : "Load more"}
+              </button>
             </div>
           )}
 

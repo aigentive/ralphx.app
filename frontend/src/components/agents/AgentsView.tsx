@@ -49,7 +49,6 @@ import { AgentsArtifactPane } from "./AgentsArtifactPane";
 import { AgentsSidebar } from "./AgentsSidebar";
 import {
   getAgentConversationStoreKey,
-  sortAgentConversations,
   toProjectAgentConversation,
   type AgentConversation,
 } from "./agentConversations";
@@ -81,8 +80,8 @@ const HEADER_ARTIFACT_TABS: Array<{
 ];
 
 const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
-const AGENTS_ARTIFACT_MIN_WIDTH = 420;
-const AGENTS_CHAT_MIN_WIDTH = 340;
+const AGENTS_ARTIFACT_MIN_WIDTH = 320;
+const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 
 interface AgentsViewProps {
@@ -115,6 +114,7 @@ export function AgentsView({
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
   const childArchiveSyncRef = useRef<Set<string>>(new Set());
+  const manuallyClearedProjectIdsRef = useRef<Set<string>>(new Set());
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -138,17 +138,44 @@ export function AgentsView({
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
   const artifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
+  const selectedConversationQuery = useConversation(selectedConversationId, {
+    enabled: !!selectedConversationId,
+  });
+  const selectedConversationData = selectedConversationQuery.data;
+  const selectedConversationFallback = useMemo(() => {
+    const conversation = selectedConversationData?.conversation;
+    if (
+      !conversation ||
+      conversation.id !== selectedConversationId ||
+      conversation.contextType !== "project" ||
+      conversation.contextId !== activeProjectId ||
+      (!showArchived && Boolean(conversation.archivedAt))
+    ) {
+      return null;
+    }
+
+    return toProjectAgentConversation(conversation);
+  }, [
+    activeProjectId,
+    selectedConversationData,
+    selectedConversationId,
+    showArchived,
+  ]);
 
   const activeConversation = useMemo(() => {
     if (!selectedConversationId) {
       return null;
     }
-    return focusedConversations.data?.find((conversation) => conversation.id === selectedConversationId) ?? null;
-  }, [focusedConversations.data, selectedConversationId]);
-  const selectedConversationQuery = useConversation(selectedConversationId, {
-    enabled: !!selectedConversationId,
-  });
-  const selectedConversationData = selectedConversationQuery.data;
+    return (
+      focusedConversations.data?.find(
+        (conversation) => conversation.id === selectedConversationId
+      ) ?? selectedConversationFallback
+    );
+  }, [
+    focusedConversations.data,
+    selectedConversationFallback,
+    selectedConversationId,
+  ]);
   const selectedConversationMessages = useMemo(
     () =>
       selectedConversationData && selectedConversationData.conversation?.id === selectedConversationId
@@ -180,6 +207,11 @@ export function AgentsView({
   const handleArtifactResizeStart = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
     setIsArtifactResizing(true);
+  }, []);
+
+  const handleArtifactResizeReset = useCallback((event: ReactMouseEvent) => {
+    event.preventDefault();
+    setArtifactPanelWidth(null);
   }, []);
 
   useEffect(() => {
@@ -217,7 +249,9 @@ export function AgentsView({
   useEffect(() => {
     if (artifactPanelWidth !== null) {
       window.localStorage.setItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY, String(artifactPanelWidth));
+      return;
     }
+    window.localStorage.removeItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
   }, [artifactPanelWidth]);
 
   const activeRuntime = selectedConversationId
@@ -234,7 +268,12 @@ export function AgentsView({
   }, [focusedProjectId, projectId, setFocusedProject]);
 
   useEffect(() => {
-    if (!activeProjectId || selectedConversationId || !focusedConversations.isSuccess) {
+    if (
+      !activeProjectId ||
+      selectedConversationId ||
+      !focusedConversations.isSuccess ||
+      manuallyClearedProjectIdsRef.current.has(activeProjectId)
+    ) {
       return;
     }
     const firstConversation = focusedConversations.data?.[0];
@@ -255,13 +294,18 @@ export function AgentsView({
   ]);
 
   useEffect(() => {
-    if (!selectedConversationId || !activeProjectId || focusedConversations.isLoading) {
+    if (
+      !selectedConversationId ||
+      !activeProjectId ||
+      focusedConversations.isLoading ||
+      selectedConversationQuery.isLoading
+    ) {
       return;
     }
     const selectedStillExists = focusedConversations.data?.some(
       (conversation) => conversation.id === selectedConversationId
     );
-    if (selectedStillExists === false) {
+    if (selectedStillExists === false && !selectedConversationFallback) {
       const replacement = focusedConversations.data?.[0];
       if (replacement) {
         selectConversation(activeProjectId, replacement.id);
@@ -279,6 +323,8 @@ export function AgentsView({
     focusedConversations.data,
     focusedConversations.isLoading,
     selectConversation,
+    selectedConversationFallback,
+    selectedConversationQuery.isLoading,
     selectedConversationId,
     setActiveConversation,
   ]);
@@ -326,13 +372,29 @@ export function AgentsView({
 
   const handleSelectConversation = useCallback(
     (conversationProjectId: string, conversation: AgentConversation) => {
+      if (
+        selectedProjectId === conversationProjectId &&
+        selectedConversationId === conversation.id
+      ) {
+        manuallyClearedProjectIdsRef.current.add(conversationProjectId);
+        clearSelection();
+        return;
+      }
+
+      manuallyClearedProjectIdsRef.current.delete(conversationProjectId);
       selectConversation(conversationProjectId, conversation.id);
       setActiveConversation(
         getAgentConversationStoreKey(conversation),
         conversation.id
       );
     },
-    [selectConversation, setActiveConversation]
+    [
+      clearSelection,
+      selectConversation,
+      selectedConversationId,
+      selectedProjectId,
+      setActiveConversation,
+    ]
   );
 
   const handleCreateAgent = useCallback(
@@ -352,16 +414,11 @@ export function AgentsView({
         trimmedTitle
       );
       const agentConversation = toProjectAgentConversation(conversation);
-      for (const includeArchived of [false, true]) {
-        queryClient.setQueryData<AgentConversation[]>(
-          agentConversationKeys.projectList(targetProjectId, includeArchived),
-          (previous) =>
-            sortAgentConversations([
-              agentConversation,
-              ...(previous ?? []).filter((item) => item.id !== agentConversation.id),
-            ])
-        );
-      }
+      manuallyClearedProjectIdsRef.current.delete(targetProjectId);
+      queryClient.setQueryData(chatKeys.conversation(conversation.id), {
+        conversation,
+        messages: [],
+      });
       setRuntimeForConversation(conversation.id, targetProjectId, runtime);
       selectConversation(targetProjectId, conversation.id);
       setActiveConversation(getAgentConversationStoreKey(agentConversation), conversation.id);
@@ -380,6 +437,15 @@ export function AgentsView({
       setActiveConversation,
       setRuntimeForConversation,
     ]
+  );
+
+  const findConversationById = useCallback(
+    (conversationId: string) =>
+      focusedConversations.data?.find((item) => item.id === conversationId) ??
+      (selectedConversationFallback?.id === conversationId
+        ? selectedConversationFallback
+        : null),
+    [focusedConversations.data, selectedConversationFallback]
   );
 
   const handleQuickCreateAgent = useCallback(async (quickProjectId?: string) => {
@@ -552,9 +618,7 @@ export function AgentsView({
       if (!trimmed) {
         return;
       }
-      const conversation = focusedConversations.data?.find(
-        (item) => item.id === conversationId
-      );
+      const conversation = findConversationById(conversationId);
       if (conversation?.contextType === "ideation") {
         await Promise.all([
           chatApi.updateConversationTitle(conversationId, trimmed),
@@ -566,7 +630,7 @@ export function AgentsView({
       autoTitleStateRef.current.delete(conversationId);
       await invalidateProjectConversations(conversation?.projectId ?? activeProjectId ?? projectId);
     },
-    [activeProjectId, focusedConversations.data, invalidateProjectConversations, projectId]
+    [activeProjectId, findConversationById, invalidateProjectConversations, projectId]
   );
 
   const handleAgentUserMessageSent = useCallback(
@@ -576,9 +640,7 @@ export function AgentsView({
         return;
       }
 
-      const conversation = focusedConversations.data?.find(
-        (item) => item.id === conversationId
-      );
+      const conversation = findConversationById(conversationId);
       const titleIsAutoManaged =
         isDefaultAgentTitle(conversation?.title) ||
         autoTitleStateRef.current.get(conversationId)?.lastTitle === conversation?.title;
@@ -620,7 +682,7 @@ export function AgentsView({
     },
     [
       activeProjectId,
-      focusedConversations.data,
+      findConversationById,
       invalidateProjectConversations,
       selectedConversationId,
     ]
@@ -716,12 +778,13 @@ export function AgentsView({
             </div>
           )}
 
-          {selectedConversationId && artifactState.isOpen && (
+          {selectedConversationId && artifactState.isOpen && activeConversation && (
             <>
               <div className="max-lg:hidden">
                 <ResizeHandle
                   isResizing={isArtifactResizing}
                   onMouseDown={handleArtifactResizeStart}
+                  onDoubleClick={handleArtifactResizeReset}
                   testId="agents-artifact-resize-handle"
                 />
               </div>
@@ -853,36 +916,37 @@ export function AgentsChatHeader({
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
-        {HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
-          const isActive = activeArtifactTab === id && artifactOpen;
-          return (
-            <Tooltip key={id}>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn("h-8 w-8 p-0", isActive ? "" : "opacity-80")}
-                  onClick={() => onSelectArtifact(id)}
-                  style={{
-                    color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
-                    background: isActive ? withAlpha("var(--accent-primary)", 12) : "transparent",
-                    border: isActive
-                      ? "1px solid var(--accent-border)"
-                      : "1px solid var(--overlay-faint)",
-                    boxShadow: "none",
-                  }}
-                  aria-label={label}
-                >
-                  <Icon className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">
-                {label}
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {!artifactOpen &&
+          HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
+            const isActive = activeArtifactTab === id && artifactOpen;
+            return (
+              <Tooltip key={id}>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={cn("h-8 w-8 p-0", isActive ? "" : "opacity-80")}
+                    onClick={() => onSelectArtifact(id)}
+                    style={{
+                      color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
+                      background: isActive ? withAlpha("var(--accent-primary)", 12) : "transparent",
+                      border: isActive
+                        ? "1px solid var(--accent-border)"
+                        : "1px solid var(--overlay-faint)",
+                      boxShadow: "none",
+                    }}
+                    aria-label={label}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  {label}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
 
         <Tooltip>
           <TooltipTrigger asChild>
