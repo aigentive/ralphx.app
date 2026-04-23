@@ -371,9 +371,10 @@ function ProjectSessionGroup({
         </button>
         <button
           type="button"
-          className="min-w-0 flex-1 flex items-center gap-2 text-left"
+          className="min-w-0 flex-1 flex items-center gap-2 bg-transparent border-0 p-0 text-left shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
           onClick={() => onFocusProject(project.id)}
           onDoubleClick={() => toggleProjectExpanded(project.id)}
+          style={{ boxShadow: "none" }}
         >
           <Folder className="w-4 h-4 shrink-0" />
           <span className="text-[12px] font-semibold tracking-[-0.01em] truncate">{project.name}</span>
@@ -490,8 +491,9 @@ function ProjectSessionGroup({
               >
                 <button
                   type="button"
-                  className="min-w-0 flex-1 flex items-start gap-2 text-left outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+                  className="min-w-0 flex-1 flex items-start gap-2 bg-transparent border-0 p-0 text-left shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                   onClick={() => onSelectConversation(project.id, conversation)}
+                  style={{ boxShadow: "none" }}
                 >
                   <span
                     className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150"
