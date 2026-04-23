@@ -256,6 +256,43 @@ describe("AgentsView", () => {
     expect(window.localStorage.getItem("ralphx-agents-artifact-width")).toBeNull();
   });
 
+  it("resizes the artifact pane when the handle is dragged", async () => {
+    mockAgentViewData();
+
+    renderWithProviders(
+      <AgentsView
+        projectId="project-1"
+        isNewAgentDialogOpen={false}
+        onNewAgentDialogOpenChange={vi.fn()}
+        onCreateProject={vi.fn()}
+      />
+    );
+
+    const splitContainer = screen.getByTestId("agents-split-container");
+    vi.spyOn(splitContainer, "getBoundingClientRect").mockReturnValue({
+      x: 100,
+      y: 0,
+      width: 1200,
+      height: 800,
+      top: 0,
+      right: 1300,
+      bottom: 800,
+      left: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.mouseDown(screen.getByTestId("agents-artifact-resize-handle"));
+    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.mouseUp(document);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-resizable-pane")).toHaveStyle({
+        width: "400px",
+      })
+    );
+    expect(window.localStorage.getItem("ralphx-agents-artifact-width")).toBe("400");
+  });
+
   it("deselects the selected agent when its row is clicked again", async () => {
     mockAgentViewData();
 

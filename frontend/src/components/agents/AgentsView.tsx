@@ -717,7 +717,11 @@ export function AgentsView({
           onShowArchivedChange={setShowArchived}
         />
 
-        <div ref={splitContainerRef} className="relative flex-1 min-w-0 h-full flex overflow-hidden">
+        <div
+          ref={splitContainerRef}
+          className="relative flex-1 min-w-0 h-full flex overflow-hidden"
+          data-testid="agents-split-container"
+        >
           {activeProjectId && selectedConversationId && activeConversation ? (
             <div className="flex-1 min-w-0 h-full">
               <IntegratedChatPanel
