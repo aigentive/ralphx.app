@@ -46,6 +46,25 @@ impl MemoryProjectRepository {
 impl ProjectRepository for MemoryProjectRepository {
     async fn create(&self, project: Project) -> AppResult<Project> {
         let mut projects = self.projects.write().await;
+        if let Some(existing_project) = projects
+            .values()
+            .find(|candidate| candidate.working_directory == project.working_directory)
+            .cloned()
+        {
+            if existing_project.archived_at.is_some() {
+                let mut restored = existing_project;
+                restored.name = project.name;
+                restored.working_directory = project.working_directory;
+                restored.git_mode = project.git_mode;
+                restored.base_branch = project.base_branch;
+                restored.worktree_parent_directory = project.worktree_parent_directory;
+                restored.updated_at = Utc::now();
+                restored.archived_at = None;
+                projects.insert(restored.id.clone(), restored.clone());
+                return Ok(restored);
+            }
+        }
+
         projects.insert(project.id.clone(), project.clone());
         Ok(project)
     }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::GitMode;
+use crate::domain::entities::{GitMode, MergeValidationMode};
 
 fn create_test_project(name: &str, path: &str) -> Project {
     Project::new(name.to_string(), path.to_string())
@@ -19,6 +19,35 @@ async fn test_create_project_succeeds() {
     assert_eq!(created.id, project.id);
     assert_eq!(created.name, "Test Project");
     assert_eq!(created.working_directory, "/path/to/project");
+}
+
+#[tokio::test]
+async fn test_create_restores_archived_project_for_same_working_directory() {
+    let repo = MemoryProjectRepository::new();
+    let mut archived = create_test_project("Archived Project", "/path/to/project");
+    archived.merge_validation_mode = MergeValidationMode::Warn;
+    archived.github_pr_enabled = false;
+    archived.base_branch = Some("main".to_string());
+
+    repo.create(archived.clone()).await.unwrap();
+    repo.archive(&archived.id).await.unwrap();
+
+    let mut restored_request = create_test_project("Restored Project", "/path/to/project");
+    restored_request.base_branch = Some("develop".to_string());
+    restored_request.worktree_parent_directory = Some("/tmp/restored-worktrees".to_string());
+
+    let restored = repo.create(restored_request).await.unwrap();
+
+    assert_eq!(restored.id, archived.id);
+    assert_eq!(restored.name, "Restored Project");
+    assert_eq!(restored.base_branch, Some("develop".to_string()));
+    assert_eq!(
+        restored.worktree_parent_directory,
+        Some("/tmp/restored-worktrees".to_string())
+    );
+    assert_eq!(restored.merge_validation_mode, MergeValidationMode::Warn);
+    assert!(!restored.github_pr_enabled);
+    assert!(restored.archived_at.is_none());
 }
 
 #[tokio::test]

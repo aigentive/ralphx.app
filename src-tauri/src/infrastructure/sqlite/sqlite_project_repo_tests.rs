@@ -28,6 +28,40 @@ async fn test_create_inserts_project_and_returns_it() {
 }
 
 #[tokio::test]
+async fn test_create_restores_archived_project_for_same_working_directory() {
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
+
+    let mut archived = create_test_project("Archived Project", "/restore/path");
+    archived.merge_validation_mode = MergeValidationMode::Warn;
+    archived.github_pr_enabled = false;
+    archived.base_branch = Some("main".to_string());
+    repo.create(archived.clone()).await.unwrap();
+    repo.archive(&archived.id).await.unwrap();
+
+    let mut restored_request = create_test_project("Restored Project", "/restore/path");
+    restored_request.base_branch = Some("develop".to_string());
+    restored_request.worktree_parent_directory = Some("/tmp/restored-worktrees".to_string());
+
+    let restored = repo.create(restored_request).await.unwrap();
+
+    assert_eq!(restored.id, archived.id);
+    assert_eq!(restored.name, "Restored Project");
+    assert_eq!(restored.base_branch, Some("develop".to_string()));
+    assert_eq!(
+        restored.worktree_parent_directory,
+        Some("/tmp/restored-worktrees".to_string())
+    );
+    assert_eq!(restored.merge_validation_mode, MergeValidationMode::Warn);
+    assert!(!restored.github_pr_enabled);
+    assert!(restored.archived_at.is_none());
+
+    let projects = repo.get_all().await.unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].id, archived.id);
+}
+
+#[tokio::test]
 async fn test_get_by_id_retrieves_project_correctly() {
     let db = setup_test_db();
     let repo = SqliteProjectRepository::from_shared(db.shared_conn());

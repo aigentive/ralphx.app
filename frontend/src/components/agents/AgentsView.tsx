@@ -692,7 +692,7 @@ export function AgentsView({
     invalidateProjectConversations,
   ]);
 
-  const handleRemoveProject = useCallback(
+  const handleArchiveProject = useCallback(
     async (targetProjectId: string) => {
       try {
         try {
@@ -713,7 +713,7 @@ export function AgentsView({
         }
         await queryClient.invalidateQueries({ queryKey: projectKeys.list() });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to remove project");
+        toast.error(err instanceof Error ? err.message : "Failed to archive project");
       }
     },
     [
@@ -856,7 +856,7 @@ export function AgentsView({
     onFocusProject: handleSidebarFocusProject,
     onSelectConversation: handleSidebarSelectConversation,
     onCreateAgent: handleSidebarCreateAgent,
-    onRemoveProject: handleRemoveProject,
+    onArchiveProject: handleArchiveProject,
     onArchiveConversation: handleArchiveConversation,
     onRestoreConversation: handleRestoreConversation,
     showArchived,

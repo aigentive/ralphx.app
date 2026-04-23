@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use super::DbConnection;
 use crate::domain::entities::{Project, ProjectId};
@@ -65,6 +65,51 @@ impl ProjectRepository for SqliteProjectRepository {
     async fn create(&self, project: Project) -> AppResult<Project> {
         self.db
             .run(move |conn| {
+                if let Some(mut existing_project) = conn
+                    .query_row(
+                        "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled, archived_at
+                         FROM projects WHERE working_directory = ?1",
+                        [project.working_directory.as_str()],
+                        |row| Project::from_row(row),
+                    )
+                    .optional()?
+                {
+                    if existing_project.archived_at.is_some() {
+                        let now = Utc::now();
+                        existing_project.name = project.name.clone();
+                        existing_project.working_directory = project.working_directory.clone();
+                        existing_project.git_mode = project.git_mode;
+                        existing_project.base_branch = project.base_branch.clone();
+                        existing_project.worktree_parent_directory =
+                            project.worktree_parent_directory.clone();
+                        existing_project.updated_at = now;
+                        existing_project.archived_at = None;
+
+                        conn.execute(
+                            "UPDATE projects
+                             SET name = ?2,
+                                 working_directory = ?3,
+                                 git_mode = ?4,
+                                 base_branch = ?5,
+                                 worktree_parent_directory = ?6,
+                                 updated_at = ?7,
+                                 archived_at = NULL
+                             WHERE id = ?1",
+                            rusqlite::params![
+                                existing_project.id.as_str(),
+                                existing_project.name.as_str(),
+                                existing_project.working_directory.as_str(),
+                                existing_project.git_mode.to_string(),
+                                existing_project.base_branch.as_deref(),
+                                existing_project.worktree_parent_directory.as_deref(),
+                                existing_project.updated_at.to_rfc3339(),
+                            ],
+                        )?;
+
+                        return Ok(existing_project);
+                    }
+                }
+
                 insert_project_row(conn, &project)?;
                 Ok(project)
             })
