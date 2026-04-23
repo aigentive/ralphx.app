@@ -320,6 +320,49 @@ a:not([class*="no-underline"]):hover {
   background-color: var(--bg-surface) !important;
 }
 
+/* React Flow controls - keep canvas zoom buttons on RalphX theme tokens.
+ * The library stylesheet is imported from the graph component, so these scoped
+ * overrides use the graph root class and !important for library button rules. */
+.react-flow.ralphx-task-graph {
+  --xy-controls-button-background-color: var(--bg-surface);
+  --xy-controls-button-background-color-hover: var(--bg-hover);
+  --xy-controls-button-color: var(--text-secondary);
+  --xy-controls-button-color-hover: var(--text-primary);
+  --xy-controls-button-border-color: var(--overlay-weak);
+}
+
+.react-flow.ralphx-task-graph .react-flow__controls {
+  overflow: hidden;
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--overlay-weak) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.react-flow.ralphx-task-graph .react-flow__controls-button {
+  width: 30px !important;
+  height: 30px !important;
+  background: var(--bg-surface) !important;
+  border-bottom-color: var(--overlay-weak) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: none !important;
+}
+
+.react-flow.ralphx-task-graph .react-flow__controls-button:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.react-flow.ralphx-task-graph .react-flow__controls-button:disabled {
+  color: var(--text-muted) !important;
+}
+
+.react-flow.ralphx-task-graph .react-flow__controls-button svg {
+  width: 14px !important;
+  height: 14px !important;
+  fill: currentColor !important;
+}
+
 /* ============================================================================
  * Animation keyframes — referenced by utility classes below + component
  * `animation: var(--animation-*)` declarations.

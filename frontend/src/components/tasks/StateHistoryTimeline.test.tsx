@@ -169,6 +169,10 @@ describe("StateHistoryTimeline", () => {
 
     it("shows summary previews and a full dialog for large system feedback", async () => {
       const user = userEvent.setup();
+      const longHookOutput = Array.from(
+        { length: 80 },
+        (_, index) => `hook output line ${index}: repeated dependency resolution failure`
+      ).join("\n");
       mockUseTaskStateHistory.mockReturnValue({
         data: [
           {
@@ -184,6 +188,7 @@ describe("StateHistoryTimeline", () => {
               "```text",
               "\u001b[31m[pre-commit]\u001b[0m design-token guards failed",
               "TS2307 Cannot find module 'zod'",
+              longHookOutput,
               "```",
             ].join("\n"),
             created_at: new Date().toISOString(),

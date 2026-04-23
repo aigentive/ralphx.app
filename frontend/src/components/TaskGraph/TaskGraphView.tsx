@@ -1665,6 +1665,7 @@ function TaskGraphViewInner({
           </div>
         ) : (
           <ReactFlow
+            className="ralphx-task-graph"
             // eslint-disable-next-line react-hooks/refs -- nodes/edges are ref-stabilized (see useMemo blocks above)
             nodes={nodes}
             edges={edges} // eslint-disable-line react-hooks/refs
