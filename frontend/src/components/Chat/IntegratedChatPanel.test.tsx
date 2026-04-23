@@ -293,6 +293,42 @@ describe("IntegratedChatPanel", () => {
     });
   });
 
+  describe("content width wrapper", () => {
+    it("applies the centered max-width shell when a host surface opts in", () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.conversation = {
+        contextType: "project",
+        contextId: "project-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-1",
+        upstreamProvider: null,
+        providerProfile: null,
+      };
+      useChatMockState.messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "Need a plan for this change",
+          createdAt: "2026-04-23T09:00:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            contentWidthClassName="max-w-[980px]"
+          />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("integrated-chat-input-shell")).toHaveClass("max-w-[980px]");
+    });
+  });
+
   describe("Stop button visibility", () => {
     it("shows Stop button when isAgentRunning is true via store", () => {
       // Set agent as running in the store

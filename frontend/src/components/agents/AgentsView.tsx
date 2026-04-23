@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import {
   selectArtifactState,
+  selectHasStoredArtifactState,
   useAgentSessionStore,
   type AgentArtifactTab,
   type AgentRuntimeSelection,
@@ -84,6 +85,7 @@ const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
 const AGENTS_ARTIFACT_MIN_WIDTH = 320;
 const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
+const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 
 interface AgentsViewProps {
   projectId: string;
@@ -135,6 +137,9 @@ export function AgentsView({
   const activeProjectId = selectedProjectId || defaultProjectId;
   const focusedConversations = useProjectAgentConversations(activeProjectId, showArchived);
   const artifactState = useAgentSessionStore(selectArtifactState(selectedConversationId));
+  const hasStoredArtifactState = useAgentSessionStore(
+    selectHasStoredArtifactState(selectedConversationId)
+  );
   const selectedConversationQuery = useConversation(selectedConversationId, {
     enabled: !!selectedConversationId,
   });
@@ -187,7 +192,7 @@ export function AgentsView({
   const attachedIdeationSessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
-    enabled: !!attachedIdeationSessionId && activeConversation?.contextType === "project",
+    enabled: !!attachedIdeationSessionId,
     staleTime: 5_000,
   });
   const attachedIdeationSessionData =
@@ -195,6 +200,24 @@ export function AgentsView({
     attachedIdeationSessionQuery.data?.session.id === attachedIdeationSessionId
       ? attachedIdeationSessionQuery.data
       : null;
+  const hasAutoOpenArtifacts = useMemo(() => {
+    if (!attachedIdeationSessionData) {
+      return false;
+    }
+
+    const session = attachedIdeationSessionData.session;
+    return Boolean(
+      session.planArtifactId ||
+        session.inheritedPlanArtifactId ||
+        session.acceptanceStatus === "pending" ||
+        session.verificationInProgress ||
+        session.verificationStatus !== "unverified" ||
+        attachedIdeationSessionData.proposals.length > 0
+    );
+  }, [attachedIdeationSessionData]);
+  const artifactPaneOpen = hasStoredArtifactState
+    ? artifactState.isOpen
+    : hasAutoOpenArtifacts;
   useAgentConversationTitleEvents(activeProjectId);
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
@@ -308,7 +331,7 @@ export function AgentsView({
 
       if (event.key === "\\") {
         event.preventDefault();
-        setArtifactOpen(selectedConversationId, !artifactState.isOpen);
+        setArtifactOpen(selectedConversationId, !artifactPaneOpen);
         return;
       }
 
@@ -328,7 +351,7 @@ export function AgentsView({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    artifactState.isOpen,
+    artifactPaneOpen,
     selectedConversationId,
     setArtifactOpen,
     setArtifactTab,
@@ -530,7 +553,7 @@ export function AgentsView({
       if (!selectedConversationId) {
         return;
       }
-      if (artifactState.isOpen && artifactState.activeTab === tab) {
+      if (artifactPaneOpen && artifactState.activeTab === tab) {
         setArtifactOpen(selectedConversationId, false);
         return;
       }
@@ -538,7 +561,7 @@ export function AgentsView({
     },
     [
       artifactState.activeTab,
-      artifactState.isOpen,
+      artifactPaneOpen,
       selectedConversationId,
       setArtifactOpen,
       setArtifactTab,
@@ -739,6 +762,7 @@ export function AgentsView({
                 hideHeaderSessionControls
                 hideSessionToolbar
                 surfaceBackground="var(--bg-base)"
+                contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
                 {...(activeConversation.contextType === "project" && attachedIdeationSessionId
                   ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
                   : {})}
@@ -746,10 +770,10 @@ export function AgentsView({
                   <AgentsChatHeader
                     conversation={activeConversation}
                     runtime={normalizedActiveRuntime}
-                    artifactOpen={artifactState.isOpen}
+                    artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
-                    onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactState.isOpen)}
+                    onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactPaneOpen)}
                     onSelectArtifact={handleSelectArtifact}
                   />
                 }
@@ -784,7 +808,7 @@ export function AgentsView({
             </div>
           )}
 
-          {selectedConversationId && artifactState.isOpen && activeConversation && (
+          {selectedConversationId && artifactPaneOpen && activeConversation && (
             <>
               <div className="max-lg:hidden">
                 <ResizeHandle

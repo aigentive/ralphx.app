@@ -44,7 +44,7 @@ interface AgentSessionActions {
 }
 
 const DEFAULT_ARTIFACT_STATE: AgentArtifactState = {
-  isOpen: true,
+  isOpen: false,
   activeTab: "plan",
   taskMode: "graph",
 };
@@ -81,7 +81,6 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
           state.selectedProjectId = projectId;
           state.selectedConversationId = conversationId;
           state.expandedProjectIds[projectId] = true;
-          ensureArtifactState(state, conversationId);
         }),
 
       clearSelection: () =>
@@ -143,4 +142,11 @@ export function selectArtifactState(conversationId: string | null) {
     conversationId
       ? state.artifactByConversationId[conversationId] ?? DEFAULT_ARTIFACT_STATE
       : DEFAULT_ARTIFACT_STATE;
+}
+
+export function selectHasStoredArtifactState(conversationId: string | null) {
+  return (state: AgentSessionState): boolean =>
+    conversationId
+      ? Object.prototype.hasOwnProperty.call(state.artifactByConversationId, conversationId)
+      : false;
 }
