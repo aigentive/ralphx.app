@@ -51,7 +51,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 describe("Navigation", () => {
   const defaultProps = {
-    currentView: "kanban" as const,
+    currentView: "agents" as const,
     onViewChange: vi.fn(),
   };
 
@@ -63,10 +63,27 @@ describe("Navigation", () => {
   it("renders all nav items", () => {
     render(<Navigation {...defaultProps} />);
 
+    expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
     expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
     expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
     expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
     expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
+  });
+
+  it("renders Agents first in the main navbar", () => {
+    render(<Navigation {...defaultProps} />);
+
+    const nav = screen.getByRole("navigation");
+    const navItemIds = Array.from(nav.querySelectorAll("[data-testid]")).map((element) =>
+      element.getAttribute("data-testid")
+    );
+
+    expect(navItemIds.slice(0, 4)).toEqual([
+      "nav-agents",
+      "nav-ideation",
+      "nav-graph",
+      "nav-kanban",
+    ]);
   });
 
   it("shows team pill when hasActiveTeam is true", () => {
@@ -107,7 +124,7 @@ describe("Navigation", () => {
 
 describe("Navigation — feature flag filtering", () => {
   const defaultProps = {
-    currentView: "kanban" as const,
+    currentView: "agents" as const,
     onViewChange: vi.fn(),
   };
 
@@ -157,6 +174,7 @@ describe("Navigation — feature flag filtering", () => {
 
     render(<Navigation {...defaultProps} />);
 
+    expect(screen.getByTestId("nav-agents")).toBeInTheDocument();
     expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
     expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
     expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();

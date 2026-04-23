@@ -36,7 +36,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
-import type { ChatContext, ViewType } from "@/types/chat";
+import { DEFAULT_PROJECT_VIEW, type ChatContext, type ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
 import { toTaskProposal, ideationApi } from "@/api/ideation";
@@ -167,10 +167,10 @@ function AppContent() {
   const { isNavCompact } = useNavCompactBreakpoint();
   const { data: featureFlags } = useFeatureFlags();
 
-  // Redirect to kanban in production when the current view is disabled via feature flags
+  // Redirect to the default project view in production when the current view is disabled.
   useEffect(() => {
     if (!import.meta.env.DEV && !isViewEnabled(currentView, featureFlags)) {
-      setCurrentView("kanban");
+      setCurrentView(DEFAULT_PROJECT_VIEW);
     }
   }, [currentView, featureFlags, setCurrentView]);
 
@@ -196,7 +196,7 @@ function AppContent() {
   const selectProject = useProjectStore((s) => s.selectProject);
 
   const prevProjectIdRef = useRef<string | null>(activeProjectId);
-  const agentsReturnViewRef = useRef<ViewType>("kanban");
+  const agentsReturnViewRef = useRef<ViewType>(DEFAULT_PROJECT_VIEW);
 
   // Fetch projects from backend
   const { data: fetchedProjects, isLoading: isLoadingProjects } = useProjects();

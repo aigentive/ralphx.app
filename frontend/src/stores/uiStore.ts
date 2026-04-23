@@ -16,7 +16,7 @@ import { isViewEnabled } from "@/hooks/useFeatureFlags";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { RecoveryPromptEvent } from "@/types/events";
-import type { ViewType } from "@/types/chat";
+import { DEFAULT_PROJECT_VIEW, type ViewType } from "@/types/chat";
 import type { InternalStatus } from "@/types/status";
 import {
   loadCollapsedColumns,
@@ -449,7 +449,7 @@ export const useUiStore = create<UiState & UiActions>()(
     // Initial state
     sidebarOpen: true,
     reviewsPanelOpen: false,
-    currentView: "kanban" as ViewType,
+    currentView: DEFAULT_PROJECT_VIEW,
     activeModal: null,
     modalContext: undefined,
     notifications: [],
@@ -539,7 +539,7 @@ export const useUiStore = create<UiState & UiActions>()(
 
     setCurrentView: (view) =>
       set((state) => {
-        const safeView = isViewEnabled(view, state.featureFlags) ? view : "kanban";
+        const safeView = isViewEnabled(view, state.featureFlags) ? view : DEFAULT_PROJECT_VIEW;
         const projectId = useProjectStore.getState().activeProjectId;
         state.currentView = safeView;
         if (projectId) {
@@ -847,19 +847,19 @@ export const useUiStore = create<UiState & UiActions>()(
           state.sessionByProject[oldProjectId] = useIdeationStore.getState().activeSessionId;
         }
 
-        // RESTORE phase — resolve view, fallback ephemeral views to kanban
-        let restoredView: ViewType = state.viewByProject[newProjectId] ?? "kanban";
+        // RESTORE phase — resolve view, fallback ephemeral views to the default project view
+        let restoredView: ViewType = state.viewByProject[newProjectId] ?? DEFAULT_PROJECT_VIEW;
         // Guard against stale localStorage values ("settings" was removed from ViewType)
         if (
           (restoredView as string) === "settings" ||
           restoredView === "task_detail" ||
           restoredView === "team"
         ) {
-          restoredView = "kanban";
+          restoredView = DEFAULT_PROJECT_VIEW;
         }
-        // Feature flag guard: redirect disabled views to kanban
+        // Feature flag guard: redirect disabled views to the default project view
         if (!isViewEnabled(restoredView, state.featureFlags)) {
-          restoredView = "kanban";
+          restoredView = DEFAULT_PROJECT_VIEW;
         }
 
         // Persist updated maps

@@ -21,7 +21,7 @@ function resetStores() {
   useUiStore.setState({
     sidebarOpen: true,
     reviewsPanelOpen: false,
-    currentView: "kanban",
+    currentView: "agents",
     activeModal: null,
     modalContext: undefined,
     notifications: [],
@@ -67,9 +67,9 @@ describe("Navigation store state", () => {
   });
 
   describe("currentView state", () => {
-    it("initializes with kanban view", () => {
+    it("initializes with agents view", () => {
       const state = useUiStore.getState();
-      expect(state.currentView).toBe("kanban");
+      expect(state.currentView).toBe("agents");
     });
 
     it("switches to ideation view", () => {
@@ -159,8 +159,8 @@ describe("View rendering logic", () => {
     resetStores();
   });
 
-  it("kanban view is initial default", () => {
-    expect(useUiStore.getState().currentView).toBe("kanban");
+  it("agents view is the initial default", () => {
+    expect(useUiStore.getState().currentView).toBe("agents");
   });
 
   it("can switch to ideation view", () => {
