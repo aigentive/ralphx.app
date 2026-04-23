@@ -351,9 +351,7 @@ describe("AgentsView", () => {
     await waitFor(() =>
       expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
     );
-    expect(
-      screen.getByText("What should the agent tackle next?")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Start an agent conversation")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-project")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-provider")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-model")).toBeInTheDocument();
