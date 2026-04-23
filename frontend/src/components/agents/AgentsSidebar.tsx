@@ -84,7 +84,7 @@ export function AgentsSidebar({
     <aside
       className="w-[280px] min-w-[240px] max-w-[360px] h-full flex flex-col border-r overflow-hidden resize-x"
       style={{
-        background: withAlpha("var(--bg-surface)", 92),
+        background: "color-mix(in srgb, var(--bg-surface) 92%, transparent)",
         backdropFilter: "blur(20px) saturate(180%)",
         WebkitBackdropFilter: "blur(20px) saturate(180%)",
         borderColor: "var(--overlay-faint)",
@@ -346,7 +346,8 @@ function ProjectSessionGroup({
         className="group/project w-full min-h-9 px-3 py-2 flex items-center gap-2 rounded-md transition-colors duration-150"
         style={{
           color: isFocused ? "var(--text-primary)" : "var(--text-muted)",
-          background: isFocused ? "var(--overlay-faint)" : "transparent",
+          background: isFocused ? "var(--overlay-faint)" : "var(--bg-base)",
+          border: "1px solid var(--overlay-faint)",
         }}
         onMouseEnter={(event) => {
           if (!isFocused) {
@@ -361,21 +362,8 @@ function ProjectSessionGroup({
       >
         <button
           type="button"
-          className="h-5 w-5 flex items-center justify-center rounded outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
-          onClick={() => toggleProjectExpanded(project.id)}
-          aria-label={expanded ? "Collapse project" : "Expand project"}
-        >
-          {expanded ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
-        </button>
-        <button
-          type="button"
           className="min-w-0 flex-1 flex items-center gap-2 bg-transparent border-0 p-0 text-left shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
           onClick={() => onFocusProject(project.id)}
-          onDoubleClick={() => toggleProjectExpanded(project.id)}
           style={{ boxShadow: "none" }}
         >
           <Folder className="w-4 h-4 shrink-0" />
@@ -383,18 +371,17 @@ function ProjectSessionGroup({
         </button>
         {!expanded && activeRuntimeCount > 0 && (
           <span
-            className="min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-semibold"
+            className="text-[10px] px-1.5 rounded-full font-medium leading-[16px]"
             style={{
               color: "var(--accent-primary)",
-              background: "var(--accent-muted)",
-              border: "1px solid var(--accent-border)",
+              background: withAlpha("var(--accent-primary)", 15),
             }}
           >
             {activeRuntimeCount}
           </span>
         )}
         <div
-          className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/project:opacity-100"
+          className="hidden items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/project:opacity-100"
           style={isFocused ? { opacity: 1 } : undefined}
         >
           <Tooltip>
@@ -447,6 +434,18 @@ function ProjectSessionGroup({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <button
+          type="button"
+          className="h-5 w-5 flex items-center justify-center rounded outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none shrink-0"
+          onClick={() => toggleProjectExpanded(project.id)}
+          aria-label={expanded ? "Collapse project" : "Expand project"}
+        >
+          {expanded ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+        </button>
       </div>
       </div>
 
