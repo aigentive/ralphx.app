@@ -8,9 +8,14 @@
 // did NOT call on_enter_dispatch, leaving tasks stuck with no agent indefinitely.
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+use crate::domain::entities::plan_branch::PrStatus;
+use crate::domain::entities::{
+    InternalStatus, MergeStrategy, PlanBranchStatus, Project, ProjectId, Task, TaskCategory,
+};
+use crate::domain::repositories::PlanBranchRepository;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
+use crate::infrastructure::memory::MemoryPlanBranchRepository;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared setup helpers
@@ -79,6 +84,55 @@ async fn setup_merging_machine(
     (chat_service, machine, task_repo)
 }
 
+async fn setup_pr_mode_merging_machine(
+    metadata_json: &str,
+) -> (
+    Arc<MockChatService>,
+    TaskStateMachine,
+    Arc<MemoryTaskRepository>,
+) {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "pr merge dispatch test".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.category = TaskCategory::PlanMerge;
+    task.task_branch = Some("task/test-branch".to_string());
+    task.metadata = Some(metadata_json.to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        "/tmp/nonexistent-pr-dispatch-test".to_string(),
+    );
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    let mut plan_branch = make_plan_branch(
+        "artifact-1",
+        "plan/feature-1",
+        PlanBranchStatus::Active,
+        None,
+    );
+    plan_branch.merge_task_id = Some(task_id.clone());
+    plan_branch.pr_eligible = true;
+    plan_branch.pr_number = Some(68);
+    plan_branch.pr_status = Some(PrStatus::Open);
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let (chat_service, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let services = services
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let machine = TaskStateMachine::new(context);
+    (chat_service, machine, task_repo)
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests: on_enter(Merging) spawns agent for all metadata flag variants
 // ──────────────────────────────────────────────────────────────────────────────
@@ -118,6 +172,24 @@ async fn merging_spawns_agent_for_plan_update_conflict() {
     assert!(
         chat_service.call_count() >= 1,
         "on_enter(Merging) with plan_update_conflict=true must spawn a merger agent via chat_service"
+    );
+}
+
+/// pr_branch_update_conflict → on_enter(Merging) bypasses PR poller shortcut and
+/// spawns a merger agent to update the already-open PR branch from its base.
+#[tokio::test]
+async fn merging_spawns_agent_for_pr_branch_update_conflict_even_when_pr_mode_active() {
+    let (chat_service, mut machine, _) = setup_pr_mode_merging_machine(
+        r#"{"plan_update_conflict": true, "pr_branch_update_conflict": true, "target_branch": "plan/feature-1", "base_branch": "origin/main"}"#,
+    )
+    .await;
+
+    let handler = TransitionHandler::new(&mut machine);
+    let _ = handler.on_enter(&State::Merging).await;
+
+    assert!(
+        chat_service.call_count() >= 1,
+        "PR branch update conflicts must spawn a merger agent instead of being swallowed by the PR poller shortcut"
     );
 }
 

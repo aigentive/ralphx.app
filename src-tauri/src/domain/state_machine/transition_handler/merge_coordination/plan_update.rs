@@ -37,6 +37,51 @@ pub(crate) async fn update_plan_from_main(
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
 ) -> PlanUpdateResult {
+    update_plan_from_main_with_options(
+        repo_path,
+        target_branch,
+        base_branch,
+        project,
+        task_id_str,
+        app_handle,
+        true,
+    )
+    .await
+}
+
+/// Update a plan branch from its source/base branch without mutating the primary checkout.
+///
+/// This is used by PR-mode freshness reconciliation, where background repair must never
+/// change the target project's currently-open working tree.
+pub(crate) async fn update_plan_from_main_isolated(
+    repo_path: &Path,
+    target_branch: &str,
+    base_branch: &str,
+    project: &crate::domain::entities::Project,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+) -> PlanUpdateResult {
+    update_plan_from_main_with_options(
+        repo_path,
+        target_branch,
+        base_branch,
+        project,
+        task_id_str,
+        app_handle,
+        false,
+    )
+    .await
+}
+
+async fn update_plan_from_main_with_options(
+    repo_path: &Path,
+    target_branch: &str,
+    base_branch: &str,
+    project: &crate::domain::entities::Project,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+    allow_primary_checkout_merge: bool,
+) -> PlanUpdateResult {
     // Only update when merging to a plan branch (not the source/base branch itself)
     if target_branch == base_branch {
         return PlanUpdateResult::NotPlanBranch;
@@ -105,6 +150,17 @@ pub(crate) async fn update_plan_from_main(
         .await
         .unwrap_or_default();
     if current_branch == target_branch {
+        if !allow_primary_checkout_merge {
+            tracing::warn!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                repo_path = %repo_path.display(),
+                "Plan branch update refused because target branch is checked out in the primary repo"
+            );
+            return PlanUpdateResult::Error(format!(
+                "Refusing to update plan branch '{target_branch}' in the primary checkout"
+            ));
+        }
         // Target is checked out in the main repo — merge the source/base branch directly
         match GitService::merge_branch(repo_path, base_branch, target_branch).await {
             Ok(result) => {

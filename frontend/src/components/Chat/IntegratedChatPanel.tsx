@@ -39,7 +39,7 @@ import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
 import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
-import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
+import { AGENT_MERGER, AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import { type AgentType } from "./StatusActivityBadge";
 import { ChatSessionToolbar } from "./ChatSessionToolbar";
 import { ChatSessionChips } from "./ChatSessionChips";
@@ -817,7 +817,9 @@ export function IntegratedChatPanel({
       ? AGENT_WORKER
       : isReviewMode
         ? AGENT_REVIEWER
-        : (isSending || agentStatus === "generating")
+        : isMergeMode
+          ? AGENT_MERGER
+          : (isSending || agentStatus === "generating")
           ? "agent"
           : "idle";
 
@@ -872,7 +874,7 @@ export function IntegratedChatPanel({
               borderBottom: "1px solid var(--border-subtle)",
             }}
           >
-            {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
+            {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} isMergeMode={isMergeMode} />}
 
             {/* Provider-context chips rendered inline next to the
                 ConversationSelector — per 2026-04-19 feedback, the CODEX

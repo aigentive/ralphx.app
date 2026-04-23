@@ -3,12 +3,12 @@
 // These tests exercise the pure functions (parsers, sanitizer) without
 // spawning real `gh` or `git` processes.
 
-use crate::domain::services::github_service::PrStatus;
+use crate::domain::services::github_service::{PrMergeStateStatus, PrMergeableState, PrStatus};
 use crate::error::AppError;
 use crate::infrastructure::services::gh_cli_github_service::{
     parse_pr_create_output, parse_pr_create_plain_output, parse_pr_review_decision_output,
-    parse_pr_review_feedback_output, parse_pr_status_output, sanitize_stderr_line,
-    scrub_token_urls,
+    parse_pr_review_feedback_output, parse_pr_status_output, parse_pr_sync_state_output,
+    sanitize_stderr_line, scrub_token_urls,
 };
 
 // ── parse_pr_create_output ─────────────────────────────────────────────────
@@ -120,6 +120,60 @@ fn parse_pr_status_missing_state_errors() {
     let json = r#"{"mergedAt": null}"#;
     let err = parse_pr_status_output(json).unwrap_err();
     assert!(matches!(err, AppError::Infrastructure(_)));
+}
+
+#[test]
+fn parse_pr_sync_state_open_behind_mergeable() {
+    let json = r#"{
+        "state": "OPEN",
+        "mergeStateStatus": "BEHIND",
+        "mergeable": "MERGEABLE",
+        "isDraft": false,
+        "headRefName": "ralphx/ralphx/plan-a3612efd",
+        "baseRefName": "main",
+        "headRefOid": "d55a463ab09e880f9e5efa5260d4fa36307591a1",
+        "baseRefOid": "76647ce78de09f08e582c04ab744db3a247d0bf5",
+        "mergedAt": null,
+        "mergeCommit": null
+    }"#;
+
+    let state = parse_pr_sync_state_output(json).unwrap();
+
+    assert_eq!(state.status, PrStatus::Open);
+    assert_eq!(state.merge_state_status, Some(PrMergeStateStatus::Behind));
+    assert_eq!(state.mergeable, Some(PrMergeableState::Mergeable));
+    assert!(!state.is_draft);
+    assert_eq!(state.head_ref_name, "ralphx/ralphx/plan-a3612efd");
+    assert_eq!(state.base_ref_name, "main");
+    assert_eq!(
+        state.head_ref_oid.as_deref(),
+        Some("d55a463ab09e880f9e5efa5260d4fa36307591a1")
+    );
+    assert_eq!(
+        state.base_ref_oid.as_deref(),
+        Some("76647ce78de09f08e582c04ab744db3a247d0bf5")
+    );
+}
+
+#[test]
+fn parse_pr_sync_state_preserves_unknown_merge_state_conservatively() {
+    let json = r#"{
+        "state": "OPEN",
+        "mergeStateStatus": "SOMETHING_NEW",
+        "mergeable": "UNKNOWN",
+        "isDraft": true,
+        "headRefName": "feature",
+        "baseRefName": "main"
+    }"#;
+
+    let state = parse_pr_sync_state_output(json).unwrap();
+
+    assert_eq!(
+        state.merge_state_status,
+        Some(PrMergeStateStatus::Other("SOMETHING_NEW".to_string()))
+    );
+    assert_eq!(state.mergeable, Some(PrMergeableState::Unknown));
+    assert!(state.is_draft);
 }
 
 #[test]
@@ -306,7 +360,9 @@ mod mock_roundtrip {
 
     use async_trait::async_trait;
 
-    use crate::domain::services::github_service::{GithubServiceTrait, PrStatus};
+    use crate::domain::services::github_service::{
+        GithubServiceTrait, PrMergeStateStatus, PrMergeableState, PrStatus,
+    };
     use crate::error::AppError;
     use crate::infrastructure::services::gh_cli_github_service::{
         GhCliCommandRunner, GhCliGithubService,
@@ -639,6 +695,49 @@ mod mock_roundtrip {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn check_pr_sync_state_uses_rich_pr_view_fields() {
+        let runner = Arc::new(MockGhCliRunner::with_gh_results(vec![Ok(vec![r#"{
+                "state":"OPEN",
+                "mergeStateStatus":"BEHIND",
+                "mergeable":"MERGEABLE",
+                "isDraft":false,
+                "headRefName":"feature",
+                "baseRefName":"main",
+                "headRefOid":"head",
+                "baseRefOid":"base",
+                "mergedAt":null,
+                "mergeCommit":null
+            }"#
+        .to_string()])]));
+        let service = GhCliGithubService::with_runner(runner.clone());
+
+        let sync_state = service
+            .check_pr_sync_state(Path::new("/tmp"), 68)
+            .await
+            .unwrap();
+
+        assert_eq!(sync_state.status, PrStatus::Open);
+        assert_eq!(
+            sync_state.merge_state_status,
+            Some(PrMergeStateStatus::Behind)
+        );
+        assert_eq!(sync_state.mergeable, Some(PrMergeableState::Mergeable));
+        assert_eq!(
+            runner.gh_calls(),
+            vec![vec![
+                "pr",
+                "view",
+                "68",
+                "--json",
+                "state,mergeStateStatus,mergeable,isDraft,headRefName,baseRefName,headRefOid,baseRefOid,mergedAt,mergeCommit",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()]
         );
     }
 

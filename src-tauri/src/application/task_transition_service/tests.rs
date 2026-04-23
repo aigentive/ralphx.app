@@ -1,11 +1,11 @@
 use super::*;
 use crate::application::AppState;
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
     ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus,
-    Project, Task,
+    Project, Task, TaskCategory,
 };
-use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::error::AppError;
@@ -153,6 +153,77 @@ fn build_test_service(app_state: &AppState) -> TaskTransitionService<tauri::Wry>
     )
 }
 
+fn pr_sync_state(
+    merge_state_status: Option<PrMergeStateStatus>,
+    mergeable: Option<PrMergeableState>,
+) -> PrSyncState {
+    PrSyncState {
+        status: PrStatus::Open,
+        merge_state_status,
+        mergeable,
+        is_draft: false,
+        head_ref_name: "plan/feature".to_owned(),
+        base_ref_name: "main".to_owned(),
+        head_ref_oid: None,
+        base_ref_oid: None,
+    }
+}
+
+#[test]
+fn pr_sync_state_behind_mergeable_requires_programmatic_update() {
+    let state = pr_sync_state(
+        Some(PrMergeStateStatus::Behind),
+        Some(PrMergeableState::Mergeable),
+    );
+
+    assert!(pr_sync_state_requires_update(&state));
+    assert!(!pr_sync_state_requires_conflict_resolution(&state));
+}
+
+#[test]
+fn pr_sync_state_conflicting_routes_to_merger_agent() {
+    let dirty = pr_sync_state(
+        Some(PrMergeStateStatus::Dirty),
+        Some(PrMergeableState::Unknown),
+    );
+    let conflicting = pr_sync_state(
+        Some(PrMergeStateStatus::Behind),
+        Some(PrMergeableState::Conflicting),
+    );
+
+    assert!(pr_sync_state_requires_conflict_resolution(&dirty));
+    assert!(pr_sync_state_requires_conflict_resolution(&conflicting));
+    assert!(!pr_sync_state_requires_update(&conflicting));
+}
+
+#[test]
+fn pr_sync_state_unknown_values_do_not_trigger_unsafe_updates() {
+    let state = pr_sync_state(
+        Some(PrMergeStateStatus::Other("NEW_STATE".to_owned())),
+        Some(PrMergeableState::Unknown),
+    );
+
+    assert!(!pr_sync_state_requires_update(&state));
+    assert!(!pr_sync_state_requires_conflict_resolution(&state));
+}
+
+#[test]
+fn pr_branch_freshness_only_targets_active_waiting_plan_merge_tasks() {
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    let mut task = Task::new(project.id, "Merge plan into main".to_string());
+    task.category = TaskCategory::PlanMerge;
+    task.internal_status = InternalStatus::WaitingOnPr;
+
+    assert!(pr_branch_freshness_task_eligible(&task));
+
+    task.internal_status = InternalStatus::Merged;
+    assert!(!pr_branch_freshness_task_eligible(&task));
+
+    task.internal_status = InternalStatus::WaitingOnPr;
+    task.category = TaskCategory::Regular;
+    assert!(!pr_branch_freshness_task_eligible(&task));
+}
+
 fn init_git_repo(path: &std::path::Path) {
     let run = |args: &[&str]| {
         std::process::Command::new("git")
@@ -245,7 +316,11 @@ async fn test_transition_task_rejects_archived_task() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Archived Task".to_string());
     task.internal_status = InternalStatus::Ready;
@@ -822,7 +897,11 @@ async fn test_executing_to_pending_review_transition_succeeds() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "RC5 Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -847,7 +926,11 @@ async fn test_reviewing_to_review_passed_transition_succeeds() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "RC5 Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
@@ -872,7 +955,11 @@ async fn test_review_passed_to_approved_transition_succeeds() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "RC5 ReviewPassed Task".to_string());
     task.internal_status = InternalStatus::ReviewPassed;
@@ -896,7 +983,11 @@ async fn test_reviewing_to_approved_transition_is_rejected() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Invalid Reviewing Approval".to_string());
     task.internal_status = InternalStatus::Reviewing;
@@ -916,7 +1007,12 @@ async fn test_reviewing_to_approved_transition_is_rejected() {
         "reviewing -> approved must be rejected with InvalidTransition"
     );
 
-    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(persisted.internal_status, InternalStatus::Reviewing);
 }
 
@@ -926,7 +1022,11 @@ async fn test_merged_to_approved_transition_is_rejected() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Invalid Merged Approval".to_string());
     task.internal_status = InternalStatus::Merged;
@@ -946,7 +1046,12 @@ async fn test_merged_to_approved_transition_is_rejected() {
         "merged -> approved must be rejected with InvalidTransition"
     );
 
-    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(persisted.internal_status, InternalStatus::Merged);
 }
 
@@ -956,7 +1061,11 @@ async fn test_transition_task_corrective_allows_blocked_to_failed() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Corrective Failed Task".to_string());
     task.internal_status = InternalStatus::Blocked;
@@ -970,7 +1079,12 @@ async fn test_transition_task_corrective_allows_blocked_to_failed() {
 
     assert_eq!(updated.internal_status, InternalStatus::Failed);
 
-    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(persisted.internal_status, InternalStatus::Failed);
 }
 
@@ -980,7 +1094,11 @@ async fn test_transition_task_corrective_allows_pending_review_to_backlog() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Corrective Backlog Task".to_string());
     task.internal_status = InternalStatus::PendingReview;
@@ -994,7 +1112,12 @@ async fn test_transition_task_corrective_allows_pending_review_to_backlog() {
 
     assert_eq!(updated.internal_status, InternalStatus::Backlog);
 
-    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(persisted.internal_status, InternalStatus::Backlog);
 }
 
@@ -1004,15 +1127,24 @@ async fn test_transition_task_corrective_allows_pending_review_to_backlog() {
 
 #[test]
 fn test_git_isolation_metadata_created_for_git_isolation_reason() {
-    let reason = format!("{}: could not create worktree at '/tmp/test'", GIT_ISOLATION_ERROR_PREFIX);
+    let reason = format!(
+        "{}: could not create worktree at '/tmp/test'",
+        GIT_ISOLATION_ERROR_PREFIX
+    );
     let result = create_git_isolation_recovery_metadata_json(&reason, None);
-    assert!(result.is_some(), "Expected metadata JSON for git isolation reason");
+    assert!(
+        result.is_some(),
+        "Expected metadata JSON for git isolation reason"
+    );
 }
 
 #[test]
 fn test_git_isolation_metadata_not_created_for_non_git_reason() {
     let result = create_git_isolation_recovery_metadata_json("Agent error: something failed", None);
-    assert!(result.is_none(), "Expected no metadata for non-git ExecutionBlocked reason");
+    assert!(
+        result.is_none(),
+        "Expected no metadata for non-git ExecutionBlocked reason"
+    );
 }
 
 #[test]
@@ -1035,7 +1167,10 @@ fn test_git_isolation_metadata_last_state_is_retrying() {
         ExecutionRecoveryState::Retrying,
         "last_state must be Retrying for reconciler eligibility"
     );
-    assert!(!recovery.stop_retrying, "stop_retrying must be false on initial failure");
+    assert!(
+        !recovery.stop_retrying,
+        "stop_retrying must be false on initial failure"
+    );
 }
 
 #[test]
@@ -1051,7 +1186,10 @@ fn test_git_isolation_metadata_event_has_correct_fields() {
     let event = &recovery.events[0];
     assert_eq!(event.kind, ExecutionRecoveryEventKind::Failed);
     assert_eq!(event.source, ExecutionRecoverySource::Auto);
-    assert_eq!(event.reason_code, ExecutionRecoveryReasonCode::GitIsolationFailed);
+    assert_eq!(
+        event.reason_code,
+        ExecutionRecoveryReasonCode::GitIsolationFailed
+    );
     assert_eq!(
         event.failure_source,
         Some(ExecutionFailureSource::GitIsolation)
@@ -1061,7 +1199,10 @@ fn test_git_isolation_metadata_event_has_correct_fields() {
 
 #[test]
 fn test_git_isolation_metadata_deserialization_round_trip() {
-    let reason = format!("{}: leftover worktree directory exists", GIT_ISOLATION_ERROR_PREFIX);
+    let reason = format!(
+        "{}: leftover worktree directory exists",
+        GIT_ISOLATION_ERROR_PREFIX
+    );
     let json = create_git_isolation_recovery_metadata_json(&reason, None).unwrap();
 
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1071,15 +1212,17 @@ fn test_git_isolation_metadata_deserialization_round_trip() {
     // Round-trip: re-serialize and re-deserialize must produce identical struct
     let re_json = serde_json::to_string(&recovery).unwrap();
     let re_recovery: ExecutionRecoveryMetadata = serde_json::from_str(&re_json).unwrap();
-    assert_eq!(recovery, re_recovery, "Round-trip deserialization must be lossless");
+    assert_eq!(
+        recovery, re_recovery,
+        "Round-trip deserialization must be lossless"
+    );
 }
 
 #[test]
 fn test_git_isolation_metadata_preserves_existing_metadata_keys() {
     let existing = r#"{"branch_freshness_conflict": false, "trigger_origin": "manual"}"#;
     let reason = format!("{}: stale lock file", GIT_ISOLATION_ERROR_PREFIX);
-    let json =
-        create_git_isolation_recovery_metadata_json(&reason, Some(existing)).unwrap();
+    let json = create_git_isolation_recovery_metadata_json(&reason, Some(existing)).unwrap();
 
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     // Existing metadata keys must be preserved
@@ -1110,7 +1253,11 @@ async fn test_apply_corrective_transition_execution_blocked_to_failed() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -1125,7 +1272,10 @@ async fn test_apply_corrective_transition_execution_blocked_to_failed() {
         )
         .await;
 
-    assert!(result.is_some(), "Expected Some result for valid task transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for valid task transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1174,22 +1324,24 @@ async fn test_apply_corrective_transition_freshness_conflict_to_merging() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Merging,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Merging, None, "system")
         .await;
 
-    assert!(result.is_some(), "Expected Some result for valid task transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for valid task transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1237,22 +1389,24 @@ async fn test_apply_corrective_transition_review_worktree_missing_to_escalated()
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Escalated,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Escalated, None, "system")
         .await;
 
-    assert!(result.is_some(), "Expected Some result for valid task transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for valid task transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1303,12 +1457,7 @@ async fn test_apply_corrective_transition_task_not_found_returns_none() {
     let nonexistent_id = TaskId::new();
 
     let result = service
-        .apply_corrective_transition(
-            &nonexistent_id,
-            InternalStatus::Failed,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&nonexistent_id, InternalStatus::Failed, None, "system")
         .await;
 
     assert!(result.is_none(), "Expected None for nonexistent task ID");
@@ -1335,7 +1484,11 @@ async fn test_apply_corrective_transition_optimistic_lock_returns_none_on_concur
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
@@ -1372,7 +1525,11 @@ async fn test_apply_corrective_transition_blocked_reason_persisted() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -1415,7 +1572,11 @@ async fn test_apply_corrective_transition_no_blocked_reason_preserved() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
@@ -1425,12 +1586,7 @@ async fn test_apply_corrective_transition_no_blocked_reason_preserved() {
     // Call with blocked_reason = None — existing blocked_reason should be preserved
     // because the helper only sets blocked_reason if Some(br) = blocked_reason
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Escalated,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Escalated, None, "system")
         .await;
 
     assert!(result.is_some(), "Expected Some result");
@@ -1455,7 +1611,11 @@ async fn test_equivalence_execution_blocked_produces_expected_db_state() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -1516,19 +1676,18 @@ async fn test_equivalence_freshness_conflict_produces_expected_db_state() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Merging,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Merging, None, "system")
         .await;
 
     assert!(result.is_some(), "Expected Some result");
@@ -1576,19 +1735,18 @@ async fn test_equivalence_review_worktree_missing_produces_expected_db_state() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Escalated,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Escalated, None, "system")
         .await;
 
     assert!(result.is_some(), "Expected Some result");
@@ -1646,7 +1804,11 @@ async fn test_freshness_conflict_reviewing_origin_routes_to_pending_review() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
     task.internal_status = InternalStatus::Reviewing;
@@ -1654,15 +1816,13 @@ async fn test_freshness_conflict_reviewing_origin_routes_to_pending_review() {
 
     // Simulate: routing decision determined reviewing origin → target = PendingReview
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::PendingReview,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::PendingReview, None, "system")
         .await;
 
-    assert!(result.is_some(), "Expected Some result for review-origin conflict transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for review-origin conflict transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1728,7 +1888,11 @@ async fn test_freshness_conflict_executing_origin_routes_to_merging_regression()
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
     task.internal_status = InternalStatus::Executing;
@@ -1736,15 +1900,13 @@ async fn test_freshness_conflict_executing_origin_routes_to_merging_regression()
 
     // Simulate: routing decision determined executing origin → target = Merging
     let result = service
-        .apply_corrective_transition(
-            &task.id,
-            InternalStatus::Merging,
-            None,
-            "system",
-        )
+        .apply_corrective_transition(&task.id, InternalStatus::Merging, None, "system")
         .await;
 
-    assert!(result.is_some(), "Expected Some result for executing-origin conflict transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for executing-origin conflict transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1802,9 +1964,16 @@ async fn test_freshness_conflict_at_cap_during_review_routes_to_failed() {
     let service = build_test_service(&app_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Reviewing Task (cap exceeded)".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Reviewing Task (cap exceeded)".to_string(),
+    );
     task.internal_status = InternalStatus::Reviewing;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -1818,7 +1987,10 @@ async fn test_freshness_conflict_at_cap_during_review_routes_to_failed() {
         )
         .await;
 
-    assert!(result.is_some(), "Expected Some result for cap-exceeded transition");
+    assert!(
+        result.is_some(),
+        "Expected Some result for cap-exceeded transition"
+    );
     let correction = result.unwrap();
     assert_eq!(
         correction.task.internal_status,
@@ -1918,7 +2090,11 @@ async fn test_review_origin_freshness_conflict_routes_to_merging_without_loop() 
             .to_string_lossy()
             .to_string(),
     );
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Loop regression task".to_string());
     task.internal_status = InternalStatus::QaPassed;
@@ -1930,7 +2106,11 @@ async fn test_review_origin_freshness_conflict_routes_to_merging_without_loop() 
     let result = service
         .transition_task(&task_id, InternalStatus::PendingReview)
         .await;
-    assert!(result.is_ok(), "transition_task should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "transition_task should succeed: {:?}",
+        result
+    );
 
     let stored = app_state
         .task_repo
@@ -1944,7 +2124,11 @@ async fn test_review_origin_freshness_conflict_routes_to_merging_without_loop() 
         "Task must route to Merging after review-origin freshness conflict with merge markers"
     );
 
-    let history = app_state.task_repo.get_status_history(&task_id).await.unwrap();
+    let history = app_state
+        .task_repo
+        .get_status_history(&task_id)
+        .await
+        .unwrap();
     assert_eq!(
         history.len(),
         3,
@@ -1957,7 +2141,9 @@ async fn test_review_origin_freshness_conflict_routes_to_merging_without_loop() 
     assert_eq!(history[2].from, InternalStatus::Reviewing);
     assert_eq!(history[2].to, InternalStatus::Merging);
     assert!(
-        history.iter().all(|entry| entry.to != InternalStatus::Failed),
+        history
+            .iter()
+            .all(|entry| entry.to != InternalStatus::Failed),
         "Task must not churn into Failed while handling a single review-origin freshness conflict"
     );
 }
@@ -2090,10 +2276,13 @@ mod enrichment_tests {
         let app_state = AppState::new_test();
 
         let project = Project::new("My Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
-        let session =
-            IdeationSession::new_with_title(project.id.clone(), "Sprint 1 Planning");
+        let session = IdeationSession::new_with_title(project.id.clone(), "Sprint 1 Planning");
         app_state
             .ideation_session_repo
             .create(session.clone())
@@ -2118,9 +2307,12 @@ mod enrichment_tests {
             .get_events_after_cursor(&[project.id.to_string()], 0, 100)
             .await
             .unwrap();
-        assert_eq!(db_events.len(), 1, "DB sink should receive exactly one event");
-        let db_payload: serde_json::Value =
-            serde_json::from_str(&db_events[0].payload).unwrap();
+        assert_eq!(
+            db_events.len(),
+            1,
+            "DB sink should receive exactly one event"
+        );
+        let db_payload: serde_json::Value = serde_json::from_str(&db_events[0].payload).unwrap();
 
         assert_eq!(db_payload["project_name"], "My Project");
         assert_eq!(db_payload["session_title"], "Sprint 1 Planning");
@@ -2148,7 +2340,11 @@ mod enrichment_tests {
         let app_state = AppState::new_test();
 
         let project = Project::new("My Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
         // ideation_session_id remains None (default)
         let task = Task::new(project.id.clone(), "Background job".to_string());
@@ -2168,8 +2364,7 @@ mod enrichment_tests {
             .await
             .unwrap();
         assert_eq!(db_events.len(), 1, "DB sink should receive one event");
-        let db_payload: serde_json::Value =
-            serde_json::from_str(&db_events[0].payload).unwrap();
+        let db_payload: serde_json::Value = serde_json::from_str(&db_events[0].payload).unwrap();
 
         // project_name present
         assert_eq!(db_payload["project_name"], "My Project");
@@ -2181,7 +2376,10 @@ mod enrichment_tests {
         // task_title present
         assert_eq!(db_payload["task_title"], "Background job");
         // All 5 base fields intact (backward-compat coverage)
-        assert!(db_payload.get("task_id").is_some(), "task_id must be present");
+        assert!(
+            db_payload.get("task_id").is_some(),
+            "task_id must be present"
+        );
         assert!(
             db_payload.get("project_id").is_some(),
             "project_id must be present"
@@ -2245,12 +2443,14 @@ mod enrichment_tests {
     async fn test_db_and_webhook_sinks_receive_identical_enrichment_fields() {
         let app_state = AppState::new_test();
 
-        let project =
-            Project::new("Consistent Project".to_string(), "/test/path".to_string());
-        app_state.project_repo.create(project.clone()).await.unwrap();
+        let project = Project::new("Consistent Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
 
-        let session =
-            IdeationSession::new_with_title(project.id.clone(), "Cross-Sink Session");
+        let session = IdeationSession::new_with_title(project.id.clone(), "Cross-Sink Session");
         app_state
             .ideation_session_repo
             .create(session.clone())
@@ -2275,8 +2475,7 @@ mod enrichment_tests {
             .await
             .unwrap();
         assert_eq!(db_events.len(), 1, "Expected one DB event");
-        let db_payload: serde_json::Value =
-            serde_json::from_str(&db_events[0].payload).unwrap();
+        let db_payload: serde_json::Value = serde_json::from_str(&db_events[0].payload).unwrap();
 
         let webhook_payloads = webhook.payloads().await;
         assert_eq!(webhook_payloads.len(), 1, "Expected one webhook event");
@@ -2284,7 +2483,12 @@ mod enrichment_tests {
 
         // DB and webhook must carry identical enrichment fields
         // (timestamp excluded — may differ by a few ms)
-        for field in &["project_name", "session_title", "task_title", "presentation_kind"] {
+        for field in &[
+            "project_name",
+            "session_title",
+            "task_title",
+            "presentation_kind",
+        ] {
             assert_eq!(
                 db_payload[field], wh[field],
                 "Field '{}' must be identical across DB and webhook sinks",

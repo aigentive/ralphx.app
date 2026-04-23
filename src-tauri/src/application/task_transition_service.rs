@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::future::Future;
 use std::panic::Location;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
@@ -21,7 +22,9 @@ use crate::application::agent_client_bundle::{AgentClientBundle, AgentClientFact
 use crate::application::runtime_factory::{
     build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
 };
-use crate::application::{AppChatService, AppState, ChatService, InteractiveProcessRegistry};
+use crate::application::{
+    AppChatService, AppState, ChatService, GitService, InteractiveProcessRegistry,
+};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
@@ -38,9 +41,11 @@ use crate::domain::repositories::{
     TaskDependencyRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{
-    github_service::PrReviewFeedback,
+    github_service::{
+        PrMergeStateStatus, PrMergeableState, PrReviewFeedback, PrStatus, PrSyncState,
+    },
     payload_enrichment::{PresentationKind, WebhookPresentationContext},
-    MessageQueue, RunningAgentRegistry,
+    MessageQueue, PlanPrPublisher, PrReviewState, RunningAgentRegistry,
 };
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
@@ -771,6 +776,51 @@ pub(crate) struct CorrectionResult {
     pub task: Task,
     /// The status the task was in before the correction (captured from re-fetched task).
     pub from_status: InternalStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PrBranchFreshnessOutcome {
+    NotApplicable,
+    UpToDate,
+    Updated,
+    ConflictRouted,
+}
+
+fn pr_branch_freshness_task_eligible(task: &Task) -> bool {
+    task.category == TaskCategory::PlanMerge
+        && task.archived_at.is_none()
+        && task.internal_status == InternalStatus::WaitingOnPr
+        && !task.is_terminal()
+}
+
+fn pr_sync_state_requires_update(sync_state: &PrSyncState) -> bool {
+    matches!(
+        sync_state.merge_state_status,
+        Some(PrMergeStateStatus::Behind)
+    ) && !matches!(sync_state.mergeable, Some(PrMergeableState::Conflicting))
+}
+
+fn pr_sync_state_requires_conflict_resolution(sync_state: &PrSyncState) -> bool {
+    matches!(
+        sync_state.merge_state_status,
+        Some(PrMergeStateStatus::Dirty)
+    ) || matches!(sync_state.mergeable, Some(PrMergeableState::Conflicting))
+}
+
+fn remote_tracking_ref(base_branch: &str) -> String {
+    if base_branch.starts_with("origin/") {
+        base_branch.to_string()
+    } else {
+        format!("origin/{base_branch}")
+    }
+}
+
+fn task_metadata_bool(task: &Task, key: &str) -> bool {
+    task.metadata
+        .as_deref()
+        .and_then(|metadata| serde_json::from_str::<serde_json::Value>(metadata).ok())
+        .and_then(|value| value.get(key)?.as_bool())
+        .unwrap_or(false)
 }
 
 // ============================================================================
@@ -1879,6 +1929,271 @@ impl<R: Runtime> TaskTransitionService<R> {
 
             Ok(updated)
         }
+    }
+
+    /// Keep an open PR-mode plan PR branch current with its GitHub base branch.
+    ///
+    /// Simple behind-but-mergeable cases are updated programmatically and pushed.
+    /// Conflict cases are routed to the merger agent, but completion returns to
+    /// `WaitingOnPr`; GitHub remains the authority for the final plan merge.
+    #[track_caller]
+    pub(crate) fn reconcile_pr_branch_freshness<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        expected_plan_branch_id: &'a crate::domain::entities::PlanBranchId,
+        pr_number: i64,
+        source: &'a str,
+    ) -> impl Future<Output = AppResult<PrBranchFreshnessOutcome>> + 'a {
+        async move {
+            let Some(plan_branch_repo) = self.plan_branch_repo.as_ref() else {
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            };
+            let Some(github_service) = self.github_service.as_ref() else {
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            };
+
+            let task = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+            if !pr_branch_freshness_task_eligible(&task) {
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            }
+
+            let plan_branch = plan_branch_repo
+                .get_by_merge_task_id(task_id)
+                .await?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!(
+                        "No plan branch found for merge task {}",
+                        task_id.as_str()
+                    ))
+                })?;
+            if plan_branch.id != *expected_plan_branch_id
+                || !plan_branch.pr_eligible
+                || plan_branch.status != crate::domain::entities::PlanBranchStatus::Active
+                || plan_branch.pr_number != Some(pr_number)
+            {
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            }
+
+            let project = self
+                .project_repo
+                .get_by_id(&task.project_id)
+                .await?
+                .ok_or_else(|| AppError::ProjectNotFound(task.project_id.as_str().to_string()))?;
+            let repo_path = Path::new(&project.working_directory);
+            let sync_state = github_service
+                .check_pr_sync_state(repo_path, pr_number)
+                .await?;
+
+            if sync_state.status != PrStatus::Open {
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            }
+            if sync_state.head_ref_name != plan_branch.branch_name {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    pr_number,
+                    expected = %plan_branch.branch_name,
+                    actual = %sync_state.head_ref_name,
+                    "PR freshness: GitHub head branch does not match RalphX plan branch; skipping"
+                );
+                return Ok(PrBranchFreshnessOutcome::NotApplicable);
+            }
+
+            if pr_sync_state_requires_conflict_resolution(&sync_state) {
+                GitService::fetch_origin(repo_path).await?;
+                return self
+                    .route_pr_branch_update_conflict(
+                        task,
+                        &project,
+                        &plan_branch,
+                        &sync_state,
+                        pr_number,
+                        source,
+                        Vec::new(),
+                    )
+                    .await;
+            }
+
+            if !pr_sync_state_requires_update(&sync_state) {
+                return Ok(PrBranchFreshnessOutcome::UpToDate);
+            }
+
+            GitService::fetch_origin(repo_path).await?;
+            let remote_base = remote_tracking_ref(&sync_state.base_ref_name);
+            let update_result =
+                crate::domain::state_machine::transition_handler::update_plan_from_main_isolated(
+                    repo_path,
+                    &plan_branch.branch_name,
+                    &remote_base,
+                    &project,
+                    task_id.as_str(),
+                    None,
+                )
+                .await;
+
+            match update_result {
+                crate::domain::state_machine::transition_handler::PlanUpdateResult::Updated
+                | crate::domain::state_machine::transition_handler::PlanUpdateResult::AlreadyUpToDate => {
+                    self.push_and_refresh_pr_branch(&task, &project, &plan_branch)
+                        .await?;
+                    Ok(PrBranchFreshnessOutcome::Updated)
+                }
+                crate::domain::state_machine::transition_handler::PlanUpdateResult::NotPlanBranch => {
+                    Ok(PrBranchFreshnessOutcome::NotApplicable)
+                }
+                crate::domain::state_machine::transition_handler::PlanUpdateResult::Conflicts {
+                    conflict_files,
+                } => {
+                    self.route_pr_branch_update_conflict(
+                        task,
+                        &project,
+                        &plan_branch,
+                        &sync_state,
+                        pr_number,
+                        source,
+                        conflict_files,
+                    )
+                    .await
+                }
+                crate::domain::state_machine::transition_handler::PlanUpdateResult::Error(error) => {
+                    Err(AppError::GitOperation(format!(
+                        "PR branch freshness update failed: {error}"
+                    )))
+                }
+            }
+        }
+    }
+
+    async fn push_and_refresh_pr_branch(
+        &self,
+        task: &Task,
+        project: &crate::domain::entities::Project,
+        plan_branch: &crate::domain::entities::PlanBranch,
+    ) -> AppResult<()> {
+        let Some(plan_branch_repo) = self.plan_branch_repo.as_ref() else {
+            return Ok(());
+        };
+        let Some(github_service) = self.github_service.as_ref() else {
+            return Ok(());
+        };
+
+        plan_branch_repo
+            .update_pr_push_status(
+                &plan_branch.id,
+                crate::domain::entities::plan_branch::PrPushStatus::Pending,
+            )
+            .await?;
+        let mut pending_plan_branch = plan_branch.clone();
+        pending_plan_branch.pr_push_status =
+            crate::domain::entities::plan_branch::PrPushStatus::Pending;
+        crate::domain::state_machine::transition_handler::sync_plan_branch_pr_if_needed(
+            project,
+            &pending_plan_branch,
+            github_service,
+            plan_branch_repo,
+        )
+        .await;
+
+        let refreshed_plan_branch = plan_branch_repo
+            .get_by_id(&plan_branch.id)
+            .await?
+            .unwrap_or_else(|| plan_branch.clone());
+        let publisher = PlanPrPublisher::new(
+            github_service,
+            self.ideation_session_repo.as_ref(),
+            self.artifact_repo.as_ref(),
+        );
+        publisher
+            .sync_existing_pr(task, project, &refreshed_plan_branch, PrReviewState::Ready)
+            .await
+    }
+
+    async fn route_pr_branch_update_conflict(
+        &self,
+        mut task: Task,
+        project: &crate::domain::entities::Project,
+        plan_branch: &crate::domain::entities::PlanBranch,
+        sync_state: &PrSyncState,
+        pr_number: i64,
+        source: &str,
+        conflict_files: Vec<PathBuf>,
+    ) -> AppResult<PrBranchFreshnessOutcome> {
+        if task.internal_status == InternalStatus::Merging
+            && task_metadata_bool(&task, "pr_branch_update_conflict")
+        {
+            return Ok(PrBranchFreshnessOutcome::ConflictRouted);
+        }
+
+        let repo_path = Path::new(&project.working_directory);
+        let merge_worktree =
+            crate::domain::state_machine::transition_handler::compute_merge_worktree_path(
+                project,
+                task.id.as_str(),
+            );
+        let merge_worktree_path = PathBuf::from(&merge_worktree);
+        if merge_worktree_path.exists() {
+            let _ = GitService::delete_worktree(repo_path, &merge_worktree_path).await;
+        }
+        GitService::checkout_existing_branch_worktree(
+            repo_path,
+            &merge_worktree_path,
+            &plan_branch.branch_name,
+        )
+        .await?;
+
+        let remote_base = remote_tracking_ref(&sync_state.base_ref_name);
+        let conflict_file_strings = conflict_files
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>();
+        crate::domain::state_machine::transition_handler::merge_metadata_into(
+            &mut task,
+            &serde_json::json!({
+                "error": "The GitHub PR branch is stale and needs conflict resolution before review can continue.",
+                "branch_freshness_conflict": true,
+                "freshness_origin_state": "waiting_on_pr",
+                "plan_update_conflict": true,
+                "pr_branch_update_conflict": true,
+                "github_pr_number": pr_number,
+                "pr_branch_update_source": source,
+                "source_branch": remote_base,
+                "target_branch": plan_branch.branch_name,
+                "base_branch": remote_base,
+                "conflict_files": conflict_file_strings,
+            }),
+        );
+        task.worktree_path = Some(merge_worktree);
+        task.touch();
+        self.task_repo.update(&task).await?;
+
+        if let Some(plan_branch_repo) = self.plan_branch_repo.as_ref() {
+            let _ = plan_branch_repo
+                .clear_polling_active_by_task(&task.id)
+                .await;
+            let _ = plan_branch_repo
+                .update_pr_push_status(
+                    &plan_branch.id,
+                    crate::domain::entities::plan_branch::PrPushStatus::Pending,
+                )
+                .await;
+        }
+
+        let updated = self
+            .transition_task_corrective_with_exit(
+                &task.id,
+                InternalStatus::Merging,
+                Some(format!(
+                    "PR #{pr_number} branch needs conflict resolution before review can continue"
+                )),
+                "pr_branch_freshness",
+            )
+            .await?;
+        self.execute_entry_actions(&task.id, &updated, InternalStatus::Merging)
+            .await;
+        Ok(PrBranchFreshnessOutcome::ConflictRouted)
     }
 
     /// Reroute a merge failure caused by repository commit hooks back into revision flow.

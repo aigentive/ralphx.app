@@ -18,7 +18,8 @@ use tokio::time::{timeout, Duration};
 use tracing::{debug, warn};
 
 use crate::domain::services::github_service::{
-    GithubServiceTrait, PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
+    GithubServiceTrait, PrMergeStateStatus, PrMergeableState, PrReviewCommentFeedback,
+    PrReviewFeedback, PrStatus, PrSyncState,
 };
 use crate::error::AppError;
 use crate::utils::secret_redactor::redact;
@@ -275,6 +276,16 @@ fn build_pr_review_decision_args(pr_number: i64) -> Vec<String> {
     ]
 }
 
+fn build_pr_sync_state_args(pr_number: i64) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "view".to_string(),
+        pr_number.to_string(),
+        "--json".to_string(),
+        "state,mergeStateStatus,mergeable,isDraft,headRefName,baseRefName,headRefOid,baseRefOid,mergedAt,mergeCommit".to_string(),
+    ]
+}
+
 fn build_pr_reviews_api_args(pr_number: i64) -> Vec<String> {
     vec![
         "api".to_string(),
@@ -446,6 +457,18 @@ impl GithubServiceTrait for GhCliGithubService {
 
         let json_str = stdout.join("\n");
         parse_pr_status_output(&json_str)
+    }
+
+    async fn check_pr_sync_state(
+        &self,
+        working_dir: &Path,
+        pr_number: i64,
+    ) -> AppResult<PrSyncState> {
+        let stdout = self
+            .runner
+            .run_gh(working_dir, &build_pr_sync_state_args(pr_number))
+            .await?;
+        parse_pr_sync_state_output(&stdout.join("\n"))
     }
 
     async fn check_pr_review_feedback(
@@ -685,6 +708,91 @@ pub(crate) fn parse_pr_status_output(json_str: &str) -> AppResult<PrStatus> {
             "gh pr view: unknown state '{other}'"
         ))),
     }
+}
+
+pub(crate) fn parse_pr_sync_state_output(json_str: &str) -> AppResult<PrSyncState> {
+    let v: Value = serde_json::from_str(json_str).map_err(|e| {
+        AppError::Infrastructure(format!(
+            "Failed to parse gh pr view sync-state JSON: {e}\nRaw: {json_str}"
+        ))
+    })?;
+
+    let status = parse_pr_status_value(&v)?;
+    let head_ref_name = required_string(&v, "headRefName", "gh pr view sync-state")?;
+    let base_ref_name = required_string(&v, "baseRefName", "gh pr view sync-state")?;
+
+    Ok(PrSyncState {
+        status,
+        merge_state_status: v
+            .get("mergeStateStatus")
+            .and_then(Value::as_str)
+            .map(parse_merge_state_status),
+        mergeable: v
+            .get("mergeable")
+            .and_then(Value::as_str)
+            .map(parse_mergeable_state),
+        is_draft: v.get("isDraft").and_then(Value::as_bool).unwrap_or(false),
+        head_ref_name,
+        base_ref_name,
+        head_ref_oid: v
+            .get("headRefOid")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        base_ref_oid: v
+            .get("baseRefOid")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn parse_pr_status_value(v: &Value) -> AppResult<PrStatus> {
+    let state = v["state"]
+        .as_str()
+        .ok_or_else(|| AppError::Infrastructure("gh pr view: missing 'state' field".to_string()))?;
+
+    match state {
+        "OPEN" => Ok(PrStatus::Open),
+        "CLOSED" => Ok(PrStatus::Closed),
+        "MERGED" => {
+            let sha = v["mergeCommit"]["oid"].as_str().map(str::to_string);
+            Ok(PrStatus::Merged {
+                merge_commit_sha: sha,
+            })
+        }
+        other => Err(AppError::Infrastructure(format!(
+            "gh pr view: unknown state '{other}'"
+        ))),
+    }
+}
+
+fn parse_merge_state_status(value: &str) -> PrMergeStateStatus {
+    match value {
+        "CLEAN" => PrMergeStateStatus::Clean,
+        "BEHIND" => PrMergeStateStatus::Behind,
+        "DIRTY" => PrMergeStateStatus::Dirty,
+        "BLOCKED" => PrMergeStateStatus::Blocked,
+        "DRAFT" => PrMergeStateStatus::Draft,
+        "UNKNOWN" => PrMergeStateStatus::Unknown,
+        "UNSTABLE" => PrMergeStateStatus::Unstable,
+        "HAS_HOOKS" => PrMergeStateStatus::HasHooks,
+        other => PrMergeStateStatus::Other(other.to_string()),
+    }
+}
+
+fn parse_mergeable_state(value: &str) -> PrMergeableState {
+    match value {
+        "MERGEABLE" => PrMergeableState::Mergeable,
+        "CONFLICTING" => PrMergeableState::Conflicting,
+        "UNKNOWN" => PrMergeableState::Unknown,
+        other => PrMergeableState::Other(other.to_string()),
+    }
+}
+
+fn required_string(v: &Value, field: &str, context: &str) -> AppResult<String> {
+    v.get(field)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| AppError::Infrastructure(format!("{context}: missing '{field}' field")))
 }
 
 pub(crate) fn parse_pr_review_decision_output(json_str: &str) -> AppResult<bool> {

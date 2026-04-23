@@ -10,7 +10,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use ralphx_lib::domain::services::github_service::{
-    GithubServiceTrait, PrReviewFeedback, PrStatus,
+    GithubServiceTrait, PrMergeStateStatus, PrMergeableState, PrReviewFeedback, PrStatus,
+    PrSyncState,
 };
 use ralphx_lib::{AppError, AppResult};
 
@@ -26,8 +27,10 @@ use ralphx_lib::{AppError, AppResult};
 pub struct MockGithubService {
     /// Status responses to return in sequence (last entry repeats when exhausted).
     status_responses: Arc<Mutex<VecDeque<AppResult<PrStatus>>>>,
+    sync_state_responses: Arc<Mutex<VecDeque<AppResult<PrSyncState>>>>,
     review_feedback_responses: Arc<Mutex<VecDeque<AppResult<Option<PrReviewFeedback>>>>>,
     pub check_pr_status_calls: Arc<Mutex<u32>>,
+    pub check_pr_sync_state_calls: Arc<Mutex<u32>>,
     pub check_pr_review_feedback_calls: Arc<Mutex<u32>>,
     pub push_branch_calls: Arc<Mutex<u32>>,
     pub create_draft_pr_calls: Arc<Mutex<u32>>,
@@ -50,8 +53,10 @@ impl MockGithubService {
     pub fn new() -> Self {
         Self {
             status_responses: Arc::new(Mutex::new(VecDeque::new())),
+            sync_state_responses: Arc::new(Mutex::new(VecDeque::new())),
             review_feedback_responses: Arc::new(Mutex::new(VecDeque::new())),
             check_pr_status_calls: Arc::new(Mutex::new(0)),
+            check_pr_sync_state_calls: Arc::new(Mutex::new(0)),
             check_pr_review_feedback_calls: Arc::new(Mutex::new(0)),
             push_branch_calls: Arc::new(Mutex::new(0)),
             create_draft_pr_calls: Arc::new(Mutex::new(0)),
@@ -72,6 +77,13 @@ impl MockGithubService {
     /// queue is exhausted, subsequent calls return `PrStatus::Open`.
     pub fn will_return_status(&self, status: PrStatus) {
         self.status_responses.lock().unwrap().push_back(Ok(status));
+    }
+
+    pub fn will_return_sync_state(&self, state: PrSyncState) {
+        self.sync_state_responses
+            .lock()
+            .unwrap()
+            .push_back(Ok(state));
     }
 
     pub fn will_return_review_feedback(&self, feedback: PrReviewFeedback) {
@@ -113,6 +125,9 @@ impl MockGithubService {
 
     pub fn check_calls(&self) -> u32 {
         *self.check_pr_status_calls.lock().unwrap()
+    }
+    pub fn sync_state_calls(&self) -> u32 {
+        *self.check_pr_sync_state_calls.lock().unwrap()
     }
     pub fn review_feedback_calls(&self) -> u32 {
         *self.check_pr_review_feedback_calls.lock().unwrap()
@@ -189,6 +204,24 @@ impl GithubServiceTrait for MockGithubService {
             return result;
         }
         Ok(PrStatus::Open)
+    }
+
+    async fn check_pr_sync_state(&self, _wd: &Path, _pr_number: i64) -> AppResult<PrSyncState> {
+        *self.check_pr_sync_state_calls.lock().unwrap() += 1;
+        let mut q = self.sync_state_responses.lock().unwrap();
+        if let Some(result) = q.pop_front() {
+            return result;
+        }
+        Ok(PrSyncState {
+            status: PrStatus::Open,
+            merge_state_status: Some(PrMergeStateStatus::Clean),
+            mergeable: Some(PrMergeableState::Mergeable),
+            is_draft: false,
+            head_ref_name: "feature".to_string(),
+            base_ref_name: "main".to_string(),
+            head_ref_oid: None,
+            base_ref_oid: None,
+        })
     }
 
     async fn check_pr_review_feedback(

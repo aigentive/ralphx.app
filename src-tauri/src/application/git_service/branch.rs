@@ -281,6 +281,26 @@ impl GitService {
         Ok(output.map_or(false, |o| o.status.success()))
     }
 
+    /// Check if any commit-ish git ref exists in the repo.
+    ///
+    /// Unlike `branch_exists`, this accepts remote-tracking refs such as
+    /// `origin/main`, which are valid merge sources but not local branches.
+    pub async fn ref_exists(repo_path: &Path, ref_name: &str) -> AppResult<bool> {
+        let commit_ref = format!("{ref_name}^{{commit}}");
+        let output = git_cmd::run(
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "--end-of-options",
+                &commit_ref,
+            ],
+            repo_path,
+        )
+        .await;
+        Ok(output.map_or(false, |o| o.status.success()))
+    }
+
     /// Check if `commit` is an ancestor of `target` in the given repo.
     ///
     /// Uses `git merge-base --is-ancestor commit target`. Conservative failure mode:
@@ -302,8 +322,8 @@ impl GitService {
         source_branch: &str,
         target_branch: &str,
     ) -> Option<MergeAttemptResult> {
-        if !Self::branch_exists(repo, source_branch).await.unwrap_or(false) {
-            warn!("Source branch '{}' does not exist", source_branch);
+        if !Self::ref_exists(repo, source_branch).await.unwrap_or(false) {
+            warn!("Source ref '{}' does not exist", source_branch);
             return Some(MergeAttemptResult::BranchNotFound {
                 branch: source_branch.to_string(),
             });

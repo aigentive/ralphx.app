@@ -192,6 +192,37 @@ describe("new-session path — POST body pre-parsing", () => {
     expect(status).not.toBe(500);
   });
 
+  it("new session rejects non-initialize requests without transport stack noise", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { status, body } = await httpRequest(testPort, "/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer rxk_live_testkey",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/list",
+        id: 42,
+      }),
+    });
+
+    expect(status).toBe(400);
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.id).toBe(42);
+    expect((body.error as Record<string, unknown>).message).toContain(
+      "initialize"
+    );
+    expect(
+      errorSpy.mock.calls.some((args) =>
+        String(args[0]).includes("Transport error")
+      )
+    ).toBe(false);
+
+    errorSpy.mockRestore();
+  });
+
   it("batch array is valid JSON and reaches transport", async () => {
     // JSON-RPC batch requests are arrays — must be accepted by the parse layer
     const { status } = await httpRequest(testPort, "/mcp", {

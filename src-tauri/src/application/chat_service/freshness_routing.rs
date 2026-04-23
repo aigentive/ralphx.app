@@ -119,6 +119,13 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
             );
             (InternalStatus::PendingReview, "reviewing".to_owned())
         }
+        Some("waiting_on_pr") => {
+            tracing::info!(
+                task_id = %task.id,
+                "freshness_return_route: routing back to WaitingOnPr (PR branch update origin)"
+            );
+            (InternalStatus::WaitingOnPr, "waiting_on_pr".to_owned())
+        }
         Some(unknown) => {
             tracing::warn!(
                 task_id = %task.id,
@@ -178,6 +185,8 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
     // -----------------------------------------------------------------------
     if let Some(obj) = meta_val.as_object_mut() {
         obj.remove("plan_update_conflict");
+        obj.remove("pr_branch_update_conflict");
+        obj.remove("pr_branch_update_source");
         obj.remove("branch_freshness_conflict");
         obj.remove("freshness_backoff_until");
     }
@@ -239,54 +248,69 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
         .transition_task_corrective_with_exit(&task.id, target_status, None, "system")
         .await;
 
-    if let Err(e) = transition_result {
-        // -----------------------------------------------------------------------
-        // Step 8: Transition failed — re-insert routing flags so the next
-        // invocation can retry. We intentionally do NOT propagate a re-insert
-        // failure (best-effort: if this also fails we log and move on).
-        // -----------------------------------------------------------------------
-        tracing::error!(
-            task_id = %task.id,
-            error = %e,
-            target = ?target_status,
-            "freshness_return_route: transition failed — re-inserting routing flags for retry"
-        );
+    let routed_task = match transition_result {
+        Ok(task) => task,
+        Err(e) => {
+            // -----------------------------------------------------------------------
+            // Step 8: Transition failed — re-insert routing flags so the next
+            // invocation can retry. We intentionally do NOT propagate a re-insert
+            // failure (best-effort: if this also fails we log and move on).
+            // -----------------------------------------------------------------------
+            tracing::error!(
+                task_id = %task.id,
+                error = %e,
+                target = ?target_status,
+                "freshness_return_route: transition failed — re-inserting routing flags for retry"
+            );
 
-        if let Ok(Some(mut rollback_task)) = task_repo.get_by_id(&task.id).await {
-            let mut rollback_meta: serde_json::Value = rollback_task
-                .metadata
-                .as_deref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_else(|| serde_json::json!({}));
+            if let Ok(Some(mut rollback_task)) = task_repo.get_by_id(&task.id).await {
+                let mut rollback_meta: serde_json::Value = rollback_task
+                    .metadata
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
 
-            if let Some(obj) = rollback_meta.as_object_mut() {
-                obj.insert(
-                    "plan_update_conflict".to_owned(),
-                    serde_json::Value::Bool(true),
-                );
-                obj.insert(
-                    "branch_freshness_conflict".to_owned(),
-                    serde_json::Value::Bool(true),
-                );
-            }
+                if let Some(obj) = rollback_meta.as_object_mut() {
+                    obj.insert(
+                        "plan_update_conflict".to_owned(),
+                        serde_json::Value::Bool(true),
+                    );
+                    obj.insert(
+                        "branch_freshness_conflict".to_owned(),
+                        serde_json::Value::Bool(true),
+                    );
+                    if target_status == InternalStatus::WaitingOnPr {
+                        obj.insert(
+                            "pr_branch_update_conflict".to_owned(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
+                }
 
-            rollback_task.metadata = Some(rollback_meta.to_string());
-            rollback_task.touch();
-            if let Err(re_err) = task_repo.update(&rollback_task).await {
+                rollback_task.metadata = Some(rollback_meta.to_string());
+                rollback_task.touch();
+                if let Err(re_err) = task_repo.update(&rollback_task).await {
+                    tracing::warn!(
+                        task_id = %task.id,
+                        error = %re_err,
+                        "freshness_return_route: failed to re-insert routing flags (best-effort)"
+                    );
+                }
+            } else {
                 tracing::warn!(
                     task_id = %task.id,
-                    error = %re_err,
-                    "freshness_return_route: failed to re-insert routing flags (best-effort)"
+                    "freshness_return_route: could not re-read task for routing flag rollback"
                 );
             }
-        } else {
-            tracing::warn!(
-                task_id = %task.id,
-                "freshness_return_route: could not re-read task for routing flag rollback"
-            );
-        }
 
-        return Err(e);
+            return Err(e);
+        }
+    };
+
+    if target_status == InternalStatus::WaitingOnPr {
+        transition_service
+            .execute_entry_actions(&task.id, &routed_task, target_status)
+            .await;
     }
 
     // -----------------------------------------------------------------------

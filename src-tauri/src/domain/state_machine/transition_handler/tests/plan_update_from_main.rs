@@ -1,7 +1,9 @@
 // Tests for update_plan_from_main — ensures plan branches are brought up-to-date
 // from main before task→plan merges to prevent false validation failures.
 
-use super::super::merge_coordination::{update_plan_from_main, PlanUpdateResult};
+use super::super::merge_coordination::{
+    update_plan_from_main, update_plan_from_main_isolated, PlanUpdateResult,
+};
 use super::helpers::*;
 use crate::domain::entities::Project;
 
@@ -115,6 +117,92 @@ async fn update_plan_behind_main_gets_updated() {
         log_str.contains("clippy"),
         "Plan branch should now contain the clippy fix commit from main. Log:\n{}",
         log_str,
+    );
+}
+
+#[tokio::test]
+async fn isolated_update_plan_refuses_primary_checkout_mutation() {
+    let (repo, plan_branch) = setup_plan_behind_main();
+    let path = repo.path();
+    let project = make_test_project(&repo.path_string());
+
+    let checkout = std::process::Command::new("git")
+        .args(["checkout", &plan_branch])
+        .current_dir(path)
+        .output()
+        .expect("git checkout plan branch");
+    assert!(
+        checkout.status.success(),
+        "precondition failed: {}",
+        String::from_utf8_lossy(&checkout.stderr)
+    );
+    assert!(
+        !path.join("fix.rs").exists(),
+        "plan branch should not contain main's later fix before isolated update"
+    );
+
+    let result = update_plan_from_main_isolated(
+        path,
+        &plan_branch,
+        "main",
+        &project,
+        "task-isolated-primary-checkout",
+        None,
+    )
+    .await;
+
+    assert!(
+        matches!(result, PlanUpdateResult::Error(_)),
+        "isolated PR freshness update must not merge into the primary checkout. Got: {:?}",
+        result
+    );
+    assert!(
+        !path.join("fix.rs").exists(),
+        "isolated update must leave the user's currently checked-out working tree untouched"
+    );
+}
+
+#[tokio::test]
+async fn isolated_update_plan_accepts_remote_tracking_base_ref() {
+    let (repo, plan_branch) = setup_plan_behind_main();
+    let path = repo.path();
+    let project = make_test_project(&repo.path_string());
+
+    let update_ref = std::process::Command::new("git")
+        .args(["update-ref", "refs/remotes/origin/main", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git update-ref origin/main");
+    assert!(
+        update_ref.status.success(),
+        "precondition failed: {}",
+        String::from_utf8_lossy(&update_ref.stderr)
+    );
+
+    let result = update_plan_from_main_isolated(
+        path,
+        &plan_branch,
+        "origin/main",
+        &project,
+        "task-isolated-remote-base",
+        None,
+    )
+    .await;
+
+    assert!(
+        matches!(result, PlanUpdateResult::Updated),
+        "PR freshness must accept remote-tracking base refs. Got: {:?}",
+        result
+    );
+
+    let contains_fix = std::process::Command::new("git")
+        .args(["merge-base", "--is-ancestor", "origin/main", &plan_branch])
+        .current_dir(path)
+        .output()
+        .expect("git merge-base");
+    assert!(
+        contains_fix.status.success(),
+        "plan branch should contain origin/main after isolated update"
     );
 }
 

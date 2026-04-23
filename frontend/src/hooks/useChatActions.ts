@@ -73,14 +73,17 @@ export function useChatActions({
       const isFirstIdeationMessage = ideationSessionId && messageCount === 0;
 
       try {
-        // For review mode, send with "review" context type via direct API
-        if (contextType === "review" && selectedTaskId) {
+        // Agent side-panels use context-specific conversations. Review and merge must
+        // bypass the generic task-detail mutation so steering messages reach the
+        // active reviewer/merger process instead of a plain task chat.
+        if (contextType === "review" || contextType === "merge") {
+          const agentContextId = selectedTaskId ?? contextId;
           setSending(storeContextKey, true);
           try {
-            const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds, target);
+            const result = await chatApi.sendAgentMessage(contextType, agentContextId, content, attachmentIds, target);
 
             queryClient.invalidateQueries({
-              queryKey: chatKeys.conversationList("review", selectedTaskId),
+              queryKey: chatKeys.conversationList(contextType, agentContextId),
             });
 
             if (result.wasQueued && result.queuedMessageId != null) {
@@ -150,7 +153,7 @@ export function useChatActions({
         setAgentRunning(storeContextKey, false);
       }
     },
-    [sendMessage, contextType, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage]
+    [sendMessage, contextType, contextId, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage]
   );
 
   // ── Stop Agent ───────────────────────────────────────────────────

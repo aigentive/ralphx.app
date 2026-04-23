@@ -13,10 +13,11 @@ use std::sync::Arc;
 use futures::StreamExt as _;
 
 use crate::application::services::PrPollerRegistry;
+use crate::application::task_transition_service::PrBranchFreshnessOutcome;
 use crate::application::TaskTransitionService;
 use crate::domain::entities::{
     ExecutionPlanId, ExecutionPlanStatus, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    Task, TaskCategory,
+    Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{
     ArtifactRepository, ExecutionPlanRepository, IdeationSessionRepository, PlanBranchRepository,
@@ -29,6 +30,7 @@ use crate::domain::state_machine::transition_handler::{
 };
 
 const PR_METADATA_REFRESH_CONCURRENCY: usize = 8;
+const PR_POLLER_RECOVERY_CONCURRENCY: usize = 4;
 
 #[derive(Clone)]
 struct PrMetadataRefreshJob {
@@ -472,10 +474,10 @@ async fn active_execution_plan_id_for_branch(
 
 /// Restart PR merge pollers for tasks that were polling when the app last shut down.
 ///
-/// Scans `plan_branches` for rows with `pr_polling_active = 1`, verifies the
-/// associated task is still in `Merging` status, then calls
-/// `registry.start_polling()` for each — which applies its own staggered jitter
-/// to prevent thundering herd. (AD9)
+/// Scans `plan_branches` for rows with `pr_polling_active = 1`, repairs eligible
+/// PR-backed merge tasks, then calls `registry.start_polling()` for tasks that
+/// are still waiting on GitHub. The registry applies staggered jitter to prevent
+/// thundering herd. (AD9)
 ///
 /// # Errors
 /// Logs warnings on repo failures; never panics or returns an error to the caller.
@@ -501,194 +503,272 @@ pub async fn recover_pr_pollers(
 
     tracing::info!(
         count = task_ids.len(),
+        concurrency = PR_POLLER_RECOVERY_CONCURRENCY,
         "PR startup recovery: found tasks with active polling"
     );
 
-    for task_id in task_ids {
-        let mut task = match task_repo.get_by_id(&task_id).await {
-            Ok(Some(t)) => t,
-            Ok(None) => {
-                tracing::debug!(
-                    task_id = task_id.as_str(),
-                    "PR startup recovery: task not found, skipping"
-                );
-                continue;
+    futures::stream::iter(task_ids)
+        .for_each_concurrent(PR_POLLER_RECOVERY_CONCURRENCY, |task_id| {
+            let task_repo = Arc::clone(&task_repo);
+            let plan_branch_repo = Arc::clone(&plan_branch_repo);
+            let pr_poller_registry = Arc::clone(&pr_poller_registry);
+            let project_repo = Arc::clone(&project_repo);
+            let transition_service = Arc::clone(&transition_service);
+            async move {
+                recover_one_pr_poller(
+                    task_id,
+                    task_repo,
+                    plan_branch_repo,
+                    pr_poller_registry,
+                    project_repo,
+                    transition_service,
+                )
+                .await;
             }
-            Err(e) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    error = %e,
-                    "PR startup recovery: failed to load task"
-                );
-                continue;
-            }
-        };
+        })
+        .await;
+}
 
-        // Load plan branch
-        let plan_branch = match plan_branch_repo.get_by_merge_task_id(&task_id).await {
-            Ok(Some(pb)) => pb,
-            Ok(None) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    "PR startup recovery: no plan branch found for task"
-                );
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    error = %e,
-                    "PR startup recovery: failed to load plan branch"
-                );
-                continue;
-            }
-        };
-
-        if should_restore_false_pr_merge_timeout(&task, &plan_branch) {
+async fn recover_one_pr_poller(
+    task_id: TaskId,
+    task_repo: Arc<dyn TaskRepository>,
+    plan_branch_repo: Arc<dyn PlanBranchRepository>,
+    pr_poller_registry: Arc<PrPollerRegistry>,
+    project_repo: Arc<dyn ProjectRepository>,
+    transition_service: Arc<TaskTransitionService<tauri::Wry>>,
+) {
+    let mut task = match task_repo.get_by_id(&task_id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            tracing::debug!(
+                task_id = task_id.as_str(),
+                "PR startup recovery: task not found, skipping"
+            );
+            return;
+        }
+        Err(e) => {
             tracing::warn!(
                 task_id = task_id.as_str(),
-                branch_id = plan_branch.id.as_str(),
-                branch = %plan_branch.branch_name,
-                pr_number = ?plan_branch.pr_number,
-                "PR startup recovery: restoring PR-backed merge task that was incorrectly escalated by local merge timeout"
+                error = %e,
+                "PR startup recovery: failed to load task"
             );
-            match transition_service
-                .transition_task(&task.id, InternalStatus::WaitingOnPr)
-                .await
-            {
-                Ok(restored) => {
-                    task = restored;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = task_id.as_str(),
-                        error = %e,
-                        "PR startup recovery: failed to restore PR-backed merge timeout task"
-                    );
-                    continue;
-                }
-            }
+            return;
         }
+    };
 
-        if task.internal_status == InternalStatus::Merging {
-            tracing::info!(
+    // Load plan branch
+    let plan_branch = match plan_branch_repo.get_by_merge_task_id(&task_id).await {
+        Ok(Some(pb)) => pb,
+        Ok(None) => {
+            tracing::warn!(
                 task_id = task_id.as_str(),
-                "PR startup recovery: migrating legacy PR-backed Merging task to WaitingOnPr"
+                "PR startup recovery: no plan branch found for task"
             );
-            match transition_service
-                .transition_task(&task.id, InternalStatus::WaitingOnPr)
-                .await
-            {
-                Ok(restored) => {
-                    task = restored;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = task_id.as_str(),
-                        error = %e,
-                        "PR startup recovery: failed to migrate PR-backed Merging task"
-                    );
-                    continue;
-                }
-            }
+            return;
         }
-
-        if task.internal_status != InternalStatus::WaitingOnPr {
-            tracing::debug!(
+        Err(e) => {
+            tracing::warn!(
                 task_id = task_id.as_str(),
-                status = ?task.internal_status,
-                "PR startup recovery: task not in WaitingOnPr, skipping"
+                error = %e,
+                "PR startup recovery: failed to load plan branch"
             );
-            continue;
+            return;
         }
+    };
 
-        let pr_number = match plan_branch.pr_number {
-            Some(n) => n,
-            None => {
-                tracing::debug!(
-                    task_id = task_id.as_str(),
-                    "PR startup recovery: no pr_number on plan branch, skipping"
-                );
-                continue;
-            }
-        };
-
-        if !plan_branch.pr_eligible {
-            tracing::debug!(
-                task_id = task_id.as_str(),
-                "PR startup recovery: pr_eligible=false, skipping"
-            );
-            continue;
-        }
-
-        // Load project for working_dir and base_branch
-        let project = match project_repo.get_by_id(&plan_branch.project_id).await {
-            Ok(Some(p)) => p,
-            Ok(None) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    "PR startup recovery: project not found"
-                );
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    error = %e,
-                    "PR startup recovery: failed to load project"
-                );
-                continue;
-            }
-        };
-
-        let working_dir = std::path::PathBuf::from(&project.working_directory);
-        // source_branch = the base branch the plan was branched from (e.g. "main")
-        let base_branch = plan_branch.source_branch.clone();
-
-        match pr_poller_registry
-            .process_review_feedback_once(
-                &task_id,
-                pr_number,
-                &working_dir,
-                Arc::clone(&transition_service),
-                "github_pr_startup_recovery",
-            )
+    if should_restore_false_pr_merge_timeout(&task, &plan_branch) {
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            branch_id = plan_branch.id.as_str(),
+            branch = %plan_branch.branch_name,
+            pr_number = ?plan_branch.pr_number,
+            "PR startup recovery: restoring PR-backed merge task that was incorrectly escalated by local merge timeout"
+        );
+        match transition_service
+            .transition_task(&task.id, InternalStatus::WaitingOnPr)
             .await
         {
-            Ok(true) => {
-                tracing::info!(
-                    task_id = task_id.as_str(),
-                    pr_number = pr_number,
-                    "PR startup recovery: routed GitHub requested-changes review before restarting poller"
-                );
-                continue;
+            Ok(restored) => {
+                task = restored;
             }
-            Ok(false) => {}
             Err(e) => {
                 tracing::warn!(
                     task_id = task_id.as_str(),
-                    pr_number = pr_number,
                     error = %e,
-                    "PR startup recovery: failed to inspect GitHub review feedback before poller restart"
+                    "PR startup recovery: failed to restore PR-backed merge timeout task"
                 );
+                return;
             }
         }
+    }
 
+    if task.internal_status == InternalStatus::Merging
+        && task_metadata_bool(&task, "pr_branch_update_conflict")
+    {
         tracing::info!(
             task_id = task_id.as_str(),
-            pr_number = pr_number,
-            "PR startup recovery: restarting poller (staggered jitter applied by registry)"
+            pr_number = ?plan_branch.pr_number,
+            "PR startup recovery: PR branch update conflict is already being resolved; not restarting poller"
         );
-
-        pr_poller_registry.start_polling(
-            task_id,
-            plan_branch.id,
-            pr_number,
-            working_dir,
-            base_branch,
-            Arc::clone(&transition_service),
-        );
+        let _ = plan_branch_repo
+            .clear_polling_active_by_task(&task_id)
+            .await;
+        return;
     }
+
+    if task.internal_status == InternalStatus::Merging {
+        tracing::info!(
+            task_id = task_id.as_str(),
+            "PR startup recovery: migrating legacy PR-backed Merging task to WaitingOnPr"
+        );
+        match transition_service
+            .transition_task(&task.id, InternalStatus::WaitingOnPr)
+            .await
+        {
+            Ok(restored) => {
+                task = restored;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    error = %e,
+                    "PR startup recovery: failed to migrate PR-backed Merging task"
+                );
+                return;
+            }
+        }
+    }
+
+    if task.internal_status != InternalStatus::WaitingOnPr {
+        tracing::debug!(
+            task_id = task_id.as_str(),
+            status = ?task.internal_status,
+            "PR startup recovery: task not in WaitingOnPr, skipping"
+        );
+        return;
+    }
+
+    let pr_number = match plan_branch.pr_number {
+        Some(n) => n,
+        None => {
+            tracing::debug!(
+                task_id = task_id.as_str(),
+                "PR startup recovery: no pr_number on plan branch, skipping"
+            );
+            return;
+        }
+    };
+
+    if !plan_branch.pr_eligible {
+        tracing::debug!(
+            task_id = task_id.as_str(),
+            "PR startup recovery: pr_eligible=false, skipping"
+        );
+        return;
+    }
+
+    // Load project for working_dir and base_branch
+    let project = match project_repo.get_by_id(&plan_branch.project_id).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                "PR startup recovery: project not found"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                error = %e,
+                "PR startup recovery: failed to load project"
+            );
+            return;
+        }
+    };
+
+    let working_dir = std::path::PathBuf::from(&project.working_directory);
+    // source_branch = the base branch the plan was branched from (e.g. "main")
+    let base_branch = plan_branch.source_branch.clone();
+
+    match pr_poller_registry
+        .process_review_feedback_once(
+            &task_id,
+            pr_number,
+            &working_dir,
+            Arc::clone(&transition_service),
+            "github_pr_startup_recovery",
+        )
+        .await
+    {
+        Ok(true) => {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                pr_number = pr_number,
+                "PR startup recovery: routed GitHub requested-changes review before restarting poller"
+            );
+            return;
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                pr_number = pr_number,
+                error = %e,
+                "PR startup recovery: failed to inspect GitHub review feedback before poller restart"
+            );
+        }
+    }
+
+    match transition_service
+        .reconcile_pr_branch_freshness(
+            &task_id,
+            &plan_branch.id,
+            pr_number,
+            "github_pr_startup_recovery",
+        )
+        .await
+    {
+        Ok(PrBranchFreshnessOutcome::ConflictRouted) => {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                pr_number = pr_number,
+                "PR startup recovery: routed stale PR branch conflict before poller restart"
+            );
+            return;
+        }
+        Ok(PrBranchFreshnessOutcome::Updated) => {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                pr_number = pr_number,
+                "PR startup recovery: updated stale PR branch before poller restart"
+            );
+        }
+        Ok(PrBranchFreshnessOutcome::NotApplicable | PrBranchFreshnessOutcome::UpToDate) => {}
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                pr_number = pr_number,
+                error = %e,
+                "PR startup recovery: failed to reconcile PR branch freshness before poller restart"
+            );
+        }
+    }
+
+    tracing::info!(
+        task_id = task_id.as_str(),
+        pr_number = pr_number,
+        "PR startup recovery: restarting poller (staggered jitter applied by registry)"
+    );
+
+    pr_poller_registry.start_polling(
+        task_id,
+        plan_branch.id,
+        pr_number,
+        working_dir,
+        base_branch,
+        Arc::clone(&transition_service),
+    );
 }
 
 fn should_restore_false_pr_merge_timeout(task: &Task, plan_branch: &PlanBranch) -> bool {
@@ -716,4 +796,214 @@ fn metadata_indicates_local_merge_timeout(metadata: Option<&str>) -> bool {
         .ok()
         .and_then(|value| value.get("merge_timeout_seconds").cloned())
         .is_some()
+}
+
+fn task_metadata_bool(task: &Task, key: &str) -> bool {
+    task.metadata
+        .as_deref()
+        .and_then(|metadata| serde_json::from_str::<serde_json::Value>(metadata).ok())
+        .and_then(|value| value.get(key)?.as_bool())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus as DbPrStatus};
+    use crate::domain::entities::{ArtifactId, IdeationSessionId};
+    use crate::domain::services::github_service::{
+        PrMergeStateStatus, PrMergeableState, PrStatus, PrSyncState,
+    };
+    use crate::tests::mock_github_service::MockGithubService;
+
+    fn open_pr_sync_state(head_ref_name: &str) -> PrSyncState {
+        PrSyncState {
+            status: PrStatus::Open,
+            merge_state_status: Some(PrMergeStateStatus::Clean),
+            mergeable: Some(PrMergeableState::Mergeable),
+            is_draft: false,
+            head_ref_name: head_ref_name.to_owned(),
+            base_ref_name: "main".to_owned(),
+            head_ref_oid: None,
+            base_ref_oid: None,
+        }
+    }
+
+    async fn create_waiting_pr_merge_task(
+        app_state: &AppState,
+        project: &Project,
+        branch_name: String,
+        pr_number: i64,
+    ) -> (Task, PlanBranch) {
+        let mut task = Task::new(project.id.clone(), "Merge plan into main".to_owned());
+        task.category = TaskCategory::PlanMerge;
+        task.internal_status = InternalStatus::WaitingOnPr;
+        let task = app_state.task_repo.create(task).await.unwrap();
+
+        let mut plan_branch = PlanBranch::new(
+            ArtifactId::from_string(format!("plan-artifact-{pr_number}")),
+            IdeationSessionId::from_string(format!("session-{pr_number}")),
+            project.id.clone(),
+            branch_name,
+            "main".to_owned(),
+        );
+        plan_branch.merge_task_id = Some(task.id.clone());
+        plan_branch.pr_eligible = true;
+        plan_branch.pr_polling_active = true;
+        plan_branch.pr_number = Some(pr_number);
+        plan_branch.pr_status = Some(DbPrStatus::Open);
+        plan_branch.pr_push_status = PrPushStatus::Pushed;
+        let plan_branch = app_state
+            .plan_branch_repo
+            .create(plan_branch)
+            .await
+            .unwrap();
+
+        (task, plan_branch)
+    }
+
+    #[tokio::test]
+    async fn recover_pr_pollers_checks_branch_freshness_before_restarting_poller() {
+        let app_state = AppState::new_test();
+        let github = Arc::new(MockGithubService::new());
+
+        let mut project = Project::new("Test Project".to_owned(), "/tmp/test-repo".to_owned());
+        project.github_pr_enabled = true;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Merge plan into main".to_owned());
+        task.category = TaskCategory::PlanMerge;
+        task.internal_status = InternalStatus::WaitingOnPr;
+        let task = app_state.task_repo.create(task).await.unwrap();
+
+        let mut plan_branch = PlanBranch::new(
+            ArtifactId::from_string("plan-artifact"),
+            IdeationSessionId::from_string("session-1"),
+            project.id.clone(),
+            "plan/feature".to_owned(),
+            "main".to_owned(),
+        );
+        plan_branch.merge_task_id = Some(task.id.clone());
+        plan_branch.pr_eligible = true;
+        plan_branch.pr_polling_active = true;
+        plan_branch.pr_number = Some(68);
+        plan_branch.pr_status = Some(DbPrStatus::Open);
+        plan_branch.pr_push_status = PrPushStatus::Pushed;
+        let plan_branch = app_state
+            .plan_branch_repo
+            .create(plan_branch)
+            .await
+            .unwrap();
+
+        github.will_return_sync_state(open_pr_sync_state(&plan_branch.branch_name));
+
+        let registry = Arc::new(PrPollerRegistry::new(
+            Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+            Arc::clone(&app_state.plan_branch_repo),
+        ));
+        let transition_service = Arc::new(
+            app_state
+                .build_transition_service_for_runtime::<tauri::Wry>(
+                    Arc::new(ExecutionState::new()),
+                    None,
+                )
+                .with_github_service(Arc::clone(&github) as Arc<dyn GithubServiceTrait>)
+                .with_pr_poller_registry(Arc::clone(&registry)),
+        );
+
+        recover_pr_pollers(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.plan_branch_repo),
+            Arc::clone(&registry),
+            Arc::clone(&app_state.project_repo),
+            transition_service,
+        )
+        .await;
+
+        let state = github.state();
+        assert_eq!(state.check_pr_review_feedback_calls, 1);
+        assert_eq!(state.check_pr_sync_state_calls, 1);
+        assert_eq!(state.last_check_pr_sync_state_number, Some(68));
+        drop(state);
+
+        registry.stop_polling(&task.id);
+    }
+
+    #[tokio::test]
+    async fn recover_pr_pollers_reconciles_startup_prs_with_bounded_parallelism() {
+        let app_state = AppState::new_test();
+        let github = Arc::new(MockGithubService::new());
+
+        let mut project = Project::new("Test Project".to_owned(), "/tmp/test-repo".to_owned());
+        project.github_pr_enabled = true;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let mut task_ids = Vec::new();
+        for index in 0..(PR_POLLER_RECOVERY_CONCURRENCY + 2) {
+            let pr_number = 80 + index as i64;
+            let (task, _) = create_waiting_pr_merge_task(
+                &app_state,
+                &project,
+                format!("plan/feature-{index}"),
+                pr_number,
+            )
+            .await;
+            task_ids.push(task.id);
+        }
+
+        github.with_review_feedback_delay_ms(25);
+
+        let registry = Arc::new(PrPollerRegistry::new(
+            Some(Arc::clone(&github) as Arc<dyn GithubServiceTrait>),
+            Arc::clone(&app_state.plan_branch_repo),
+        ));
+        let transition_service = Arc::new(
+            app_state
+                .build_transition_service_for_runtime::<tauri::Wry>(
+                    Arc::new(ExecutionState::new()),
+                    None,
+                )
+                .with_github_service(Arc::clone(&github) as Arc<dyn GithubServiceTrait>)
+                .with_pr_poller_registry(Arc::clone(&registry)),
+        );
+
+        recover_pr_pollers(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.plan_branch_repo),
+            Arc::clone(&registry),
+            Arc::clone(&app_state.project_repo),
+            transition_service,
+        )
+        .await;
+
+        let state = github.state();
+        assert_eq!(
+            state.check_pr_review_feedback_calls as usize,
+            PR_POLLER_RECOVERY_CONCURRENCY + 2
+        );
+        assert!(
+            state.max_concurrent_check_pr_review_feedback_calls > 1,
+            "startup PR recovery should process independent PRs concurrently"
+        );
+        assert!(
+            state.max_concurrent_check_pr_review_feedback_calls as usize
+                <= PR_POLLER_RECOVERY_CONCURRENCY,
+            "startup PR recovery must stay within the configured concurrency cap"
+        );
+        drop(state);
+
+        for task_id in task_ids {
+            registry.stop_polling(&task_id);
+        }
+    }
 }

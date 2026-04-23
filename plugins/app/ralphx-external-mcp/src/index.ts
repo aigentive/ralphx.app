@@ -193,6 +193,14 @@ async function handleMcpRequest(
     sendError(res, 405, "Method not allowed — new sessions require POST");
     return;
   }
+  if (!isInitializeRequest(parsedBody)) {
+    sendJsonRpcServerError(
+      res,
+      jsonRpcIdFromBody(parsedBody),
+      "Server not initialized — send initialize before other MCP requests"
+    );
+    return;
+  }
 
   // Create new MCP server + transport per session (stateful mode)
   const server = createMcpServer();
@@ -398,6 +406,44 @@ function sendJsonRpcParseError(res: ServerResponse): void {
     "Content-Length": Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+function sendJsonRpcServerError(
+  res: ServerResponse,
+  id: string | number | null,
+  message: string
+): void {
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: -32000,
+      message,
+    },
+  });
+  res.writeHead(400, {
+    "Content-Type": "application/json",
+    "Content-Length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+function isInitializeRequest(body: unknown): boolean {
+  if (Array.isArray(body)) {
+    return body.some(isInitializeRequest);
+  }
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  return (body as { method?: unknown }).method === "initialize";
+}
+
+function jsonRpcIdFromBody(body: unknown): string | number | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return null;
+  }
+  const id = (body as { id?: unknown }).id;
+  return typeof id === "string" || typeof id === "number" ? id : null;
 }
 
 async function handleInvalidateCache(
