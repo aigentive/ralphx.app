@@ -117,7 +117,11 @@ export function AgentsArtifactPane({
         ? 3_000
         : false,
   });
-  const sessionData = sessionQuery.data ?? null;
+  const rawSessionData = sessionQuery.data;
+  const sessionData =
+    attachedSessionId && rawSessionData?.session.id === attachedSessionId
+      ? rawSessionData
+      : null;
   const session = sessionData?.session ? (sessionData.session as IdeationSession) : null;
   const proposals = useMemo<TaskProposal[]>(
     () => (sessionData?.proposals ?? []).map(toTaskProposal),
@@ -133,11 +137,16 @@ export function AgentsArtifactPane({
   });
   const verificationQuery = useVerificationStatus(attachedSessionId ?? undefined);
   const dependencyQuery = useDependencyGraph(attachedSessionId ?? "");
+  const verificationData =
+    attachedSessionId && verificationQuery.data?.sessionId === attachedSessionId
+      ? verificationQuery.data
+      : null;
+  const dependencyGraph = attachedSessionId && sessionData ? dependencyQuery.data ?? null : null;
   const proposalCount = proposals.length;
   const verificationState =
-    verificationQuery.data?.status ?? sessionData?.session.verificationStatus ?? "unverified";
+    verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
-    verificationQuery.data?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
+    verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
 
   return (
     <aside
@@ -317,7 +326,7 @@ export function AgentsArtifactPane({
           taskMode={taskMode}
           planContent={getArtifactText(planArtifactQuery.data)}
           isPlanLoading={planArtifactQuery.isLoading}
-          dependencyGraph={dependencyQuery.data ?? null}
+          dependencyGraph={dependencyGraph}
           proposals={proposals}
         />
       </div>
@@ -412,6 +421,7 @@ function ArtifactContent({
         onReviewSync={noop}
         onUndoSync={noop}
         onDismissSync={noop}
+        hideToolbar
       />
     );
   }
