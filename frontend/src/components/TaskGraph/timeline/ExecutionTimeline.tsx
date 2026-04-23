@@ -38,6 +38,8 @@ import {
 export interface ExecutionTimelineProps {
   /** Project ID to fetch timeline events for */
   projectId: string;
+  /** Execution plan ID to scope events to the active plan */
+  executionPlanId?: string | null;
   /** Callback when clicking on a task entry (for node highlighting in graph) */
   onTaskClick?: (taskId: string) => void;
   /** Currently highlighted task ID (from graph selection) */
@@ -427,6 +429,7 @@ const TimelineLoadMore = memo(function TimelineLoadMore({
 
 export const ExecutionTimeline = memo(function ExecutionTimeline({
   projectId,
+  executionPlanId,
   onTaskClick,
   highlightedTaskId,
   defaultCollapsed = false,
@@ -461,6 +464,7 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
     pageSize: 25,
     filters: apiFilters,
     realTimeUpdates: true,
+    executionPlanId: executionPlanId ?? null,
   });
 
   // Flatten paginated results and apply client-side category filtering

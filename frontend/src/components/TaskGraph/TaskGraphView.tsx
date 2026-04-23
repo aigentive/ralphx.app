@@ -1519,6 +1519,27 @@ function TaskGraphViewInner({
     isLoading,
   ]);
 
+  // No plan selected — bypass all graph rendering
+  if (!activePlanId) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState
+          variant="neutral"
+          icon={<AlertCircle />}
+          title="No plan selected"
+          description="Select a plan to view work on the Graph."
+          action={
+            <PlanSelectorInline
+              projectId={projectId}
+              source="graph_inline"
+              onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+            />
+          }
+        />
+      </div>
+    );
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -1566,6 +1587,7 @@ function TaskGraphViewInner({
       timelineContent={
         <FloatingTimeline
           projectId={projectId}
+          executionPlanId={activeExecutionPlanId}
           onTaskClick={onTimelineTaskClick}
           highlightedTaskId={highlightedTaskId}
           variant={rightPanelMode === "overlay" || overlayClosing ? "overlay" : "panel"}
@@ -1607,24 +1629,7 @@ function TaskGraphViewInner({
           </div>
         )}
 
-        {/* Show empty state when no plan is selected */}
-        {!activePlanId ? (
-          <div className="flex items-center justify-center h-full">
-            <EmptyState
-              variant="neutral"
-              icon={<AlertCircle />}
-              title="No plan selected"
-              description="Select a plan to view work on the Graph."
-              action={
-                <PlanSelectorInline
-                  projectId={projectId}
-                  source="graph_inline"
-                  onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
-                />
-              }
-            />
-          </div>
-        ) : filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
+        {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
           <div className="flex items-center justify-center h-full">
             <EmptyState
               variant="neutral"

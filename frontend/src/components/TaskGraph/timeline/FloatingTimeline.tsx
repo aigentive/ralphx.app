@@ -17,6 +17,7 @@ export interface FloatingTimelineProps extends Omit<ExecutionTimelineProps, "cla
 
 export const FloatingTimeline = memo(function FloatingTimeline({
   projectId,
+  executionPlanId,
   onTaskClick,
   highlightedTaskId,
   className,
@@ -46,6 +47,7 @@ export const FloatingTimeline = memo(function FloatingTimeline({
       >
         <ExecutionTimeline
           projectId={projectId}
+          executionPlanId={executionPlanId ?? null}
           embedded
           {...(onTaskClick && { onTaskClick })}
           {...(highlightedTaskId !== undefined && { highlightedTaskId })}

@@ -9,7 +9,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { taskGraphApi, type TaskDependencyGraphResponse } from "@/api/task-graph";
 import { useEventBus } from "@/providers/EventProvider";
-import { usePlanStore, selectActivePlanId } from "@/stores/planStore";
 
 /**
  * Query key factory for task graph
@@ -46,10 +45,6 @@ export function useTaskGraph(
 ) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
-  // Guard: if there's an active plan but executionPlanId hasn't resolved yet (loading gap),
-  // disable the query to prevent fetching all 750 tasks without a plan filter.
-  const activePlanId = usePlanStore(selectActivePlanId(projectId));
-
   // Subscribe to task updates for real-time graph refresh, debounced to coalesce rapid events.
   useEffect(() => {
     if (!projectId) return;
@@ -74,8 +69,8 @@ export function useTaskGraph(
   return useQuery<TaskDependencyGraphResponse, Error>({
     queryKey: taskGraphKeys.graph(projectId, includeArchived, executionPlanId),
     queryFn: () => taskGraphApi.getDependencyGraph(projectId, includeArchived, executionPlanId),
-    // Disable during plan loading gap: activePlanId set but executionPlanId not yet resolved.
-    enabled: Boolean(projectId) && !(activePlanId && !executionPlanId),
+    // Only fetch when a plan is selected and resolved — prevents unfiltered all-task queries.
+    enabled: Boolean(projectId) && !!executionPlanId,
     // Refetch less frequently since graph structure doesn't change often
     staleTime: 30_000,
   });
