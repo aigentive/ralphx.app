@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Clock,
+  ChevronRight,
   ExternalLink,
   FileText,
   GitBranch,
@@ -15,6 +16,8 @@ import { DescriptionBlock } from "./DescriptionBlock";
 import { DetailCard } from "./DetailCard";
 import { PrStatusBadge } from "./PrStatusBadge";
 import { SectionTitle } from "./SectionTitle";
+import { TaskDetailPlanDialog } from "./TaskDetailPlanDialog";
+import { TaskDetailProposalDialog } from "./TaskDetailProposalDialog";
 import type {
   TaskDetailContextModel,
   TaskDetailViewMode,
@@ -106,67 +109,86 @@ function PlanCard({ model }: { model: TaskDetailContextModel }) {
   const { taskContext, sessionId } = model;
   const planArtifact = taskContext?.planArtifact;
   const sourceProposal = taskContext?.sourceProposal;
+  const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
+  const [isProposalDialogOpen, setIsProposalDialogOpen] = useState(false);
 
   if (!planArtifact && !sourceProposal && !sessionId) return null;
 
   return (
-    <RailSection title="Plan">
-      <DetailCard>
-        <div className="space-y-3">
-          {planArtifact && (
-            <div className="flex gap-2.5">
-              <FileText className="w-4 h-4 mt-0.5 text-text-primary/40 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium leading-snug text-text-primary/80">
-                  {planArtifact.title}
+    <>
+      <RailSection title="Plan">
+        <DetailCard>
+          <div className="space-y-2">
+            {planArtifact && (
+              <button
+                type="button"
+                onClick={() => setIsPlanDialogOpen(true)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--overlay-faint)]"
+                aria-label={`Open plan ${planArtifact.title}`}
+              >
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-primary/40" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] uppercase tracking-wider text-text-primary/35">
+                    Implementation Plan
+                  </div>
+                  <div className="mt-1 text-[13px] font-medium leading-snug text-text-primary/80">
+                    {planArtifact.title}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-primary/45">
+                    <span>v{planArtifact.currentVersion}</span>
+                    <span>•</span>
+                    <span>{planArtifact.artifactType}</span>
+                  </div>
                 </div>
-                {planArtifact.contentPreview && (
-                  <p className="mt-1 text-[12px] leading-relaxed text-text-primary/45">
-                    {planArtifact.contentPreview}
-                  </p>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--overlay-weak)] text-text-primary/45">
-                    v{planArtifact.currentVersion}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--overlay-weak)] text-text-primary/45">
-                    {planArtifact.artifactType}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+                <ChevronRight className="h-4 w-4 shrink-0 text-text-primary/30" />
+              </button>
+            )}
 
-          {sourceProposal && (
-            <div
-              className="flex gap-2.5 pt-3 border-t"
-              style={{ borderColor: "var(--overlay-weak)" }}
-            >
-              <Lightbulb className="w-4 h-4 mt-0.5 text-text-primary/40 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-wider text-text-primary/35">
-                  Source Proposal
+            {sourceProposal && (
+              <button
+                type="button"
+                onClick={() => setIsProposalDialogOpen(true)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--overlay-faint)]"
+                aria-label={`Open proposal ${sourceProposal.title}`}
+              >
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-text-primary/40" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] uppercase tracking-wider text-text-primary/35">
+                    Source Proposal
+                  </div>
+                  <div className="mt-1 text-[13px] font-medium leading-snug text-text-primary/75">
+                    {sourceProposal.title}
+                  </div>
+                  {sourceProposal.planVersionAtCreation !== null && (
+                    <div className="mt-1 text-[11px] text-text-primary/45">
+                      Created against plan v{sourceProposal.planVersionAtCreation}
+                    </div>
+                  )}
                 </div>
-                <div className="mt-1 text-[13px] font-medium leading-snug text-text-primary/75">
-                  {sourceProposal.title}
-                </div>
-                {sourceProposal.description && (
-                  <p className="mt-1 text-[12px] leading-relaxed text-text-primary/45">
-                    {sourceProposal.description}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+                <ChevronRight className="h-4 w-4 shrink-0 text-text-primary/30" />
+              </button>
+            )}
 
-          {!planArtifact && !sourceProposal && sessionId && (
-            <div className="text-[12px] text-text-primary/45">
-              Ideation session {sessionId.slice(0, 8)}
-            </div>
-          )}
-        </div>
-      </DetailCard>
-    </RailSection>
+            {!planArtifact && !sourceProposal && sessionId && (
+              <div className="text-[12px] text-text-primary/45">
+                Ideation session {sessionId.slice(0, 8)}
+              </div>
+            )}
+          </div>
+        </DetailCard>
+      </RailSection>
+
+      <TaskDetailPlanDialog
+        open={isPlanDialogOpen}
+        onOpenChange={setIsPlanDialogOpen}
+        planArtifact={planArtifact ?? null}
+      />
+      <TaskDetailProposalDialog
+        open={isProposalDialogOpen}
+        onOpenChange={setIsProposalDialogOpen}
+        proposalSummary={sourceProposal ?? null}
+      />
+    </>
   );
 }
 

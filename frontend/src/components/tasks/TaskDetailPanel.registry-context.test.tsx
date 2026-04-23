@@ -165,6 +165,7 @@ describe("TaskDetailPanel registry context", () => {
 
     expect(screen.getByText("Registry body for Test Task")).toBeInTheDocument();
     expect(await screen.findByText("Plan visible from registry detail")).toBeInTheDocument();
+    expect(screen.queryByText("Shared context rail content.")).not.toBeInTheDocument();
     expect(screen.getByText("PR #68")).toBeInTheDocument();
     expect(screen.getByText("task-123")).toBeInTheDocument();
     expect(screen.queryByText("Merge")).not.toBeInTheDocument();

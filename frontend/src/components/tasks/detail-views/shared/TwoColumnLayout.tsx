@@ -41,7 +41,7 @@ export function TwoColumnLayout({
   return (
     <div
       data-testid={testId}
-      className="grid grid-cols-[280px_1fr] gap-6 min-h-0"
+      className="grid min-h-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]"
     >
       {/* Left column - common task context */}
       <div className="min-w-0">{rail}</div>
