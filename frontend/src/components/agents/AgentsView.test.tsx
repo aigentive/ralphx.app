@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ideationApi } from "@/api/ideation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAgentSessionStore, type AgentRuntimeSelection } from "@/stores/agentSessionStore";
 import type { AgentConversation } from "./agentConversations";
@@ -90,8 +91,19 @@ vi.mock("@/api/ideation", () => ({
 }));
 
 vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
-  IntegratedChatPanel: ({ headerContent }: { headerContent?: ReactNode }) => (
-    <div data-testid="integrated-chat-panel">{headerContent}</div>
+  IntegratedChatPanel: ({
+    headerContent,
+    contentWidthClassName,
+  }: {
+    headerContent?: ReactNode;
+    contentWidthClassName?: string;
+  }) => (
+    <div
+      data-testid="integrated-chat-panel"
+      data-content-width-class={contentWidthClassName ?? ""}
+    >
+      {headerContent}
+    </div>
   ),
 }));
 
@@ -191,6 +203,56 @@ function mockAgentViewData(agentConversation: AgentConversation = conversation()
   }));
 }
 
+function mockSessionWithData(
+  overrides?: Partial<Awaited<ReturnType<typeof ideationApi.sessions.getWithData>>["session"]>,
+  proposals: Awaited<ReturnType<typeof ideationApi.sessions.getWithData>>["proposals"] = []
+) {
+  vi.mocked(ideationApi.sessions.getWithData).mockResolvedValue({
+    session: {
+      id: "session-1",
+      projectId: "project-1",
+      title: "Agent Plan",
+      titleSource: "auto",
+      status: "active",
+      planArtifactId: null,
+      seedTaskId: null,
+      parentSessionId: null,
+      teamMode: null,
+      teamConfig: null,
+      createdAt: "2026-04-23T09:00:00Z",
+      updatedAt: "2026-04-23T09:00:00Z",
+      archivedAt: null,
+      convertedAt: null,
+      verificationStatus: "unverified",
+      verificationInProgress: false,
+      gapScore: null,
+      inheritedPlanArtifactId: null,
+      sessionPurpose: "general",
+      acceptanceStatus: null,
+      ...overrides,
+    },
+    proposals,
+    messages: [],
+  });
+}
+
+function resetAgentSessionState(
+  overrides: Partial<ReturnType<typeof useAgentSessionStore.getState>> = {}
+) {
+  useAgentSessionStore.setState({
+    focusedProjectId: "project-1",
+    selectedProjectId: null,
+    selectedConversationId: null,
+    expandedProjectIds: { "project-1": true },
+    artifactByConversationId: {},
+    runtimeByConversationId: {},
+    lastRuntimeByProjectId: {
+      "project-1": runtime,
+    },
+    ...overrides,
+  });
+}
+
 function renderAgentsView() {
   return renderWithProviders(
     <AgentsView projectId="project-1" onCreateProject={vi.fn()} />
@@ -273,28 +335,12 @@ describe("AgentsView", () => {
       id: "conversation-2",
       title: "Fix agent landing flow",
     });
+    vi.mocked(ideationApi.sessions.getWithData).mockReset();
+    mockSessionWithData();
     archiveConversationMock.mockResolvedValue(undefined);
     restoreConversationMock.mockResolvedValue(undefined);
 
-    useAgentSessionStore.setState({
-      focusedProjectId: "project-1",
-      selectedProjectId: "project-1",
-      selectedConversationId: "conversation-1",
-      expandedProjectIds: { "project-1": true },
-      artifactByConversationId: {
-        "conversation-1": {
-          isOpen: true,
-          activeTab: "plan",
-          taskMode: "graph",
-        },
-      },
-      runtimeByConversationId: {
-        "conversation-1": runtime,
-      },
-      lastRuntimeByProjectId: {
-        "project-1": runtime,
-      },
-    });
+    resetAgentSessionState();
   });
 
   it("defaults to the starter composer even when a conversation was previously selected", async () => {
@@ -345,6 +391,15 @@ describe("AgentsView", () => {
   it("restores persisted artifact width, enforces 320px mins, and resets to default on double click", async () => {
     window.localStorage.setItem("ralphx-agents-artifact-width", "480");
     mockAgentViewData();
+    resetAgentSessionState({
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "plan",
+          taskMode: "graph",
+        },
+      },
+    });
 
     renderAgentsView();
     selectSidebarConversationRow();
@@ -368,6 +423,15 @@ describe("AgentsView", () => {
 
   it("resizes the artifact pane when the handle is dragged", async () => {
     mockAgentViewData();
+    resetAgentSessionState({
+      artifactByConversationId: {
+        "conversation-1": {
+          isOpen: true,
+          activeTab: "plan",
+          taskMode: "graph",
+        },
+      },
+    });
 
     renderAgentsView();
     selectSidebarConversationRow();
@@ -413,5 +477,46 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
     );
     expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
+  });
+
+  it("keeps the artifact pane closed by default when the conversation has nothing to show", async () => {
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+      })
+    );
+    mockSessionWithData();
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("integrated-chat-panel")).toHaveAttribute(
+      "data-content-width-class",
+      "max-w-[980px]"
+    );
+    expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
+  });
+
+  it("auto-opens the artifact pane when the conversation already has plan data", async () => {
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+      })
+    );
+    mockSessionWithData({ planArtifactId: "plan-1" });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
+    );
   });
 });

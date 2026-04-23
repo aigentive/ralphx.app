@@ -82,6 +82,7 @@ import { getTeamStatus } from "@/api/team";
 import { TimeoutWarning } from "./TimeoutWarning";
 import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
 import { ChildSessionTranscriptModal } from "./ChildSessionTranscriptModal";
+import { cn } from "@/lib/utils";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -109,6 +110,8 @@ interface IntegratedChatPanelProps {
   hideSessionToolbar?: boolean;
   /** Optional override for the chat surface background. */
   surfaceBackground?: string;
+  /** Optional max-width wrapper for conversation content. */
+  contentWidthClassName?: string;
   /** Extra session ids whose ask-user prompts should surface in this chat. */
   additionalQuestionSessionIds?: string[];
   /** Called when Escape is pressed with input blurred - used to close the panel */
@@ -149,6 +152,7 @@ export function IntegratedChatPanel({
   hideHeaderSessionControls = false,
   hideSessionToolbar = false,
   surfaceBackground,
+  contentWidthClassName,
   additionalQuestionSessionIds,
   onClose,
   autoFocusInput = true,
@@ -889,6 +893,10 @@ export function IntegratedChatPanel({
     const timer = setTimeout(() => setIsRecentlyActive(false), 10_000 - elapsed);
     return () => clearTimeout(timer);
   }, [lastAgentEventTs]);
+  const conversationContentShellClassName = cn(
+    "w-full",
+    contentWidthClassName ? ["mx-auto", contentWidthClassName] : undefined,
+  );
 
   return (
     <>
@@ -1055,6 +1063,7 @@ export function IntegratedChatPanel({
               contextKey={activeTeam ? storeContextKey : undefined}
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+              contentWidthClassName={contentWidthClassName}
               hasOlderMessages={
                 !!ideationSessionId &&
                 !isTeammateTab &&
@@ -1090,24 +1099,34 @@ export function IntegratedChatPanel({
             );
             return otherToolCalls.length > 0 ? (
               <div className="shrink-0 px-3 pb-2">
-                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
+                <div className={conversationContentShellClassName}>
+                  <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
+                </div>
               </div>
             ) : null;
           })()}
 
           {/* Team Plan Approval (shown when lead requests plan approval) */}
           {pendingPlan && (
-            <TeamPlanApproval
-              plan={pendingPlan}
-              contextKey={storeContextKey}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <TeamPlanApproval
+                  plan={pendingPlan}
+                  contextKey={storeContextKey}
+                />
+              </div>
+            </div>
           )}
 
           {/* Child Session Notification - shows when follow-up is created (ideation mode only) */}
           {ideationSessionId && !isHistoryMode && (
-            <ChildSessionNotification
-              sessionId={ideationSessionId}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <ChildSessionNotification
+                  sessionId={ideationSessionId}
+                />
+              </div>
+            </div>
           )}
             <ChildSessionTranscriptModal
               sessionId={childSessionModalId}
@@ -1122,19 +1141,27 @@ export function IntegratedChatPanel({
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
           {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && !isRecentlyActive && (
-            <PreviousRunBanner
-              agentRunStatus={agentRunQuery.data?.status ?? null}
-              contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <PreviousRunBanner
+                  agentRunStatus={agentRunQuery.data?.status ?? null}
+                  contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
+                />
+              </div>
+            </div>
           )}
 
           {/* Team Filter Tabs (team mode — above input area) */}
           {isTeamActive && teammates.length > 0 && (
-            <TeamFilterTabs
-              teammates={teammates}
-              activeFilter={teamFilter}
-              onFilterChange={setTeamFilter}
-            />
+            <div className="px-3">
+              <div className={conversationContentShellClassName}>
+                <TeamFilterTabs
+                  teammates={teammates}
+                  activeFilter={teamFilter}
+                  onFilterChange={setTeamFilter}
+                />
+              </div>
+            </div>
           )}
 
           {/* Input Area — same theme-agnostic tint as header for symmetric
@@ -1148,59 +1175,64 @@ export function IntegratedChatPanel({
               borderTop: "1px solid var(--border-subtle)",
             }}
           >
-            {/* Queued Messages - unified queue with context-aware keys */}
-            {queuedMessages.length > 0 && (
-              <div className="p-3 pb-0">
-                <QueuedMessageList
-                  messages={queuedMessages}
-                  onEdit={handleEditQueuedMessage}
-                  onDelete={handleDeleteQueuedMessage}
+            <div
+              data-testid="integrated-chat-input-shell"
+              className={conversationContentShellClassName}
+            >
+              {/* Queued Messages - unified queue with context-aware keys */}
+              {queuedMessages.length > 0 && (
+                <div className="p-3 pb-0">
+                  <QueuedMessageList
+                    messages={queuedMessages}
+                    onEdit={handleEditQueuedMessage}
+                    onDelete={handleDeleteQueuedMessage}
+                  />
+                </div>
+              )}
+
+              {/* Question Input Banner - renders above ChatInput when question is active */}
+              {(activeQuestion || answeredQuestion) && (
+                <QuestionInputBanner
+                  key={activeQuestion?.requestId ?? 'answered'}
+                  question={activeQuestion ?? null}
+                  selectedIndices={selectedOptions}
+                  onChipClick={handleChipClick}
+                  onDismiss={dismissQuestion}
+                  answeredValue={answeredQuestion}
+                  onDismissAnswered={clearAnswered}
+                />
+              )}
+
+              {/* Chat Input — wrapper padding matches ExecutionControlBar's
+                  outer `p-2` so the top border of the composer aligns with
+                  the top border of the execution bar across the split pane. */}
+              <div className="p-2">
+                <ChatInput
+                  onSend={activeQuestion ? handleQuestionSend : handleSend}
+                  onStop={handleStopAgentWrapper}
+                  agentStatus={agentStatus}
+                  isSending={isSending || isSubmittingAnswer}
+                  hasQueuedMessages={queuedMessages.length > 0}
+                  onEditLastQueued={handleEditLastQueuedWrapper}
+                  isReadOnly={isHistoryMode}
+                  placeholder={getContextConfig(currentContextType).placeholder}
+                  showHelperText={showHelperTextAlways}
+                  {...(activeQuestion ? {
+                    value: questionInputValue,
+                    onChange: setQuestionInputValue,
+                    questionMode: {
+                      optionCount: activeQuestion.options.length,
+                      multiSelect: activeQuestion.multiSelect,
+                      onMatchedOptions: handleMatchedOptions,
+                    },
+                  } : {})}
+                  autoFocus={autoFocusInput}
+                  enableAttachments={!!activeConversationId && !isHistoryMode}
+                  attachments={attachments}
+                  onFilesSelected={uploadFiles}
+                  onRemoveAttachment={removeAttachment}
                 />
               </div>
-            )}
-
-            {/* Question Input Banner - renders above ChatInput when question is active */}
-            {(activeQuestion || answeredQuestion) && (
-              <QuestionInputBanner
-                key={activeQuestion?.requestId ?? 'answered'}
-                question={activeQuestion ?? null}
-                selectedIndices={selectedOptions}
-                onChipClick={handleChipClick}
-                onDismiss={dismissQuestion}
-                answeredValue={answeredQuestion}
-                onDismissAnswered={clearAnswered}
-              />
-            )}
-
-            {/* Chat Input — wrapper padding matches ExecutionControlBar's
-                outer `p-2` so the top border of the composer aligns with
-                the top border of the execution bar across the split pane. */}
-            <div className="p-2">
-              <ChatInput
-                onSend={activeQuestion ? handleQuestionSend : handleSend}
-                onStop={handleStopAgentWrapper}
-                agentStatus={agentStatus}
-                isSending={isSending || isSubmittingAnswer}
-                hasQueuedMessages={queuedMessages.length > 0}
-                onEditLastQueued={handleEditLastQueuedWrapper}
-                isReadOnly={isHistoryMode}
-                placeholder={getContextConfig(currentContextType).placeholder}
-                showHelperText={showHelperTextAlways}
-                {...(activeQuestion ? {
-                  value: questionInputValue,
-                  onChange: setQuestionInputValue,
-                  questionMode: {
-                    optionCount: activeQuestion.options.length,
-                    multiSelect: activeQuestion.multiSelect,
-                    onMatchedOptions: handleMatchedOptions,
-                  },
-                } : {})}
-                autoFocus={autoFocusInput}
-                enableAttachments={!!activeConversationId && !isHistoryMode}
-                attachments={attachments}
-                onFilesSelected={uploadFiles}
-                onRemoveAttachment={removeAttachment}
-              />
             </div>
           </div>
         </div>

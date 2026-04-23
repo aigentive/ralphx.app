@@ -41,6 +41,7 @@ import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
 import { isProviderRole } from "@/lib/chat/provider-role";
 import { normalizeStreamingVerificationContentBlocks } from "./verification-tool-calls";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Constants
@@ -63,6 +64,23 @@ const contentContainerStyle: React.CSSProperties = {
   overflowWrap: "break-word",
   wordBreak: "break-word",
 };
+
+function ContentShell({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string | undefined;
+}) {
+  return (
+    <div
+      className={cn("w-full", className ? ["mx-auto", className] : undefined)}
+      data-testid="chat-message-content-shell"
+    >
+      {children}
+    </div>
+  );
+}
 
 /** Stable empty arrays — avoids new refs on each render when props are omitted */
 const EMPTY_HOOK_EVENTS: HookEvent[] = [];
@@ -190,6 +208,7 @@ interface ChatMessageListProps {
   /** Provider metadata for the active conversation */
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  contentWidthClassName?: string | undefined;
   hasOlderMessages?: boolean;
   isFetchingOlderMessages?: boolean;
   onLoadOlderMessages?: (() => void | Promise<void>) | undefined;
@@ -220,6 +239,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       contextKey,
       providerHarness,
       providerSessionId,
+      contentWidthClassName,
       hasOlderMessages = false,
       isFetchingOlderMessages = false,
       onLoadOlderMessages,
@@ -242,9 +262,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const lastUserMessageIdRef = useRef<string | null>(lastUserMessageId);
     const agentRunningRef = useRef(isAgentRunning);
     const conversationLastUserMessageIdRef = useRef<string | null>(lastUserMessageId);
-    conversationLastUserMessageIdRef.current = lastUserMessageId;
     const conversationAgentRunningRef = useRef(isAgentRunning);
-    conversationAgentRunningRef.current = isAgentRunning;
     // rAF reconciliation refs — used to keep isAtBottom accurate when footer grows
     const scrollerElRef = useRef<HTMLElement | null>(null);
     const reconcileRafRef = useRef<number | null>(null);
@@ -257,6 +275,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const footerPrevHeightRef = useRef<number>(-1); // -1 = uninitialized sentinel
     const footerMountedRef = useRef(false); // H2 fix: skip initial mount observation
     const hasFooterStreamingContentRef = useRef(false);
+
+    useEffect(() => {
+      conversationLastUserMessageIdRef.current = lastUserMessageId;
+      conversationAgentRunningRef.current = isAgentRunning;
+    }, [isAgentRunning, lastUserMessageId]);
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
@@ -896,13 +919,15 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const virtuosoComponents = useMemo(() => ({
       Header: () => (
         <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
-          {/* Show failed run banner if last run failed */}
-          {failedRun?.errorMessage && onDismissFailedRun && (
-            <FailedRunBanner
-              errorMessage={failedRun.errorMessage}
-              onDismiss={() => onDismissFailedRun(failedRun.id)}
-            />
-          )}
+          <ContentShell className={contentWidthClassName}>
+            {/* Show failed run banner if last run failed */}
+            {failedRun?.errorMessage && onDismissFailedRun && (
+              <FailedRunBanner
+                errorMessage={failedRun.errorMessage}
+                onDismiss={() => onDismissFailedRun(failedRun.id)}
+              />
+            )}
+          </ContentShell>
         </div>
       ),
       Footer: () => {
@@ -911,11 +936,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         }
         return (
           <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
-            {footerContent}
+            <ContentShell className={contentWidthClassName}>
+              {footerContent}
+            </ContentShell>
           </div>
         );
       },
     }), [
+      contentWidthClassName,
       failedRun, onDismissFailedRun,
       footerContent, handleFooterRef,
     ]);
@@ -945,7 +973,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       if (item.kind === "hook") {
         return (
           <div className="px-3 w-full" style={contentContainerStyle}>
-            <HookEventMessage event={item.data} />
+            <ContentShell className={contentWidthClassName}>
+              <HookEventMessage event={item.data} />
+            </ContentShell>
           </div>
         );
       }
@@ -953,12 +983,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         const teamMsg = item.data;
         return (
           <div className="px-3 w-full" style={contentContainerStyle}>
-            <TeamMessageBubble
-              from={teamMsg.from}
-              to={teamMsg.to}
-              content={teamMsg.content}
-              timestamp={teamMsg.timestamp}
-            />
+            <ContentShell className={contentWidthClassName}>
+              <TeamMessageBubble
+                from={teamMsg.from}
+                to={teamMsg.to}
+                content={teamMsg.content}
+                timestamp={teamMsg.timestamp}
+              />
+            </ContentShell>
           </div>
         );
       }
@@ -972,7 +1004,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       if (systemCard) {
         return (
           <div className="px-3 w-full" style={contentContainerStyle}>
-            {systemCard}
+            <ContentShell className={contentWidthClassName}>{systemCard}</ContentShell>
           </div>
         );
       }
@@ -984,33 +1016,35 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
       return (
         <div className="px-3 w-full" style={contentContainerStyle}>
-          <MessageItem
-            role={msg.role}
-            content={msg.content}
-            createdAt={msg.createdAt}
-            isLastInList={isLastTimelineItem}
-            toolCalls={msg.toolCalls ?? null}
-            contentBlocks={msg.contentBlocks ?? null}
-            {...(msg.attachments && { attachments: msg.attachments })}
-            teammateName={teammateName}
-            teammateColor={teammateColor}
-            providerHarness={msg.providerHarness ?? providerHarness}
-            providerSessionId={msg.providerSessionId ?? providerSessionId}
-            upstreamProvider={msg.upstreamProvider}
-            providerProfile={msg.providerProfile}
-            logicalModel={msg.logicalModel}
-            effectiveModelId={msg.effectiveModelId}
-            logicalEffort={msg.logicalEffort}
-            effectiveEffort={msg.effectiveEffort}
-            inputTokens={msg.inputTokens}
-            outputTokens={msg.outputTokens}
-            cacheCreationTokens={msg.cacheCreationTokens}
-            cacheReadTokens={msg.cacheReadTokens}
-            estimatedUsd={msg.estimatedUsd}
-          />
+          <ContentShell className={contentWidthClassName}>
+            <MessageItem
+              role={msg.role}
+              content={msg.content}
+              createdAt={msg.createdAt}
+              isLastInList={isLastTimelineItem}
+              toolCalls={msg.toolCalls ?? null}
+              contentBlocks={msg.contentBlocks ?? null}
+              {...(msg.attachments && { attachments: msg.attachments })}
+              teammateName={teammateName}
+              teammateColor={teammateColor}
+              providerHarness={msg.providerHarness ?? providerHarness}
+              providerSessionId={msg.providerSessionId ?? providerSessionId}
+              upstreamProvider={msg.upstreamProvider}
+              providerProfile={msg.providerProfile}
+              logicalModel={msg.logicalModel}
+              effectiveModelId={msg.effectiveModelId}
+              logicalEffort={msg.logicalEffort}
+              effectiveEffort={msg.effectiveEffort}
+              inputTokens={msg.inputTokens}
+              outputTokens={msg.outputTokens}
+              cacheCreationTokens={msg.cacheCreationTokens}
+              cacheReadTokens={msg.cacheReadTokens}
+              estimatedUsd={msg.estimatedUsd}
+            />
+          </ContentShell>
         </div>
       );
-    }, [getTeammateInfo, providerHarness, providerSessionId, timeline.length]);
+    }, [contentWidthClassName, getTeammateInfo, providerHarness, providerSessionId, timeline.length]);
 
     if (isTestEnv) {
       return (
@@ -1023,19 +1057,23 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             </div>
           )}
           <div className="px-3 pt-3 w-full" style={contentContainerStyle}>
-            {failedRun?.errorMessage && onDismissFailedRun && (
-              <FailedRunBanner
-                errorMessage={failedRun.errorMessage}
-                onDismiss={() => onDismissFailedRun(failedRun.id)}
-              />
-            )}
+            <ContentShell className={contentWidthClassName}>
+              {failedRun?.errorMessage && onDismissFailedRun && (
+                <FailedRunBanner
+                  errorMessage={failedRun.errorMessage}
+                  onDismiss={() => onDismissFailedRun(failedRun.id)}
+                />
+              )}
+            </ContentShell>
           </div>
 
           {timeline.map((item, index) => {
             if (item.kind === "hook") {
               return (
                 <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-                  <HookEventMessage event={item.data} />
+                  <ContentShell className={contentWidthClassName}>
+                    <HookEventMessage event={item.data} />
+                  </ContentShell>
                 </div>
               );
             }
@@ -1043,12 +1081,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               const teamMsg = item.data;
               return (
                 <div key={`team-${teamMsg.id}`} className="px-3 w-full" style={contentContainerStyle}>
-                  <TeamMessageBubble
-                    from={teamMsg.from}
-                    to={teamMsg.to}
-                    content={teamMsg.content}
-                    timestamp={teamMsg.timestamp}
-                  />
+                  <ContentShell className={contentWidthClassName}>
+                    <TeamMessageBubble
+                      from={teamMsg.from}
+                      to={teamMsg.to}
+                      content={teamMsg.content}
+                      timestamp={teamMsg.timestamp}
+                    />
+                  </ContentShell>
                 </div>
               );
             }
@@ -1062,7 +1102,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             if (systemCard) {
               return (
                 <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-                  {systemCard}
+                  <ContentShell className={contentWidthClassName}>{systemCard}</ContentShell>
                 </div>
               );
             }
@@ -1073,38 +1113,42 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
             return (
               <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
-                <MessageItem
-                  role={msg.role}
-                  content={msg.content}
-                  createdAt={msg.createdAt}
-                  isLastInList={index === timeline.length - 1}
-                  toolCalls={msg.toolCalls ?? null}
-                  contentBlocks={msg.contentBlocks ?? null}
-                  {...(msg.attachments && { attachments: msg.attachments })}
-                  teammateName={teammateName}
-                  teammateColor={teammateColor}
-                  providerHarness={msg.providerHarness ?? providerHarness}
-                  providerSessionId={msg.providerSessionId ?? providerSessionId}
-                  upstreamProvider={msg.upstreamProvider}
-                  providerProfile={msg.providerProfile}
-                  logicalModel={msg.logicalModel}
-                  effectiveModelId={msg.effectiveModelId}
-                  logicalEffort={msg.logicalEffort}
-                  effectiveEffort={msg.effectiveEffort}
-                  inputTokens={msg.inputTokens}
-                  outputTokens={msg.outputTokens}
-                  cacheCreationTokens={msg.cacheCreationTokens}
-                  cacheReadTokens={msg.cacheReadTokens}
-                  estimatedUsd={msg.estimatedUsd}
-                />
+                <ContentShell className={contentWidthClassName}>
+                  <MessageItem
+                    role={msg.role}
+                    content={msg.content}
+                    createdAt={msg.createdAt}
+                    isLastInList={index === timeline.length - 1}
+                    toolCalls={msg.toolCalls ?? null}
+                    contentBlocks={msg.contentBlocks ?? null}
+                    {...(msg.attachments && { attachments: msg.attachments })}
+                    teammateName={teammateName}
+                    teammateColor={teammateColor}
+                    providerHarness={msg.providerHarness ?? providerHarness}
+                    providerSessionId={msg.providerSessionId ?? providerSessionId}
+                    upstreamProvider={msg.upstreamProvider}
+                    providerProfile={msg.providerProfile}
+                    logicalModel={msg.logicalModel}
+                    effectiveModelId={msg.effectiveModelId}
+                    logicalEffort={msg.logicalEffort}
+                    effectiveEffort={msg.effectiveEffort}
+                    inputTokens={msg.inputTokens}
+                    outputTokens={msg.outputTokens}
+                    cacheCreationTokens={msg.cacheCreationTokens}
+                    cacheReadTokens={msg.cacheReadTokens}
+                    estimatedUsd={msg.estimatedUsd}
+                  />
+                </ContentShell>
               </div>
             );
           })}
 
           {footerContent && (
             <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
-              {footerContent}
-              <div ref={messagesEndRef} />
+              <ContentShell className={contentWidthClassName}>
+                {footerContent}
+                <div ref={messagesEndRef} />
+              </ContentShell>
             </div>
           )}
           {/* Scroll-to-bottom button — same position as production branch */}
