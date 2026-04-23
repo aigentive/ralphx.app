@@ -391,7 +391,7 @@ describe("api.projects", () => {
 
   describe("archive", () => {
     it("should call archive_project with projectId", async () => {
-      mockInvoke.mockResolvedValue(true);
+      mockInvoke.mockResolvedValue(createMockProject());
 
       await api.projects.archive("project-1");
 
@@ -400,12 +400,17 @@ describe("api.projects", () => {
       });
     });
 
-    it("should return boolean", async () => {
-      mockInvoke.mockResolvedValue(true);
+    it("should return archived project", async () => {
+      mockInvoke.mockResolvedValue(
+        createMockProject({
+          name: "Archived Project",
+        })
+      );
 
       const result = await api.projects.archive("project-1");
 
-      expect(result).toBe(true);
+      expect(result.id).toBe("project-1");
+      expect(result.name).toBe("Archived Project");
     });
   });
 });
