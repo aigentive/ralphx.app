@@ -24,6 +24,8 @@ export const timelineKeys = {
   events: (projectId: string) => [...timelineKeys.all, "events", projectId] as const,
   eventsWithFilters: (projectId: string, filters: TimelineFilters) =>
     [...timelineKeys.events(projectId), filters] as const,
+  eventsForPlan: (projectId: string, executionPlanId: string) =>
+    [...timelineKeys.events(projectId), "plan", executionPlanId] as const,
 };
 
 // ============================================================================
@@ -50,6 +52,8 @@ export interface UseExecutionTimelineOptions {
   filters?: TimelineFilters;
   /** Whether to enable real-time updates (default: true) */
   realTimeUpdates?: boolean;
+  /** Execution plan ID to scope timeline events (null = show all plans) */
+  executionPlanId?: string | null;
 }
 
 // ============================================================================
@@ -94,6 +98,7 @@ export function useExecutionTimeline(
     pageSize = 50,
     filters = {},
     realTimeUpdates = true,
+    executionPlanId = null,
   } = options;
 
   const queryClient = useQueryClient();
@@ -112,10 +117,12 @@ export function useExecutionTimeline(
     return unsubscribe;
   }, [projectId, queryClient, eventBus, realTimeUpdates]);
 
-  // Build query key with filters
-  const queryKey = filters && Object.keys(filters).length > 0
-    ? timelineKeys.eventsWithFilters(projectId, filters)
-    : timelineKeys.events(projectId);
+  // Build query key with filters — scope by plan when executionPlanId is set
+  const queryKey = executionPlanId
+    ? timelineKeys.eventsForPlan(projectId, executionPlanId)
+    : filters && Object.keys(filters).length > 0
+      ? timelineKeys.eventsWithFilters(projectId, filters)
+      : timelineKeys.events(projectId);
 
   const query = useInfiniteQuery<TimelineEventsResponse, Error>({
     queryKey,
@@ -123,7 +130,8 @@ export function useExecutionTimeline(
       const response = await taskGraphApi.getTimelineEvents(
         projectId,
         pageSize,
-        pageParam as number
+        pageParam as number,
+        executionPlanId
       );
 
       // Apply client-side filters if specified
@@ -155,7 +163,7 @@ export function useExecutionTimeline(
       return lastPage.hasMore ? totalFetched : undefined;
     },
     initialPageParam: 0,
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && !!executionPlanId,
     staleTime: 15_000, // More frequent updates for timeline
   });
 

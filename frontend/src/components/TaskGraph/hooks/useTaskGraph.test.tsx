@@ -2,18 +2,16 @@
  * Tests for useTaskGraph hook
  *
  * Covers:
- * - Plan loading gap guard (disabled when activePlanId set, executionPlanId null)
- * - Enabled when both plan IDs resolved
- * - Enabled when no active plan
+ * - Guard: disabled when executionPlanId is null (no plan selected or loading gap)
+ * - Enabled when executionPlanId is truthy
  * - Debounced task:updated invalidation
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useTaskGraph } from "./useTaskGraph";
-import { usePlanStore } from "@/stores/planStore";
 import type { TaskDependencyGraphResponse } from "@/api/task-graph";
 
 // Mock the task graph API
@@ -61,37 +59,14 @@ describe("useTaskGraph", () => {
     });
     vi.clearAllMocks();
     Object.keys(subscribersByEvent).forEach((k) => delete subscribersByEvent[k]);
-    usePlanStore.setState({
-      activePlanByProject: {},
-      activeExecutionPlanIdByProject: {},
-      activePlanLoadedByProject: {},
-      planCandidates: [],
-      isLoading: false,
-      error: null,
-    });
-  });
-
-  afterEach(() => {
-    usePlanStore.setState({
-      activePlanByProject: {},
-      activeExecutionPlanIdByProject: {},
-      activePlanLoadedByProject: {},
-      planCandidates: [],
-      isLoading: false,
-      error: null,
-    });
   });
 
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  describe("plan loading gap guard", () => {
-    it("should be disabled when activePlanId is set but executionPlanId is null", async () => {
-      usePlanStore.setState({
-        activePlanByProject: { "project-1": "session-abc" },
-      });
-
+  describe("executionPlanId guard", () => {
+    it("should be disabled when executionPlanId is null", async () => {
       renderHook(() => useTaskGraph("project-1", false, null), { wrapper });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -99,11 +74,8 @@ describe("useTaskGraph", () => {
       expect(mockGetDependencyGraph).not.toHaveBeenCalled();
     });
 
-    it("should be enabled when both activePlanId and executionPlanId are set", async () => {
+    it("should be enabled when executionPlanId is set", async () => {
       mockGetDependencyGraph.mockResolvedValue(mockGraphResponse);
-      usePlanStore.setState({
-        activePlanByProject: { "project-1": "session-abc" },
-      });
 
       const { result } = renderHook(
         () => useTaskGraph("project-1", false, "exec-plan-xyz"),
@@ -118,24 +90,18 @@ describe("useTaskGraph", () => {
       );
     });
 
-    it("should be enabled when no active plan exists", async () => {
-      mockGetDependencyGraph.mockResolvedValue(mockGraphResponse);
-      // No active plan in store
+    it("should be disabled when no active plan exists and executionPlanId is null", async () => {
+      // No active plan in store, executionPlanId not resolved — query must stay idle.
 
-      const { result } = renderHook(
-        () => useTaskGraph("project-1", false, null),
-        { wrapper }
-      );
+      renderHook(() => useTaskGraph("project-1", false, null), { wrapper });
 
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockGetDependencyGraph).toHaveBeenCalled();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockGetDependencyGraph).not.toHaveBeenCalled();
     });
 
     it("should enable query after executionPlanId resolves from null", async () => {
       mockGetDependencyGraph.mockResolvedValue(mockGraphResponse);
-      usePlanStore.setState({
-        activePlanByProject: { "project-1": "session-abc" },
-      });
 
       const { result, rerender } = renderHook(
         ({ execId }: { execId: string | null }) =>
