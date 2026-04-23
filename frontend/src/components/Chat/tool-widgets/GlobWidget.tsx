@@ -23,10 +23,12 @@ function parseGlobArgs(args: unknown): {
   const typed = args as {
     pattern?: string;
     path?: string;
+    file_pattern?: string;
+    base_path?: string;
   } | undefined;
   return {
-    pattern: typed?.pattern || "**/*",
-    path: typed?.path,
+    pattern: typed?.pattern || typed?.file_pattern || "**/*",
+    path: typed?.path || typed?.base_path,
   };
 }
 

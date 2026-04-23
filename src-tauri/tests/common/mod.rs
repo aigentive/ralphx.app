@@ -9,7 +9,9 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use ralphx_lib::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use ralphx_lib::domain::services::github_service::{
+    GithubServiceTrait, PrReviewFeedback, PrStatus,
+};
 use ralphx_lib::{AppError, AppResult};
 
 // ============================================================================
@@ -24,16 +26,23 @@ use ralphx_lib::{AppError, AppResult};
 pub struct MockGithubService {
     /// Status responses to return in sequence (last entry repeats when exhausted).
     status_responses: Arc<Mutex<VecDeque<AppResult<PrStatus>>>>,
+    review_feedback_responses: Arc<Mutex<VecDeque<AppResult<Option<PrReviewFeedback>>>>>,
     pub check_pr_status_calls: Arc<Mutex<u32>>,
+    pub check_pr_review_feedback_calls: Arc<Mutex<u32>>,
     pub push_branch_calls: Arc<Mutex<u32>>,
     pub create_draft_pr_calls: Arc<Mutex<u32>>,
     pub mark_pr_ready_calls: Arc<Mutex<u32>>,
+    pub update_pr_details_calls: Arc<Mutex<u32>>,
     pub close_pr_calls: Arc<Mutex<u32>>,
     pub delete_remote_branch_calls: Arc<Mutex<u32>>,
+    pub find_pr_by_head_branch_calls: Arc<Mutex<u32>>,
     push_branch_result: Arc<Mutex<Option<AppResult<()>>>>,
     #[allow(clippy::type_complexity)]
     create_draft_pr_result: Arc<Mutex<Option<AppResult<(i64, String)>>>>,
     mark_pr_ready_result: Arc<Mutex<Option<AppResult<()>>>>,
+    update_pr_details_result: Arc<Mutex<Option<AppResult<()>>>>,
+    #[allow(clippy::type_complexity)]
+    find_pr_by_head_branch_result: Arc<Mutex<Option<AppResult<Option<(i64, String)>>>>>,
 }
 
 #[allow(dead_code)]
@@ -41,31 +50,40 @@ impl MockGithubService {
     pub fn new() -> Self {
         Self {
             status_responses: Arc::new(Mutex::new(VecDeque::new())),
+            review_feedback_responses: Arc::new(Mutex::new(VecDeque::new())),
             check_pr_status_calls: Arc::new(Mutex::new(0)),
+            check_pr_review_feedback_calls: Arc::new(Mutex::new(0)),
             push_branch_calls: Arc::new(Mutex::new(0)),
             create_draft_pr_calls: Arc::new(Mutex::new(0)),
             mark_pr_ready_calls: Arc::new(Mutex::new(0)),
+            update_pr_details_calls: Arc::new(Mutex::new(0)),
             close_pr_calls: Arc::new(Mutex::new(0)),
             delete_remote_branch_calls: Arc::new(Mutex::new(0)),
+            find_pr_by_head_branch_calls: Arc::new(Mutex::new(0)),
             push_branch_result: Arc::new(Mutex::new(None)),
             create_draft_pr_result: Arc::new(Mutex::new(None)),
             mark_pr_ready_result: Arc::new(Mutex::new(None)),
+            update_pr_details_result: Arc::new(Mutex::new(None)),
+            find_pr_by_head_branch_result: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Enqueue a status response. Responses are returned in FIFO order. When the
     /// queue is exhausted, subsequent calls return `PrStatus::Open`.
     pub fn will_return_status(&self, status: PrStatus) {
-        self.status_responses
+        self.status_responses.lock().unwrap().push_back(Ok(status));
+    }
+
+    pub fn will_return_review_feedback(&self, feedback: PrReviewFeedback) {
+        self.review_feedback_responses
             .lock()
             .unwrap()
-            .push_back(Ok(status));
+            .push_back(Ok(Some(feedback)));
     }
 
     /// Make the next `push_branch` call fail with the given message.
     pub fn will_fail_push(&self, msg: impl Into<String>) {
-        *self.push_branch_result.lock().unwrap() =
-            Some(Err(AppError::Infrastructure(msg.into())));
+        *self.push_branch_result.lock().unwrap() = Some(Err(AppError::Infrastructure(msg.into())));
     }
 
     /// Make the next `create_draft_pr` call fail with the given message.
@@ -74,16 +92,30 @@ impl MockGithubService {
             Some(Err(AppError::Infrastructure(msg.into())));
     }
 
+    /// Make the next `create_draft_pr` call fail with a duplicate-PR error.
+    pub fn will_fail_create_pr_duplicate(&self) {
+        *self.create_draft_pr_result.lock().unwrap() = Some(Err(AppError::DuplicatePr));
+    }
+
     /// Make the next `mark_pr_ready` call fail with the given message.
     pub fn will_fail_mark_ready(&self, msg: impl Into<String>) {
         *self.mark_pr_ready_result.lock().unwrap() =
             Some(Err(AppError::Infrastructure(msg.into())));
     }
 
+    /// Make the next `find_pr_by_head_branch` call return an existing PR.
+    pub fn will_return_existing_pr(&self, pr_number: i64, pr_url: impl Into<String>) {
+        *self.find_pr_by_head_branch_result.lock().unwrap() =
+            Some(Ok(Some((pr_number, pr_url.into()))));
+    }
+
     // --- Convenience accessors ---
 
     pub fn check_calls(&self) -> u32 {
         *self.check_pr_status_calls.lock().unwrap()
+    }
+    pub fn review_feedback_calls(&self) -> u32 {
+        *self.check_pr_review_feedback_calls.lock().unwrap()
     }
     pub fn push_calls(&self) -> u32 {
         *self.push_branch_calls.lock().unwrap()
@@ -94,8 +126,14 @@ impl MockGithubService {
     pub fn mark_ready_calls(&self) -> u32 {
         *self.mark_pr_ready_calls.lock().unwrap()
     }
+    pub fn update_pr_details_calls(&self) -> u32 {
+        *self.update_pr_details_calls.lock().unwrap()
+    }
     pub fn delete_branch_calls(&self) -> u32 {
         *self.delete_remote_branch_calls.lock().unwrap()
+    }
+    pub fn find_pr_calls(&self) -> u32 {
+        *self.find_pr_by_head_branch_calls.lock().unwrap()
     }
 }
 
@@ -130,6 +168,20 @@ impl GithubServiceTrait for MockGithubService {
         Ok(())
     }
 
+    async fn update_pr_details(
+        &self,
+        _wd: &Path,
+        _pr_number: i64,
+        _title: &str,
+        _body: &Path,
+    ) -> AppResult<()> {
+        *self.update_pr_details_calls.lock().unwrap() += 1;
+        if let Some(result) = self.update_pr_details_result.lock().unwrap().take() {
+            return result;
+        }
+        Ok(())
+    }
+
     async fn check_pr_status(&self, _wd: &Path, _pr_number: i64) -> AppResult<PrStatus> {
         *self.check_pr_status_calls.lock().unwrap() += 1;
         let mut q = self.status_responses.lock().unwrap();
@@ -137,6 +189,19 @@ impl GithubServiceTrait for MockGithubService {
             return result;
         }
         Ok(PrStatus::Open)
+    }
+
+    async fn check_pr_review_feedback(
+        &self,
+        _wd: &Path,
+        _pr_number: i64,
+    ) -> AppResult<Option<PrReviewFeedback>> {
+        *self.check_pr_review_feedback_calls.lock().unwrap() += 1;
+        let mut q = self.review_feedback_responses.lock().unwrap();
+        if let Some(result) = q.pop_front() {
+            return result;
+        }
+        Ok(None)
     }
 
     async fn push_branch(&self, _wd: &Path, _branch: &str) -> AppResult<()> {
@@ -166,6 +231,10 @@ impl GithubServiceTrait for MockGithubService {
         _wd: &Path,
         _head: &str,
     ) -> AppResult<Option<(i64, String)>> {
+        *self.find_pr_by_head_branch_calls.lock().unwrap() += 1;
+        if let Some(result) = self.find_pr_by_head_branch_result.lock().unwrap().take() {
+            return result;
+        }
         Ok(None)
     }
 }

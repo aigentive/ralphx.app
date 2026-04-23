@@ -11,10 +11,13 @@ use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::{AppState, TaskTransitionService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId, Project, Task,
+    ArtifactId, ExecutionPlanId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId,
+    Project, ReviewOutcome, ReviewerType, Task, TaskCategory,
 };
 use ralphx_lib::domain::repositories::PlanBranchRepository;
-use ralphx_lib::domain::services::github_service::PrStatus;
+use ralphx_lib::domain::services::github_service::{
+    PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
+};
 use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
 
 use common::MockGithubService;
@@ -45,6 +48,32 @@ fn build_transition_service(
     ))
 }
 
+fn build_transition_service_with_pr_deps(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    plan_branch_repo: Arc<dyn PlanBranchRepository>,
+) -> Arc<TaskTransitionService<tauri::Wry>> {
+    Arc::new(
+        TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_attachment_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(execution_state),
+            None,
+            Arc::clone(&app_state.memory_event_repo),
+        )
+        .with_plan_branch_repo(plan_branch_repo)
+        .with_review_repo(Arc::clone(&app_state.review_repo)),
+    )
+}
 
 // ============================================================================
 // Test 1: start_polling with no github_service is a no-op
@@ -59,7 +88,11 @@ async fn test_start_polling_noop_without_github_service() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "No-op poller task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -116,7 +149,11 @@ async fn test_start_polling_creates_live_poller_with_github_service() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Live poller task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -141,7 +178,8 @@ async fn test_start_polling_creates_live_poller_with_github_service() {
     mock.will_return_status(PrStatus::Open);
 
     let registry = Arc::new(PrPollerRegistry::new(
-        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
@@ -180,7 +218,11 @@ async fn test_stop_polling_removes_handle() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Stop poller task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -220,7 +262,10 @@ async fn test_stop_polling_removes_handle() {
         transition_service,
     );
 
-    assert!(registry.is_polling(&task.id), "poller must be live after start_polling");
+    assert!(
+        registry.is_polling(&task.id),
+        "poller must be live after start_polling"
+    );
 
     registry.stop_polling(&task.id);
 
@@ -243,7 +288,11 @@ async fn test_duplicate_start_polling_is_idempotent() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Duplicate poller task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -283,7 +332,10 @@ async fn test_duplicate_start_polling_is_idempotent() {
         Arc::clone(&transition_service),
     );
 
-    assert!(registry.is_polling(&task.id), "poller must be live after first start_polling");
+    assert!(
+        registry.is_polling(&task.id),
+        "poller must be live after first start_polling"
+    );
 
     // Second call — must be idempotent (no-op, first handle still live)
     registry.start_polling(
@@ -360,7 +412,11 @@ async fn test_poller_calls_check_pr_status_after_jitter() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Status check task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -387,7 +443,8 @@ async fn test_poller_calls_check_pr_status_after_jitter() {
     mock.will_return_status(PrStatus::Open);
 
     let registry = Arc::new(PrPollerRegistry::new(
-        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
@@ -441,7 +498,11 @@ async fn test_poller_merged_stops_poller() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Merged poller task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -469,7 +530,8 @@ async fn test_poller_merged_stops_poller() {
     });
 
     let registry = Arc::new(PrPollerRegistry::new(
-        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
@@ -535,7 +597,11 @@ async fn test_poller_closed_does_not_regress_already_merged_task() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Closed stale poller task".to_string());
     task.internal_status = InternalStatus::Merged;
@@ -560,7 +626,8 @@ async fn test_poller_closed_does_not_regress_already_merged_task() {
     mock.will_return_status(PrStatus::Closed);
 
     let registry = Arc::new(PrPollerRegistry::new(
-        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
@@ -602,5 +669,171 @@ async fn test_poller_closed_does_not_regress_already_merged_task() {
         updated.internal_status,
         InternalStatus::Merged,
         "A stale closed-PR poller must not regress an already-merged task"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_poller_changes_requested_creates_plan_correction_task() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let execution_plan_id = ExecutionPlanId::from_string("exec-plan-pr-review".to_string());
+    let mut merge_task = Task::new_with_category(
+        project.id.clone(),
+        "Merge plan into main".to_string(),
+        TaskCategory::PlanMerge,
+    );
+    merge_task.internal_status = InternalStatus::WaitingOnPr;
+    merge_task.execution_plan_id = Some(execution_plan_id.clone());
+    merge_task.ideation_session_id =
+        Some(IdeationSessionId::from_string("test-session".to_string()));
+    merge_task.plan_artifact_id = Some(ArtifactId::from_string("test-artifact".to_string()));
+    app_state
+        .task_repo
+        .create(merge_task.clone())
+        .await
+        .unwrap();
+
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = PlanBranch::new(
+        ArtifactId::from_string("test-artifact".to_string()),
+        IdeationSessionId::from_string("test-session".to_string()),
+        project.id.clone(),
+        "plan/feature".to_string(),
+        "main".to_string(),
+    );
+    pb.merge_task_id = Some(merge_task.id.clone());
+    pb.execution_plan_id = Some(execution_plan_id.clone());
+    pb.pr_number = Some(42);
+    pb.pr_eligible = true;
+    pb.pr_polling_active = true;
+    let plan_branch_id = pb.id.clone();
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let mock = Arc::new(MockGithubService::new());
+    mock.will_return_status(PrStatus::Open);
+    mock.will_return_review_feedback(PrReviewFeedback {
+        review_id: "4136652897".to_string(),
+        author: "octocat".to_string(),
+        submitted_at: Some("2026-04-22T08:00:00Z".to_string()),
+        body: Some("Please fix the edge case before merging.".to_string()),
+        comments: vec![PrReviewCommentFeedback {
+            id: "3107615689".to_string(),
+            author: "octocat".to_string(),
+            path: Some("src/lib.rs".to_string()),
+            line: Some(17),
+            body: "This branch misses the nil case.".to_string(),
+        }],
+    });
+
+    let registry = Arc::new(PrPollerRegistry::new(
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+    ));
+
+    let transition_service = build_transition_service_with_pr_deps(
+        &app_state,
+        &execution_state,
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+    );
+
+    registry.start_polling(
+        merge_task.id.clone(),
+        plan_branch_id.clone(),
+        42,
+        std::path::PathBuf::from("/tmp/test-repo"),
+        "main".to_string(),
+        transition_service,
+    );
+
+    for _ in 0..5 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::advance(std::time::Duration::from_secs(31)).await;
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::advance(std::time::Duration::from_secs(61)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        mock.review_feedback_calls() >= 1,
+        "open PR poll must query GitHub review feedback"
+    );
+
+    let updated_merge = app_state
+        .task_repo
+        .get_by_id(&merge_task.id)
+        .await
+        .unwrap()
+        .expect("merge task must still exist");
+    assert_eq!(updated_merge.internal_status, InternalStatus::Blocked);
+    assert!(updated_merge
+        .blocked_reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("GitHub PR #42 requested changes"));
+
+    let tasks = app_state
+        .task_repo
+        .list_paginated(&project.id, None, 0, 100, false, None, None, None)
+        .await
+        .unwrap();
+    let correction = tasks
+        .iter()
+        .find(|task| {
+            task.category == TaskCategory::Regular
+                && task.title.contains("Address GitHub PR #42 review feedback")
+        })
+        .expect("changes_requested review should create a regular correction task");
+    assert_eq!(correction.internal_status, InternalStatus::Ready);
+    assert_eq!(
+        correction.execution_plan_id.as_ref(),
+        Some(&execution_plan_id)
+    );
+
+    assert!(
+        app_state
+            .task_dependency_repo
+            .has_dependency(&merge_task.id, &correction.id)
+            .await
+            .unwrap(),
+        "final plan merge task must depend on the GitHub correction task"
+    );
+
+    let notes = app_state
+        .review_repo
+        .get_notes_by_task_id(&correction.id)
+        .await
+        .unwrap();
+    let note = notes
+        .iter()
+        .find(|note| note.outcome == ReviewOutcome::ChangesRequested)
+        .expect("correction task should carry requested-changes feedback");
+    assert_eq!(note.reviewer, ReviewerType::Human);
+    assert!(note
+        .notes
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Please fix the edge case"));
+
+    let refreshed_branch = plan_branch_repo
+        .get_by_id(&plan_branch_id)
+        .await
+        .unwrap()
+        .expect("plan branch must still exist");
+    assert!(
+        !refreshed_branch.pr_polling_active,
+        "polling should stop while correction task is active"
     );
 }

@@ -46,6 +46,7 @@ jobs:
             rust:
               - 'src-tauri/**'
               - 'rust-toolchain.toml'
+              - 'scripts/ci-install-linux-deps.sh'
               - 'scripts/validate_sqlite_migrations.py'
             frontend:
               - 'frontend/**'
@@ -110,27 +111,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_rust == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       RALPHX_TEST_MODE: "1"
     steps:
       - uses: actions/checkout@v6
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            pkg-config \
-            wget
+        shell: bash
+        run: bash scripts/ci-install-linux-deps.sh
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -166,7 +155,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_rust == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -177,20 +166,8 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            pkg-config \
-            wget
+        shell: bash
+        run: bash scripts/ci-install-linux-deps.sh
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -218,27 +195,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_rust == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       RALPHX_TEST_MODE: "1"
     steps:
       - uses: actions/checkout@v6
 
       - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential \
-            curl \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            pkg-config \
-            wget
+        shell: bash
+        run: bash scripts/ci-install-linux-deps.sh
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

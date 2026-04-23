@@ -209,6 +209,52 @@ describe("ExecutionTaskDetail", () => {
     expect(screen.getByText("Missing error handling in auth.ts")).toBeInTheDocument();
   });
 
+  it("renders system review feedback with preview + dialog for large hook notes", async () => {
+    const user = userEvent.setup();
+    const task = createTestTask({ internalStatus: "re_executing" });
+    const reviewNote: ReviewNoteResponse = {
+      id: "note-hook",
+      task_id: task.id,
+      reviewer: "system",
+      outcome: "changes_requested",
+      summary: "Repository commit hooks rejected the merge commit.",
+      notes: [
+        "Repository commit hooks rejected the merge commit.",
+        "",
+        "Full hook output:",
+        "```text",
+        "\u001b[31m[pre-commit]\u001b[0m design-token guards failed",
+        "TS2307 Cannot find module 'zod'",
+        "```",
+      ].join("\n"),
+      created_at: "2026-01-28T11:00:00+00:00",
+    };
+
+    mockUseTaskStateHistory.mockReturnValue({
+      data: [reviewNote],
+      isLoading: false,
+      error: null,
+      isEmpty: false,
+      latestEntry: reviewNote,
+      refetch: vi.fn(),
+    });
+
+    render(<ExecutionTaskDetail task={task} />, { wrapper: TestWrapper });
+
+    expect(screen.getByText("System Feedback")).toBeInTheDocument();
+    expect(
+      screen.getByText("Repository commit hooks rejected the merge commit.")
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View full feedback" }));
+
+    expect(screen.getByText("Full revision feedback")).toBeInTheDocument();
+    expect(screen.getByText(/design-token guards failed/)).toBeInTheDocument();
+    expect(
+      screen.queryByText((content) => content.includes("\u001b[31m"))
+    ).not.toBeInTheDocument();
+  });
+
   it("shows revision feedback loading state while history is loading", () => {
     const task = createTestTask({ internalStatus: "re_executing" });
     mockUseTaskStateHistory.mockReturnValue({

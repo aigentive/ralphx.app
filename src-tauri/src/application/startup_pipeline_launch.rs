@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::AppState;
 use crate::application;
 use crate::application::startup_pipeline::StartupPipelineDeps;
 use crate::commands::{ActiveProjectState, ExecutionState};
+use crate::AppState;
 
 pub(crate) fn launch_startup_pipeline(
     app: &tauri::App<tauri::Wry>,
@@ -40,6 +40,7 @@ pub(crate) fn launch_startup_pipeline(
     let startup_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
     let startup_review_repo = Arc::clone(&app_state.review_repo);
     let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
+    let startup_github_service = app_state.github_service.as_ref().map(Arc::clone);
     let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
     let startup_agent_clients = app_state.agent_client_bundle();
     let startup_webhook_publisher = app_state.webhook_publisher.clone();
@@ -78,6 +79,7 @@ pub(crate) fn launch_startup_pipeline(
                 interactive_process_registry: startup_interactive_process_registry,
                 review_repo: startup_review_repo,
                 external_events_repo: startup_external_events_repo,
+                github_service: startup_github_service,
                 pr_poller_registry: startup_pr_poller_registry,
                 agent_clients: startup_agent_clients,
                 webhook_publisher: startup_webhook_publisher,

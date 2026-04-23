@@ -15,8 +15,8 @@ import type { StatusCounts } from "./status";
 import type { InternalStatus } from "./status";
 
 describe("InternalStatusSchema", () => {
-  it("should have exactly 24 status values", () => {
-    expect(INTERNAL_STATUS_VALUES.length).toBe(24);
+  it("should have exactly 25 status values", () => {
+    expect(INTERNAL_STATUS_VALUES.length).toBe(25);
   });
 
   it("should parse all valid status values", () => {
@@ -32,6 +32,7 @@ describe("InternalStatusSchema", () => {
       "pending_review",
       "revision_needed",
       "approved",
+      "waiting_on_pr",
       "failed",
       "cancelled",
     ];
@@ -75,8 +76,8 @@ describe("Status Categories", () => {
     expect(IDLE_STATUSES).toContain("blocked");
   });
 
-  it("should have 12 active statuses", () => {
-    expect(ACTIVE_STATUSES.length).toBe(12);
+  it("should have 13 active statuses", () => {
+    expect(ACTIVE_STATUSES.length).toBe(13);
     expect(ACTIVE_STATUSES).toContain("executing");
     expect(ACTIVE_STATUSES).toContain("re_executing");
     expect(ACTIVE_STATUSES).toContain("qa_refining");
@@ -88,6 +89,7 @@ describe("Status Categories", () => {
     expect(ACTIVE_STATUSES).toContain("revision_needed");
     expect(ACTIVE_STATUSES).toContain("pending_merge");
     expect(ACTIVE_STATUSES).toContain("merging");
+    expect(ACTIVE_STATUSES).toContain("waiting_on_pr");
     expect(ACTIVE_STATUSES).toContain("merge_incomplete");
   });
 
@@ -121,7 +123,7 @@ describe("Status Categories", () => {
     }
   });
 
-  it("should cover all 22 statuses between categories plus qa_passed and qa_failed", () => {
+  it("should cover all 23 statuses between categories plus qa_passed and qa_failed", () => {
     const allCategorized = [
       ...IDLE_STATUSES,
       ...ACTIVE_STATUSES,
@@ -129,7 +131,7 @@ describe("Status Categories", () => {
       "qa_passed",
       "qa_failed",
     ];
-    expect(allCategorized.length).toBe(22);
+    expect(allCategorized.length).toBe(23);
   });
 });
 

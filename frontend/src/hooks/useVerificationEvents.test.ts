@@ -117,6 +117,7 @@ vi.mock("@/hooks/useIdeation", () => ({
 
 import { useVerificationEvents } from "./useVerificationEvents";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { verificationStatusKey } from "./useVerificationStatus";
 
 // ============================================================================
 // Helpers
@@ -341,6 +342,13 @@ describe("useVerificationEvents — race condition fix", () => {
     });
 
     expect(callOrder).toEqual(["cancel", "set"]);
+    expect(mockCancelQueries).toHaveBeenCalledWith({
+      queryKey: verificationStatusKey(SESSION_ID),
+    });
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      verificationStatusKey(SESSION_ID),
+      expect.any(Object)
+    );
   });
 
   it("(6) out-of-order event (round < cached.currentRound) is rejected by round guard", async () => {
@@ -415,7 +423,7 @@ describe("useVerificationEvents — race condition fix", () => {
     });
 
     const verificationInvalidation = mockInvalidateQueries.mock.calls.find(
-      (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: ["verification", SESSION_ID] })
+      (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: verificationStatusKey(SESSION_ID) })
     );
     expect(verificationInvalidation).toBeDefined();
     const childSessionsInvalidation = mockInvalidateQueries.mock.calls.find(
@@ -490,7 +498,7 @@ describe("useVerificationEvents — race condition fix", () => {
     });
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ["verification", SESSION_ID],
+      queryKey: verificationStatusKey(SESSION_ID),
       refetchType: "none",
     });
   });

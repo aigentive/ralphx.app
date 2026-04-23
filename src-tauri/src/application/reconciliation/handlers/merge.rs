@@ -4,27 +4,25 @@ use std::sync::Arc;
 use tauri::Runtime;
 use tracing::{debug, info, warn};
 
-use crate::domain::entities::{
-    AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
-    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-};
-use crate::domain::state_machine::transition_handler::has_branch_missing_metadata;
-use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::application::harness_runtime_registry::{
     default_reconciliation_attempt_merge_deadline_secs,
     default_reconciliation_merge_circuit_breaker_threshold,
     default_reconciliation_merge_circuit_breaker_window,
     default_reconciliation_merge_conflict_max_retries,
-    default_reconciliation_merge_registry_grace_period_secs,
-    default_reconciliation_merge_starvation_guard_secs,
-    default_reconciliation_pending_merge_stale_minutes,
     default_reconciliation_merge_incomplete_max_retries,
-    default_reconciliation_merger_timeout_secs,
-    default_reconciliation_merging_max_retries,
+    default_reconciliation_merge_registry_grace_period_secs,
+    default_reconciliation_merge_starvation_guard_secs, default_reconciliation_merger_timeout_secs,
+    default_reconciliation_merging_max_retries, default_reconciliation_pending_merge_stale_minutes,
     default_reconciliation_validation_failure_circuit_breaker_count,
     default_reconciliation_validation_retry_min_cooldown_secs,
     default_reconciliation_validation_revert_max_count,
 };
+use crate::domain::entities::{
+    AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource, MergeRecoveryEventKind,
+    MergeRecoveryMetadata, MergeRecoveryReasonCode, PlanBranch,
+};
+use crate::domain::state_machine::transition_handler::has_branch_missing_metadata;
+use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 
 use super::super::policy::{
     RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, ShaComparisonResult,
@@ -38,12 +36,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
         task: &crate::domain::entities::Task,
         status: InternalStatus,
     ) -> bool {
-        if status != InternalStatus::Merging {
+        if !matches!(
+            status,
+            InternalStatus::Merging | InternalStatus::WaitingOnPr
+        ) {
             return false;
         }
 
-        // PR-mode check: Merging+PR tasks have no IPR/agent — skip normal checks
-        // to prevent false escalation. Check poller liveness instead.
+        // PR-mode check: WaitingOnPr tasks have no IPR/agent because they are
+        // waiting for GitHub. Legacy Merging+PR rows are treated the same during
+        // migration. Never let them fall through to local merge-agent
+        // timeout recovery, even if startup wiring has not attached a registry yet.
         if let Some(ref repo) = self.plan_branch_repo {
             if let Ok(Some(plan_branch)) = repo.get_by_merge_task_id(&task.id).await {
                 if let (true, Some(pr_number)) = (plan_branch.pr_eligible, plan_branch.pr_number) {
@@ -58,55 +61,76 @@ impl<R: Runtime> ReconciliationRunner<R> {
                                         "Stale PR poller (no heartbeat >5min) — restarting"
                                     );
                                     registry.stop_polling(&task.id);
-                                    // Restart: need project for working_dir + base_branch
-                                    if let (Ok(Some(project)), Some(ts_wry)) = (
-                                        self.project_repo.get_by_id(&plan_branch.project_id).await,
-                                        self.try_wry_transition_service(),
-                                    ) {
-                                        let working_dir = std::path::PathBuf::from(
-                                            &project.working_directory,
-                                        );
-                                        let base_branch = plan_branch.source_branch.clone();
-                                        registry.start_polling(
-                                            task.id.clone(),
-                                            plan_branch.id.clone(),
-                                            pr_number,
-                                            working_dir,
-                                            base_branch,
-                                            ts_wry,
-                                        );
-                                    }
+                                    self.restart_pr_merge_poller(
+                                        task,
+                                        &plan_branch,
+                                        pr_number,
+                                        "stale heartbeat",
+                                    )
+                                    .await;
                                 }
                             }
                             return true; // Healthy poller — skip
                         }
-                        // Poller not running but pr_polling_active=true → dead poller, restart
+
+                        // Poller not running but this already has a PR. Repair polling
+                        // state and return handled so local merge timeout logic cannot fire.
                         if plan_branch.pr_polling_active {
                             warn!(
                                 task_id = task.id.as_str(),
                                 "Dead PR poller detected (pr_polling_active=true but not running) — restarting"
                             );
-                            if let (Ok(Some(project)), Some(ts_wry)) = (
-                                self.project_repo.get_by_id(&plan_branch.project_id).await,
-                                self.try_wry_transition_service(),
-                            ) {
-                                let working_dir =
-                                    std::path::PathBuf::from(&project.working_directory);
-                                let base_branch = plan_branch.source_branch.clone();
-                                registry.start_polling(
-                                    task.id.clone(),
-                                    plan_branch.id.clone(),
-                                    pr_number,
-                                    working_dir,
-                                    base_branch,
-                                    ts_wry,
-                                );
-                            }
+                            self.restart_pr_merge_poller(
+                                task,
+                                &plan_branch,
+                                pr_number,
+                                "dead poller",
+                            )
+                            .await;
                             return true;
                         }
+
+                        warn!(
+                            task_id = task.id.as_str(),
+                            pr_number = pr_number,
+                            "PR-backed Merging task had pr_polling_active=false — repairing polling state"
+                        );
+                        if let Err(e) = repo
+                            .update_last_polled_at(&plan_branch.id, chrono::Utc::now())
+                            .await
+                        {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Failed to repair pr_polling_active for PR-backed Merging task"
+                            );
+                        }
+                        self.restart_pr_merge_poller(
+                            task,
+                            &plan_branch,
+                            pr_number,
+                            "missing polling flag",
+                        )
+                        .await;
+                        return true;
                     }
+
+                    warn!(
+                        task_id = task.id.as_str(),
+                        pr_number = pr_number,
+                        "PR-backed Merging task has no poller registry wired — skipping local merge reconciliation"
+                    );
+                    return true;
                 }
             }
+        }
+
+        if status == InternalStatus::WaitingOnPr {
+            warn!(
+                task_id = task.id.as_str(),
+                "WaitingOnPr task has no PR metadata — skipping local merge reconciliation"
+            );
+            return true;
         }
 
         // Skip if there's a live interactive process — the agent is alive between turns.
@@ -277,7 +301,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                             status,
                             RecoveryContext::Merge,
                             RecoveryDecision {
-                                action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                                action: RecoveryActionKind::Transition(
+                                    InternalStatus::MergeIncomplete,
+                                ),
                                 reason: Some(format!(
                                     "Merge worktree {} does not exist — cannot spawn merger agent",
                                     wt_path
@@ -343,7 +369,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let merge_pipeline_age_secs = task.merge_pipeline_active.as_deref().and_then(|ts| {
             chrono::DateTime::parse_from_rfc3339(ts)
                 .ok()
-                .map(|started| (chrono::Utc::now() - started.with_timezone(&chrono::Utc)).num_seconds())
+                .map(|started| {
+                    (chrono::Utc::now() - started.with_timezone(&chrono::Utc)).num_seconds()
+                })
         });
         let merge_pipeline_ttl = default_reconciliation_attempt_merge_deadline_secs() as i64;
         if let Some(age_secs) = merge_pipeline_age_secs {
@@ -378,14 +406,16 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "merge_pipeline_active TTL expired — possible crash during prior merge attempt"
             );
             let fresh_task = if let Ok(Some(mut t)) = self.task_repo.get_by_id(&task.id).await {
-                let mut meta: serde_json::Value = t.metadata
+                let mut meta: serde_json::Value = t
+                    .metadata
                     .as_deref()
                     .and_then(|m| serde_json::from_str(m).ok())
                     .unwrap_or_else(|| serde_json::json!({}));
                 if let Some(obj) = meta.as_object_mut() {
                     obj.insert(
                         "merge_failure_source".to_string(),
-                        serde_json::to_value(MergeFailureSource::PipelineActiveExpired).unwrap_or_default(),
+                        serde_json::to_value(MergeFailureSource::PipelineActiveExpired)
+                            .unwrap_or_default(),
                     );
                 }
                 t.metadata = Some(meta.to_string());
@@ -497,7 +527,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             can_start: true,
             is_stale: age
                 >= chrono::Duration::minutes(
-                    default_reconciliation_pending_merge_stale_minutes() as i64,
+                    default_reconciliation_pending_merge_stale_minutes() as i64
                 ),
             is_deferred,
         };
@@ -595,6 +625,81 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     return false;
                 }
             }
+        }
+
+        if crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(
+            task,
+        ) {
+            let commit_hook_error =
+                crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                    task,
+                );
+            if let Some(error) = commit_hook_error.as_deref() {
+                let kind =
+                    crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                        error,
+                    );
+                let fingerprint =
+                    crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                        error,
+                    );
+                let repeated =
+                    crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                        task,
+                        &fingerprint,
+                    );
+                if matches!(
+                    kind,
+                    crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                ) || repeated
+                {
+                    tracing::info!(
+                        task_id = task.id.as_str(),
+                        kind = kind.as_str(),
+                        repeated,
+                        "MergeIncomplete commit-hook failure is blocked, not rerouted"
+                    );
+                    return match self
+                        .transition_service
+                        .mark_commit_hook_merge_failure_blocked(
+                            &task.id,
+                            Some(error.to_string()),
+                            "system",
+                        )
+                        .await
+                    {
+                        Ok(_) => true,
+                        Err(e) => {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Failed to mark commit-hook MergeIncomplete as blocked"
+                            );
+                            false
+                        }
+                    };
+                }
+            }
+
+            tracing::info!(
+                task_id = task.id.as_str(),
+                "MergeIncomplete commit-hook failure detected — rerouting to revision flow"
+            );
+            return match self
+                .transition_service
+                .reroute_commit_hook_merge_failure(&task.id, None, true, "system")
+                .await
+            {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to reroute commit-hook MergeIncomplete during reconciliation"
+                    );
+                    false
+                }
+            };
         }
 
         // Circuit breaker active guard — fires before all other checks.
@@ -832,13 +937,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         let attempt = retry_count + 1;
         if let Err(e) = self
-            .record_merge_auto_retry_event(
-                task,
-                attempt,
-                failure_source,
-                retry_reason,
-                reason_code,
-            )
+            .record_merge_auto_retry_event(task, attempt, failure_source, retry_reason, reason_code)
             .await
         {
             warn!(
@@ -1012,6 +1111,65 @@ impl<R: Runtime> ReconciliationRunner<R> {
         any_arc
             .downcast::<crate::application::TaskTransitionService<tauri::Wry>>()
             .ok()
+    }
+
+    async fn restart_pr_merge_poller(
+        &self,
+        task: &crate::domain::entities::Task,
+        plan_branch: &PlanBranch,
+        pr_number: i64,
+        reason: &'static str,
+    ) -> bool {
+        let Some(ref registry) = self.pr_poller_registry else {
+            warn!(
+                task_id = task.id.as_str(),
+                pr_number = pr_number,
+                reason = reason,
+                "Cannot restart PR poller because registry is unavailable"
+            );
+            return false;
+        };
+        let project = match self.project_repo.get_by_id(&plan_branch.project_id).await {
+            Ok(Some(project)) => project,
+            Ok(None) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    project_id = plan_branch.project_id.as_str(),
+                    reason = reason,
+                    "Cannot restart PR poller because project was not found"
+                );
+                return false;
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    project_id = plan_branch.project_id.as_str(),
+                    reason = reason,
+                    error = %e,
+                    "Cannot restart PR poller because project lookup failed"
+                );
+                return false;
+            }
+        };
+        let Some(ts_wry) = self.try_wry_transition_service() else {
+            warn!(
+                task_id = task.id.as_str(),
+                pr_number = pr_number,
+                reason = reason,
+                "Cannot restart PR poller because Wry transition service is unavailable"
+            );
+            return false;
+        };
+
+        registry.start_polling(
+            task.id.clone(),
+            plan_branch.id.clone(),
+            pr_number,
+            std::path::PathBuf::from(&project.working_directory),
+            plan_branch.source_branch.clone(),
+            ts_wry,
+        );
+        true
     }
 
     /// Returns true if `merge_pipeline_active` is set but has EXPIRED (age >= deadline).

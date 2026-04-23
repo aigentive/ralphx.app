@@ -1,15 +1,22 @@
+mod common;
+
 use std::sync::Arc;
 
+use common::MockGithubService;
+use ralphx_lib::application::services::PrPollerRegistry;
 use ralphx_lib::application::AppState;
+use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::commands::project_commands::*;
 use ralphx_lib::domain::entities::{
     ArtifactId, GitMode, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    ProjectId, TaskId, MergeValidationMode,
+    ProjectId, Task, TaskCategory, TaskId, MergeValidationMode,
 };
-use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository};
+use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use ralphx_lib::domain::services::github_service::GithubServiceTrait;
 use ralphx_lib::infrastructure::memory::{
     MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
 };
+use ralphx_lib::testing::create_mock_app_handle;
 
 // ── is_github_url tests ──────────────────────────────────────────────────────
 
@@ -591,9 +598,9 @@ mod mode_switch_tests {
     }
 
     #[tokio::test]
-    async fn push_to_pr_is_noop_for_existing_plans() {
-        // new_enabled=true — no action needed for existing plans (AD16: pr_eligible stays false)
-        // Verify: a branch with no pr_number remains untouched after a push→PR toggle.
+    async fn existing_plan_branch_remains_unchanged_until_reconciliation_runs() {
+        // Repository state alone does not retrofit existing plans.
+        // The explicit reconcile_pr_mode_switch regression below covers the live toggle path.
         let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
         let project_repo = Arc::new(MemoryProjectRepository::new());
 
@@ -617,7 +624,7 @@ mod mode_switch_tests {
         let branch_id = branch.id.clone();
         plan_branch_repo.create(branch).await.unwrap();
 
-        // Verify branch still has no pr_number (push→PR toggle doesn't retroactively enable PR)
+        // Without the reconciliation helper, a persisted branch stays in its original mode.
         let after = plan_branch_repo
             .get_by_id(&branch_id)
             .await
@@ -625,9 +632,118 @@ mod mode_switch_tests {
             .unwrap();
         assert!(
             after.pr_number.is_none(),
-            "No PR should be created for existing plans"
+            "No PR should appear without an explicit reconciliation step"
         );
-        assert!(!after.pr_eligible, "pr_eligible stays false per AD16");
+        assert!(
+            !after.pr_eligible,
+            "pr_eligible should stay false until reconciliation updates the branch"
+        );
+    }
+
+    #[tokio::test]
+    async fn enabling_pr_mode_retrofits_existing_pending_merge_plan_and_runs_pr_path() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let project_repo = Arc::new(MemoryProjectRepository::new());
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+        let mut state = AppState::with_repos(task_repo.clone(), project_repo.clone());
+        state.plan_branch_repo = plan_branch_repo.clone();
+
+        let mock_github = Arc::new(MockGithubService::new());
+        let github_trait: Arc<dyn GithubServiceTrait> = mock_github.clone();
+        state.github_service = Some(Arc::clone(&github_trait));
+        state.pr_poller_registry = Arc::new(PrPollerRegistry::new(
+            Some(github_trait),
+            plan_branch_repo.clone(),
+        ));
+
+        let working_dir = create_git_repo();
+        let repo_path = working_dir.path();
+        create_commit_on_branch(repo_path, "main");
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "ralphx/test/plan-toggle"])
+            .current_dir(repo_path)
+            .output()
+            .expect("create plan branch");
+        std::fs::write(repo_path.join("plan.txt"), "plan branch work\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo_path)
+            .output()
+            .expect("stage plan file");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "plan branch work"])
+            .current_dir(repo_path)
+            .output()
+            .expect("commit plan branch work");
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output()
+            .expect("checkout main");
+        let mut project = Project::new(
+            "PR Toggle".to_string(),
+            working_dir.path().to_string_lossy().into_owned(),
+        );
+        let pid = ProjectId::from_string("proj-pr-toggle".to_string());
+        project.id = pid.clone();
+        project.github_pr_enabled = false;
+        project_repo.create(project).await.unwrap();
+
+        let mut merge_task = Task::new(pid.clone(), "Merge pending plan".to_string());
+        merge_task.category = TaskCategory::PlanMerge;
+        merge_task.internal_status = InternalStatus::PendingMerge;
+        let merge_task_id = merge_task.id.clone();
+        task_repo.create(merge_task).await.unwrap();
+
+        let mut branch = PlanBranch::new(
+            ArtifactId::from_string("art-toggle".to_string()),
+            IdeationSessionId::from_string("sess-toggle".to_string()),
+            pid.clone(),
+            "ralphx/test/plan-toggle".to_string(),
+            "main".to_string(),
+        );
+        branch.merge_task_id = Some(merge_task_id.clone());
+        branch.pr_eligible = false;
+        let branch_id = branch.id.clone();
+        plan_branch_repo.create(branch).await.unwrap();
+
+        let execution_state = Arc::new(ExecutionState::new());
+        let app_handle = create_mock_app_handle();
+
+        reconcile_pr_mode_switch(
+            &pid,
+            true,
+            &state,
+            &execution_state,
+            app_handle,
+        )
+        .await;
+
+        let branch_after = plan_branch_repo
+            .get_by_id(&branch_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            branch_after.pr_eligible,
+            "enabling PR mode should retrofit active plan branches"
+        );
+
+        let task_after = task_repo.get_by_id(&merge_task_id).await.unwrap().unwrap();
+        assert_eq!(
+            task_after.internal_status,
+            InternalStatus::Merging,
+            "PendingMerge merge task should re-enter via the PR path"
+        );
+        assert!(
+            mock_github.push_calls() > 0,
+            "PR-mode retry should push the branch"
+        );
+        assert!(
+            mock_github.create_calls() > 0,
+            "PR-mode retry should create a PR when one does not exist"
+        );
     }
 
     #[tokio::test]

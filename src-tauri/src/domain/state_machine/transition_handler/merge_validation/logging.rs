@@ -5,21 +5,7 @@ use crate::domain::entities::merge_progress_event::{
 };
 
 pub(crate) fn validation_log_dir(task_id: &str) -> std::path::PathBuf {
-    let home = validation_log_home_dir();
-    home.join(".ralphx").join("logs").join(task_id)
-}
-
-#[cfg(test)]
-fn validation_log_home_dir() -> std::path::PathBuf {
-    // Lib tests run under a workspace sandbox where ambient HOME may not be writable.
-    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
-}
-
-#[cfg(not(test))]
-fn validation_log_home_dir() -> std::path::PathBuf {
-    std::env::var("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"))
+    crate::utils::runtime_log_paths::merge_validation_log_dir(task_id)
 }
 
 /// Write full stdout/stderr to disk for a failed validation command.

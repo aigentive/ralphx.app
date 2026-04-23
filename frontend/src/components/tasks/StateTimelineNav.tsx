@@ -53,6 +53,7 @@ const STATUS_CONFIG: Record<
   re_executing: { label: "Re-executing", color: "warning" },
   pending_merge: { label: "Pending Merge", color: "accent" },
   merging: { label: "Merging", color: "accent" },
+  waiting_on_pr: { label: "Waiting on PR", color: "info" },
   merge_incomplete: { label: "Merge Incomplete", color: "warning" },
   merge_conflict: { label: "Merge Conflict", color: "warning" },
   merged: { label: "Merged", color: "success" },

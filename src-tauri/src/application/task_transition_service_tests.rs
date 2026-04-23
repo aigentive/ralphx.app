@@ -33,6 +33,15 @@ mod enrichment_tests {
         )
     }
 
+    fn make_emitter_without_external_events(
+        task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        session_repo: Arc<dyn IdeationSessionRepository>,
+    ) -> TauriEventEmitter<tauri::Wry> {
+        TauriEventEmitter::new(None)
+            .with_enrichment_repos(task_repo, project_repo, session_repo)
+    }
+
     #[tokio::test]
     async fn build_enriched_payload_with_project_and_session() {
         let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
@@ -120,6 +129,32 @@ mod enrichment_tests {
         assert_eq!(payload["project_id"], project_id.to_string());
         assert_eq!(payload["old_status"], "backlog");
         assert_eq!(payload["new_status"], "ready");
+    }
+
+    #[tokio::test]
+    async fn build_enriched_payload_works_without_external_events_repo() {
+        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        let project_repo: Arc<dyn ProjectRepository> = Arc::new(MemoryProjectRepository::new());
+        let session_repo: Arc<dyn IdeationSessionRepository> =
+            Arc::new(MemoryIdeationSessionRepository::new());
+
+        let project = Project::new("UI Event Project".to_string(), "/tmp".to_string());
+        let project_id = project.id.clone();
+        project_repo.create(project).await.unwrap();
+
+        let task = Task::new(project_id.clone(), "UI Event Task".to_string());
+        let task_id = task.id.clone();
+        task_repo.create(task).await.unwrap();
+
+        let emitter = make_emitter_without_external_events(task_repo, project_repo, session_repo);
+        let result = emitter
+            .build_enriched_payload(&task_id.to_string(), "pending_merge", "merge_incomplete")
+            .await;
+
+        let (_proj_id, payload) = result.expect("expected Some payload");
+        assert_eq!(payload["task_id"], task_id.to_string());
+        assert_eq!(payload["project_name"], "UI Event Project");
+        assert_eq!(payload["task_title"], "UI Event Task");
     }
 
     #[tokio::test]

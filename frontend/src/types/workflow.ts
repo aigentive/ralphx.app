@@ -426,14 +426,14 @@ export const defaultWorkflow: WorkflowSchema = {
         {
           id: "merging",
           label: "Merging",
-          statuses: ["pending_merge", "merging"],
+          statuses: ["pending_merge", "merging", "waiting_on_pr"],
           icon: "GitMerge",
           canDragFrom: false, // System-managed
           canDropTo: false,
         },
         {
           id: "needs_attention",
-          label: "Needs Attention",
+          label: "Escalated",
           statuses: ["merge_incomplete", "merge_conflict"],
           icon: "AlertTriangle",
           accentColor: "hsl(var(--warning))",

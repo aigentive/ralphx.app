@@ -111,6 +111,7 @@ const TASK_DETAIL_VIEWS: Record<
   // Merge states - specialized views
   pending_merge: MergingTaskDetail,
   merging: MergingTaskDetail,
+  waiting_on_pr: MergingTaskDetail,
   merge_incomplete: MergeIncompleteTaskDetail,
   merge_conflict: MergeConflictTaskDetail,
   // Terminal states
@@ -229,6 +230,11 @@ const STATUS_CONFIG: Record<
     label: "Merging",
     bg: "var(--accent-muted)",
     text: "var(--accent-primary)",
+  },
+  waiting_on_pr: {
+    label: "Waiting on PR",
+    bg: "var(--status-info-muted)",
+    text: "var(--status-info)",
   },
   merge_incomplete: {
     label: "Merge Incomplete",

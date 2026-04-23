@@ -7,7 +7,7 @@
 // crash recovery, and cancellation.
 
 use dashmap::DashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
@@ -235,6 +235,31 @@ impl PrPollerRegistry {
             .map(|h| !h.is_finished())
             .unwrap_or(false)
     }
+
+    /// Poll GitHub once for requested-changes review feedback and route it into
+    /// normal RalphX plan correction work.
+    pub async fn process_review_feedback_once(
+        &self,
+        task_id: &TaskId,
+        pr_number: i64,
+        working_dir: &Path,
+        transition_service: Arc<TaskTransitionService<tauri::Wry>>,
+        history_actor: &str,
+    ) -> crate::AppResult<bool> {
+        let Some(github) = self.github_service.as_ref() else {
+            return Ok(false);
+        };
+
+        route_review_feedback_if_present(
+            Arc::clone(github),
+            working_dir,
+            pr_number,
+            task_id,
+            transition_service,
+            history_actor,
+        )
+        .await
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -410,9 +435,8 @@ async fn poll_loop(
                     Err(e) => {
                         // Don't transition yet — PR is still merged, retry next poll
                         consecutive_errors += 1;
-                        let backoff =
-                            Duration::from_secs(60 * 2u64.pow(consecutive_errors.min(4)))
-                                .min(max_backoff);
+                        let backoff = Duration::from_secs(60 * 2u64.pow(consecutive_errors.min(4)))
+                            .min(max_backoff);
                         interval = backoff.max(age_floor(start_time.elapsed()));
                         tracing::warn!(
                             task_id = task_id.as_str(),
@@ -469,10 +493,7 @@ async fn poll_loop(
 
                 if prev_db_status != Some(DbPrStatus::Open) {
                     last_status_change_at = Instant::now();
-                    tracing::info!(
-                        task_id = task_id.as_str(),
-                        "PR status changed to Open"
-                    );
+                    tracing::info!(task_id = task_id.as_str(), "PR status changed to Open");
                 }
 
                 // Update pr_status in DB for UI and update last_polled_at
@@ -484,6 +505,37 @@ async fn poll_loop(
                 let _ = plan_branch_repo
                     .update_last_polled_at(&plan_branch_id, now)
                     .await;
+
+                match route_review_feedback_if_present(
+                    Arc::clone(&github),
+                    &working_dir,
+                    pr_number,
+                    &task_id,
+                    Arc::clone(&transition_service),
+                    "github_pr_review",
+                )
+                .await
+                {
+                    Ok(true) => {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            pr_number,
+                            "PR poller: GitHub requested changes routed to plan correction task"
+                        );
+                        active.remove(&task_id);
+                        stopping.remove(&task_id);
+                        return;
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            task_id = task_id.as_str(),
+                            pr_number,
+                            error = %error,
+                            "PR poller: failed to inspect GitHub review feedback"
+                        );
+                    }
+                }
 
                 // Reset error count and return to age-based floor (AD9)
                 consecutive_errors = 0;
@@ -539,6 +591,27 @@ async fn poll_loop(
             }
         }
     }
+}
+
+async fn route_review_feedback_if_present(
+    github: Arc<dyn GithubServiceTrait>,
+    working_dir: &Path,
+    pr_number: i64,
+    task_id: &TaskId,
+    transition_service: Arc<TaskTransitionService<tauri::Wry>>,
+    history_actor: &str,
+) -> crate::AppResult<bool> {
+    let Some(feedback) = github
+        .check_pr_review_feedback(working_dir, pr_number)
+        .await?
+    else {
+        return Ok(false);
+    };
+
+    transition_service
+        .route_github_pr_changes_requested(task_id, pr_number, feedback, history_actor)
+        .await?;
+    Ok(true)
 }
 
 #[cfg(test)]

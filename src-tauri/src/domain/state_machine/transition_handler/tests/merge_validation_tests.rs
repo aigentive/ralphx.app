@@ -967,6 +967,11 @@ async fn run_pre_execution_setup_fallback_to_detected_when_custom_null() {
 fn attach_failure_logs_writes_files_for_failed_command() {
     let task_id = &format!("test-logs-{}", uuid::Uuid::new_v4());
     let dir = validation_log_dir(task_id);
+    assert!(
+        dir.starts_with(crate::utils::runtime_log_paths::app_log_dir().join("merge-validation")),
+        "validation logs must stay under the app-owned log root: {}",
+        dir.display()
+    );
 
     let mut entry = ValidationLogEntry {
         phase: "validate".to_string(),

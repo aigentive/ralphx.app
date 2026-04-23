@@ -41,6 +41,7 @@ const STATUS_COLORS: Partial<Record<InternalStatus, string>> = {
   revision_needed: "#f87171",
   pending_merge: "#22c55e",
   merging: "#16a34a",
+  waiting_on_pr: "#38bdf8",
   merge_incomplete: "#65a30d",
   merge_conflict: "#dc2626",
 };
@@ -56,7 +57,7 @@ export function mapStatusToBattleGroup(status: InternalStatus): BattleStatusGrou
     return "review";
   }
 
-  if (["pending_merge", "merging", "merge_incomplete", "merge_conflict"].includes(status)) {
+  if (["pending_merge", "merging", "waiting_on_pr", "merge_incomplete", "merge_conflict"].includes(status)) {
     return "merge";
   }
 

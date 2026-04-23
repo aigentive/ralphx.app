@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use crate::application::runtime_factory::{
-    ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
 };
 use crate::application::{
     AgentClientBundle, ChatResumptionRunner, ChatService, InteractiveProcessRegistry,
-    ReconciliationRunner, TaskSchedulerService,
+    PrPollerRegistry, ReconciliationRunner, TaskSchedulerService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
     ExecutionPlanRepository, ExecutionSettingsRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{GithubServiceTrait, MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 use tauri::Runtime;
 
@@ -24,6 +24,7 @@ pub(crate) struct StartupSchedulerDeps<R: Runtime = tauri::Wry> {
     pub project_repo: Arc<dyn ProjectRepository>,
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -37,34 +38,42 @@ pub(crate) struct StartupSchedulerDeps<R: Runtime = tauri::Wry> {
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
     pub execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
     pub interactive_process_registry: Arc<InteractiveProcessRegistry>,
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    pub pr_poller_registry: Arc<PrPollerRegistry>,
     pub app_handle: tauri::AppHandle<R>,
 }
 
 pub(crate) fn build_startup_task_scheduler<R: Runtime>(
     deps: StartupSchedulerDeps<R>,
 ) -> Arc<dyn TaskScheduler> {
-    let scheduler_concrete = Arc::new(
-        TaskSchedulerService::<R>::new(
-            Arc::clone(&deps.execution_state),
-            deps.project_repo,
-            deps.task_repo,
-            deps.task_dependency_repo,
-            deps.chat_message_repo,
-            deps.chat_attachment_repo,
-            deps.conversation_repo,
-            deps.agent_run_repo,
-            deps.ideation_session_repo,
-            deps.activity_event_repo,
-            deps.message_queue,
-            deps.running_agent_registry,
-            deps.memory_event_repo,
-            Some(deps.app_handle),
-        )
-        .with_agent_clients(deps.agent_clients)
-        .with_plan_branch_repo(deps.plan_branch_repo)
-        .with_execution_plan_repo(deps.execution_plan_repo)
-        .with_interactive_process_registry(deps.interactive_process_registry),
-    );
+    let mut scheduler = TaskSchedulerService::<R>::new(
+        Arc::clone(&deps.execution_state),
+        deps.project_repo,
+        deps.task_repo,
+        deps.task_dependency_repo,
+        deps.artifact_repo,
+        deps.chat_message_repo,
+        deps.chat_attachment_repo,
+        deps.conversation_repo,
+        deps.agent_run_repo,
+        deps.ideation_session_repo,
+        deps.activity_event_repo,
+        deps.message_queue,
+        deps.running_agent_registry,
+        deps.memory_event_repo,
+        Some(deps.app_handle),
+    )
+    .with_agent_clients(deps.agent_clients)
+    .with_plan_branch_repo(deps.plan_branch_repo)
+    .with_execution_plan_repo(deps.execution_plan_repo)
+    .with_interactive_process_registry(deps.interactive_process_registry)
+    .with_pr_poller_registry(deps.pr_poller_registry);
+
+    if let Some(github_service) = deps.github_service {
+        scheduler = scheduler.with_github_service(github_service);
+    }
+
+    let scheduler_concrete = Arc::new(scheduler);
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     scheduler_concrete
 }
@@ -113,6 +122,7 @@ pub(crate) struct StartupReconciliationDeps {
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -126,6 +136,7 @@ pub(crate) struct StartupReconciliationDeps {
     pub execution_state: Arc<ExecutionState>,
     pub execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
+    pub pr_poller_registry: Arc<PrPollerRegistry>,
     pub interactive_process_registry: Arc<InteractiveProcessRegistry>,
     pub review_repo: Arc<dyn ReviewRepository>,
     pub app_handle: tauri::AppHandle,
@@ -138,6 +149,7 @@ pub(crate) fn build_startup_reconciliation_runner(
         deps.task_repo,
         deps.task_dependency_repo,
         deps.project_repo,
+        deps.artifact_repo,
         deps.conversation_repo,
         deps.chat_message_repo,
         deps.chat_attachment_repo,
@@ -153,6 +165,7 @@ pub(crate) fn build_startup_reconciliation_runner(
     )
     .with_execution_settings_repo(deps.execution_settings_repo)
     .with_plan_branch_repo(deps.plan_branch_repo)
+    .with_pr_poller_registry(deps.pr_poller_registry)
     .with_interactive_process_registry(deps.interactive_process_registry)
     .with_review_repo(deps.review_repo)
 }
@@ -169,12 +182,19 @@ mod tests {
         let app_state = AppState::new_test();
         let execution_state = Arc::new(ExecutionState::new());
 
-        let project = Project::new("Startup Scheduler Project".into(), "/tmp/startup-scheduler".into());
+        let project = Project::new(
+            "Startup Scheduler Project".into(),
+            "/tmp/startup-scheduler".into(),
+        );
         let project_id = project.id.clone();
         app_state.project_repo.create(project).await.unwrap();
 
         let session = IdeationSession::new(project_id.clone());
-        let session = app_state.ideation_session_repo.create(session).await.unwrap();
+        let session = app_state
+            .ideation_session_repo
+            .create(session)
+            .await
+            .unwrap();
 
         let stale_plan = app_state
             .execution_plan_repo
@@ -198,6 +218,7 @@ mod tests {
             project_repo: Arc::clone(&app_state.project_repo),
             task_repo: Arc::clone(&app_state.task_repo),
             task_dependency_repo: Arc::clone(&app_state.task_dependency_repo),
+            artifact_repo: Arc::clone(&app_state.artifact_repo),
             chat_message_repo: Arc::clone(&app_state.chat_message_repo),
             chat_attachment_repo: Arc::clone(&app_state.chat_attachment_repo),
             conversation_repo: Arc::clone(&app_state.chat_conversation_repo),
@@ -211,6 +232,8 @@ mod tests {
             plan_branch_repo: Arc::clone(&app_state.plan_branch_repo),
             execution_plan_repo: Arc::clone(&app_state.execution_plan_repo),
             interactive_process_registry: Arc::clone(&app_state.interactive_process_registry),
+            github_service: None,
+            pr_poller_registry: Arc::clone(&app_state.pr_poller_registry),
             app_handle: create_mock_app_handle(),
         });
 

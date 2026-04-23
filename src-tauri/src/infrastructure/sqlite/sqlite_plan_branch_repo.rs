@@ -285,6 +285,33 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             .await
     }
 
+    async fn update_pr_eligible(&self, id: &PlanBranchId, enabled: bool) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let id_display = id.clone();
+        self.db
+            .run(move |conn| {
+                let rows = conn
+                    .execute(
+                        "UPDATE plan_branches SET pr_eligible = ?1 WHERE id = ?2",
+                        rusqlite::params![enabled as i64, id.as_str()],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!(
+                            "Failed to update plan branch pr_eligible: {}",
+                            e
+                        ))
+                    })?;
+                if rows == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "Plan branch not found: {}",
+                        id_display
+                    )));
+                }
+                Ok(())
+            })
+            .await
+    }
+
     async fn set_merge_task_id(&self, id: &PlanBranchId, task_id: &TaskId) -> AppResult<()> {
         let id = id.as_str().to_string();
         let task_id = task_id.as_str().to_string();
@@ -540,8 +567,8 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE plan_branches SET pr_push_status = ?1, updated_at = ?2 WHERE id = ?3",
-                    rusqlite::params![status_str, chrono::Utc::now().to_rfc3339(), id_str],
+                    "UPDATE plan_branches SET pr_push_status = ?1 WHERE id = ?2",
+                    rusqlite::params![status_str, id_str],
                 )
                 .map_err(|e| {
                     AppError::Database(format!("Failed to update pr_push_status: {}", e))

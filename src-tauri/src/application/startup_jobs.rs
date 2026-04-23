@@ -31,14 +31,15 @@ use crate::commands::execution_commands::{
 };
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{
-    app_state::ExecutionHaltMode, ChatContextType, IdeationSessionId, InternalStatus, ProjectId,
-    ReviewNote, ReviewOutcome, ReviewerType,
+    app_state::ExecutionHaltMode, AgentRunStatus, ChatContextType, IdeationSessionId,
+    InternalStatus, ProjectId, ReviewNote, ReviewOutcome, ReviewerType,
 };
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository,
+    TaskDependencyRepository, TaskRepository, ORPHANED_AGENT_RUN_ON_APP_RESTART,
 };
+use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppResult;
 
@@ -103,6 +104,18 @@ fn startup_resume_context_for_status(status: InternalStatus) -> Option<&'static 
     }
 }
 
+fn startup_resume_chat_context_for_status(status: InternalStatus) -> Option<ChatContextType> {
+    match status {
+        InternalStatus::Executing
+        | InternalStatus::ReExecuting
+        | InternalStatus::QaRefining
+        | InternalStatus::QaTesting => Some(ChatContextType::TaskExecution),
+        InternalStatus::Reviewing => Some(ChatContextType::Review),
+        InternalStatus::PendingMerge | InternalStatus::Merging => Some(ChatContextType::Merge),
+        _ => None,
+    }
+}
+
 /// Runs startup jobs, primarily task resumption.
 ///
 /// Finds all tasks that were in agent-active states when the app shut down
@@ -115,6 +128,7 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dep_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     transition_service: Arc<TaskTransitionService<R>>,
     execution_state: Arc<ExecutionState>,
@@ -171,6 +185,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dep_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
         chat_conversation_repo: Arc<dyn ChatConversationRepository>,
         chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
@@ -187,10 +202,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
         plan_branch_repo: Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
     ) -> Self {
-        let reconciler = ReconciliationRunner::new(
+        let mut reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
             Arc::clone(&task_dep_repo),
             Arc::clone(&project_repo),
+            Arc::clone(&artifact_repo),
             Arc::clone(&chat_conversation_repo),
             Arc::clone(&chat_message_repo),
             Arc::clone(&chat_attachment_repo),
@@ -205,11 +221,15 @@ impl<R: Runtime> StartupJobRunner<R> {
             None,
         )
         .with_execution_settings_repo(Arc::clone(&execution_settings_repo));
+        if let Some(repo) = plan_branch_repo.as_ref() {
+            reconciler = reconciler.with_plan_branch_repo(Arc::clone(repo));
+        }
 
         Self {
             task_repo,
             task_dep_repo,
             project_repo,
+            chat_conversation_repo,
             agent_run_repo,
             transition_service,
             execution_state,
@@ -329,39 +349,68 @@ impl<R: Runtime> StartupJobRunner<R> {
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
+        interrupted_contexts: &HashSet<RunningAgentKey>,
     ) -> Option<crate::domain::entities::Task> {
         let expected_context = startup_resume_context_for_status(status)?;
+        let chat_context = startup_resume_chat_context_for_status(status)?;
         let mut meta: serde_json::Value = task
             .metadata
             .as_deref()
             .and_then(|raw| serde_json::from_str(raw).ok())
             .unwrap_or_else(|| serde_json::json!({}));
 
-        if !should_auto_recover(&meta) {
+        let recovery_attempts = meta
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        if recovery_attempts >= 1 {
             return None;
         }
 
         let actual_context = meta
             .get("last_agent_error_context")
-            .and_then(|value| value.as_str())?;
-        if actual_context != expected_context {
+            .and_then(|value| value.as_str());
+        let metadata_claim = should_auto_recover(&meta)
+            && actual_context
+                .map(|context| context == expected_context)
+                .unwrap_or(true);
+
+        let registry_claim = interrupted_contexts.contains(&RunningAgentKey::new(
+            chat_context.to_string(),
+            task.id.as_str(),
+        ));
+
+        let orphaned_run_claim = self
+            .latest_run_was_orphaned_on_startup(task, chat_context)
+            .await;
+
+        let recovery_source = if metadata_claim {
+            "shutdown_interrupted_metadata"
+        } else if registry_claim {
+            "persisted_running_agent"
+        } else if orphaned_run_claim {
+            "orphaned_agent_run"
+        } else {
             return None;
-        }
+        };
 
         if let Some(obj) = meta.as_object_mut() {
-            let attempts = obj
-                .get("startup_recovery_attempts")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
             obj.insert(
                 "startup_recovery_attempts".to_string(),
-                serde_json::json!(attempts + 1),
+                serde_json::json!(recovery_attempts + 1),
+            );
+            obj.insert(
+                "startup_recovery_source".to_string(),
+                serde_json::json!(recovery_source),
             );
             obj.remove("shutdown_interrupted");
+            obj.remove("is_timeout");
+            obj.remove("failure_error");
         }
 
         let mut updated_task = task.clone();
         updated_task.metadata = Some(meta.to_string());
+        updated_task.blocked_reason = None;
         updated_task.touch();
 
         if let Err(error) = self.task_repo.update(&updated_task).await {
@@ -382,6 +431,51 @@ impl<R: Runtime> StartupJobRunner<R> {
         );
 
         Some(updated_task)
+    }
+
+    async fn latest_run_was_orphaned_on_startup(
+        &self,
+        task: &crate::domain::entities::Task,
+        chat_context: ChatContextType,
+    ) -> bool {
+        let conversation = match self
+            .chat_conversation_repo
+            .get_active_for_context(chat_context, task.id.as_str())
+            .await
+        {
+            Ok(Some(conversation)) => conversation,
+            Ok(None) => return false,
+            Err(error) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    context_type = %chat_context,
+                    error = %error,
+                    "Failed to load startup resume conversation"
+                );
+                return false;
+            }
+        };
+
+        match self
+            .agent_run_repo
+            .get_latest_for_conversation(&conversation.id)
+            .await
+        {
+            Ok(Some(run)) => {
+                run.status == AgentRunStatus::Cancelled
+                    && run.error_message.as_deref() == Some(ORPHANED_AGENT_RUN_ON_APP_RESTART)
+            }
+            Ok(None) => false,
+            Err(error) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    conversation_id = conversation.id.as_str(),
+                    error = %error,
+                    "Failed to load startup resume agent run"
+                );
+                false
+            }
+        }
     }
 
     /// Set the task scheduler for auto-starting Ready tasks (builder pattern).
@@ -478,6 +572,8 @@ impl<R: Runtime> StartupJobRunner<R> {
         // SIGTERM old processes before spawning new ones.
         // Now uses process-tree kill (children first, then parent).
         let killed = self.running_agent_registry.stop_all().await;
+        let interrupted_agent_contexts: HashSet<RunningAgentKey> =
+            killed.iter().cloned().collect();
         if !killed.is_empty() {
             info!(
                 count = killed.len(),
@@ -637,12 +733,23 @@ impl<R: Runtime> StartupJobRunner<R> {
         // pre-escalation states so Phase 1/2/3 can re-process them normally.
         self.recover_crash_escalated_tasks(&projects).await;
 
-        // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
+        // Phase 0.9: Remediate legacy MergeIncomplete rows that are actually commit-hook
+        // rework failures. These should rejoin the normal RevisionNeeded -> ReExecuting flow,
+        // not remain in merge recovery forever across restarts.
+        self.remediate_commit_hook_merge_incomplete_tasks(&projects)
+            .await;
+
+        // Phase 1: Merge-first recovery — process PendingMerge, local Merging,
+        // and PR-waiting tasks
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
         // programmatic merges complete before agent-based merges.
         const MERGE_RECOVERY_STATES: &[InternalStatus] =
-            &[InternalStatus::PendingMerge, InternalStatus::Merging];
+            &[
+                InternalStatus::PendingMerge,
+                InternalStatus::Merging,
+                InternalStatus::WaitingOnPr,
+            ];
 
         info!("Phase 1: Merge-first recovery — processing merge states before agent spawning");
 
@@ -688,7 +795,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     let task = if let Some(updated_task) = self
-                        .prepare_active_task_startup_resume(&task, *status)
+                        .prepare_active_task_startup_resume(
+                            &task,
+                            *status,
+                            &interrupted_agent_contexts,
+                        )
                         .await
                     {
                         updated_task
@@ -702,7 +813,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                         task
                     };
 
-                    if !self.execution_state.can_start_any_execution_context() {
+                    let requires_execution_capacity = *status != InternalStatus::WaitingOnPr;
+
+                    if requires_execution_capacity
+                        && !self.execution_state.can_start_any_execution_context()
+                    {
                         info!(
                             global_max_concurrent = self.execution_state.global_max_concurrent(),
                             running_count = self.execution_state.running_count(),
@@ -711,7 +826,9 @@ impl<R: Runtime> StartupJobRunner<R> {
                         break 'merge_recovery;
                     }
 
-                    if !self.project_has_execution_capacity(&task.project_id).await {
+                    if requires_execution_capacity
+                        && !self.project_has_execution_capacity(&task.project_id).await
+                    {
                         info!(
                             task_id = task.id.as_str(),
                             project_id = task.project_id.as_str(),
@@ -782,7 +899,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     let task = if let Some(updated_task) = self
-                        .prepare_active_task_startup_resume(&task, *status)
+                        .prepare_active_task_startup_resume(
+                            &task,
+                            *status,
+                            &interrupted_agent_contexts,
+                        )
                         .await
                     {
                         updated_task
@@ -1870,6 +1991,113 @@ impl<R: Runtime> StartupJobRunner<R> {
                             "Startup repaired non-merge task worktree_path"
                         );
                     }
+                }
+            }
+        }
+    }
+
+    async fn remediate_commit_hook_merge_incomplete_tasks(
+        &self,
+        projects: &[crate::domain::entities::Project],
+    ) {
+        for project in projects {
+            let tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::MergeIncomplete)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Failed to load MergeIncomplete tasks for commit-hook startup remediation"
+                    );
+                    continue;
+                }
+            };
+
+            for task in tasks {
+                if task.archived_at.is_some()
+                    || !crate::domain::state_machine::transition_handler::task_has_commit_hook_merge_failure(&task)
+                {
+                    continue;
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Phase 0.9: Inspecting legacy commit-hook MergeIncomplete task"
+                );
+
+                if let Some(error) =
+                    crate::domain::state_machine::transition_handler::extract_commit_hook_merge_error(
+                        &task,
+                    )
+                {
+                    let kind =
+                        crate::domain::state_machine::transition_handler::classify_commit_hook_failure_text(
+                            &error,
+                        );
+                    let fingerprint =
+                        crate::domain::state_machine::transition_handler::commit_hook_failure_fingerprint(
+                            &error,
+                        );
+                    let repeated =
+                        crate::domain::state_machine::transition_handler::is_repeated_commit_hook_failure(
+                            &task,
+                            &fingerprint,
+                        );
+
+                    if matches!(
+                        kind,
+                        crate::domain::state_machine::transition_handler::CommitHookFailureKind::EnvironmentFailure
+                    ) || repeated
+                    {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            kind = kind.as_str(),
+                            repeated,
+                            "Phase 0.9: Marking commit-hook MergeIncomplete task as blocked"
+                        );
+                        if let Err(e) = self
+                            .transition_service
+                            .mark_commit_hook_merge_failure_blocked(
+                                &task.id,
+                                Some(error),
+                                "startup_recovery",
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Phase 0.9: Failed to mark commit-hook MergeIncomplete task as blocked"
+                            );
+                        }
+                        continue;
+                    }
+                }
+
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Phase 0.9: Rerouting legacy commit-hook MergeIncomplete task into revision flow"
+                );
+
+                if let Err(e) = self
+                    .transition_service
+                    .reroute_commit_hook_merge_failure(
+                        &task.id,
+                        None,
+                        false,
+                        "startup_recovery",
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Phase 0.9: Failed to reroute commit-hook MergeIncomplete task"
+                    );
                 }
             }
         }

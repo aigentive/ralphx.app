@@ -6,7 +6,7 @@
  * Main-merge-deferred tasks show a distinct "Agents running" indicator.
  */
 
-import { Clock, Users } from "lucide-react";
+import { Clock, GitPullRequest, Users } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { getStatusIconConfig } from "@/types/status-icons";
 import { BranchBadge } from "@/components/shared/BranchBadge";
@@ -19,8 +19,12 @@ interface WaitingMergeCardProps {
 
 export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingMergeCardProps) {
   const pendingMergeStyle = getStatusIconConfig("pending_merge");
+  const waitingOnPrStyle = getStatusIconConfig("waiting_on_pr");
+  const isWaitingOnPr = task.internalStatus === "waiting_on_pr";
 
-  const deferredReason = task.isMainMergeDeferred
+  const deferredReason = isWaitingOnPr
+    ? "Waiting for GitHub PR review or merge"
+    : task.isMainMergeDeferred
     ? runningCount && runningCount > 0
       ? `Waiting for ${runningCount} agent${runningCount === 1 ? "" : "s"} to finish`
       : "Waiting for agents to finish"
@@ -33,9 +37,14 @@ export function WaitingMergeCard({ task, runningCount, onViewDetails }: WaitingM
   return (
     <div
       className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
-      title={`pending_merge → ${task.targetBranch}\n${deferredReason}`}
+      title={`${task.internalStatus} → ${task.targetBranch}\n${deferredReason}`}
     >
-      {task.isMainMergeDeferred ? (
+      {isWaitingOnPr ? (
+        <GitPullRequest
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: waitingOnPrStyle.color }}
+        />
+      ) : task.isMainMergeDeferred ? (
         <Users
           className="w-3.5 h-3.5 shrink-0"
           style={{ color: "var(--accent-primary)" }}

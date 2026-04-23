@@ -144,6 +144,42 @@ describe("GrepWidget", () => {
       expect(screen.getByText("spaced.ts")).toBeInTheDocument();
       expect(screen.getByText("trimmed.ts")).toBeInTheDocument();
     });
+
+    it("parses fs_grep MCP payloads with metadata headers", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            arguments: {
+              pattern: "getTimelineEvents",
+              file_pattern: "**/api/task-graph.ts",
+              max_results: 10,
+            },
+            result: [
+              {
+                type: "text",
+                text: [
+                  "ROOT: /workspace/project",
+                  "PATTERN: getTimelineEvents",
+                  "FILE_PATTERN: **/api/task-graph.ts",
+                  "MATCHES: 1",
+                  "INCLUDE_HIDDEN: false",
+                  "RESPECT_GITIGNORE: true",
+                  "",
+                  "frontend/src/api/task-graph.ts:103:   getTimelineEvents: (",
+                ].join("\n"),
+              },
+            ],
+          })}
+        />,
+      );
+
+      expect(screen.getByText(/"getTimelineEvents" in \*\*\/api\/task-graph\.ts/)).toBeInTheDocument();
+      expect(screen.getByText("1 file")).toBeInTheDocument();
+      expect(screen.getByText("frontend/src/api/task-graph.ts")).toBeInTheDocument();
+      expect(screen.queryByText(/^ROOT:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^PATTERN:/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^MATCHES:/)).not.toBeInTheDocument();
+    });
   });
 
   describe("parseSearchResult integration", () => {
@@ -192,6 +228,22 @@ describe("GrepWidget", () => {
       );
       expect(screen.getByText("No matches found")).toBeInTheDocument();
       expect(screen.getByText("no results")).toBeInTheDocument();
+    });
+
+    it("surfaces fs_grep ERROR payloads as notes instead of fake file paths", () => {
+      render(
+        <GrepWidget
+          toolCall={makeGrepCall({
+            result: [{ type: "text", text: "ERROR: ENOENT: no such file or directory, realpath '/workspace/project/.'" }],
+          })}
+        />,
+      );
+
+      expect(
+        screen.getByText(/ERROR: ENOENT: no such file or directory/),
+      ).toBeInTheDocument();
+      expect(screen.getByText("no results")).toBeInTheDocument();
+      expect(screen.queryByText(/realpath/)).toBeInTheDocument();
     });
   });
 

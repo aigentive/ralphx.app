@@ -13,14 +13,21 @@
 
 use super::helpers::*;
 use crate::domain::entities::{
-    types::IdeationSessionId, ArtifactId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
-    ProjectId, Task, TaskCategory, TaskId,
+    types::IdeationSessionId, Artifact, ArtifactId, ArtifactType, IdeationSession, InternalStatus,
+    PlanBranch, PlanBranchStatus, Project, ProjectId, Task, TaskCategory, TaskId,
 };
-use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use crate::domain::repositories::{
+    ArtifactRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
+    TaskRepository,
+};
 use crate::domain::services::github_service::GithubServiceTrait;
+use crate::domain::state_machine::transition_handler::{
+    complete_merge_internal_with_pr_sync, PlanBranchPrSyncServices,
+};
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::infrastructure::memory::{
-    MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
+    MemoryArtifactRepository, MemoryIdeationSessionRepository, MemoryPlanBranchRepository,
+    MemoryProjectRepository, MemoryTaskRepository,
 };
 use crate::tests::mock_github_service::MockGithubService;
 
@@ -48,18 +55,83 @@ fn make_pr_eligible_plan_branch(
 }
 
 async fn setup_project(project_repo: &MemoryProjectRepository) {
-    let mut project =
-        Project::new("test-project".to_string(), "/tmp/pr-mode-test".to_string());
+    setup_project_with_path(project_repo, "/tmp/pr-mode-test".to_string()).await;
+}
+
+async fn setup_project_with_path(
+    project_repo: &MemoryProjectRepository,
+    working_directory: String,
+) {
+    let mut project = Project::new("test-project".to_string(), working_directory);
     project.id = ProjectId::from_string("proj-1".to_string());
     project.base_branch = Some("main".to_string());
     project_repo.create(project).await.unwrap();
 }
 
-async fn create_pending_merge_task(
-    task_repo: &MemoryTaskRepository,
-    task_id_str: &str,
-) -> TaskId {
-    let mut task = Task::new(ProjectId::from_string("proj-1".to_string()), "PR merge task".to_string());
+fn setup_plan_git_repo(branch_name: &str, ahead_of_base: bool) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("set git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(path)
+        .output()
+        .expect("set git name");
+
+    std::fs::write(path.join("README.md"), "# pr mode state machine repo\n").expect("write README");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output()
+        .expect("initial commit");
+
+    std::process::Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(path)
+        .output()
+        .expect("create plan branch");
+    if ahead_of_base {
+        std::fs::write(path.join("plan.txt"), "plan branch work\n").expect("write plan file");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("git add plan file");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "plan branch work"])
+            .current_dir(path)
+            .output()
+            .expect("plan branch commit");
+    }
+    std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output()
+        .expect("checkout main");
+
+    dir
+}
+
+async fn create_pending_merge_task(task_repo: &MemoryTaskRepository, task_id_str: &str) -> TaskId {
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "PR merge task".to_string(),
+    );
     task.id = TaskId::from_string(task_id_str.to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.category = TaskCategory::PlanMerge;
@@ -91,29 +163,46 @@ async fn test_pr_mode_with_existing_pr_number_calls_push_and_mark_ready() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        )
-        .with_github_service(
-            Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
 
     let state = mock_github.state();
-    assert_eq!(state.push_branch_calls, 1, "push_branch should be called once");
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "push_branch should be called once"
+    );
     assert_eq!(
         state.mark_pr_ready_calls, 1,
         "mark_pr_ready should be called once"
     );
     assert_eq!(
+        state.update_pr_details_calls, 1,
+        "PR details should be refreshed before marking ready"
+    );
+    assert_eq!(
         state.create_draft_pr_calls, 0,
         "create_draft_pr should NOT be called when pr_number already exists"
+    );
+    let updated_task = task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::WaitingOnPr,
+        "PR-backed final merge should wait on the GitHub PR instead of entering local Merging"
     );
 }
 
@@ -129,7 +218,9 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
-    setup_project(&project_repo).await;
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
     let task_id = create_pending_merge_task(&task_repo, "task-pr-new").await;
 
     // No pr_number — should trigger PR creation path
@@ -142,23 +233,26 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        )
-        .with_github_service(
-            Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
 
     {
         let state = mock_github.state();
-        assert_eq!(state.push_branch_calls, 1, "push_branch should be called once");
+        assert_eq!(
+            state.push_branch_calls, 1,
+            "push_branch should be called once"
+        );
         assert_eq!(
             state.create_draft_pr_calls, 1,
             "create_draft_pr should be called when pr_number is absent"
@@ -166,6 +260,10 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
         assert_eq!(
             state.mark_pr_ready_calls, 1,
             "mark_pr_ready should be called after creation"
+        );
+        assert_eq!(
+            state.update_pr_details_calls, 1,
+            "newly-created final PR should be refreshed with ready-state title/body before marking ready"
         );
     } // drop MutexGuard before await
 
@@ -179,6 +277,64 @@ async fn test_pr_mode_without_pr_number_creates_new_pr() {
         updated_pb.pr_number,
         Some(99),
         "pr_number should be persisted after creation"
+    );
+    let updated_task = task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::WaitingOnPr,
+        "newly-created final PR should put the merge task into WaitingOnPr"
+    );
+}
+
+#[tokio::test]
+async fn test_pr_mode_without_pr_number_skips_empty_plan_branch() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, false);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let task_id = create_pending_merge_task(&task_repo, "task-pr-empty").await;
+
+    let pb = make_pr_eligible_plan_branch(&task_id, None, false);
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
+
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::PendingMerge).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 0,
+        "empty plan branch should not be pushed to GitHub"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 0,
+        "empty plan branch should not create a PR in PendingMerge"
+    );
+    assert_eq!(
+        state.mark_pr_ready_calls, 0,
+        "empty plan branch should not enter the PR-ready flow"
     );
 }
 
@@ -208,19 +364,19 @@ async fn test_pr_eligible_false_skips_pr_path() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        )
-        .with_github_service(
-            Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
 
     let state = mock_github.state();
     assert_eq!(
@@ -263,12 +419,8 @@ async fn test_pr_mode_reentry_guard_no_registry_proceeds() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        )
-        .with_github_service(
-            Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
     // NOTE: no .with_pr_poller_registry() — guard must be bypassed
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);
@@ -276,7 +428,11 @@ async fn test_pr_mode_reentry_guard_no_registry_proceeds() {
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
 
     // With no registry, re-entry guard doesn't fire → operations proceed
     let state = mock_github.state();
@@ -311,7 +467,10 @@ async fn test_ad14_pr_polling_task_does_not_block_pending_merge() {
     setup_project(&project_repo).await;
 
     // Task A: in Merging, is a PR-polling task
-    let mut task_a = Task::new(ProjectId::from_string("proj-1".to_string()), "Task A (merging)".to_string());
+    let mut task_a = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Task A (merging)".to_string(),
+    );
     task_a.id = TaskId::from_string("task-a-merging".to_string());
     task_a.internal_status = InternalStatus::Merging;
     task_a.category = TaskCategory::PlanMerge;
@@ -344,19 +503,19 @@ async fn test_ad14_pr_polling_task_does_not_block_pending_merge() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        )
-        .with_github_service(
-            Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
 
     let context = TaskContext::new(task_b_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed: {:?}",
+        result
+    );
 
     // Task B should proceed (not deferred by Task A) and call push_branch
     let state = mock_github.state();
@@ -386,7 +545,10 @@ async fn test_post_merge_cleanup_idempotency_already_merged_plan_branch() {
     setup_project(&project_repo).await;
 
     // Task in Merged state (simulating successful merge)
-    let mut task = Task::new(ProjectId::from_string("proj-1".to_string()), "Merged task".to_string());
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged task".to_string(),
+    );
     task.id = TaskId::from_string("task-already-merged".to_string());
     task.internal_status = InternalStatus::Merged;
     task.category = TaskCategory::PlanMerge;
@@ -401,9 +563,7 @@ async fn test_post_merge_cleanup_idempotency_already_merged_plan_branch() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -430,6 +590,429 @@ async fn test_post_merge_cleanup_idempotency_already_merged_plan_branch() {
     );
 }
 
+#[tokio::test]
+async fn test_regular_plan_task_merged_state_creates_draft_pr_after_first_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string("proj-1".to_string()),
+        "Fix graph crash when no active plan selected",
+    );
+    let session_id = session.id.clone();
+    session_repo.create(session).await.unwrap();
+
+    let plan_artifact = Artifact::new_inline(
+        "Execution Plan",
+        ArtifactType::Specification,
+        "## Goal\n\n- Preserve the empty state\n- Thread `executionPlanId` through the timeline components\n",
+        "ralphx-plan",
+    );
+    let plan_artifact_id = plan_artifact.id.clone();
+    artifact_repo.create(plan_artifact).await.unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged plan task".to_string(),
+    );
+    task.id = TaskId::from_string("task-plan-merged".to_string());
+    task.internal_status = InternalStatus::Merged;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(session_id.clone());
+    task.plan_artifact_id = Some(plan_artifact_id.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch = make_plan_branch(
+        plan_artifact_id.as_str(),
+        branch_name,
+        PlanBranchStatus::Active,
+        None,
+    );
+    plan_branch.session_id = session_id;
+    plan_branch.pr_eligible = true;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    mock_github.will_create_pr(123, "https://github.com/owner/repo/pull/123");
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_ideation_session_repo(Arc::clone(&session_repo) as Arc<dyn IdeationSessionRepository>)
+        .with_artifact_repo(Arc::clone(&artifact_repo) as Arc<dyn ArtifactRepository>)
+        .with_pr_creation_guard(Arc::new(dashmap::DashMap::new()))
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
+
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::Merged).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Merged) should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "first merged plan task should push the plan branch"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 1,
+        "first merged plan task should create the draft PR once the plan branch has reviewable changes"
+    );
+    drop(state);
+
+    let updated_plan_branch = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated_plan_branch.pr_number, Some(123));
+
+    let state = mock_github.state();
+    let (_, _, title, _) = state
+        .last_create_draft_pr_args
+        .clone()
+        .expect("expected draft PR arguments to be recorded");
+    assert_eq!(title, "Plan: Fix graph crash when no active plan selected");
+
+    let body = state
+        .last_create_draft_pr_body
+        .clone()
+        .expect("expected draft PR body to be captured");
+    assert!(body.contains("## RalphX Status"));
+    assert!(body.contains("Draft while RalphX is still merging plan tasks"));
+    assert!(body.contains("## How To Review"));
+    assert!(body.contains("Merge this PR in GitHub"));
+    assert!(body.contains("## Plan"));
+    assert!(body.contains("<details>"));
+    assert!(body.contains("<summary>View full plan</summary>"));
+    assert!(body.contains("Current RalphX task"));
+    assert!(body.contains("Merged plan task"));
+    assert!(body.contains("Thread `executionPlanId` through the timeline components"));
+    assert!(body.contains("</details>"));
+    assert!(body.contains("Generated by [RalphX](https://github.com/aigentive/ralphx)"));
+    assert!(!body.contains("## Delivered Changes"));
+    assert!(!body.contains("Changed files"));
+
+    assert_eq!(
+        state.update_pr_details_calls, 1,
+        "single-task plan should refresh PR details before marking ready"
+    );
+    assert_eq!(
+        state.mark_pr_ready_calls, 1,
+        "single-task plan should mark the PR ready immediately after creating it"
+    );
+    let (updated_pr_number, updated_title, _) = state
+        .last_update_pr_details_args
+        .clone()
+        .expect("expected ready PR update arguments");
+    assert_eq!(updated_pr_number, 123);
+    assert_eq!(
+        updated_title,
+        "Fix graph crash when no active plan selected"
+    );
+    let ready_body = state
+        .last_update_pr_details_body
+        .clone()
+        .expect("expected ready PR body");
+    assert!(ready_body.contains("Ready for GitHub review"));
+    assert!(ready_body.contains("<details>"));
+    assert!(ready_body.contains("<summary>View full plan</summary>"));
+    assert!(!ready_body.contains("opened this draft PR"));
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_completion_creates_draft_pr_after_first_local_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let project = project_repo
+        .get_by_id(&ProjectId::from_string("proj-1".to_string()))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged by programmatic merge".to_string(),
+    );
+    task.id = TaskId::from_string("task-programmatic-plan-merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    task.plan_artifact_id = Some(ArtifactId::from_string("artifact-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch =
+        make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", branch_name])
+        .current_dir(repo.path())
+        .output()
+        .expect("read plan branch sha");
+    assert!(
+        commit_output.status.success(),
+        "rev-parse plan branch should succeed"
+    );
+    let commit_sha = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    mock_github.will_create_pr(456, "https://github.com/owner/repo/pull/456");
+
+    let mut task_for_merge = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let task_repo_dyn: Arc<dyn TaskRepository> = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+    let result = complete_merge_internal_with_pr_sync::<tauri::Wry>(
+        &mut task_for_merge,
+        &project,
+        &commit_sha,
+        "task/feature",
+        branch_name,
+        &task_repo_dyn,
+        None,
+        None,
+        None,
+        None,
+        Some(PlanBranchPrSyncServices {
+            task_repo: Some(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
+            plan_branch_repo: Some(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>),
+            pr_creation_guard: Some(Arc::new(dashmap::DashMap::new())),
+            github_service: Some(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>),
+            ideation_session_repo: None,
+            artifact_repo: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal_with_pr_sync should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "programmatic local plan-task merge should push the plan branch"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 1,
+        "programmatic local plan-task merge should create the first draft PR"
+    );
+    drop(state);
+
+    let final_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(final_task.internal_status, InternalStatus::Merged);
+
+    let updated_plan_branch = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated_plan_branch.pr_number, Some(456));
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_completion_pushes_existing_pr_after_local_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/existing-pr-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+    let project = project_repo
+        .get_by_id(&ProjectId::from_string("proj-1".to_string()))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged follow-up via programmatic merge".to_string(),
+    );
+    task.id = TaskId::from_string("task-programmatic-plan-pr-sync".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch =
+        make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    plan_branch.pr_number = Some(789);
+    plan_branch.pr_url = Some("https://github.com/owner/repo/pull/789".to_string());
+    plan_branch.pr_push_status = crate::domain::entities::plan_branch::PrPushStatus::Pushed;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let commit_output = std::process::Command::new("git")
+        .args(["rev-parse", branch_name])
+        .current_dir(repo.path())
+        .output()
+        .expect("read plan branch sha");
+    assert!(
+        commit_output.status.success(),
+        "rev-parse plan branch should succeed"
+    );
+    let commit_sha = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+
+    let mock_github = Arc::new(MockGithubService::new());
+
+    let mut task_for_merge = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let task_repo_dyn: Arc<dyn TaskRepository> = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+    let result = complete_merge_internal_with_pr_sync::<tauri::Wry>(
+        &mut task_for_merge,
+        &project,
+        &commit_sha,
+        "task/feature",
+        branch_name,
+        &task_repo_dyn,
+        None,
+        None,
+        None,
+        None,
+        Some(PlanBranchPrSyncServices {
+            task_repo: Some(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
+            plan_branch_repo: Some(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>),
+            pr_creation_guard: Some(Arc::new(dashmap::DashMap::new())),
+            github_service: Some(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>),
+            ideation_session_repo: None,
+            artifact_repo: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal_with_pr_sync should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "programmatic local plan-task merge should push existing PR branch updates"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 0,
+        "existing PR-backed branches should sync instead of creating another PR"
+    );
+    assert_eq!(
+        state.last_push_branch_name.as_deref(),
+        Some(branch_name),
+        "push should target the plan branch"
+    );
+    drop(state);
+
+    let updated_plan_branch = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_plan_branch.pr_push_status,
+        crate::domain::entities::plan_branch::PrPushStatus::Pushed
+    );
+}
+
+#[tokio::test]
+async fn test_regular_plan_task_merged_state_pushes_existing_pr_after_local_update() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let branch_name = "plan/feature-branch";
+    let repo = setup_plan_git_repo(branch_name, true);
+    setup_project_with_path(&project_repo, repo.path().to_string_lossy().into_owned()).await;
+
+    let mut task = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Merged follow-up task".to_string(),
+    );
+    task.id = TaskId::from_string("task-plan-pr-sync".to_string());
+    task.internal_status = InternalStatus::Merged;
+    task.category = TaskCategory::Regular;
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut plan_branch =
+        make_plan_branch("artifact-1", branch_name, PlanBranchStatus::Active, None);
+    plan_branch.pr_eligible = true;
+    plan_branch.pr_number = Some(321);
+    plan_branch.pr_url = Some("https://github.com/owner/repo/pull/321".to_string());
+    plan_branch.pr_push_status = crate::domain::entities::plan_branch::PrPushStatus::Pushed;
+    let branch_id = plan_branch.id.clone();
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let mock_github = Arc::new(MockGithubService::new());
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
+        .with_pr_creation_guard(Arc::new(dashmap::DashMap::new()))
+        .with_github_service(Arc::clone(&mock_github) as Arc<dyn GithubServiceTrait>);
+
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::Merged).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Merged) should succeed: {:?}",
+        result
+    );
+
+    let state = mock_github.state();
+    assert_eq!(
+        state.push_branch_calls, 1,
+        "existing PR branches should be pushed again when new local plan-branch work lands"
+    );
+    assert_eq!(
+        state.create_draft_pr_calls, 0,
+        "existing PR branches should sync instead of recreating the PR"
+    );
+    drop(state);
+
+    let updated_plan_branch = plan_branch_repo
+        .get_by_id(&branch_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_plan_branch.pr_push_status,
+        crate::domain::entities::plan_branch::PrPushStatus::Pushed
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 7: No github_service → falls through to push-to-main path
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,9 +1036,7 @@ async fn test_pr_eligible_true_but_no_github_service_falls_through() {
     let services = TaskServices::new_mock()
         .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
         .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>)
-        .with_plan_branch_repo(
-            Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>
-        );
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
     // NOTE: no .with_github_service()
 
     let context = TaskContext::new(task_id.as_str(), "proj-1", services);

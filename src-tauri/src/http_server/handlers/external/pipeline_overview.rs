@@ -123,6 +123,7 @@ pub async fn get_pipeline_overview_http(
             | InternalStatus::RevisionNeeded => stages.reviewing += 1,
             InternalStatus::Approved | InternalStatus::PendingMerge => stages.pending_merge += 1,
             InternalStatus::Merging
+            | InternalStatus::WaitingOnPr
             | InternalStatus::MergeIncomplete
             | InternalStatus::MergeConflict => stages.merging += 1,
             InternalStatus::Merged => stages.merged += 1,

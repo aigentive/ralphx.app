@@ -51,6 +51,7 @@ mod tests;
 
 // -- Public re-exports --
 pub use merge_completion::complete_merge_internal;
+pub(crate) use merge_completion::complete_merge_internal_with_pr_sync;
 pub use merge_completion::{
     deferred_merge_cleanup, has_pending_cleanup_metadata, set_pending_cleanup_metadata,
     clear_pending_cleanup_metadata, has_no_code_changes_metadata, set_no_code_changes_metadata,
@@ -60,12 +61,22 @@ pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata,
 
 // -- Crate-visible re-exports (merge_helpers) --
 pub(crate) use merge_helpers::{
+    build_commit_hook_review_note_body,
+    build_commit_hook_revision_feedback,
+    classify_commit_hook_failure_text,
+    create_draft_pr_if_needed,
     clear_main_merge_deferred_metadata, clear_merge_deferred_metadata,
+    commit_hook_failure_fingerprint, commit_hook_repeat_count,
     compute_merge_worktree_path, get_trigger_origin,
+    extract_commit_hook_merge_error,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
+    is_commit_hook_merge_error_text,
     is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, merge_metadata_into,
-    set_source_conflict_resolved, set_conflict_metadata,
-    is_merge_worktree_path, restore_task_worktree,
+    plan_branch_has_reviewable_diff, plan_regular_tasks_complete, resolve_plan_branch_pr_base,
+    set_source_conflict_resolved, set_conflict_metadata, sync_plan_branch_pr_if_needed,
+    task_has_commit_hook_merge_failure,
+    is_merge_worktree_path, is_repeated_commit_hook_failure, restore_task_worktree,
+    CommitHookFailureKind, PlanBranchPrSyncServices,
 };
 #[doc(hidden)]
 pub use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;

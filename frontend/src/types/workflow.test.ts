@@ -287,6 +287,16 @@ describe("defaultWorkflow", () => {
   it("has name 'RalphX Default'", () => {
     expect(defaultWorkflow.name).toBe("RalphX Default");
   });
+
+  it("labels merge attention states as escalated user intervention", () => {
+    const doneColumn = defaultWorkflow.columns.find((column) => column.id === "done");
+    const attentionGroup = doneColumn?.groups?.find((group) =>
+      group.statuses.includes("merge_incomplete"),
+    );
+
+    expect(attentionGroup?.label).toBe("Escalated");
+    expect(attentionGroup?.statuses).toContain("merge_conflict");
+  });
 });
 
 describe("type inference", () => {

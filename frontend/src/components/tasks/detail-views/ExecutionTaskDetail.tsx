@@ -6,9 +6,6 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { Loader2, Radio, AlertTriangle, Bot, User, Settings, Zap, MoreVertical, Square, Ban } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StepList } from "../StepList";
@@ -43,6 +40,8 @@ import { useChatStore, selectIsTeamActive } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates } from "@/stores/teamStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import type { TeammateState } from "@/stores/teamStore";
+import { ReviewFeedbackBody } from "@/components/reviews/ReviewFeedbackBody";
+import { getReviewFeedbackHeading } from "@/lib/review-feedback";
 
 interface ExecutionTaskDetailProps {
   task: Task;
@@ -236,7 +235,7 @@ function RevisionFeedbackCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[12px] font-semibold text-text-primary/70">
-              {isAiReviewer ? "AI Feedback" : isSystemReviewer ? "System Escalation" : "Human Feedback"}
+              {getReviewFeedbackHeading(feedback.reviewer, true)}
             </span>
             <StatusPill
               icon={AlertTriangle}
@@ -246,9 +245,14 @@ function RevisionFeedbackCard({
             />
           </div>
           <div className="text-[13px] text-text-primary/55 leading-relaxed" style={{ wordBreak: "break-word" }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {feedback.notes || "No specific feedback provided"}
-            </ReactMarkdown>
+            <ReviewFeedbackBody
+              summary={feedback.summary ?? null}
+              notes={feedback.notes ?? null}
+              dialogTitle="Full revision feedback"
+              dialogDescription="Full review feedback in a scrollable view."
+              fullButtonLabel="View full feedback"
+              previewClassName="text-[13px] text-text-primary/55 leading-relaxed"
+            />
           </div>
         </div>
       </div>

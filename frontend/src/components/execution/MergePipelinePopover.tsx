@@ -107,7 +107,7 @@ export function MergePipelinePopover({
 
   const handleRetryMerge = async (taskId: string) => {
     try {
-      await api.tasks.move(taskId, "pending_merge");
+      await api.tasks.retryMerge(taskId);
     } catch (error) {
       console.error("Failed to retry merge:", error);
     }
@@ -199,11 +199,11 @@ export function MergePipelinePopover({
             </div>
           )}
 
-          {/* Needs Attention */}
+          {/* Escalated */}
           {needsAttention.length > 0 && (
             <div className="mb-0.5">
               <SectionHeader
-                title="Needs Attention"
+                title="Escalated"
                 count={needsAttention.length}
                 isOpen={sections.attention}
                 onToggle={() => toggleSection("attention")}

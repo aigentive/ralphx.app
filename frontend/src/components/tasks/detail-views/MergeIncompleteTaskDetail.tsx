@@ -23,6 +23,13 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   SectionTitle,
   DetailCard,
   StatusBanner,
@@ -55,7 +62,29 @@ interface MergeErrorContext {
   diagnosticInfo: string | null;
   hasValidationFailures: boolean;
   recoveryEvents: MergeRecoveryEvent[];
+  hookFailureKind: string | null;
+  hookBlockedReason: string | null;
+  hookFailureRepeatCount: number | null;
   metadata: TaskMetadata | null;
+}
+
+const ATTEMPT_MESSAGE_PREVIEW_CHARS = 220;
+const ERROR_CONTEXT_PREVIEW_CHARS = 900;
+
+function buildAttemptMessagePreview(message: string): string {
+  const condensed = message.replace(/\s+/g, " ").trim();
+  if (condensed.length <= ATTEMPT_MESSAGE_PREVIEW_CHARS) {
+    return condensed;
+  }
+  return `${condensed.slice(0, ATTEMPT_MESSAGE_PREVIEW_CHARS).trimEnd()}...`;
+}
+
+function buildErrorContextPreview(message: string): string {
+  const trimmed = message.trim();
+  if (trimmed.length <= ERROR_CONTEXT_PREVIEW_CHARS) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, ERROR_CONTEXT_PREVIEW_CHARS).trimEnd()}...`;
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
@@ -70,6 +99,9 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
       diagnosticInfo: m.diagnostic_info ?? null,
       hasValidationFailures: Array.isArray(m.validation_failures) && m.validation_failures.length > 0,
       recoveryEvents: m.merge_recovery?.events ?? [],
+      hookFailureKind: m.merge_hook_failure_kind ?? null,
+      hookBlockedReason: m.merge_hook_blocked_reason ?? null,
+      hookFailureRepeatCount: m.merge_hook_failure_repeat_count ?? null,
       metadata: m,
     };
   } catch {
@@ -77,10 +109,39 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
   }
 }
 
+function getHookBlockCopy(mergeError: MergeErrorContext | null): {
+  title: string;
+  subtitle: string;
+  explanation: string;
+} | null {
+  if (mergeError?.hookBlockedReason === "hook_environment_failure") {
+    return {
+      title: "Escalated",
+      subtitle: "Repository hook environment failed — action required",
+      explanation:
+        "The repository hook could not run reliably in this isolated worktree environment, so RalphX did not ask the agent to change code.",
+    };
+  }
+
+  if (mergeError?.hookBlockedReason === "repeated_hook_failure") {
+    return {
+      title: "Escalated",
+      subtitle: "Same repository hook failure repeated — loop stopped",
+      explanation:
+        "The same commit hook failure repeated after re-execution, so RalphX stopped the automatic revision loop.",
+    };
+  }
+
+  return null;
+}
+
 /**
  * ErrorContextCard - Shows actual error details or generic fallback
  */
 function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { mergeError: MergeErrorContext | null; resolvedSource?: string; resolvedTarget?: string | null }) {
+  const [selectedErrorOutput, setSelectedErrorOutput] = useState<string | null>(null);
+  const hookBlockCopy = getHookBlockCopy(mergeError);
+
   if (!mergeError) {
     return (
       <div className="space-y-3">
@@ -98,40 +159,131 @@ function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { merg
     );
   }
 
+  const errorPreview = mergeError.error ? buildErrorContextPreview(mergeError.error) : null;
+  const errorIsTruncated = errorPreview !== null && errorPreview !== mergeError.error?.trim();
+
   return (
-    <div className="space-y-3">
-      {mergeError.error && (
-        <div
-          className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
-          style={{ backgroundColor: "var(--status-error-muted)" }}
+    <>
+      <div className="space-y-3">
+        {hookBlockCopy && (
+          <div className="rounded-md px-3 py-2 text-[13px] text-text-primary/70 bg-[var(--overlay-faint)]">
+            {hookBlockCopy.explanation}
+            {mergeError?.hookFailureRepeatCount != null && mergeError.hookFailureRepeatCount > 0 && (
+              <span className="ml-1 text-text-primary/50">
+                Repeat count: {mergeError.hookFailureRepeatCount}.
+              </span>
+            )}
+          </div>
+        )}
+        {mergeError.error && (
+          <div className="space-y-2">
+            <div
+              className="rounded-md px-3 py-2 font-mono text-[12px] text-text-primary/80 whitespace-pre-wrap"
+              style={{ backgroundColor: "var(--status-error-muted)" }}
+            >
+              {errorPreview}
+            </div>
+            {errorIsTruncated && (
+              <button
+                type="button"
+                className="text-[12px] font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+                onClick={() => setSelectedErrorOutput(mergeError.error)}
+              >
+                View full output
+              </button>
+            )}
+          </div>
+        )}
+        {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
+          <div className="text-[13px] text-text-primary/60">
+            <BranchFlow
+              source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
+              target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
+            />
+          </div>
+        )}
+        {mergeError.diagnosticInfo && (
+          <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
+            {mergeError.diagnosticInfo}
+          </div>
+        )}
+      </div>
+
+      <Dialog
+        open={selectedErrorOutput !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedErrorOutput(null);
+          }
+        }}
+      >
+        <DialogContent
+          data-testid="merge-error-context-dialog"
+          className="sm:max-w-3xl max-h-[80vh] overflow-hidden"
         >
-          {mergeError.error}
-        </div>
-      )}
-      {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
-        <div className="text-[13px] text-text-primary/60">
-          <BranchFlow
-            source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
-            target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
-          />
-        </div>
-      )}
-      {mergeError.diagnosticInfo && (
-        <div className="text-[12px] text-text-primary/50 whitespace-pre-wrap">
-          {mergeError.diagnosticInfo}
-        </div>
-      )}
-    </div>
+          <DialogHeader>
+            <DialogTitle>Full error output</DialogTitle>
+            <DialogDescription>
+              Full merge error output in a scrollable view.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
+                {selectedErrorOutput}
+              </pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
 /**
  * RecoverySteps - Numbered steps for manual recovery
  */
-function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { branchName: string; targetBranch?: string | null; hasValidationFailures: boolean }) {
+function RecoverySteps({
+  branchName,
+  targetBranch,
+  hasValidationFailures,
+  hookBlockedReason,
+}: {
+  branchName: string;
+  targetBranch?: string | null;
+  hasValidationFailures: boolean;
+  hookBlockedReason?: string | null;
+}) {
   return (
     <div className="space-y-3">
-      {hasValidationFailures ? (
+      {hookBlockedReason === "hook_environment_failure" ? (
+        <>
+          <p className="text-[13px] text-text-primary/60">
+            A repository commit hook could not bootstrap its environment in the merge worktree.
+            Fix the hook dependencies or worktree setup, then retry the merge.
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
+            <li>Check the hook output for missing tools, dependencies, permissions, or symlinks</li>
+            <li>Repair the worktree setup or install the missing dependencies outside the task agent flow</li>
+            <li>
+              Click <strong className="text-text-primary/70">Retry after environment fix</strong> after the environment is fixed
+            </li>
+          </ol>
+        </>
+      ) : hookBlockedReason === "repeated_hook_failure" ? (
+        <>
+          <p className="text-[13px] text-text-primary/60">
+            The same repository hook failure repeated after re-execution, so RalphX stopped the automatic loop.
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-[13px] text-text-primary/50">
+            <li>Review the full hook output to decide whether this is code feedback or environment setup</li>
+            <li>Fix the root cause manually or update the hook/worktree setup</li>
+            <li>
+              Click <strong className="text-text-primary/70">Retry after fix</strong> only after the cause is addressed
+            </li>
+          </ol>
+        </>
+      ) : hasValidationFailures ? (
         <>
           <p className="text-[13px] text-text-primary/60">
             Your validation commands (build, type checks, linting) failed,
@@ -200,6 +352,11 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
  * RecoveryTimeline - Shows chronological timeline of merge recovery attempts
  */
 function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
+  const [selectedMessage, setSelectedMessage] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
   const formatTimestamp = (isoString: string) => {
     try {
       const date = new Date(isoString);
@@ -290,10 +447,13 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
   };
 
   return (
-    <div className="space-y-3">
-      {events.map((event, idx) => {
+    <>
+      <div className="space-y-3">
+        {events.map((event, idx) => {
         const Icon = getEventIcon(event.kind);
         const color = getEventColor(event.kind);
+        const preview = buildAttemptMessagePreview(event.message);
+        const isTruncated = preview !== event.message.replace(/\s+/g, " ").trim();
 
         return (
           <div
@@ -335,7 +495,23 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
               </div>
 
               {/* Message */}
-              <p className="text-[13px] text-text-primary/70">{event.message}</p>
+              <div className="space-y-1.5">
+                <p className="text-[13px] text-text-primary/70 break-words">{preview}</p>
+                {isTruncated && (
+                  <button
+                    type="button"
+                    className="text-[12px] font-medium text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]"
+                    onClick={() =>
+                      setSelectedMessage({
+                        title: getKindLabel(event.kind),
+                        message: event.message,
+                      })
+                    }
+                  >
+                    View full output
+                  </button>
+                )}
+              </div>
 
               {/* Additional metadata */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-primary/50">
@@ -361,8 +537,37 @@ function RecoveryTimeline({ events }: { events: MergeRecoveryEvent[] }) {
             </div>
           </div>
         );
-      })}
-    </div>
+        })}
+      </div>
+
+      <Dialog
+        open={selectedMessage !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedMessage(null);
+          }
+        }}
+      >
+        <DialogContent
+          data-testid="merge-attempt-message-dialog"
+          className="sm:max-w-3xl max-h-[80vh] overflow-hidden"
+        >
+          <DialogHeader>
+            <DialogTitle>{selectedMessage?.title ?? "Attempt output"}</DialogTitle>
+            <DialogDescription>
+              Full merge attempt output in a scrollable view.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="max-h-[56vh] overflow-y-auto rounded-lg bg-[var(--overlay-faint)] p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] text-text-primary/80">
+                {selectedMessage?.message}
+              </pre>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -426,12 +631,14 @@ function ActionButtons({
   onResolve,
   onCancel,
   isProcessing,
+  retryLabel = "Retry Merge",
 }: {
   onRetry: () => void;
   onRetrySkipValidation?: (() => void) | undefined;
   onResolve: () => void;
   onCancel: () => void;
   isProcessing: boolean;
+  retryLabel?: string;
 }) {
   return (
     <div className="flex gap-2 justify-end flex-wrap">
@@ -450,7 +657,7 @@ function ActionButtons({
         ) : (
           <RefreshCw className="w-4 h-4" />
         )}
-        Retry Merge
+        {retryLabel}
       </Button>
       {onRetrySkipValidation && (
         <Button
@@ -520,6 +727,9 @@ export function MergeIncompleteTaskDetail({
   const { confirm } = useConfirmation();
 
   const mergeError = parseMergeError(task.metadata);
+  const hookBlockCopy = getHookBlockCopy(mergeError);
+  const isHookEscalation = mergeError?.hookBlockedReason === "hook_environment_failure"
+    || mergeError?.hookBlockedReason === "repeated_hook_failure";
   const { data: planBranch } = usePlanBranchForTask(task.id);
 
   // Use merge pipeline data for correct branch resolution (metadata may have stale target_branch)
@@ -651,9 +861,11 @@ export function MergeIncompleteTaskDetail({
       {/* Status Banner - error (red) variant */}
       <StatusBanner
         icon={AlertTriangle}
-        title="Merge Incomplete"
+        title={hookBlockCopy?.title ?? "Merge Incomplete"}
         subtitle={
-          mergeError?.hasValidationFailures
+          hookBlockCopy
+            ? hookBlockCopy.subtitle
+            : mergeError?.hasValidationFailures
             ? isHistorical
               ? "Merge validation failed"
               : "Merge validation failed — action required"
@@ -661,12 +873,12 @@ export function MergeIncompleteTaskDetail({
               ? "A git error prevented the merge"
               : "A git error prevented the merge — action required"
         }
-        variant="error"
+        variant={isHookEscalation ? "warning" : "error"}
         badge={
           <StatusPill
             icon={AlertTriangle}
-            label="Error"
-            variant="error"
+            label={isHookEscalation ? "Escalated" : "Error"}
+            variant={isHookEscalation ? "warning" : "error"}
             size="md"
           />
         }
@@ -752,7 +964,12 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} targetBranch={resolvedTargetBranch} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
+            <RecoverySteps
+              branchName={branchName}
+              targetBranch={resolvedTargetBranch}
+              hasValidationFailures={mergeError?.hasValidationFailures ?? false}
+              hookBlockedReason={mergeError?.hookBlockedReason ?? null}
+            />
           </DetailCard>
         </section>
       )}
@@ -779,6 +996,13 @@ export function MergeIncompleteTaskDetail({
             onResolve={handleMarkResolved}
             onCancel={handleCancel}
             isProcessing={isProcessing}
+            retryLabel={
+              mergeError?.hookBlockedReason === "hook_environment_failure"
+                ? "Retry after environment fix"
+                : mergeError?.hookBlockedReason === "repeated_hook_failure"
+                  ? "Retry after fix"
+                  : "Retry Merge"
+            }
           />
         </section>
       )}

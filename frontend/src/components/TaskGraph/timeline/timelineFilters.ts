@@ -149,7 +149,7 @@ const CATEGORY_TO_STATUSES: Record<TimelineFilterCategory, InternalStatus[] | nu
   reviews: ["pending_review", "reviewing", "review_passed"],
   escalations: ["escalated", "revision_needed"],
   qa: ["qa_refining", "qa_testing", "qa_passed", "qa_failed"],
-  merge: ["pending_merge", "merging", "merge_conflict"],
+  merge: ["pending_merge", "merging", "waiting_on_pr", "merge_conflict"],
   completed: ["approved", "merged"],
   blocked: ["blocked"],
   plans: null, // Plan events are not status_change events

@@ -771,7 +771,7 @@ pub async fn update_github_pr_enabled(
         .await
         .map_err(|e| e.to_string())?;
 
-    handle_pr_mode_switch(&pid, enabled, &state, &execution_state, app).await;
+    reconcile_pr_mode_switch(&pid, enabled, &state, &execution_state, app).await;
 
     Ok(())
 }
@@ -789,12 +789,13 @@ pub async fn update_github_pr_enabled(
 /// Push-to-Main → PR (new_enabled = true):
 ///   - No immediate action (lazy per AD16: pr_eligible stays false for existing plans)
 ///   - Only new plans accepted after the toggle get PR mode
-async fn handle_pr_mode_switch(
+#[doc(hidden)]
+pub async fn reconcile_pr_mode_switch<R: tauri::Runtime + 'static>(
     project_id: &ProjectId,
     new_enabled: bool,
     state: &AppState,
     execution_state: &Arc<ExecutionState>,
-    app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle<R>,
 ) {
     let branches = match state.plan_branch_repo.get_by_project_id(project_id).await {
         Ok(b) => b,
@@ -855,6 +856,20 @@ async fn handle_pr_mode_switch(
 
         // Skip already-merged tasks — no cleanup needed
         if merge_task.internal_status == InternalStatus::Merged {
+            continue;
+        }
+
+        if let Err(e) = state
+            .plan_branch_repo
+            .update_pr_eligible(&branch.id, new_enabled)
+            .await
+        {
+            tracing::warn!(
+                branch_id = branch.id.as_str(),
+                enabled = new_enabled,
+                error = %e,
+                "handle_pr_mode_switch: failed to update pr_eligible"
+            );
             continue;
         }
 
@@ -929,13 +944,28 @@ async fn handle_pr_mode_switch(
                 }
             }
 
-            // Push-to-main → PR: lazy — no immediate action for existing plans (AD16)
-            // pr_eligible stays false; only new plans accepted after toggle get PR mode
+            // Push-to-main → PR: retrofit active plan branches and re-run any
+            // merge task already waiting at PendingMerge.
             (true, _) => {
-                tracing::debug!(
+                tracing::info!(
                     task_id = merge_task_id.as_str(),
-                    "handle_pr_mode_switch: push-to-main → PR is lazy (pr_eligible stays false per AD16)"
+                    "handle_pr_mode_switch: PR enabled — plan branch marked pr_eligible"
                 );
+
+                if merge_task.internal_status == InternalStatus::PendingMerge {
+                    let transition_service = build_mode_switch_transition_service(
+                        state,
+                        execution_state,
+                        app_handle.clone(),
+                    );
+                    transition_service
+                        .execute_entry_actions(
+                            &merge_task_id,
+                            &merge_task,
+                            InternalStatus::PendingMerge,
+                        )
+                        .await;
+                }
             }
 
             // PR disabled but no pr_number — nothing to close
@@ -946,16 +976,19 @@ async fn handle_pr_mode_switch(
 
 /// Build a TaskTransitionService for use in handle_pr_mode_switch.
 /// Only includes the services needed for MergeIncomplete transition (no task scheduler required).
-fn build_mode_switch_transition_service(
+fn build_mode_switch_transition_service<R: tauri::Runtime + 'static>(
     state: &AppState,
     execution_state: &Arc<ExecutionState>,
-    _app_handle: tauri::AppHandle,
-) -> TaskTransitionService {
-    let mut svc = state.build_transition_service_with_execution_state(Arc::clone(execution_state));
+    app_handle: tauri::AppHandle<R>,
+) -> Arc<TaskTransitionService<R>> {
+    let mut svc =
+        state.build_transition_service_for_runtime(Arc::clone(execution_state), Some(app_handle));
+
+    svc = svc.with_pr_poller_registry(Arc::clone(&state.pr_poller_registry));
 
     if let Some(github_svc) = &state.github_service {
         svc = svc.with_github_service(Arc::clone(github_svc));
     }
 
-    svc
+    svc.into_arc()
 }

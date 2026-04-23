@@ -1790,6 +1790,204 @@ fn test_shutdown_interrupted_metadata_value_is_bool() {
     );
 }
 
+#[tokio::test]
+async fn test_task_execution_shutdown_success_persists_startup_recovery_metadata() {
+    let state = AppState::new_test();
+    let exec = Arc::new(ExecutionState::new());
+    exec.is_shutting_down
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let execution_state = Some(Arc::clone(&exec));
+
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Executing task".into());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    state.task_repo.create(task).await.unwrap();
+
+    handle_stream_success::<MockRuntime>(
+        "run-id-shutdown-success",
+        ChatContextType::TaskExecution,
+        task_id.as_str(),
+        false,
+        false,
+        &execution_state,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.artifact_repo,
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.ideation_session_repo,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    let updated = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Executing,
+        "shutdown success path must leave the task active for startup recovery"
+    );
+
+    let metadata: serde_json::Value = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .expect("shutdown guard should persist metadata");
+    assert_eq!(
+        metadata
+            .get("shutdown_interrupted")
+            .and_then(|value| value.as_bool()),
+        Some(true),
+        "startup recovery marker must be persisted on shutdown success"
+    );
+    assert_eq!(
+        metadata
+            .get("last_agent_error_context")
+            .and_then(|value| value.as_str()),
+        Some("execution"),
+        "startup recovery must know the interrupted context"
+    );
+}
+
+#[tokio::test]
+async fn test_task_execution_shutdown_error_persists_startup_recovery_metadata() {
+    let state = AppState::new_test();
+    let exec = Arc::new(ExecutionState::new());
+    exec.is_shutting_down
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let execution_state = Some(Arc::clone(&exec));
+
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Executing task".into());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    state.task_repo.create(task).await.unwrap();
+
+    let conversation_id = ChatConversationId::new();
+    let event_ctx = crate::application::chat_service::event_context(
+        &conversation_id,
+        &ChatContextType::TaskExecution,
+        task_id.as_str(),
+    );
+    let stream_error = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "agent exited during shutdown".to_string(),
+    };
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "agent exited during shutdown",
+        Some(&stream_error),
+        ChatContextType::TaskExecution,
+        task_id.as_str(),
+        conversation_id,
+        "run-id-shutdown-error",
+        "message-id-shutdown-error",
+        &event_ctx,
+        None,
+        crate::domain::agents::AgentHarnessKind::Codex,
+        false,
+        None,
+        None,
+        None,
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        std::path::Path::new("/tmp"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &execution_state,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,
+        false,
+        None,
+        &None,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    assert!(
+        !recovery_spawned,
+        "shutdown error path should not spawn immediate recovery; startup owns it"
+    );
+
+    let updated = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Executing,
+        "shutdown error path must leave the task active for startup recovery"
+    );
+
+    let metadata: serde_json::Value = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .expect("shutdown guard should persist metadata");
+    assert_eq!(
+        metadata
+            .get("shutdown_interrupted")
+            .and_then(|value| value.as_bool()),
+        Some(true),
+        "startup recovery marker must be persisted on shutdown error"
+    );
+    assert_eq!(
+        metadata
+            .get("last_agent_error_context")
+            .and_then(|value| value.as_str()),
+        Some("execution"),
+        "startup recovery must know the interrupted context"
+    );
+    assert_eq!(
+        metadata
+            .get("last_agent_error")
+            .and_then(|value| value.as_str()),
+        Some("agent exited during shutdown"),
+        "shutdown error path should preserve the agent error for diagnostics"
+    );
+}
+
 /// Multiple ExecutionState instances are independent (no global state).
 /// The L1 guard reads a specific Arc<ExecutionState> passed to the handler,
 /// so creating two instances with different flag values must not interfere.

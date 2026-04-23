@@ -750,6 +750,7 @@ pub async fn process_stream_background<R: Runtime>(
     agent_run_id: Option<String>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
+    split_verification_transcript: bool,
 ) -> Result<StreamOutcome, StreamError> {
     if stream_mode_for_harness(harness) == HarnessStreamMode::CodexJsonl {
         return process_codex_stream_background(
@@ -770,6 +771,7 @@ pub async fn process_stream_background<R: Runtime>(
             agent_run_id,
             execution_state,
             conversation_repo,
+            split_verification_transcript,
         )
         .await;
     }
@@ -1547,18 +1549,18 @@ pub async fn process_stream_background<R: Runtime>(
                             let role =
                                 super::chat_service_helpers::get_assistant_role(&context_type)
                                     .to_string();
-                            let tool_calls_json = serde_json::to_string(&processor.tool_calls).ok();
-                            let content_blocks_json =
-                                serde_json::to_string(&processor.content_blocks).ok();
-                            super::chat_service_send_background::finalize_assistant_message(
+                            super::chat_service_send_background::finalize_structured_assistant_message(
                                 repo,
                                 app_handle.as_ref(),
-                                &event_ctx,
+                                context_type,
+                                context_id,
+                                conversation_id,
                                 msg_id,
                                 &role,
                                 &processor.response_text,
-                                tool_calls_json.as_deref(),
-                                content_blocks_json.as_deref(),
+                                &processor.tool_calls,
+                                &processor.content_blocks,
+                                split_verification_transcript,
                             )
                             .await;
                             let turn_usage = processor.current_turn_usage();
@@ -2625,6 +2627,7 @@ async fn process_codex_stream_background<R: Runtime>(
     agent_run_id: Option<String>,
     _execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
+    _split_verification_transcript: bool,
 ) -> Result<StreamOutcome, StreamError> {
     let timeout_config = StreamTimeoutConfig::for_context(&context_type);
     let stdout = child

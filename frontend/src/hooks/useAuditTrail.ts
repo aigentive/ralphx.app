@@ -12,6 +12,7 @@ import { stateTransitionKeys } from "@/hooks/useTaskStateTransitions";
 import type { ActivityEventResponse } from "@/api/activity-events.types";
 import type { StateTransition } from "@/api/tasks";
 import { reviewKeys } from "@/hooks/useReviews";
+import { getReviewerActorLabel } from "@/lib/review-feedback";
 
 // ============================================================================
 // Types
@@ -193,7 +194,6 @@ function mapTransitionToAuditEntry(t: StateTransition, index: number): AuditEntr
 }
 
 function mapReviewToAuditEntry(review: ReviewNoteResponse): AuditEntry {
-  const actorLabel = review.reviewer === "ai" ? "AI Reviewer" : review.reviewer === "system" ? "System Escalation" : "Human Reviewer";
   const outcomeLabels: Record<string, string> = {
     approved: "Approved",
     changes_requested: "Changes Requested",
@@ -205,7 +205,7 @@ function mapReviewToAuditEntry(review: ReviewNoteResponse): AuditEntry {
     timestamp: review.created_at,
     source: "review",
     type: outcomeLabels[review.outcome] ?? review.outcome,
-    actor: actorLabel,
+    actor: getReviewerActorLabel(review.reviewer),
     description: review.notes ?? review.summary ?? "",
     metadata: review.issues?.length
       ? `${review.issues.length} issue${review.issues.length === 1 ? "" : "s"} found`

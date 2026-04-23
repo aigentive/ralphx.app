@@ -381,6 +381,13 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
             match spawnable.spawn().await {
                 Ok(child) => {
+                    let split_verification_transcript =
+                        super::chat_service_send_background::should_split_verification_transcript(
+                            context_type,
+                            context_id,
+                            ideation_session_repo,
+                        )
+                        .await;
                     // Create empty assistant message before queue stream
                     let queue_assistant_msg = chat_service_context::create_assistant_message(
                         context_type,
@@ -425,6 +432,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         None,
                         None, // Queue processing doesn't track execution slots
                         None, // Queue processing doesn't persist session_id
+                        split_verification_transcript,
                     )
                     .await
                     {
@@ -448,35 +456,20 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                                     .await;
                             }
                             if has_meaningful_output(&response, tools.len(), &queue_stderr) {
-                                let tool_calls_json = serde_json::to_string(&tools).ok();
-                                let content_blocks_json = serde_json::to_string(&blocks).ok();
-                                let _ = chat_message_repo
-                                    .update_content(
-                                        &crate::domain::entities::ChatMessageId::from_string(
-                                            queue_assistant_msg_id.clone(),
-                                        ),
-                                        &response,
-                                        tool_calls_json.as_deref(),
-                                        content_blocks_json.as_deref(),
-                                    )
-                                    .await;
-
-                                // Emit assistant message created
-                                if let Some(ref handle) = app_handle {
-                                    let _ = handle.emit(
-                                        "agent:message_created",
-                                        AgentMessageCreatedPayload {
-                                            message_id: queue_assistant_msg_id,
-                                            conversation_id: conversation_id.as_str().to_string(),
-                                            context_type: context_type.to_string(),
-                                            context_id: context_id.to_string(),
-                                            role: get_assistant_role(&context_type).to_string(),
-                                            content: response.clone(),
-                                            created_at: None,
-                                            metadata: None,
-                                        },
-                                    );
-                                }
+                                super::chat_service_send_background::finalize_structured_assistant_message(
+                                    chat_message_repo,
+                                    app_handle.as_ref(),
+                                    context_type,
+                                    context_id,
+                                    &conversation_id,
+                                    &queue_assistant_msg_id,
+                                    &get_assistant_role(&context_type).to_string(),
+                                    &response,
+                                    &tools,
+                                    &blocks,
+                                    split_verification_transcript,
+                                )
+                                .await;
                             }
 
                             // NOTE: Don't emit run_completed here for each queued message.

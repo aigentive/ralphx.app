@@ -710,6 +710,8 @@ impl<'a> TransitionHandler<'a> {
 
         self.check_plan_branch_active(task_id_str).await?;
         self.reset_stale_steps_on_entry(task_id_str).await;
+        self.ensure_executing_branch_and_worktree(task_id_str, project_id_str)
+            .await?;
         self.run_execution_freshness_check(task_id_str, project_id_str, "re_executing")
             .await?;
         self.run_and_store_pre_execution_setup(

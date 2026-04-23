@@ -167,6 +167,7 @@ pub fn status_to_state(status: InternalStatus) -> State {
         InternalStatus::Approved => State::Approved,
         InternalStatus::PendingMerge => State::PendingMerge,
         InternalStatus::Merging => State::Merging,
+        InternalStatus::WaitingOnPr => State::WaitingOnPr,
         InternalStatus::MergeIncomplete => State::MergeIncomplete,
         InternalStatus::MergeConflict => State::MergeConflict,
         InternalStatus::Merged => State::Merged,

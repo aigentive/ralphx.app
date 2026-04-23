@@ -420,7 +420,7 @@ export function TaskCard({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  PR #{planBranch?.prNumber} — waiting for GitHub PR merge
+                  PR #{planBranch?.prNumber} - waiting for GitHub review or merge
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

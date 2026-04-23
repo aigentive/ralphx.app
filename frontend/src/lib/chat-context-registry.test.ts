@@ -163,7 +163,17 @@ describe("resolveContextType", () => {
   });
 
   describe("idle/other statuses → task", () => {
-    const taskStatuses = ["backlog", "ready", "blocked", "revision_needed", "failed", "cancelled", "paused", "stopped"];
+    const taskStatuses = [
+      "backlog",
+      "ready",
+      "blocked",
+      "revision_needed",
+      "waiting_on_pr",
+      "failed",
+      "cancelled",
+      "paused",
+      "stopped",
+    ];
     for (const status of taskStatuses) {
       it(`maps ${status} → task`, () => {
         expect(resolveContextType(status, undefined, TASK_ID)).toBe("task");
@@ -171,7 +181,7 @@ describe("resolveContextType", () => {
     }
   });
 
-  describe("all 24 statuses map to a valid context type", () => {
+  describe("all statuses map to a valid context type", () => {
     for (const status of INTERNAL_STATUS_VALUES) {
       it(`${status} resolves to a valid ContextType`, () => {
         const result = resolveContextType(status, undefined, TASK_ID);

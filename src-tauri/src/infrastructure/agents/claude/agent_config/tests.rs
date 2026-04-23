@@ -14,7 +14,8 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_WORKER_TEAM,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    has_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
+    has_canonical_agent_definition, list_canonical_prompt_backed_agents,
+    load_harness_agent_prompt, AgentPromptHarness,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -26,6 +27,27 @@ fn test_yaml_loaded_has_unique_names() {
     names.sort();
     names.dedup();
     assert_eq!(names.len(), original_len);
+}
+
+#[test]
+fn test_canonical_agent_project_root_resolves_live_claude_agents() {
+    let project_root = canonical_agent_project_root();
+    let expected_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .expect("canonical repo root");
+
+    assert_eq!(project_root, expected_root);
+
+    let live_agents = list_canonical_prompt_backed_agents(&project_root, AgentPromptHarness::Claude);
+    assert!(
+        live_agents.contains(&SHORT_ORCHESTRATOR_IDEATION.to_string()),
+        "canonical project root should expose live Claude agents for runtime config synthesis"
+    );
+    assert!(
+        live_agents.contains(&SHORT_PLAN_VERIFIER.to_string()),
+        "canonical project root should expose verifier agents for runtime config synthesis"
+    );
 }
 
 #[test]
@@ -1705,6 +1727,34 @@ fn test_plan_critic_mcp_tools_match_prompt_contract() {
                 .contains(&"create_team_artifact".to_string()),
             "{agent_name} should use publish_verification_finding instead of generic create_team_artifact"
         );
+    }
+}
+
+#[test]
+fn test_plan_critic_prompts_forbid_restatements_of_planned_future_state() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+    for harness in [AgentPromptHarness::Claude, AgentPromptHarness::Codex] {
+        for agent_name in [
+            "ralphx-plan-critic-completeness",
+            "ralphx-plan-critic-implementation-feasibility",
+        ] {
+            let prompt = load_harness_agent_prompt(&project_root, agent_name, harness)
+                .unwrap_or_else(|| panic!("failed to load prompt for {agent_name} ({harness:?})"));
+
+            assert!(
+                prompt.contains("Do not restate the before-state as if that absence alone were a plan gap."),
+                "{agent_name} ({harness:?}) prompt must explicitly forbid before-state restatement gaps"
+            );
+            assert!(
+                prompt.contains("Bad gap: \"current code does not pass executionPlanId\" when the plan explicitly says to add that wiring."),
+                "{agent_name} ({harness:?}) prompt must include a concrete bad-gap example"
+            );
+            assert!(
+                prompt.contains("Good gap: \"the plan never specifies where TaskGraphView gets executionPlanId from\"."),
+                "{agent_name} ({harness:?}) prompt must include a concrete good-gap example"
+            );
+        }
     }
 }
 

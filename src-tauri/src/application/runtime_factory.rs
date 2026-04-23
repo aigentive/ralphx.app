@@ -4,8 +4,8 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::application::chat_service::{AppChatService, StreamingStateCache};
 use crate::application::{
-    AgentClientBundle, AppState, InteractiveProcessRegistry, TaskSchedulerService,
-    TaskTransitionService,
+    AgentClientBundle, AppState, InteractiveProcessRegistry, PrPollerRegistry,
+    TaskSchedulerService, TaskTransitionService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
@@ -17,7 +17,7 @@ use crate::domain::repositories::{
     ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{GithubServiceTrait, MessageQueue, RunningAgentRegistry};
 use crate::infrastructure::memory::MemoryDelegatedSessionRepository;
 
 #[derive(Clone)]
@@ -25,6 +25,7 @@ pub(crate) struct RuntimeFactoryDeps {
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -38,8 +39,11 @@ pub(crate) struct RuntimeFactoryDeps {
     pub execution_plan_repo: Option<Arc<dyn ExecutionPlanRepository>>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    pub review_repo: Option<Arc<dyn ReviewRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    pub pr_poller_registry: Option<Arc<PrPollerRegistry>>,
 }
 
 impl RuntimeFactoryDeps {
@@ -48,6 +52,7 @@ impl RuntimeFactoryDeps {
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         project_repo: Arc<dyn ProjectRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -62,6 +67,7 @@ impl RuntimeFactoryDeps {
             task_repo,
             task_dependency_repo,
             project_repo,
+            artifact_repo,
             chat_message_repo,
             chat_attachment_repo,
             conversation_repo,
@@ -75,8 +81,11 @@ impl RuntimeFactoryDeps {
             execution_plan_repo: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
+            review_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
+            github_service: None,
+            pr_poller_registry: None,
         }
     }
 
@@ -96,6 +105,11 @@ impl RuntimeFactoryDeps {
         self
     }
 
+    pub(crate) fn with_review_repo(mut self, review_repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(review_repo);
+        self
+    }
+
     pub(crate) fn with_runtime_support(
         mut self,
         execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
@@ -110,11 +124,22 @@ impl RuntimeFactoryDeps {
         self
     }
 
+    pub(crate) fn with_github_runtime_support(
+        mut self,
+        github_service: Option<Arc<dyn GithubServiceTrait>>,
+        pr_poller_registry: Option<Arc<PrPollerRegistry>>,
+    ) -> Self {
+        self.github_service = github_service;
+        self.pr_poller_registry = pr_poller_registry;
+        self
+    }
+
     pub(crate) fn from_app_state(state: &AppState) -> Self {
         Self::from_core(
             Arc::clone(&state.task_repo),
             Arc::clone(&state.task_dependency_repo),
             Arc::clone(&state.project_repo),
+            Arc::clone(&state.artifact_repo),
             Arc::clone(&state.chat_message_repo),
             Arc::clone(&state.chat_attachment_repo),
             Arc::clone(&state.chat_conversation_repo),
@@ -127,11 +152,16 @@ impl RuntimeFactoryDeps {
         )
         .with_agent_clients(Some(state.agent_client_bundle()))
         .with_execution_plan_repo(Arc::clone(&state.execution_plan_repo))
+        .with_review_repo(Arc::clone(&state.review_repo))
         .with_runtime_support(
             Some(Arc::clone(&state.execution_settings_repo)),
             Some(Arc::clone(&state.agent_lane_settings_repo)),
             Some(Arc::clone(&state.plan_branch_repo)),
             Some(Arc::clone(&state.interactive_process_registry)),
+        )
+        .with_github_runtime_support(
+            state.github_service.as_ref().map(Arc::clone),
+            Some(Arc::clone(&state.pr_poller_registry)),
         )
     }
 }
@@ -500,11 +530,21 @@ pub(crate) fn build_transition_service_from_deps<R: Runtime>(
     if let Some(repo) = deps.agent_lane_settings_repo.as_ref() {
         service = service.with_agent_lane_settings_repo(Arc::clone(repo));
     }
+    if let Some(repo) = deps.review_repo.as_ref() {
+        service = service.with_review_repo(Arc::clone(repo));
+    }
     if let Some(repo) = deps.plan_branch_repo.as_ref() {
         service = service.with_plan_branch_repo(Arc::clone(repo));
     }
+    service = service.with_artifact_repo(Arc::clone(&deps.artifact_repo));
     if let Some(ipr) = deps.interactive_process_registry.as_ref() {
         service = service.with_interactive_process_registry(Arc::clone(ipr));
+    }
+    if let Some(registry) = deps.pr_poller_registry.as_ref() {
+        service = service.with_pr_poller_registry(Arc::clone(registry));
+    }
+    if let Some(github) = deps.github_service.as_ref() {
+        service = service.with_github_service(Arc::clone(github));
     }
     service
 }
@@ -533,6 +573,7 @@ pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
         Arc::clone(&deps.project_repo),
         Arc::clone(&deps.task_repo),
         Arc::clone(&deps.task_dependency_repo),
+        Arc::clone(&deps.artifact_repo),
         Arc::clone(&deps.chat_message_repo),
         Arc::clone(&deps.chat_attachment_repo),
         Arc::clone(&deps.conversation_repo),
@@ -561,6 +602,12 @@ pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
     }
     if let Some(ipr) = deps.interactive_process_registry.as_ref() {
         scheduler = scheduler.with_interactive_process_registry(Arc::clone(ipr));
+    }
+    if let Some(registry) = deps.pr_poller_registry.as_ref() {
+        scheduler = scheduler.with_pr_poller_registry(Arc::clone(registry));
+    }
+    if let Some(github) = deps.github_service.as_ref() {
+        scheduler = scheduler.with_github_service(Arc::clone(github));
     }
     scheduler
 }

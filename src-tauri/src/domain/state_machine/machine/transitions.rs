@@ -258,6 +258,19 @@ impl TaskStateMachine {
         }
     }
 
+    /// WaitingOnPr state - external pull request is open and RalphX is polling GitHub
+    pub fn waiting_on_pr(&mut self, event: &TaskEvent) -> Response {
+        match event {
+            TaskEvent::MergeComplete => Response::Transition(State::Merged),
+            TaskEvent::MergeAgentError => Response::Transition(State::MergeIncomplete),
+            TaskEvent::Retry => Response::Transition(State::PendingMerge),
+            TaskEvent::Pause => Response::Transition(State::Paused),
+            TaskEvent::Stop => Response::Transition(State::Stopped),
+            TaskEvent::Cancel => Response::Transition(State::Cancelled),
+            _ => Response::NotHandled,
+        }
+    }
+
     /// Merging state - merge agent is attempting to resolve conflicts
     pub fn merging(&mut self, event: &TaskEvent) -> Response {
         match event {

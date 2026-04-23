@@ -31,6 +31,7 @@ pub mod pr_startup_recovery;
 pub mod prune_engine;
 pub mod qa_service;
 pub mod question_state;
+pub mod ready_task_scheduler;
 pub mod reconciliation;
 pub mod recovery_queue;
 pub mod runtime_factory;
@@ -105,6 +106,7 @@ pub use plan_ranking::{
 };
 pub use priority_service::PriorityService;
 pub use recovery_queue::{ProcessSummary, RecoveryItem, RecoveryPriority, RecoveryQueue};
+pub use ready_task_scheduler::spawn_ready_task_scheduler_if_needed;
 pub use prune_engine::PruneEngine;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};

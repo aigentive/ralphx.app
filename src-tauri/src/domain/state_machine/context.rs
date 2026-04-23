@@ -17,8 +17,8 @@ use crate::domain::services::github_service::GithubServiceTrait;
 use crate::commands::ExecutionState;
 use crate::domain::entities::PlanBranchId;
 use crate::domain::repositories::{
-    ActivityEventRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
-    TaskRepository, TaskStepRepository,
+    ActivityEventRepository, ArtifactRepository, IdeationSessionRepository, PlanBranchRepository,
+    ProjectRepository, TaskRepository, TaskStepRepository,
 };
 use ralphx_domain::repositories::ExternalEventsRepository;
 use dashmap::DashMap;
@@ -80,6 +80,10 @@ pub struct TaskServices {
     /// Task step repository for updating step statuses during state transitions.
     /// Used by TransitionHandler to fail in-progress steps when task fails.
     pub step_repo: Option<Arc<dyn TaskStepRepository>>,
+
+    /// Artifact repository for reading plan artifact content during PR generation.
+    /// Optional — only needed for richer PR metadata/presentation.
+    pub artifact_repo: Option<Arc<dyn ArtifactRepository>>,
 
     /// Application-level mutex for the concurrent merge guard critical section.
     /// Serializes the check-and-set in `try_programmatic_merge` so two tasks
@@ -162,6 +166,7 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            artifact_repo: None,
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
@@ -235,6 +240,12 @@ impl TaskServices {
     /// Set the step repository (builder pattern)
     pub fn with_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
         self.step_repo = Some(repo);
+        self
+    }
+
+    /// Set the artifact repository (builder pattern)
+    pub fn with_artifact_repo(mut self, repo: Arc<dyn ArtifactRepository>) -> Self {
+        self.artifact_repo = Some(repo);
         self
     }
 
@@ -341,6 +352,7 @@ impl TaskServices {
             project_repo: None,
             plan_branch_repo: None,
             step_repo: None,
+            artifact_repo: None,
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
@@ -392,6 +404,10 @@ impl std::fmt::Debug for TaskServices {
                     .plan_branch_repo
                     .as_ref()
                     .map(|_| "<PlanBranchRepository>"),
+            )
+            .field(
+                "artifact_repo",
+                &self.artifact_repo.as_ref().map(|_| "<ArtifactRepository>"),
             )
             .field("merge_lock", &"<Mutex<()>>")
             .field("merges_in_flight", &"<Mutex<HashSet<String>>>")

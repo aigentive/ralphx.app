@@ -18,10 +18,14 @@ use ralphx_lib::application::{AppState, ReconciliationRunner, TaskTransitionServ
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId, Project, Task,
+    TaskCategory,
 };
-use ralphx_lib::domain::repositories::PlanBranchRepository;
-use ralphx_lib::domain::services::github_service::PrStatus;
-use ralphx_lib::infrastructure::memory::MemoryPlanBranchRepository;
+use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
+use ralphx_lib::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use ralphx_lib::domain::state_machine::services::TaskScheduler;
+use ralphx_lib::infrastructure::memory::{
+    MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
+};
 
 use common::MockGithubService;
 
@@ -75,6 +79,7 @@ fn build_reconciler(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.artifact_repo),
         Arc::clone(&app_state.chat_conversation_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_attachment_repo),
@@ -114,6 +119,135 @@ fn make_pr_plan_branch(
     pb
 }
 
+fn setup_plan_git_repo(branch_name: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path();
+
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .expect("set git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(path)
+        .output()
+        .expect("set git name");
+
+    std::fs::write(path.join("README.md"), "# pr mode repo\n").expect("write README");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output()
+        .expect("initial commit");
+
+    std::process::Command::new("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(path)
+        .output()
+        .expect("create plan branch");
+    std::fs::write(path.join("plan.txt"), "plan branch work\n").expect("write plan file");
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output()
+        .expect("git add plan file");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "plan branch work"])
+        .current_dir(path)
+        .output()
+        .expect("plan branch commit");
+    std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output()
+        .expect("checkout main");
+
+    dir
+}
+
+#[tokio::test]
+async fn app_state_scheduler_uses_pr_mode_and_starts_poller_for_new_plan_merge() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let mut app_state = AppState::with_repos(task_repo.clone(), project_repo.clone());
+    app_state.plan_branch_repo = plan_branch_repo.clone();
+
+    let mock_github = Arc::new(MockGithubService::new());
+    let github_trait: Arc<dyn GithubServiceTrait> = mock_github.clone();
+    app_state.github_service = Some(Arc::clone(&github_trait));
+    app_state.pr_poller_registry = Arc::new(PrPollerRegistry::new(
+        Some(github_trait),
+        plan_branch_repo.clone(),
+    ));
+
+    let branch_name = "ralphx/test/plan-scheduler";
+    let working_dir = setup_plan_git_repo(branch_name);
+    let mut project = Project::new(
+        "PR Scheduler".to_string(),
+        working_dir.path().to_string_lossy().into_owned(),
+    );
+    project.github_pr_enabled = true;
+    let project = project_repo.create(project).await.unwrap();
+
+    let mut merge_task = Task::new(project.id.clone(), "Merge ready plan".to_string());
+    merge_task.category = TaskCategory::PlanMerge;
+    merge_task.internal_status = InternalStatus::Ready;
+    let merge_task_id = merge_task.id.clone();
+    task_repo.create(merge_task).await.unwrap();
+
+    let mut plan_branch = PlanBranch::new(
+        ArtifactId::from_string("sched-artifact".to_string()),
+        IdeationSessionId::from_string("sched-session".to_string()),
+        project.id.clone(),
+        branch_name.to_string(),
+        "main".to_string(),
+    );
+    plan_branch.merge_task_id = Some(merge_task_id.clone());
+    plan_branch.pr_eligible = true;
+    plan_branch_repo.create(plan_branch).await.unwrap();
+
+    let execution_state = Arc::new(ExecutionState::new());
+    let scheduler = Arc::new(app_state.build_task_scheduler_for_runtime(
+        Arc::clone(&execution_state),
+        Option::<tauri::AppHandle>::None,
+    ));
+    scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    scheduler.try_schedule_ready_tasks().await;
+
+    let task_after = task_repo.get_by_id(&merge_task_id).await.unwrap().unwrap();
+    assert_eq!(
+        task_after.internal_status,
+        InternalStatus::WaitingOnPr,
+        "plan merge should take the PR-mode PendingMerge path"
+    );
+    assert!(
+        mock_github.push_calls() > 0,
+        "PR-mode merge should push the plan branch"
+    );
+    assert!(
+        mock_github.create_calls() > 0,
+        "PR-mode merge should create a PR when one does not already exist"
+    );
+    assert!(
+        app_state.pr_poller_registry.is_polling(&merge_task_id),
+        "WaitingOnPr task should start the PR poller"
+    );
+}
+
 // ============================================================================
 // Test 1: pr_creation_guard blocks concurrent creation for same PlanBranchId
 // ============================================================================
@@ -149,7 +283,7 @@ async fn test_pr_creation_guard_blocks_concurrent_creation() {
     {
         use dashmap::mapref::entry::Entry;
         let second_attempt = match registry.pr_creation_guard.entry(pb_id.clone()) {
-            Entry::Vacant(_) => true,   // would proceed
+            Entry::Vacant(_) => true,    // would proceed
             Entry::Occupied(_) => false, // blocked by existing guard
         };
         assert!(
@@ -195,7 +329,11 @@ async fn test_poller_is_stopped_when_stopping_guard_set() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Stopping guard test task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -264,9 +402,16 @@ async fn test_pr_mode_reconciler_with_live_poller() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Live poller reconciler task".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Live poller reconciler task".to_string(),
+    );
     task.internal_status = InternalStatus::Merging;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -275,8 +420,8 @@ async fn test_pr_mode_reconciler_with_live_poller() {
         project.id.clone(),
         &task.id,
         1234,
-        true,  // pr_eligible
-        true,  // pr_polling_active
+        true,             // pr_eligible
+        true,             // pr_polling_active
         Some(Utc::now()), // recent heartbeat — not stale
     );
     plan_branch_repo.create(pb).await.unwrap();
@@ -342,7 +487,11 @@ async fn test_cascade_stop_stops_all_registry_pollers() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task 1
     let mut task1 = Task::new(project.id.clone(), "Cascade stop task 1".to_string());
@@ -454,7 +603,11 @@ async fn test_poller_closed_status_stops_poller() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Closed PR task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -480,14 +633,18 @@ async fn test_poller_closed_status_stops_poller() {
     mock.will_return_status(PrStatus::Closed);
 
     let registry = Arc::new(PrPollerRegistry::new(
-        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Some(mock.clone()
+            as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
         Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
     ));
 
     let transition_service = build_transition_service(&app_state, &execution_state);
 
     // Verify pre-conditions: before start, not polling
-    assert!(!registry.is_polling(&task.id), "must not be polling before start");
+    assert!(
+        !registry.is_polling(&task.id),
+        "must not be polling before start"
+    );
 
     registry.start_polling(
         task.id.clone(),
@@ -524,26 +681,30 @@ async fn test_poller_closed_status_stops_poller() {
 }
 
 // ============================================================================
-// Test 6: pr_polling_active=false falls through to normal reconciler logic
+// Test 6: pr_polling_active=false is repaired for PR-backed Merging tasks
 // ============================================================================
 
-/// A Merging task with pr_polling_active=false (not a PR-mode task) falls through
-/// the PR block entirely and returns false (normal reconciler logic finds nothing
-/// stale since the task was just created and has no agent run).
+/// A Merging task with a PR number is a PR-backed merge even if the persisted
+/// polling flag is stale/false. Reconciliation should repair the missing polling
+/// state instead of falling through to local merge-agent timeout handling.
 #[tokio::test]
-async fn test_pr_polling_active_false_falls_through_reconciler() {
+async fn test_pr_number_merging_task_repairs_missing_polling_flag() {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
 
     let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut task = Task::new(project.id.clone(), "Non-PR merging task".to_string());
     task.internal_status = InternalStatus::Merging;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-    // PlanBranch with pr_polling_active = false — not a PR-mode merge
+    // PlanBranch with pr_polling_active = false, but an existing PR number.
     let mut pb = PlanBranch::new(
         ArtifactId::from_string("test-artifact".to_string()),
         IdeationSessionId::from_string("test-session".to_string()),
@@ -554,7 +715,7 @@ async fn test_pr_polling_active_false_falls_through_reconciler() {
     pb.merge_task_id = Some(task.id.clone());
     pb.pr_number = Some(99);
     pb.pr_eligible = true;
-    pb.pr_polling_active = false; // NOT a PR-mode task — falls through
+    pb.pr_polling_active = false;
     plan_branch_repo.create(pb).await.unwrap();
 
     let mock = Arc::new(MockGithubService::new());
@@ -567,17 +728,16 @@ async fn test_pr_polling_active_false_falls_through_reconciler() {
         .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>)
         .with_pr_poller_registry(Arc::clone(&registry));
 
-    // With pr_polling_active=false AND is_polling()=false:
-    // The PR block is skipped entirely. Normal Merging logic runs.
-    // We verify the key observable: no poller was started (the PR block was bypassed,
-    // not triggered on behalf of a non-PR task).
-    reconciler
+    let handled = reconciler
         .reconcile_task(&task, InternalStatus::Merging)
         .await;
 
-    // The registry must not have started a poller for this task (PR block was not triggered)
     assert!(
-        !registry.is_polling(&task.id),
-        "Non-PR Merging task (pr_polling_active=false) must not trigger PR polling"
+        handled,
+        "PR-backed Merging task should be handled by PR reconciliation even when pr_polling_active is stale"
+    );
+    assert!(
+        registry.is_polling(&task.id),
+        "PR-backed Merging task should restart polling when pr_polling_active was false"
     );
 }

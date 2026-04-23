@@ -205,6 +205,9 @@ export function resolveContextType(
 
   // Task-related contexts — check status to determine specific type
   if (taskId && internalStatus) {
+    if (internalStatus === "waiting_on_pr") {
+      return "task";
+    }
     if ((MERGE_STATUSES as readonly string[]).includes(internalStatus)) {
       return "merge";
     }

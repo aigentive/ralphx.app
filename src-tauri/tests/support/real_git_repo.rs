@@ -1,5 +1,6 @@
 pub struct RealGitRepo {
     pub dir: tempfile::TempDir,
+    #[allow(dead_code)]
     pub task_branch: String,
 }
 

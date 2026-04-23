@@ -9,7 +9,7 @@ use crate::domain::entities::{
     ChatConversationId,
     InterruptedConversation,
 };
-use crate::domain::repositories::AgentRunRepository;
+use crate::domain::repositories::{AgentRunRepository, ORPHANED_AGENT_RUN_ON_APP_RESTART};
 use crate::error::AppResult;
 
 /// In-memory implementation of AgentRunRepository for testing
@@ -165,6 +165,7 @@ impl AgentRunRepository for MemoryAgentRunRepository {
         for run in runs.values_mut() {
             if run.status == AgentRunStatus::Running {
                 run.cancel();
+                run.error_message = Some(ORPHANED_AGENT_RUN_ON_APP_RESTART.to_string());
                 count += 1;
             }
         }

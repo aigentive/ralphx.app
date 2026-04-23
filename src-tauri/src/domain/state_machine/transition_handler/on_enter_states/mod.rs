@@ -290,6 +290,10 @@ impl<'a> super::TransitionHandler<'a> {
             State::Merging => {
                 Box::pin(self.enter_merging_state()).await?;
             }
+            State::WaitingOnPr => {
+                self.maybe_start_pr_mode_merge_poller(&self.machine.context.task_id)
+                    .await;
+            }
             State::Merged => {
                 self.enter_merged_state().await;
             }

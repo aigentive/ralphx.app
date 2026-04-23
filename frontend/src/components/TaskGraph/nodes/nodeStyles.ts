@@ -158,7 +158,7 @@ const REVIEW_COLORS = {
 /** Reviewing status: active review with pulse animation */
 const REVIEWING_ANIMATION = "var(--animation-reviewing-pulse)";
 
-/** Merge statuses: pending_merge, merging, merge_conflict */
+/** Merge statuses: pending_merge, merging, waiting_on_pr, merge_conflict */
 const MERGE_COLORS = {
   border: "var(--status-info)",
   background: "var(--status-info-muted)",
@@ -206,6 +206,7 @@ export function getStatusCategory(status: InternalStatus): StatusCategory {
       return "review";
     case "pending_merge":
     case "merging":
+    case "waiting_on_pr":
     case "merge_conflict":
     case "merge_incomplete":
       return "merge";
@@ -293,6 +294,7 @@ export function getNodeStyle(status: InternalStatus | string): NodeStyle {
     // Merge
     case "pending_merge":
     case "merging":
+    case "waiting_on_pr":
     case "merge_conflict":
       return {
         borderColor: MERGE_COLORS.border,
@@ -389,6 +391,7 @@ export const STATUS_LEGEND_GROUPS: Record<StatusCategory, LegendItem[]> = {
   merge: [
     { status: "pending_merge", label: "Pending Merge", category: "merge" },
     { status: "merging", label: "Merging", category: "merge" },
+    { status: "waiting_on_pr", label: "Waiting on PR", category: "merge" },
     { status: "merge_conflict", label: "Merge Conflict", category: "merge" },
   ],
   complete: [

@@ -19,6 +19,7 @@ fn is_visible_merge_pipeline_status(status: InternalStatus) -> bool {
     matches!(
         status,
         InternalStatus::Merging
+            | InternalStatus::WaitingOnPr
             | InternalStatus::PendingMerge
             | InternalStatus::MergeConflict
             | InternalStatus::MergeIncomplete
@@ -223,7 +224,9 @@ pub async fn get_merge_pipeline(
 
             match task.internal_status {
                 InternalStatus::Merging => active.push(pipeline_task),
-                InternalStatus::PendingMerge => waiting.push(pipeline_task),
+                InternalStatus::PendingMerge | InternalStatus::WaitingOnPr => {
+                    waiting.push(pipeline_task)
+                }
                 InternalStatus::MergeConflict | InternalStatus::MergeIncomplete => {
                     needs_attention.push(pipeline_task)
                 }

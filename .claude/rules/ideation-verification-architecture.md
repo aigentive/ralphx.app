@@ -56,7 +56,7 @@ paths:
 | Parent session owns verification truth | Hidden verification children execute the loop; parent ideation session owns `verification_status`, `verification_generation`, native run history, and user-visible result state. |
 | Native run store is authoritative | `verification_runs` + `verification_rounds` + `verification_round_gaps` + `verification_run_current_gaps` hold the real run. `ideation_sessions.verification_*` fields are summary / gate fields only. |
 | One normal verification flow | Verifier chooses lenses and optional specialists; backend/MCP runtime dispatches delegates, waits, settles, rescues, and blocks terminal completion until required critics settle. |
-| Verification tab != child transcript | Left Verification tab shows parent-owned status, gaps, round lineage, and run history. Child/delegate transcript drill-down is supplemental, not the tab’s primary content. |
+| Verification tab is parent-owned | Left Verification tab shows parent-owned status, gaps, round lineage, and run history. Do not treat verification-child transcript rendering as a product surface or source of truth for the tab. |
 | Chat widgets are derived UI | Verification chat cards are secondary projections over parent state + delegate truth. If a widget disagrees with parent verification state, fix hydration/normalization instead of trusting raw tool payloads. |
 | Child ids auto-remap to parent | Reading or updating verification via a verification child session id should remap to the parent in backend handlers. Do not build separate child-owned verification state. |
 | Verifier plan-edit bypass is transport-owned | Verification-child plan edits must derive caller session identity from runtime/transport context, not from a model-supplied `caller_session_id` tool argument. |
@@ -133,7 +133,6 @@ Plan create/update or explicit confirm
 | Chat widget rendering | `frontend/src/components/Chat/tool-widgets/VerificationWidget.tsx` | Structured cards for enrichment/round/report/completion/get-status tools |
 | Chat stale-card collapse | `frontend/src/components/Chat/verification-tool-calls.ts` | Removes obsolete enrichment/round cards when later report/completion blocks arrive |
 | Result summary cards | `frontend/src/components/Chat/{AutoVerificationCard,VerificationResultCard}.tsx` | User-facing result summaries in chat |
-| Child transcript drill-down | `frontend/src/components/Ideation/VerificationChildTranscript.tsx` | Supplemental transcript viewer only; not the primary Verification tab content |
 
 ## Start Paths
 
