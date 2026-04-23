@@ -4,7 +4,6 @@
  * Shows completion info, merge commit SHA, and read-only historical chat.
  */
 
-import { useState } from "react";
 import {
   CheckCircle2,
   GitMerge,
@@ -12,9 +11,7 @@ import {
   GitPullRequest,
   ExternalLink,
   Loader2,
-  Code,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   SectionTitle,
   DetailCard,
@@ -22,15 +19,13 @@ import {
   StatusPill,
   TwoColumnLayout,
   TaskMetricsCard,
+  ChangeReviewSection,
 } from "./shared";
-import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
-import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
-import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
@@ -124,59 +119,10 @@ function MergeInfoCard({
   );
 }
 
-/**
- * CommitSummaryCard - Shows commits that were merged
- */
-function CommitSummaryCard({ taskId }: { taskId: string }) {
-  const { commits, isLoadingHistory } = useGitDiff({ taskId });
-
-  if (isLoadingHistory) {
-    return (
-      <div className="flex items-center justify-center py-4">
-        <Loader2
-          className="w-5 h-5 animate-spin text-text-primary/30"
-        />
-      </div>
-    );
-  }
-
-  if (commits.length === 0) {
-    return (
-      <p className="text-[13px] text-text-primary/50 italic">
-        No commit history available
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {commits.slice(0, 5).map((commit) => (
-        <div
-          key={commit.sha}
-          className="flex items-start gap-3 py-2"
-        >
-          <span className="text-[11px] font-mono text-text-primary/50 shrink-0 pt-0.5">
-            {commit.shortSha}
-          </span>
-          <span className="text-[13px] text-text-primary/70 line-clamp-2">
-            {commit.message}
-          </span>
-        </div>
-      ))}
-      {commits.length > 5 && (
-        <p className="text-[12px] text-text-primary/40 italic">
-          +{commits.length - 5} more commits
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const { data: planBranch } = usePlanBranchForTask(task.id);
-  const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
   const mergedAt = task.completedAt ?? task.updatedAt;
@@ -275,49 +221,18 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
         />
       </section>
 
-      {/* Commits Summary */}
-      <section data-testid="commits-section">
-        <SectionTitle>Commits</SectionTitle>
-        <DetailCard>
-          <CommitSummaryCard taskId={task.id} />
-        </DetailCard>
-      </section>
-
       {/* Merge Validation History */}
       <ValidationProgress
         taskId={task.id}
         metadata={task.metadata}
       />
 
-      {/* Review History */}
-      <section data-testid="review-history-section">
-        <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Review History</SectionTitle>
-          <Button
-            data-testid="review-code-button"
-            onClick={() => setShowReviewModal(true)}
-            variant="ghost"
-            className="h-8 px-3 gap-2 rounded-lg font-medium text-[12px]"
-            style={{ color: "var(--status-info)" }}
-          >
-            <Code className="w-4 h-4" />
-            Review Code
-          </Button>
-        </div>
-        <DetailCard>
-          <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
-        </DetailCard>
-      </section>
+      <ChangeReviewSection
+        taskId={task.id}
+        history={history}
+        stateTransitions={stateTransitions}
+      />
       </TwoColumnLayout>
-
-      {showReviewModal && (
-        <ReviewDetailModal
-          taskId={task.id}
-          history={history}
-          showActions={false}
-          onClose={() => setShowReviewModal(false)}
-        />
-      )}
     </>
   );
 }

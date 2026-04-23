@@ -424,7 +424,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
   ];
 
   const isArchived = !!task.archivedAt;
-  const isSystemControlled = systemControlledStatuses.includes(task.internalStatus);
+  const isManagedPlanMerge = task.category === "plan_merge";
+  const isSystemControlled = isManagedPlanMerge || systemControlledStatuses.includes(task.internalStatus);
   const canEdit = !isArchived && !isSystemControlled;
   // "Backlog" is the equivalent of "draft" - tasks that haven't started execution yet
   const isBacklog = task.internalStatus === "backlog";
@@ -519,6 +520,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={createSession.isPending}
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
+                  title="Start ideation"
                   style={{ color: "var(--text-secondary)" }}
                   className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
@@ -537,6 +539,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   onClick={() => setIsEditing(!isEditing)}
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
+                  title={isEditing ? "Cancel editing" : "Edit task"}
                   style={{ color: "var(--text-secondary)" }}
                   className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
@@ -552,6 +555,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isArchiving}
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
+                  title="Archive task"
                   style={{ color: "var(--text-secondary)" }}
                   className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
@@ -571,6 +575,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   disabled={isRestoring}
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
+                  title="Restore task"
                   style={{ color: "var(--text-secondary)" }}
                   className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
                 >
@@ -588,7 +593,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 onClick={() => setShowAuditTrail(true)}
                 data-testid="task-overlay-audit-trail-button"
                 aria-label="Audit Trail"
-                title="Audit Trail"
+                title="Audit trail"
                 style={{ color: "var(--text-secondary)" }}
                 className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
               >
@@ -601,6 +606,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                 onClick={handleClose}
                 data-testid="task-overlay-close"
                 aria-label="Close"
+                title="Close task details"
                 style={{ color: "var(--text-secondary)" }}
                 className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
               >

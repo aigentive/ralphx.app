@@ -34,6 +34,7 @@ import {
   StatusBanner,
   StatusPill,
   TwoColumnLayout,
+  ChangeReviewSection,
 } from "./shared";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
@@ -49,6 +50,8 @@ import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { PrStatusBadge } from "./shared/PrStatusBadge";
 import { statusTint, withAlpha } from "@/lib/theme-colors";
+import { useTaskStateHistory } from "@/hooks/useReviews";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -516,6 +519,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     planBranch?.prEligible === true &&
     planBranch?.prNumber != null;
   const isPrWait = isWaitingOnPr || isPrMode;
+  const showPrReviewContext = !isHistorical && isPrWait;
+  const { data: reviewHistory } = useTaskStateHistory(task.id, {
+    enabled: showPrReviewContext,
+  });
+  const { data: stateTransitions = [] } = useTaskStateTransitions(
+    showPrReviewContext ? task.id : undefined
+  );
 
   // Resolve target branch: pipeline (most accurate) → metadata fallback
   const { data: pipelineData } = useMergePipeline(task.projectId);
@@ -755,6 +765,14 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             }}
           />
         </section>
+      )}
+
+      {showPrReviewContext && (
+        <ChangeReviewSection
+          taskId={task.id}
+          history={reviewHistory}
+          stateTransitions={stateTransitions}
+        />
       )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}

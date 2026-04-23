@@ -90,15 +90,18 @@ impl GitService {
     /// * `path` - Path to the git repository or worktree
     /// * `base` - Name of the base branch
     pub async fn get_commits_since(path: &Path, base: &str) -> AppResult<Vec<CommitInfo>> {
-        let output = git_cmd::run(
-            &[
-                "log",
-                &format!("{}..HEAD", base),
-                "--pretty=format:%H|%h|%s|%an|%aI",
-            ],
-            path,
-        )
-        .await?;
+        Self::get_commits_between(path, base, "HEAD").await
+    }
+
+    /// Get commits reachable from `head` that are not reachable from `base`.
+    pub async fn get_commits_between(
+        path: &Path,
+        base: &str,
+        head: &str,
+    ) -> AppResult<Vec<CommitInfo>> {
+        let range = format!("{}..{}", base, head);
+        let output =
+            git_cmd::run(&["log", &range, "--pretty=format:%H|%h|%s|%an|%aI"], path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -266,7 +269,11 @@ impl GitService {
         })
     }
 
-    pub async fn get_diff_stats_between(path: &Path, from_ref: &str, to_ref: &str) -> AppResult<DiffStats> {
+    pub async fn get_diff_stats_between(
+        path: &Path,
+        from_ref: &str,
+        to_ref: &str,
+    ) -> AppResult<DiffStats> {
         let range = format!("{from_ref}..{to_ref}");
 
         let stat_output = git_cmd::run(&["diff", "--shortstat", &range], path).await?;

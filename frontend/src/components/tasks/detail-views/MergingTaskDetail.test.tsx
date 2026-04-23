@@ -21,6 +21,16 @@ const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
   current: null,
 }));
 
+const mockGitDiffState = vi.hoisted(() => ({
+  commits: [] as Array<{
+    sha: string;
+    shortSha: string;
+    message: string;
+    author: string;
+    date: Date;
+  }>,
+}));
+
 const mockConfirmation = {
   confirm: vi.fn(async () => true),
   confirmationDialogProps: {},
@@ -41,6 +51,35 @@ vi.mock("@/lib/tauri", () => ({
 
 vi.mock("@/hooks/usePlanBranchForTask", () => ({
   usePlanBranchForTask: vi.fn(() => ({ data: mockPlanBranchState.current })),
+}));
+
+vi.mock("@/hooks/useGitDiff", () => ({
+  useGitDiff: vi.fn(() => ({
+    changes: [],
+    commits: mockGitDiffState.commits,
+    commitFiles: [],
+    isLoadingChanges: false,
+    isLoadingHistory: false,
+    isLoadingCommitFiles: false,
+    error: null,
+    fetchDiff: vi.fn(),
+    fetchCommitFiles: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+
+vi.mock("@/hooks/useReviews", () => ({
+  useTaskStateHistory: vi.fn(() => ({ data: [], isLoading: false })),
+}));
+
+vi.mock("@/hooks/useTaskStateTransitions", () => ({
+  useTaskStateTransitions: vi.fn(() => ({ data: [] })),
+}));
+
+vi.mock("@/components/reviews/ReviewDetailModal", () => ({
+  ReviewDetailModal: ({ taskId }: { taskId: string }) => (
+    <div data-testid="review-detail-modal">Review modal for {taskId}</div>
+  ),
 }));
 
 import { api } from "@/lib/tauri";
@@ -155,6 +194,7 @@ describe("MergingTaskDetail", () => {
   beforeEach(() => {
     mockListeners.clear();
     mockPlanBranchState.current = null;
+    mockGitDiffState.commits = [];
     // Mock invoke to return resolved promises for hydration calls
     vi.mocked(invoke).mockResolvedValue(undefined);
     mockConfirmation.confirm = vi.fn(async () => true);
@@ -678,6 +718,36 @@ describe("MergingTaskDetail", () => {
       ).not.toBeInTheDocument();
       expect(screen.getByTitle("origin/main")).toBeInTheDocument();
       expect(screen.getByTitle("ralphx/ralphx/plan-a3612efd")).toBeInTheDocument();
+    });
+
+    it("shows full commit history and Review Code for PR-backed plan merge", async () => {
+      const user = userEvent.setup();
+      mockPlanBranchState.current = createTestPlanBranch();
+      mockGitDiffState.commits = Array.from({ length: 6 }, (_, index) => ({
+        sha: `sha-${index + 1}`,
+        shortSha: `abc123${index}`,
+        message: `feat: plan branch commit ${index + 1}`,
+        author: "RalphX",
+        date: new Date("2026-01-28T12:00:00+00:00"),
+      }));
+      const task = createTestTask({
+        internalStatus: "waiting_on_pr",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByTestId("commits-section")).toBeInTheDocument();
+      for (const commit of mockGitDiffState.commits) {
+        expect(screen.getByText(commit.shortSha)).toBeInTheDocument();
+        expect(screen.getByText(commit.message)).toBeInTheDocument();
+      }
+      expect(screen.queryByText("+1 more commits")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("review-code-button"));
+
+      expect(screen.getByTestId("review-detail-modal")).toHaveTextContent("Review modal for task-123");
     });
 
     it("shows conflict files when present in metadata", () => {
