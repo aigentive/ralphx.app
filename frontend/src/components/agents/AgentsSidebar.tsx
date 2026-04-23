@@ -84,15 +84,17 @@ export function AgentsSidebar({
     <aside
       className="w-[280px] min-w-[240px] max-w-[360px] h-full flex flex-col border-r overflow-hidden resize-x"
       style={{
-        background: "var(--bg-surface)",
-        borderColor: "var(--border-subtle)",
+        background: withAlpha("var(--bg-surface)", 92),
+        backdropFilter: "blur(20px) saturate(180%)",
+        WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        borderColor: "var(--overlay-faint)",
       }}
       data-testid="agents-sidebar"
     >
       <div
         className="px-4 pt-4 pb-3 flex items-center gap-2 shrink-0"
         style={{
-          borderColor: "var(--border-subtle)",
+          borderColor: "var(--overlay-faint)",
         }}
       >
         <Bot className="w-4 h-4 shrink-0" style={{ color: "var(--accent-primary)" }} />
@@ -213,7 +215,7 @@ export function AgentsSidebar({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+      <div className="flex-1 overflow-y-auto py-2 border-t" style={{ borderColor: "var(--overlay-faint)" }}>
         {projects.length === 0 ? (
           <div className="h-full px-5 flex flex-col items-center justify-center text-center gap-3">
             <div className="space-y-1">
@@ -252,7 +254,7 @@ export function AgentsSidebar({
 
       <div
         className="p-3 border-t shrink-0"
-        style={{ borderColor: "var(--border-subtle)" }}
+        style={{ borderColor: "var(--overlay-faint)" }}
       >
         <label className="h-8 flex items-center justify-between gap-3">
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -465,7 +467,7 @@ function ProjectSessionGroup({
             return (
               <div
                 key={conversation.id}
-                className="group/session relative w-full min-h-[46px] px-4 py-2.5 flex items-start gap-2 cursor-pointer transition-all duration-150 ease-out"
+                className="group/session relative w-full min-h-[46px] px-4 py-2.5 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out"
                 style={{
                   color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
                   background: isSelected
@@ -491,7 +493,7 @@ function ProjectSessionGroup({
               >
                 <button
                   type="button"
-                  className="min-w-0 flex-1 flex items-start gap-2 bg-transparent border-0 p-0 text-left shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                  className="min-w-0 flex-1 flex items-center gap-2 bg-transparent border-0 p-0 text-left shadow-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                   onClick={() => onSelectConversation(project.id, conversation)}
                   style={{ boxShadow: "none" }}
                 >
@@ -632,8 +634,8 @@ function SessionStateGlyph({
   }
 
   return isSelected ? (
-    <Circle
-      className="w-3 h-3 shrink-0 fill-current"
+    <MessageSquare
+      className="w-3.5 h-3.5 shrink-0"
       style={{ color: "var(--accent-primary)" }}
     />
   ) : (
