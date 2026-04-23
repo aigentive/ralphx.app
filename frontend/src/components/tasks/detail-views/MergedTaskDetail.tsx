@@ -232,7 +232,7 @@ export function MergedTaskDetail({
       )}
 
       {/* Merge Info */}
-      {hasMergeInfo && (
+      {hasMergeInfo && !detailContext && (
         <section data-testid="merge-info-section">
           <SectionTitle>Merge Details</SectionTitle>
           <MergeInfoCard

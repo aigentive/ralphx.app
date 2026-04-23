@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MergedTaskDetail } from "./MergedTaskDetail";
+import { TaskDetailContextProvider } from "./shared/TaskDetailContextProvider";
 import type { ArtifactResponse } from "@/api/artifacts";
 import type { PlanBranch } from "@/api/plan-branch.types";
 import type { Task } from "@/types/task";
+import type { TaskContext } from "@/types/task-context";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 
 const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
@@ -68,6 +70,22 @@ vi.mock("@/lib/tauri", () => ({
 
 vi.mock("@/hooks/usePlanBranchForTask", () => ({
   usePlanBranchForTask: vi.fn(() => ({ data: mockPlanBranchState.current })),
+}));
+
+const mockTaskContextApi = vi.hoisted(() => ({
+  getTaskContext: vi.fn(),
+}));
+
+const mockPlanBranchApi = vi.hoisted(() => ({
+  getByProject: vi.fn(),
+}));
+
+vi.mock("@/api/task-context", () => ({
+  taskContextApi: mockTaskContextApi,
+}));
+
+vi.mock("@/api/plan-branch", () => ({
+  planBranchApi: mockPlanBranchApi,
 }));
 
 vi.mock("@/hooks/useGitDiff", () => ({
@@ -161,6 +179,37 @@ function createTestPlanBranch(overrides?: Partial<PlanBranch>): PlanBranch {
   };
 }
 
+function createTaskContext(overrides?: Partial<TaskContext>): TaskContext {
+  return {
+    task: {
+      id: "task-123",
+      project_id: "project-456",
+      category: "feature",
+      title: "Test Task",
+      description: "Test description",
+      priority: 2,
+      internal_status: "merged",
+      needs_review_point: false,
+      ideation_session_id: "session-123",
+      created_at: "2026-01-28T12:00:00+00:00",
+      updated_at: "2026-01-28T12:00:00+00:00",
+      started_at: null,
+      completed_at: "2026-01-28T12:30:00+00:00",
+      archived_at: null,
+      blocked_reason: null,
+      task_branch: "ralphx/ralphx/task-123",
+      worktree_path: null,
+      merge_commit_sha: "abc123456789",
+      metadata: null,
+    },
+    sourceProposal: null,
+    planArtifact: null,
+    relatedArtifacts: [],
+    contextHints: [],
+    ...overrides,
+  };
+}
+
 function createReviewNote(overrides?: Partial<ReviewNoteResponse>): ReviewNoteResponse {
   return {
     id: "review-note-1",
@@ -189,6 +238,22 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(ui, { wrapper: TestWrapper });
+}
+
+function renderWithDetailContext(ui: React.ReactElement, task: Task) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TaskDetailContextProvider task={task} viewMode={{ kind: "current" }}>
+        {ui}
+      </TaskDetailContextProvider>
+    </QueryClientProvider>
+  );
 }
 
 describe("MergedTaskDetail", () => {
@@ -220,6 +285,18 @@ describe("MergedTaskDetail", () => {
     mockPlanReviewState.historiesByTaskId = new Map([
       [planTask.id, [createReviewNote({ task_id: planTask.id })]],
     ]);
+    mockTaskContextApi.getTaskContext.mockResolvedValue(createTaskContext());
+    mockPlanBranchApi.getByProject.mockResolvedValue([createTestPlanBranch()]);
+  });
+
+  it("hides the legacy merge-details section when the shared task-context rail is present", async () => {
+    const task = createTestTask();
+
+    renderWithDetailContext(<MergedTaskDetail task={task} />, task);
+
+    expect(await screen.findByText("task-123")).toBeInTheDocument();
+    expect(screen.queryByTestId("merge-info-section")).not.toBeInTheDocument();
+    expect(screen.getAllByText("abc1234").length).toBeGreaterThanOrEqual(1);
   });
 
   it("uses PR plan-branch context for merged plan-merge tasks with stale PR status", async () => {

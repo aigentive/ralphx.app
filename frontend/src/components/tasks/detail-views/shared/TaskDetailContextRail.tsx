@@ -10,7 +10,6 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
-import { getTaskCategoryLabel } from "@/lib/task-category";
 import type { InternalStatus } from "@/types/task";
 import { DescriptionBlock } from "./DescriptionBlock";
 import { DetailCard } from "./DetailCard";
@@ -310,20 +309,11 @@ export function TaskContextRail({
   fallbackDescription?: string | null | undefined;
 }) {
   const description = model.task.description ?? fallbackDescription;
-  const categoryLabel = getTaskCategoryLabel(model.task.category);
 
   return (
     <div className="space-y-5">
       <RailSection title="Task">
-        <div className="space-y-2">
-          {categoryLabel && (
-            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--overlay-weak)] text-[11px] font-medium text-text-primary/45">
-              <FileText className="w-3.5 h-3.5" />
-              {categoryLabel}
-            </div>
-          )}
-          <DescriptionBlock description={description} />
-        </div>
+        <DescriptionBlock description={description} />
       </RailSection>
 
       <HistoricalLensCard viewMode={model.viewMode} />
