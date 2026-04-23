@@ -282,7 +282,7 @@ export const MessageItem = React.memo(function MessageItem({
 
         <span
           className={cn(
-            "text-[10px] mt-1 px-1 text-text-primary/40",
+            "text-[10px] px-1 pb-[10px] text-text-primary/40",
             isUser ? "text-right" : "text-left"
           )}
         >
