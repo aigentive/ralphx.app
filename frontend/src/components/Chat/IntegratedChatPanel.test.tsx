@@ -123,8 +123,10 @@ const mockChatPanelContext = {
   autoSelectConversation: vi.fn(),
 };
 
+const mockUseChatPanelContext = vi.fn(() => mockChatPanelContext);
+
 vi.mock("@/hooks/useChatPanelContext", () => ({
-  useChatPanelContext: () => mockChatPanelContext,
+  useChatPanelContext: (...args: unknown[]) => mockUseChatPanelContext(...args),
 }));
 
 // Mock useChatActions (replaces useIntegratedChatHandlers)
@@ -269,6 +271,26 @@ describe("IntegratedChatPanel", () => {
     mockChatPanelContext.currentContextType = "task";
     mockChatPanelContext.currentContextId = "task-1";
     mockChatPanelContext.activeConversationId = null;
+  });
+
+  describe("task selection override", () => {
+    it("can ignore the global selected task when host surfaces keep chat pinned to project context", () => {
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            selectedTaskIdOverride={null}
+          />
+        </TestWrapper>
+      );
+
+      expect(mockUseChatPanelContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          selectedTaskId: undefined,
+        })
+      );
+    });
   });
 
   describe("Stop button visibility", () => {

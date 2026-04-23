@@ -121,6 +121,8 @@ interface IntegratedChatPanelProps {
   toolbarBackAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
   /** Force a specific conversation ID for externally-owned session lists. */
   conversationIdOverride?: string | undefined;
+  /** Override task selection so host surfaces can ignore the global task detail state. */
+  selectedTaskIdOverride?: string | null | undefined;
   /** Force a specific store key for externally-owned queue/running state. */
   storeContextKeyOverride?: string | undefined;
   /** Override the backend process/queue context id used for recovery, stop, and queued-message edits. */
@@ -153,6 +155,7 @@ export function IntegratedChatPanel({
   isVisible = true,
   toolbarBackAction,
   conversationIdOverride,
+  selectedTaskIdOverride,
   storeContextKeyOverride,
   agentProcessContextIdOverride,
   sendOptions,
@@ -163,7 +166,9 @@ export function IntegratedChatPanel({
   const pollStartRef = useRef<number | null>(null);
   const [childSessionModalId, setChildSessionModalId] = useState<string | null>(null);
   const ideationSessionsById = useIdeationStore((s) => s.sessions);
-  const selectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const globalSelectedTaskId = useUiStore((s) => s.selectedTaskId);
+  const selectedTaskId =
+    selectedTaskIdOverride === undefined ? globalSelectedTaskId : selectedTaskIdOverride;
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
   const isHistoryMode = !!taskHistoryState;

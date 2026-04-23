@@ -36,6 +36,7 @@ import { chatKeys, useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { getModelLabel } from "@/lib/model-utils";
+import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -664,6 +665,7 @@ export function AgentsView({
                   ? { ideationSessionId: activeConversation.contextId }
                   : {})}
                 conversationIdOverride={selectedConversationId}
+                selectedTaskIdOverride={null}
                 storeContextKeyOverride={getAgentConversationStoreKey(activeConversation)}
                 agentProcessContextIdOverride={
                   activeConversation.contextType === "project"
@@ -770,7 +772,7 @@ interface AgentsChatHeaderProps {
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
 
-function AgentsChatHeader({
+export function AgentsChatHeader({
   conversation,
   runtime,
   artifactOpen,
@@ -837,6 +839,8 @@ function AgentsChatHeader({
             style={{ color: "var(--text-primary)" }}
             onClick={() => conversation && setIsEditing(true)}
             aria-label="Edit agent title"
+            data-testid="agents-chat-title-button"
+            data-theme-button-skip="true"
           >
             {title}
           </button>
@@ -862,7 +866,11 @@ function AgentsChatHeader({
                   onClick={() => onSelectArtifact(id)}
                   style={{
                     color: isActive ? "var(--accent-primary)" : "var(--text-muted)",
-                    background: isActive ? "var(--accent-muted)" : "transparent",
+                    background: isActive ? withAlpha("var(--accent-primary)", 12) : "transparent",
+                    border: isActive
+                      ? "1px solid var(--accent-border)"
+                      : "1px solid var(--overlay-faint)",
+                    boxShadow: "none",
                   }}
                   aria-label={label}
                 >
