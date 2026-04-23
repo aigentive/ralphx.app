@@ -142,6 +142,22 @@ describe("DiffViewer", () => {
       render(<DiffViewer {...defaultProps} changes={[]} />);
       expect(screen.getByText(/working directory is clean/i)).toBeInTheDocument();
     });
+
+    it("supports merged diff empty-state copy", () => {
+      render(
+        <DiffViewer
+          {...defaultProps}
+          changes={[]}
+          changesLabel="Merged Diff"
+          changesEmptyTitle="No merged file changes"
+          changesEmptySubtitle="The merge commit did not report file changes"
+        />
+      );
+
+      expect(screen.getByTestId("tab-changes")).toHaveTextContent("Merged Diff");
+      expect(screen.getByText("No merged file changes")).toBeInTheDocument();
+      expect(screen.getByText("The merge commit did not report file changes")).toBeInTheDocument();
+    });
   });
 
   describe("Changes tab - file tree", () => {
@@ -451,6 +467,51 @@ describe("DiffViewer", () => {
       const commits = [createCommit()];
       render(<DiffViewer {...defaultProps} defaultTab="history" commits={commits} />);
       expect(screen.getByText(/Select a commit to view changes/i)).toBeInTheDocument();
+    });
+
+    it("auto-selects the first commit when requested", async () => {
+      const commit = createCommit({ sha: "sha-1", shortSha: "sha-1" });
+      const onCommitSelect = vi.fn();
+      const onFetchCommitFiles = vi.fn().mockResolvedValue(undefined);
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          defaultTab="history"
+          commits={[commit]}
+          autoSelectFirstCommit
+          onCommitSelect={onCommitSelect}
+          onFetchCommitFiles={onFetchCommitFiles}
+        />
+      );
+
+      await waitFor(() => {
+        expect(onCommitSelect).toHaveBeenCalledWith(commit);
+      });
+      expect(onFetchCommitFiles).toHaveBeenCalledWith("sha-1");
+      expect(screen.queryByText(/Select a commit to view changes/i)).not.toBeInTheDocument();
+    });
+
+    it("auto-selects the first changed file for the selected commit when requested", async () => {
+      const commit = createCommit({ sha: "sha-1", shortSha: "sha-1" });
+      const file = createFileChange({ path: "plan.txt", status: "added" });
+      const onFetchDiff = vi.fn().mockResolvedValue(createDiffData({ filePath: "plan.txt" }));
+
+      render(
+        <DiffViewer
+          {...defaultProps}
+          defaultTab="history"
+          commits={[commit]}
+          commitFiles={[file]}
+          autoSelectFirstCommit
+          autoSelectFirstCommitFile
+          onFetchDiff={onFetchDiff}
+        />
+      );
+
+      await waitFor(() => {
+        expect(onFetchDiff).toHaveBeenCalledWith("plan.txt", "sha-1");
+      });
     });
   });
 

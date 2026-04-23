@@ -17,6 +17,7 @@ interface ChangeReviewSectionProps {
   taskId: string;
   history: ReviewNoteResponse[] | undefined;
   stateTransitions: StateTransition[];
+  context?: "task" | "plan_merge";
 }
 
 export function CommitSummaryCard({ taskId }: CommitSummaryCardProps) {
@@ -61,8 +62,11 @@ export function ChangeReviewSection({
   taskId,
   history,
   stateTransitions,
+  context = "task",
 }: ChangeReviewSectionProps) {
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const isPlanMerge = context === "plan_merge";
+  const hasLocalReviewHistory = (history?.length ?? 0) > 0 || stateTransitions.length > 0;
 
   return (
     <>
@@ -75,7 +79,7 @@ export function ChangeReviewSection({
 
       <section data-testid="review-history-section">
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Review History</SectionTitle>
+          <SectionTitle>{isPlanMerge ? "Code Review" : "Review History"}</SectionTitle>
           <Button
             data-testid="review-code-button"
             onClick={() => setShowReviewModal(true)}
@@ -84,17 +88,24 @@ export function ChangeReviewSection({
             style={{ color: "var(--status-info)" }}
           >
             <Code className="w-4 h-4" />
-            Review Code
+            {isPlanMerge ? "Review Diff" : "Review Code"}
           </Button>
         </div>
         <DetailCard>
-          <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
+          {isPlanMerge && !hasLocalReviewHistory ? (
+            <p className="text-[13px] text-text-primary/50 italic">
+              Feature branch changes are available in the merged diff
+            </p>
+          ) : (
+            <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
+          )}
         </DetailCard>
       </section>
 
       {showReviewModal && (
         <ReviewDetailModal
           taskId={taskId}
+          reviewMode={context}
           showActions={false}
           onClose={() => setShowReviewModal(false)}
           {...(history !== undefined && { history })}

@@ -155,9 +155,17 @@ interface FileTreeProps {
   files: FileChange[];
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  emptyTitle?: string;
+  emptySubtitle?: string;
 }
 
-export function FileTree({ files, selectedPath, onSelect }: FileTreeProps) {
+export function FileTree({
+  files,
+  selectedPath,
+  onSelect,
+  emptyTitle = "No uncommitted changes",
+  emptySubtitle = "Your working directory is clean",
+}: FileTreeProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => {
     // Initially expand all directories
     const dirs = new Set<string>();
@@ -195,9 +203,9 @@ export function FileTree({ files, selectedPath, onSelect }: FileTreeProps) {
         data-testid="file-tree-empty"
       >
         <CheckCircle2 className="w-12 h-12 text-[var(--text-muted)] opacity-50 mb-4" />
-        <p className="text-sm font-medium text-[var(--text-secondary)]">No uncommitted changes</p>
+        <p className="text-sm font-medium text-[var(--text-secondary)]">{emptyTitle}</p>
         <p className="text-xs text-[var(--text-muted)] mt-1">
-          Your working directory is clean
+          {emptySubtitle}
         </p>
       </div>
     );
@@ -403,6 +411,8 @@ interface CommitDiffPanelProps {
   diffData: DiffData | null;
   isLoading: boolean;
   isLoadingFiles?: boolean;
+  emptyTitle?: string;
+  emptySubtitle?: string;
   onOpenInIDE?: ((path: string) => void) | undefined;
 }
 
@@ -414,6 +424,8 @@ export function CommitDiffPanel({
   diffData,
   isLoading,
   isLoadingFiles = false,
+  emptyTitle = "No files changed",
+  emptySubtitle = "This commit did not report file changes",
   onOpenInIDE,
 }: CommitDiffPanelProps) {
   if (!commit) {
@@ -456,6 +468,8 @@ export function CommitDiffPanel({
               files={files}
               selectedPath={selectedFilePath}
               onSelect={onSelectFile}
+              emptyTitle={emptyTitle}
+              emptySubtitle={emptySubtitle}
             />
           )}
         </ScrollArea>

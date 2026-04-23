@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { DiffViewer } from "@/components/diff";
+import { PlanMergeContextCard } from "@/components/tasks/detail-views/shared/PlanMergeContextSection";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import { useReviewsByTaskId, useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
 import { taskKeys } from "@/hooks/useTasks";
@@ -50,6 +51,8 @@ interface ReviewDetailModalProps {
   reviewId?: string;
   /** Hide approve/request actions for read-only contexts */
   showActions?: boolean;
+  /** Read-only review surface variant. */
+  reviewMode?: "task" | "plan_merge";
   onClose: () => void;
 }
 
@@ -352,6 +355,7 @@ export function ReviewDetailModal({
   taskId,
   history: historyProp,
   showActions = true,
+  reviewMode = "task",
   onClose,
 }: ReviewDetailModalProps) {
   const queryClient = useQueryClient();
@@ -462,6 +466,8 @@ export function ReviewDetailModal({
   }, [onClose]);
 
   const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
+  const isPlanMergeReview = reviewMode === "plan_merge" || task?.category === "plan_merge";
+  const showLocalReviewSections = !isPlanMergeReview || history.length > 0 || hasAiReview;
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -516,8 +522,15 @@ export function ReviewDetailModal({
             <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-5">
                 {/* Task Context */}
+                {isPlanMergeReview && (
+                  <div>
+                    <SectionTitle>Plan</SectionTitle>
+                    <PlanMergeContextCard taskId={taskId} compact />
+                  </div>
+                )}
+
                 <div>
-                  <SectionTitle>Task Details</SectionTitle>
+                  <SectionTitle>{isPlanMergeReview ? "Merge Task" : "Task Details"}</SectionTitle>
                   <TaskContextSection
                     category={task?.category ?? ""}
                     description={task?.description ?? null}
@@ -527,19 +540,23 @@ export function ReviewDetailModal({
                 </div>
 
                 {/* AI Review Summary */}
-                <div>
-                  <SectionTitle>AI Review</SectionTitle>
-                  <AIReviewSummary
-                    latestApproved={latestApproved ?? null}
-                    hasAiReview={hasAiReview}
-                  />
-                </div>
+                {showLocalReviewSections && (
+                  <div>
+                    <SectionTitle>AI Review</SectionTitle>
+                    <AIReviewSummary
+                      latestApproved={latestApproved ?? null}
+                      hasAiReview={hasAiReview}
+                    />
+                  </div>
+                )}
 
                 {/* Review History */}
-                <div>
-                  <SectionTitle>Review History</SectionTitle>
-                  <ReviewHistorySection history={history} />
-                </div>
+                {showLocalReviewSections && (
+                  <div>
+                    <SectionTitle>Review History</SectionTitle>
+                    <ReviewHistorySection history={history} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -586,7 +603,9 @@ export function ReviewDetailModal({
                 className="px-4 py-2 text-[11px] text-text-primary/55 border-b"
                 style={{ borderColor: "var(--overlay-weak)" }}
               >
-                Showing merged diff against the base branch for this task.
+                {isPlanMergeReview
+                  ? "Showing merged feature-branch diff against the target branch."
+                  : "Showing merged diff against the base branch for this task."}
               </div>
             )}
             <DiffViewer
@@ -599,6 +618,15 @@ export function ReviewDetailModal({
               isLoadingHistory={isLoadingHistory}
               isLoadingCommitFiles={isLoadingCommitFiles}
               defaultTab="changes"
+              {...(isPlanMergeReview
+                ? {
+                    changesLabel: "Merged Diff",
+                    changesEmptyTitle: "No merged file changes",
+                    changesEmptySubtitle: "The merge commit did not report file changes",
+                    autoSelectFirstCommit: true,
+                    autoSelectFirstCommitFile: true,
+                  }
+                : {})}
               onCommitSelect={handleCommitSelect}
             />
           </div>

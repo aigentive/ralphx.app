@@ -20,6 +20,7 @@ import {
   TwoColumnLayout,
   TaskMetricsCard,
   ChangeReviewSection,
+  PlanMergeContextSection,
 } from "./shared";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
@@ -187,6 +188,8 @@ export function MergedTaskDetail({
         </div>
       )}
 
+      {isPlanMerge && <PlanMergeContextSection taskId={task.id} />}
+
       {/* Merged via PR */}
       {hasPrContext && (
         <section data-testid="merged-via-pr-section">
@@ -248,6 +251,7 @@ export function MergedTaskDetail({
         taskId={task.id}
         history={history}
         stateTransitions={stateTransitions}
+        context={isPlanMerge ? "plan_merge" : "task"}
       />
       </TwoColumnLayout>
     </>

@@ -16,3 +16,4 @@ export { DescriptionBlock } from "./shared/DescriptionBlock";
 export { TwoColumnLayout } from "./shared/TwoColumnLayout";
 export { TaskMetricsCard } from "./shared/TaskMetricsCard";
 export { ChangeReviewSection, CommitSummaryCard } from "./shared/ChangeReviewSection";
+export { PlanMergeContextCard, PlanMergeContextSection } from "./shared/PlanMergeContextSection";

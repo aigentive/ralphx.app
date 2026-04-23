@@ -35,6 +35,7 @@ import {
   StatusPill,
   TwoColumnLayout,
   ChangeReviewSection,
+  PlanMergeContextSection,
 } from "./shared";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
@@ -418,6 +419,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   }, [confirm, stopMutation]);
 
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
+  const isPlanMerge = task.category === "plan_merge";
   const isProgrammaticPhase = status === "pending_merge";
   const isAgentPhase = status === "merging";
   const isWaitingOnPr = status === "waiting_on_pr";
@@ -768,6 +770,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         }
       />
 
+      {isPlanMerge && <PlanMergeContextSection taskId={task.id} />}
+
       {/* PR Mode: show PR status when polling */}
       {isPrWait && planBranch && planBranch.prNumber != null && (
         <section data-testid="pr-mode-section">
@@ -789,6 +793,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           taskId={task.id}
           history={reviewHistory}
           stateTransitions={stateTransitions}
+          context="plan_merge"
         />
       )}
 

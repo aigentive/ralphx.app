@@ -15,3 +15,4 @@ export { DescriptionBlock } from "./DescriptionBlock";
 export { TwoColumnLayout } from "./TwoColumnLayout";
 export { TaskMetricsCard } from "./TaskMetricsCard";
 export { ChangeReviewSection, CommitSummaryCard } from "./ChangeReviewSection";
+export { PlanMergeContextCard, PlanMergeContextSection } from "./PlanMergeContextSection";

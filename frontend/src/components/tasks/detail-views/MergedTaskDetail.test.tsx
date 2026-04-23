@@ -3,11 +3,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MergedTaskDetail } from "./MergedTaskDetail";
+import type { ArtifactResponse } from "@/api/artifacts";
 import type { PlanBranch } from "@/api/plan-branch.types";
 import type { Task } from "@/types/task";
 
 const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
   current: null,
+}));
+
+const mockPlanArtifactState = vi.hoisted((): { current: ArtifactResponse | null } => ({
+  current: {
+    id: "artifact-123",
+    name: "Plan: Fix graph crash",
+    artifact_type: "specification",
+    content_type: "inline",
+    content:
+      "# Fix graph crash when no active plan selected\n\nGuard graph rendering when no plan is selected.",
+    created_at: "2026-01-28T12:00:00+00:00",
+    created_by: "test",
+    version: 3,
+    bucket_id: null,
+    task_id: null,
+    process_id: null,
+    derived_from: [],
+  },
 }));
 
 const mockGitDiffState = vi.hoisted(() => ({
@@ -18,6 +37,14 @@ const mockGitDiffState = vi.hoisted(() => ({
     author: string;
     date: Date;
   }>,
+}));
+
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    artifacts: {
+      getArtifact: vi.fn(async () => mockPlanArtifactState.current),
+    },
+  },
 }));
 
 vi.mock("@/hooks/usePlanBranchForTask", () => ({
@@ -133,10 +160,25 @@ function renderWithProviders(ui: React.ReactElement) {
 describe("MergedTaskDetail", () => {
   beforeEach(() => {
     mockPlanBranchState.current = null;
+    mockPlanArtifactState.current = {
+      id: "artifact-123",
+      name: "Plan: Fix graph crash",
+      artifact_type: "specification",
+      content_type: "inline",
+      content:
+        "# Fix graph crash when no active plan selected\n\nGuard graph rendering when no plan is selected.",
+      created_at: "2026-01-28T12:00:00+00:00",
+      created_by: "test",
+      version: 3,
+      bucket_id: null,
+      task_id: null,
+      process_id: null,
+      derived_from: [],
+    };
     mockGitDiffState.commits = [];
   });
 
-  it("uses PR plan-branch context for merged plan-merge tasks with stale PR status", () => {
+  it("uses PR plan-branch context for merged plan-merge tasks with stale PR status", async () => {
     mockPlanBranchState.current = createTestPlanBranch({
       mergeCommitSha: "abc123456789",
     });
@@ -157,15 +199,21 @@ describe("MergedTaskDetail", () => {
 
     renderWithProviders(<MergedTaskDetail task={task} />);
 
+    expect(await screen.findByText("Fix graph crash when no active plan selected")).toBeInTheDocument();
+    expect(screen.getByText("Guard graph rendering when no plan is selected.")).toBeInTheDocument();
     expect(screen.getByText("Merged via PR #68")).toBeInTheDocument();
     expect(screen.queryByTestId("task-metrics-section")).not.toBeInTheDocument();
     expect(screen.getByText("Merge Commit")).toBeInTheDocument();
     expect(screen.queryByText("unknown")).not.toBeInTheDocument();
     expect(screen.getAllByText("abc1234").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Merge pull request #68")).toBeInTheDocument();
+    expect(screen.getByText("Code Review")).toBeInTheDocument();
+    expect(screen.getByText("Review Diff")).toBeInTheDocument();
+    expect(screen.getByText("Feature branch changes are available in the merged diff")).toBeInTheDocument();
+    expect(screen.queryByText("No review history available")).not.toBeInTheDocument();
   });
 
-  it("omits merge details instead of showing unknown when a merged plan merge has no SHA", () => {
+  it("omits merge details instead of showing unknown when a merged plan merge has no SHA", async () => {
     mockPlanBranchState.current = createTestPlanBranch();
     const task = createTestTask({
       category: "plan_merge",
@@ -175,6 +223,7 @@ describe("MergedTaskDetail", () => {
 
     renderWithProviders(<MergedTaskDetail task={task} />);
 
+    expect(await screen.findByTestId("plan-merge-context-section")).toBeInTheDocument();
     expect(screen.getByText("Merged via PR #68")).toBeInTheDocument();
     expect(screen.queryByTestId("merge-info-section")).not.toBeInTheDocument();
     expect(screen.queryByText("unknown")).not.toBeInTheDocument();

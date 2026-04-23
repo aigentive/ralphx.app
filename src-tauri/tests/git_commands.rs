@@ -265,6 +265,47 @@ async fn test_diff_commands_use_plan_branch_merge_sha_for_merged_plan_merge_task
 }
 
 #[tokio::test]
+async fn test_diff_commands_use_parent_for_squash_merged_plan_merge_task() {
+    let repo = setup_plan_branch_repo();
+    run_git(repo.path(), &["merge", "--squash", "plan/test"]);
+    run_git(repo.path(), &["commit", "-m", "Squash merge pull request #68"]);
+    let merge_sha = run_git_output(repo.path(), &["rev-parse", "HEAD"]);
+    run_git(repo.path(), &["branch", "-D", "plan/test"]);
+    let (app_state, mut task) = setup_branchless_plan_merge_state(repo.path()).await;
+
+    task.internal_status = InternalStatus::Merged;
+    task.merge_commit_sha = None;
+    app_state
+        .task_repo
+        .update(&task)
+        .await
+        .expect("update task");
+    let plan_branch = app_state
+        .plan_branch_repo
+        .get_by_merge_task_id(&task.id)
+        .await
+        .expect("get plan branch")
+        .expect("plan branch exists");
+    app_state
+        .plan_branch_repo
+        .set_merge_commit_sha(&plan_branch.id, merge_sha)
+        .await
+        .expect("set plan branch merge sha");
+
+    let changes = get_task_file_changes_for_state(&app_state, task.id.clone())
+        .await
+        .expect("get file changes");
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].path, "plan.txt");
+
+    let diff = get_file_diff_for_state(&app_state, task.id.clone(), "plan.txt".to_string())
+        .await
+        .expect("get file diff");
+    assert_eq!(diff.old_content, "");
+    assert_eq!(diff.new_content, "first\nsecond\n");
+}
+
+#[tokio::test]
 async fn test_diff_commands_use_plan_branch_for_branchless_plan_merge_task() {
     let repo = setup_plan_branch_repo();
     let (app_state, task) = setup_branchless_plan_merge_state(repo.path()).await;
