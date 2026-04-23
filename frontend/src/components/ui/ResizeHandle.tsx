@@ -40,7 +40,7 @@ export const ResizeHandle = memo(function ResizeHandle({
   return (
     <div
       data-testid={testId}
-      className="shrink-0 cursor-ew-resize flex items-center justify-center group relative z-10"
+      className="h-full shrink-0 cursor-ew-resize flex items-center justify-center group relative z-10"
       style={{ width: "12px", marginLeft: "-6px", marginRight: "-6px" }}
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
