@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ElementType,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -17,6 +25,7 @@ import { projectsApi } from "@/api/projects";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import {
   Tooltip,
   TooltipContent,
@@ -70,6 +79,11 @@ const HEADER_ARTIFACT_TABS: Array<{
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
 
+const AGENTS_ARTIFACT_WIDTH_STORAGE_KEY = "ralphx-agents-artifact-width";
+const AGENTS_ARTIFACT_MIN_WIDTH = 420;
+const AGENTS_CHAT_MIN_WIDTH = 340;
+const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
+
 interface AgentsViewProps {
   projectId: string;
   isNewAgentDialogOpen: boolean;
@@ -86,6 +100,16 @@ export function AgentsView({
   const queryClient = useQueryClient();
   const [isQuickCreating, setIsQuickCreating] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [artifactPanelWidth, setArtifactPanelWidth] = useState<number | null>(() => {
+    const saved = window.localStorage.getItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
+    if (!saved) {
+      return null;
+    }
+    const parsed = Number.parseInt(saved, 10);
+    return Number.isFinite(parsed) && parsed >= AGENTS_ARTIFACT_MIN_WIDTH ? parsed : null;
+  });
+  const [isArtifactResizing, setIsArtifactResizing] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
@@ -105,6 +129,9 @@ export function AgentsView({
   const setArtifactOpen = useAgentSessionStore((s) => s.setArtifactOpen);
   const setArtifactTab = useAgentSessionStore((s) => s.setArtifactTab);
   const setTaskArtifactMode = useAgentSessionStore((s) => s.setTaskArtifactMode);
+  const artifactWidthCss = artifactPanelWidth
+    ? `${artifactPanelWidth}px`
+    : AGENTS_ARTIFACT_DEFAULT_WIDTH;
 
   const defaultProjectId = focusedProjectId || selectedProjectId || projectId || projects[0]?.id || null;
   const activeProjectId = selectedProjectId || defaultProjectId;
@@ -148,6 +175,49 @@ export function AgentsView({
     attachedIdeationSessionId,
     projectId: activeProjectId,
   });
+
+  const handleArtifactResizeStart = useCallback((event: ReactMouseEvent) => {
+    event.preventDefault();
+    setIsArtifactResizing(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isArtifactResizing) {
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const container = splitContainerRef.current;
+      if (!container) {
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      const maxArtifactWidth = Math.max(
+        AGENTS_ARTIFACT_MIN_WIDTH,
+        rect.width - AGENTS_CHAT_MIN_WIDTH,
+      );
+      const nextWidth = rect.right - event.clientX;
+      setArtifactPanelWidth(
+        Math.max(AGENTS_ARTIFACT_MIN_WIDTH, Math.min(maxArtifactWidth, nextWidth)),
+      );
+    };
+
+    const handleMouseUp = () => setIsArtifactResizing(false);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isArtifactResizing]);
+
+  useEffect(() => {
+    if (artifactPanelWidth !== null) {
+      window.localStorage.setItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY, String(artifactPanelWidth));
+    }
+  }, [artifactPanelWidth]);
 
   const activeRuntime = selectedConversationId
     ? runtimeByConversationId[selectedConversationId] ??
@@ -584,7 +654,7 @@ export function AgentsView({
           onShowArchivedChange={setShowArchived}
         />
 
-        <div className="relative flex-1 min-w-0 h-full flex overflow-hidden">
+        <div ref={splitContainerRef} className="relative flex-1 min-w-0 h-full flex overflow-hidden">
           {activeProjectId && selectedConversationId && activeConversation ? (
             <div className="flex-1 min-w-0 h-full">
               <IntegratedChatPanel
@@ -645,14 +715,34 @@ export function AgentsView({
           )}
 
           {selectedConversationId && artifactState.isOpen && (
-            <AgentsArtifactPane
-              conversation={activeConversation}
-              activeTab={artifactState.activeTab}
-              taskMode={artifactState.taskMode}
-              onTabChange={handleSelectArtifact}
-              onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
-              onClose={() => setArtifactOpen(selectedConversationId, false)}
-            />
+            <>
+              <div className="max-lg:hidden">
+                <ResizeHandle
+                  isResizing={isArtifactResizing}
+                  onMouseDown={handleArtifactResizeStart}
+                  testId="agents-artifact-resize-handle"
+                />
+              </div>
+              <div
+                className="h-full shrink-0 max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-20 max-lg:!w-[min(100%,420px)] max-lg:!min-w-0 max-lg:!max-w-none"
+                style={{
+                  width: artifactWidthCss,
+                  minWidth: AGENTS_ARTIFACT_MIN_WIDTH,
+                  maxWidth: `calc(100% - ${AGENTS_CHAT_MIN_WIDTH}px)`,
+                  transition: isArtifactResizing ? "none" : "width 150ms ease-out",
+                }}
+                data-testid="agents-artifact-resizable-pane"
+              >
+                <AgentsArtifactPane
+                  conversation={activeConversation}
+                  activeTab={artifactState.activeTab}
+                  taskMode={artifactState.taskMode}
+                  onTabChange={handleSelectArtifact}
+                  onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+                  onClose={() => setArtifactOpen(selectedConversationId, false)}
+                />
+              </div>
+            </>
           )}
         </div>
 
