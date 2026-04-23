@@ -655,6 +655,26 @@ describe("IntegratedChatPanel", () => {
 
       expect(screen.getByTestId("chat-input")).toBeInTheDocument();
     });
+
+    it("renders a custom composer when provided", () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel
+            projectId="project-1"
+            renderComposer={({ enableAttachments }) => (
+              <div data-testid="custom-composer">
+                {enableAttachments ? "attachments-enabled" : "attachments-disabled"}
+              </div>
+            )}
+          />
+        </TestWrapper>
+      );
+
+      expect(screen.getByTestId("custom-composer")).toHaveTextContent("attachments-enabled");
+      expect(screen.queryByTestId("chat-input")).not.toBeInTheDocument();
+    });
   });
 
   describe("File attachments", () => {

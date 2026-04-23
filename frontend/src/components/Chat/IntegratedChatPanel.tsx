@@ -25,6 +25,7 @@ import {
   selectIsSending,
   selectToolCallStartTimes,
   selectLastAgentEventTimestamp,
+  type AgentStatus,
 } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
@@ -44,7 +45,7 @@ import { ChatSessionToolbar } from "./ChatSessionToolbar";
 import { ChatSessionChips } from "./ChatSessionChips";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
-import { ChatInput } from "./ChatInput";
+import { ChatInput, type QuestionMode } from "./ChatInput";
 import { ChatMessageList } from "./ChatMessageList";
 import {
   EmptyState,
@@ -65,7 +66,10 @@ import { RecoveryPromptDialog } from "@/components/recovery/RecoveryPromptDialog
 import { useEventBus } from "@/providers/EventProvider";
 import { logger } from "@/lib/logger";
 import { ChildSessionNotification } from "./ChildSessionNotification";
-import { useChatAttachments } from "@/hooks/useChatAttachments";
+import {
+  useChatAttachments,
+  type ChatAttachment as PendingChatAttachment,
+} from "@/hooks/useChatAttachments";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { getModelLabel } from "@/lib/model-utils";
 import { selectIsTeamActive, selectEffectiveModel } from "@/stores/chatStore";
@@ -136,10 +140,31 @@ interface IntegratedChatPanelProps {
     providerHarness?: string | null;
     modelId?: string | null;
   };
+  renderComposer?: (props: IntegratedChatComposerRenderProps) => React.ReactNode;
   onUserMessageSent?: (payload: {
     content: string;
     result: SendAgentMessageResult;
   }) => void | Promise<void>;
+}
+
+export interface IntegratedChatComposerRenderProps {
+  onSend: (message: string) => Promise<void>;
+  onStop: () => Promise<void>;
+  agentStatus: AgentStatus;
+  isSending: boolean;
+  hasQueuedMessages: boolean;
+  onEditLastQueued: () => void;
+  isReadOnly: boolean;
+  placeholder: string;
+  autoFocus: boolean;
+  enableAttachments: boolean;
+  attachments: PendingChatAttachment[];
+  onFilesSelected: (files: File[]) => Promise<PendingChatAttachment[]>;
+  onRemoveAttachment: (id: string) => Promise<void>;
+  attachmentsUploading: boolean;
+  questionMode?: QuestionMode;
+  value?: string;
+  onChange?: (value: string) => void;
 }
 
 export function IntegratedChatPanel({
@@ -163,6 +188,7 @@ export function IntegratedChatPanel({
   storeContextKeyOverride,
   agentProcessContextIdOverride,
   sendOptions,
+  renderComposer,
   onUserMessageSent,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
@@ -628,6 +654,7 @@ export function IntegratedChatPanel({
     uploadFiles,
     removeAttachment,
     clearAttachments,
+    uploading,
   } = useChatAttachments(activeConversationId ?? "");
 
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
@@ -1207,31 +1234,61 @@ export function IntegratedChatPanel({
                   outer `p-2` so the top border of the composer aligns with
                   the top border of the execution bar across the split pane. */}
               <div className="p-2">
-                <ChatInput
-                  onSend={activeQuestion ? handleQuestionSend : handleSend}
-                  onStop={handleStopAgentWrapper}
-                  agentStatus={agentStatus}
-                  isSending={isSending || isSubmittingAnswer}
-                  hasQueuedMessages={queuedMessages.length > 0}
-                  onEditLastQueued={handleEditLastQueuedWrapper}
-                  isReadOnly={isHistoryMode}
-                  placeholder={getContextConfig(currentContextType).placeholder}
-                  showHelperText={showHelperTextAlways}
-                  {...(activeQuestion ? {
-                    value: questionInputValue,
-                    onChange: setQuestionInputValue,
-                    questionMode: {
-                      optionCount: activeQuestion.options.length,
-                      multiSelect: activeQuestion.multiSelect,
-                      onMatchedOptions: handleMatchedOptions,
-                    },
-                  } : {})}
-                  autoFocus={autoFocusInput}
-                  enableAttachments={!!activeConversationId && !isHistoryMode}
-                  attachments={attachments}
-                  onFilesSelected={uploadFiles}
-                  onRemoveAttachment={removeAttachment}
-                />
+                {renderComposer ? (
+                  renderComposer({
+                    onSend: activeQuestion ? handleQuestionSend : handleSend,
+                    onStop: handleStopAgentWrapper,
+                    agentStatus,
+                    isSending: isSending || isSubmittingAnswer,
+                    hasQueuedMessages: queuedMessages.length > 0,
+                    onEditLastQueued: handleEditLastQueuedWrapper,
+                    isReadOnly: isHistoryMode,
+                    placeholder: getContextConfig(currentContextType).placeholder,
+                    autoFocus: autoFocusInput,
+                    enableAttachments: !!activeConversationId && !isHistoryMode,
+                    attachments,
+                    onFilesSelected: uploadFiles,
+                    onRemoveAttachment: removeAttachment,
+                    attachmentsUploading: uploading,
+                    ...(activeQuestion
+                      ? {
+                          value: questionInputValue,
+                          onChange: setQuestionInputValue,
+                          questionMode: {
+                            optionCount: activeQuestion.options.length,
+                            multiSelect: activeQuestion.multiSelect,
+                            onMatchedOptions: handleMatchedOptions,
+                          },
+                        }
+                      : {}),
+                  })
+                ) : (
+                  <ChatInput
+                    onSend={activeQuestion ? handleQuestionSend : handleSend}
+                    onStop={handleStopAgentWrapper}
+                    agentStatus={agentStatus}
+                    isSending={isSending || isSubmittingAnswer}
+                    hasQueuedMessages={queuedMessages.length > 0}
+                    onEditLastQueued={handleEditLastQueuedWrapper}
+                    isReadOnly={isHistoryMode}
+                    placeholder={getContextConfig(currentContextType).placeholder}
+                    showHelperText={showHelperTextAlways}
+                    {...(activeQuestion ? {
+                      value: questionInputValue,
+                      onChange: setQuestionInputValue,
+                      questionMode: {
+                        optionCount: activeQuestion.options.length,
+                        multiSelect: activeQuestion.multiSelect,
+                        onMatchedOptions: handleMatchedOptions,
+                      },
+                    } : {})}
+                    autoFocus={autoFocusInput}
+                    enableAttachments={!!activeConversationId && !isHistoryMode}
+                    attachments={attachments}
+                    onFilesSelected={uploadFiles}
+                    onRemoveAttachment={removeAttachment}
+                  />
+                )}
               </div>
             </div>
           </div>
