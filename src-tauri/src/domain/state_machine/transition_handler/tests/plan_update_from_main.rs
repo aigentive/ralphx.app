@@ -163,6 +163,50 @@ async fn isolated_update_plan_refuses_primary_checkout_mutation() {
 }
 
 #[tokio::test]
+async fn isolated_update_plan_accepts_remote_tracking_base_ref() {
+    let (repo, plan_branch) = setup_plan_behind_main();
+    let path = repo.path();
+    let project = make_test_project(&repo.path_string());
+
+    let update_ref = std::process::Command::new("git")
+        .args(["update-ref", "refs/remotes/origin/main", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git update-ref origin/main");
+    assert!(
+        update_ref.status.success(),
+        "precondition failed: {}",
+        String::from_utf8_lossy(&update_ref.stderr)
+    );
+
+    let result = update_plan_from_main_isolated(
+        path,
+        &plan_branch,
+        "origin/main",
+        &project,
+        "task-isolated-remote-base",
+        None,
+    )
+    .await;
+
+    assert!(
+        matches!(result, PlanUpdateResult::Updated),
+        "PR freshness must accept remote-tracking base refs. Got: {:?}",
+        result
+    );
+
+    let contains_fix = std::process::Command::new("git")
+        .args(["merge-base", "--is-ancestor", "origin/main", &plan_branch])
+        .current_dir(path)
+        .output()
+        .expect("git merge-base");
+    assert!(
+        contains_fix.status.success(),
+        "plan branch should contain origin/main after isolated update"
+    );
+}
+
+#[tokio::test]
 async fn update_plan_with_conflicts_returns_conflicts() {
     let repo = setup_real_git_repo();
     let path = repo.path();
