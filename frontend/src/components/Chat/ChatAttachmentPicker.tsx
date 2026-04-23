@@ -11,6 +11,13 @@
 import { useRef, useCallback, useState } from "react";
 import { Paperclip } from "lucide-react";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -192,35 +199,56 @@ export function ChatAttachmentPicker({
         className="relative"
       >
         {/* Paperclip button - macOS Tahoe flat styling */}
-        <button
-          data-testid="attachment-picker-button"
-          type="button"
-          onClick={handleButtonClick}
-          disabled={disabled}
-          aria-label="Attach files"
-          className={
-            subtle
-              ? "rounded transition-all disabled:opacity-40 shrink-0 w-[30px] h-[30px] flex items-center justify-center"
-              : "rounded-lg transition-colors disabled:opacity-40 shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:brightness-110"
-          }
-          style={
-            subtle
-              ? { background: "transparent", color: "var(--text-muted)", boxShadow: "none" }
-              : {
-                  /* Muted gray chrome matching the Send button's disabled
-                     baseline so the attachment picker reads as a neutral
-                     control, not a primary CTA. Per 2026-04-19 feedback. */
-                  background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
-                  border: "1px solid var(--border-subtle)",
-                  color: "var(--text-muted)",
-                  boxShadow: "none",
+        <TooltipProvider delayDuration={250}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                data-testid="attachment-picker-button"
+                type="button"
+                onClick={handleButtonClick}
+                disabled={disabled}
+                aria-label="Attach files"
+                className={
+                  subtle
+                    ? "rounded transition-all disabled:opacity-40 shrink-0 w-[30px] h-[30px] flex items-center justify-center"
+                    : "rounded-lg transition-colors disabled:opacity-40 shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:brightness-110"
                 }
-          }
-          onMouseEnter={subtle && !disabled ? (e) => { e.currentTarget.style.color = "var(--accent-primary)"; } : undefined}
-          onMouseLeave={subtle ? (e) => { e.currentTarget.style.color = "var(--text-muted)"; } : undefined}
-        >
-          <Paperclip size={subtle ? 15 : 16} />
-        </button>
+                style={
+                  subtle
+                    ? { background: "transparent", color: "var(--text-muted)", boxShadow: "none" }
+                    : {
+                        /* Muted gray chrome matching the Send button's disabled
+                           baseline so the attachment picker reads as a neutral
+                           control, not a primary CTA. Per 2026-04-19 feedback. */
+                        background: "color-mix(in srgb, var(--text-primary) 8%, transparent)",
+                        border: "1px solid var(--border-subtle)",
+                        color: "var(--text-muted)",
+                        boxShadow: "none",
+                      }
+                }
+                onMouseEnter={
+                  subtle && !disabled
+                    ? (e) => {
+                        e.currentTarget.style.color = "var(--accent-primary)";
+                      }
+                    : undefined
+                }
+                onMouseLeave={
+                  subtle
+                    ? (e) => {
+                        e.currentTarget.style.color = "var(--text-muted)";
+                      }
+                    : undefined
+                }
+              >
+                <Paperclip size={subtle ? 15 : 16} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              Attach files
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {/* Drop overlay - shown when dragging files over zone */}
         {isDragging && (

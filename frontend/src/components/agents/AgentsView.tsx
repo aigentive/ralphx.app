@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
   ClipboardList,
@@ -46,6 +47,7 @@ import {
   selectHasStoredArtifactState,
   useAgentSessionStore,
   type AgentArtifactTab,
+  type AgentProvider,
   type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
@@ -61,8 +63,12 @@ import {
 } from "./agentTitle";
 import {
   DEFAULT_AGENT_RUNTIME,
+  AGENT_MODEL_OPTIONS,
+  AGENT_PROVIDER_OPTIONS,
+  defaultModelForProvider,
   normalizeRuntimeSelection,
 } from "./agentOptions";
+import { AgentComposerSurface } from "./AgentComposerSurface";
 import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
   agentConversationKeys,
@@ -547,40 +553,56 @@ export function AgentsView({
       projectId: targetProjectId,
       content,
       runtime,
+      files,
     }: {
       projectId: string;
       content: string;
       runtime: AgentRuntimeSelection;
+      files: File[];
     }) => {
       const normalizedRuntime = normalizeRuntimeSelection(runtime);
+      let conversationIdOverride: string | null = null;
+      let attachmentIds: string[] | undefined;
+
+      if (files.length > 0) {
+        const createdConversation = await chatApi.createConversation("project", targetProjectId);
+        conversationIdOverride = createdConversation.id;
+        const uploadedAttachments = await Promise.all(
+          files.map((file) => uploadDraftAttachment(createdConversation.id, file))
+        );
+        attachmentIds = uploadedAttachments.map((attachment) => attachment.id);
+      }
+
       const result = await chatApi.sendAgentMessage(
         "project",
         targetProjectId,
         content,
-        undefined,
+        attachmentIds,
         undefined,
         {
+          ...(conversationIdOverride ? { conversationId: conversationIdOverride } : {}),
           providerHarness: normalizedRuntime.provider,
           modelId: normalizedRuntime.modelId,
         }
       );
+      const resolvedConversationId = conversationIdOverride ?? result.conversationId;
 
       setFocusedProject(targetProjectId);
-      setRuntimeForConversation(result.conversationId, targetProjectId, normalizedRuntime);
-      selectConversation(targetProjectId, result.conversationId);
+      setRuntimeForConversation(resolvedConversationId, targetProjectId, normalizedRuntime);
+      selectConversation(targetProjectId, resolvedConversationId);
       setActiveConversation(
         getAgentConversationStoreKey({
-          id: result.conversationId,
+          id: resolvedConversationId,
           contextType: "project",
           contextId: targetProjectId,
         }),
-        result.conversationId
+        resolvedConversationId
       );
-      invalidateConversationDataQueries(queryClient, result.conversationId);
+      invalidateConversationDataQueries(queryClient, resolvedConversationId);
       await invalidateProjectConversations(targetProjectId);
       handleAutoManagedTitle({
         content,
-        conversationId: result.conversationId,
+        conversationId: resolvedConversationId,
         targetProjectId,
         shouldSpawnSessionNamer: true,
       });
@@ -783,6 +805,50 @@ export function AgentsView({
     (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
     DEFAULT_AGENT_RUNTIME;
 
+  const activeProjectOptions = useMemo(
+    () =>
+      activeProjectId
+        ? projects
+            .filter((project) => project.id === activeProjectId)
+            .map((project) => ({
+              id: project.id,
+              label: project.name,
+            }))
+        : [],
+    [activeProjectId, projects]
+  );
+
+  const handleActiveProviderChange = useCallback(
+    (provider: AgentProvider) => {
+      if (!selectedConversationId || !activeProjectId) {
+        return;
+      }
+      setRuntimeForConversation(selectedConversationId, activeProjectId, {
+        provider,
+        modelId: defaultModelForProvider(provider),
+      });
+    },
+    [activeProjectId, selectedConversationId, setRuntimeForConversation]
+  );
+
+  const handleActiveModelChange = useCallback(
+    (modelId: string) => {
+      if (!selectedConversationId || !activeProjectId) {
+        return;
+      }
+      setRuntimeForConversation(selectedConversationId, activeProjectId, {
+        provider: normalizedActiveRuntime.provider,
+        modelId,
+      });
+    },
+    [
+      activeProjectId,
+      normalizedActiveRuntime.provider,
+      selectedConversationId,
+      setRuntimeForConversation,
+    ]
+  );
+
   const sidebarProps = {
     projects,
     focusedProjectId: focusedProjectId ?? defaultProjectId,
@@ -915,6 +981,55 @@ export function AgentsView({
                 hideSessionToolbar
                 surfaceBackground="var(--bg-base)"
                 contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
+                inputContainerClassName="shrink-0 bg-transparent px-4 pb-4 pt-3"
+                renderComposer={(composerProps) => (
+                  <AgentComposerSurface
+                    dataTestId="agents-conversation-composer"
+                    actionTestId="agents-conversation-submit"
+                    onSend={composerProps.onSend}
+                    onStop={composerProps.onStop}
+                    agentStatus={composerProps.agentStatus}
+                    isSubmitting={composerProps.isSending}
+                    isReadOnly={composerProps.isReadOnly}
+                    autoFocus={composerProps.autoFocus}
+                    placeholder="Ask the agent to plan, build, debug, or review something"
+                    showHelperText={false}
+                    hasQueuedMessages={composerProps.hasQueuedMessages}
+                    onEditLastQueued={composerProps.onEditLastQueued}
+                    attachments={composerProps.attachments}
+                    enableAttachments={composerProps.enableAttachments}
+                    onFilesSelected={composerProps.onFilesSelected}
+                    onRemoveAttachment={composerProps.onRemoveAttachment}
+                    attachmentsUploading={composerProps.attachmentsUploading}
+                    {...(composerProps.value !== undefined
+                      ? {
+                          value: composerProps.value,
+                          onChange: composerProps.onChange,
+                        }
+                      : {})}
+                    {...(composerProps.questionMode !== undefined
+                      ? { questionMode: composerProps.questionMode }
+                      : {})}
+                    submitLabel="Send"
+                    project={{
+                      value: activeProjectId,
+                      onValueChange: () => undefined,
+                      options: activeProjectOptions,
+                      placeholder: "Current project",
+                      disabled: true,
+                    }}
+                    provider={{
+                      value: normalizedActiveRuntime.provider,
+                      onValueChange: handleActiveProviderChange,
+                      options: AGENT_PROVIDER_OPTIONS,
+                    }}
+                    model={{
+                      value: normalizedActiveRuntime.modelId,
+                      onValueChange: handleActiveModelChange,
+                      options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
+                    }}
+                  />
+                )}
                 {...(activeConversation.contextType === "project" && attachedIdeationSessionId
                   ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
                   : {})}
@@ -1156,6 +1271,20 @@ function RuntimeMetaItem({ label, value }: { label: string; value: string }) {
       <span className="truncate font-medium text-[var(--text-secondary)]">{value}</span>
     </span>
   );
+}
+
+async function uploadDraftAttachment(conversationId: string, file: File): Promise<{ id: string }> {
+  const arrayBuffer = await file.arrayBuffer();
+  const fileData = Array.from(new Uint8Array(arrayBuffer));
+
+  return invoke<{ id: string }>("upload_chat_attachment", {
+    input: {
+      conversationId,
+      fileName: file.name,
+      fileData,
+      mimeType: file.type || undefined,
+    },
+  });
 }
 
 function runtimeFromConversation(

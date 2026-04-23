@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 
 import { ideationApi } from "@/api/ideation";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,6 +15,7 @@ const {
   useProjectAgentConversationsMock,
   useConversationMock,
   sendAgentMessageMock,
+  createConversationMock,
   spawnConversationSessionNamerMock,
   updateConversationTitleMock,
   archiveConversationMock,
@@ -23,6 +25,7 @@ const {
   useProjectAgentConversationsMock: vi.fn(),
   useConversationMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
+  createConversationMock: vi.fn(),
   spawnConversationSessionNamerMock: vi.fn(),
   updateConversationTitleMock: vi.fn(),
   archiveConversationMock: vi.fn(),
@@ -71,6 +74,7 @@ vi.mock("@/hooks/useChat", () => ({
 vi.mock("@/api/chat", () => ({
   chatApi: {
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
+    createConversation: (...args: unknown[]) => createConversationMock(...args),
     spawnConversationSessionNamer: (...args: unknown[]) =>
       spawnConversationSessionNamerMock(...args),
     updateConversationTitle: (...args: unknown[]) => updateConversationTitleMock(...args),
@@ -339,6 +343,7 @@ describe("AgentsView", () => {
     useProjectsMock.mockReset();
     useConversationMock.mockReset();
     sendAgentMessageMock.mockReset();
+    createConversationMock.mockReset();
     spawnConversationSessionNamerMock.mockReset();
     updateConversationTitleMock.mockReset();
     archiveConversationMock.mockReset();
@@ -352,6 +357,7 @@ describe("AgentsView", () => {
       queuedAsPending: false,
       queuedMessageId: null,
     });
+    createConversationMock.mockResolvedValue({ id: "conversation-seeded" });
     spawnConversationSessionNamerMock.mockResolvedValue(undefined);
     updateConversationTitleMock.mockResolvedValue({
       ...conversation(),
@@ -362,6 +368,8 @@ describe("AgentsView", () => {
     mockSessionWithData();
     archiveConversationMock.mockResolvedValue(undefined);
     restoreConversationMock.mockResolvedValue(undefined);
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
 
     resetAgentSessionState();
   });
@@ -409,6 +417,59 @@ describe("AgentsView", () => {
       expect(spawnConversationSessionNamerMock).toHaveBeenCalledWith(
         "conversation-2",
         "fix agent landing flow"
+      )
+    );
+  });
+
+  it("uploads starter attachments against a seeded conversation before sending the first message", async () => {
+    mockAgentViewData();
+    sendAgentMessageMock.mockResolvedValue({
+      conversationId: "conversation-seeded",
+      agentRunId: "run-2",
+      isNewConversation: false,
+      wasQueued: false,
+      queuedAsPending: false,
+      queuedMessageId: null,
+    });
+    vi.mocked(invoke).mockResolvedValue({ id: "attachment-1" });
+
+    renderAgentsView();
+
+    const fileInput = screen.getByTestId("attachment-file-input");
+    const file = new File(["draft"], "notes.md", { type: "text/markdown" });
+
+    fireEvent.change(fileInput, {
+      target: { files: [file] },
+    });
+    fireEvent.change(screen.getByTestId("agents-start-textarea"), {
+      target: { value: "review this note" },
+    });
+    fireEvent.click(screen.getByTestId("agents-start-submit"));
+
+    await waitFor(() =>
+      expect(createConversationMock).toHaveBeenCalledWith("project", "project-1")
+    );
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("upload_chat_attachment", {
+        input: expect.objectContaining({
+          conversationId: "conversation-seeded",
+          fileName: "notes.md",
+          mimeType: "text/markdown",
+        }),
+      })
+    );
+    await waitFor(() =>
+      expect(sendAgentMessageMock).toHaveBeenCalledWith(
+        "project",
+        "project-1",
+        "review this note",
+        ["attachment-1"],
+        undefined,
+        {
+          conversationId: "conversation-seeded",
+          providerHarness: "codex",
+          modelId: "gpt-5.4",
+        }
       )
     );
   });

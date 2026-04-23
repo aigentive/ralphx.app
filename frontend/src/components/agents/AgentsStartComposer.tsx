@@ -1,29 +1,17 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import {
-  ArrowUp,
-  Bot,
-  Cpu,
-  FolderOpen,
-  Loader2,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
 
 import type { Project } from "@/types/project";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { withAlpha } from "@/lib/theme-colors";
-import { cn } from "@/lib/utils";
 import type {
   AgentProvider,
   AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
+import {
+  AgentComposerProjectCreateButton,
+  AgentComposerSurface,
+  type AgentComposerSurfaceProps,
+} from "./AgentComposerSurface";
 import {
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
@@ -31,6 +19,14 @@ import {
   defaultModelForProvider,
   normalizeRuntimeSelection,
 } from "./agentOptions";
+
+interface PendingAttachment {
+  id: string;
+  file: File;
+  fileName: string;
+  fileSize: number;
+  mimeType?: string;
+}
 
 interface AgentsStartComposerProps {
   projects: Project[];
@@ -43,8 +39,12 @@ interface AgentsStartComposerProps {
     projectId: string;
     content: string;
     runtime: AgentRuntimeSelection;
+    files: File[];
   }) => Promise<void>;
 }
+
+const MAX_FILES = 5;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export function AgentsStartComposer({
   projects,
@@ -61,6 +61,7 @@ export function AgentsStartComposer({
   );
   const [modelId, setModelId] = useState(normalizeRuntimeSelection(defaultRuntime).modelId);
   const [content, setContent] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const normalizedRuntime = useMemo(
@@ -78,21 +79,51 @@ export function AgentsStartComposer({
   }, [normalizedRuntime]);
 
   const modelOptions = AGENT_MODEL_OPTIONS[provider];
-  const canSubmit =
-    !isSubmitting && !isLoadingProjects && projectId.trim().length > 0 && content.trim().length > 0;
 
   const handleProviderChange = (nextProvider: AgentProvider) => {
     setProvider(nextProvider);
     setModelId(defaultModelForProvider(nextProvider));
   };
 
-  const handleSubmit = async () => {
-    const trimmedContent = content.trim();
+  const handleFilesSelected = (files: File[]) => {
+    if (attachments.length + files.length > MAX_FILES) {
+      setError(`Cannot upload more than ${MAX_FILES} files total`);
+      return;
+    }
+
+    const oversizedFiles = files.filter((file) => file.size > MAX_FILE_SIZE);
+    if (oversizedFiles.length > 0) {
+      setError(
+        `Files exceed 10MB limit: ${oversizedFiles.map((file) => file.name).join(", ")}`
+      );
+      return;
+    }
+
+    setError(null);
+    setAttachments((current) => [
+      ...current,
+      ...files.map((file) => ({
+        id:
+          globalThis.crypto?.randomUUID?.() ??
+          `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        fileName: file.name,
+        fileSize: file.size,
+        ...(file.type ? { mimeType: file.type } : {}),
+      })),
+    ]);
+  };
+
+  const handleRemoveAttachment = (attachmentId: string) => {
+    setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+  };
+
+  const handleSubmit: AgentComposerSurfaceProps["onSend"] = async (message) => {
     if (!projectId) {
       setError("Project is required");
       return;
     }
-    if (!trimmedContent) {
+    if (!message.trim()) {
       setError("Prompt is required");
       return;
     }
@@ -101,10 +132,12 @@ export function AgentsStartComposer({
     try {
       await onSubmit({
         projectId,
-        content: trimmedContent,
+        content: message.trim(),
         runtime: { provider, modelId },
+        files: attachments.map((attachment) => attachment.file),
       });
       setContent("");
+      setAttachments([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start agent conversation");
     }
@@ -133,7 +166,7 @@ export function AgentsStartComposer({
         />
       </div>
 
-      <div className="relative z-10 flex w-full max-w-[920px] flex-col items-center">
+      <div className="relative z-10 flex w-full max-w-[980px] flex-col items-center">
         <div className="max-w-[620px] text-center">
           <div
             className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em]"
@@ -161,146 +194,57 @@ export function AgentsStartComposer({
           </p>
         </div>
 
-        <div
-          className="relative mt-6 w-full max-w-[820px]"
-          data-testid="agents-start-composer"
-        >
-          <div
-            className="relative overflow-hidden rounded-[22px] border"
-            style={{
-              background: "var(--bg-surface)",
-              borderColor: "var(--overlay-weak)",
-              boxShadow: "var(--shadow-sm)",
+        <div className="mt-6 w-full">
+          <AgentComposerSurface
+            dataTestId="agents-start-composer"
+            textareaTestId="agents-start-textarea"
+            actionTestId="agents-start-submit"
+            value={content}
+            onChange={setContent}
+            onSend={handleSubmit}
+            placeholder="Ask the agent to plan, build, debug, or review something"
+            isSubmitting={isSubmitting}
+            autoFocus
+            attachments={attachments}
+            enableAttachments
+            onFilesSelected={handleFilesSelected}
+            onRemoveAttachment={handleRemoveAttachment}
+            attachmentsUploading={isSubmitting && attachments.length > 0}
+            submitLabel="Start Agent"
+            submittingLabel="Starting..."
+            project={{
+              value: projectId,
+              onValueChange: setProjectId,
+              options: projects.map((project) => ({
+                id: project.id,
+                label: project.name,
+              })),
+              placeholder: projects.length === 0 ? "No projects yet" : "Select project",
+              disabled: isLoadingProjects || projects.length === 0,
+              testId: "agents-start-project",
+              className: "max-w-[300px] flex-none",
+              endAction: (
+                <AgentComposerProjectCreateButton
+                  onClick={onCreateProject}
+                  testId="agents-start-new-project"
+                />
+              ),
             }}
-          >
-            <textarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSubmit();
-                }
-              }}
-              placeholder="Ask the agent to plan, build, debug, or review something"
-              className="block min-h-[112px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-[1.45] shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 sm:text-[16px] md:min-h-[120px]"
-              style={{
-                color: "var(--text-primary)",
-                boxShadow: "none",
-                outline: "none",
-                WebkitAppearance: "none",
-                appearance: "none",
-              }}
-              data-testid="agents-start-textarea"
-              autoFocus
-            />
-
-            <div className="px-5 pb-2.5">
-              <div
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-medium"
-                style={{ color: "var(--text-muted)" }}
-              >
-                <span>Press Enter to start</span>
-                <span aria-hidden="true" style={{ color: "var(--overlay-moderate)" }}>
-                  •
-                </span>
-                <span>Shift + Enter for a new line</span>
-              </div>
-            </div>
-
-            <div
-              className="border-t px-3.5 py-2"
-              style={{
-                borderColor: "var(--overlay-faint)",
-                background: "color-mix(in srgb, var(--bg-base) 18%, var(--bg-surface) 82%)",
-              }}
-            >
-              <div className="flex items-center gap-1.5">
-                <div className="flex min-w-0 flex-1 items-stretch gap-1.5">
-                  <ComposerSelectPill
-                    icon={FolderOpen}
-                    label="Project"
-                    value={projectId}
-                    onValueChange={setProjectId}
-                    disabled={projects.length === 0}
-                    placeholder={projects.length === 0 ? "No projects yet" : "Select project"}
-                    testId="agents-start-project"
-                    className="min-w-[260px] flex-[1.4_1_312px]"
-                    options={projects.map((project) => ({
-                      id: project.id,
-                      label: project.name,
-                    }))}
-                    endAction={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-7 shrink-0 rounded-[10px] px-2 text-[10px] font-medium"
-                        style={{
-                          color: "var(--text-secondary)",
-                          background: "transparent",
-                        }}
-                        onClick={onCreateProject}
-                        data-testid="agents-start-new-project"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        New
-                      </Button>
-                    }
-                  />
-
-                  <ComposerSelectPill
-                    icon={Bot}
-                    label="Provider"
-                    value={provider}
-                    onValueChange={(value) => handleProviderChange(value as AgentProvider)}
-                    placeholder="Select provider"
-                    testId="agents-start-provider"
-                    className="min-w-[154px] flex-[0.72_1_170px]"
-                    options={AGENT_PROVIDER_OPTIONS}
-                  />
-
-                  <ComposerSelectPill
-                    icon={Cpu}
-                    label="Model"
-                    value={modelId}
-                    onValueChange={setModelId}
-                    placeholder="Select model"
-                    testId="agents-start-model"
-                    className="min-w-[176px] flex-[0.9_1_194px]"
-                    options={modelOptions}
-                  />
-                </div>
-
-                <Button
-                  type="button"
-                  className="h-10 shrink-0 rounded-[12px] px-4 text-[12px] font-semibold tracking-[-0.01em]"
-                  style={{
-                    minWidth: "122px",
-                    background: canSubmit
-                      ? "var(--accent-primary)"
-                      : withAlpha("var(--accent-primary)", 40),
-                    color: "var(--text-on-accent)",
-                    boxShadow: "none",
-                  }}
-                  onClick={() => void handleSubmit()}
-                  disabled={!canSubmit}
-                  data-testid="agents-start-submit"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      <ArrowUp className="h-4 w-4" />
-                      Start Agent
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
+            provider={{
+              value: provider,
+              onValueChange: handleProviderChange,
+              options: AGENT_PROVIDER_OPTIONS,
+              testId: "agents-start-provider",
+              className: "max-w-[172px] flex-none",
+            }}
+            model={{
+              value: modelId,
+              onValueChange: setModelId,
+              options: modelOptions,
+              testId: "agents-start-model",
+              className: "max-w-[188px] flex-none",
+            }}
+          />
 
           {error && (
             <div
@@ -316,98 +260,6 @@ export function AgentsStartComposer({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-interface ComposerSelectPillProps {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: Array<{ id: string; label: string }>;
-  placeholder: string;
-  testId: string;
-  disabled?: boolean;
-  className?: string;
-  endAction?: ReactNode;
-}
-
-function ComposerSelectPill({
-  icon: Icon,
-  label,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  testId,
-  disabled = false,
-  className,
-  endAction,
-}: ComposerSelectPillProps) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-10 items-center gap-2 rounded-[12px] border px-2.5 py-1.5",
-        className
-      )}
-      style={{
-        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
-      }}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <div
-          className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
-          style={{
-            color: "var(--text-secondary)",
-          }}
-        >
-          <Icon className="h-[13px] w-[13px]" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div
-            className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
-            style={{
-              color: "var(--text-muted)",
-            }}
-          >
-            {label}
-          </div>
-          <Select
-            {...(value ? { value } : {})}
-            onValueChange={onValueChange}
-            disabled={disabled}
-          >
-            <SelectTrigger
-              className="h-auto border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none focus:ring-0"
-              style={{
-                color: value ? "var(--text-primary)" : "var(--text-secondary)",
-              }}
-              data-testid={testId}
-              aria-label={label}
-            >
-              <SelectValue placeholder={placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      {endAction && (
-        <>
-          <div
-            className="h-6 w-px shrink-0"
-            style={{ background: "var(--overlay-weak)" }}
-          />
-          <div className="shrink-0">{endAction}</div>
-        </>
-      )}
     </div>
   );
 }
