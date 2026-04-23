@@ -488,7 +488,7 @@ function ComposerSelectPill({
   return (
     <div
       className={cn(
-        "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5",
+        "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5 transition-[border-color,box-shadow] focus-within:border-transparent focus-within:shadow-[0_0_0_1px_var(--accent-border)]",
         className
       )}
       style={{
@@ -512,11 +512,12 @@ function ComposerSelectPill({
           </div>
           <Select {...(value ? { value } : {})} onValueChange={onValueChange} disabled={disabled}>
             <SelectTrigger
-              className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none focus:ring-0 [&>span]:max-w-full"
+              className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
               style={{
                 color: value ? "var(--text-primary)" : "var(--text-secondary)",
               }}
               data-testid={testId}
+              data-theme-button-skip="true"
               aria-label={label}
             >
               <SelectValue placeholder={placeholder} />
