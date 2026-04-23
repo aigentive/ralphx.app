@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FileText,
   GitPullRequestArrow,
+  Menu,
   PanelRightOpen,
   PanelRightClose,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import {
 import { chatKeys, invalidateConversationDataQueries, useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
+import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { getModelLabel } from "@/lib/model-utils";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
@@ -86,6 +88,7 @@ const AGENTS_ARTIFACT_MIN_WIDTH = 320;
 const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
+const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 
 interface AgentsViewProps {
   projectId: string;
@@ -116,6 +119,18 @@ export function AgentsView({
   >(new Map());
   const childArchiveSyncRef = useRef<Set<string>>(new Set());
   const syncedProjectIdRef = useRef<string | null>(null);
+  const {
+    sidebarWidth,
+    isCollapsed: isSidebarCollapsed,
+    isOverlayOpen: isSidebarOverlayOpen,
+    toggleCollapse: toggleSidebarCollapse,
+    closeOverlay: closeSidebarOverlay,
+    suppressTransition: suppressSidebarTransition,
+  } = useResponsiveSidebarLayout({
+    storageKey: AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY,
+    largeWidth: 340,
+    mediumWidth: 276,
+  });
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -581,12 +596,32 @@ export function AgentsView({
     ]
   );
 
-  const handleQuickCreateAgent = useCallback((quickProjectId?: string) => {
-    if (isStartingConversation) {
-      return;
+  const handleSidebarFocusProject = useCallback(
+    (targetProjectId: string) => {
+      setFocusedProject(targetProjectId);
+      if (isSidebarOverlayOpen) {
+        closeSidebarOverlay();
+      }
+    },
+    [closeSidebarOverlay, isSidebarOverlayOpen, setFocusedProject]
+  );
+
+  const handleSidebarSelectConversation = useCallback(
+    (conversationProjectId: string, conversation: AgentConversation) => {
+      handleSelectConversation(conversationProjectId, conversation);
+      if (isSidebarOverlayOpen) {
+        closeSidebarOverlay();
+      }
+    },
+    [closeSidebarOverlay, handleSelectConversation, isSidebarOverlayOpen]
+  );
+
+  const handleSidebarCreateAgent = useCallback(() => {
+    showStarterComposer();
+    if (isSidebarOverlayOpen) {
+      closeSidebarOverlay();
     }
-    showStarterComposer(quickProjectId ?? null);
-  }, [isStartingConversation, showStarterComposer]);
+  }, [closeSidebarOverlay, isSidebarOverlayOpen, showStarterComposer]);
 
   const handleSelectArtifact = useCallback(
     (tab: AgentArtifactTab) => {
@@ -748,6 +783,20 @@ export function AgentsView({
     (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
     DEFAULT_AGENT_RUNTIME;
 
+  const sidebarProps = {
+    projects,
+    focusedProjectId: focusedProjectId ?? defaultProjectId,
+    selectedConversationId,
+    onFocusProject: handleSidebarFocusProject,
+    onSelectConversation: handleSidebarSelectConversation,
+    onCreateAgent: handleSidebarCreateAgent,
+    onRemoveProject: handleRemoveProject,
+    onArchiveConversation: handleArchiveConversation,
+    onRestoreConversation: handleRestoreConversation,
+    showArchived,
+    onShowArchivedChange: setShowArchived,
+  } as const;
+
   return (
     <TooltipProvider delayDuration={300}>
       <section
@@ -755,22 +804,85 @@ export function AgentsView({
         style={{ background: "var(--bg-base)" }}
         data-testid="agents-view"
       >
-        <AgentsSidebar
-          projects={projects}
-          focusedProjectId={focusedProjectId ?? defaultProjectId}
-          selectedConversationId={selectedConversationId}
-          onFocusProject={setFocusedProject}
-          onSelectConversation={handleSelectConversation}
-          onCreateAgent={() => showStarterComposer()}
-          onCreateProject={onCreateProject}
-          onQuickCreateAgent={handleQuickCreateAgent}
-          onRemoveProject={handleRemoveProject}
-          onArchiveConversation={handleArchiveConversation}
-          onRestoreConversation={handleRestoreConversation}
-          isCreatingAgent={isStartingConversation}
-          showArchived={showArchived}
-          onShowArchivedChange={setShowArchived}
-        />
+        {isSidebarCollapsed && !isSidebarOverlayOpen && (
+          <div
+            role="button"
+            aria-label="Open sidebar"
+            tabIndex={0}
+            data-testid="agents-sidebar-toggle-strip"
+            onClick={toggleSidebarCollapse}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggleSidebarCollapse();
+              }
+            }}
+            className="flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-150"
+            style={{
+              width: 36,
+              background: withAlpha("var(--bg-surface)", 50),
+              borderRight: "1px solid var(--overlay-faint)",
+              color: "var(--text-muted)",
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "var(--overlay-weak)";
+              event.currentTarget.style.color = "var(--text-primary)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = withAlpha("var(--bg-surface)", 50);
+              event.currentTarget.style.color = "var(--text-muted)";
+            }}
+          >
+            <Menu className="w-4 h-4" />
+          </div>
+        )}
+
+        {isSidebarOverlayOpen && (
+          <div
+            aria-hidden="true"
+            onClick={closeSidebarOverlay}
+            data-testid="agents-sidebar-overlay-backdrop"
+            style={{
+              position: "fixed",
+              inset: 0,
+              top: 56,
+              background: "var(--overlay-scrim)",
+              zIndex: 34,
+            }}
+          />
+        )}
+
+        {!isSidebarOverlayOpen && (
+          <div
+            style={{
+              width: isSidebarCollapsed ? 0 : sidebarWidth,
+              minWidth: isSidebarCollapsed ? 0 : sidebarWidth,
+              flexShrink: 0,
+              overflow: "hidden",
+              transition: suppressSidebarTransition.current ? "none" : "width 300ms ease",
+              display: isSidebarCollapsed ? "none" : undefined,
+            }}
+            aria-hidden={isSidebarCollapsed ? "true" : undefined}
+          >
+            <AgentsSidebar {...sidebarProps} onCollapse={toggleSidebarCollapse} />
+          </div>
+        )}
+
+        {isSidebarOverlayOpen && (
+          <div
+            className="plan-browser-slide-in"
+            style={{
+              position: "fixed",
+              top: 56,
+              left: 0,
+              height: "calc(100vh - 56px)",
+              width: sidebarWidth || 340,
+              zIndex: 35,
+            }}
+          >
+            <AgentsSidebar {...sidebarProps} onCollapse={closeSidebarOverlay} />
+          </div>
+        )}
 
         <div
           ref={splitContainerRef}

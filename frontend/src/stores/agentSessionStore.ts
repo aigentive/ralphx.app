@@ -5,6 +5,7 @@ import { immer } from "zustand/middleware/immer";
 export type AgentProvider = "claude" | "codex";
 export type AgentArtifactTab = "plan" | "verification" | "proposal" | "tasks";
 export type AgentTaskArtifactMode = "graph" | "kanban";
+export type AgentProjectSort = "latest" | "az" | "za";
 
 export interface AgentRuntimeSelection {
   provider: AgentProvider;
@@ -22,6 +23,8 @@ interface AgentSessionState {
   selectedProjectId: string | null;
   selectedConversationId: string | null;
   expandedProjectIds: Record<string, boolean>;
+  showAllProjects: boolean;
+  projectSort: AgentProjectSort;
   artifactByConversationId: Record<string, AgentArtifactState>;
   runtimeByConversationId: Record<string, AgentRuntimeSelection>;
   lastRuntimeByProjectId: Record<string, AgentRuntimeSelection>;
@@ -33,6 +36,8 @@ interface AgentSessionActions {
   clearSelection: () => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   toggleProjectExpanded: (projectId: string) => void;
+  setShowAllProjects: (showAllProjects: boolean) => void;
+  setProjectSort: (projectSort: AgentProjectSort) => void;
   setArtifactOpen: (conversationId: string, isOpen: boolean) => void;
   setArtifactTab: (conversationId: string, tab: AgentArtifactTab) => void;
   setTaskArtifactMode: (conversationId: string, mode: AgentTaskArtifactMode) => void;
@@ -63,6 +68,8 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
       selectedProjectId: null,
       selectedConversationId: null,
       expandedProjectIds: {},
+      showAllProjects: false,
+      projectSort: "latest",
       artifactByConversationId: {},
       runtimeByConversationId: {},
       lastRuntimeByProjectId: {},
@@ -99,6 +106,16 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
           state.expandedProjectIds[projectId] = !(state.expandedProjectIds[projectId] ?? true);
         }),
 
+      setShowAllProjects: (showAllProjects) =>
+        set((state) => {
+          state.showAllProjects = showAllProjects;
+        }),
+
+      setProjectSort: (projectSort) =>
+        set((state) => {
+          state.projectSort = projectSort;
+        }),
+
       setArtifactOpen: (conversationId, isOpen) =>
         set((state) => {
           ensureArtifactState(state, conversationId).isOpen = isOpen;
@@ -129,6 +146,8 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
         selectedProjectId: state.selectedProjectId,
         selectedConversationId: state.selectedConversationId,
         expandedProjectIds: state.expandedProjectIds,
+        showAllProjects: state.showAllProjects,
+        projectSort: state.projectSort,
         artifactByConversationId: state.artifactByConversationId,
         runtimeByConversationId: state.runtimeByConversationId,
         lastRuntimeByProjectId: state.lastRuntimeByProjectId,
