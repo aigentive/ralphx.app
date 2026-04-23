@@ -750,6 +750,31 @@ describe("MergingTaskDetail", () => {
       expect(screen.getByTestId("review-detail-modal")).toHaveTextContent("Review modal for task-123");
     });
 
+    it("renders historical PR wait without live polling or conflict-agent copy", () => {
+      mockPlanBranchState.current = createTestPlanBranch({
+        prPollingActive: true,
+      });
+      const task = createTestTask({
+        internalStatus: "merged",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      const { container } = renderWithProviders(
+        <MergingTaskDetail task={task} isHistorical viewStatus="waiting_on_pr" />
+      );
+
+      expect(screen.getByText("Merge Completed")).toBeInTheDocument();
+      expect(screen.getByTestId("pr-mode-section")).toBeInTheDocument();
+      expect(
+        screen.getByText("At this point, RalphX was waiting for GitHub review or merge.")
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Waiting for GitHub review or merge.")).not.toBeInTheDocument();
+      expect(screen.queryByText("Agent resolving conflicts")).not.toBeInTheDocument();
+      expect(screen.getByText("Waiting on pull request")).toBeInTheDocument();
+      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+    });
+
     it("shows conflict files when present in metadata", () => {
       const metadata = JSON.stringify({
         conflict_files: ["src/main.ts", "src/lib/utils.ts"],

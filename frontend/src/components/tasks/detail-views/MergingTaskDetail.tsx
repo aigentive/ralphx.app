@@ -202,7 +202,7 @@ function MergeProgressSteps({
 }: {
   isProgrammaticPhase: boolean;
   isHistorical?: boolean | undefined;
-  historicalMode?: "attempted" | "resolving" | undefined;
+  historicalMode?: "attempted" | "resolving" | "waiting_on_pr" | undefined;
   isValidationRecovery?: boolean;
   isValidating?: boolean;
   isRevalidating?: boolean;
@@ -229,6 +229,10 @@ function MergeProgressSteps({
       ? [
           { label: "Merging branches", status: "completed" },
           { label: "Running validation", status: "pending" },
+        ]
+      : historicalMode === "waiting_on_pr"
+      ? [
+          { label: "Waiting on pull request", status: "completed" },
         ]
       : [
           { label: "Merging branches", status: "completed" },
@@ -307,6 +311,7 @@ function MergeProgressSteps({
  */
 function PrModeCard({
   planBranch,
+  isHistorical = false,
 }: {
   planBranch: {
     prNumber: number;
@@ -314,13 +319,18 @@ function PrModeCard({
     prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
     prPollingActive: boolean;
   };
+  isHistorical?: boolean;
 }) {
-  const statusText =
+  const liveStatusText =
     planBranch.prStatus === "Draft"
       ? "Draft PR published. RalphX will keep the branch synced until it is ready."
       : planBranch.prStatus === "Open"
       ? "Waiting for GitHub review or merge."
       : "Watching GitHub for PR updates.";
+  const statusText = isHistorical
+    ? "At this point, RalphX was waiting for GitHub review or merge."
+    : liveStatusText;
+  const showStatusText = isHistorical || planBranch.prPollingActive;
 
   const handleOpenInGithub = async () => {
     if (planBranch.prUrl) {
@@ -343,12 +353,16 @@ function PrModeCard({
           {planBranch.prStatus && <PrStatusBadge status={planBranch.prStatus} />}
         </div>
 
-        {/* Polling indicator */}
-        {planBranch.prPollingActive && (
+        {/* Polling / historical state note */}
+        {showStatusText && (
           <div className="flex items-center gap-1.5">
-            <Loader2
-              className="w-3.5 h-3.5 animate-spin text-text-primary/40"
-            />
+            {isHistorical ? (
+              <Info className="w-3.5 h-3.5 text-text-primary/35" />
+            ) : (
+              <Loader2
+                className="w-3.5 h-3.5 animate-spin text-text-primary/40"
+              />
+            )}
             <span className="text-[12px] text-text-primary/40">{statusText}</span>
           </div>
         )}
@@ -415,6 +429,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   const historicalMode = isHistorical
     ? isProgrammaticPhase
       ? "attempted"
+      : isWaitingOnPr
+      ? "waiting_on_pr"
       : "resolving"
     : undefined;
 
@@ -757,6 +773,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         <section data-testid="pr-mode-section">
           <SectionTitle>Pull Request</SectionTitle>
           <PrModeCard
+            isHistorical={isHistorical ?? false}
             planBranch={{
               prNumber: planBranch.prNumber!,
               prUrl: planBranch.prUrl,
