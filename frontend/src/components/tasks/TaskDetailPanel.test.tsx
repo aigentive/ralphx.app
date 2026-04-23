@@ -102,6 +102,14 @@ describe("TaskDetailPanel", () => {
     expect(screen.getByTestId("task-detail-status")).toHaveTextContent("Ready");
   });
 
+  it("renders plan merge category with a friendly label", () => {
+    const task = createMockTask({ category: "plan_merge" });
+    renderWithQueryClient(<TaskDetailPanel task={task} />);
+
+    expect(screen.getByTestId("task-detail-category")).toHaveTextContent("Plan merge");
+    expect(screen.queryByText("plan_merge")).not.toBeInTheDocument();
+  });
+
   it("renders task description", () => {
     const task = createMockTask({ description: "Custom description" });
     renderWithQueryClient(<TaskDetailPanel task={task} />);

@@ -17,6 +17,7 @@ import type { ArtifactResponse } from "@/api/artifacts";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
 import type { PlanBranch } from "@/api/plan-branch.types";
+import type { ReviewNoteResponse } from "@/lib/tauri";
 
 const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
   current: null,
@@ -50,6 +51,11 @@ const mockGitDiffState = vi.hoisted(() => ({
   }>,
 }));
 
+const mockPlanReviewState = vi.hoisted(() => ({
+  tasks: [] as Task[],
+  historiesByTaskId: new Map<string, ReviewNoteResponse[]>(),
+}));
+
 const mockConfirmation = {
   confirm: vi.fn(async () => true),
   confirmationDialogProps: {},
@@ -64,6 +70,17 @@ vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       stop: vi.fn(async () => ({})),
+      list: vi.fn(async () => ({
+        tasks: mockPlanReviewState.tasks,
+        total: mockPlanReviewState.tasks.length,
+        hasMore: false,
+        offset: 0,
+      })),
+    },
+    reviews: {
+      getTaskStateHistory: vi.fn(async (taskId: string) =>
+        mockPlanReviewState.historiesByTaskId.get(taskId) ?? []
+      ),
     },
     artifacts: {
       getArtifact: vi.fn(async () => mockPlanArtifactState.current),
@@ -205,6 +222,21 @@ function createTestPlanBranch(overrides?: Partial<PlanBranch>): PlanBranch {
   };
 }
 
+function createReviewNote(overrides?: Partial<ReviewNoteResponse>): ReviewNoteResponse {
+  return {
+    id: "review-note-1",
+    task_id: "plan-task-1",
+    reviewer: "ai",
+    outcome: "approved",
+    summary: "Plan implementation review passed",
+    notes: "No follow-up work needed.",
+    issues: [],
+    followup_session_id: null,
+    created_at: "2026-01-28T12:20:00+00:00",
+    ...overrides,
+  };
+}
+
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -240,6 +272,16 @@ describe("MergingTaskDetail", () => {
       derived_from: [],
     };
     mockGitDiffState.commits = [];
+    const planTask = createTestTask({
+      id: "plan-task-1",
+      title: "Fix graph crash",
+      category: "feature",
+      internalStatus: "merged",
+    });
+    mockPlanReviewState.tasks = [planTask];
+    mockPlanReviewState.historiesByTaskId = new Map([
+      [planTask.id, [createReviewNote({ task_id: planTask.id })]],
+    ]);
     // Mock invoke to return resolved promises for hydration calls
     vi.mocked(invoke).mockResolvedValue(undefined);
     mockConfirmation.confirm = vi.fn(async () => true);
@@ -814,6 +856,10 @@ describe("MergingTaskDetail", () => {
       expect(screen.queryByText("+1 more commits")).not.toBeInTheDocument();
       expect(screen.getByText("Code Review")).toBeInTheDocument();
       expect(screen.getByText("Review Diff")).toBeInTheDocument();
+      expect(await screen.findByText("Plan implementation review passed")).toBeInTheDocument();
+      expect(screen.getByText("Fix graph crash")).toBeInTheDocument();
+      expect(screen.queryByText("No review history available")).not.toBeInTheDocument();
+      expect(screen.queryByText("No internal plan review records available")).not.toBeInTheDocument();
 
       await user.click(screen.getByTestId("review-code-button"));
 

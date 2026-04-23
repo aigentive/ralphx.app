@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Code, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { useGitDiff } from "@/hooks/useGitDiff";
+import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
+import { api } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import { DetailCard } from "./DetailCard";
@@ -18,6 +21,11 @@ interface ChangeReviewSectionProps {
   history: ReviewNoteResponse[] | undefined;
   stateTransitions: StateTransition[];
   context?: "task" | "plan_merge";
+}
+
+interface PlanReviewTimeline {
+  history: ReviewNoteResponse[];
+  taskTitlesById: Record<string, string>;
 }
 
 export function CommitSummaryCard({ taskId }: CommitSummaryCardProps) {
@@ -66,7 +74,57 @@ export function ChangeReviewSection({
 }: ChangeReviewSectionProps) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const isPlanMerge = context === "plan_merge";
-  const hasLocalReviewHistory = (history?.length ?? 0) > 0 || stateTransitions.length > 0;
+  const { data: planBranch, isLoading: isLoadingPlanBranch } = usePlanBranchForTask(taskId, {
+    enabled: isPlanMerge,
+  });
+  const { data: planTimeline, isLoading: isLoadingPlanTimeline } = useQuery<PlanReviewTimeline>({
+    queryKey: [
+      "plan-review-timeline",
+      planBranch?.projectId,
+      planBranch?.sessionId,
+      taskId,
+    ] as const,
+    enabled: isPlanMerge && Boolean(planBranch?.projectId && planBranch?.sessionId),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const taskPage = await api.tasks.list({
+        projectId: planBranch!.projectId,
+        ideationSessionId: planBranch!.sessionId,
+        includeArchived: true,
+        limit: 500,
+      });
+
+      const taskTitlesById = Object.fromEntries(
+        taskPage.tasks.map((task) => [task.id, task.title])
+      );
+      const histories = await Promise.all(
+        taskPage.tasks.map(async (task) =>
+          api.reviews.getTaskStateHistory(task.id).catch(() => [])
+        )
+      );
+      const planHistory = histories
+        .flat()
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+      return { history: planHistory, taskTitlesById };
+    },
+  });
+  const isLoadingPlanReviews = isPlanMerge && (isLoadingPlanBranch || isLoadingPlanTimeline);
+  const effectiveHistory = isPlanMerge
+    ? planTimeline?.history ?? history ?? []
+    : history ?? [];
+  const effectiveStateTransitions = isPlanMerge ? [] : stateTransitions;
+  const hasReviewHistory = effectiveHistory.length > 0;
+  const getEntryContext = useMemo(
+    () =>
+      isPlanMerge
+        ? (entry: ReviewNoteResponse) => planTimeline?.taskTitlesById[entry.task_id] ?? null
+        : undefined,
+    [isPlanMerge, planTimeline?.taskTitlesById]
+  );
 
   return (
     <>
@@ -92,12 +150,25 @@ export function ChangeReviewSection({
           </Button>
         </div>
         <DetailCard>
-          {isPlanMerge && !hasLocalReviewHistory ? (
+          {isLoadingPlanReviews ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-text-primary/30" />
+            </div>
+          ) : isPlanMerge && !hasReviewHistory ? (
             <p className="text-[13px] text-text-primary/50 italic">
-              Feature branch changes are available in the merged diff
+              No internal plan review records available
             </p>
           ) : (
-            <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
+            <ReviewTimeline
+              history={effectiveHistory}
+              stateTransitions={effectiveStateTransitions}
+              emptyMessage={
+                isPlanMerge
+                  ? "No internal plan review records available"
+                  : "No review history available"
+              }
+              {...(getEntryContext !== undefined && { getEntryContext })}
+            />
           )}
         </DetailCard>
       </section>

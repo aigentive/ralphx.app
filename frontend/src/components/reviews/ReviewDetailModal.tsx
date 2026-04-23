@@ -39,6 +39,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { navigateToIdeationSession } from "@/lib/navigation";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
 import type { Commit } from "@/components/diff";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -80,6 +81,8 @@ function TaskContextSection({
     );
   }
 
+  const categoryLabel = getTaskCategoryLabel(category);
+
   return (
     <div className="space-y-3">
       {/* Title removed - already displayed in modal header */}
@@ -88,7 +91,7 @@ function TaskContextSection({
           Priority: <span className="text-text-primary/70">{priority}</span>
         </span>
         <span className="text-text-primary/50">
-          Category: <span className="text-text-primary/70">{category}</span>
+          Category: <span className="text-text-primary/70">{categoryLabel}</span>
         </span>
       </div>
       {description && (

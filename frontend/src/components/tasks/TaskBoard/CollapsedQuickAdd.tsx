@@ -1,93 +1,89 @@
 /**
- * CollapsedQuickAdd - "+" button with Popover for adding tasks from a collapsed column
+ * CollapsedQuickAdd - compact add button for a collapsed column
  *
- * Renders a small dashed-border plus button in collapsed draft/backlog columns.
- * Click opens a Radix Popover (side=right) containing InlineTaskAdd.
+ * Renders a compact dashed-border add button in collapsed draft/backlog columns.
+ * Click expands the column and opens the normal InlineTaskAdd control.
  * e.stopPropagation() prevents triggering column expand.
- * On task creation, Popover closes (column auto-expands via count reactivity).
  */
 
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { Plus } from "lucide-react";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
-import { InlineTaskAdd } from "../InlineTaskAdd";
 
 interface CollapsedQuickAddProps {
-  projectId: string;
-  columnId: string;
+  onActivate: () => void;
 }
 
-export function CollapsedQuickAdd({ projectId, columnId }: CollapsedQuickAddProps) {
-  const [open, setOpen] = useState(false);
-
-  const handleCreated = useCallback(() => {
-    setOpen(false);
-  }, []);
-
+export function CollapsedQuickAdd({ onActivate }: CollapsedQuickAddProps) {
   const handleTriggerClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-  }, []);
+    onActivate();
+  }, [onActivate]);
 
   const handleTriggerKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
       e.stopPropagation();
+      onActivate();
     }
-  }, []);
+  }, [onActivate]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          data-testid="collapsed-quick-add"
-          aria-label="Add task"
-          onClick={handleTriggerClick}
-          onKeyDown={handleTriggerKeyDown}
-          className="collapsed-quick-add-btn"
+    <>
+      <button
+        data-testid="collapsed-quick-add"
+        aria-label="Add task"
+        onClick={handleTriggerClick}
+        onKeyDown={handleTriggerKeyDown}
+        className="collapsed-quick-add-btn"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          width: "100%",
+          marginTop: "8px",
+          padding: "8px 9px",
+          borderRadius: "10px",
+          border: "1.5px dashed var(--overlay-moderate)",
+          backgroundColor: "transparent",
+          cursor: "pointer",
+          transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+        <span
+          className="collapsed-quick-add-icon"
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: "28px",
-            height: "28px",
-            marginTop: "8px",
-            borderRadius: "6px",
-            border: "1.5px dashed var(--overlay-moderate)",
-            backgroundColor: "transparent",
-            cursor: "pointer",
-            transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
-            padding: 0,
+            width: "18px",
+            height: "18px",
+            borderRadius: "5px",
+            color: "var(--text-muted)",
+            transition: "background-color 180ms ease, color 180ms ease",
+            flexShrink: 0,
           }}
         >
           <Plus
-            className="collapsed-quick-add-icon"
             style={{
-              width: "14px",
-              height: "14px",
+              width: "13px",
+              height: "13px",
               strokeWidth: 2.5,
-              color: "var(--text-muted)",
-              transition: "color 180ms ease",
             }}
           />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="right"
-        sideOffset={8}
-        className="p-0 border-0 bg-transparent shadow-none"
-        style={{ width: "280px" }}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      >
-        <InlineTaskAdd
-          projectId={projectId}
-          columnId={columnId}
-          onCreated={handleCreated}
-        />
-      </PopoverContent>
+        </span>
+        <span
+          className="collapsed-quick-add-label"
+          style={{
+            marginLeft: "6px",
+            fontSize: "12px",
+            fontWeight: 500,
+            color: "var(--text-muted)",
+            whiteSpace: "nowrap",
+            transition: "color 180ms ease",
+          }}
+        >
+          Add task
+        </span>
+      </button>
 
       {/* Hover styles for the trigger button */}
       <style>{`
@@ -97,8 +93,12 @@ export function CollapsedQuickAdd({ projectId, columnId }: CollapsedQuickAddProp
         }
         .collapsed-quick-add-btn:hover .collapsed-quick-add-icon {
           color: var(--accent-primary) !important;
+          background-color: color-mix(in srgb, var(--accent-primary) 12%, transparent) !important;
+        }
+        .collapsed-quick-add-btn:hover .collapsed-quick-add-label {
+          color: var(--accent-primary) !important;
         }
       `}</style>
-    </Popover>
+    </>
   );
 }

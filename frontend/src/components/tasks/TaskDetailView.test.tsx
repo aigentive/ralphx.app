@@ -75,6 +75,14 @@ describe("TaskDetailView", () => {
       expect(screen.getByTestId("task-detail-category")).toHaveTextContent("feature");
     });
 
+    it("should render plan merge category with a friendly label", () => {
+      renderWithProviders(
+        <TaskDetailView task={{ ...mockTask, category: "plan_merge" }} />
+      );
+      expect(screen.getByTestId("task-detail-category")).toHaveTextContent("Plan merge");
+      expect(screen.queryByText("plan_merge")).not.toBeInTheDocument();
+    });
+
     it("should render priority indicator", () => {
       renderWithProviders(<TaskDetailView task={mockTask} />);
       expect(screen.getByTestId("task-detail-priority")).toHaveTextContent("P1");

@@ -13,7 +13,7 @@ export function sanitizeReviewFeedbackText(text: string): string {
 
 export function buildReviewFeedbackPreview(
   text: string,
-  previewCharLimit = 240
+  previewCharLimit = 900
 ): string {
   const condensed = sanitizeReviewFeedbackText(text).replace(/\s+/g, " ").trim();
   if (condensed.length <= previewCharLimit) {

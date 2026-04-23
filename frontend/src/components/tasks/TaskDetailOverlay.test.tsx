@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TaskDetailOverlay } from "./TaskDetailOverlay";
 import { useTaskStore } from "@/stores/taskStore";
@@ -118,6 +119,8 @@ describe("TaskDetailOverlay", () => {
 
     expect(screen.queryByTestId("task-overlay-edit-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("mock-status-dropdown")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-overlay-category")).toHaveTextContent("Plan merge");
+    expect(screen.queryByText("plan_merge")).not.toBeInTheDocument();
   });
 
   it("keeps edit controls for regular user-created tasks", () => {
@@ -127,13 +130,18 @@ describe("TaskDetailOverlay", () => {
     expect(screen.getByTestId("mock-status-dropdown")).toBeInTheDocument();
   });
 
-  it("adds discoverable titles to header icon buttons", () => {
+  it("adds accessible names and app tooltips to header icon buttons", async () => {
+    const user = userEvent.setup();
     renderOverlay(createTestTask({ category: "feature", internalStatus: "backlog" }));
 
-    expect(screen.getByTestId("task-overlay-ideation-button")).toHaveAttribute("title", "Start ideation");
-    expect(screen.getByTestId("task-overlay-edit-button")).toHaveAttribute("title", "Edit task");
-    expect(screen.getByTestId("task-overlay-archive-button")).toHaveAttribute("title", "Archive task");
-    expect(screen.getByTestId("task-overlay-audit-trail-button")).toHaveAttribute("title", "Audit trail");
-    expect(screen.getByTestId("task-overlay-close")).toHaveAttribute("title", "Close task details");
+    const archiveButton = screen.getByRole("button", { name: "Archive task" });
+    expect(screen.getByRole("button", { name: "Start Ideation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit task" })).toBeInTheDocument();
+    expect(archiveButton).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Audit Trail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+
+    await user.hover(archiveButton);
+    expect((await screen.findAllByText("Archive task")).length).toBeGreaterThan(0);
   });
 });

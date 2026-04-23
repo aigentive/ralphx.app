@@ -30,6 +30,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
 
 // Import state-specific detail view components
@@ -367,6 +368,7 @@ export function TaskDetailPanel({
 
   // Fetch steps - must be called unconditionally (hooks rules)
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
+  const categoryLabel = getTaskCategoryLabel(task.category);
 
   // If using View Registry Pattern, render the appropriate state-specific component
   // This check must come AFTER all hooks to satisfy React hooks rules
@@ -434,7 +436,7 @@ export function TaskDetailPanel({
                     color: withAlpha("var(--text-primary)", 60),
                   }}
                 >
-                  {task.category}
+                  {categoryLabel}
                 </span>
                 <StatusBadge status={task.internalStatus} />
               </div>

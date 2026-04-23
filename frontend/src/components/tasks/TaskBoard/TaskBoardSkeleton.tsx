@@ -2,7 +2,7 @@
  * TaskBoardSkeleton - Loading placeholder for the task board
  *
  * Design: macOS Tahoe (2025) - clean, flat, minimal
- * Later columns (in_review, done) render as collapsed 44px strips
+ * Later columns (in_review, done) render as collapsed compact rails
  * to match the typical empty-column auto-collapse appearance.
  */
 
@@ -30,23 +30,23 @@ export function TaskBoardSkeleton() {
               data-testid={`skeleton-column-${index}`}
               className="flex-shrink-0 flex flex-col items-center"
               style={{
-                width: "44px",
-                minWidth: "44px",
-                maxWidth: "44px",
+                width: "128px",
+                minWidth: "128px",
+                maxWidth: "128px",
                 paddingTop: "8px",
-                paddingLeft: "6px",
-                paddingRight: "6px",
+                paddingLeft: "10px",
+                paddingRight: "10px",
                 borderRight: index < COLUMN_COUNT - 1
                   ? "1px solid var(--border-subtle)"
                   : undefined,
               }}
             >
-              {/* Vertical title placeholder */}
+              {/* Horizontal title placeholder */}
               <div
                 className="animate-pulse rounded"
                 style={{
-                  width: "8px",
-                  height: "60px",
+                  width: "72px",
+                  height: "10px",
                   background: "var(--bg-elevated)",
                 }}
               />

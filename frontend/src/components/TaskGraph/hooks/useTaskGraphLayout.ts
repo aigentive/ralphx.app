@@ -71,6 +71,13 @@ export interface GroupingConfig {
   showUncategorized: boolean;
 }
 
+export interface PlanBranchNodeContext {
+  mergeTarget?: string;
+  prNumber?: number | null;
+  prStatus?: string | null;
+  status?: string;
+}
+
 // Use Record<string, unknown> compatible structure for React Flow
 // This matches TaskNodeData from nodes/TaskNode.tsx
 type TaskNodeData = Record<string, unknown> & {
@@ -83,6 +90,9 @@ type TaskNodeData = Record<string, unknown> & {
   category?: string;
   /** Target branch for plan_merge category nodes */
   mergeTarget?: string;
+  prNumber?: number | null;
+  prStatus?: string | null;
+  planBranchStatus?: string;
 };
 
 // Edge data for custom DependencyEdge component
@@ -465,7 +475,7 @@ function computeLayoutWithCache(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onCancelAll?: (sessionId: string) => void,
-  planBranchMap?: Map<string, string>
+  planBranchMap?: Map<string, PlanBranchNodeContext>
 ): LayoutResult {
   // Helper to get per-node dimensions from the mode lookup
   const getNodeDimensions = (nodeId: string) => {
@@ -599,8 +609,12 @@ function computeLayoutWithCache(
     const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
     const dims = getNodeDimensions(graphNode.taskId);
 
-    const planId = graphNode.category === "plan_merge" ? taskToPlanMap.get(graphNode.taskId) : undefined;
-    const mergeTarget = planId && planBranchMap ? planBranchMap.get(planId) : undefined;
+    const planId = graphNode.category === "plan_merge"
+      ? graphNode.planArtifactId ?? taskToPlanMap.get(graphNode.taskId)
+      : undefined;
+    const planBranchContext = graphNode.category === "plan_merge" && planBranchMap
+      ? planBranchMap.get(graphNode.taskId) ?? (planId ? planBranchMap.get(planId) : undefined)
+      : undefined;
 
     return {
       id: graphNode.taskId,
@@ -616,7 +630,10 @@ function computeLayoutWithCache(
         internalStatus: graphNode.internalStatus,
         priority: graphNode.priority,
         isCriticalPath: criticalPathSet.has(graphNode.taskId),
-        ...(mergeTarget !== undefined && { mergeTarget }),
+        ...(planBranchContext?.mergeTarget !== undefined && { mergeTarget: planBranchContext.mergeTarget }),
+        ...(planBranchContext?.prNumber != null && { prNumber: planBranchContext.prNumber }),
+        ...(planBranchContext?.prStatus !== undefined && { prStatus: planBranchContext.prStatus }),
+        ...(planBranchContext?.status !== undefined && { planBranchStatus: planBranchContext.status }),
       } satisfies TaskNodeData,
       sourcePosition,
       targetPosition,
@@ -1065,7 +1082,7 @@ export function useTaskGraphLayout(
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
   onCancelAll?: (sessionId: string) => void,
-  planBranchMap?: Map<string, string>
+  planBranchMap?: Map<string, PlanBranchNodeContext>
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(

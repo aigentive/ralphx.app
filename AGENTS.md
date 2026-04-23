@@ -21,6 +21,7 @@ Primary project docs:
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 - `.claude/rules/wkwebview-css-vars.md` for Tauri (WKWebView) CSS custom-property inheritance rules — theme tokens for bg/text/border MUST be literals, not chained `var()` references
 - `.claude/rules/release-script-validation.md` for safe validation of release proposal/wrapper scripts without triggering real publish steps
+- `.claude/rules/icon-only-buttons.md` for accessible tooltip requirements on icon-only controls
 
 ## Codex Rules
 
@@ -60,6 +61,7 @@ Primary project docs:
 - Worktree safety (NON-NEGOTIABLE): worktree-mode flows must never silently fall back to the main checkout.
 - Verify before commit: review `git diff` against `HEAD` for every touched file.
 - Frontend Playwright visual runs (NON-NEGOTIABLE): run them from `frontend/`, not repo root.
+- Icon-only buttons: use an accessible name plus the app tooltip component; native `title` alone is not enough. Source: `.claude/rules/icon-only-buttons.md`.
 - Refactor tracker hygiene: when a turn exposes real architectural debt, update `## High-Value Refactor Targets` in the same slice.
 - `.artifacts` tracker hygiene (NON-NEGOTIABLE): for any multi-step investigation/fix likely to outlive the current context window, create/update `.artifacts/specs/<slug>/tracker.md` as soon as substantive findings appear and keep it current before continuing.
 - Turn-level refactor discipline (NON-NEGOTIABLE): if production callsites repeat the same wiring/branching, centralize it or track it before continuing.

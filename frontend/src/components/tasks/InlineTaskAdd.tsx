@@ -27,9 +27,13 @@ interface InlineTaskAddProps {
   onCreated?: (task: Task) => void;
   /** Callback to notify parent when expanded state changes */
   onExpandedChange?: (expanded: boolean) => void;
+  /** Incrementing signal used by collapsed columns to open the full add control after expansion. */
+  autoExpandKey?: number;
+  /** Called after autoExpandKey has been consumed. */
+  onAutoExpandConsumed?: () => void;
 }
 
-export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExpandedChange }: InlineTaskAddProps) {
+export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExpandedChange, autoExpandKey, onAutoExpandConsumed }: InlineTaskAddProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -50,6 +54,12 @@ export function InlineTaskAdd({ projectId, columnId: _columnId, onCreated, onExp
       inputRef.current.focus();
     }
   }, [isExpanded]);
+
+  useEffect(() => {
+    if (autoExpandKey === undefined) return;
+    setExpanded(true);
+    onAutoExpandConsumed?.();
+  }, [autoExpandKey, onAutoExpandConsumed, setExpanded]);
 
   useEffect(() => {
     if (showDescription && descriptionRef.current) {

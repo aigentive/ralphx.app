@@ -6,6 +6,30 @@ import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
 
 describe("ReviewTimeline", () => {
+  it("renders optional entry context labels", () => {
+    const history: ReviewNoteResponse[] = [
+      {
+        id: "note-task",
+        task_id: "task-123",
+        reviewer: "ai",
+        outcome: "approved",
+        summary: "Looks good.",
+        notes: null,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    render(
+      <ReviewTimeline
+        history={history}
+        stateTransitions={[] satisfies StateTransition[]}
+        getEntryContext={() => "Fix graph crash"}
+      />
+    );
+
+    expect(screen.getByText("Fix graph crash")).toBeInTheDocument();
+  });
+
   it("shows summary preview and full dialog for large system feedback", async () => {
     const user = userEvent.setup();
     const history: ReviewNoteResponse[] = [
@@ -21,7 +45,7 @@ describe("ReviewTimeline", () => {
           "Full hook output:",
           "```text",
           "\u001b[31m[pre-commit]\u001b[0m design-token guards failed",
-          "TS2307 Cannot find module 'zod'",
+          ...Array.from({ length: 70 }, (_, index) => `TS2307 Cannot find module 'zod' (${index})`),
           "```",
         ].join("\n"),
         created_at: new Date().toISOString(),

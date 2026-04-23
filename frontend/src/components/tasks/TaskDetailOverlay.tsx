@@ -12,6 +12,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TaskDetailPanel } from "./TaskDetailPanel";
 import { TaskEditForm } from "./TaskEditForm";
@@ -40,6 +46,7 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { logger } from "@/lib/logger";
 import { toast } from "sonner";
 import { AuditTrailDialog } from "@/components/tasks/AuditTrailDialog";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 
 // ============================================================================
 // Priority Colors (Tahoe HSL palette)
@@ -217,6 +224,34 @@ function StatusBadge({ status }: { status: InternalStatus }) {
     >
       {config.label}
     </Badge>
+  );
+}
+
+interface HeaderIconButtonProps
+  extends Omit<React.ComponentProps<typeof Button>, "children"> {
+  tooltip: string;
+  children: React.ReactNode;
+}
+
+function HeaderIconButton({
+  tooltip,
+  children,
+  ...buttonProps
+}: HeaderIconButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          {...buttonProps}
+          aria-label={buttonProps["aria-label"] ?? tooltip}
+          style={{ color: "var(--text-secondary)", ...buttonProps.style }}
+          className={`hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)] ${buttonProps.className ?? ""}`}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -427,6 +462,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
   const isManagedPlanMerge = task.category === "plan_merge";
   const isSystemControlled = isManagedPlanMerge || systemControlledStatuses.includes(task.internalStatus);
   const canEdit = !isArchived && !isSystemControlled;
+  const categoryLabel = getTaskCategoryLabel(task.category);
   // "Backlog" is the equivalent of "draft" - tasks that haven't started execution yet
   const isBacklog = task.internalStatus === "backlog";
 
@@ -493,7 +529,7 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                       color: "var(--text-secondary)",
                     }}
                   >
-                    {task.category}
+                    {categoryLabel}
                   </span>
                   <StatusBadge status={task.internalStatus} />
                 </div>
@@ -501,7 +537,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
             </div>
 
             {/* Action buttons */}
-            <div className="absolute top-4 right-4 flex items-center gap-2">
+            <TooltipProvider delayDuration={250}>
+              <div className="absolute top-4 right-4 flex items-center gap-2">
               {/* StatusDropdown - only for user-controlled statuses */}
               {canEdit && (
                 <StatusDropdown
@@ -513,106 +550,95 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
               )}
               {/* Start Ideation button - only for backlog (draft) tasks */}
               {isBacklog && (
-                <Button
+                <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
                   onClick={handleStartIdeation}
                   disabled={createSession.isPending}
                   data-testid="task-overlay-ideation-button"
                   aria-label="Start Ideation"
-                  title="Start ideation"
-                  style={{ color: "var(--text-secondary)" }}
-                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                  tooltip="Start ideation"
                 >
                   {createSession.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Lightbulb className="w-4 h-4" />
                   )}
-                </Button>
+                </HeaderIconButton>
               )}
               {/* Edit button */}
               {canEdit && (
-                <Button
+                <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setIsEditing(!isEditing)}
                   data-testid="task-overlay-edit-button"
                   aria-label={isEditing ? "Cancel editing" : "Edit task"}
-                  title={isEditing ? "Cancel editing" : "Edit task"}
-                  style={{ color: "var(--text-secondary)" }}
-                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                  tooltip={isEditing ? "Cancel editing" : "Edit task"}
                 >
                   <Pencil className="w-4 h-4" />
-                </Button>
+                </HeaderIconButton>
               )}
               {/* Archive button */}
               {!isArchived && (
-                <Button
+                <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
                   onClick={handleArchive}
                   disabled={isArchiving}
                   data-testid="task-overlay-archive-button"
                   aria-label="Archive task"
-                  title="Archive task"
-                  style={{ color: "var(--text-secondary)" }}
-                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                  tooltip="Archive task"
                 >
                   {isArchiving ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <Archive className="w-4 h-4" />
                   )}
-                </Button>
+                </HeaderIconButton>
               )}
               {/* Restore button */}
               {isArchived && (
-                <Button
+                <HeaderIconButton
                   variant="ghost"
                   size="icon-sm"
                   onClick={handleRestore}
                   disabled={isRestoring}
                   data-testid="task-overlay-restore-button"
                   aria-label="Restore task"
-                  title="Restore task"
-                  style={{ color: "var(--text-secondary)" }}
-                  className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                  tooltip="Restore task"
                 >
                   {isRestoring ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <RotateCcw className="w-4 h-4" />
                   )}
-                </Button>
+                </HeaderIconButton>
               )}
               {/* Audit Trail button */}
-              <Button
+              <HeaderIconButton
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setShowAuditTrail(true)}
                 data-testid="task-overlay-audit-trail-button"
                 aria-label="Audit Trail"
-                title="Audit trail"
-                style={{ color: "var(--text-secondary)" }}
-                className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                tooltip="Audit trail"
               >
                 <ScrollText className="w-4 h-4" />
-              </Button>
+              </HeaderIconButton>
               {/* Close button */}
-              <Button
+              <HeaderIconButton
                 variant="ghost"
                 size="icon-sm"
                 onClick={handleClose}
                 data-testid="task-overlay-close"
                 aria-label="Close"
-                title="Close task details"
-                style={{ color: "var(--text-secondary)" }}
-                className="hover:bg-[var(--overlay-weak)] hover:text-[var(--text-primary)]"
+                tooltip="Close task details"
               >
                 <X className="w-4 h-4" />
-              </Button>
-            </div>
+              </HeaderIconButton>
+              </div>
+            </TooltipProvider>
           </div>
 
           {/* State Timeline Navigation - for viewing historical states (hidden in edit mode) */}

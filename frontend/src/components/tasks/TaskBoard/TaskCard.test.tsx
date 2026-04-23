@@ -2,14 +2,47 @@
  * Tests for TaskCard component
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DndContext } from "@dnd-kit/core";
 import { createMockTask } from "@/test/mock-data";
 import { TaskCard } from "./TaskCard";
+import type { PlanBranch } from "@/api/plan-branch.types";
 import type { QAPrepStatus } from "@/types/qa-config";
 import type { QAOverallStatus } from "@/types/qa";
+
+const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
+  current: null,
+}));
+
+vi.mock("@/hooks/usePlanBranchForTask", () => ({
+  usePlanBranchForTask: vi.fn(() => ({ data: mockPlanBranchState.current })),
+}));
+
+function createTestPlanBranch(overrides?: Partial<PlanBranch>): PlanBranch {
+  return {
+    id: "plan-branch-123",
+    planArtifactId: "artifact-123",
+    sessionId: "session-123",
+    projectId: "project-456",
+    branchName: "ralphx/ralphx/plan-a3612efd",
+    sourceBranch: "main",
+    status: "active",
+    mergeTaskId: "task-123",
+    createdAt: "2026-01-28T12:00:00+00:00",
+    mergedAt: null,
+    prNumber: 68,
+    prUrl: "https://github.com/aigentive/ralphx/pull/68",
+    prDraft: false,
+    prPushStatus: "pushed",
+    prStatus: "Open",
+    prPollingActive: true,
+    prEligible: true,
+    baseBranchOverride: null,
+    ...overrides,
+  };
+}
 
 // Create a new QueryClient for each test
 const createTestQueryClient = () =>
@@ -32,6 +65,10 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("TaskCard", () => {
+  beforeEach(() => {
+    mockPlanBranchState.current = null;
+  });
+
   describe("rendering", () => {
     it("should render with data-testid", () => {
       const task = createMockTask({ id: "task-123" });
@@ -49,6 +86,43 @@ describe("TaskCard", () => {
       const task = createMockTask({ category: "feature" });
       render(<TaskCard task={task} />, { wrapper: DndWrapper });
       expect(screen.getByText("feature")).toBeInTheDocument();
+    });
+
+    it("renders plan merge category with a friendly label", () => {
+      const task = createMockTask({ category: "plan_merge" });
+      render(<TaskCard task={task} />, { wrapper: DndWrapper });
+
+      expect(screen.getByText("Plan merge")).toBeInTheDocument();
+      expect(screen.queryByText("plan_merge")).not.toBeInTheDocument();
+    });
+
+    it("shows merged PR state instead of review prompt for merged plan branches", () => {
+      mockPlanBranchState.current = createTestPlanBranch({
+        status: "merged",
+        prStatus: "Open",
+      });
+      const task = createMockTask({
+        category: "plan_merge",
+        internalStatus: "merged",
+      });
+
+      render(<TaskCard task={task} />, { wrapper: DndWrapper });
+
+      expect(screen.getByText("Merged PR")).toBeInTheDocument();
+      expect(screen.queryByText("Review PR")).not.toBeInTheDocument();
+    });
+
+    it("shows closed PR state when the PR was closed without merge", () => {
+      mockPlanBranchState.current = createTestPlanBranch({ prStatus: "Closed" });
+      const task = createMockTask({
+        category: "plan_merge",
+        internalStatus: "waiting_on_pr",
+      });
+
+      render(<TaskCard task={task} />, { wrapper: DndWrapper });
+
+      expect(screen.getByText("Closed PR")).toBeInTheDocument();
+      expect(screen.queryByText("Review PR")).not.toBeInTheDocument();
     });
 
     it("should render priority stripe via left border", () => {
