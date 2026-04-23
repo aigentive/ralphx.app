@@ -81,7 +81,7 @@ export function AgentsSidebar({
 
   return (
     <aside
-      className="w-[280px] min-w-[240px] max-w-[360px] h-full flex flex-col border-r overflow-hidden resize-x"
+      className="w-[264px] min-w-[228px] max-w-[340px] h-full flex flex-col border-r overflow-hidden resize-x"
       style={{
         background: "color-mix(in srgb, var(--bg-surface) 92%, transparent)",
         backdropFilter: "blur(20px) saturate(180%)",
@@ -91,13 +91,13 @@ export function AgentsSidebar({
       data-testid="agents-sidebar"
     >
       <div
-        className="px-4 pt-4 pb-3 flex items-center gap-2 shrink-0"
+        className="px-3.5 pt-3.5 pb-2.5 flex items-center gap-2 shrink-0"
         style={{
           borderColor: "var(--overlay-faint)",
         }}
       >
         <Bot className="w-4 h-4 shrink-0" style={{ color: "var(--accent-primary)" }} />
-        <span className="text-[15px] font-semibold tracking-[-0.01em] truncate" style={{ color: "var(--text-primary)" }}>
+        <span className="text-[14px] font-semibold tracking-[-0.01em] truncate" style={{ color: "var(--text-primary)" }}>
           Projects
         </span>
         <div className="ml-auto flex items-center gap-1">
@@ -107,7 +107,7 @@ export function AgentsSidebar({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                className="h-7 w-7 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={onCreateProject}
                 aria-label="New project"
                 data-testid="agents-new-project"
@@ -126,7 +126,7 @@ export function AgentsSidebar({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                className="h-7 w-7 p-0 rounded-md border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={() => {
                   setIsSearchOpen((open) => {
                     if (open) {
@@ -150,7 +150,7 @@ export function AgentsSidebar({
       </div>
 
       {isSearchOpen && (
-        <div className="px-4 pb-2 shrink-0">
+        <div className="px-3.5 pb-2 shrink-0">
           <div
             className="relative flex items-center"
             style={{
@@ -167,7 +167,7 @@ export function AgentsSidebar({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search"
-              className="w-full h-8 pl-8 pr-8 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+              className="w-full h-7 pl-8 pr-8 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
               style={{
                 color: "var(--text-primary)",
                 caretColor: "var(--accent-primary)",
@@ -190,10 +190,10 @@ export function AgentsSidebar({
         </div>
       )}
 
-      <div className="px-4 pb-3 shrink-0">
+      <div className="px-3.5 pb-2.5 shrink-0">
         <Button
           type="button"
-          className="w-full justify-center gap-2 h-9 text-[13px] font-medium tracking-[-0.01em] border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors duration-150"
+          className="w-full justify-center gap-2 h-8 text-[12px] font-medium tracking-[-0.01em] border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 transition-colors duration-150"
           onClick={onCreateAgent}
           disabled={projects.length === 0}
           data-testid="agents-new-agent"
@@ -214,7 +214,7 @@ export function AgentsSidebar({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2 border-t" style={{ borderColor: "var(--overlay-faint)" }}>
+      <div className="flex-1 overflow-y-auto py-1.5 border-t" style={{ borderColor: "var(--overlay-faint)" }}>
         {projects.length === 0 ? (
           <div className="h-full px-5 flex flex-col items-center justify-center text-center gap-3">
             <div className="space-y-1">
@@ -252,10 +252,10 @@ export function AgentsSidebar({
       </div>
 
       <div
-        className="p-3 border-t shrink-0"
+        className="px-3.5 py-2.5 border-t shrink-0"
         style={{ borderColor: "var(--overlay-faint)" }}
       >
-        <label className="h-8 flex items-center justify-between gap-3">
+        <label className="h-7 flex items-center justify-between gap-3">
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             Archived
           </span>
@@ -329,10 +329,10 @@ function ProjectSessionGroup({
   }
 
   return (
-    <div className="mt-2" data-testid={`agents-project-${project.id}`}>
-      <div className="px-4">
+    <div className="mt-1.5" data-testid={`agents-project-${project.id}`}>
+      <div className="px-3.5">
       <div
-        className="group/project w-full min-h-9 px-3 py-2 flex items-center gap-2 rounded-md transition-colors duration-150"
+        className="group/project w-full min-h-8 px-2.5 py-1.5 flex items-center gap-2 rounded-md transition-colors duration-150"
         style={{
           color: isFocused ? "var(--text-primary)" : "var(--text-muted)",
           background: isFocused ? "var(--overlay-faint)" : "var(--bg-base)",
@@ -356,7 +356,7 @@ function ProjectSessionGroup({
           style={{ boxShadow: "none" }}
         >
           <Folder className="w-4 h-4 shrink-0" />
-          <span className="text-[12px] font-semibold tracking-[-0.01em] truncate">{project.name}</span>
+          <span className="text-[11.5px] font-semibold tracking-[-0.01em] truncate">{project.name}</span>
         </button>
         {!expanded && activeRuntimeCount > 0 && (
           <span
@@ -379,7 +379,7 @@ function ProjectSessionGroup({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                className="h-5.5 w-5.5 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
                 onClick={() => onQuickCreateAgent(project.id)}
                 disabled={isCreatingAgent}
                 aria-label={`New agent in ${project.name}`}
@@ -397,13 +397,13 @@ function ProjectSessionGroup({
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
-                    aria-label="Project actions"
-                    style={{ boxShadow: "none" }}
-                  >
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-5.5 w-5.5 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                  aria-label="Project actions"
+                  style={{ boxShadow: "none" }}
+                >
                     <MoreHorizontal className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -425,7 +425,7 @@ function ProjectSessionGroup({
         </div>
         <button
           type="button"
-          className="h-5 w-5 flex items-center justify-center rounded outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none shrink-0"
+          className="h-4.5 w-4.5 flex items-center justify-center rounded outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none shrink-0"
           onClick={() => toggleProjectExpanded(project.id)}
           aria-label={expanded ? "Collapse project" : "Expand project"}
         >
@@ -439,7 +439,7 @@ function ProjectSessionGroup({
       </div>
 
       {expanded && (
-        <div className="mt-1 space-y-1">
+        <div className="mt-0.5 space-y-0.5">
           {visibleConversations.map((conversation) => {
             const rowKey = getAgentConversationStoreKey(conversation);
             const activeConversationId = activeConversationIds[rowKey] ?? null;
@@ -455,7 +455,7 @@ function ProjectSessionGroup({
             return (
               <div
                 key={conversation.id}
-                className="group/session relative w-full min-h-[46px] px-4 py-2.5 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out"
+                className="group/session relative w-full min-h-[38px] px-3.5 py-1.5 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out"
                 style={{
                   color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
                   background: isSelected
@@ -486,7 +486,7 @@ function ProjectSessionGroup({
                   style={{ boxShadow: "none" }}
                 >
                   <span
-                    className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150"
+                    className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors duration-150"
                     style={{
                       background: isSelected
                         ? withAlpha("var(--accent-primary)", 15)
@@ -498,9 +498,9 @@ function ProjectSessionGroup({
                   >
                     <SessionStateGlyph isSelected={isSelected} isActiveRuntime={isActiveRuntime} status={agentStatus} />
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[12px] font-medium tracking-[-0.01em] truncate">{title}</span>
-                    <span className="block text-[11px] truncate" style={{ color: "var(--text-muted)" }}>
+                  <span className="min-w-0 flex-1 leading-tight">
+                    <span className="block text-[11.5px] font-medium tracking-[-0.01em] truncate">{title}</span>
+                    <span className="mt-0.5 block text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
                       {statusLabel}
                     </span>
                   </span>
@@ -511,7 +511,7 @@ function ProjectSessionGroup({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 rounded shrink-0 border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 opacity-0 group-hover/session:opacity-100 data-[state=open]:opacity-100"
+                      className="h-5.5 w-5.5 p-0 rounded shrink-0 border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 opacity-0 group-hover/session:opacity-100 data-[state=open]:opacity-100"
                       aria-label="Session actions"
                       style={{
                         boxShadow: "none",
@@ -546,7 +546,7 @@ function ProjectSessionGroup({
           })}
 
           {!conversations.isLoading && visibleConversations.length === 0 && !searchQuery && (
-            <div className="px-4 py-2 flex items-center gap-2">
+            <div className="px-3.5 py-1.5 flex items-center gap-2">
               <span className="text-[11px] min-w-0 flex-1" style={{ color: "var(--text-muted)" }}>
                 No chats yet.
               </span>
@@ -564,13 +564,13 @@ function ProjectSessionGroup({
           )}
 
           {!conversations.isLoading && visibleConversations.length === 0 && searchQuery && projectMatchesSearch && (
-            <div className="px-4 py-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <div className="px-3.5 py-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
               No matching agents.
             </div>
           )}
 
           {visibleConversations.length > 0 && conversations.hasNextPage && (
-            <div className="px-4 py-1">
+            <div className="px-3.5 py-0.5">
               <button
                 type="button"
                 className="text-[11px] font-medium transition-colors"
@@ -588,7 +588,7 @@ function ProjectSessionGroup({
           )}
 
           {conversations.isLoading && (
-            <div className="px-2 py-2 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            <div className="px-3.5 py-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
               Loading...
             </div>
           )}
