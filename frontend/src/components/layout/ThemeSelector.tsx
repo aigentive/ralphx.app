@@ -67,15 +67,16 @@ export function ThemeSelector({ className = "" }: { className?: string }) {
             title={option.description}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium transition-all duration-150 outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]",
-              !isActive && "hover:bg-[var(--overlay-faint)] hover:text-[var(--text-primary)]",
-              isActive ? "shadow-sm" : ""
+              "inline-flex h-[26px] items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium transition-all duration-150 outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]",
+              !isActive && "hover:bg-[var(--overlay-faint)] hover:text-[var(--text-primary)]"
             )}
             style={{
               background: isActive ? "var(--accent-muted)" : "transparent",
-              border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
+              border: "1px solid transparent",
               color: isActive ? "var(--accent-primary)" : "var(--text-secondary)",
-              boxShadow: isActive ? "var(--shadow-xs)" : "none",
+              boxShadow: isActive
+                ? "inset 0 0 0 1px var(--accent-border)"
+                : "none",
             }}
             data-testid={`theme-option-${option.value}`}
           >
