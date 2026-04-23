@@ -138,6 +138,11 @@ export function AgentsView({
     enabled: !!attachedIdeationSessionId && activeConversation?.contextType === "project",
     staleTime: 5_000,
   });
+  const attachedIdeationSessionData =
+    attachedIdeationSessionId &&
+    attachedIdeationSessionQuery.data?.session.id === attachedIdeationSessionId
+      ? attachedIdeationSessionQuery.data
+      : null;
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
     attachedIdeationSessionId,
@@ -380,13 +385,13 @@ export function AgentsView({
   useEffect(() => {
     if (
       activeConversation?.contextType !== "project" ||
-      !attachedIdeationSessionQuery.data ||
+      !attachedIdeationSessionData ||
       activeConversation.archivedAt ||
       childArchiveSyncRef.current.has(activeConversation.id)
     ) {
       return;
     }
-    const session = attachedIdeationSessionQuery.data.session;
+    const session = attachedIdeationSessionData.session;
     const sessionArchived = session.status === "archived" || Boolean(session.archivedAt);
     if (!sessionArchived) {
       return;
@@ -400,7 +405,7 @@ export function AgentsView({
       });
   }, [
     activeConversation,
-    attachedIdeationSessionQuery.data,
+    attachedIdeationSessionData,
     invalidateProjectConversations,
   ]);
 
