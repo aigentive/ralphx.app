@@ -1127,12 +1127,21 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
                 .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
             "expected {agent_name} claude prompt to resolve through shared/prompt.md"
         );
-        assert!(
-            codex_path
-                .as_ref()
-                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
-            "expected {agent_name} codex prompt to resolve through shared/prompt.md"
-        );
+        if *agent_name == "ralphx-chat-project" {
+            assert!(
+                codex_path
+                    .as_ref()
+                    .is_some_and(|path| path.ends_with("agents/ralphx-chat-project/codex/prompt.md")),
+                "expected ralphx-chat-project codex prompt to resolve through codex/prompt.md"
+            );
+        } else {
+            assert!(
+                codex_path.as_ref().is_some_and(|path| path.ends_with(format!(
+                    "agents/{agent_name}/shared/prompt.md"
+                ))),
+                "expected {agent_name} codex prompt to resolve through shared/prompt.md"
+            );
+        }
     }
 
     for (agent_name, _, _) in CROSS_HARNESS_SUPPORT_AGENTS {
