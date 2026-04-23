@@ -121,21 +121,14 @@ export function AgentsStartComposer({
               linear-gradient(90deg, ${withAlpha("var(--text-primary)", 4)} 1px, transparent 1px)
             `,
             backgroundSize: "64px 64px",
-            opacity: 0.12,
+            opacity: 0.07,
           }}
         />
         <div
-          className="absolute left-1/2 top-[14%] h-[220px] w-[min(760px,78vw)] -translate-x-1/2 rounded-full blur-3xl"
+          className="absolute left-1/2 top-[17%] h-[180px] w-[min(620px,72vw)] -translate-x-1/2 rounded-full blur-3xl"
           style={{
-            background: `radial-gradient(circle, ${withAlpha("var(--accent-primary)", 14)} 0%, transparent 72%)`,
-            opacity: 0.55,
-          }}
-        />
-        <div
-          className="absolute bottom-[-14%] left-1/2 h-[180px] w-[min(620px,72vw)] -translate-x-1/2 rounded-full blur-3xl"
-          style={{
-            background: `radial-gradient(circle, ${withAlpha("var(--text-primary)", 6)} 0%, transparent 72%)`,
-            opacity: 0.3,
+            background: `radial-gradient(circle, ${withAlpha("var(--accent-primary)", 8)} 0%, transparent 72%)`,
+            opacity: 0.28,
           }}
         />
       </div>
@@ -146,7 +139,7 @@ export function AgentsStartComposer({
             className="mb-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em]"
             style={{
               color: "var(--text-secondary)",
-              background: withAlpha("var(--overlay-faint)", 92),
+              background: "var(--bg-surface)",
               borderColor: "var(--overlay-weak)",
             }}
           >
@@ -173,20 +166,13 @@ export function AgentsStartComposer({
           data-testid="agents-start-composer"
         >
           <div
-            className="relative overflow-hidden rounded-[28px] border"
+            className="relative overflow-hidden rounded-[22px] border"
             style={{
-              background:
-                "linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), color-mix(in srgb, var(--bg-surface) 92%, var(--bg-base) 8%))",
+              background: "var(--bg-surface)",
               borderColor: "var(--overlay-weak)",
-              boxShadow: "var(--shadow-md)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
-            <div
-              className="absolute inset-x-0 top-0 h-px"
-              style={{
-                background: `linear-gradient(90deg, transparent, ${withAlpha("var(--text-primary)", 14)}, transparent)`,
-              }}
-            />
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
@@ -197,7 +183,7 @@ export function AgentsStartComposer({
                 }
               }}
               placeholder="Ask the agent to plan, build, debug, or review something"
-              className="block min-h-[124px] w-full resize-none border-0 bg-transparent px-5 pb-2.5 pt-[18px] text-[15px] leading-[1.45] shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 sm:text-[16px] md:min-h-[136px]"
+              className="block min-h-[112px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-4 text-[15px] leading-[1.45] shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 sm:text-[16px] md:min-h-[120px]"
               style={{
                 color: "var(--text-primary)",
                 boxShadow: "none",
@@ -223,11 +209,10 @@ export function AgentsStartComposer({
             </div>
 
             <div
-              className="border-t px-3.5 py-2.5"
+              className="border-t px-3.5 py-2"
               style={{
                 borderColor: "var(--overlay-faint)",
-                background:
-                  "linear-gradient(180deg, color-mix(in srgb, var(--bg-base) 24%, transparent), color-mix(in srgb, var(--bg-base) 54%, transparent))",
+                background: "color-mix(in srgb, var(--bg-base) 18%, var(--bg-surface) 82%)",
               }}
             >
               <div className="flex items-center gap-1.5">
@@ -252,7 +237,7 @@ export function AgentsStartComposer({
                         className="h-7 shrink-0 rounded-[10px] px-2 text-[10px] font-medium"
                         style={{
                           color: "var(--text-secondary)",
-                          background: withAlpha("var(--text-primary)", 6),
+                          background: "transparent",
                         }}
                         onClick={onCreateProject}
                         data-testid="agents-start-new-project"
@@ -288,14 +273,14 @@ export function AgentsStartComposer({
 
                 <Button
                   type="button"
-                  className="h-10 shrink-0 rounded-[14px] px-4 text-[12px] font-semibold tracking-[-0.01em]"
+                  className="h-10 shrink-0 rounded-[12px] px-4 text-[12px] font-semibold tracking-[-0.01em]"
                   style={{
                     minWidth: "122px",
                     background: canSubmit
                       ? "var(--accent-primary)"
                       : withAlpha("var(--accent-primary)", 40),
                     color: "var(--text-on-accent)",
-                    boxShadow: canSubmit ? "var(--shadow-md)" : "none",
+                    boxShadow: "none",
                   }}
                   onClick={() => void handleSubmit()}
                   disabled={!canSubmit}
@@ -363,19 +348,18 @@ function ComposerSelectPill({
   return (
     <div
       className={cn(
-        "flex min-h-10 items-center gap-2 rounded-[13px] border px-2.5 py-1.5",
+        "flex min-h-10 items-center gap-2 rounded-[12px] border px-2.5 py-1.5",
         className
       )}
       style={{
-        background: "var(--overlay-faint)",
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
         borderColor: "var(--overlay-weak)",
       }}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div
-          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full"
+          className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
           style={{
-            background: withAlpha("var(--text-primary)", 8),
             color: "var(--text-secondary)",
           }}
         >
