@@ -93,9 +93,6 @@ describe("useTaskGraph", () => {
 
     it("should be enabled for a session-scoped graph while executionPlanId is unresolved", async () => {
       mockGetDependencyGraph.mockResolvedValue(mockGraphResponse);
-      usePlanStore.setState({
-        activePlanByProject: { "project-1": "session-abc" },
-      });
 
       const { result } = renderHook(
         () => useTaskGraph("project-1", false, null, "session-abc"),
@@ -112,7 +109,7 @@ describe("useTaskGraph", () => {
     });
 
     it("should be disabled when no active plan exists and executionPlanId is null", async () => {
-      // No active plan in store, executionPlanId not resolved — query must stay idle.
+      // No execution plan or session filter is resolved — query must stay idle.
 
       renderHook(() => useTaskGraph("project-1", false, null), { wrapper });
 
