@@ -32,7 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { chatKeys, useConversation } from "@/hooks/useChat";
+import { chatKeys, invalidateConversationDataQueries, useConversation } from "@/hooks/useChat";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { getModelLabel } from "@/lib/model-utils";
@@ -60,12 +60,13 @@ import {
   DEFAULT_AGENT_RUNTIME,
   normalizeRuntimeSelection,
 } from "./agentOptions";
-import { NewAgentDialog } from "./NewAgentDialog";
+import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
   agentConversationKeys,
   useProjectAgentConversations,
 } from "./useProjectAgentConversations";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
+import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
 
 const HEADER_ARTIFACT_TABS: Array<{
@@ -86,19 +87,15 @@ const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 
 interface AgentsViewProps {
   projectId: string;
-  isNewAgentDialogOpen: boolean;
-  onNewAgentDialogOpenChange: (open: boolean) => void;
   onCreateProject: () => void;
 }
 
 export function AgentsView({
   projectId,
-  isNewAgentDialogOpen,
-  onNewAgentDialogOpenChange,
   onCreateProject,
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
-  const [isQuickCreating, setIsQuickCreating] = useState(false);
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [artifactPanelWidth, setArtifactPanelWidth] = useState<number | null>(() => {
     const saved = window.localStorage.getItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
@@ -114,7 +111,7 @@ export function AgentsView({
     Map<string, { messages: string[]; lastTitle: string | null }>
   >(new Map());
   const childArchiveSyncRef = useRef<Set<string>>(new Set());
-  const manuallyClearedProjectIdsRef = useRef<Set<string>>(new Set());
+  const syncedProjectIdRef = useRef<string | null>(null);
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -198,6 +195,7 @@ export function AgentsView({
     attachedIdeationSessionQuery.data?.session.id === attachedIdeationSessionId
       ? attachedIdeationSessionQuery.data
       : null;
+  useAgentConversationTitleEvents(activeProjectId);
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
     attachedIdeationSessionId,
@@ -262,36 +260,13 @@ export function AgentsView({
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
 
   useEffect(() => {
-    if (!focusedProjectId && projectId) {
-      setFocusedProject(projectId);
-    }
-  }, [focusedProjectId, projectId, setFocusedProject]);
-
-  useEffect(() => {
-    if (
-      !activeProjectId ||
-      selectedConversationId ||
-      !focusedConversations.isSuccess ||
-      manuallyClearedProjectIdsRef.current.has(activeProjectId)
-    ) {
+    if (!projectId || syncedProjectIdRef.current === projectId) {
       return;
     }
-    const firstConversation = focusedConversations.data?.[0];
-    if (firstConversation) {
-      selectConversation(activeProjectId, firstConversation.id);
-      setActiveConversation(
-        getAgentConversationStoreKey(firstConversation),
-        firstConversation.id
-      );
-    }
-  }, [
-    activeProjectId,
-    focusedConversations.data,
-    focusedConversations.isSuccess,
-    selectConversation,
-    selectedConversationId,
-    setActiveConversation,
-  ]);
+    syncedProjectIdRef.current = projectId;
+    setFocusedProject(projectId);
+    clearSelection();
+  }, [clearSelection, projectId, setFocusedProject]);
 
   useEffect(() => {
     if (
@@ -306,27 +281,16 @@ export function AgentsView({
       (conversation) => conversation.id === selectedConversationId
     );
     if (selectedStillExists === false && !selectedConversationFallback) {
-      const replacement = focusedConversations.data?.[0];
-      if (replacement) {
-        selectConversation(activeProjectId, replacement.id);
-        setActiveConversation(
-          getAgentConversationStoreKey(replacement),
-          replacement.id
-        );
-      } else {
-        clearSelection();
-      }
+      clearSelection();
     }
   }, [
     activeProjectId,
     clearSelection,
     focusedConversations.data,
     focusedConversations.isLoading,
-    selectConversation,
     selectedConversationFallback,
     selectedConversationQuery.isLoading,
     selectedConversationId,
-    setActiveConversation,
   ]);
 
   useEffect(() => {
@@ -376,12 +340,10 @@ export function AgentsView({
         selectedProjectId === conversationProjectId &&
         selectedConversationId === conversation.id
       ) {
-        manuallyClearedProjectIdsRef.current.add(conversationProjectId);
         clearSelection();
         return;
       }
 
-      manuallyClearedProjectIdsRef.current.delete(conversationProjectId);
       selectConversation(conversationProjectId, conversation.id);
       setActiveConversation(
         getAgentConversationStoreKey(conversation),
@@ -397,48 +359,6 @@ export function AgentsView({
     ]
   );
 
-  const handleCreateAgent = useCallback(
-    async ({
-      projectId: targetProjectId,
-      title,
-      runtime,
-    }: {
-      projectId: string;
-      title: string;
-      runtime: AgentRuntimeSelection;
-    }) => {
-      const trimmedTitle = title.trim();
-      const conversation = await chatApi.createConversation(
-        "project",
-        targetProjectId,
-        trimmedTitle
-      );
-      const agentConversation = toProjectAgentConversation(conversation);
-      manuallyClearedProjectIdsRef.current.delete(targetProjectId);
-      queryClient.setQueryData(chatKeys.conversation(conversation.id), {
-        conversation,
-        messages: [],
-      });
-      setRuntimeForConversation(conversation.id, targetProjectId, runtime);
-      selectConversation(targetProjectId, conversation.id);
-      setActiveConversation(getAgentConversationStoreKey(agentConversation), conversation.id);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: agentConversationKeys.project(targetProjectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversationList("project", targetProjectId),
-        }),
-      ]);
-    },
-    [
-      queryClient,
-      selectConversation,
-      setActiveConversation,
-      setRuntimeForConversation,
-    ]
-  );
-
   const findConversationById = useCallback(
     (conversationId: string) =>
       focusedConversations.data?.find((item) => item.id === conversationId) ??
@@ -448,41 +368,162 @@ export function AgentsView({
     [focusedConversations.data, selectedConversationFallback]
   );
 
-  const handleQuickCreateAgent = useCallback(async (quickProjectId?: string) => {
-    if (isQuickCreating) {
-      return;
-    }
-    const targetProjectId = quickProjectId || focusedProjectId || selectedProjectId || projectId || projects[0]?.id;
-    if (!targetProjectId) {
-      return;
-    }
-    const runtime =
-      lastRuntimeByProjectId[targetProjectId] ??
-      runtimeByConversationId[selectedConversationId ?? ""] ??
-      DEFAULT_AGENT_RUNTIME;
-    try {
-      setIsQuickCreating(true);
-      await handleCreateAgent({
-        projectId: targetProjectId,
-        title: "",
-        runtime: normalizeRuntimeSelection(runtime),
+  const showStarterComposer = useCallback(
+    (targetProjectId?: string | null) => {
+      const nextProjectId =
+        targetProjectId ??
+        focusedProjectId ??
+        selectedProjectId ??
+        projectId ??
+        projects[0]?.id ??
+        null;
+      if (nextProjectId) {
+        setFocusedProject(nextProjectId);
+      }
+      clearSelection();
+    },
+    [clearSelection, focusedProjectId, projectId, projects, selectedProjectId, setFocusedProject]
+  );
+
+  const invalidateProjectConversations = useCallback(
+    async (targetProjectId: string) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: agentConversationKeys.project(targetProjectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversationList("project", targetProjectId),
+        }),
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
+      ]);
+    },
+    [queryClient]
+  );
+
+  const handleAutoManagedTitle = useCallback(
+    ({
+      content,
+      conversationId,
+      targetProjectId,
+      shouldSpawnSessionNamer,
+    }: {
+      content: string;
+      conversationId: string;
+      targetProjectId: string;
+      shouldSpawnSessionNamer: boolean;
+    }) => {
+      const conversation = findConversationById(conversationId);
+      const titleIsAutoManaged =
+        isDefaultAgentTitle(conversation?.title) ||
+        autoTitleStateRef.current.get(conversationId)?.lastTitle === conversation?.title;
+      if (!titleIsAutoManaged) {
+        return;
+      }
+
+      const state = autoTitleStateRef.current.get(conversationId) ?? {
+        messages: [],
+        lastTitle: null,
+      };
+      const isFirstTrackedMessage = state.messages.length === 0;
+      if (shouldSpawnSessionNamer && isFirstTrackedMessage) {
+        void chatApi
+          .spawnConversationSessionNamer(conversationId, content)
+          .catch(() => {
+            // Session namer is best-effort; local auto-titling remains as fallback.
+          });
+      }
+
+      if (state.messages.length >= 3) {
+        return;
+      }
+
+      state.messages = [...state.messages, content].slice(0, 3);
+      const nextTitle = deriveAgentTitleFromMessages(state.messages);
+      if (!nextTitle || nextTitle === conversation?.title || nextTitle === state.lastTitle) {
+        autoTitleStateRef.current.set(conversationId, state);
+        return;
+      }
+
+      state.lastTitle = nextTitle;
+      autoTitleStateRef.current.set(conversationId, state);
+      const titleUpdate =
+        conversation?.contextType === "ideation"
+          ? Promise.all([
+              chatApi.updateConversationTitle(conversationId, nextTitle),
+              ideationApi.sessions.updateTitle(conversation.contextId, nextTitle),
+            ])
+          : chatApi.updateConversationTitle(conversationId, nextTitle);
+      void titleUpdate
+        .then(() => {
+          void invalidateProjectConversations(conversation?.projectId ?? targetProjectId);
+        })
+        .catch(() => {
+          // Auto-titling is best-effort; manual title editing remains available.
+        });
+    },
+    [findConversationById, invalidateProjectConversations]
+  );
+
+  const handleStartAgentConversation = useCallback(
+    async ({
+      projectId: targetProjectId,
+      content,
+      runtime,
+    }: {
+      projectId: string;
+      content: string;
+      runtime: AgentRuntimeSelection;
+    }) => {
+      const normalizedRuntime = normalizeRuntimeSelection(runtime);
+      const result = await chatApi.sendAgentMessage(
+        "project",
+        targetProjectId,
+        content,
+        undefined,
+        undefined,
+        {
+          providerHarness: normalizedRuntime.provider,
+          modelId: normalizedRuntime.modelId,
+        }
+      );
+
+      setFocusedProject(targetProjectId);
+      setRuntimeForConversation(result.conversationId, targetProjectId, normalizedRuntime);
+      selectConversation(targetProjectId, result.conversationId);
+      setActiveConversation(
+        getAgentConversationStoreKey({
+          id: result.conversationId,
+          contextType: "project",
+          contextId: targetProjectId,
+        }),
+        result.conversationId
+      );
+      invalidateConversationDataQueries(queryClient, result.conversationId);
+      await invalidateProjectConversations(targetProjectId);
+      handleAutoManagedTitle({
+        content,
+        conversationId: result.conversationId,
+        targetProjectId,
+        shouldSpawnSessionNamer: true,
       });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create agent");
-    } finally {
-      setIsQuickCreating(false);
+    },
+    [
+      handleAutoManagedTitle,
+      invalidateProjectConversations,
+      queryClient,
+      selectConversation,
+      setActiveConversation,
+      setFocusedProject,
+      setRuntimeForConversation,
+    ]
+  );
+
+  const handleQuickCreateAgent = useCallback((quickProjectId?: string) => {
+    if (isStartingConversation) {
+      return;
     }
-  }, [
-    focusedProjectId,
-    handleCreateAgent,
-    isQuickCreating,
-    lastRuntimeByProjectId,
-    projectId,
-    projects,
-    runtimeByConversationId,
-    selectedConversationId,
-    selectedProjectId,
-  ]);
+    showStarterComposer(quickProjectId ?? null);
+  }, [isStartingConversation, showStarterComposer]);
 
   const handleSelectArtifact = useCallback(
     (tab: AgentArtifactTab) => {
@@ -502,21 +543,6 @@ export function AgentsView({
       setArtifactOpen,
       setArtifactTab,
     ]
-  );
-
-  const invalidateProjectConversations = useCallback(
-    async (targetProjectId: string) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: agentConversationKeys.project(targetProjectId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversationList("project", targetProjectId),
-        }),
-        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
-      ]);
-    },
-    [queryClient]
   );
 
   useEffect(() => {
@@ -639,51 +665,17 @@ export function AgentsView({
       if (!conversationId || !activeProjectId) {
         return;
       }
-
-      const conversation = findConversationById(conversationId);
-      const titleIsAutoManaged =
-        isDefaultAgentTitle(conversation?.title) ||
-        autoTitleStateRef.current.get(conversationId)?.lastTitle === conversation?.title;
-      if (!titleIsAutoManaged) {
-        return;
-      }
-
-      const state = autoTitleStateRef.current.get(conversationId) ?? {
-        messages: [],
-        lastTitle: null,
-      };
-      if (state.messages.length >= 3) {
-        return;
-      }
-
-      state.messages = [...state.messages, content].slice(0, 3);
-      const nextTitle = deriveAgentTitleFromMessages(state.messages);
-      if (!nextTitle || nextTitle === conversation?.title || nextTitle === state.lastTitle) {
-        autoTitleStateRef.current.set(conversationId, state);
-        return;
-      }
-
-      state.lastTitle = nextTitle;
-      autoTitleStateRef.current.set(conversationId, state);
-      const titleUpdate =
-        conversation?.contextType === "ideation"
-          ? Promise.all([
-              chatApi.updateConversationTitle(conversationId, nextTitle),
-              ideationApi.sessions.updateTitle(conversation.contextId, nextTitle),
-            ])
-          : chatApi.updateConversationTitle(conversationId, nextTitle);
-      void titleUpdate
-        .then(() => {
-          void invalidateProjectConversations(conversation?.projectId ?? activeProjectId);
-        })
-        .catch(() => {
-          // Auto-titling is best-effort; manual title editing remains available.
-        });
+      handleAutoManagedTitle({
+        content,
+        conversationId,
+        targetProjectId: activeProjectId,
+        shouldSpawnSessionNamer: findConversationById(conversationId)?.contextType === "project",
+      });
     },
     [
       activeProjectId,
       findConversationById,
-      invalidateProjectConversations,
+      handleAutoManagedTitle,
       selectedConversationId,
     ]
   );
@@ -706,13 +698,13 @@ export function AgentsView({
           selectedConversationId={selectedConversationId}
           onFocusProject={setFocusedProject}
           onSelectConversation={handleSelectConversation}
-          onCreateAgent={() => onNewAgentDialogOpenChange(true)}
+          onCreateAgent={() => showStarterComposer()}
           onCreateProject={onCreateProject}
           onQuickCreateAgent={handleQuickCreateAgent}
           onRemoveProject={handleRemoveProject}
           onArchiveConversation={handleArchiveConversation}
           onRestoreConversation={handleRestoreConversation}
-          isCreatingAgent={isQuickCreating}
+          isCreatingAgent={isStartingConversation}
           showArchived={showArchived}
           onShowArchivedChange={setShowArchived}
         />
@@ -765,20 +757,30 @@ export function AgentsView({
               />
             </div>
           ) : (
-            <div className="flex-1 min-w-0 h-full flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-center">
-                <div className="space-y-1">
-                  <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                    Pick a conversation from the sidebar
-                  </div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    or start a new one.
-                  </div>
-                </div>
-                <Button type="button" onClick={() => onNewAgentDialogOpenChange(true)} disabled={isLoadingProjects}>
-                  New agent
-                </Button>
-              </div>
+            <div className="flex-1 min-w-0 h-full">
+              <AgentsStartComposer
+                projects={projects}
+                defaultProjectId={defaultProjectId}
+                defaultRuntime={normalizeRuntimeSelection(defaultRuntime)}
+                isLoadingProjects={isLoadingProjects}
+                isSubmitting={isStartingConversation}
+                onCreateProject={onCreateProject}
+                onSubmit={async (input) => {
+                  try {
+                    setIsStartingConversation(true);
+                    await handleStartAgentConversation(input);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Failed to start agent conversation",
+                    );
+                    throw err;
+                  } finally {
+                    setIsStartingConversation(false);
+                  }
+                }}
+              />
             </div>
           )}
 
@@ -815,15 +817,6 @@ export function AgentsView({
           )}
         </div>
 
-        <NewAgentDialog
-          open={isNewAgentDialogOpen}
-          projects={projects}
-          defaultProjectId={defaultProjectId}
-          defaultRuntime={normalizeRuntimeSelection(defaultRuntime)}
-          onOpenChange={onNewAgentDialogOpenChange}
-          onCreate={handleCreateAgent}
-          onCreateProject={onCreateProject}
-        />
       </section>
     </TooltipProvider>
   );

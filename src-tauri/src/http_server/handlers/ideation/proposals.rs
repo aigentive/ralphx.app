@@ -18,7 +18,7 @@ use crate::domain::services::{
 };
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::http_server::handlers::ideation::stop_verification_children;
-use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
+use crate::domain::entities::{ChatConversationId, IdeationSessionId, Priority, TaskProposalId};
 use crate::http_server::helpers::{
     archive_proposal_impl, create_proposal_impl, finalize_proposals_impl, parse_category,
     parse_priority, update_proposal_impl,
@@ -451,34 +451,82 @@ pub async fn update_session_title(
     State(state): State<HttpServerState>,
     Json(req): Json<UpdateSessionTitleRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+    let title = req.title.clone();
 
-    // Update title in database (MCP agent calls = auto-generated title)
-    state
-        .app_state
-        .ideation_session_repo
-        .update_title(&session_id, Some(req.title.clone()), "auto")
-        .await
-        .map_err(|e| {
-            error!("Failed to update session title: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    match (req.session_id.as_deref(), req.conversation_id.as_deref()) {
+        (Some(session_id), None) => {
+            let session_id = IdeationSessionId::from_string(session_id.to_string());
+            state
+                .app_state
+                .ideation_session_repo
+                .update_title(&session_id, Some(title.clone()), "auto")
+                .await
+                .map_err(|e| {
+                    error!("Failed to update session title: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
 
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "ideation:session_title_updated",
-            serde_json::json!({
-                "sessionId": req.session_id,
-                "title": req.title
-            }),
-        );
+            if let Some(app_handle) = &state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "ideation:session_title_updated",
+                    serde_json::json!({
+                        "sessionId": session_id.as_str(),
+                        "title": title,
+                    }),
+                );
+            }
+
+            Ok(Json(SuccessResponse {
+                success: true,
+                message: "Session title updated".to_string(),
+            }))
+        }
+        (None, Some(conversation_id)) => {
+            let conversation_id = ChatConversationId::from_string(conversation_id.to_string());
+            let updated_title = title.clone();
+            state
+                .app_state
+                .chat_conversation_repo
+                .update_title(&conversation_id, &updated_title)
+                .await
+                .map_err(|e| {
+                    error!("Failed to update conversation title: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+            let conversation = state
+                .app_state
+                .chat_conversation_repo
+                .get_by_id(&conversation_id)
+                .await
+                .map_err(|e| {
+                    error!("Failed to reload updated conversation title: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?
+                .ok_or_else(|| {
+                    error!("Conversation not found after title update: {}", conversation_id);
+                    StatusCode::NOT_FOUND
+                })?;
+
+            if let Some(app_handle) = &state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "agent:conversation_title_updated",
+                    serde_json::json!({
+                        "conversationId": conversation.id.as_str(),
+                        "contextType": conversation.context_type.to_string(),
+                        "contextId": conversation.context_id,
+                        "title": updated_title,
+                    }),
+                );
+            }
+
+            Ok(Json(SuccessResponse {
+                success: true,
+                message: "Conversation title updated".to_string(),
+            }))
+        }
+        (Some(_), Some(_)) | (None, None) => Err(StatusCode::BAD_REQUEST),
     }
-
-    Ok(Json(SuccessResponse {
-        success: true,
-        message: "Session title updated".to_string(),
-    }))
 }
 
 pub async fn list_session_proposals(

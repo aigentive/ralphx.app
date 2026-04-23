@@ -12,10 +12,20 @@ const {
   useProjectsMock,
   useProjectAgentConversationsMock,
   useConversationMock,
+  sendAgentMessageMock,
+  spawnConversationSessionNamerMock,
+  updateConversationTitleMock,
+  archiveConversationMock,
+  restoreConversationMock,
 } = vi.hoisted(() => ({
   useProjectsMock: vi.fn(),
   useProjectAgentConversationsMock: vi.fn(),
   useConversationMock: vi.fn(),
+  sendAgentMessageMock: vi.fn(),
+  spawnConversationSessionNamerMock: vi.fn(),
+  updateConversationTitleMock: vi.fn(),
+  archiveConversationMock: vi.fn(),
+  restoreConversationMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -53,7 +63,30 @@ vi.mock("@/hooks/useChat", () => ({
       contextId,
     ],
   },
+  invalidateConversationDataQueries: vi.fn(),
   useConversation: (conversationId: string | null) => useConversationMock(conversationId),
+}));
+
+vi.mock("@/api/chat", () => ({
+  chatApi: {
+    sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
+    spawnConversationSessionNamer: (...args: unknown[]) =>
+      spawnConversationSessionNamerMock(...args),
+    updateConversationTitle: (...args: unknown[]) => updateConversationTitleMock(...args),
+    archiveConversation: (...args: unknown[]) => archiveConversationMock(...args),
+    restoreConversation: (...args: unknown[]) => restoreConversationMock(...args),
+  },
+}));
+
+vi.mock("@/api/ideation", () => ({
+  ideationApi: {
+    sessions: {
+      getWithData: vi.fn(),
+      updateTitle: vi.fn(),
+      archive: vi.fn(),
+      reopen: vi.fn(),
+    },
+  },
 }));
 
 vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
@@ -66,12 +99,12 @@ vi.mock("./AgentsArtifactPane", () => ({
   AgentsArtifactPane: () => <div data-testid="agents-artifact-pane" />,
 }));
 
-vi.mock("./NewAgentDialog", () => ({
-  NewAgentDialog: () => null,
-}));
-
 vi.mock("./useProjectAgentBridgeEvents", () => ({
   useProjectAgentBridgeEvents: () => undefined,
+}));
+
+vi.mock("./useAgentConversationTitleEvents", () => ({
+  useAgentConversationTitleEvents: () => undefined,
 }));
 
 const runtime: AgentRuntimeSelection = {
@@ -146,13 +179,28 @@ function mockAgentViewData(agentConversation: AgentConversation = conversation()
     isFetchingNextPage: false,
     fetchNextPage: vi.fn(),
   });
-  useConversationMock.mockReturnValue({
-    data: {
-      conversation: agentConversation,
-      messages: [],
-    },
+  useConversationMock.mockImplementation((conversationId: string | null) => ({
+    data:
+      conversationId === agentConversation.id
+        ? {
+            conversation: agentConversation,
+            messages: [],
+          }
+        : null,
     isLoading: false,
-  });
+  }));
+}
+
+function renderAgentsView() {
+  return renderWithProviders(
+    <AgentsView projectId="project-1" onCreateProject={vi.fn()} />
+  );
+}
+
+function selectSidebarConversationRow() {
+  const row = screen.getByTestId("agents-session-conversation-1");
+  fireEvent.click(within(row).getAllByRole("button")[0] ?? row);
+  return row;
 }
 
 describe("AgentsChatHeader", () => {
@@ -205,6 +253,29 @@ describe("AgentsView", () => {
     useProjectAgentConversationsMock.mockReset();
     useProjectsMock.mockReset();
     useConversationMock.mockReset();
+    sendAgentMessageMock.mockReset();
+    spawnConversationSessionNamerMock.mockReset();
+    updateConversationTitleMock.mockReset();
+    archiveConversationMock.mockReset();
+    restoreConversationMock.mockReset();
+
+    sendAgentMessageMock.mockResolvedValue({
+      conversationId: "conversation-2",
+      agentRunId: "run-2",
+      isNewConversation: true,
+      wasQueued: false,
+      queuedAsPending: false,
+      queuedMessageId: null,
+    });
+    spawnConversationSessionNamerMock.mockResolvedValue(undefined);
+    updateConversationTitleMock.mockResolvedValue({
+      ...conversation(),
+      id: "conversation-2",
+      title: "Fix agent landing flow",
+    });
+    archiveConversationMock.mockResolvedValue(undefined);
+    restoreConversationMock.mockResolvedValue(undefined);
+
     useAgentSessionStore.setState({
       focusedProjectId: "project-1",
       selectedProjectId: "project-1",
@@ -226,20 +297,59 @@ describe("AgentsView", () => {
     });
   });
 
+  it("defaults to the starter composer even when a conversation was previously selected", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
+    );
+    expect(
+      screen.getByText("Start a new agent conversation")
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
+  });
+
+  it("starts a new conversation directly from the starter composer and triggers the session namer", async () => {
+    mockAgentViewData();
+
+    renderAgentsView();
+
+    fireEvent.change(screen.getByTestId("agents-start-textarea"), {
+      target: { value: "fix agent landing flow" },
+    });
+    fireEvent.click(screen.getByTestId("agents-start-submit"));
+
+    await waitFor(() =>
+      expect(sendAgentMessageMock).toHaveBeenCalledWith(
+        "project",
+        "project-1",
+        "fix agent landing flow",
+        undefined,
+        undefined,
+        {
+          providerHarness: "codex",
+          modelId: "gpt-5.4",
+        }
+      )
+    );
+    await waitFor(() =>
+      expect(spawnConversationSessionNamerMock).toHaveBeenCalledWith(
+        "conversation-2",
+        "fix agent landing flow"
+      )
+    );
+  });
+
   it("restores persisted artifact width, enforces 320px mins, and resets to default on double click", async () => {
     window.localStorage.setItem("ralphx-agents-artifact-width", "480");
     mockAgentViewData();
 
-    renderWithProviders(
-      <AgentsView
-        projectId="project-1"
-        isNewAgentDialogOpen={false}
-        onNewAgentDialogOpenChange={vi.fn()}
-        onCreateProject={vi.fn()}
-      />
-    );
+    renderAgentsView();
+    selectSidebarConversationRow();
 
-    const pane = screen.getByTestId("agents-artifact-resizable-pane");
+    const pane = await screen.findByTestId("agents-artifact-resizable-pane");
     expect(pane).toHaveStyle({
       width: "480px",
       minWidth: "320px",
@@ -259,14 +369,8 @@ describe("AgentsView", () => {
   it("resizes the artifact pane when the handle is dragged", async () => {
     mockAgentViewData();
 
-    renderWithProviders(
-      <AgentsView
-        projectId="project-1"
-        isNewAgentDialogOpen={false}
-        onNewAgentDialogOpenChange={vi.fn()}
-        onCreateProject={vi.fn()}
-      />
-    );
+    renderAgentsView();
+    selectSidebarConversationRow();
 
     const splitContainer = screen.getByTestId("agents-split-container");
     vi.spyOn(splitContainer, "getBoundingClientRect").mockReturnValue({
@@ -296,22 +400,18 @@ describe("AgentsView", () => {
   it("deselects the selected agent when its row is clicked again", async () => {
     mockAgentViewData();
 
-    renderWithProviders(
-      <AgentsView
-        projectId="project-1"
-        isNewAgentDialogOpen={false}
-        onNewAgentDialogOpenChange={vi.fn()}
-        onCreateProject={vi.fn()}
-      />
-    );
-
-    const row = screen.getByTestId("agents-session-conversation-1");
-    fireEvent.click(within(row).getAllByRole("button")[0]);
+    renderAgentsView();
+    const row = selectSidebarConversationRow();
 
     await waitFor(() =>
-      expect(
-        screen.getByText("Pick a conversation from the sidebar")
-      ).toBeInTheDocument()
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
     );
+
+    fireEvent.click(within(row).getAllByRole("button")[0] ?? row);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
   });
 });

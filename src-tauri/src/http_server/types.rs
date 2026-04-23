@@ -35,7 +35,8 @@ pub struct HttpServerState {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateSessionTitleRequest {
-    pub session_id: String,
+    pub session_id: Option<String>,
+    pub conversation_id: Option<String>,
     pub title: String,
 }
 
