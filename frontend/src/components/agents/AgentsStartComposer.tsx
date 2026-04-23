@@ -183,14 +183,13 @@ export function AgentsStartComposer({
             className="text-[clamp(1.9rem,3.4vw,2.9rem)] font-semibold tracking-[-0.05em] leading-[1.02]"
             style={{ color: "var(--text-primary)" }}
           >
-            Start an agent conversation
+            Start your agent
           </h2>
           <p
             className="mx-auto mt-3 max-w-[520px] text-[13px] leading-relaxed"
             style={{ color: "var(--text-secondary)" }}
           >
-            Choose the project and runtime, then send the first prompt directly from the
-            canvas.
+            Choose the project and runtime, then ask your agent for something amazing.
           </p>
         </div>
 
