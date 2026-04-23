@@ -387,7 +387,24 @@ export function useChat(
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[]; target?: string }>({
     mutationFn: async ({ content, attachmentIds, target }) => {
-      return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target, options?.sendOptions);
+      if (options?.sendOptions) {
+        return chatApi.sendAgentMessage(
+          contextType,
+          contextId,
+          content,
+          attachmentIds,
+          target,
+          options.sendOptions
+        );
+      }
+
+      return chatApi.sendAgentMessage(
+        contextType,
+        contextId,
+        content,
+        attachmentIds,
+        target
+      );
     },
     onMutate: () => {
       setSending(effectiveStoreKey, true);
