@@ -72,22 +72,19 @@ const conversation = (
   ...overrides,
 });
 
-function renderSidebar() {
+function renderSidebar(projects: Project[] = [project()]) {
   return render(
     <TooltipProvider>
       <AgentsSidebar
-        projects={[project()]}
+        projects={projects}
         focusedProjectId="project-1"
         selectedConversationId={null}
         onFocusProject={vi.fn()}
         onSelectConversation={vi.fn()}
         onCreateAgent={vi.fn()}
-        onCreateProject={vi.fn()}
-        onQuickCreateAgent={vi.fn()}
         onRemoveProject={vi.fn()}
         onArchiveConversation={vi.fn()}
         onRestoreConversation={vi.fn()}
-        isCreatingAgent={false}
         showArchived={false}
         onShowArchivedChange={vi.fn()}
       />
@@ -95,11 +92,21 @@ function renderSidebar() {
   );
 }
 
+function getProjectRowOrder() {
+  return screen
+    .getAllByTestId((testId) => testId.startsWith("agents-project-project-"))
+    .map((row) => row.getAttribute("data-testid"));
+}
+
 describe("AgentsSidebar", () => {
   beforeEach(() => {
     conversationsByProject.clear();
     useChatStore.setState({ activeConversationIds: {}, agentStatus: {} });
-    useAgentSessionStore.setState({ expandedProjectIds: { "project-1": true } });
+    useAgentSessionStore.setState({
+      expandedProjectIds: { "project-1": true, "project-2": true },
+      showAllProjects: false,
+      projectSort: "latest",
+    });
   });
 
   it("orders sessions by created time and shows created time instead of provider", () => {
@@ -153,5 +160,74 @@ describe("AgentsSidebar", () => {
 
     fireEvent.click(screen.getByTestId("agents-load-more-project-1"));
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides empty projects by default", () => {
+    conversationsByProject.set("project-1", {
+      data: [],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar();
+
+    expect(screen.queryByTestId("agents-project-project-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Start")).not.toBeInTheDocument();
+  });
+
+  it("can reveal empty projects from the filter pill", () => {
+    conversationsByProject.set("project-1", {
+      data: [],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar();
+
+    fireEvent.click(screen.getByTestId("agents-show-all-projects-pill"));
+
+    expect(screen.getByTestId("agents-project-project-1")).toBeInTheDocument();
+    expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Start")).not.toBeInTheDocument();
+  });
+
+  it("supports alphabetical sorting from the sort pill", () => {
+    const alpha = project({ id: "project-1", name: "alpha" });
+    const beta = project({ id: "project-2", name: "beta" });
+
+    conversationsByProject.set("project-1", {
+      data: [conversation({ id: "conversation-1", projectId: "project-1", contextId: "project-1" })],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    conversationsByProject.set("project-2", {
+      data: [conversation({ id: "conversation-2", projectId: "project-2", contextId: "project-2" })],
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([beta, alpha]);
+
+    expect(getProjectRowOrder()).toEqual([
+      "agents-project-project-2",
+      "agents-project-project-1",
+    ]);
+
+    fireEvent.pointerDown(screen.getByTestId("agents-project-sort-pill"));
+    fireEvent.click(screen.getByText("A-Z"));
+
+    expect(getProjectRowOrder()).toEqual([
+      "agents-project-project-1",
+      "agents-project-project-2",
+    ]);
   });
 });

@@ -177,6 +177,28 @@ function renderWithProviders(ui: ReactNode) {
   );
 }
 
+function mockSidebarBreakpoint({ isLarge, isMedium }: { isLarge: boolean; isMedium: boolean }) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches:
+        query === "(min-width: 1440px)"
+          ? isLarge
+          : query === "(min-width: 1280px)"
+            ? isMedium
+            : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 function mockAgentViewData(agentConversation: AgentConversation = conversation()) {
   useProjectsMock.mockReturnValue({
     data: [project],
@@ -311,6 +333,7 @@ describe("AgentsChatHeader", () => {
 
 describe("AgentsView", () => {
   beforeEach(() => {
+    mockSidebarBreakpoint({ isLarge: true, isMedium: true });
     window.localStorage.clear();
     useProjectAgentConversationsMock.mockReset();
     useProjectsMock.mockReset();
@@ -576,5 +599,22 @@ describe("AgentsView", () => {
     await waitFor(() =>
       expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
     );
+  });
+
+  it("uses a collapsed sidebar strip on small screens and opens the overlay on demand", async () => {
+    mockSidebarBreakpoint({ isLarge: false, isMedium: false });
+    mockAgentViewData();
+
+    renderAgentsView();
+
+    expect(screen.getByTestId("agents-sidebar-toggle-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-sidebar")).not.toBeVisible();
+
+    fireEvent.click(screen.getByTestId("agents-sidebar-toggle-strip"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-sidebar")).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("agents-sidebar-overlay-backdrop")).toBeInTheDocument();
   });
 });
