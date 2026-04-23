@@ -104,28 +104,29 @@ pub async fn get_task_commits_for_state(
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
     let repo_path = PathBuf::from(&project.working_directory);
+    let plan_branch = get_branchless_plan_branch(state, &task, &task_id).await?;
 
     // Handle merged tasks specially - branch/worktree is deleted, use merge_commit_sha
     if task.internal_status == InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
-            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha)
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, base_branch))
+                .unwrap_or_else(|| base_branch.to_string());
+            let commits = GitService::get_merged_task_commits(&repo_path, &base_ref, merge_sha)
                 .await
                 .map_err(|e| e.to_string())?;
             return Ok(TaskCommitsResponse {
                 commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
             });
         }
-        // Merged but no merge_commit_sha - return empty (shouldn't happen)
-        return Ok(TaskCommitsResponse { commits: vec![] });
-    }
 
-    if task.task_branch.is_none() {
-        if let Some(plan_branch) = state
-            .plan_branch_repo
-            .get_by_merge_task_id(&task_id)
-            .await
-            .map_err(|e| e.to_string())?
-        {
+        if let Some(plan_branch) = plan_branch {
             let base_ref = plan_branch_review_base_ref(&plan_branch, base_branch);
             let commits =
                 GitService::get_commits_between(&repo_path, &base_ref, &plan_branch.branch_name)
@@ -136,6 +137,22 @@ pub async fn get_task_commits_for_state(
             });
         }
 
+        // Merged but no merge_commit_sha - return empty (shouldn't happen)
+        return Ok(TaskCommitsResponse { commits: vec![] });
+    }
+
+    if let Some(plan_branch) = plan_branch {
+        let base_ref = plan_branch_review_base_ref(&plan_branch, base_branch);
+        let commits =
+            GitService::get_commits_between(&repo_path, &base_ref, &plan_branch.branch_name)
+                .await
+                .map_err(|e| e.to_string())?;
+        return Ok(TaskCommitsResponse {
+            commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
+        });
+    }
+
+    if task.task_branch.is_none() {
         return Err("Task has no branch assigned".to_string());
     }
 
@@ -154,6 +171,22 @@ pub async fn get_task_commits_for_state(
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
     })
+}
+
+async fn get_branchless_plan_branch(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+    task_id: &TaskId,
+) -> Result<Option<PlanBranch>, String> {
+    if task.task_branch.is_some() {
+        return Ok(None);
+    }
+
+    state
+        .plan_branch_repo
+        .get_by_merge_task_id(task_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn plan_branch_review_base_ref(plan_branch: &PlanBranch, project_base_branch: &str) -> String {

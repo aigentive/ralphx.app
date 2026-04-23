@@ -62,39 +62,43 @@ function MergeInfoCard({
   branchName: string | null | undefined;
   mergedAt: Date | string | null | undefined;
 }) {
-  const shortSha = mergeCommitSha?.substring(0, 7) ?? "unknown";
+  const shortSha = mergeCommitSha?.substring(0, 7);
 
   return (
     <DetailCard variant="success">
       <div className="space-y-4">
         {/* Merge commit */}
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-            style={{ backgroundColor: "var(--status-success-muted)" }}
-          >
-            <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
-              Merge Commit
+        {shortSha && (
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
+              style={{ backgroundColor: "var(--status-success-muted)" }}
+            >
+              <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
+                Merge Commit
+              </span>
+              <span className="text-[13px] text-text-primary/70 font-mono">
+                {shortSha}
+              </span>
+            </div>
+            <span className="text-[12px] text-text-primary/40">
+              {formatRelativeTime(mergedAt)}
             </span>
-            <span className="text-[13px] text-text-primary/70 font-mono">
-              {shortSha}
-            </span>
           </div>
-          <span className="text-[12px] text-text-primary/40">
-            {formatRelativeTime(mergedAt)}
-          </span>
-        </div>
+        )}
 
         {/* Branch info */}
         {branchName && (
           <>
-            <div
-              className="h-px"
-              style={{ backgroundColor: "var(--overlay-weak)" }}
-            />
+            {shortSha && (
+              <div
+                className="h-px"
+                style={{ backgroundColor: "var(--overlay-weak)" }}
+              />
+            )}
             <div className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
@@ -119,16 +123,25 @@ function MergeInfoCard({
   );
 }
 
-export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
+export function MergedTaskDetail({
+  task,
+  isHistorical: _isHistorical = false,
+}: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const { data: planBranch } = usePlanBranchForTask(task.id);
 
+  const isPlanMerge = task.category === "plan_merge";
+  const effectiveMergeCommitSha = task.mergeCommitSha ?? planBranch?.mergeCommitSha ?? null;
+  const hasPrContext = isPlanMerge && planBranch?.prNumber != null;
+  const hasMergeInfo = Boolean(effectiveMergeCommitSha || task.taskBranch);
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
-  const mergedAt = task.completedAt ?? task.updatedAt;
+  const mergedAt = planBranch?.mergedAt ?? task.completedAt ?? task.updatedAt;
 
-  const mergedIntoSubtitle = planBranch?.baseBranchOverride
-    ? `Merged into ${planBranch.baseBranchOverride}`
+  const mergeTarget =
+    planBranch?.baseBranchOverride ?? (isPlanMerge ? planBranch?.sourceBranch : null);
+  const mergedIntoSubtitle = mergeTarget
+    ? `Merged into ${mergeTarget}`
     : "Changes have been merged into the base branch";
 
   if (isLoading) {
@@ -175,7 +188,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
       )}
 
       {/* Merged via PR */}
-      {planBranch?.prNumber != null && planBranch?.prStatus === "Merged" && (
+      {hasPrContext && (
         <section data-testid="merged-via-pr-section">
           <SectionTitle>Pull Request</SectionTitle>
           <DetailCard variant="success">
@@ -206,20 +219,24 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
       )}
 
       {/* Task Metrics */}
-      <section data-testid="task-metrics-section">
-        <SectionTitle>Metrics</SectionTitle>
-        <TaskMetricsCard taskId={task.id} />
-      </section>
+      {!isPlanMerge && (
+        <section data-testid="task-metrics-section">
+          <SectionTitle>Metrics</SectionTitle>
+          <TaskMetricsCard taskId={task.id} />
+        </section>
+      )}
 
       {/* Merge Info */}
-      <section data-testid="merge-info-section">
-        <SectionTitle>Merge Details</SectionTitle>
-        <MergeInfoCard
-          mergeCommitSha={task.mergeCommitSha}
-          branchName={task.taskBranch}
-          mergedAt={mergedAt}
-        />
-      </section>
+      {hasMergeInfo && (
+        <section data-testid="merge-info-section">
+          <SectionTitle>Merge Details</SectionTitle>
+          <MergeInfoCard
+            mergeCommitSha={effectiveMergeCommitSha}
+            branchName={task.taskBranch}
+            mergedAt={mergedAt}
+          />
+        </section>
+      )}
 
       {/* Merge Validation History */}
       <ValidationProgress

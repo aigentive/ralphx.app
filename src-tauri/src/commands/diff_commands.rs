@@ -88,17 +88,27 @@ pub async fn get_task_file_changes_for_state(
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new();
+    let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, &project))
+                .unwrap_or_else(|| base_branch.to_string());
             return diff_service.get_merged_task_file_changes(
                 &working_path_str,
-                base_branch,
+                &base_ref,
                 merge_sha,
             );
         }
     }
 
-    if let Some(plan_branch) = get_branchless_plan_branch(&app_state, &task).await? {
+    if let Some(plan_branch) = plan_branch {
         let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
         return diff_service.get_file_changes_between_refs(
             &working_path_str,
@@ -133,18 +143,28 @@ pub async fn get_file_diff_for_state(
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new();
+    let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, &project))
+                .unwrap_or_else(|| base_branch.to_string());
             return diff_service.get_merged_task_file_diff(
                 &file_path,
                 &working_path_str,
-                base_branch,
+                &base_ref,
                 merge_sha,
             );
         }
     }
 
-    if let Some(plan_branch) = get_branchless_plan_branch(&app_state, &task).await? {
+    if let Some(plan_branch) = plan_branch {
         let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
         return diff_service.get_file_diff_between_refs(
             &file_path,
