@@ -25,11 +25,11 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react";
 
-import { useQueryClient, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
-import { useTaskGraphLayout } from "./hooks/useTaskGraphLayout";
+import { useTaskGraphLayout, type PlanBranchNodeContext } from "./hooks/useTaskGraphLayout";
 import { useTaskGraphViewport } from "./hooks/useTaskGraphViewport";
 import { useGraphSelectionController } from "./hooks/useGraphSelectionController";
 import { type TaskNodeHandlers } from "./nodes/TaskNode";
@@ -1122,25 +1122,36 @@ function TaskGraphViewInner({
     [archiveTasksInGroupMutation, projectId, queryClient]
   );
 
-  // Fetch plan branches for all plan groups to populate mergeTarget on plan_merge nodes
-  const planBranchQueries = useQueries({
-    queries: (filteredGraphData.planGroups ?? []).map((group) => ({
-      queryKey: ["plan-branch", group.planArtifactId] as const,
-      queryFn: () => api.planBranches.getByPlan(group.planArtifactId),
-      staleTime: 5_000,
-    })),
+  const hasVisiblePlanMergeNode = useMemo(
+    () => (filteredGraphData.nodes ?? []).some((node) => node.category === "plan_merge"),
+    [filteredGraphData.nodes]
+  );
+
+  // Fetch project plan branches once for graph merge context. The plan-id command intentionally
+  // hides merged/abandoned rows, but historical plan_merge nodes need those rows by merge_task_id.
+  const planBranchQuery = useQuery({
+    queryKey: ["plan-branches", "project", projectId] as const,
+    queryFn: () => api.planBranches.getByProject(projectId),
+    enabled: hasVisiblePlanMergeNode,
+    staleTime: 5_000,
   });
 
-  const planBranchMergeTargetMap = useMemo(() => {
-    const map = new Map<string, string>();
-    (filteredGraphData.planGroups ?? []).forEach((group, i) => {
-      const branch = planBranchQueries[i]?.data;
-      if (branch?.baseBranchOverride) {
-        map.set(group.planArtifactId, branch.baseBranchOverride);
+  const planBranchContextMap = useMemo(() => {
+    const map = new Map<string, PlanBranchNodeContext>();
+    for (const branch of planBranchQuery.data ?? []) {
+      const context = {
+        mergeTarget: branch.baseBranchOverride ?? branch.sourceBranch,
+        prNumber: branch.prNumber,
+        prStatus: branch.prStatus,
+        status: branch.status,
+      };
+      map.set(branch.planArtifactId, context);
+      if (branch.mergeTaskId) {
+        map.set(branch.mergeTaskId, context);
       }
-    });
+    }
     return map;
-  }, [planBranchQueries, filteredGraphData.planGroups]);
+  }, [planBranchQuery.data]);
 
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
@@ -1158,7 +1169,7 @@ function TaskGraphViewInner({
     projectId,
     handleViewDetails,
     handleCancelAllInGroup,
-    planBranchMergeTargetMap
+    planBranchContextMap
   );
 
   useEffect(() => {
@@ -1345,6 +1356,11 @@ function TaskGraphViewInner({
           || nd?.isFocused !== pd?.isFocused
           || nd?.internalStatus !== pd?.internalStatus
           || nd?.label !== pd?.label
+          || nd?.category !== pd?.category
+          || nd?.mergeTarget !== pd?.mergeTarget
+          || nd?.prNumber !== pd?.prNumber
+          || nd?.prStatus !== pd?.prStatus
+          || nd?.planBranchStatus !== pd?.planBranchStatus
           || nd?.isCriticalPath !== pd?.isCriticalPath
           || nd?.nodeMode !== pd?.nodeMode
         ) {
@@ -1649,6 +1665,7 @@ function TaskGraphViewInner({
           </div>
         ) : (
           <ReactFlow
+            className="ralphx-task-graph"
             // eslint-disable-next-line react-hooks/refs -- nodes/edges are ref-stabilized (see useMemo blocks above)
             nodes={nodes}
             edges={edges} // eslint-disable-line react-hooks/refs

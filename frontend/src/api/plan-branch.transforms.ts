@@ -25,6 +25,7 @@ export function transformPlanBranch(raw: RawPlanBranch): PlanBranch {
     prStatus: raw.pr_status,
     prPollingActive: raw.pr_polling_active,
     prEligible: raw.pr_eligible,
+    mergeCommitSha: raw.merge_commit_sha ?? null,
     baseBranchOverride: raw.base_branch_override,
   };
 }

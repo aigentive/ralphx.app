@@ -5,7 +5,7 @@
  * - Empty columns auto-collapse on initial render and plan changes
  * - Columns auto-expand when task count transitions from 0 to N
  * - User-initiated expand is tracked via ref and respected (won't re-collapse)
- * - User-initiated collapse is tracked (won't auto-expand)
+ * - Manual collapse is only allowed for empty columns
  */
 
 import { useEffect, useRef, useCallback } from "react";
@@ -93,17 +93,18 @@ export function useColumnCollapse(
       const prevCount = prevCounts.get(col.id) ?? 0;
       const currentCount = taskCounts.get(col.id) ?? 0;
 
-      if (prevCount === 0 && currentCount > 0) {
-        // Count went from 0 to N — auto-expand unless user collapsed it
-        if (!userCollapsedRef.current.has(col.id)) {
-          storeExpandColumn(col.id);
-        }
+      if (currentCount > 0 && collapsedColumns.has(col.id)) {
+        // Columns with tasks should never stay collapsed.
+        userCollapsedRef.current.delete(col.id);
+        storeExpandColumn(col.id);
+      } else if (prevCount === 0 && currentCount > 0) {
+        storeExpandColumn(col.id);
       }
     }
 
     // Update previous counts
     prevCountsRef.current = new Map(taskCounts);
-  }, [taskCounts, columns, storeExpandColumn]);
+  }, [taskCounts, columns, collapsedColumns, storeExpandColumn]);
 
   const isCollapsed = useCallback(
     (columnId: string): boolean => collapsedColumns.has(columnId),
@@ -119,13 +120,16 @@ export function useColumnCollapse(
         userCollapsedRef.current.delete(columnId);
         storeExpandColumn(columnId);
       } else {
+        if ((taskCounts.get(columnId) ?? 0) > 0) {
+          return;
+        }
         // Collapsing — track as user-collapsed
         userCollapsedRef.current.add(columnId);
         userExpandedRef.current.delete(columnId);
         setColumnCollapsed(columnId, true);
       }
     },
-    [collapsedColumns, storeExpandColumn, setColumnCollapsed],
+    [collapsedColumns, taskCounts, storeExpandColumn, setColumnCollapsed],
   );
 
   const expandColumn = useCallback(

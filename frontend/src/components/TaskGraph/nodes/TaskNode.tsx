@@ -19,6 +19,7 @@ import { useStepProgress } from "@/hooks/useTaskSteps";
 import type { InternalStatus } from "@/types/status";
 import { TaskStatusBadge } from "@/components/tasks/TaskBoard/TaskStatusBadge";
 import { getStatusBorderColor } from "@/types/status-icons";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 import type { Task } from "@/types/task";
 import type { GroupInfo } from "@/lib/task-actions";
 
@@ -66,6 +67,12 @@ export type TaskNodeData = Record<string, unknown> & {
   category?: string;
   /** Target branch for plan_merge category nodes (e.g., 'develop', 'main') */
   mergeTarget?: string;
+  /** Pull request number for plan_merge nodes */
+  prNumber?: number | null;
+  /** Pull request status for plan_merge nodes */
+  prStatus?: string | null;
+  /** Plan branch lifecycle status for plan_merge nodes */
+  planBranchStatus?: string;
   /** Whether this node is highlighted (e.g., from timeline click) */
   isHighlighted?: boolean;
   /** Whether this node is keyboard-focused (for keyboard navigation) */
@@ -126,8 +133,34 @@ function getStepDotStyle(
 
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, mergeTarget, isHighlighted, isFocused, handlers, groupInfo } = data;
-  const mergeLabel = mergeTarget ? `Merge → ${mergeTarget}` : "Merge";
+  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, mergeTarget, prNumber, prStatus, planBranchStatus, isHighlighted, isFocused, handlers, groupInfo } = data;
+  const mergeLabel = mergeTarget ? `Merge -> ${mergeTarget}` : "Merge";
+  const categoryLabel = category === "plan_merge" ? mergeLabel : getTaskCategoryLabel(category);
+  const hasPrContext = category === "plan_merge" && typeof prNumber === "number";
+  const prState =
+    planBranchStatus === "merged" || internalStatus === "merged" || prStatus === "Merged"
+      ? "merged"
+      : prStatus === "Closed"
+      ? "closed"
+      : "review";
+  const prLabel =
+    prState === "merged"
+      ? `PR #${prNumber} merged`
+      : prState === "closed"
+      ? `PR #${prNumber} closed`
+      : `PR #${prNumber}`;
+  const prColor =
+    prState === "merged"
+      ? "var(--status-success)"
+      : prState === "closed"
+      ? "var(--status-warning)"
+      : "var(--status-info)";
+  const prTitle =
+    prState === "merged"
+      ? `PR #${prNumber} has been merged`
+      : prState === "closed"
+      ? `PR #${prNumber} was closed`
+      : `PR #${prNumber} is waiting for GitHub review or merge`;
   const statusColor = getStatusBorderColor(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
   const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
@@ -282,9 +315,9 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           )}
         </div>
 
-        {/* Category + step dots - same line */}
+        {/* Category, PR context, and step dots - same line */}
         <div
-          className="flex items-center gap-2 mt-2"
+          className="flex items-center gap-2 mt-2 min-w-0"
           style={{ height: "16px" }}
           data-testid="step-progress-footer"
         >
@@ -295,9 +328,29 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
                 fontWeight: 500,
                 color: "var(--text-muted)",
                 textTransform: "capitalize",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
               }}
+              title={categoryLabel}
             >
-              {category === "plan_merge" ? mergeLabel : category}
+              {categoryLabel}
+            </span>
+          )}
+          {hasPrContext && (
+            <span
+              data-testid="graph-pr-indicator"
+              style={{
+                fontSize: "10px",
+                fontWeight: 500,
+                color: prColor,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+              title={prTitle}
+            >
+              {prLabel}
             </span>
           )}
           {/* Show dots when we have step data */}

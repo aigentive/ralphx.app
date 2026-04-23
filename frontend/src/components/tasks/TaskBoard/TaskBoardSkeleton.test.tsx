@@ -37,7 +37,7 @@ describe("TaskBoardSkeleton", () => {
     expect(pulsingElements.length).toBeGreaterThan(0);
   });
 
-  it("should render first 3 columns as expanded (280px) and last 2 as collapsed (44px)", () => {
+  it("should render first 3 columns as expanded (280px) and last 2 as collapsed rails (128px)", () => {
     render(<TaskBoardSkeleton />);
 
     // First 3 columns: expanded
@@ -49,7 +49,7 @@ describe("TaskBoardSkeleton", () => {
     // Last 2 columns: collapsed
     for (let i = 3; i < 5; i++) {
       const col = screen.getByTestId(`skeleton-column-${i}`);
-      expect(col.style.width).toBe("44px");
+      expect(col.style.width).toBe("128px");
     }
   });
 

@@ -4,7 +4,6 @@
  * Shows completion info, merge commit SHA, and read-only historical chat.
  */
 
-import { useState } from "react";
 import {
   CheckCircle2,
   GitMerge,
@@ -12,9 +11,7 @@ import {
   GitPullRequest,
   ExternalLink,
   Loader2,
-  Code,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   SectionTitle,
   DetailCard,
@@ -22,15 +19,15 @@ import {
   StatusPill,
   TwoColumnLayout,
   TaskMetricsCard,
+  ChangeReviewSection,
+  PlanMergeContextSection,
 } from "./shared";
-import { ReviewTimeline } from "./shared/ReviewTimeline";
+import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
-import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
-import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
@@ -67,39 +64,43 @@ function MergeInfoCard({
   branchName: string | null | undefined;
   mergedAt: Date | string | null | undefined;
 }) {
-  const shortSha = mergeCommitSha?.substring(0, 7) ?? "unknown";
+  const shortSha = mergeCommitSha?.substring(0, 7);
 
   return (
     <DetailCard variant="success">
       <div className="space-y-4">
         {/* Merge commit */}
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
-            style={{ backgroundColor: "var(--status-success-muted)" }}
-          >
-            <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
-              Merge Commit
+        {shortSha && (
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
+              style={{ backgroundColor: "var(--status-success-muted)" }}
+            >
+              <GitCommit className="w-4 h-4" style={{ color: "var(--status-success)" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] uppercase tracking-wider text-text-primary/40 block">
+                Merge Commit
+              </span>
+              <span className="text-[13px] text-text-primary/70 font-mono">
+                {shortSha}
+              </span>
+            </div>
+            <span className="text-[12px] text-text-primary/40">
+              {formatRelativeTime(mergedAt)}
             </span>
-            <span className="text-[13px] text-text-primary/70 font-mono">
-              {shortSha}
-            </span>
           </div>
-          <span className="text-[12px] text-text-primary/40">
-            {formatRelativeTime(mergedAt)}
-          </span>
-        </div>
+        )}
 
         {/* Branch info */}
         {branchName && (
           <>
-            <div
-              className="h-px"
-              style={{ backgroundColor: "var(--overlay-weak)" }}
-            />
+            {shortSha && (
+              <div
+                className="h-px"
+                style={{ backgroundColor: "var(--overlay-weak)" }}
+              />
+            )}
             <div className="flex items-center gap-3">
               <div
                 className="flex items-center justify-center w-8 h-8 rounded-xl shrink-0"
@@ -124,65 +125,26 @@ function MergeInfoCard({
   );
 }
 
-/**
- * CommitSummaryCard - Shows commits that were merged
- */
-function CommitSummaryCard({ taskId }: { taskId: string }) {
-  const { commits, isLoadingHistory } = useGitDiff({ taskId });
-
-  if (isLoadingHistory) {
-    return (
-      <div className="flex items-center justify-center py-4">
-        <Loader2
-          className="w-5 h-5 animate-spin text-text-primary/30"
-        />
-      </div>
-    );
-  }
-
-  if (commits.length === 0) {
-    return (
-      <p className="text-[13px] text-text-primary/50 italic">
-        No commit history available
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {commits.slice(0, 5).map((commit) => (
-        <div
-          key={commit.sha}
-          className="flex items-start gap-3 py-2"
-        >
-          <span className="text-[11px] font-mono text-text-primary/50 shrink-0 pt-0.5">
-            {commit.shortSha}
-          </span>
-          <span className="text-[13px] text-text-primary/70 line-clamp-2">
-            {commit.message}
-          </span>
-        </div>
-      ))}
-      {commits.length > 5 && (
-        <p className="text-[12px] text-text-primary/40 italic">
-          +{commits.length - 5} more commits
-        </p>
-      )}
-    </div>
-  );
-}
-
-export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
+export function MergedTaskDetail({
+  task,
+  isHistorical: _isHistorical = false,
+}: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const { data: planBranch } = usePlanBranchForTask(task.id);
-  const [showReviewModal, setShowReviewModal] = useState(false);
+  const detailContext = useTaskDetailContextModel();
 
+  const isPlanMerge = task.category === "plan_merge";
+  const effectiveMergeCommitSha = task.mergeCommitSha ?? planBranch?.mergeCommitSha ?? null;
+  const hasPrContext = isPlanMerge && planBranch?.prNumber != null;
+  const hasMergeInfo = Boolean(effectiveMergeCommitSha || task.taskBranch);
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
-  const mergedAt = task.completedAt ?? task.updatedAt;
+  const mergedAt = planBranch?.mergedAt ?? task.completedAt ?? task.updatedAt;
 
-  const mergedIntoSubtitle = planBranch?.baseBranchOverride
-    ? `Merged into ${planBranch.baseBranchOverride}`
+  const mergeTarget =
+    planBranch?.baseBranchOverride ?? (isPlanMerge ? planBranch?.sourceBranch : null);
+  const mergedIntoSubtitle = mergeTarget
+    ? `Merged into ${mergeTarget}`
     : "Changes have been merged into the base branch";
 
   if (isLoading) {
@@ -228,8 +190,10 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
         </div>
       )}
 
+      {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
+
       {/* Merged via PR */}
-      {planBranch?.prNumber != null && planBranch?.prStatus === "Merged" && (
+      {hasPrContext && !detailContext && (
         <section data-testid="merged-via-pr-section">
           <SectionTitle>Pull Request</SectionTitle>
           <DetailCard variant="success">
@@ -260,28 +224,24 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
       )}
 
       {/* Task Metrics */}
-      <section data-testid="task-metrics-section">
-        <SectionTitle>Metrics</SectionTitle>
-        <TaskMetricsCard taskId={task.id} />
-      </section>
+      {!isPlanMerge && (
+        <section data-testid="task-metrics-section">
+          <SectionTitle>Metrics</SectionTitle>
+          <TaskMetricsCard taskId={task.id} />
+        </section>
+      )}
 
       {/* Merge Info */}
-      <section data-testid="merge-info-section">
-        <SectionTitle>Merge Details</SectionTitle>
-        <MergeInfoCard
-          mergeCommitSha={task.mergeCommitSha}
-          branchName={task.taskBranch}
-          mergedAt={mergedAt}
-        />
-      </section>
-
-      {/* Commits Summary */}
-      <section data-testid="commits-section">
-        <SectionTitle>Commits</SectionTitle>
-        <DetailCard>
-          <CommitSummaryCard taskId={task.id} />
-        </DetailCard>
-      </section>
+      {hasMergeInfo && !detailContext && (
+        <section data-testid="merge-info-section">
+          <SectionTitle>Merge Details</SectionTitle>
+          <MergeInfoCard
+            mergeCommitSha={effectiveMergeCommitSha}
+            branchName={task.taskBranch}
+            mergedAt={mergedAt}
+          />
+        </section>
+      )}
 
       {/* Merge Validation History */}
       <ValidationProgress
@@ -289,35 +249,13 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
         metadata={task.metadata}
       />
 
-      {/* Review History */}
-      <section data-testid="review-history-section">
-        <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Review History</SectionTitle>
-          <Button
-            data-testid="review-code-button"
-            onClick={() => setShowReviewModal(true)}
-            variant="ghost"
-            className="h-8 px-3 gap-2 rounded-lg font-medium text-[12px]"
-            style={{ color: "var(--status-info)" }}
-          >
-            <Code className="w-4 h-4" />
-            Review Code
-          </Button>
-        </div>
-        <DetailCard>
-          <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
-        </DetailCard>
-      </section>
+      <ChangeReviewSection
+        taskId={task.id}
+        history={history}
+        stateTransitions={stateTransitions}
+        context={isPlanMerge ? "plan_merge" : "task"}
+      />
       </TwoColumnLayout>
-
-      {showReviewModal && (
-        <ReviewDetailModal
-          taskId={task.id}
-          history={history}
-          showActions={false}
-          onClose={() => setShowReviewModal(false)}
-        />
-      )}
     </>
   );
 }

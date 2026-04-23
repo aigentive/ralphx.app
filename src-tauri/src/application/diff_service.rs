@@ -396,6 +396,26 @@ impl DiffService {
             if output.status.success() {
                 let base = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !base.is_empty() {
+                    let resolved_merge = Command::new("git")
+                        .args(["rev-parse", merge_commit_sha])
+                        .current_dir(project_path)
+                        .output()
+                        .ok()
+                        .filter(|output| output.status.success())
+                        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
+                    if resolved_merge.as_deref() == Some(base.as_str()) {
+                        let parent_ref = format!("{}^", merge_commit_sha);
+                        let parent_output = Command::new("git")
+                            .args(["rev-parse", "--verify", &parent_ref])
+                            .current_dir(project_path)
+                            .output();
+                        if parent_output
+                            .map(|output| output.status.success())
+                            .unwrap_or(false)
+                        {
+                            return parent_ref;
+                        }
+                    }
                     return base;
                 }
             }

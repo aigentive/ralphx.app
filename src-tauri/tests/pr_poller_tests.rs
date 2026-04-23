@@ -14,6 +14,7 @@ use ralphx_lib::domain::entities::{
     ArtifactId, ExecutionPlanId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchId,
     Project, ReviewOutcome, ReviewerType, Task, TaskCategory,
 };
+use ralphx_lib::domain::entities::plan_branch::PrStatus as DbPrStatus;
 use ralphx_lib::domain::repositories::PlanBranchRepository;
 use ralphx_lib::domain::services::github_service::{
     PrReviewCommentFeedback, PrReviewFeedback, PrStatus,
@@ -401,13 +402,14 @@ async fn test_pr_creation_guard_is_dashmap() {
 }
 
 // ============================================================================
-// Test 6: poller calls check_pr_status after jitter elapses
+// Test 6: poller calls check_pr_status immediately after jitter elapses
 // ============================================================================
 
 /// Verifies that the poll loop calls `check_pr_status` at least once after the
-/// initial jitter sleep.  Uses `start_paused = true` + `tokio::time::advance`.
+/// initial jitter sleep without waiting for the normal 60s poll interval.
+/// Uses `start_paused = true` + `tokio::time::advance`.
 #[tokio::test(start_paused = true)]
-async fn test_poller_calls_check_pr_status_after_jitter() {
+async fn test_poller_calls_check_pr_status_immediately_after_jitter() {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
 
@@ -473,15 +475,9 @@ async fn test_poller_calls_check_pr_status_after_jitter() {
     for _ in 0..10 {
         tokio::task::yield_now().await;
     }
-    // Step 3: Task entered poll_loop and registered sleep(60 s).  Advance past it.
-    tokio::time::advance(std::time::Duration::from_secs(61)).await;
-    for _ in 0..20 {
-        tokio::task::yield_now().await;
-    }
-
     assert!(
         mock.check_calls() >= 1,
-        "check_pr_status must be called at least once after jitter+interval elapses (got {} calls)",
+        "check_pr_status must be called at least once after jitter elapses (got {} calls)",
         mock.check_calls()
     );
 }
@@ -539,14 +535,14 @@ async fn test_poller_merged_stops_poller() {
 
     registry.start_polling(
         task.id.clone(),
-        plan_branch_id,
+        plan_branch_id.clone(),
         42,
         std::path::PathBuf::from("/tmp/test-repo"),
         "main".to_string(),
         transition_service,
     );
 
-    // Step-by-step advancement — see test_poller_calls_check_pr_status_after_jitter for rationale.
+    // Step-by-step advancement — see test_poller_calls_check_pr_status_immediately_after_jitter for rationale.
     // Step 1: Let the spawned task start and register its jitter sleep.
     for _ in 0..5 {
         tokio::task::yield_now().await;
@@ -556,7 +552,8 @@ async fn test_poller_merged_stops_poller() {
     for _ in 0..10 {
         tokio::task::yield_now().await;
     }
-    // Step 3: Advance past the 60 s poll interval so check_pr_status fires.
+    // Step 3: Extra time should not be required for the first status check, but
+    // advancing here keeps the assertion stable while the merged cleanup exits.
     tokio::time::advance(std::time::Duration::from_secs(61)).await;
     for _ in 0..30 {
         tokio::task::yield_now().await;
@@ -585,6 +582,21 @@ async fn test_poller_merged_stops_poller() {
         updated.internal_status,
         InternalStatus::Merged,
         "MERGED PR status must transition a Merging task to Merged"
+    );
+
+    let updated_branch = plan_branch_repo
+        .get_by_id(&plan_branch_id)
+        .await
+        .unwrap()
+        .expect("plan branch must still exist after merged poller exit");
+    assert_eq!(
+        updated_branch.pr_status,
+        Some(DbPrStatus::Merged),
+        "MERGED PR status must be persisted on the plan branch"
+    );
+    assert!(
+        !updated_branch.pr_polling_active,
+        "natural MERGED poller completion must clear pr_polling_active"
     );
 }
 
@@ -635,7 +647,7 @@ async fn test_poller_closed_does_not_regress_already_merged_task() {
 
     registry.start_polling(
         task.id.clone(),
-        plan_branch_id,
+        plan_branch_id.clone(),
         42,
         std::path::PathBuf::from("/tmp/test-repo"),
         "main".to_string(),
@@ -669,6 +681,21 @@ async fn test_poller_closed_does_not_regress_already_merged_task() {
         updated.internal_status,
         InternalStatus::Merged,
         "A stale closed-PR poller must not regress an already-merged task"
+    );
+
+    let updated_branch = plan_branch_repo
+        .get_by_id(&plan_branch_id)
+        .await
+        .unwrap()
+        .expect("plan branch must still exist after closed poller exit");
+    assert_eq!(
+        updated_branch.pr_status,
+        Some(DbPrStatus::Closed),
+        "CLOSED PR status must be persisted on the plan branch"
+    );
+    assert!(
+        !updated_branch.pr_polling_active,
+        "natural CLOSED poller completion must clear pr_polling_active"
     );
 }
 

@@ -59,6 +59,11 @@ export function DiffViewer({
   isLoadingHistory = false,
   isLoadingCommitFiles = false,
   defaultTab = "changes",
+  changesLabel = "Changes",
+  changesEmptyTitle,
+  changesEmptySubtitle,
+  autoSelectFirstCommit = false,
+  autoSelectFirstCommitFile = false,
   onTabChange,
   onCommitSelect,
 }: DiffViewerProps) {
@@ -132,6 +137,36 @@ export function DiffViewer({
     }
   }, [activeTab, changes, selectedFilePath, handleFileSelect]);
 
+  useEffect(() => {
+    if (activeTab !== "history" || !autoSelectFirstCommit || selectedCommit) return;
+    const firstCommit = commits[0];
+    if (firstCommit) {
+      void handleCommitSelect(firstCommit);
+    }
+  }, [activeTab, autoSelectFirstCommit, commits, selectedCommit, handleCommitSelect]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "history" ||
+      !autoSelectFirstCommitFile ||
+      !selectedCommit ||
+      commitSelectedFile
+    ) {
+      return;
+    }
+    const firstFile = commitFilesProp[0];
+    if (firstFile) {
+      void handleCommitFileSelect(firstFile.path);
+    }
+  }, [
+    activeTab,
+    autoSelectFirstCommitFile,
+    selectedCommit,
+    commitSelectedFile,
+    commitFilesProp,
+    handleCommitFileSelect,
+  ]);
+
   return (
     <div
       className="flex flex-col h-full bg-[var(--bg-base)]"
@@ -163,7 +198,7 @@ export function DiffViewer({
             )}
           >
             <GitBranch className="w-4 h-4" />
-            Changes
+            {changesLabel}
             {changes.length > 0 && (
               <span
                 className={cn(
@@ -227,6 +262,8 @@ export function DiffViewer({
                   files={changes}
                   selectedPath={selectedFilePath}
                   onSelect={handleFileSelect}
+                  {...(changesEmptyTitle !== undefined && { emptyTitle: changesEmptyTitle })}
+                  {...(changesEmptySubtitle !== undefined && { emptySubtitle: changesEmptySubtitle })}
                 />
               )}
             </ScrollArea>

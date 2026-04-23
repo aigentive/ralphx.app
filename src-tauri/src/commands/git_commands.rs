@@ -14,7 +14,7 @@ use crate::application::runtime_factory::{
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{GitMode, InternalStatus, ProjectId, TaskId};
+use crate::domain::entities::{GitMode, InternalStatus, PlanBranch, ProjectId, TaskId};
 use crate::domain::repositories::ExecutionSettingsRepository;
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -78,8 +78,14 @@ pub async fn get_task_commits(
     task_id: String,
     state: State<'_, AppState>,
 ) -> Result<TaskCommitsResponse, String> {
-    let task_id = TaskId::from_string(task_id);
+    get_task_commits_for_state(TaskId::from_string(task_id), state.inner()).await
+}
 
+#[doc(hidden)]
+pub async fn get_task_commits_for_state(
+    task_id: TaskId,
+    state: &AppState,
+) -> Result<TaskCommitsResponse, String> {
     // Get task
     let task = state
         .task_repo
@@ -98,26 +104,57 @@ pub async fn get_task_commits(
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
     let repo_path = PathBuf::from(&project.working_directory);
+    let plan_branch = get_branchless_plan_branch(state, &task, &task_id).await?;
 
     // Handle merged tasks specially - branch/worktree is deleted, use merge_commit_sha
     if task.internal_status == InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
-            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha)
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, base_branch))
+                .unwrap_or_else(|| base_branch.to_string());
+            let commits = GitService::get_merged_task_commits(&repo_path, &base_ref, merge_sha)
                 .await
                 .map_err(|e| e.to_string())?;
             return Ok(TaskCommitsResponse {
                 commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
             });
         }
+
+        if let Some(plan_branch) = plan_branch {
+            let base_ref = plan_branch_review_base_ref(&plan_branch, base_branch);
+            let commits =
+                GitService::get_commits_between(&repo_path, &base_ref, &plan_branch.branch_name)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            return Ok(TaskCommitsResponse {
+                commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
+            });
+        }
+
         // Merged but no merge_commit_sha - return empty (shouldn't happen)
         return Ok(TaskCommitsResponse { commits: vec![] });
     }
 
-    // Task must have a branch for non-merged states
-    let _task_branch = task
-        .task_branch
-        .as_ref()
-        .ok_or_else(|| "Task has no branch assigned".to_string())?;
+    if let Some(plan_branch) = plan_branch {
+        let base_ref = plan_branch_review_base_ref(&plan_branch, base_branch);
+        let commits =
+            GitService::get_commits_between(&repo_path, &base_ref, &plan_branch.branch_name)
+                .await
+                .map_err(|e| e.to_string())?;
+        return Ok(TaskCommitsResponse {
+            commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
+        });
+    }
+
+    if task.task_branch.is_none() {
+        return Err("Task has no branch assigned".to_string());
+    }
 
     // Determine working path — worktree path if available, else project dir
     let working_path = task
@@ -134,6 +171,34 @@ pub async fn get_task_commits(
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
     })
+}
+
+async fn get_branchless_plan_branch(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+    task_id: &TaskId,
+) -> Result<Option<PlanBranch>, String> {
+    if task.task_branch.is_some() {
+        return Ok(None);
+    }
+
+    state
+        .plan_branch_repo
+        .get_by_merge_task_id(task_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn plan_branch_review_base_ref(plan_branch: &PlanBranch, project_base_branch: &str) -> String {
+    plan_branch
+        .base_branch_override
+        .as_deref()
+        .filter(|branch| !branch.is_empty())
+        .or_else(|| {
+            (!plan_branch.source_branch.is_empty()).then_some(plan_branch.source_branch.as_str())
+        })
+        .unwrap_or(project_base_branch)
+        .to_string()
 }
 
 /// Get diff statistics for task branch compared to base

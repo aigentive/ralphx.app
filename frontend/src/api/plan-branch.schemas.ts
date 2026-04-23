@@ -22,6 +22,7 @@ export const PlanBranchSchema = z.object({
   pr_status: z.enum(["Draft", "Open", "Merged", "Closed"]).nullable(),
   pr_polling_active: z.boolean().default(false),
   pr_eligible: z.boolean().default(false),
+  merge_commit_sha: z.string().nullable().optional(),
   base_branch_override: z.string().nullable(),
 });
 

@@ -76,6 +76,16 @@ export interface DiffViewerProps {
   isLoadingCommitFiles?: boolean;
   /** Currently active tab */
   defaultTab?: DiffViewTab;
+  /** Label for the changes tab. */
+  changesLabel?: string;
+  /** Empty-state title for the changes tree. */
+  changesEmptyTitle?: string;
+  /** Empty-state subtitle for the changes tree. */
+  changesEmptySubtitle?: string;
+  /** Select the first commit when opening the History tab. */
+  autoSelectFirstCommit?: boolean;
+  /** Select the first changed file after a History commit is selected. */
+  autoSelectFirstCommitFile?: boolean;
   /** Callback when tab changes */
   onTabChange?: (tab: DiffViewTab) => void;
   /** Callback when commit is selected */

@@ -30,7 +30,10 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 import { withAlpha } from "@/lib/theme-colors";
+import { TaskDetailContextProvider } from "./detail-views/shared/TaskDetailContextProvider";
+import type { TaskDetailViewMode } from "./detail-views/shared/TaskDetailContext";
 
 // Import state-specific detail view components
 import {
@@ -59,6 +62,10 @@ interface TaskDetailPanelProps {
   viewAsStatus?: InternalStatus;
   /** Timestamp for historical view context */
   viewTimestamp?: string;
+  /** Conversation ID for historical state context */
+  viewConversationId?: string | undefined;
+  /** Agent run ID for historical state context */
+  viewAgentRunId?: string | undefined;
 }
 
 /**
@@ -359,6 +366,8 @@ export function TaskDetailPanel({
   useViewRegistry = false,
   viewAsStatus,
   viewTimestamp,
+  viewConversationId,
+  viewAgentRunId,
 }: TaskDetailPanelProps) {
   const [showContext, setShowContext] = useState(showContextProp);
 
@@ -367,6 +376,7 @@ export function TaskDetailPanel({
 
   // Fetch steps - must be called unconditionally (hooks rules)
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
+  const categoryLabel = getTaskCategoryLabel(task.category);
 
   // If using View Registry Pattern, render the appropriate state-specific component
   // This check must come AFTER all hooks to satisfy React hooks rules
@@ -377,23 +387,36 @@ export function TaskDetailPanel({
       TASK_DETAIL_VIEWS[statusForView] ?? BasicTaskDetail;
     // Pass isHistorical when viewing a historical state (viewAsStatus is set)
     const isHistorical = viewAsStatus !== undefined;
+    const viewMode: TaskDetailViewMode = isHistorical
+      ? {
+          kind: "historical",
+          status: statusForView,
+          timestamp: viewTimestamp ?? task.updatedAt,
+          conversationId: viewConversationId,
+          agentRunId: viewAgentRunId,
+        }
+      : { kind: "current" };
     if (statusForView === "reviewing") {
       return (
-        <ReviewingTaskDetail
-          key={`reviewing-${isHistorical ? "hist" : "curr"}`}
-          task={task}
-          isHistorical={isHistorical}
-          viewTimestamp={viewTimestamp}
-        />
+        <TaskDetailContextProvider task={task} viewMode={viewMode}>
+          <ReviewingTaskDetail
+            key={`reviewing-${isHistorical ? "hist" : "curr"}`}
+            task={task}
+            isHistorical={isHistorical}
+            viewTimestamp={viewMode.kind === "historical" ? viewMode.timestamp : undefined}
+          />
+        </TaskDetailContextProvider>
       );
     }
     return (
-      <ViewComponent
-        key={`${statusForView}-${isHistorical ? "hist" : "curr"}`}
-        task={task}
-        isHistorical={isHistorical}
-        viewStatus={statusForView}
-      />
+      <TaskDetailContextProvider task={task} viewMode={viewMode}>
+        <ViewComponent
+          key={`${statusForView}-${isHistorical ? "hist" : "curr"}`}
+          task={task}
+          isHistorical={isHistorical}
+          viewStatus={statusForView}
+        />
+      </TaskDetailContextProvider>
     );
   }
 
@@ -434,7 +457,7 @@ export function TaskDetailPanel({
                     color: withAlpha("var(--text-primary)", 60),
                   }}
                 >
-                  {task.category}
+                  {categoryLabel}
                 </span>
                 <StatusBadge status={task.internalStatus} />
               </div>

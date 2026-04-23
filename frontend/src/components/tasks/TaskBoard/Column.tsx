@@ -9,7 +9,7 @@
  */
 
 import { useDroppable, useDndContext } from "@dnd-kit/core";
-import { Inbox, XCircle, Loader2 } from "lucide-react";
+import { ChevronLeft, Inbox, XCircle, Loader2 } from "lucide-react";
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import type { WorkflowColumnResponse } from "@/lib/api/workflows";
 import type { StateGroup } from "@/types/workflow";
@@ -40,6 +40,12 @@ import {
 import { CollapsedQuickAdd } from "./CollapsedQuickAdd";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { formatMinutesHuman } from "@/lib/formatters";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ColumnProps {
   column: WorkflowColumnResponse;
@@ -76,11 +82,14 @@ function InvalidDropIcon() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
-      <Inbox className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
-      <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+    <div
+      className={`flex flex-col items-center justify-center ${compact ? "gap-1.5 py-4 px-1" : "gap-2 py-8 px-4"}`}
+      data-testid={compact ? "collapsed-empty-state" : undefined}
+    >
+      <Inbox className={compact ? "w-6 h-6" : "w-8 h-8"} style={{ color: "var(--text-muted)" }} />
+      <p style={{ fontSize: compact ? "11px" : "12px", color: "var(--text-muted)" }}>
         No tasks
       </p>
     </div>
@@ -148,6 +157,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     getCollapsedGroups(column.id)
   );
+  const [pendingQuickAddOpen, setPendingQuickAddOpen] = useState(0);
 
   // Handler for toggling group collapse state
   const handleToggleGroup = useCallback(
@@ -370,7 +380,16 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     [onToggleCollapse]
   );
 
-  // Collapsed rendering: 44px strip with vertical title, count badge, click-to-expand
+  const handleCollapsedQuickAdd = useCallback(() => {
+    setPendingQuickAddOpen((value) => value + 1);
+    onToggleCollapse?.();
+  }, [onToggleCollapse]);
+
+  const handleQuickAddConsumed = useCallback(() => {
+    setPendingQuickAddOpen(0);
+  }, []);
+
+  // Collapsed rendering: compact rail with horizontal title, count badge, click-to-expand.
   if (isCollapsed) {
     return (
       <div
@@ -382,13 +401,13 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         aria-label={`${column.name} column, ${tasks.length} tasks. Click to expand`}
         onClick={onToggleCollapse}
         onKeyDown={handleCollapsedKeyDown}
-        className="flex-shrink-0 flex flex-col items-center h-full cursor-pointer"
+        className="flex-shrink-0 flex flex-col items-start h-full cursor-pointer"
         style={{
-          width: "44px",
-          minWidth: "44px",
-          maxWidth: "44px",
-          paddingLeft: "6px",
-          paddingRight: "6px",
+          width: "128px",
+          minWidth: "128px",
+          maxWidth: "128px",
+          paddingLeft: "10px",
+          paddingRight: "10px",
           paddingTop: "8px",
           scrollSnapAlign: "start",
           transition: "width 200ms ease, min-width 200ms ease, max-width 200ms ease",
@@ -404,42 +423,46 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           }),
         }}
       >
-        {/* Vertical column title - top-to-bottom reading */}
-        <span
-          className="select-none"
-          style={{
-            writingMode: "vertical-rl",
-            transform: "rotate(180deg)",
-            fontSize: "11px",
-            fontWeight: 600,
-            color: "var(--text-secondary)",
-            textTransform: "uppercase",
-            letterSpacing: "0.02em",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxHeight: "calc(100% - 40px)",
-          }}
-        >
-          {column.name}
-        </span>
+        <div className="flex w-full items-center justify-between gap-2">
+          <span
+            className="select-none"
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.02em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+            }}
+          >
+            {column.name}
+          </span>
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 500,
+              color: "var(--text-muted)",
+              fontVariantNumeric: "tabular-nums",
+              flexShrink: 0,
+            }}
+          >
+            {tasks.length}
+            {matchCount !== undefined && ` / ${matchCount}`}
+          </span>
+        </div>
 
-        {/* Task count badge */}
-        <span
-          className="mt-2"
-          style={{
-            fontSize: "10px",
-            fontWeight: 500,
-            color: "var(--text-muted)",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {tasks.length}
-        </span>
+        {tasks.length === 0 && (
+          <div className="mt-4 self-stretch">
+            <EmptyState compact />
+          </div>
+        )}
 
         {/* Quick-add button for draft/backlog columns (hidden during drag) */}
         {!isDragging && (column.id === "draft" || column.id === "backlog") && (
-          <CollapsedQuickAdd projectId={projectId} columnId={column.id} />
+          <CollapsedQuickAdd onActivate={handleCollapsedQuickAdd} />
         )}
       </div>
     );
@@ -507,6 +530,28 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
 
         {/* Invalid drop indicator */}
         {isOver && isInvalid && <InvalidDropIcon />}
+
+        {tasks.length === 0 && onToggleCollapse && (
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Collapse ${column.name} column`}
+                  onClick={onToggleCollapse}
+                  className="flex h-5 w-5 items-center justify-center rounded"
+                  style={{
+                    color: "var(--text-muted)",
+                    backgroundColor: "transparent",
+                  }}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Collapse column</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       {/* Drop zone with task list - clean, minimal */}
@@ -598,6 +643,8 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
               <InlineTaskAdd
                 projectId={projectId}
                 columnId={column.id}
+                {...(pendingQuickAddOpen > 0 && { autoExpandKey: pendingQuickAddOpen })}
+                onAutoExpandConsumed={handleQuickAddConsumed}
               />
             )}
           </div>

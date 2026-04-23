@@ -13,12 +13,47 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { MergingTaskDetail } from "./MergingTaskDetail";
+import type { ArtifactResponse } from "@/api/artifacts";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
 import type { PlanBranch } from "@/api/plan-branch.types";
+import type { ReviewNoteResponse } from "@/lib/tauri";
 
 const mockPlanBranchState = vi.hoisted((): { current: PlanBranch | null } => ({
   current: null,
+}));
+
+const mockPlanArtifactState = vi.hoisted((): { current: ArtifactResponse | null } => ({
+  current: {
+    id: "artifact-123",
+    name: "Plan: Fix graph crash",
+    artifact_type: "specification",
+    content_type: "inline",
+    content:
+      "# Fix graph crash when no active plan selected\n\nGuard graph rendering when no plan is selected.",
+    created_at: "2026-01-28T12:00:00+00:00",
+    created_by: "test",
+    version: 3,
+    bucket_id: null,
+    task_id: null,
+    process_id: null,
+    derived_from: [],
+  },
+}));
+
+const mockGitDiffState = vi.hoisted(() => ({
+  commits: [] as Array<{
+    sha: string;
+    shortSha: string;
+    message: string;
+    author: string;
+    date: Date;
+  }>,
+}));
+
+const mockPlanReviewState = vi.hoisted(() => ({
+  tasks: [] as Task[],
+  historiesByTaskId: new Map<string, ReviewNoteResponse[]>(),
 }));
 
 const mockConfirmation = {
@@ -35,12 +70,63 @@ vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       stop: vi.fn(async () => ({})),
+      list: vi.fn(async () => ({
+        tasks: mockPlanReviewState.tasks,
+        total: mockPlanReviewState.tasks.length,
+        hasMore: false,
+        offset: 0,
+      })),
+    },
+    reviews: {
+      getTaskStateHistory: vi.fn(async (taskId: string) =>
+        mockPlanReviewState.historiesByTaskId.get(taskId) ?? []
+      ),
+    },
+    artifacts: {
+      getArtifact: vi.fn(async () => mockPlanArtifactState.current),
     },
   },
 }));
 
 vi.mock("@/hooks/usePlanBranchForTask", () => ({
   usePlanBranchForTask: vi.fn(() => ({ data: mockPlanBranchState.current })),
+}));
+
+vi.mock("@/hooks/useGitDiff", () => ({
+  useGitDiff: vi.fn(() => ({
+    changes: [],
+    commits: mockGitDiffState.commits,
+    commitFiles: [],
+    isLoadingChanges: false,
+    isLoadingHistory: false,
+    isLoadingCommitFiles: false,
+    error: null,
+    fetchDiff: vi.fn(),
+    fetchCommitFiles: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+
+vi.mock("@/hooks/useReviews", () => ({
+  useTaskStateHistory: vi.fn(() => ({ data: [], isLoading: false })),
+}));
+
+vi.mock("@/hooks/useTaskStateTransitions", () => ({
+  useTaskStateTransitions: vi.fn(() => ({ data: [] })),
+}));
+
+vi.mock("@/components/reviews/ReviewDetailModal", () => ({
+  ReviewDetailModal: ({
+    taskId,
+    reviewMode,
+  }: {
+    taskId: string;
+    reviewMode?: string;
+  }) => (
+    <div data-testid="review-detail-modal">
+      Review modal for {taskId} in {reviewMode ?? "task"} mode
+    </div>
+  ),
 }));
 
 import { api } from "@/lib/tauri";
@@ -136,6 +222,21 @@ function createTestPlanBranch(overrides?: Partial<PlanBranch>): PlanBranch {
   };
 }
 
+function createReviewNote(overrides?: Partial<ReviewNoteResponse>): ReviewNoteResponse {
+  return {
+    id: "review-note-1",
+    task_id: "plan-task-1",
+    reviewer: "ai",
+    outcome: "approved",
+    summary: "Plan implementation review passed",
+    notes: "No follow-up work needed.",
+    issues: [],
+    followup_session_id: null,
+    created_at: "2026-01-28T12:20:00+00:00",
+    ...overrides,
+  };
+}
+
 function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -155,6 +256,32 @@ describe("MergingTaskDetail", () => {
   beforeEach(() => {
     mockListeners.clear();
     mockPlanBranchState.current = null;
+    mockPlanArtifactState.current = {
+      id: "artifact-123",
+      name: "Plan: Fix graph crash",
+      artifact_type: "specification",
+      content_type: "inline",
+      content:
+        "# Fix graph crash when no active plan selected\n\nGuard graph rendering when no plan is selected.",
+      created_at: "2026-01-28T12:00:00+00:00",
+      created_by: "test",
+      version: 3,
+      bucket_id: null,
+      task_id: null,
+      process_id: null,
+      derived_from: [],
+    };
+    mockGitDiffState.commits = [];
+    const planTask = createTestTask({
+      id: "plan-task-1",
+      title: "Fix graph crash",
+      category: "feature",
+      internalStatus: "merged",
+    });
+    mockPlanReviewState.tasks = [planTask];
+    mockPlanReviewState.historiesByTaskId = new Map([
+      [planTask.id, [createReviewNote({ task_id: planTask.id })]],
+    ]);
     // Mock invoke to return resolved promises for hydration calls
     vi.mocked(invoke).mockResolvedValue(undefined);
     mockConfirmation.confirm = vi.fn(async () => true);
@@ -613,7 +740,7 @@ describe("MergingTaskDetail", () => {
       expect(screen.getByText("Resolving Merge Conflicts")).toBeInTheDocument();
     });
 
-    it("shows PR waiting copy instead of conflict-agent UI for PR-backed plan merge", () => {
+    it("shows PR waiting copy instead of conflict-agent UI for PR-backed plan merge", async () => {
       mockPlanBranchState.current = createTestPlanBranch();
       const task = createTestTask({
         internalStatus: "merging",
@@ -623,6 +750,7 @@ describe("MergingTaskDetail", () => {
 
       renderWithProviders(<MergingTaskDetail task={task} />);
 
+      expect(await screen.findByText("Fix graph crash when no active plan selected")).toBeInTheDocument();
       expect(screen.getByText("Waiting on Pull Request")).toBeInTheDocument();
       expect(
         screen.getByText(
@@ -630,14 +758,35 @@ describe("MergingTaskDetail", () => {
         )
       ).toBeInTheDocument();
       expect(screen.getByTestId("pr-mode-section")).toBeInTheDocument();
-      expect(screen.getByText("PR #68")).toBeInTheDocument();
+      expect(screen.getAllByText("PR #68").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Waiting for GitHub review or merge.")).toBeInTheDocument();
       expect(screen.queryByText("Agent resolving conflicts")).not.toBeInTheDocument();
       expect(screen.queryByTestId("merge-progress-section")).not.toBeInTheDocument();
       expect(screen.queryByTestId("merging-actions-section")).not.toBeInTheDocument();
       expect(screen.queryByText("Stop Merge")).not.toBeInTheDocument();
-      expect(screen.getByTitle("ralphx/ralphx/plan-a3612efd")).toBeInTheDocument();
-      expect(screen.getByTitle("main")).toBeInTheDocument();
+      expect(screen.getAllByTitle("ralphx/ralphx/plan-a3612efd").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByTitle("main").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("shows plan context for local plan merges before PR mode", async () => {
+      mockPlanBranchState.current = createTestPlanBranch({
+        prNumber: null,
+        prUrl: null,
+        prStatus: null,
+        prPollingActive: false,
+        prEligible: false,
+      });
+      const task = createTestTask({
+        internalStatus: "pending_merge",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(await screen.findByText("Fix graph crash when no active plan selected")).toBeInTheDocument();
+      expect(screen.getByText("Guard graph rendering when no plan is selected.")).toBeInTheDocument();
+      expect(screen.queryByTestId("pr-mode-section")).not.toBeInTheDocument();
     });
 
     it("shows merger-agent copy for PR branch update conflicts instead of PR waiting copy", () => {
@@ -678,6 +827,71 @@ describe("MergingTaskDetail", () => {
       ).not.toBeInTheDocument();
       expect(screen.getByTitle("origin/main")).toBeInTheDocument();
       expect(screen.getByTitle("ralphx/ralphx/plan-a3612efd")).toBeInTheDocument();
+    });
+
+    it("shows full commit history and Review Code for PR-backed plan merge", async () => {
+      const user = userEvent.setup();
+      mockPlanBranchState.current = createTestPlanBranch();
+      mockGitDiffState.commits = Array.from({ length: 6 }, (_, index) => ({
+        sha: `sha-${index + 1}`,
+        shortSha: `abc123${index}`,
+        message: `feat: plan branch commit ${index + 1}`,
+        author: "RalphX",
+        date: new Date("2026-01-28T12:00:00+00:00"),
+      }));
+      const task = createTestTask({
+        internalStatus: "waiting_on_pr",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(await screen.findByText("Fix graph crash when no active plan selected")).toBeInTheDocument();
+      expect(screen.getByTestId("commits-section")).toBeInTheDocument();
+      for (const commit of mockGitDiffState.commits) {
+        expect(screen.getByText(commit.shortSha)).toBeInTheDocument();
+        expect(screen.getByText(commit.message)).toBeInTheDocument();
+      }
+      expect(screen.queryByText("+1 more commits")).not.toBeInTheDocument();
+      expect(screen.getByText("Code Review")).toBeInTheDocument();
+      expect(screen.getByText("Review Diff")).toBeInTheDocument();
+      expect(await screen.findByText("Plan implementation review passed")).toBeInTheDocument();
+      expect(screen.getByText("Fix graph crash")).toBeInTheDocument();
+      expect(screen.queryByText("No review history available")).not.toBeInTheDocument();
+      expect(screen.queryByText("No internal plan review records available")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("review-code-button"));
+
+      expect(screen.getByTestId("review-detail-modal")).toHaveTextContent(
+        "Review modal for task-123 in plan_merge mode"
+      );
+    });
+
+    it("renders historical PR wait without live polling or conflict-agent copy", async () => {
+      mockPlanBranchState.current = createTestPlanBranch({
+        prPollingActive: true,
+      });
+      const task = createTestTask({
+        internalStatus: "merged",
+        category: "plan_merge",
+        taskBranch: null,
+      });
+
+      const { container } = renderWithProviders(
+        <MergingTaskDetail task={task} isHistorical viewStatus="waiting_on_pr" />
+      );
+
+      expect(await screen.findByText("Fix graph crash when no active plan selected")).toBeInTheDocument();
+      expect(screen.getByText("Merge Completed")).toBeInTheDocument();
+      expect(screen.getByTestId("pr-mode-section")).toBeInTheDocument();
+      expect(
+        screen.getByText("At this point, RalphX was waiting for GitHub review or merge.")
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Waiting for GitHub review or merge.")).not.toBeInTheDocument();
+      expect(screen.queryByText("Agent resolving conflicts")).not.toBeInTheDocument();
+      expect(screen.getByText("Waiting on pull request")).toBeInTheDocument();
+      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
     });
 
     it("shows conflict files when present in metadata", () => {

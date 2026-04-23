@@ -20,6 +20,7 @@ export interface PlanBranch {
   prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
   prPollingActive: boolean;
   prEligible: boolean;
+  mergeCommitSha?: string | null;
   baseBranchOverride: string | null;
 }
 

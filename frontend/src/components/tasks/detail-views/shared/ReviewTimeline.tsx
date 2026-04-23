@@ -109,6 +109,7 @@ function formatRelativeTime(date: Date | string | undefined): string {
 interface TimelineItemProps {
   entry: ReviewNoteResponse;
   isLast: boolean;
+  entryContext?: string | null;
   attemptNumber?: number;
   isStale?: boolean;
   resolutionTrail?: { label: string; timestamp: string }[];
@@ -117,6 +118,7 @@ interface TimelineItemProps {
 function TimelineItem({
   entry,
   isLast,
+  entryContext = null,
   attemptNumber,
   isStale = false,
   resolutionTrail = [],
@@ -211,6 +213,14 @@ function TimelineItem({
             <span className="text-[12px] font-semibold text-text-primary/75">
               {getLabel()}
             </span>
+            {entryContext && (
+              <span
+                className="text-[11px] text-text-primary/40 truncate min-w-0 max-w-[220px]"
+                title={entryContext}
+              >
+                {entryContext}
+              </span>
+            )}
             {isStale && (
               <span
                 className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
@@ -306,6 +316,7 @@ export interface ReviewTimelineProps {
   history: ReviewNoteResponse[];
   filter?: (entry: ReviewNoteResponse) => boolean;
   emptyMessage?: string;
+  getEntryContext?: (entry: ReviewNoteResponse) => string | null | undefined;
   showAttemptNumbers?: boolean;
   /** State transitions used to detect stale "changes_requested" reviews */
   stateTransitions?: StateTransition[];
@@ -315,6 +326,7 @@ export function ReviewTimeline({
   history,
   filter,
   emptyMessage = "No review history available",
+  getEntryContext,
   showAttemptNumbers = false,
   stateTransitions = [],
 }: ReviewTimelineProps) {
@@ -342,6 +354,7 @@ export function ReviewTimeline({
             key={entry.id}
             entry={entry}
             isLast={index === displayedHistory.length - 1}
+            entryContext={getEntryContext?.(entry) ?? null}
             isStale={stale}
             resolutionTrail={trail}
             {...(showAttemptNumbers && {

@@ -3,7 +3,7 @@
 //! Provides file change and diff data for reviewing task execution results.
 
 use crate::application::{AppState, ConflictDiff, DiffService, FileChange, FileDiff};
-use crate::domain::entities::{Project, Task, TaskId};
+use crate::domain::entities::{PlanBranch, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
 use tauri::State;
@@ -42,27 +42,79 @@ async fn get_task_context(
     Ok((task, working_path, working_path_str, project))
 }
 
+async fn get_branchless_plan_branch(
+    app_state: &AppState,
+    task: &Task,
+) -> AppResult<Option<PlanBranch>> {
+    if task.task_branch.is_some() {
+        return Ok(None);
+    }
+
+    app_state
+        .plan_branch_repo
+        .get_by_merge_task_id(&task.id)
+        .await
+}
+
+fn plan_branch_review_base_ref(plan_branch: &PlanBranch, project: &Project) -> String {
+    plan_branch
+        .base_branch_override
+        .as_deref()
+        .filter(|branch| !branch.is_empty())
+        .or_else(|| {
+            (!plan_branch.source_branch.is_empty()).then_some(plan_branch.source_branch.as_str())
+        })
+        .or(project.base_branch.as_deref())
+        .unwrap_or("main")
+        .to_string()
+}
+
 /// Get all files changed by the agent for a task
 #[tauri::command]
 pub async fn get_task_file_changes(
     app_state: State<'_, AppState>,
     task_id: String,
 ) -> AppResult<Vec<FileChange>> {
-    let task_id = TaskId::from_string(task_id);
+    get_task_file_changes_for_state(app_state.inner(), TaskId::from_string(task_id)).await
+}
 
+#[doc(hidden)]
+pub async fn get_task_file_changes_for_state(
+    app_state: &AppState,
+    task_id: TaskId,
+) -> AppResult<Vec<FileChange>> {
     // Get the correct working path and project for this task
-    let (task, _, working_path_str, project) = get_task_context(&app_state, &task_id).await?;
+    let (task, _, working_path_str, project) = get_task_context(app_state, &task_id).await?;
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new();
+    let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, &project))
+                .unwrap_or_else(|| base_branch.to_string());
             return diff_service.get_merged_task_file_changes(
                 &working_path_str,
-                base_branch,
+                &base_ref,
                 merge_sha,
             );
         }
+    }
+
+    if let Some(plan_branch) = plan_branch {
+        let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+        return diff_service.get_file_changes_between_refs(
+            &working_path_str,
+            &base_ref,
+            &plan_branch.branch_name,
+        );
     }
 
     diff_service
@@ -77,22 +129,49 @@ pub async fn get_file_diff(
     task_id: String,
     file_path: String,
 ) -> AppResult<FileDiff> {
-    let task_id = TaskId::from_string(task_id);
+    get_file_diff_for_state(app_state.inner(), TaskId::from_string(task_id), file_path).await
+}
 
+#[doc(hidden)]
+pub async fn get_file_diff_for_state(
+    app_state: &AppState,
+    task_id: TaskId,
+    file_path: String,
+) -> AppResult<FileDiff> {
     // Get the correct working path and project for this task
-    let (task, _, working_path_str, project) = get_task_context(&app_state, &task_id).await?;
+    let (task, _, working_path_str, project) = get_task_context(app_state, &task_id).await?;
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new();
+    let plan_branch = get_branchless_plan_branch(app_state, &task).await?;
     if task.internal_status == crate::domain::entities::InternalStatus::Merged {
-        if let Some(ref merge_sha) = task.merge_commit_sha {
+        let merge_sha = task.merge_commit_sha.as_deref().or_else(|| {
+            plan_branch
+                .as_ref()
+                .and_then(|branch| branch.merge_commit_sha.as_deref())
+        });
+        if let Some(merge_sha) = merge_sha {
+            let base_ref = plan_branch
+                .as_ref()
+                .map(|branch| plan_branch_review_base_ref(branch, &project))
+                .unwrap_or_else(|| base_branch.to_string());
             return diff_service.get_merged_task_file_diff(
                 &file_path,
                 &working_path_str,
-                base_branch,
+                &base_ref,
                 merge_sha,
             );
         }
+    }
+
+    if let Some(plan_branch) = plan_branch {
+        let base_ref = plan_branch_review_base_ref(&plan_branch, &project);
+        return diff_service.get_file_diff_between_refs(
+            &file_path,
+            &working_path_str,
+            &base_ref,
+            &plan_branch.branch_name,
+        );
     }
 
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)

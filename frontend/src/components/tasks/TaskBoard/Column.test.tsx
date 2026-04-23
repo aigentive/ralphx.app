@@ -190,25 +190,67 @@ describe("Column", () => {
   });
 
   describe("collapsed state", () => {
-    it("should render as 44px strip when collapsed", () => {
+    it("should render as compact horizontal rail when collapsed", () => {
       const column = createMockColumn({ id: "ready", name: "Ready" });
       render(
         <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
         { wrapper: DndWrapper },
       );
       const el = screen.getByTestId("column-ready");
-      expect(el.style.width).toBe("44px");
+      expect(el.style.width).toBe("128px");
       expect(el).toHaveAttribute("role", "button");
       expect(el).toHaveAttribute("aria-expanded", "false");
     });
 
-    it("should show vertical column name when collapsed", () => {
+    it("should show horizontal column name when collapsed", () => {
       const column = createMockColumn({ id: "ready", name: "Ready" });
       render(
         <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
         { wrapper: DndWrapper },
       );
-      expect(screen.getByText("Ready")).toBeInTheDocument();
+      const label = screen.getByText("Ready");
+      expect(label).toBeInTheDocument();
+      expect(label).not.toHaveStyle({ writingMode: "vertical-rl" });
+    });
+
+    it("should keep the empty state visible when collapsed with no tasks", () => {
+      const column = createMockColumn({ id: "review", name: "In Review" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+
+      expect(screen.getByTestId("collapsed-empty-state")).toHaveTextContent("No tasks");
+    });
+
+    it("should expose a collapse control when expanded", () => {
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed={false} onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+
+      expect(screen.getByLabelText("Collapse Ready column")).toBeInTheDocument();
+    });
+
+    it("should not expose a collapse control when expanded with tasks", () => {
+      const tasks = [createMockTask({ id: "task-1", title: "Task One" })];
+      vi.mocked(useInfiniteTasksQuery).mockReturnValue({
+        data: { pages: [{ tasks, total: 1, hasMore: false, offset: 0 }], pageParams: [undefined] } as InfiniteData<TaskListResponse>,
+        fetchNextPage: vi.fn(),
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as ReturnType<typeof useInfiniteTasksQuery>);
+      const column = createMockColumn({ id: "ready", name: "Ready" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed={false} onToggleCollapse={vi.fn()} />,
+        { wrapper: DndWrapper },
+      );
+
+      expect(screen.queryByLabelText("Collapse Ready column")).not.toBeInTheDocument();
     });
 
     it("should show Draft '+' quick-add button when draft column is collapsed", () => {
@@ -218,6 +260,19 @@ describe("Column", () => {
         { wrapper: DndWrapper },
       );
       expect(screen.getByLabelText("Add task")).toBeInTheDocument();
+    });
+
+    it("should expand the column when collapsed quick-add is clicked", () => {
+      const onToggleCollapse = vi.fn();
+      const column = createMockColumn({ id: "draft", name: "Draft" });
+      render(
+        <Column column={column} projectId="p1" showArchived={false} showMergeTasks isCollapsed onToggleCollapse={onToggleCollapse} />,
+        { wrapper: DndWrapper },
+      );
+
+      screen.getByLabelText("Add task").click();
+
+      expect(onToggleCollapse).toHaveBeenCalledTimes(1);
     });
 
     it("should NOT show '+' button on non-draft collapsed columns", () => {

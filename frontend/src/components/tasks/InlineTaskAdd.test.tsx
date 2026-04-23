@@ -81,6 +81,15 @@ describe("InlineTaskAdd", () => {
       expect(screen.getByTestId("inline-task-add-input")).toBeInTheDocument();
     });
 
+    it("auto-expands from a collapsed column request", () => {
+      const onAutoExpandConsumed = vi.fn();
+      renderComponent({ autoExpandKey: 1, onAutoExpandConsumed });
+
+      expect(screen.getByTestId("inline-task-add-expanded")).toBeInTheDocument();
+      expect(screen.getByTestId("inline-task-add-input")).toBeInTheDocument();
+      expect(onAutoExpandConsumed).toHaveBeenCalledTimes(1);
+    });
+
     it("uses collapsed hover styling class", () => {
       renderComponent();
 

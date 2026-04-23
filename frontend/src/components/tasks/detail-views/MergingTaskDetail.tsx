@@ -34,7 +34,10 @@ import {
   StatusBanner,
   StatusPill,
   TwoColumnLayout,
+  ChangeReviewSection,
+  PlanMergeContextSection,
 } from "./shared";
+import { useTaskDetailContextModel } from "./shared/TaskDetailContext";
 import { useMergeValidationEvents } from "@/hooks/useMergeValidationEvents";
 import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
 import { useConflictDetection } from "@/hooks/useConflictDetection";
@@ -49,6 +52,8 @@ import { useMergePipeline } from "@/hooks/useMergePipeline";
 import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { PrStatusBadge } from "./shared/PrStatusBadge";
 import { statusTint, withAlpha } from "@/lib/theme-colors";
+import { useTaskStateHistory } from "@/hooks/useReviews";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -199,7 +204,7 @@ function MergeProgressSteps({
 }: {
   isProgrammaticPhase: boolean;
   isHistorical?: boolean | undefined;
-  historicalMode?: "attempted" | "resolving" | undefined;
+  historicalMode?: "attempted" | "resolving" | "waiting_on_pr" | undefined;
   isValidationRecovery?: boolean;
   isValidating?: boolean;
   isRevalidating?: boolean;
@@ -226,6 +231,10 @@ function MergeProgressSteps({
       ? [
           { label: "Merging branches", status: "completed" },
           { label: "Running validation", status: "pending" },
+        ]
+      : historicalMode === "waiting_on_pr"
+      ? [
+          { label: "Waiting on pull request", status: "completed" },
         ]
       : [
           { label: "Merging branches", status: "completed" },
@@ -304,6 +313,7 @@ function MergeProgressSteps({
  */
 function PrModeCard({
   planBranch,
+  isHistorical = false,
 }: {
   planBranch: {
     prNumber: number;
@@ -311,13 +321,18 @@ function PrModeCard({
     prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
     prPollingActive: boolean;
   };
+  isHistorical?: boolean;
 }) {
-  const statusText =
+  const liveStatusText =
     planBranch.prStatus === "Draft"
       ? "Draft PR published. RalphX will keep the branch synced until it is ready."
       : planBranch.prStatus === "Open"
       ? "Waiting for GitHub review or merge."
       : "Watching GitHub for PR updates.";
+  const statusText = isHistorical
+    ? "At this point, RalphX was waiting for GitHub review or merge."
+    : liveStatusText;
+  const showStatusText = isHistorical || planBranch.prPollingActive;
 
   const handleOpenInGithub = async () => {
     if (planBranch.prUrl) {
@@ -340,12 +355,16 @@ function PrModeCard({
           {planBranch.prStatus && <PrStatusBadge status={planBranch.prStatus} />}
         </div>
 
-        {/* Polling indicator */}
-        {planBranch.prPollingActive && (
+        {/* Polling / historical state note */}
+        {showStatusText && (
           <div className="flex items-center gap-1.5">
-            <Loader2
-              className="w-3.5 h-3.5 animate-spin text-text-primary/40"
-            />
+            {isHistorical ? (
+              <Info className="w-3.5 h-3.5 text-text-primary/35" />
+            ) : (
+              <Loader2
+                className="w-3.5 h-3.5 animate-spin text-text-primary/40"
+              />
+            )}
             <span className="text-[12px] text-text-primary/40">{statusText}</span>
           </div>
         )}
@@ -375,6 +394,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [actionError, setActionError] = useState<string | null>(null);
+  const detailContext = useTaskDetailContextModel();
 
   const stopMutation = useMutation({
     mutationFn: async () => {
@@ -401,6 +421,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   }, [confirm, stopMutation]);
 
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
+  const isPlanMerge = task.category === "plan_merge";
   const isProgrammaticPhase = status === "pending_merge";
   const isAgentPhase = status === "merging";
   const isWaitingOnPr = status === "waiting_on_pr";
@@ -412,6 +433,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   const historicalMode = isHistorical
     ? isProgrammaticPhase
       ? "attempted"
+      : isWaitingOnPr
+      ? "waiting_on_pr"
       : "resolving"
     : undefined;
 
@@ -516,6 +539,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     planBranch?.prEligible === true &&
     planBranch?.prNumber != null;
   const isPrWait = isWaitingOnPr || isPrMode;
+  const showPrReviewContext = !isHistorical && isPrWait;
+  const { data: reviewHistory } = useTaskStateHistory(task.id, {
+    enabled: showPrReviewContext,
+  });
+  const { data: stateTransitions = [] } = useTaskStateTransitions(
+    showPrReviewContext ? task.id : undefined
+  );
 
   // Resolve target branch: pipeline (most accurate) → metadata fallback
   const { data: pipelineData } = useMergePipeline(task.projectId);
@@ -742,11 +772,14 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         }
       />
 
+      {isPlanMerge && !detailContext && <PlanMergeContextSection taskId={task.id} />}
+
       {/* PR Mode: show PR status when polling */}
       {isPrWait && planBranch && planBranch.prNumber != null && (
         <section data-testid="pr-mode-section">
           <SectionTitle>Pull Request</SectionTitle>
           <PrModeCard
+            isHistorical={isHistorical ?? false}
             planBranch={{
               prNumber: planBranch.prNumber!,
               prUrl: planBranch.prUrl,
@@ -755,6 +788,15 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             }}
           />
         </section>
+      )}
+
+      {showPrReviewContext && (
+        <ChangeReviewSection
+          taskId={task.id}
+          history={reviewHistory}
+          stateTransitions={stateTransitions}
+          context="plan_merge"
+        />
       )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}

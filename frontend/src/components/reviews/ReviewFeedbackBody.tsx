@@ -41,7 +41,7 @@ export function ReviewFeedbackBody({
   summary,
   notes,
   mode = "markdown",
-  previewCharLimit = 240,
+  previewCharLimit = 900,
   dialogTitle = "Full feedback",
   dialogDescription = "Full feedback in a scrollable view.",
   fullButtonLabel = "View full details",
@@ -65,14 +65,27 @@ export function ReviewFeedbackBody({
     }
     return buildReviewFeedbackPreview(sanitizedNotes, previewCharLimit);
   }, [previewCharLimit, sanitizedNotes]);
+  const isNotesTruncated = useMemo(() => {
+    if (!sanitizedNotes) return false;
+    return sanitizedNotes.replace(/\s+/g, " ").trim().length > previewCharLimit;
+  }, [previewCharLimit, sanitizedNotes]);
 
   const showSummary = !!sanitizedSummary;
   const showFullBody = !!sanitizedNotes;
-  const renderFullNotes =
+  const renderFullNotes = showFullBody && isNotesTruncated;
+  const notesIncludeSummary =
+    showSummary &&
     showFullBody &&
-    (!!sanitizedSummary || previewText !== sanitizedNotes);
+    sanitizedNotes
+      .replace(/\s+/g, " ")
+      .trim()
+      .startsWith(sanitizedSummary.replace(/\s+/g, " ").trim());
 
-  const previewBody = showSummary
+  const previewBody = showFullBody && !isNotesTruncated
+    ? showSummary && !notesIncludeSummary
+      ? `${sanitizedSummary}\n\n${sanitizedNotes}`
+      : sanitizedNotes
+    : showSummary
     ? sanitizedSummary
     : showFullBody
     ? previewText
@@ -85,7 +98,7 @@ export function ReviewFeedbackBody({
   return (
     <>
       <div className={previewClassName}>
-        {mode === "markdown" && (showSummary || previewText === sanitizedNotes) ? (
+        {mode === "markdown" && (showSummary || !isNotesTruncated) ? (
           <MarkdownBody content={previewBody} />
         ) : mode === "plain" ? (
           <pre className="whitespace-pre-wrap break-words font-inherit">

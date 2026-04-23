@@ -65,6 +65,8 @@ export interface PlanDisplayProps {
   onVersionViewed?: () => void;
   /** Called when user clicks "Create Proposals" — triggers orchestrator to decompose plan into tasks */
   onCreateProposals?: () => void;
+  /** Show the overflow action cluster (version picker / copy / export / edit) */
+  showOverflowActions?: boolean;
 }
 
 // ============================================================================
@@ -355,6 +357,7 @@ export function PlanDisplay({
   requestedVersion,
   onVersionViewed,
   onCreateProposals,
+  showOverflowActions = true,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -636,7 +639,7 @@ export function PlanDisplay({
                 </Button>
               )}
 
-              {plan.metadata.version > 1 && (
+              {showOverflowActions && plan.metadata.version > 1 && (
                 <DropdownMenu open={isVersionDropdownOpen} onOpenChange={setIsVersionDropdownOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -710,66 +713,70 @@ export function PlanDisplay({
                 </DropdownMenu>
               )}
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
-                    style={{ color: "var(--text-muted)" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "var(--overlay-weak)";
-                      e.currentTarget.style.color = "var(--text-primary)";
+              {showOverflowActions && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                      style={{ color: "var(--text-muted)" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--overlay-weak)";
+                        e.currentTarget.style.color = "var(--text-primary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "var(--text-muted)";
+                      }}
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-44"
+                    style={{
+                      background: "var(--bg-elevated)",
+                      backdropFilter: "blur(20px)",
+                      border: "1px solid var(--overlay-weak)",
+                      boxShadow: "var(--shadow-lg)",
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = "var(--text-muted)";
-                    }}
                   >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-44"
-                  style={{
-                    background: "var(--bg-elevated)",
-                    backdropFilter: "blur(20px)",
-                    border: "1px solid var(--overlay-weak)",
-                    boxShadow: "var(--shadow-lg)",
-                  }}
-                >
-                  <DropdownMenuItem
-                    onClick={() => {
-                      const content = plan.content.type === "inline" ? plan.content.text : "";
-                      navigator.clipboard.writeText(content).then(() => {
-                        toast.success("Copied to clipboard");
-                      }).catch(() => {
-                        toast.error("Failed to copy");
-                      });
-                    }}
-                    disabled={plan.content.type !== "inline" || !plan.content.text}
-                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    Copy Markdown
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={onEdit}
-                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
-                  >
-                    <FileEdit className="w-3.5 h-3.5" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={handleExport}
-                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Export...
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const content = plan.content.type === "inline" ? plan.content.text : "";
+                        navigator.clipboard.writeText(content).then(() => {
+                          toast.success("Copied to clipboard");
+                        }).catch(() => {
+                          toast.error("Failed to copy");
+                        });
+                      }}
+                      disabled={plan.content.type !== "inline" || !plan.content.text}
+                      className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy Markdown
+                    </DropdownMenuItem>
+                    {onEdit && (
+                      <DropdownMenuItem
+                        onClick={onEdit}
+                        className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                      >
+                        <FileEdit className="w-3.5 h-3.5" />
+                        Edit
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={handleExport}
+                      className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Export...
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         </div>

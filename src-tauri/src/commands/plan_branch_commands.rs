@@ -33,6 +33,7 @@ pub struct PlanBranchResponse {
     pub pr_status: Option<String>,
     pub pr_polling_active: bool,
     pub pr_eligible: bool,
+    pub merge_commit_sha: Option<String>,
     pub base_branch_override: Option<String>,
 }
 
@@ -56,6 +57,7 @@ impl From<PlanBranch> for PlanBranchResponse {
             pr_status: pb.pr_status.as_ref().map(|s| s.to_db_string().to_string()),
             pr_polling_active: pb.pr_polling_active,
             pr_eligible: pb.pr_eligible,
+            merge_commit_sha: pb.merge_commit_sha,
             base_branch_override: pb.base_branch_override,
         }
     }

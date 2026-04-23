@@ -12,6 +12,7 @@ import { FileText, Lightbulb } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 import {
   Tooltip,
   TooltipContent,
@@ -100,6 +101,7 @@ export function TaskDetailView({ task, fixTaskCount }: TaskDetailViewProps) {
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(task.id);
   // Trigger the history hook so tests can verify it's called
   useTaskStateHistory(task.id);
+  const categoryLabel = getTaskCategoryLabel(task.category);
 
   const hasReviews = reviews.length > 0;
   const hasFixTasks = fixTaskCount !== undefined && fixTaskCount > 0;
@@ -119,7 +121,7 @@ export function TaskDetailView({ task, fixTaskCount }: TaskDetailViewProps) {
           </h2>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <span data-testid="task-detail-category" className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-secondary)" }}>
-              {task.category}
+              {categoryLabel}
             </span>
             <span data-testid="task-detail-priority" className="text-xs" style={{ color: "var(--text-muted)" }}>
               P{task.priority}

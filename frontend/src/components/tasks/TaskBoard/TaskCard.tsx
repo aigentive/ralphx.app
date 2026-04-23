@@ -40,6 +40,7 @@ import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { TaskStatusBadge } from "./TaskStatusBadge";
 import { getCardStyles, isDraggableStatus } from "./TaskCard.utils";
+import { getTaskCategoryLabel } from "@/lib/task-category";
 
 interface TaskCardProps {
   task: Task;
@@ -106,7 +107,28 @@ export function TaskCard({
   // PR mode — fetch plan branch only for plan_merge tasks
   const isPlanMerge = task.category === "plan_merge";
   const { data: planBranch } = usePlanBranchForTask(task.id, { enabled: isPlanMerge });
-  const isPrMode = isPlanMerge && planBranch?.prEligible === true && planBranch?.prNumber != null;
+  const hasPrContext = isPlanMerge && planBranch?.prNumber != null;
+  const prState =
+    planBranch?.status === "merged" || task.internalStatus === "merged" || planBranch?.prStatus === "Merged"
+      ? "merged"
+      : planBranch?.prStatus === "Closed"
+      ? "closed"
+      : "review";
+  const prIndicatorLabel =
+    prState === "merged" ? "Merged PR" : prState === "closed" ? "Closed PR" : "Review PR";
+  const prIndicatorColor =
+    prState === "merged"
+      ? "var(--status-success)"
+      : prState === "closed"
+      ? "var(--status-warning)"
+      : "var(--status-info)";
+  const prIndicatorTooltip =
+    prState === "merged"
+      ? `PR #${planBranch?.prNumber} has been merged`
+      : prState === "closed"
+      ? `PR #${planBranch?.prNumber} was closed`
+      : `PR #${planBranch?.prNumber} - waiting for GitHub review or merge`;
+  const categoryLabel = getTaskCategoryLabel(task.category);
 
   // Mutations
   const {
@@ -244,7 +266,6 @@ export function TaskCard({
           }}
           className={`group relative p-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] ${isArchived ? "opacity-50" : ""} ${!isDraggable ? "opacity-70 cursor-default" : ""}`}
           style={{ ...cardStyles, ...dragStyle }}
-          title={!isDraggable ? "This task is being processed and cannot be moved manually" : undefined}
           tabIndex={0}
         >
       {/* Status badge - shown for ALL task states */}
@@ -332,7 +353,7 @@ export function TaskCard({
               textTransform: "capitalize",
             }}
           >
-            {task.category}
+            {categoryLabel}
           </span>
           {reviewStatus && <StatusBadge type="review" status={reviewStatus} />}
           <TaskQABadge {...qaBadgeProps} />
@@ -405,22 +426,22 @@ export function TaskCard({
             </TooltipProvider>
           )}
 
-          {/* PR mode indicator — shown when plan_merge task has active PR */}
-          {isPrMode && (
+          {/* PR indicator — shown when a plan merge task is linked to a PR */}
+          {hasPrContext && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div
                     data-testid="pr-mode-indicator"
                     className="inline-flex items-center gap-1"
-                    style={{ color: "var(--status-success)" }}
+                    style={{ color: prIndicatorColor }}
                   >
                     <GitPullRequest className="w-3 h-3 flex-shrink-0" />
-                    <span className="text-[10px]">Review PR</span>
+                    <span className="text-[10px]">{prIndicatorLabel}</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  PR #{planBranch?.prNumber} - waiting for GitHub review or merge
+                  {prIndicatorTooltip}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

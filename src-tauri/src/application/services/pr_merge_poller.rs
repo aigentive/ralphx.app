@@ -296,6 +296,7 @@ async fn poll_loop(
 
     let mut consecutive_errors = 0u32;
     let mut last_status_change_at = Instant::now();
+    let mut first_poll = true;
 
     // age-based interval floor (AD9)
     let age_floor = |elapsed: Duration| -> Duration {
@@ -311,7 +312,11 @@ async fn poll_loop(
     let mut interval = age_floor(start_time.elapsed());
 
     loop {
-        tokio::time::sleep(interval).await;
+        if first_poll {
+            first_poll = false;
+        } else {
+            tokio::time::sleep(interval).await;
+        }
 
         // 7-day stale guard (AD8)
         if last_status_change_at.elapsed() >= stale_threshold {
@@ -410,6 +415,12 @@ async fn poll_loop(
                         let _ = plan_branch_repo
                             .update_last_polled_at(&plan_branch_id, now)
                             .await;
+                        let _ = plan_branch_repo
+                            .update_pr_status(&plan_branch_id, DbPrStatus::Merged)
+                            .await;
+                        let _ = plan_branch_repo
+                            .clear_polling_active_by_task(&task_id)
+                            .await;
 
                         // Final stopping check before transition
                         if stopping.contains_key(&task_id) {
@@ -471,6 +482,12 @@ async fn poll_loop(
                     task_id = task_id.as_str(),
                     "PR closed without merging — transitioning to MergeIncomplete"
                 );
+                let _ = plan_branch_repo
+                    .update_pr_status(&plan_branch_id, DbPrStatus::Closed)
+                    .await;
+                let _ = plan_branch_repo
+                    .clear_polling_active_by_task(&task_id)
+                    .await;
                 if !stopping.contains_key(&task_id) {
                     let _ = transition_service
                         .transition_task(&task_id, InternalStatus::MergeIncomplete)

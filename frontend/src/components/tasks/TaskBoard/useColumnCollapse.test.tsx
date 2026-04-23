@@ -120,26 +120,26 @@ describe("useColumnCollapse", () => {
   });
 
   it("toggleCollapse toggles collapsed state", () => {
-    const taskCounts = makeCounts({ draft: 3, ready: 2, in_progress: 1, done: 0 });
+    const taskCounts = makeCounts({ draft: 3, ready: 0, in_progress: 1, done: 0 });
 
     const { result } = renderHook(() =>
       useColumnCollapse(columns, taskCounts, "session-1"),
     );
 
-    // "draft" starts expanded
-    expect(result.current.isCollapsed("draft")).toBe(false);
+    // "ready" starts collapsed because it is empty
+    expect(result.current.isCollapsed("ready")).toBe(true);
 
-    // Toggle to collapsed
+    // Toggle to expanded
     act(() => {
-      result.current.toggleCollapse("draft");
+      result.current.toggleCollapse("ready");
     });
-    expect(result.current.isCollapsed("draft")).toBe(true);
+    expect(result.current.isCollapsed("ready")).toBe(false);
 
-    // Toggle back to expanded
+    // Toggle back to collapsed
     act(() => {
-      result.current.toggleCollapse("draft");
+      result.current.toggleCollapse("ready");
     });
-    expect(result.current.isCollapsed("draft")).toBe(false);
+    expect(result.current.isCollapsed("ready")).toBe(true);
   });
 
   it("expandColumn expands a collapsed column", () => {
@@ -247,24 +247,17 @@ describe("useColumnCollapse", () => {
     expect(result.current.isCollapsed("ready")).toBe(false);
   });
 
-  it("user-initiated collapse is tracked (won't auto-expand)", () => {
+  it("ignores manual collapse for columns with tasks", () => {
     const taskCounts = makeCounts({ draft: 3, ready: 2, in_progress: 1, done: 0 });
 
-    const { result, rerender } = renderHook(
-      ({ counts }) => useColumnCollapse(columns, counts, "session-1"),
-      { initialProps: { counts: taskCounts } },
+    const { result } = renderHook(() =>
+      useColumnCollapse(columns, taskCounts, "session-1"),
     );
 
-    // User collapses "ready" manually
     act(() => {
       result.current.toggleCollapse("ready");
     });
-    expect(result.current.isCollapsed("ready")).toBe(true);
 
-    // Count increases further — should NOT auto-expand because user collapsed it
-    const moreCounts = makeCounts({ draft: 3, ready: 5, in_progress: 1, done: 0 });
-    rerender({ counts: moreCounts });
-
-    expect(result.current.isCollapsed("ready")).toBe(true);
+    expect(result.current.isCollapsed("ready")).toBe(false);
   });
 });
