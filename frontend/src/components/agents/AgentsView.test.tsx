@@ -352,8 +352,12 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
     );
     expect(
-      screen.getByText("Start a new agent conversation")
+      screen.getByText("What should the agent tackle next?")
     ).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-project")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-provider")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-model")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-new-project")).toBeInTheDocument();
     expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
   });
 
