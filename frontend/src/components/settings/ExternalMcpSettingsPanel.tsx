@@ -308,7 +308,7 @@ export function ExternalMcpSettingsPanel() {
             onClick={() => void handleSave()}
             disabled={isSaving}
             size="sm"
-            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--text-inverse)]"
+            className="bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--text-on-accent)]"
           >
             {isSaving ? "Saving..." : "Save"}
           </Button>

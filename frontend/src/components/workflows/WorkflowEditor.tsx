@@ -143,7 +143,7 @@ export function WorkflowEditor({ workflow, onSave, onCancel, isSaving = false }:
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button data-testid="cancel-button" onClick={onCancel} disabled={isSaving} className="px-4 py-2 rounded text-sm disabled:opacity-50" style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}>Cancel</button>
-        <button data-testid="save-button" onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded text-sm font-medium disabled:opacity-50" style={{ backgroundColor: "var(--accent-primary)", color: "var(--bg-base)" }}>{isSaving ? "Saving..." : "Save"}</button>
+        <button data-testid="save-button" onClick={handleSave} disabled={isSaving} className="px-4 py-2 rounded text-sm font-medium disabled:opacity-50" style={{ backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }}>{isSaving ? "Saving..." : "Save"}</button>
       </div>
     </div>
   );

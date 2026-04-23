@@ -102,7 +102,7 @@ export function PendingAcceptanceBanner({ sessionId }: PendingAcceptanceBannerPr
             disabled={isLoading}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
-              color: "var(--text-inverse)",
+              color: "var(--text-on-accent)",
               background: accept.isPending ? withAlpha("var(--accent-primary)", 85) : "var(--accent-primary)",
               boxShadow: `0 1px 4px ${withAlpha("var(--accent-primary)", 30)}`,
             }}

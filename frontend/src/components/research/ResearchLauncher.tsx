@@ -120,7 +120,7 @@ export function ResearchLauncher({ onLaunch, onCancel, isLaunching = false }: Re
           style={{ backgroundColor: "var(--bg-hover)", color: "var(--text-primary)" }}>Cancel</button>
         <button data-testid="launch-button" onClick={handleLaunch} disabled={!isValid || isLaunching}
           className="px-4 py-2 rounded text-sm font-medium disabled:opacity-50"
-          style={{ backgroundColor: "var(--accent-primary)", color: "var(--bg-base)" }}>{isLaunching ? "Launching..." : "Launch Research"}</button>
+          style={{ backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }}>{isLaunching ? "Launching..." : "Launch Research"}</button>
       </div>
     </div>
   );

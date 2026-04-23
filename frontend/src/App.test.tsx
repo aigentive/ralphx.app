@@ -327,6 +327,11 @@ describe("App", () => {
     expect(screen.getByTestId("project-selector-mock")).toBeInTheDocument();
   });
 
+  it("should display theme selector", () => {
+    render(<App />);
+    expect(screen.getByTestId("theme-selector-trigger")).toBeInTheDocument();
+  });
+
   it("should have main element with flex layout", () => {
     render(<App />);
     const mainElement = screen.getByRole("main");

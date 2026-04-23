@@ -33,6 +33,10 @@
      peach-pale. Still well below the full accent token for hierarchy. */
   --accent-muted:     hsla(14 100% 50% / 0.15);
   --accent-border:    hsla(14 100% 50% / 0.40);
+  --chat-user-bubble-bg: var(--accent-primary);
+  --chat-user-bubble-border: transparent;
+  --chat-user-bubble-text: var(--text-on-accent);
+  --chat-user-bubble-copy-hover: color-mix(in srgb, var(--text-on-accent) 20%, transparent);
 
   /* Status — Okabe-Ito tuned for AA on white */
   /* Base status values shift to AA-on-white darker Okabe-Ito variants.

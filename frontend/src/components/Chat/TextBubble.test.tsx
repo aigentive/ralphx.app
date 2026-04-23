@@ -103,10 +103,16 @@ describe("TextBubble", () => {
   // ============================================================================
 
   describe("styling", () => {
-    it("applies user styling (orange background)", () => {
+    it("applies token-backed user styling", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "var(--accent-primary)" });
+      expect(bubble).toHaveStyle({
+        background: "var(--chat-user-bubble-bg)",
+        color: "var(--chat-user-bubble-text)",
+      });
+      expect(bubble.getAttribute("style")).toContain("border-color: var(--chat-user-bubble-border)");
+      expect(bubble.getAttribute("style")).toContain("border-style: solid");
+      expect(bubble.getAttribute("style")).toContain("border-width: 1px");
     });
 
     it("applies assistant styling (dark background)", () => {

@@ -107,7 +107,7 @@ export function WorkflowSelector({
           <span
             data-testid="default-badge"
             className="px-1.5 py-0.5 text-xs rounded"
-            style={{ backgroundColor: "var(--accent-primary)", color: "var(--bg-base)" }}
+            style={{ backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }}
           >
             Default
           </span>
@@ -164,7 +164,7 @@ export function WorkflowSelector({
                       <span
                         data-testid="workflow-default-indicator"
                         className="px-1 py-0.5 text-xs rounded"
-                        style={{ backgroundColor: "var(--accent-primary)", color: "var(--bg-base)" }}
+                        style={{ backgroundColor: "var(--accent-primary)", color: "var(--text-on-accent)" }}
                       >
                         Default
                       </span>

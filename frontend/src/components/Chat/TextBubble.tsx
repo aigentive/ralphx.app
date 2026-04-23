@@ -45,10 +45,12 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
       style={{
         /* macOS Tahoe: flat solid colors, no gradients */
         background: isUser
-          ? "var(--accent-primary)" /* Accent orange - flat */
+          ? "var(--chat-user-bubble-bg)"
           : "var(--bg-elevated)", /* Dark surface - flat */
-        color: isUser ? "var(--text-inverse)" : "var(--text-primary)",
-        border: "none",
+        color: isUser ? "var(--chat-user-bubble-text)" : "var(--text-primary)",
+        borderWidth: isUser ? "1px" : "0",
+        borderStyle: isUser ? "solid" : "none",
+        borderColor: isUser ? "var(--chat-user-bubble-border)" : "transparent",
         boxShadow: "none",
       }}
     >
@@ -64,7 +66,7 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
         className={cn(
           "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity",
           isUser
-            ? "hover:bg-[color-mix(in_srgb,_var(--text-inverse)_20%,_transparent)] text-[var(--text-inverse)]"
+            ? "hover:bg-[var(--chat-user-bubble-copy-hover)] text-[var(--chat-user-bubble-text)]"
             : "hover:bg-[var(--overlay-moderate)]"
         )}
         aria-label={copied ? "Copied" : "Copy message"}

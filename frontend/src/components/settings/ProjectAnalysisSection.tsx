@@ -235,7 +235,7 @@ export function ProjectAnalysisSection() {
               size="sm"
               onClick={() => editor.save()}
               disabled={editor.isSaving}
-              className="h-7 px-2 text-xs bg-[var(--accent-primary)] text-[var(--text-inverse)] hover:bg-[#ff5922]"
+              className="h-7 px-2 text-xs bg-[var(--accent-primary)] text-[var(--text-on-accent)] hover:bg-[#ff5922]"
             >
               {editor.isSaving ? (
                 <Loader2 className="w-3 h-3 animate-spin mr-1" />

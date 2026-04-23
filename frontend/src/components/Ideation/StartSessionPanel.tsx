@@ -240,7 +240,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             className="h-11 px-6 text-[14px] font-semibold tracking-[-0.01em] border-0 transition-colors duration-150 mt-4"
             style={{
               background: isCreating ? withAlpha("var(--accent-primary)", 60) : "var(--accent-primary)",
-              color: "var(--text-inverse)",
+              color: "var(--text-on-accent)",
             }}
             onMouseEnter={(e) => {
               if (!isCreating) e.currentTarget.style.background = withAlpha("var(--accent-primary)", 90);
