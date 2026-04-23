@@ -120,9 +120,17 @@ export function AgentsView({
   const selectedConversationQuery = useConversation(selectedConversationId, {
     enabled: !!selectedConversationId,
   });
+  const selectedConversationData = selectedConversationQuery.data;
+  const selectedConversationMessages = useMemo(
+    () =>
+      selectedConversationData && selectedConversationData.conversation?.id === selectedConversationId
+        ? selectedConversationData.messages
+        : [],
+    [selectedConversationData, selectedConversationId],
+  );
   const attachedIdeationSessionId = useMemo(
-    () => resolveAttachedIdeationSessionId(activeConversation, selectedConversationQuery.data?.messages ?? []),
-    [activeConversation, selectedConversationQuery.data?.messages],
+    () => resolveAttachedIdeationSessionId(activeConversation, selectedConversationMessages),
+    [activeConversation, selectedConversationMessages],
   );
   const attachedIdeationSessionQuery = useQuery({
     queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),

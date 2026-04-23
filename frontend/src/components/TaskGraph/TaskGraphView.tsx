@@ -80,6 +80,8 @@ export interface TaskGraphViewProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Hide graph canvas toolbar controls for embedded read-only surfaces. */
+  hideCanvasControls?: boolean;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
   /** Opens the global plan quick switcher with source attribution */
@@ -268,6 +270,8 @@ interface TaskGraphViewInnerProps {
   projectId: string;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null;
+  /** Hide graph canvas toolbar controls for embedded read-only surfaces. */
+  hideCanvasControls?: boolean;
   /** Optional footer to render at the bottom of the left section (e.g., ExecutionControlBar) */
   footer?: React.ReactNode;
   /** Opens the global plan quick switcher with source attribution */
@@ -277,6 +281,7 @@ interface TaskGraphViewInnerProps {
 function TaskGraphViewInner({
   projectId,
   ideationSessionId,
+  hideCanvasControls = false,
   footer,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewInnerProps) {
@@ -326,6 +331,7 @@ function TaskGraphViewInner({
   const initialFitDoneRef = useRef(false);
 
   const graphReady = Boolean(graphData && graphData.nodes.length > 0);
+  const requiresActivePlan = !ideationSessionId;
 
   // Collapse state for plan groups
   const [collapsedPlanIds, setCollapsedPlanIds] = useState<Set<string>>(
@@ -1632,21 +1638,23 @@ function TaskGraphViewInner({
         style={initialViewReady ? undefined : { visibility: "hidden" }}
       >
         {/* Floating filter controls - positioned over canvas */}
-        <FloatingGraphFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          layoutDirection={layoutDirection}
-          onLayoutDirectionChange={setLayoutDirection}
-          nodeMode={effectiveNodeMode}
-          onNodeModeChange={handleNodeModeChange}
-          isAutoCompact={isAutoCompactActive}
-          grouping={grouping}
-          onGroupingChange={setGrouping}
-          isCompact={isNavCompact}
-        />
+        {!hideCanvasControls && (
+          <FloatingGraphFilters
+            filters={filters}
+            onFiltersChange={setFilters}
+            layoutDirection={layoutDirection}
+            onLayoutDirectionChange={setLayoutDirection}
+            nodeMode={effectiveNodeMode}
+            onNodeModeChange={handleNodeModeChange}
+            isAutoCompact={isAutoCompactActive}
+            grouping={grouping}
+            onGroupingChange={setGrouping}
+            isCompact={isNavCompact}
+          />
+        )}
 
         {/* Plan selector control (only when a plan is active) */}
-        {activePlanId && (
+        {!hideCanvasControls && activePlanId && requiresActivePlan && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
             <PlanSelectorInline
               projectId={projectId}
@@ -1656,7 +1664,24 @@ function TaskGraphViewInner({
           </div>
         )}
 
-        {filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
+        {/* Show empty state when no plan is selected */}
+        {requiresActivePlan && !activePlanId ? (
+          <div className="flex items-center justify-center h-full">
+            <EmptyState
+              variant="neutral"
+              icon={<AlertCircle />}
+              title="No plan selected"
+              description="Select a plan to view work on the Graph."
+              action={
+                <PlanSelectorInline
+                  projectId={projectId}
+                  source="graph_inline"
+                  onOpenPalette={(source) => onOpenPlanQuickSwitcher?.(source)}
+                />
+              }
+            />
+          </div>
+        ) : filteredGraphData.nodes.length === 0 && hasActiveFilters ? (
           <div className="flex items-center justify-center h-full">
             <EmptyState
               variant="neutral"
@@ -1730,6 +1755,7 @@ function TaskGraphViewInner({
 export function TaskGraphView({
   projectId,
   ideationSessionId,
+  hideCanvasControls = false,
   footer,
   onOpenPlanQuickSwitcher,
 }: TaskGraphViewProps) {
@@ -1738,6 +1764,7 @@ export function TaskGraphView({
       <TaskGraphViewInner
         projectId={projectId}
         ideationSessionId={ideationSessionId ?? null}
+        hideCanvasControls={hideCanvasControls}
         footer={footer}
         {...(onOpenPlanQuickSwitcher
           ? { onOpenPlanQuickSwitcher }
