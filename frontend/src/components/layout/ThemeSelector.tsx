@@ -42,7 +42,7 @@ export function ThemeSelector({ className = "" }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-9 items-center gap-1 rounded-xl border p-1 shadow-sm shrink-0",
+        "inline-flex h-8 items-center gap-0.5 rounded-lg border p-0.5 shadow-sm shrink-0",
         className
       )}
       style={{
@@ -67,7 +67,7 @@ export function ThemeSelector({ className = "" }: { className?: string }) {
             title={option.description}
             onClick={() => setTheme(option.value)}
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-all duration-150 outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]",
+              "inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium transition-all duration-150 outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]",
               !isActive && "hover:bg-[var(--overlay-faint)] hover:text-[var(--text-primary)]",
               isActive ? "shadow-sm" : ""
             )}
@@ -79,7 +79,7 @@ export function ThemeSelector({ className = "" }: { className?: string }) {
             }}
             data-testid={`theme-option-${option.value}`}
           >
-            <OptionIcon className="h-3.5 w-3.5 shrink-0" />
+            <OptionIcon className="h-[13px] w-[13px] shrink-0" />
             <span className="leading-none">{option.shortLabel}</span>
           </button>
         );
