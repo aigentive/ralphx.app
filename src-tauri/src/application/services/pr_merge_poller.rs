@@ -110,7 +110,7 @@ impl PrPollerRegistry {
     /// via `DashMap::entry()` to prevent duplicate pollers from concurrent callers
     /// (reconciler restart + PendingMerge re-entry race).
     ///
-    /// Staggered start: adds `rand(0..30s)` jitter so pollers don't thunderherd
+    /// Staggered start: adds `rand(1..=30s)` jitter so pollers don't thunderherd
     /// on startup batch. (AD9)
     pub fn start_polling(
         &self,
@@ -151,10 +151,10 @@ impl PrPollerRegistry {
         let rate_limit = Arc::clone(&self.rate_limit);
         let plan_branch_repo = Arc::clone(&self.plan_branch_repo);
 
-        // Staggered start jitter (AD9): rand(0..30s)
+        // Staggered start jitter (AD9): rand(1..=30s)
         let jitter_secs: u64 = {
             use rand::Rng;
-            rand::thread_rng().gen_range(0..=30)
+            rand::thread_rng().gen_range(1..=30)
         };
 
         // Clone task_id for the spawned closure (original used for DashMap entry insert)
