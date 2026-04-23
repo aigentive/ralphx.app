@@ -56,7 +56,7 @@ function makeSession(id: string, projectId: string) {
 
 function resetStores() {
   useUiStore.setState({
-    currentView: "kanban",
+    currentView: "agents",
     selectedTaskId: null,
     graphSelection: null,
     taskHistoryState: null,
@@ -130,9 +130,9 @@ describe("Project switch effect — App.tsx integration", () => {
     // Project A is on "activity" view
     useUiStore.setState({ currentView: "activity" });
 
-    // Switch A→B: saves A's "activity", restores default "kanban" for B
+    // Switch A→B: saves A's "activity", restores default "agents" for B
     simulateProjectSwitch("project-a", "project-b");
-    expect(useUiStore.getState().currentView).toBe("kanban");
+    expect(useUiStore.getState().currentView).toBe("agents");
 
     // User navigates to "insights" within project B
     useUiStore.setState({ currentView: "insights" });
@@ -142,14 +142,14 @@ describe("Project switch effect — App.tsx integration", () => {
     expect(useUiStore.getState().currentView).toBe("activity");
   });
 
-  it("falls back stale 'settings' localStorage value to kanban on project switch", () => {
+  it("falls back stale 'settings' localStorage value to agents on project switch", () => {
     // Simulate a stale "settings" value in viewByProject (from before the refactor)
     useUiStore.setState({
       viewByProject: { "project-b": "settings" as never },
     });
 
     simulateProjectSwitch("project-a", "project-b");
-    // "settings" is no longer a valid view — should fall back to "kanban"
-    expect(useUiStore.getState().currentView).toBe("kanban");
+    // "settings" is no longer a valid view — should fall back to "agents"
+    expect(useUiStore.getState().currentView).toBe("agents");
   });
 });

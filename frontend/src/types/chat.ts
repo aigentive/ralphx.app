@@ -24,6 +24,7 @@ export const VIEW_TYPE_VALUES = [
 
 export const ViewTypeSchema = z.enum(VIEW_TYPE_VALUES);
 export type ViewType = z.infer<typeof ViewTypeSchema>;
+export const DEFAULT_PROJECT_VIEW: ViewType = "agents";
 
 // ============================================================================
 // Chat Context

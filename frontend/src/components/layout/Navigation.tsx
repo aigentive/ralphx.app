@@ -36,8 +36,15 @@ interface NavItemConfig {
 }
 
 // Unified nav items with visibility predicates.
-// Order reflects workflow: plan ideas → visualize dependencies → execute tasks
+// Order reflects the default workflow: agents first, then plan ideas → visualize dependencies → execute tasks.
 const ALL_NAV_ITEMS: NavItemConfig[] = [
+  {
+    view: "agents",
+    label: "Agents",
+    icon: Bot,
+    shortcut: "⌘⇧A",
+    visible: () => true,
+  },
   {
     view: "ideation",
     label: "Ideation",
@@ -193,15 +200,6 @@ export function Navigation({ currentView, onViewChange, onOpenSettings }: Naviga
           Settings <kbd className="ml-1 opacity-70">⌘,</kbd>
         </TooltipContent>
       </Tooltip>
-
-      <NavItem
-        view="agents"
-        label="Agents"
-        icon={Bot}
-        shortcut="⌘⇧A"
-        currentView={currentView}
-        onViewChange={onViewChange}
-      />
 
       {/* Team active indicator */}
       {hasActiveTeam && (
