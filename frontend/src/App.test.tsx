@@ -329,7 +329,7 @@ describe("App", () => {
 
   it("should display theme selector", () => {
     render(<App />);
-    expect(screen.getByTestId("theme-selector-trigger")).toBeInTheDocument();
+    expect(screen.getByTestId("theme-selector")).toBeInTheDocument();
   });
 
   it("should have main element with flex layout", () => {

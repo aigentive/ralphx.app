@@ -11,22 +11,24 @@ describe("ThemeSelector", () => {
     useThemeStore.getState().setTheme("dark");
   });
 
-  it("renders the active theme in the trigger", () => {
+  it("renders a direct theme switcher with the active option selected", () => {
     render(<ThemeSelector />);
 
-    expect(screen.getByTestId("theme-selector-trigger")).toHaveTextContent("Dark");
+    expect(screen.getByTestId("theme-selector")).toBeInTheDocument();
+    expect(screen.getByTestId("theme-option-dark")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("theme-option-light")).toHaveAttribute("aria-checked", "false");
   });
 
-  it("updates the theme store and DOM attribute when selecting a new theme", async () => {
+  it("updates the theme store and DOM attribute when clicking a theme option", async () => {
     const user = userEvent.setup();
 
     render(<ThemeSelector />);
 
-    await user.click(screen.getByTestId("theme-selector-trigger"));
     await user.click(screen.getByTestId("theme-option-light"));
 
     expect(useThemeStore.getState().theme).toBe("light");
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
-    expect(screen.getByTestId("theme-selector-trigger")).toHaveTextContent("Light");
+    expect(screen.getByTestId("theme-option-light")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("theme-option-dark")).toHaveAttribute("aria-checked", "false");
   });
 });

@@ -1,14 +1,5 @@
-import { Accessibility, ChevronDown, Moon, SunMedium, type LucideIcon } from "lucide-react";
+import { Monitor, Moon, SunMedium, type LucideIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useThemeStore, type ThemeName } from "@/stores/themeStore";
 
@@ -40,86 +31,59 @@ const THEME_OPTIONS: ThemeOption[] = [
     label: "High contrast",
     shortLabel: "Contrast",
     description: "Maximum-contrast black canvas with shape-first emphasis and stronger borders.",
-    icon: Accessibility,
+    icon: Monitor,
   },
 ];
 
 export function ThemeSelector({ className = "" }: { className?: string }) {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const activeTheme =
-    THEME_OPTIONS.find((option) => option.value === theme) ?? THEME_OPTIONS[0]!;
-
-  const ActiveIcon = activeTheme.icon;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            "inline-flex items-center gap-2 px-3 h-8 border border-[var(--border-default)] max-w-[180px] overflow-hidden",
-            className
-          )}
-          data-testid="theme-selector-trigger"
-          aria-label="Select theme"
-        >
-          <ActiveIcon className="w-4 h-4 text-[var(--text-secondary)] flex-shrink-0" />
-          <span className="text-sm font-medium truncate">{activeTheme.shortLabel}</span>
-          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)] flex-shrink-0" />
-        </Button>
-      </DropdownMenuTrigger>
+    <div
+      className={cn(
+        "inline-flex h-9 items-center gap-1 rounded-xl border p-1 shadow-sm shrink-0",
+        className
+      )}
+      style={{
+        background: "var(--bg-surface)",
+        borderColor: "var(--border-default)",
+      }}
+      data-testid="theme-selector"
+      role="radiogroup"
+      aria-label="Theme"
+    >
+      {THEME_OPTIONS.map((option) => {
+        const OptionIcon = option.icon;
+        const isActive = option.value === theme;
 
-      <DropdownMenuContent
-        className="w-72 bg-[var(--bg-elevated)] border-[var(--border-default)]"
-        align="end"
-        sideOffset={8}
-        data-testid="theme-selector-dropdown"
-      >
-        <DropdownMenuLabel className="text-xs uppercase tracking-wide text-[var(--text-muted)] px-3 py-2">
-          Theme
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-[var(--border-subtle)]" />
-
-        {THEME_OPTIONS.map((option) => {
-          const OptionIcon = option.icon;
-          const isActive = option.value === theme;
-
-          return (
-            <DropdownMenuItem
-              key={option.value}
-              className={cn(
-                "flex items-start gap-3 px-3 py-3 cursor-pointer",
-                isActive && "bg-[var(--accent-muted)]"
-              )}
-              onClick={() => setTheme(option.value)}
-              data-testid={`theme-option-${option.value}`}
-            >
-              <OptionIcon
-                className={cn(
-                  "w-4 h-4 mt-0.5 flex-shrink-0",
-                  isActive ? "text-[var(--accent-primary)]" : "text-[var(--text-secondary)]"
-                )}
-              />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--text-primary)]">
-                    {option.label}
-                  </span>
-                  {isActive ? (
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-primary)]">
-                      Active
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-xs leading-snug text-[var(--text-muted)]">
-                  {option.description}
-                </p>
-              </div>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={isActive}
+            aria-label={`${option.label} theme`}
+            title={option.description}
+            onClick={() => setTheme(option.value)}
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-[10px] px-2.5 text-[12px] font-medium transition-all duration-150 outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]",
+              !isActive && "hover:bg-[var(--overlay-faint)] hover:text-[var(--text-primary)]",
+              isActive ? "shadow-sm" : ""
+            )}
+            style={{
+              background: isActive ? "var(--accent-muted)" : "transparent",
+              border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
+              color: isActive ? "var(--accent-primary)" : "var(--text-secondary)",
+              boxShadow: isActive ? "var(--shadow-xs)" : "none",
+            }}
+            data-testid={`theme-option-${option.value}`}
+          >
+            <OptionIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="leading-none">{option.shortLabel}</span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
