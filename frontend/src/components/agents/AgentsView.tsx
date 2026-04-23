@@ -108,6 +108,8 @@ export function AgentsView({
     return Number.isFinite(parsed) && parsed >= AGENTS_ARTIFACT_MIN_WIDTH ? parsed : null;
   });
   const [isArtifactResizing, setIsArtifactResizing] = useState(false);
+  const [manualArtifactVisibilityByConversationId, setManualArtifactVisibilityByConversationId] =
+    useState<Record<string, boolean>>({});
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const autoTitleStateRef = useRef<
     Map<string, { messages: string[]; lastTitle: string | null }>
@@ -215,15 +217,53 @@ export function AgentsView({
         attachedIdeationSessionData.proposals.length > 0
     );
   }, [attachedIdeationSessionData]);
-  const artifactPaneOpen = hasStoredArtifactState
-    ? artifactState.isOpen
-    : hasAutoOpenArtifacts;
+  const hasManualArtifactVisibility =
+    !!selectedConversationId &&
+    Boolean(manualArtifactVisibilityByConversationId[selectedConversationId]);
+  const artifactPaneOpen = hasAutoOpenArtifacts
+    ? hasStoredArtifactState
+      ? artifactState.isOpen
+      : true
+    : hasManualArtifactVisibility && artifactState.isOpen;
   useAgentConversationTitleEvents(activeProjectId);
   useProjectAgentBridgeEvents({
     conversation: activeConversation,
     attachedIdeationSessionId,
     projectId: activeProjectId,
   });
+
+  const setArtifactPaneVisibility = useCallback(
+    (conversationId: string, isOpen: boolean) => {
+      setManualArtifactVisibilityByConversationId((current) => ({
+        ...current,
+        [conversationId]: true,
+      }));
+      setArtifactOpen(conversationId, isOpen);
+    },
+    [setArtifactOpen],
+  );
+
+  const toggleArtifactPaneVisibility = useCallback(
+    (conversationId: string, isOpen: boolean) => {
+      setManualArtifactVisibilityByConversationId((current) => ({
+        ...current,
+        [conversationId]: true,
+      }));
+      setArtifactOpen(conversationId, !isOpen);
+    },
+    [setArtifactOpen],
+  );
+
+  const openArtifactTab = useCallback(
+    (conversationId: string, tab: AgentArtifactTab) => {
+      setManualArtifactVisibilityByConversationId((current) => ({
+        ...current,
+        [conversationId]: true,
+      }));
+      setArtifactTab(conversationId, tab);
+    },
+    [setArtifactTab],
+  );
 
   const handleArtifactResizeStart = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
@@ -331,7 +371,7 @@ export function AgentsView({
 
       if (event.key === "\\") {
         event.preventDefault();
-        setArtifactOpen(selectedConversationId, !artifactPaneOpen);
+        toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen);
         return;
       }
 
@@ -344,7 +384,7 @@ export function AgentsView({
       const tab = tabByKey[event.key];
       if (tab) {
         event.preventDefault();
-        setArtifactTab(selectedConversationId, tab);
+        openArtifactTab(selectedConversationId, tab);
       }
     };
 
@@ -352,9 +392,9 @@ export function AgentsView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     artifactPaneOpen,
+    openArtifactTab,
     selectedConversationId,
-    setArtifactOpen,
-    setArtifactTab,
+    toggleArtifactPaneVisibility,
   ]);
 
   const handleSelectConversation = useCallback(
@@ -554,17 +594,17 @@ export function AgentsView({
         return;
       }
       if (artifactPaneOpen && artifactState.activeTab === tab) {
-        setArtifactOpen(selectedConversationId, false);
+        setArtifactPaneVisibility(selectedConversationId, false);
         return;
       }
-      setArtifactTab(selectedConversationId, tab);
+      openArtifactTab(selectedConversationId, tab);
     },
     [
       artifactState.activeTab,
       artifactPaneOpen,
+      openArtifactTab,
       selectedConversationId,
-      setArtifactOpen,
-      setArtifactTab,
+      setArtifactPaneVisibility,
     ]
   );
 
@@ -773,7 +813,9 @@ export function AgentsView({
                     artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
-                    onToggleArtifacts={() => setArtifactOpen(selectedConversationId, !artifactPaneOpen)}
+                    onToggleArtifacts={() =>
+                      toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen)
+                    }
                     onSelectArtifact={handleSelectArtifact}
                   />
                 }
@@ -834,7 +876,7 @@ export function AgentsView({
                   taskMode={artifactState.taskMode}
                   onTabChange={handleSelectArtifact}
                   onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
-                  onClose={() => setArtifactOpen(selectedConversationId, false)}
+                  onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
                 />
               </div>
             </>
