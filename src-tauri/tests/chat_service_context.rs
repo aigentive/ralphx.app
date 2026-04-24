@@ -303,7 +303,7 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
         ChatContextType::Ideation,
         context_id.as_str(),
         "",
-        conversation_id.clone(),
+        conversation_id,
         &[],
         &[],
     );

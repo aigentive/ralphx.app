@@ -566,16 +566,11 @@ pub fn resolve_harness_agent_prompt_path(
         return Some(prompt_path);
     }
 
-    let shared_prompt_path = trusted_canonical_agent_file(
+    trusted_canonical_agent_file(
         project_root,
         agent_name,
         &[SHARED_PROMPT_DIR_NAME, PROMPT_FILE_NAME],
-    );
-    if let Some(shared_prompt_path) = shared_prompt_path {
-        Some(shared_prompt_path)
-    } else {
-        None
-    }
+    )
 }
 
 pub fn load_harness_agent_prompt(
