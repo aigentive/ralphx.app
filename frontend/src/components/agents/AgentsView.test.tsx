@@ -16,6 +16,7 @@ const {
   useConversationMock,
   startAgentConversationMock,
   getAgentConversationWorkspaceMock,
+  publishAgentConversationWorkspaceMock,
   sendAgentMessageMock,
   createConversationMock,
   spawnConversationSessionNamerMock,
@@ -28,6 +29,7 @@ const {
   useConversationMock: vi.fn(),
   startAgentConversationMock: vi.fn(),
   getAgentConversationWorkspaceMock: vi.fn(),
+  publishAgentConversationWorkspaceMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
   createConversationMock: vi.fn(),
   spawnConversationSessionNamerMock: vi.fn(),
@@ -80,6 +82,8 @@ vi.mock("@/api/chat", () => ({
     startAgentConversation: (...args: unknown[]) => startAgentConversationMock(...args),
     getAgentConversationWorkspace: (...args: unknown[]) =>
       getAgentConversationWorkspaceMock(...args),
+    publishAgentConversationWorkspace: (...args: unknown[]) =>
+      publishAgentConversationWorkspaceMock(...args),
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
     createConversation: (...args: unknown[]) => createConversationMock(...args),
     spawnConversationSessionNamer: (...args: unknown[]) =>
@@ -397,6 +401,45 @@ describe("AgentsChatHeader", () => {
     );
     expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent("active");
   });
+
+  it("publishes edit-mode workspaces from the header", () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ id: "conversation-1" })}
+        workspace={{
+          conversationId: "conversation-1",
+          projectId: "project-1",
+          mode: "edit",
+          baseRefKind: "project_default",
+          baseRef: "main",
+          baseDisplayName: "Project default (main)",
+          baseCommit: null,
+          branchName: "ralphx/ralphx/agent-abcdef12",
+          worktreePath: "/tmp/ralphx/conversation-1",
+          linkedIdeationSessionId: null,
+          linkedPlanBranchId: null,
+          publicationPrNumber: null,
+          publicationPrUrl: null,
+          publicationPrStatus: null,
+          publicationPushStatus: null,
+          status: "active",
+          createdAt: "2026-04-23T09:00:00Z",
+          updatedAt: "2026-04-23T09:00:00Z",
+        }}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onPublishWorkspace={publish}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    expect(publish).toHaveBeenCalledWith("conversation-1");
+  });
 });
 
 describe("AgentsView", () => {
@@ -408,6 +451,7 @@ describe("AgentsView", () => {
     useConversationMock.mockReset();
     startAgentConversationMock.mockReset();
     getAgentConversationWorkspaceMock.mockReset();
+    publishAgentConversationWorkspaceMock.mockReset();
     sendAgentMessageMock.mockReset();
     createConversationMock.mockReset();
     spawnConversationSessionNamerMock.mockReset();
@@ -424,6 +468,33 @@ describe("AgentsView", () => {
       queuedMessageId: null,
     });
     getAgentConversationWorkspaceMock.mockResolvedValue(null);
+    publishAgentConversationWorkspaceMock.mockResolvedValue({
+      workspace: {
+        conversationId: "conversation-2",
+        projectId: "project-1",
+        mode: "edit",
+        baseRefKind: "project_default",
+        baseRef: "main",
+        baseDisplayName: "Project default (main)",
+        baseCommit: null,
+        branchName: "ralphx/demo/agent-conversation-2",
+        worktreePath: "/tmp/ralphx/conversation-2",
+        linkedIdeationSessionId: null,
+        linkedPlanBranchId: null,
+        publicationPrNumber: 42,
+        publicationPrUrl: "https://github.com/mock/project/pull/42",
+        publicationPrStatus: "draft",
+        publicationPushStatus: "pushed",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      commitSha: "mockcommit",
+      pushed: true,
+      createdPr: true,
+      prNumber: 42,
+      prUrl: "https://github.com/mock/project/pull/42",
+    });
     startAgentConversationMock.mockResolvedValue({
       conversation: conversation({ id: "conversation-2", contextId: "project-1" }),
       workspace: {

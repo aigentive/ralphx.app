@@ -15,6 +15,7 @@ import type {
   ConversationListPageResponse,
   ConversationStatsResponse,
   AgentConversationWorkspace,
+  PublishAgentConversationWorkspaceResult,
   QueuedMessageResponse,
   SendAgentMessageResult,
   StartAgentConversationInput,
@@ -483,6 +484,33 @@ export async function mockGetAgentConversationWorkspace(
   return mockWorkspaces.get(conversationId) ?? null;
 }
 
+export async function mockPublishAgentConversationWorkspace(
+  conversationId: string
+): Promise<PublishAgentConversationWorkspaceResult> {
+  const workspace = mockWorkspaces.get(conversationId);
+  if (!workspace) {
+    throw new Error(`No mock workspace seeded for ${conversationId}`);
+  }
+  const published: AgentConversationWorkspace = {
+    ...workspace,
+    publicationPrNumber: workspace.publicationPrNumber ?? 42,
+    publicationPrUrl:
+      workspace.publicationPrUrl ?? "https://github.com/mock/project/pull/42",
+    publicationPrStatus: workspace.publicationPrStatus ?? "draft",
+    publicationPushStatus: "pushed",
+    updatedAt: new Date().toISOString(),
+  };
+  mockWorkspaces.set(conversationId, published);
+  return {
+    workspace: published,
+    commitSha: "mockcommit",
+    pushed: true,
+    createdPr: workspace.publicationPrNumber == null,
+    prNumber: published.publicationPrNumber,
+    prUrl: published.publicationPrUrl,
+  };
+}
+
 export async function mockGetQueuedAgentMessages(
   contextType: ContextType,
   contextId: string
@@ -543,6 +571,7 @@ export const mockChatApi = {
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
   getAgentConversationWorkspace: mockGetAgentConversationWorkspace,
+  publishAgentConversationWorkspace: mockPublishAgentConversationWorkspace,
   startAgentConversation: mockStartAgentConversation,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,

@@ -12,18 +12,21 @@
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, io::Write as _, path::Path, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::{Emitter, State};
+use tempfile::NamedTempFile;
 
 use crate::application::agent_conversation_workspace::{
-    prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+    prepare_agent_conversation_workspace, resolve_valid_agent_conversation_workspace_path,
+    AgentConversationWorkspaceBaseSelection,
 };
 use crate::application::chat_service::{
     create_assistant_message, AgentConversationCreatedPayload, SendMessageOptions,
 };
+use crate::application::git_service::GitService;
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
 };
@@ -34,7 +37,8 @@ use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, DelegatedSessionId,
     IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
 };
-use crate::domain::services::QueuedMessage;
+use crate::domain::services::{GithubServiceTrait, QueuedMessage};
+use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
 };
@@ -169,6 +173,17 @@ pub struct StartAgentConversationResponse {
     pub conversation: AgentConversationResponse,
     pub workspace: AgentConversationWorkspaceResponse,
     pub send_result: SendAgentMessageResponse,
+}
+
+/// Response from publishing a project-backed agent conversation workspace.
+#[derive(Debug, Serialize)]
+pub struct PublishAgentConversationWorkspaceResponse {
+    pub workspace: AgentConversationWorkspaceResponse,
+    pub commit_sha: Option<String>,
+    pub pushed: bool,
+    pub created_pr: bool,
+    pub pr_number: Option<i64>,
+    pub pr_url: Option<String>,
 }
 
 /// Input for queue_agent_message command
@@ -360,7 +375,8 @@ fn parse_wrapped_mcp_result_object(result: &JsonValue) -> Option<JsonMap<String,
                 .iter()
                 .find_map(|entry| entry.get("text").and_then(JsonValue::as_str))
             {
-                if let Ok(JsonValue::Object(inner)) = serde_json::from_str::<JsonValue>(inner_text) {
+                if let Ok(JsonValue::Object(inner)) = serde_json::from_str::<JsonValue>(inner_text)
+                {
                     return Some(inner);
                 }
             }
@@ -452,7 +468,12 @@ async fn load_delegated_tool_runtime_snapshot(
             .map(|messages| {
                 messages
                     .into_iter()
-                    .filter(|message| matches!(message.role.to_string().as_str(), "assistant" | "orchestrator"))
+                    .filter(|message| {
+                        matches!(
+                            message.role.to_string().as_str(),
+                            "assistant" | "orchestrator"
+                        )
+                    })
                     .rev()
                     .find_map(|message| {
                         let content = message.content.trim();
@@ -650,8 +671,9 @@ async fn reconcile_delegated_result_payloads(
             let Some(delegated_session_id) = delegated_session_id else {
                 continue;
             };
-            let delegated_conversation_id = get_string_field(&parsed_result, "delegated_conversation_id")
-                .or_else(|| get_string_field(&parsed_result, "delegatedConversationId"));
+            let delegated_conversation_id =
+                get_string_field(&parsed_result, "delegated_conversation_id")
+                    .or_else(|| get_string_field(&parsed_result, "delegatedConversationId"));
             let delegated_agent_run_id = get_string_field(&parsed_result, "delegated_agent_run_id")
                 .or_else(|| get_string_field(&parsed_result, "delegatedAgentRunId"));
 
@@ -730,6 +752,95 @@ fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'stat
     match mode {
         AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
         AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+    }
+}
+
+fn build_agent_workspace_commit_message(conversation: &ChatConversation) -> String {
+    let title = conversation
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "Untitled agent")
+        .unwrap_or("agent conversation work");
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("feat: {title}")
+}
+
+fn build_agent_workspace_pr_title(conversation: &ChatConversation) -> String {
+    conversation
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "Untitled agent")
+        .map(str::to_string)
+        .unwrap_or_else(|| "Agent conversation changes".to_string())
+}
+
+fn write_agent_workspace_pr_body(
+    conversation: &ChatConversation,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<NamedTempFile> {
+    let body = format!(
+        "## RalphX Agent Conversation\n\n\
+         - Conversation: `{}`\n\
+         - Base branch: `{}`\n\
+         - Feature branch: `{}`\n\n\
+         Published from a RalphX Agents conversation workspace.",
+        conversation.id, workspace.base_ref, workspace.branch_name
+    );
+    let body_file = NamedTempFile::new().map_err(|e| {
+        AppError::Infrastructure(format!("failed to create PR body temp file: {e}"))
+    })?;
+    (&body_file)
+        .write_all(body.as_bytes())
+        .map_err(|e| AppError::Infrastructure(format!("failed to write PR body temp file: {e}")))?;
+    Ok(body_file)
+}
+
+async fn publish_agent_workspace_pr(
+    github: &Arc<dyn GithubServiceTrait>,
+    worktree_path: &Path,
+    conversation: &ChatConversation,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<(i64, String, bool, &'static str)> {
+    let title = build_agent_workspace_pr_title(conversation);
+    let body_file = write_agent_workspace_pr_body(conversation, workspace)?;
+
+    if let Some(pr_number) = workspace.publication_pr_number {
+        github
+            .update_pr_details(worktree_path, pr_number, &title, body_file.path())
+            .await?;
+        let pr_url = workspace
+            .publication_pr_url
+            .clone()
+            .unwrap_or_else(|| format!("#{pr_number}"));
+        return Ok((pr_number, pr_url, false, "open"));
+    }
+
+    match github
+        .create_draft_pr(
+            worktree_path,
+            &workspace.base_ref,
+            &workspace.branch_name,
+            &title,
+            body_file.path(),
+        )
+        .await
+    {
+        Ok((pr_number, pr_url)) => Ok((pr_number, pr_url, true, "draft")),
+        Err(AppError::DuplicatePr) => {
+            let Some((pr_number, pr_url)) = github
+                .find_pr_by_head_branch(worktree_path, &workspace.branch_name)
+                .await?
+            else {
+                return Err(AppError::DuplicatePr);
+            };
+            github
+                .update_pr_details(worktree_path, pr_number, &title, body_file.path())
+                .await?;
+            Ok((pr_number, pr_url, false, "open"))
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -972,7 +1083,10 @@ pub async fn send_agent_message(
     let target = input.target.as_deref();
     if let Some(teammate_name) = target.filter(|t| *t != "lead") {
         // Find the active team for this context
-        if let Some(team_name) = team_service.find_team_by_context_id(&input.context_id).await {
+        if let Some(team_name) = team_service
+            .find_team_by_context_id(&input.context_id)
+            .await
+        {
             let formatted =
                 crate::infrastructure::agents::claude::format_stream_json_input(&input.content);
             team_service
@@ -1250,6 +1364,206 @@ pub async fn get_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())
         .map(|workspace| workspace.map(AgentConversationWorkspaceResponse::from))
+}
+
+/// Commit and publish a general edit agent conversation workspace.
+#[tauri::command]
+pub async fn publish_agent_conversation_workspace(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<PublishAgentConversationWorkspaceResponse, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            )
+        })?;
+
+    if workspace.mode != AgentConversationWorkspaceMode::Edit {
+        return Err(
+            "Ideation-mode agent conversations are published through the execution pipeline"
+                .to_string(),
+        );
+    }
+    if workspace.is_execution_owned() {
+        return Err(
+            "This agent conversation workspace is owned by an execution plan and cannot be directly published"
+                .to_string(),
+        );
+    }
+
+    let conversation = state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Conversation not found: {}", conversation_id))?;
+    if conversation.context_type != ChatContextType::Project
+        || conversation.context_id != workspace.project_id.as_str()
+    {
+        return Err(format!(
+            "Conversation {} does not match agent workspace project {}",
+            conversation.id, workspace.project_id
+        ));
+    }
+
+    let project = state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", workspace.project_id))?;
+    let worktree_path =
+        match resolve_valid_agent_conversation_workspace_path(&project, &workspace).await {
+            Ok(path) => path,
+            Err(error) => {
+                if error
+                    .to_string()
+                    .contains("Agent conversation workspace is missing")
+                {
+                    let _ = state
+                        .agent_conversation_workspace_repo
+                        .update_status(
+                            &workspace.conversation_id,
+                            crate::domain::entities::AgentConversationWorkspaceStatus::Missing,
+                        )
+                        .await;
+                }
+                return Err(error.to_string());
+            }
+        };
+
+    let github = state
+        .github_service
+        .as_ref()
+        .ok_or_else(|| "GitHub integration is not available".to_string())?;
+
+    let commit_sha = if GitService::has_uncommitted_changes(&worktree_path)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        let message = build_agent_workspace_commit_message(&conversation);
+        GitService::commit_all_including_deletions(&worktree_path, &message)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        None
+    };
+
+    let reviewable_commit_count = GitService::count_commits_not_on_branch(
+        &worktree_path,
+        &workspace.branch_name,
+        &workspace.base_ref,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if reviewable_commit_count == 0 {
+        let _ = state
+            .agent_conversation_workspace_repo
+            .update_publication(
+                &workspace.conversation_id,
+                workspace.publication_pr_number,
+                workspace.publication_pr_url.as_deref(),
+                workspace.publication_pr_status.as_deref(),
+                Some("no_changes"),
+            )
+            .await;
+        return Err("No committed changes to publish on this agent branch".to_string());
+    }
+
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            workspace.publication_pr_status.as_deref(),
+            Some("pushing"),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Err(error) = github
+        .push_branch(&worktree_path, &workspace.branch_name)
+        .await
+    {
+        let _ = state
+            .agent_conversation_workspace_repo
+            .update_publication(
+                &workspace.conversation_id,
+                workspace.publication_pr_number,
+                workspace.publication_pr_url.as_deref(),
+                workspace.publication_pr_status.as_deref(),
+                Some("failed"),
+            )
+            .await;
+        return Err(error.to_string());
+    }
+
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            workspace.publication_pr_status.as_deref(),
+            Some("pushed"),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let pr_result =
+        publish_agent_workspace_pr(github, &worktree_path, &conversation, &workspace).await;
+    let (pr_number, pr_url, created_pr, pr_status) = match pr_result {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = state
+                .agent_conversation_workspace_repo
+                .update_publication(
+                    &workspace.conversation_id,
+                    workspace.publication_pr_number,
+                    workspace.publication_pr_url.as_deref(),
+                    Some("failed"),
+                    Some("pushed"),
+                )
+                .await;
+            return Err(error.to_string());
+        }
+    };
+
+    state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            Some(pr_number),
+            Some(&pr_url),
+            Some(pr_status),
+            Some("pushed"),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let refreshed = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&workspace.conversation_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or(workspace);
+
+    Ok(PublishAgentConversationWorkspaceResponse {
+        workspace: AgentConversationWorkspaceResponse::from(refreshed),
+        commit_sha,
+        pushed: true,
+        created_pr,
+        pr_number: Some(pr_number),
+        pr_url: Some(pr_url),
+    })
 }
 
 /// Persist a child workflow milestone into a parent project-agent conversation.
@@ -1557,17 +1871,16 @@ pub async fn get_agent_run_status_unified(
     };
 
     // Look up conversation to get context_type/context_id for registry lookup
-    let (model_id, model_label) = if let Ok(Some(conv)) =
-        state.chat_conversation_repo.get_by_id(&conv_id).await
-    {
-        let key = RunningAgentKey::new(conv.context_type.to_string(), conv.context_id.clone());
-        let agent_info = state.running_agent_registry.get(&key).await;
-        let mid = agent_info.and_then(|info| info.model);
-        let mlabel = mid.as_deref().map(|id| model_id_to_label(id));
-        (mid, mlabel)
-    } else {
-        (None, None)
-    };
+    let (model_id, model_label) =
+        if let Ok(Some(conv)) = state.chat_conversation_repo.get_by_id(&conv_id).await {
+            let key = RunningAgentKey::new(conv.context_type.to_string(), conv.context_id.clone());
+            let agent_info = state.running_agent_registry.get(&key).await;
+            let mid = agent_info.and_then(|info| info.model);
+            let mlabel = mid.as_deref().map(|id| model_id_to_label(id));
+            (mid, mlabel)
+        } else {
+            (None, None)
+        };
 
     Ok(Some(AgentRunStatusResponse {
         id: run.id.as_str().to_string(),
@@ -1814,7 +2127,9 @@ mod tests {
         let parsed = parse_wrapped_mcp_result_object(&result).expect("parsed result");
 
         assert_eq!(
-            parsed.get("delegated_session_id").and_then(|value| value.as_str()),
+            parsed
+                .get("delegated_session_id")
+                .and_then(|value| value.as_str()),
             Some("delegated-1")
         );
         assert_eq!(
@@ -1856,7 +2171,10 @@ mod tests {
 
         merge_delegated_snapshot_into_result(&mut result, &snapshot);
 
-        assert_eq!(result.get("status").and_then(|value| value.as_str()), Some("completed"));
+        assert_eq!(
+            result.get("status").and_then(|value| value.as_str()),
+            Some("completed")
+        );
         assert_eq!(
             result.get("job_status").and_then(|value| value.as_str()),
             Some("completed")

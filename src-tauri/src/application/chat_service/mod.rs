@@ -31,8 +31,7 @@ pub(crate) mod verification_child_process_registry;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
-use crate::application::agent_conversation_workspace::resolve_agent_conversation_workspace_path;
-use crate::application::git_service::GitService;
+use crate::application::agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path;
 use crate::application::harness_runtime_registry::{
     default_harness_runtime_available, resolve_default_chat_service_bootstrap,
     resolve_harness_plugin_dir, resolve_chat_service_bootstrap,
@@ -1234,44 +1233,18 @@ impl<R: Runtime> AppChatService<R> {
                 ))
             })?;
 
-        let expected_path =
-            resolve_agent_conversation_workspace_path(&project, &workspace.conversation_id)
-                .map_err(|error| ChatServiceError::SpawnFailed(error.to_string()))?;
-        let stored_path = PathBuf::from(&workspace.worktree_path);
-        if stored_path != expected_path {
-            return Err(ChatServiceError::SpawnFailed(format!(
-                "Agent conversation workspace path mismatch for conversation {}",
-                workspace.conversation_id
-            )));
+        match resolve_valid_agent_conversation_workspace_path(&project, workspace).await {
+            Ok(path) => Ok(path),
+            Err(error) => {
+                if error
+                    .to_string()
+                    .contains("Agent conversation workspace is missing")
+                {
+                    self.mark_agent_conversation_workspace_missing(workspace).await;
+                }
+                Err(ChatServiceError::SpawnFailed(error.to_string()))
+            }
         }
-
-        let project_root = PathBuf::from(&project.working_directory);
-        if expected_path == project_root {
-            return Err(ChatServiceError::SpawnFailed(format!(
-                "Agent conversation workspace {} points to the project root",
-                workspace.conversation_id
-            )));
-        }
-
-        if !expected_path.is_dir() {
-            self.mark_agent_conversation_workspace_missing(workspace).await;
-            return Err(ChatServiceError::SpawnFailed(format!(
-                "Agent conversation workspace is missing: {}",
-                expected_path.display()
-            )));
-        }
-
-        let checked_out = GitService::get_current_branch(&expected_path)
-            .await
-            .map_err(|error| ChatServiceError::SpawnFailed(error.to_string()))?;
-        if checked_out != workspace.branch_name {
-            return Err(ChatServiceError::SpawnFailed(format!(
-                "Agent conversation workspace {} is checked out at '{}' instead of '{}'",
-                workspace.conversation_id, checked_out, workspace.branch_name
-            )));
-        }
-
-        Ok(expected_path)
     }
 
     async fn mark_agent_conversation_workspace_missing(

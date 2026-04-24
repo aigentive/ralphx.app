@@ -15,6 +15,7 @@ import {
   FileText,
   GitBranch,
   GitPullRequestArrow,
+  Loader2,
   Menu,
   PanelRightOpen,
   PanelRightClose,
@@ -111,6 +112,7 @@ export function AgentsView({
 }: AgentsViewProps) {
   const queryClient = useQueryClient();
   const [isStartingConversation, setIsStartingConversation] = useState(false);
+  const [publishingConversationId, setPublishingConversationId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [artifactPanelWidth, setArtifactPanelWidth] = useState<number | null>(() => {
     const saved = window.localStorage.getItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
@@ -812,6 +814,31 @@ export function AgentsView({
     ]
   );
 
+  const handlePublishWorkspace = useCallback(
+    async (conversationId: string) => {
+      const conversation = findConversationById(conversationId);
+      setPublishingConversationId(conversationId);
+      try {
+        const result = await chatApi.publishAgentConversationWorkspace(conversationId);
+        const prLabel = result.prNumber ? `#${result.prNumber}` : result.prUrl;
+        toast.success(prLabel ? `Published ${prLabel}` : "Published branch");
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace", conversationId],
+          }),
+          conversation?.projectId
+            ? invalidateProjectConversations(conversation.projectId)
+            : Promise.resolve(),
+        ]);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to publish branch");
+      } finally {
+        setPublishingConversationId(null);
+      }
+    },
+    [findConversationById, invalidateProjectConversations, queryClient]
+  );
+
   const defaultRuntime =
     (defaultProjectId ? lastRuntimeByProjectId[defaultProjectId] : null) ??
     (selectedConversationId ? runtimeByConversationId[selectedConversationId] : null) ??
@@ -1042,6 +1069,8 @@ export function AgentsView({
                     artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
+                    onPublishWorkspace={handlePublishWorkspace}
+                    isPublishingWorkspace={publishingConversationId === selectedConversationId}
                     onToggleArtifacts={() =>
                       toggleArtifactPaneVisibility(selectedConversationId, artifactPaneOpen)
                     }
@@ -1123,6 +1152,8 @@ interface AgentsChatHeaderProps {
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
+  onPublishWorkspace?: (conversationId: string) => Promise<void>;
+  isPublishingWorkspace?: boolean;
   onToggleArtifacts: () => void;
   onSelectArtifact: (tab: AgentArtifactTab) => void;
 }
@@ -1133,6 +1164,8 @@ export function AgentsChatHeader({
   artifactOpen,
   activeArtifactTab,
   onRenameConversation,
+  onPublishWorkspace,
+  isPublishingWorkspace = false,
   onToggleArtifacts,
   onSelectArtifact,
 }: AgentsChatHeaderProps) {
@@ -1203,6 +1236,33 @@ export function AgentsChatHeader({
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
+        {conversation && workspace?.mode === "edit" && !workspace.linkedPlanBranchId && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                onClick={() => onPublishWorkspace?.(conversation.id)}
+                disabled={!onPublishWorkspace || isPublishingWorkspace || workspace.status === "missing"}
+                aria-label="Commit and publish branch"
+                data-testid="agents-publish-workspace"
+              >
+                {isPublishingWorkspace ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <GitPullRequestArrow className="h-3.5 w-3.5" />
+                )}
+                <span>Commit & Publish</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Commit changes, push the branch, and create or update its PR
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         {!artifactOpen &&
           HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
             const isActive = activeArtifactTab === id && artifactOpen;

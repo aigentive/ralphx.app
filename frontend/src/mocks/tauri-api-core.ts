@@ -21,6 +21,7 @@ import {
   mockGetConversationStats,
   mockListConversations,
   mockListConversationsPage,
+  mockPublishAgentConversationWorkspace,
   mockStartAgentConversation,
 } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
@@ -214,6 +215,37 @@ const commandHandlers: Record<
       status: workspace.status,
       created_at: workspace.createdAt,
       updated_at: workspace.updatedAt,
+    };
+  },
+  publish_agent_conversation_workspace: async (args) => {
+    const result = await mockPublishAgentConversationWorkspace(args.conversationId as string);
+    const workspace = result.workspace;
+    return {
+      workspace: {
+        conversation_id: workspace.conversationId,
+        project_id: workspace.projectId,
+        mode: workspace.mode,
+        base_ref_kind: workspace.baseRefKind,
+        base_ref: workspace.baseRef,
+        base_display_name: workspace.baseDisplayName,
+        base_commit: workspace.baseCommit,
+        branch_name: workspace.branchName,
+        worktree_path: workspace.worktreePath,
+        linked_ideation_session_id: workspace.linkedIdeationSessionId,
+        linked_plan_branch_id: workspace.linkedPlanBranchId,
+        publication_pr_number: workspace.publicationPrNumber,
+        publication_pr_url: workspace.publicationPrUrl,
+        publication_pr_status: workspace.publicationPrStatus,
+        publication_push_status: workspace.publicationPushStatus,
+        status: workspace.status,
+        created_at: workspace.createdAt,
+        updated_at: workspace.updatedAt,
+      },
+      commit_sha: result.commitSha,
+      pushed: result.pushed,
+      created_pr: result.createdPr,
+      pr_number: result.prNumber,
+      pr_url: result.prUrl,
     };
   },
   create_agent_conversation: async (args) => {
