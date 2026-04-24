@@ -44,6 +44,8 @@ export const ChatContextSchema = z.object({
   selectedTaskId: z.string().optional(),
   /** Current ideation session ID (for ideation view) */
   ideationSessionId: z.string().optional(),
+  /** Current design system ID (for design view) */
+  designSystemId: z.string().optional(),
 });
 
 export type ChatContext = z.infer<typeof ChatContextSchema>;

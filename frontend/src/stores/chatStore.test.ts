@@ -802,6 +802,17 @@ describe("getContextKey", () => {
     expect(key).toBe("project:project-789");
   });
 
+  it("returns design key for design context", () => {
+    const context = createTestContext({
+      view: "design",
+      designSystemId: "design-system-123",
+    });
+
+    const key = getContextKey(context);
+
+    expect(key).toBe("design:design-system-123");
+  });
+
   it("returns project key for activity context", () => {
     const context = createTestContext({
       view: "activity",

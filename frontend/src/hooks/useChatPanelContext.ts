@@ -24,6 +24,7 @@ import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-tas
 interface UseChatPanelContextProps {
   projectId: string;
   ideationSessionId: string | undefined;
+  designSystemId?: string | undefined;
   selectedTaskId: string | undefined;
   isExecutionMode: boolean;
   isReviewMode: boolean;
@@ -53,6 +54,7 @@ interface ConversationsQueryResult {
 export function useChatPanelContext({
   projectId,
   ideationSessionId,
+  designSystemId,
   selectedTaskId,
   isExecutionMode,
   isReviewMode,
@@ -89,6 +91,13 @@ export function useChatPanelContext({
         ideationSessionId,
       };
     }
+    if (designSystemId) {
+      return {
+        view: "design",
+        projectId,
+        designSystemId,
+      };
+    }
     if (selectedTaskId) {
       return {
         view: "task_detail",
@@ -100,7 +109,7 @@ export function useChatPanelContext({
       view: "kanban",
       projectId,
     };
-  }, [selectedTaskId, projectId, ideationSessionId]);
+  }, [selectedTaskId, projectId, ideationSessionId, designSystemId]);
 
   // Compute store context key for queue/agent state operations
   // Uses context-aware keys via registry: "task_execution:id", "review:id", "merge:id", or standard keys
@@ -133,6 +142,8 @@ export function useChatPanelContext({
   // Context key for tracking changes
   const contextKey = ideationSessionId
     ? `ideation:${ideationSessionId}`
+    : designSystemId
+      ? `design:${designSystemId}`
     : selectedTaskId
       ? `${isMergeMode ? "merge" : isExecutionMode ? "execution" : isReviewMode ? "review" : "task"}:${selectedTaskId}`
       : (storeContextKeyOverride ?? `project:${projectId}`);
@@ -169,10 +180,12 @@ export function useChatPanelContext({
   // Declared here (before visibility effect) to avoid temporal dead zone when used in deps array
   const currentContextType: ContextType = ideationSessionId
     ? "ideation"
+    : designSystemId
+      ? "design"
     : selectedTaskId
       ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
       : "project";
-  const currentContextId = ideationSessionId || selectedTaskId || projectId;
+  const currentContextId = ideationSessionId || designSystemId || selectedTaskId || projectId;
 
   // Re-trigger autoSelectConversation when panel becomes visible again, and invalidate
   // the conversation list so new conversations created while hidden are discovered.
@@ -274,13 +287,15 @@ export function useChatPanelContext({
       prevStoreContextKeyRef.current = storeContextKey;
       const newContextType = ideationSessionId
         ? "ideation"
+        : designSystemId
+          ? "design"
         : selectedTaskId
           ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
           : "project";
-      const newContextId = ideationSessionId || selectedTaskId || projectId;
+      const newContextId = ideationSessionId || designSystemId || selectedTaskId || projectId;
       prevContextTypeRef.current = { type: newContextType, id: newContextId };
     }
-  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setSending, ideationSessionId, selectedTaskId, projectId, isMergeMode, isExecutionMode, isReviewMode]);
+  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setSending, ideationSessionId, designSystemId, selectedTaskId, projectId, isMergeMode, isExecutionMode, isReviewMode]);
 
   // Track previous override conversation ID to detect changes
   const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);

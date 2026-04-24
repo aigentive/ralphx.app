@@ -417,6 +417,9 @@ export function getContextKey(context: ChatContext): string {
   if (context.view === "ideation" && context.ideationSessionId) {
     return buildStoreKey("ideation", context.ideationSessionId);
   }
+  if (context.view === "design" && context.designSystemId) {
+    return buildStoreKey("design", context.designSystemId);
+  }
   if (context.view === "task_detail" && context.selectedTaskId) {
     return buildStoreKey("task", context.selectedTaskId);
   }

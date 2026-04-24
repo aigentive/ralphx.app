@@ -21,6 +21,31 @@ vi.mock("@/hooks/useProjects", () => ({
   useProjects: () => useProjectsMock(),
 }));
 
+vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
+  IntegratedChatPanel: vi.fn(
+    ({
+      designSystemId,
+      conversationIdOverride,
+      headerContent,
+      renderComposer,
+    }: {
+      designSystemId?: string;
+      conversationIdOverride?: string;
+      headerContent?: ReactNode;
+      renderComposer?: () => ReactNode;
+    }) => (
+      <div
+        data-testid="integrated-design-chat-panel"
+        data-design-system-id={designSystemId ?? ""}
+        data-conversation-id={conversationIdOverride ?? ""}
+      >
+        {headerContent}
+        {renderComposer?.()}
+      </div>
+    ),
+  ),
+}));
+
 const projects = [
   {
     id: "project-1",
@@ -284,16 +309,18 @@ describe("DesignView", () => {
     expect(within(row).getByText("approved")).toBeInTheDocument();
   });
 
-  it("keeps composer messages scoped to the selected design system surface", async () => {
+  it("passes the selected design conversation to the integrated chat panel", async () => {
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
-    await screen.findByTestId("design-composer-input");
 
-    fireEvent.change(screen.getByTestId("design-composer-input"), {
-      target: { value: "Generate a settings screen" },
+    const panel = await screen.findByTestId("integrated-design-chat-panel");
+
+    expect(panel).toHaveAttribute("data-design-system-id", "design-system-project-1");
+    await waitFor(() => {
+      expect(panel).toHaveAttribute("data-conversation-id", "conversation-design-system-project-1");
     });
-    fireEvent.click(screen.getByTestId("design-composer-submit"));
-
-    expect(screen.getByText("Generate a settings screen")).toBeInTheDocument();
+    expect(screen.getByTestId("design-chat-runtime-pending")).toHaveTextContent(
+      "Review notes appear here",
+    );
   });
 
   it("creates a draft design system for the focused project", async () => {

@@ -101,6 +101,8 @@ interface IntegratedChatPanelProps {
   projectId: string;
   /** Optional ideation session ID - when set, uses ideation context */
   ideationSessionId?: string;
+  /** Optional design system ID - when set, uses design context */
+  designSystemId?: string;
   /** Custom empty state component */
   emptyState?: React.ReactNode;
   /** Always show helper text under input */
@@ -171,6 +173,7 @@ export interface IntegratedChatComposerRenderProps {
 export function IntegratedChatPanel({
   projectId,
   ideationSessionId,
+  designSystemId,
   emptyState,
   showHelperTextAlways = false,
   inputContainerClassName,
@@ -279,6 +282,7 @@ export function IntegratedChatPanel({
   } = useChatPanelContext({
     projectId,
     ideationSessionId,
+    designSystemId,
     selectedTaskId: selectedTaskId ?? undefined,
     isExecutionMode,
     isReviewMode,
