@@ -68,6 +68,10 @@ pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
     pub effort: Option<String>,
     #[serde(default)]
+    pub mcp_transport: Option<String>,
+    #[serde(default)]
+    pub mcp_tools: Vec<String>,
+    #[serde(default)]
     pub tools: Option<CanonicalClaudeToolSpec>,
     #[serde(default)]
     pub disallowed_tools: Vec<String>,
@@ -96,6 +100,8 @@ impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
         self.model.is_none()
             && self.effort.is_none()
+            && self.mcp_transport.is_none()
+            && self.mcp_tools.is_empty()
             && self.tools.is_none()
             && self.disallowed_tools.is_empty()
             && self.preapproved_cli_tools.is_empty()
@@ -110,6 +116,12 @@ impl CanonicalClaudeAgentMetadata {
         }
         if self.effort.is_some() {
             base.effort = self.effort;
+        }
+        if self.mcp_transport.is_some() {
+            base.mcp_transport = self.mcp_transport;
+        }
+        if !self.mcp_tools.is_empty() {
+            base.mcp_tools = self.mcp_tools;
         }
         if self.tools.is_some() {
             base.tools = self.tools;

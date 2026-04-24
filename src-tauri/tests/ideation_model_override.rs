@@ -350,6 +350,7 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
         Path::new("/tmp"),
         "fake-session-id",
         Some("proj-1"),
+        None,
         false,
         Arc::new(MemoryChatAttachmentRepository::new()),
         Arc::new(MemoryArtifactRepository::new()),
