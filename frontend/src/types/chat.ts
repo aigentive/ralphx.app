@@ -14,6 +14,7 @@ export const VIEW_TYPE_VALUES = [
   "kanban",
   "graph",
   "ideation",
+  "design",
   "agents",
   "extensibility",
   "activity",
@@ -63,6 +64,13 @@ export function isKanbanContext(context: ChatContext): boolean {
  */
 export function isIdeationContext(context: ChatContext): boolean {
   return context.view === "ideation";
+}
+
+/**
+ * Check if context is in design view
+ */
+export function isDesignContext(context: ChatContext): boolean {
+  return context.view === "design";
 }
 
 /**
@@ -144,7 +152,7 @@ export function createTaskDetailContext(
  */
 export function createProjectContext(
   projectId: string,
-  view: "activity" | "insights" | "agents"
+  view: "activity" | "insights" | "agents" | "design"
 ): ChatContext {
   return {
     view,

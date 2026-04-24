@@ -28,7 +28,7 @@ export interface ChatContextConfig {
   /** Label for context indicator */
   label: string;
   /** Agent type for StatusActivityBadge */
-  agentType: "worker" | "reviewer" | "merger" | "ideation" | "chat" | null;
+  agentType: "worker" | "reviewer" | "merger" | "ideation" | "chat" | "design" | null;
   /** Feature flags */
   supportsStreamingText: boolean;
   supportsSubagentTasks: boolean;
@@ -119,6 +119,19 @@ export const CHAT_CONTEXT_REGISTRY: Record<ContextType, ChatContextConfig> = {
     supportsStreamingText: true,
     supportsSubagentTasks: true,
     supportsDiffViews: true,
+    supportsHookEvents: false,
+    supportsQueue: true,
+    supportsTeamMode: false,
+    teamActivityPanelPosition: null,
+  },
+  design: {
+    storeKeyPrefix: "design",
+    placeholder: "Ask Design to analyze, refine, or generate a screen...",
+    label: "Design",
+    agentType: "design",
+    supportsStreamingText: true,
+    supportsSubagentTasks: false,
+    supportsDiffViews: false,
     supportsHookEvents: false,
     supportsQueue: true,
     supportsTeamMode: false,

@@ -13,6 +13,7 @@ import {
   Network,
   Lightbulb,
   Bot,
+  Palette,
   Puzzle,
   Activity,
   SlidersHorizontal,
@@ -43,6 +44,13 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     label: "Agents",
     icon: Bot,
     shortcut: "⌘⇧A",
+    visible: () => true,
+  },
+  {
+    view: "design",
+    label: "Design",
+    icon: Palette,
+    shortcut: "⌘⇧D",
     visible: () => true,
   },
   {

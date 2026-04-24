@@ -23,6 +23,7 @@ import { ActivityView } from "@/components/activity";
 import SettingsDialog from "@/components/settings/SettingsDialog";
 import { InsightsView } from "@/components/views/InsightsView";
 import { AgentsView } from "@/components/agents";
+import { DesignView } from "@/components/design";
 import { TeamSplitView } from "@/components/Team";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
@@ -876,7 +877,7 @@ function AppContent() {
               <ProjectSelector onNewProject={handleOpenProjectWizard} align="end" />
             </div>
             {/* Chat Panel Toggle - hidden on views with built-in chat */}
-            {currentView !== "ideation" && currentView !== "agents" && (() => {
+            {currentView !== "ideation" && currentView !== "agents" && currentView !== "design" && (() => {
               // Unified per-view visibility - same logic for all views
               const isExpanded = chatVisibleByView[currentView];
               const handleToggle = () => toggleChatVisible(currentView);
@@ -1154,6 +1155,12 @@ function AppContent() {
                   onCreateProject={handleOpenProjectWizard}
                 />
               )}
+              {currentView === "design" && (
+                <DesignView
+                  projectId={currentProjectId}
+                  onCreateProject={handleOpenProjectWizard}
+                />
+              )}
               {currentView === "extensibility" && (
                 isViewEnabled("extensibility", featureFlags)
                   ? <ExtensibilityView />
@@ -1211,8 +1218,8 @@ function AppContent() {
             </div>
           )}
 
-          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban, ideation, or agents) */}
-          {currentView !== "kanban" && currentView !== "ideation" && currentView !== "agents" && <ChatPanel context={chatContext} />}
+          {/* ChatPanel - resizable side panel with Cmd+K toggle (not on kanban or built-in chat views) */}
+          {currentView !== "kanban" && currentView !== "ideation" && currentView !== "agents" && currentView !== "design" && <ChatPanel context={chatContext} />}
         </div>
       )}
 

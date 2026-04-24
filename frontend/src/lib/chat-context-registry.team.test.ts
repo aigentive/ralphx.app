@@ -43,8 +43,14 @@ describe("chat-context-registry — team extensions", () => {
     expect(config.teamActivityPanelPosition).toBeNull();
   });
 
+  it("design does not support team mode in the first cut", () => {
+    const config = getContextConfig("design");
+    expect(config.supportsTeamMode).toBe(false);
+    expect(config.teamActivityPanelPosition).toBeNull();
+  });
+
   it("all contexts have supportsTeamMode and teamActivityPanelPosition defined", () => {
-    const contextTypes: ContextType[] = ["ideation", "task", "project", "task_execution", "review", "merge"];
+    const contextTypes: ContextType[] = ["ideation", "task", "project", "task_execution", "review", "merge", "design"];
     for (const ct of contextTypes) {
       const config = CHAT_CONTEXT_REGISTRY[ct];
       expect(typeof config.supportsTeamMode).toBe("boolean");
@@ -57,7 +63,7 @@ describe("chat-context-registry — team extensions", () => {
   });
 
   it("teamActivityPanelPosition is null when supportsTeamMode is false", () => {
-    const contextTypes: ContextType[] = ["ideation", "task", "project", "task_execution", "review", "merge"];
+    const contextTypes: ContextType[] = ["ideation", "task", "project", "task_execution", "review", "merge", "design"];
     for (const ct of contextTypes) {
       const config = CHAT_CONTEXT_REGISTRY[ct];
       if (!config.supportsTeamMode) {
