@@ -117,7 +117,7 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 - macOS 13+ (Ventura or later)
 - At least one supported agent runtime installed and authenticated:
   - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
-  - Codex CLI
+  - [Codex CLI](https://developers.openai.com/codex/cli)
 - Node.js 18+ and npm
 - Rust 1.70+ (install via [rustup.rs](https://rustup.rs))
 - Git
@@ -130,22 +130,24 @@ Harness controls are exposed directly in the desktop app:
 
 ### Install
 
-Homebrew:
+#### Homebrew
 
 ```bash
 brew tap aigentive/ralphx
 brew install --cask ralphx
 ```
 
-Direct download:
+This is the recommended path. The tap installs the signed DMG for your Mac and keeps RalphX available through normal Homebrew updates.
 
-- Apple Silicon: [RalphX_0.1.0_aarch64.dmg](https://github.com/aigentive/ralphx.app/releases/download/v0.1.0/RalphX_0.1.0_aarch64.dmg)
-- Intel: [RalphX_0.1.0_x86_64.dmg](https://github.com/aigentive/ralphx.app/releases/download/v0.1.0/RalphX_0.1.0_x86_64.dmg)
+#### Direct Download
 
-Build from source:
+- [Apple Silicon DMG](https://github.com/aigentive/ralphx.app/releases/download/v0.1.0/RalphX_0.1.0_aarch64.dmg) for M-series Macs
+- [Intel DMG](https://github.com/aigentive/ralphx.app/releases/download/v0.1.0/RalphX_0.1.0_x86_64.dmg) for Intel Macs
+
+#### Build From Source
 
 ```bash
-git clone https://github.com/aigentive/ralphx.app.git
+git clone https://github.com/aigentive/ralphx.app.git ralphx
 cd ralphx
 cd frontend
 npm install
@@ -154,7 +156,7 @@ npm run tauri dev
 
 First build compiles the Rust backend (2-5 minutes). Subsequent starts are fast.
 
-Fresh native start from repo root:
+For a fresh native dev start from the repo root:
 
 ```bash
 ./dev-fresh
