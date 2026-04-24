@@ -176,6 +176,53 @@ pub fn resolve_agent_conversation_workspace_path(
         )))
 }
 
+pub async fn resolve_valid_agent_conversation_workspace_path(
+    project: &Project,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<PathBuf> {
+    if workspace.project_id != project.id {
+        return Err(AppError::Validation(format!(
+            "Agent conversation workspace {} belongs to project {} instead of {}",
+            workspace.conversation_id, workspace.project_id, project.id
+        )));
+    }
+
+    let expected_path =
+        resolve_agent_conversation_workspace_path(project, &workspace.conversation_id)?;
+    let stored_path = PathBuf::from(&workspace.worktree_path);
+    if stored_path != expected_path {
+        return Err(AppError::Validation(format!(
+            "Agent conversation workspace path mismatch for conversation {}",
+            workspace.conversation_id
+        )));
+    }
+
+    let project_root = PathBuf::from(&project.working_directory);
+    if expected_path == project_root {
+        return Err(AppError::Validation(format!(
+            "Agent conversation workspace {} points to the project root",
+            workspace.conversation_id
+        )));
+    }
+
+    if !expected_path.is_dir() {
+        return Err(AppError::Validation(format!(
+            "Agent conversation workspace is missing: {}",
+            expected_path.display()
+        )));
+    }
+
+    let checked_out = GitService::get_current_branch(&expected_path).await?;
+    if checked_out != workspace.branch_name {
+        return Err(AppError::Validation(format!(
+            "Agent conversation workspace {} is checked out at '{}' instead of '{}'",
+            workspace.conversation_id, checked_out, workspace.branch_name
+        )));
+    }
+
+    Ok(expected_path)
+}
+
 fn expand_worktree_parent(parent: &str) -> AppResult<PathBuf> {
     let expanded = if let Some(rest) = parent.strip_prefix("~/") {
         let home = dirs::home_dir().ok_or_else(|| {

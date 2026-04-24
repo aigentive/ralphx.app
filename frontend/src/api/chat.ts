@@ -904,6 +904,7 @@ export const chatApi = {
   restoreConversation,
   appendAgentBridgeMessage,
   getAgentConversationWorkspace,
+  publishAgentConversationWorkspace,
   getAgentRunStatus,
   // Message sending & queue
   startAgentConversation,
@@ -987,6 +988,15 @@ export interface StartAgentConversationResult {
   sendResult: SendAgentMessageResult;
 }
 
+export interface PublishAgentConversationWorkspaceResult {
+  workspace: AgentConversationWorkspace;
+  commitSha: string | null;
+  pushed: boolean;
+  createdPr: boolean;
+  prNumber: number | null;
+  prUrl: string | null;
+}
+
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
@@ -1025,11 +1035,23 @@ const StartAgentConversationResponseSchema = z.object({
   send_result: SendAgentMessageResponseSchema,
 });
 
+const PublishAgentConversationWorkspaceResponseSchema = z.object({
+  workspace: AgentConversationWorkspaceResponseSchema,
+  commit_sha: z.string().nullable(),
+  pushed: z.boolean(),
+  created_pr: z.boolean(),
+  pr_number: z.number().nullable(),
+  pr_url: z.string().nullable(),
+});
+
 type RawAgentConversationWorkspace = z.infer<
   typeof AgentConversationWorkspaceResponseSchema
 >;
 type RawStartAgentConversationResponse = z.infer<
   typeof StartAgentConversationResponseSchema
+>;
+type RawPublishAgentConversationWorkspaceResponse = z.infer<
+  typeof PublishAgentConversationWorkspaceResponseSchema
 >;
 
 function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
@@ -1078,6 +1100,19 @@ function transformStartAgentConversationResponse(
   };
 }
 
+function transformPublishAgentConversationWorkspaceResponse(
+  raw: RawPublishAgentConversationWorkspaceResponse
+): PublishAgentConversationWorkspaceResult {
+  return {
+    workspace: transformAgentConversationWorkspace(raw.workspace),
+    commitSha: raw.commit_sha,
+    pushed: raw.pushed,
+    createdPr: raw.created_pr,
+    prNumber: raw.pr_number,
+    prUrl: raw.pr_url,
+  };
+}
+
 export async function getAgentConversationWorkspace(
   conversationId: string
 ): Promise<AgentConversationWorkspace | null> {
@@ -1087,6 +1122,17 @@ export async function getAgentConversationWorkspace(
     AgentConversationWorkspaceResponseSchema.nullable()
   );
   return raw ? transformAgentConversationWorkspace(raw) : null;
+}
+
+export async function publishAgentConversationWorkspace(
+  conversationId: string
+): Promise<PublishAgentConversationWorkspaceResult> {
+  const raw = await typedInvoke(
+    "publish_agent_conversation_workspace",
+    { conversationId },
+    PublishAgentConversationWorkspaceResponseSchema
+  );
+  return transformPublishAgentConversationWorkspaceResponse(raw);
 }
 
 export async function startAgentConversation(
