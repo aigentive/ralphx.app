@@ -9,8 +9,9 @@ use crate::application::AppState;
 use crate::commands::unified_chat_commands::AgentConversationResponse;
 use crate::domain::entities::{
     ChatConversation, DesignSourceKind, DesignSourceRole, DesignSystem, DesignSystemId,
-    DesignSystemSource, DesignSystemSourceId, DesignSystemStatus, ProjectId,
+    DesignSystemSource, DesignSystemSourceId, DesignSystemStatus, Project, ProjectId,
 };
+use crate::utils::design_source_manifest::build_design_source_manifest;
 use crate::utils::design_storage_paths::DesignStoragePaths;
 
 #[derive(Debug, Deserialize)]
@@ -210,7 +211,7 @@ pub async fn create_design_system_core(
 ) -> Result<CreateDesignSystemResponse, String> {
     let primary_project_id =
         parse_non_empty_project_id(&input.primary_project_id, "primary_project_id")?;
-    ensure_project_exists(state, &primary_project_id).await?;
+    let primary_project = load_project(state, &primary_project_id).await?;
 
     let name = normalize_name(&input.name)?;
     let description = input
@@ -220,6 +221,14 @@ pub async fn create_design_system_core(
 
     let design_system_id = DesignSystemId::new();
     let storage_root_ref = storage_paths.storage_ref_for_design_system(&design_system_id);
+    let sources = build_sources(
+        state,
+        &design_system_id,
+        &primary_project,
+        input.selected_paths,
+        input.sources,
+    )
+    .await?;
     storage_paths
         .ensure_design_system_root(&storage_root_ref)
         .map_err(|error| error.to_string())?;
@@ -227,7 +236,7 @@ pub async fn create_design_system_core(
     let now = Utc::now();
     let design_system = DesignSystem {
         id: design_system_id.clone(),
-        primary_project_id: primary_project_id.clone(),
+        primary_project_id,
         name: name.clone(),
         description,
         status: DesignSystemStatus::Draft,
@@ -237,14 +246,6 @@ pub async fn create_design_system_core(
         updated_at: now,
         archived_at: None,
     };
-    let sources = build_sources(
-        state,
-        &design_system_id,
-        &primary_project_id,
-        input.selected_paths,
-        input.sources,
-    )
-    .await?;
 
     let created_system = state
         .design_system_repo
@@ -289,22 +290,25 @@ fn design_storage_paths_from_state(state: &AppState) -> Result<DesignStoragePath
 async fn build_sources(
     state: &AppState,
     design_system_id: &DesignSystemId,
-    primary_project_id: &ProjectId,
+    primary_project: &Project,
     primary_selected_paths: Vec<String>,
     additional_sources: Vec<CreateDesignSystemSourceInput>,
 ) -> Result<Vec<DesignSystemSource>, String> {
+    let primary_selected_paths = normalize_selected_paths(primary_selected_paths)?;
+    let primary_source_hashes =
+        source_hashes_for_project(primary_project, &primary_selected_paths)?;
     let mut sources = vec![DesignSystemSource {
         id: DesignSystemSourceId::new(),
         design_system_id: design_system_id.clone(),
-        project_id: primary_project_id.clone(),
+        project_id: primary_project.id.clone(),
         role: DesignSourceRole::Primary,
-        selected_paths: normalize_selected_paths(primary_selected_paths)?,
+        selected_paths: primary_selected_paths,
         source_kind: DesignSourceKind::ProjectCheckout,
         git_commit: None,
-        source_hashes: BTreeMap::new(),
+        source_hashes: primary_source_hashes,
         last_analyzed_at: None,
     }];
-    let mut seen_projects = HashSet::from([primary_project_id.as_str().to_string()]);
+    let mut seen_projects = HashSet::from([primary_project.id.as_str().to_string()]);
 
     for source in additional_sources {
         let project_id = parse_non_empty_project_id(&source.project_id, "source.project_id")?;
@@ -314,17 +318,19 @@ async fn build_sources(
                 project_id.as_str()
             ));
         }
-        ensure_project_exists(state, &project_id).await?;
+        let project = load_project(state, &project_id).await?;
+        let selected_paths = normalize_selected_paths(source.selected_paths)?;
+        let source_hashes = source_hashes_for_project(&project, &selected_paths)?;
 
         sources.push(DesignSystemSource {
             id: DesignSystemSourceId::new(),
             design_system_id: design_system_id.clone(),
             project_id,
             role: parse_additional_source_role(source.role.as_deref())?,
-            selected_paths: normalize_selected_paths(source.selected_paths)?,
+            selected_paths,
             source_kind: DesignSourceKind::ProjectCheckout,
             git_commit: None,
-            source_hashes: BTreeMap::new(),
+            source_hashes,
             last_analyzed_at: None,
         });
     }
@@ -332,14 +338,26 @@ async fn build_sources(
     Ok(sources)
 }
 
-async fn ensure_project_exists(state: &AppState, project_id: &ProjectId) -> Result<(), String> {
+async fn load_project(state: &AppState, project_id: &ProjectId) -> Result<Project, String> {
     state
         .project_repo
         .get_by_id(project_id)
         .await
         .map_err(|error| error.to_string())?
-        .map(|_| ())
         .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))
+}
+
+fn source_hashes_for_project(
+    project: &Project,
+    selected_paths: &[String],
+) -> Result<BTreeMap<String, String>, String> {
+    build_design_source_manifest(
+        project.id.clone(),
+        Path::new(&project.working_directory),
+        selected_paths,
+    )
+    .map(|manifest| manifest.source_hashes())
+    .map_err(|error| error.to_string())
 }
 
 fn parse_non_empty_project_id(value: &str, field_name: &str) -> Result<ProjectId, String> {
@@ -434,12 +452,28 @@ mod tests {
     use super::*;
     use crate::domain::entities::{ChatContextType, Project};
 
+    fn write_project_file(root: &Path, relative_path: &str, content: &str) {
+        let path = root.join(
+            normalize_selected_path(relative_path)
+                .expect("valid relative test path")
+                .expect("non-empty relative test path"),
+        );
+        let parent = path.parent().expect("test path parent");
+        std::fs::create_dir_all(parent).expect("create parent");
+        std::fs::write(path, content).expect("write file");
+    }
+
     #[tokio::test]
     async fn create_design_system_core_creates_draft_sources_and_conversation() {
         let state = AppState::new_test();
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
-        let project = Project::new("RalphX".to_string(), "/tmp/ralphx".to_string());
+        let project_root = tempfile::tempdir().expect("project tempdir");
+        write_project_file(project_root.path(), "frontend/src/App.tsx", "app\n");
+        let project = Project::new(
+            "RalphX".to_string(),
+            project_root.path().to_string_lossy().to_string(),
+        );
         state.project_repo.create(project.clone()).await.unwrap();
 
         let response = create_design_system_core(
@@ -465,6 +499,10 @@ mod tests {
         assert_eq!(response.sources.len(), 1);
         assert_eq!(response.sources[0].role, "primary");
         assert_eq!(response.sources[0].selected_paths, vec!["frontend/src"]);
+        assert_eq!(response.sources[0].source_hashes.len(), 1);
+        assert!(response.sources[0]
+            .source_hashes
+            .contains_key("frontend/src/App.tsx"));
         assert_eq!(response.conversation.context_type, "design");
         assert_eq!(response.conversation.context_id, response.design_system.id);
 
@@ -498,7 +536,11 @@ mod tests {
         let state = AppState::new_test();
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
-        let project = Project::new("RalphX".to_string(), "/tmp/ralphx".to_string());
+        let project_root = tempfile::tempdir().expect("project tempdir");
+        let project = Project::new(
+            "RalphX".to_string(),
+            project_root.path().to_string_lossy().to_string(),
+        );
         state.project_repo.create(project.clone()).await.unwrap();
 
         let error = create_design_system_core(
