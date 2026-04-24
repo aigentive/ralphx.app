@@ -70,6 +70,8 @@ export function AgentTerminalDrawer({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const hydrationCompleteRef = useRef(false);
   const bufferedEventsRef = useRef<AgentTerminalEvent[]>([]);
+  const lastAppliedEventKeyRef = useRef<string | null>(null);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [status, setStatus] = useState<AgentTerminalStatus>("running");
   const [cwd, setCwd] = useState(workspace.worktreePath);
   const [branchName, setBranchName] = useState(workspace.branchName);
@@ -121,6 +123,19 @@ export function AgentTerminalDrawer({
       bufferedEventsRef.current.push(event);
       return;
     }
+
+    const eventKey = [
+      event.type,
+      event.updatedAt,
+      event.data ?? "",
+      event.message ?? "",
+      event.exitCode ?? "",
+      event.exitSignal ?? "",
+    ].join(":");
+    if (lastAppliedEventKeyRef.current === eventKey) {
+      return;
+    }
+    lastAppliedEventKeyRef.current = eventKey;
 
     const terminal = terminalRef.current;
     if (event.cwd) {
@@ -200,6 +215,14 @@ export function AgentTerminalDrawer({
     let resizeFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let unlisten: (() => void) | null = null;
+    let listenerPromise: Promise<void> | null = null;
+
+    const releaseListener = () => {
+      if (unlisten) {
+        unlisten();
+        unlisten = null;
+      }
+    };
 
     const scheduleFit = () => {
       if (resizeFrame !== null) {
@@ -212,12 +235,19 @@ export function AgentTerminalDrawer({
     };
 
     const start = async () => {
-      unlisten = await listen<unknown>(AGENT_TERMINAL_EVENT, (event) => {
+      listenerPromise = listen<unknown>(AGENT_TERMINAL_EVENT, (event) => {
         const parsed = AgentTerminalEventSchema.safeParse(event.payload);
         if (parsed.success) {
           applyEvent(parsed.data);
         }
+      }).then((dispose) => {
+        if (disposed) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
       });
+      await listenerPromise;
 
       if (disposed) {
         return;
@@ -250,11 +280,17 @@ export function AgentTerminalDrawer({
       bufferedEventsRef.current = [];
 
       dataDisposable = terminal.onData((data) => {
-        void writeAgentTerminal({
-          conversationId,
-          terminalId,
-          data,
-        }).catch(() => undefined);
+        const write = writeQueueRef.current
+          .catch(() => undefined)
+          .then(() =>
+            writeAgentTerminal({
+              conversationId,
+              terminalId,
+              data,
+            }),
+          )
+          .catch(showControlError);
+        writeQueueRef.current = write;
       });
 
       resizeObserver = new ResizeObserver(scheduleFit);
@@ -279,7 +315,8 @@ export function AgentTerminalDrawer({
       }
       resizeObserver?.disconnect();
       dataDisposable?.dispose();
-      unlisten?.();
+      releaseListener();
+      void listenerPromise?.then(releaseListener);
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -289,6 +326,7 @@ export function AgentTerminalDrawer({
     applySnapshot,
     conversationId,
     fitAndReportSize,
+    showControlError,
     terminalId,
     terminalTheme,
   ]);
