@@ -215,23 +215,19 @@ pub async fn resume_execution(
         for task in tasks {
             // Determine restore status: prefer valid pause_reason metadata, otherwise
             // fall back to the recorded pre-pause status in status history.
-            let restore_status = match determine_paused_restore_status(
-                &task,
-                app_state.task_repo.as_ref(),
-            )
-            .await
-            {
-                Ok(Some(status)) => status,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        error = %e,
-                        "Failed to resolve paused restore status"
-                    );
-                    continue;
-                }
-            };
+            let restore_status =
+                match determine_paused_restore_status(&task, app_state.task_repo.as_ref()).await {
+                    Ok(Some(status)) => status,
+                    Ok(None) => continue,
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to resolve paused restore status"
+                        );
+                        continue;
+                    }
+                };
 
             // Validate that the restore status is a valid agent-active state
             if !AGENT_ACTIVE_STATUSES.contains(&restore_status) {
@@ -316,12 +312,10 @@ pub async fn resume_execution(
     }
 
     // Trigger scheduler to pick up waiting Ready tasks
-    let scheduler = Arc::new(
-        app_state.build_task_scheduler_for_runtime(
-            Arc::clone(&execution_state),
-            app_state.app_handle.clone(),
-        ),
-    );
+    let scheduler = Arc::new(app_state.build_task_scheduler_for_runtime(
+        Arc::clone(&execution_state),
+        app_state.app_handle.clone(),
+    ));
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     // Set active project scope before scheduling to prevent cross-project scheduling
     scheduler
@@ -413,9 +407,11 @@ pub async fn resume_execution(
 
 #[doc(hidden)]
 pub(crate) fn prepare_resumed_task_for_entry_actions(task: &mut Task) {
-    task.metadata = Some(crate::application::chat_service::PauseReason::clear_from_task_metadata(
-        task.metadata.as_deref(),
-    ));
+    task.metadata = Some(
+        crate::application::chat_service::PauseReason::clear_from_task_metadata(
+            task.metadata.as_deref(),
+        ),
+    );
     set_trigger_origin(task, "resume");
 }
 
@@ -424,9 +420,9 @@ pub(crate) async fn determine_paused_restore_status(
     task: &Task,
     task_repo: &dyn crate::domain::repositories::TaskRepository,
 ) -> Result<Option<InternalStatus>, crate::error::AppError> {
-    if let Some(reason) = crate::application::chat_service::PauseReason::from_task_metadata(
-        task.metadata.as_deref(),
-    ) {
+    if let Some(reason) =
+        crate::application::chat_service::PauseReason::from_task_metadata(task.metadata.as_deref())
+    {
         match reason.previous_status().parse::<InternalStatus>() {
             Ok(status) => return Ok(Some(status)),
             Err(_) => {

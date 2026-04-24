@@ -9,11 +9,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AT_BOTTOM_THRESHOLD, TEXT_LENGTH_BUCKET_SIZE, ChatMessageList, type ChatMessageData } from "./ChatMessageList";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingContentBlock } from "@/types/streaming-task";
+import type { ReactElement, ReactNode } from "react";
 
 // Mock scrollIntoView before tests run — should NEVER be called for auto-scroll
 const scrollIntoViewMock = vi.fn();
@@ -75,6 +77,14 @@ const defaultProps = {
   streamingContentBlocks: undefined,
   scrollToTimestamp: null,
 };
+
+function TooltipTestProvider({ children }: { children: ReactNode }) {
+  return <TooltipProvider delayDuration={0}>{children}</TooltipProvider>;
+}
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: TooltipTestProvider });
+}
 
 describe("ChatMessageList - Scroll Behavior", () => {
   beforeEach(() => {
@@ -1112,9 +1122,8 @@ describe("ChatMessageList - Scroll Behavior", () => {
       );
 
       expect(screen.getByText("Actual content here")).toBeInTheDocument();
-      // Only one TextBubble (.rounded-xl) from the one non-empty block
-      const bubbles = container.querySelectorAll(".rounded-xl");
-      expect(bubbles).toHaveLength(1);
+      // Only one MessageItem is rendered from the one non-empty block.
+      expect(container.querySelectorAll('[data-testid="message-meta"]')).toHaveLength(1);
     });
   });
 

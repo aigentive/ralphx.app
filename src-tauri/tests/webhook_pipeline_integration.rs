@@ -9,6 +9,8 @@
 // Uses the SQLite-backed apply-test app state for the ideation/apply pipeline and
 // `ConcreteWebhookPublisher` with `MockWebhookHttpClient` — no network calls.
 
+mod support;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,6 +22,7 @@ use axum::{
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
+use ralphx_domain::entities::EventType;
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
@@ -33,7 +36,7 @@ use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::memory::MemoryWebhookRegistrationRepository;
 use ralphx_lib::infrastructure::{ConcreteWebhookPublisher, MockWebhookHttpClient};
-use ralphx_domain::entities::EventType;
+use support::real_git_repo::setup_real_git_repo;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -78,19 +81,20 @@ fn make_project(id: &str, name: &str) -> Project {
 }
 
 fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
-    let mut proposal =
-        TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium);
+    let mut proposal = TaskProposal::new(
+        session_id,
+        title,
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
     proposal.affected_paths = Some(r#"["src/webhook/test_scope.rs"]"#.to_string());
     proposal
 }
 
 async fn acknowledge_dependencies(state: &HttpServerState, session_id: &str) {
-    let _ = analyze_session_dependencies(
-        State(state.clone()),
-        Path(session_id.to_string()),
-    )
-    .await
-    .expect("Failed to analyze and acknowledge dependencies");
+    let _ = analyze_session_dependencies(State(state.clone()), Path(session_id.to_string()))
+        .await
+        .expect("Failed to analyze and acknowledge dependencies");
 }
 
 async fn mark_session_verified(state: &HttpServerState, session_id: &IdeationSessionId) {
@@ -161,13 +165,11 @@ async fn test_pipeline_session_to_tasks_e2e() {
     let state = setup_test_state().await;
 
     // --- Step 1: Create project ---
-    let project = make_project("proj-pipe-e2e", "Pipeline E2E Project");
-    state
-        .app_state
-        .project_repo
-        .create(project)
-        .await
-        .unwrap();
+    let repo = setup_real_git_repo();
+    let mut project = make_project("proj-pipe-e2e", "Pipeline E2E Project");
+    project.working_directory = repo.path_string();
+    project.base_branch = Some("main".to_string());
+    state.app_state.project_repo.create(project).await.unwrap();
 
     // --- Step 2: Start ideation session via HTTP handler ---
     let start_req = StartIdeationRequest {
@@ -191,7 +193,10 @@ async fn test_pipeline_session_to_tasks_e2e() {
         start_result.err()
     );
     let session_resp = start_result.unwrap().0;
-    assert!(!session_resp.session_id.is_empty(), "session_id must be non-empty");
+    assert!(
+        !session_resp.session_id.is_empty(),
+        "session_id must be non-empty"
+    );
 
     let session_id = IdeationSessionId::from_string(session_resp.session_id.clone());
 
@@ -199,21 +204,22 @@ async fn test_pipeline_session_to_tasks_e2e() {
     let p1 = make_proposal(session_id.clone(), "Implement authentication module");
     let p2 = make_proposal(session_id.clone(), "Add rate limiting middleware");
 
-    let created_p1 = state
-        .app_state
-        .task_proposal_repo
-        .create(p1)
-        .await
-        .unwrap();
-    let created_p2 = state
-        .app_state
-        .task_proposal_repo
-        .create(p2)
-        .await
-        .unwrap();
+    let created_p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let created_p2 = state.app_state.task_proposal_repo.create(p2).await.unwrap();
 
     // --- Step 4: Simulate dependency review before finalize/apply ---
     acknowledge_dependencies(&state, session_id.as_str()).await;
+    let acknowledged_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .expect("Failed to reload acknowledged session")
+        .expect("Acknowledged session must exist");
+    assert!(
+        acknowledged_session.dependencies_acknowledged,
+        "Dependency review must acknowledge the session before apply"
+    );
     mark_session_verified(&state, &session_id).await;
 
     // --- Step 5: Apply proposals (accept + schedule) via HTTP handler ---
@@ -227,18 +233,29 @@ async fn test_pipeline_session_to_tasks_e2e() {
         base_branch_override: None,
     };
     let apply_result =
-        external_apply_proposals(State(state.clone()), unrestricted_scope(), Json(apply_req))
-            .await;
+        external_apply_proposals(State(state.clone()), unrestricted_scope(), Json(apply_req)).await;
 
     assert!(
         apply_result.is_ok(),
         "external_apply_proposals must succeed: {:?}",
-        apply_result.err().map(|e| e.status)
+        apply_result
+            .err()
+            .map(|e| (e.status, e.message.unwrap_or_default()))
     );
     let apply_resp = apply_result.unwrap().0;
-    assert_eq!(apply_resp.created_task_ids.len(), 2, "Two tasks must be created");
-    assert!(apply_resp.session_converted, "Session must be marked converted");
-    assert!(apply_resp.execution_plan_id.is_some(), "Execution plan must be created");
+    assert_eq!(
+        apply_resp.created_task_ids.len(),
+        2,
+        "Two tasks must be created"
+    );
+    assert!(
+        apply_resp.session_converted,
+        "Session must be marked converted"
+    );
+    assert!(
+        apply_resp.execution_plan_id.is_some(),
+        "Execution plan must be created"
+    );
 
     let task_ids = apply_resp.created_task_ids.clone();
 
@@ -302,7 +319,10 @@ async fn test_webhook_http_registration_lifecycle() {
     // --- Step 1: Register webhook ---
     let reg_req = RegisterWebhookRequest {
         url: webhook_url.to_string(),
-        event_types: Some(vec!["task:status_changed".to_string(), "review:ready".to_string()]),
+        event_types: Some(vec![
+            "task:status_changed".to_string(),
+            "review:ready".to_string(),
+        ]),
         project_ids: vec![project_id.to_string()],
     };
     let reg_result = register_webhook_http(
@@ -340,11 +360,7 @@ async fn test_webhook_http_registration_lifecycle() {
     let webhook_id = reg_resp.id.clone();
 
     // --- Step 2: List webhooks → expect 1 ---
-    let list_result = list_webhooks_http(
-        State(state.clone()),
-        headers_with_key(api_key_id),
-    )
-    .await;
+    let list_result = list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
 
     assert!(list_result.is_ok(), "list_webhooks_http must succeed");
     let list_resp = list_result.unwrap().0;
@@ -367,11 +383,7 @@ async fn test_webhook_http_registration_lifecycle() {
     assert_eq!(unreg_resp.id, webhook_id);
 
     // --- Step 4: List webhooks → expect 0 ---
-    let list_result2 = list_webhooks_http(
-        State(state.clone()),
-        headers_with_key(api_key_id),
-    )
-    .await;
+    let list_result2 = list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
 
     assert!(list_result2.is_ok());
     let list_resp2 = list_result2.unwrap().0;
@@ -461,7 +473,10 @@ async fn test_webhook_delivery_and_hmac_signature() {
     assert_eq!(call.url, "http://127.0.0.1:18789/hooks/ralphx");
 
     // --- Verify Content-Type header ---
-    let content_type = call.headers.get("Content-Type").expect("Content-Type header required");
+    let content_type = call
+        .headers
+        .get("Content-Type")
+        .expect("Content-Type header required");
     assert_eq!(content_type, "application/json");
 
     // --- Verify X-Webhook-Event header ---
@@ -563,13 +578,14 @@ async fn test_webhook_deactivation_after_10_consecutive_failures() {
         !stored.active,
         "Webhook must be deactivated after 10 consecutive failures"
     );
-    assert_eq!(
-        stored.failure_count, 10,
-        "failure_count must be exactly 10"
-    );
+    assert_eq!(stored.failure_count, 10, "failure_count must be exactly 10");
 
     // Total HTTP calls so far: 10 (one per publish, no retries on 404)
-    assert_eq!(mock_client.call_count(), 10, "Exactly 10 HTTP calls expected");
+    assert_eq!(
+        mock_client.call_count(),
+        10,
+        "Exactly 10 HTTP calls expected"
+    );
 
     // --- Verify 11th publish produces 0 additional HTTP calls ---
     // Webhook is inactive → list_active_for_project returns empty → no delivery
@@ -645,7 +661,11 @@ async fn test_reregistration_refreshes_project_ids() {
         .list_active_for_project(proj_b)
         .await
         .unwrap();
-    assert_eq!(before.len(), 0, "proj-b must not be in scope before re-registration");
+    assert_eq!(
+        before.len(),
+        0,
+        "proj-b must not be in scope before re-registration"
+    );
 
     // --- Step 2: Re-register same URL with expanded scope [proj-a, proj-b] ---
     let rereg_req = RegisterWebhookRequest {
@@ -695,7 +715,11 @@ async fn test_reregistration_refreshes_project_ids() {
         .list_active_for_project(proj_a)
         .await
         .unwrap();
-    assert_eq!(for_a.len(), 1, "proj-a must still appear after re-registration");
+    assert_eq!(
+        for_a.len(),
+        1,
+        "proj-a must still appear after re-registration"
+    );
 }
 
 // ============================================================================
@@ -706,7 +730,6 @@ async fn test_reregistration_refreshes_project_ids() {
 //
 // This is the combined E2E scenario an autonomous agent would execute.
 // ============================================================================
-
 
 #[tokio::test]
 async fn test_full_pipeline_with_webhook_registration() {
@@ -756,8 +779,7 @@ async fn test_full_pipeline_with_webhook_registration() {
         base_branch_override: None,
     };
     let apply_result =
-        external_apply_proposals(State(state.clone()), unrestricted_scope(), Json(apply_req))
-            .await;
+        external_apply_proposals(State(state.clone()), unrestricted_scope(), Json(apply_req)).await;
 
     assert!(apply_result.is_ok(), "Apply proposals must succeed");
     let apply_resp = apply_result.unwrap().0;
@@ -806,8 +828,7 @@ async fn test_full_pipeline_with_webhook_registration() {
     );
 
     // --- List webhooks → 1 active ---
-    let list_result =
-        list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
+    let list_result = list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
     let list_resp = list_result.unwrap().0;
     assert_eq!(list_resp.webhooks.len(), 1);
     assert_eq!(list_resp.webhooks[0].id, webhook_id);
@@ -825,8 +846,7 @@ async fn test_full_pipeline_with_webhook_registration() {
     assert!(unreg_result.unwrap().0.success);
 
     // --- List webhooks → 0 active ---
-    let list_result2 =
-        list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
+    let list_result2 = list_webhooks_http(State(state.clone()), headers_with_key(api_key_id)).await;
     let list_resp2 = list_result2.unwrap().0;
     assert_eq!(
         list_resp2.webhooks.len(),

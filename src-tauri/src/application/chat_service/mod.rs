@@ -235,7 +235,15 @@ fn claude_launches_paused(
     context_type: ChatContextType,
     execution_state: Option<&Arc<crate::commands::ExecutionState>>,
 ) -> bool {
-    uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution
+            | ChatContextType::Review
+            | ChatContextType::Merge
+            | ChatContextType::Ideation
+            | ChatContextType::Task
+            | ChatContextType::Project
+    ) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
 fn is_ideation_registry_context(context_type: &str) -> bool {
@@ -3134,6 +3142,14 @@ mod stale_registry_gate_tests {
             ChatContextType::Merge,
             Some(&execution_state),
         ));
+        assert!(claude_launches_paused(
+            ChatContextType::Project,
+            Some(&execution_state),
+        ));
+        assert!(claude_launches_paused(
+            ChatContextType::Task,
+            Some(&execution_state),
+        ));
     }
 
     #[test]
@@ -3142,11 +3158,7 @@ mod stale_registry_gate_tests {
         execution_state.pause();
 
         assert!(!claude_launches_paused(
-            ChatContextType::Project,
-            Some(&execution_state),
-        ));
-        assert!(!claude_launches_paused(
-            ChatContextType::Task,
+            ChatContextType::Delegation,
             Some(&execution_state),
         ));
     }
