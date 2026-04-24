@@ -37,12 +37,13 @@ export function TextBubble({ text, isUser }: TextBubbleProps) {
     <div
       data-testid={isUser ? "text-bubble-user" : "text-bubble-assistant"}
       className={cn(
-        "relative group w-fit max-w-[350px] px-3 py-2 text-[13px] leading-relaxed break-words",
+        "relative group w-fit px-3 py-2 text-[13px] leading-relaxed break-words",
         /* macOS Tahoe: uniform rounded corners */
         "rounded-xl",
         isUser ? "self-end" : "self-start"
       )}
       style={{
+        maxWidth: "min(85%, 620px)",
         /* macOS Tahoe: flat solid colors, no gradients */
         background: isUser
           ? "var(--chat-user-bubble-bg)"
