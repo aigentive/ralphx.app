@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
+import type { AgentConversationWorkspace } from "@/api/chat";
 import { ideationApi } from "@/api/ideation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAgentSessionStore, type AgentRuntimeSelection } from "@/stores/agentSessionStore";
@@ -214,6 +215,30 @@ const conversation = (
   archivedAt: null,
   projectId: "project-1",
   ideationSessionId: null,
+  ...overrides,
+});
+
+const conversationWorkspace = (
+  overrides: Partial<AgentConversationWorkspace> = {}
+): AgentConversationWorkspace => ({
+  conversationId: "conversation-1",
+  projectId: "project-1",
+  mode: "edit",
+  baseRefKind: "project_default",
+  baseRef: "main",
+  baseDisplayName: "Project default (main)",
+  baseCommit: null,
+  branchName: "ralphx/ralphx/agent-abcdef12",
+  worktreePath: "/tmp/ralphx/conversation-1",
+  linkedIdeationSessionId: null,
+  linkedPlanBranchId: null,
+  publicationPrNumber: null,
+  publicationPrUrl: null,
+  publicationPrStatus: null,
+  publicationPushStatus: null,
+  status: "active",
+  createdAt: "2026-04-23T09:00:00Z",
+  updatedAt: "2026-04-23T09:00:00Z",
   ...overrides,
 });
 
@@ -478,6 +503,47 @@ describe("AgentsChatHeader", () => {
     fireEvent.click(screen.getByTestId("agents-publish-workspace"));
 
     expect(publish).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("toggles the terminal from the header when a workspace is available", () => {
+    const toggleTerminal = vi.fn();
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={conversationWorkspace()}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        terminalOpen={false}
+        terminalUnavailableReason={null}
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={toggleTerminal}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agents-terminal-toggle"));
+
+    expect(toggleTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the terminal header action for branchless conversations", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ agentMode: "chat" })}
+        workspace={null}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        terminalOpen={false}
+        terminalUnavailableReason="Terminal requires a workspace-backed conversation"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("agents-terminal-toggle")).toBeDisabled();
   });
 });
 

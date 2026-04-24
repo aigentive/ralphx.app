@@ -4,6 +4,7 @@
 pub mod agent_lane_settings_bootstrap;
 pub mod agent_lane_resolution;
 pub mod agent_conversation_workspace;
+pub mod agent_terminal;
 pub mod agent_client_bundle;
 pub mod app_setup;
 pub mod app_state;
@@ -84,6 +85,7 @@ pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
 pub use chat_attachment_service::ChatAttachmentService;
+pub use agent_terminal::AgentTerminalService;
 pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
 pub use event_cleanup_service::EventCleanupService;

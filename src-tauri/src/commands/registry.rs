@@ -262,6 +262,12 @@ macro_rules! register_tauri_commands {
             commands::unified_chat_commands::is_chat_service_available,
             commands::unified_chat_commands::stop_agent,
             commands::unified_chat_commands::is_agent_running,
+            commands::agent_terminal_commands::open_agent_terminal,
+            commands::agent_terminal_commands::write_agent_terminal,
+            commands::agent_terminal_commands::resize_agent_terminal,
+            commands::agent_terminal_commands::clear_agent_terminal,
+            commands::agent_terminal_commands::restart_agent_terminal,
+            commands::agent_terminal_commands::close_agent_terminal,
             // Chat attachment commands
             commands::chat_attachment_commands::upload_chat_attachment,
             commands::chat_attachment_commands::link_attachments_to_message,
