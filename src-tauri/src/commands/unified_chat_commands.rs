@@ -18,17 +18,26 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::{Emitter, State};
 
-use crate::application::chat_service::{create_assistant_message, SendMessageOptions};
+use crate::application::agent_conversation_workspace::{
+    prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+};
+use crate::application::chat_service::{
+    create_assistant_message, AgentConversationCreatedPayload, SendMessageOptions,
+};
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
 };
 use crate::commands::ExecutionState;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
-    AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
-    DelegatedSessionId, IdeationSessionId, TaskId,
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentRunId, AgentRunStatus,
+    ChatContextType, ChatConversation, ChatConversationId, DelegatedSessionId,
+    IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::services::QueuedMessage;
+use crate::infrastructure::agents::claude::agent_names::{
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
+};
 
 // ============================================================================
 // Request/Response types
@@ -78,6 +87,86 @@ impl From<SendResult> for SendAgentMessageResponse {
             queued_message_id: result.queued_message_id,
         }
     }
+}
+
+/// Input for creating a project-backed agent conversation with an isolated workspace.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartAgentConversationInput {
+    pub project_id: String,
+    pub content: String,
+    /// Optional provider harness override for the first spawn of the conversation.
+    pub provider_harness: Option<String>,
+    /// Optional explicit model override for the spawned agent.
+    pub model_override: Option<String>,
+    /// Agent workspace mode: "edit" routes to ralphx-general-worker; "ideation" routes to ralphx-chat-project.
+    pub mode: Option<String>,
+    /// Optional base ref kind using ideation naming: project_default, current_branch, local_branch.
+    pub base_ref_kind: Option<String>,
+    /// Optional selected branch/ref name for the base.
+    pub base_ref: Option<String>,
+    /// Optional user-facing base ref label.
+    pub base_display_name: Option<String>,
+}
+
+/// Response for an agent conversation workspace.
+#[derive(Debug, Serialize)]
+pub struct AgentConversationWorkspaceResponse {
+    pub conversation_id: String,
+    pub project_id: String,
+    pub mode: String,
+    pub base_ref_kind: String,
+    pub base_ref: String,
+    pub base_display_name: Option<String>,
+    pub base_commit: Option<String>,
+    pub branch_name: String,
+    pub worktree_path: String,
+    pub linked_ideation_session_id: Option<String>,
+    pub linked_plan_branch_id: Option<String>,
+    pub publication_pr_number: Option<i64>,
+    pub publication_pr_url: Option<String>,
+    pub publication_pr_status: Option<String>,
+    pub publication_push_status: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<AgentConversationWorkspace> for AgentConversationWorkspaceResponse {
+    fn from(workspace: AgentConversationWorkspace) -> Self {
+        Self {
+            conversation_id: workspace.conversation_id.as_str(),
+            project_id: workspace.project_id.as_str().to_string(),
+            mode: workspace.mode.to_string(),
+            base_ref_kind: workspace.base_ref_kind.to_string(),
+            base_ref: workspace.base_ref,
+            base_display_name: workspace.base_display_name,
+            base_commit: workspace.base_commit,
+            branch_name: workspace.branch_name,
+            worktree_path: workspace.worktree_path,
+            linked_ideation_session_id: workspace
+                .linked_ideation_session_id
+                .map(|id| id.as_str().to_string()),
+            linked_plan_branch_id: workspace
+                .linked_plan_branch_id
+                .map(|id| id.as_str().to_string()),
+            publication_pr_number: workspace.publication_pr_number,
+            publication_pr_url: workspace.publication_pr_url,
+            publication_pr_status: workspace.publication_pr_status,
+            publication_push_status: workspace.publication_push_status,
+            status: workspace.status.to_string(),
+            created_at: workspace.created_at.to_rfc3339(),
+            updated_at: workspace.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Response from start_agent_conversation command.
+#[derive(Debug, Serialize)]
+pub struct StartAgentConversationResponse {
+    pub conversation: AgentConversationResponse,
+    pub workspace: AgentConversationWorkspaceResponse,
+    pub send_result: SendAgentMessageResponse,
 }
 
 /// Input for queue_agent_message command
@@ -617,9 +706,157 @@ pub fn parse_context_type(context_type: &str) -> Result<ChatContextType, String>
         .map_err(|e: String| format!("Invalid context type '{}': {}", context_type, e))
 }
 
+fn parse_agent_workspace_mode(
+    mode: Option<&str>,
+) -> Result<AgentConversationWorkspaceMode, String> {
+    mode.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("edit")
+        .parse::<AgentConversationWorkspaceMode>()
+}
+
+fn parse_agent_workspace_base_kind(
+    kind: Option<&str>,
+) -> Result<Option<IdeationAnalysisBaseRefKind>, String> {
+    kind.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::parse::<IdeationAnalysisBaseRefKind>)
+        .transpose()
+}
+
+fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'static str {
+    match mode {
+        AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
+        AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+    }
+}
+
 // ============================================================================
 // Commands
 // ============================================================================
+
+/// Start a project-backed agent conversation in an isolated feature worktree.
+#[tauri::command]
+pub async fn start_agent_conversation(
+    input: StartAgentConversationInput,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
+    app: tauri::AppHandle,
+) -> Result<StartAgentConversationResponse, String> {
+    tracing::info!(
+        project_id = %input.project_id,
+        content_len = input.content.len(),
+        mode = ?input.mode,
+        base_ref_kind = ?input.base_ref_kind,
+        base_ref = ?input.base_ref,
+        "[START_AGENT_CONVERSATION] command invoked"
+    );
+
+    crate::application::validate_chat_runtime_for_context(
+        &state,
+        ChatContextType::Project,
+        &input.project_id,
+        "start_agent_conversation",
+    )
+    .await?;
+
+    let mode = parse_agent_workspace_mode(input.mode.as_deref())?;
+    let base_ref_kind = parse_agent_workspace_base_kind(input.base_ref_kind.as_deref())?;
+    let project_id = ProjectId::from_string(input.project_id.clone());
+    let project = state
+        .project_repo
+        .get_by_id(&project_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", input.project_id))?;
+
+    let conversation = ChatConversation::new_project(project_id);
+    let workspace = prepare_agent_conversation_workspace(
+        &project,
+        &conversation.id,
+        mode,
+        AgentConversationWorkspaceBaseSelection {
+            kind: base_ref_kind,
+            base_ref: input
+                .base_ref
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            display_name: input
+                .base_display_name
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+        },
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let conversation = state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .map_err(|error| error.to_string())?;
+    let workspace = match state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace)
+        .await
+    {
+        Ok(workspace) => workspace,
+        Err(error) => {
+            let _ = state.chat_conversation_repo.delete(&conversation.id).await;
+            return Err(error.to_string());
+        }
+    };
+
+    let _ = app.emit(
+        "agent:conversation_created",
+        AgentConversationCreatedPayload {
+            conversation_id: conversation.id.as_str(),
+            context_type: ChatContextType::Project.to_string(),
+            context_id: input.project_id.clone(),
+        },
+    );
+
+    let service = create_chat_service(
+        &state,
+        app,
+        &execution_state,
+        Some(team_service.inner().clone()),
+    );
+    let harness_override = input
+        .provider_harness
+        .as_deref()
+        .map(str::parse::<AgentHarnessKind>)
+        .transpose()?;
+    let model_override = input
+        .model_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string);
+    let send_result = service
+        .send_message(
+            ChatContextType::Project,
+            &input.project_id,
+            &input.content,
+            SendMessageOptions {
+                harness_override,
+                agent_name_override: Some(agent_name_for_workspace_mode(mode).to_string()),
+                model_override,
+                conversation_id_override: Some(conversation.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .map(SendAgentMessageResponse::from)
+        .map_err(|error| error.to_string())?;
+
+    Ok(StartAgentConversationResponse {
+        conversation: AgentConversationResponse::from(conversation),
+        workspace: AgentConversationWorkspaceResponse::from(workspace),
+        send_result,
+    })
+}
 
 /// Send a message to an agent in any context
 ///

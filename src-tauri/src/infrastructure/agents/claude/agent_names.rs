@@ -81,6 +81,9 @@ pub const AGENT_CHAT_TASK: &str = "ralphx:ralphx-chat-task";
 /// Project-scoped chat (ChatContextType::Project)
 pub const AGENT_CHAT_PROJECT: &str = "ralphx:ralphx-chat-project";
 
+/// General edit worker for project-scoped agent conversations
+pub const AGENT_GENERAL_WORKER: &str = "ralphx:ralphx-general-worker";
+
 /// Worker execution agent (ChatContextType::TaskExecution)
 pub const AGENT_WORKER: &str = "ralphx:ralphx-execution-worker";
 

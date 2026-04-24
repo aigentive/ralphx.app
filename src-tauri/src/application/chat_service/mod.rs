@@ -31,6 +31,8 @@ pub(crate) mod verification_child_process_registry;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
+use crate::application::agent_conversation_workspace::resolve_agent_conversation_workspace_path;
+use crate::application::git_service::GitService;
 use crate::application::harness_runtime_registry::{
     default_harness_runtime_available, resolve_default_chat_service_bootstrap,
     resolve_harness_plugin_dir, resolve_chat_service_bootstrap,
@@ -38,14 +40,16 @@ use crate::application::harness_runtime_registry::{
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
     AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
     ChatMessageId, IdeationSessionId, InternalStatus, ProjectId, TaskId,
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
-    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, DelegatedSessionRepository, ExecutionSettingsRepository,
+    ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
+    AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, DelegatedSessionRepository,
+    ExecutionSettingsRepository,
     IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     ReviewRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,
@@ -54,6 +58,9 @@ use crate::domain::repositories::{
 use crate::domain::services::{
     is_process_alive, kill_process, MessageQueue, QueuedMessage, RunningAgentInfo,
     RunningAgentKey, RunningAgentRegistry,
+};
+use crate::infrastructure::agents::claude::agent_names::{
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
 };
 use async_trait::async_trait;
 use serde::Serialize;
@@ -550,6 +557,8 @@ pub struct AppChatService<R: Runtime = tauri::Wry> {
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     question_state: Option<Arc<QuestionState>>,
     plan_branch_repo: std::sync::Mutex<Option<Arc<dyn PlanBranchRepository>>>,
+    agent_conversation_workspace_repo:
+        std::sync::Mutex<Option<Arc<dyn AgentConversationWorkspaceRepository>>>,
     task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     task_step_repo: Option<Arc<dyn TaskStepRepository>>,
     review_repo: Option<Arc<dyn ReviewRepository>>,
@@ -619,6 +628,7 @@ impl<R: Runtime> AppChatService<R> {
             execution_state: None,
             question_state: None,
             plan_branch_repo: std::sync::Mutex::new(None),
+            agent_conversation_workspace_repo: std::sync::Mutex::new(None),
             task_proposal_repo: None,
             task_step_repo: None,
             review_repo: None,
@@ -746,6 +756,14 @@ impl<R: Runtime> AppChatService<R> {
 
     pub fn with_plan_branch_repo(self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         *self.plan_branch_repo.lock().unwrap() = Some(repo);
+        self
+    }
+
+    pub fn with_agent_conversation_workspace_repo(
+        self,
+        repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    ) -> Self {
+        *self.agent_conversation_workspace_repo.lock().unwrap() = Some(repo);
         self
     }
 
@@ -1179,6 +1197,105 @@ impl<R: Runtime> AppChatService<R> {
             &self.default_working_directory,
         )
         .await
+    }
+
+    async fn load_agent_conversation_workspace(
+        &self,
+        context_type: ChatContextType,
+        conversation_id: &ChatConversationId,
+    ) -> Result<Option<AgentConversationWorkspace>, ChatServiceError> {
+        if context_type != ChatContextType::Project {
+            return Ok(None);
+        }
+
+        let repo = self.agent_conversation_workspace_repo.lock().unwrap().clone();
+        let Some(repo) = repo else {
+            return Ok(None);
+        };
+
+        repo.get_by_conversation_id(conversation_id)
+            .await
+            .map_err(|error| ChatServiceError::RepositoryError(error.to_string()))
+    }
+
+    async fn resolve_agent_workspace_working_directory(
+        &self,
+        workspace: &AgentConversationWorkspace,
+    ) -> Result<PathBuf, ChatServiceError> {
+        let project = self
+            .project_repo
+            .get_by_id(&workspace.project_id)
+            .await
+            .map_err(|error| ChatServiceError::RepositoryError(error.to_string()))?
+            .ok_or_else(|| {
+                ChatServiceError::SpawnFailed(format!(
+                    "Project not found for agent conversation workspace: {}",
+                    workspace.project_id
+                ))
+            })?;
+
+        let expected_path =
+            resolve_agent_conversation_workspace_path(&project, &workspace.conversation_id)
+                .map_err(|error| ChatServiceError::SpawnFailed(error.to_string()))?;
+        let stored_path = PathBuf::from(&workspace.worktree_path);
+        if stored_path != expected_path {
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Agent conversation workspace path mismatch for conversation {}",
+                workspace.conversation_id
+            )));
+        }
+
+        let project_root = PathBuf::from(&project.working_directory);
+        if expected_path == project_root {
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Agent conversation workspace {} points to the project root",
+                workspace.conversation_id
+            )));
+        }
+
+        if !expected_path.is_dir() {
+            self.mark_agent_conversation_workspace_missing(workspace).await;
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Agent conversation workspace is missing: {}",
+                expected_path.display()
+            )));
+        }
+
+        let checked_out = GitService::get_current_branch(&expected_path)
+            .await
+            .map_err(|error| ChatServiceError::SpawnFailed(error.to_string()))?;
+        if checked_out != workspace.branch_name {
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Agent conversation workspace {} is checked out at '{}' instead of '{}'",
+                workspace.conversation_id, checked_out, workspace.branch_name
+            )));
+        }
+
+        Ok(expected_path)
+    }
+
+    async fn mark_agent_conversation_workspace_missing(
+        &self,
+        workspace: &AgentConversationWorkspace,
+    ) {
+        let repo = self.agent_conversation_workspace_repo.lock().unwrap().clone();
+        let Some(repo) = repo else {
+            return;
+        };
+
+        if let Err(error) = repo
+            .update_status(
+                &workspace.conversation_id,
+                AgentConversationWorkspaceStatus::Missing,
+            )
+            .await
+        {
+            tracing::warn!(
+                conversation_id = workspace.conversation_id.as_str(),
+                error = %error,
+                "Failed to mark missing agent conversation workspace"
+            );
+        }
     }
 
     /// Create a spawnable Claude CLI command (one-shot mode with `-p`).
@@ -1717,6 +1834,9 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         } else {
             None
         };
+        let agent_workspace = self
+            .load_agent_conversation_workspace(context_type, &conversation.id)
+            .await?;
         let entity_status = self.get_entity_status(context_type, context_id).await;
         let team_mode_val = self.team_mode.load(Ordering::Relaxed);
         let resolved_context_agent = chat_service_helpers::resolve_agent_with_team_mode(
@@ -1724,9 +1844,16 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             entity_status.as_deref(),
             team_mode_val,
         );
+        let workspace_agent_name = agent_workspace
+            .as_ref()
+            .map(|workspace| match workspace.mode {
+                AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
+                AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+            });
         let agent_name = options
             .agent_name_override
             .as_deref()
+            .or(workspace_agent_name)
             .unwrap_or(resolved_context_agent);
         let spawn_harness_override =
             options
@@ -2194,16 +2321,31 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         }
 
         // 6. Resolve working directory
-        let mut working_directory = match self
-            .resolve_working_directory(context_type, context_id)
-            .await
-        {
-            Ok(dir) => dir,
-            Err(e) => {
-                cleanup_and_err!(ChatServiceError::SpawnFailed(e));
+        let mut working_directory = if let Some(workspace) = agent_workspace.as_ref() {
+            match self.resolve_agent_workspace_working_directory(workspace).await {
+                Ok(dir) => dir,
+                Err(e) => {
+                    cleanup_and_err!(e);
+                }
+            }
+        } else {
+            match self
+                .resolve_working_directory(context_type, context_id)
+                .await
+            {
+                Ok(dir) => dir,
+                Err(e) => {
+                    cleanup_and_err!(ChatServiceError::SpawnFailed(e));
+                }
             }
         };
         if !working_directory.exists() {
+            if agent_workspace.is_some() {
+                cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
+                    "Agent conversation workspace is missing: {}",
+                    working_directory.display()
+                )));
+            }
             tracing::warn!(
                 context_type = ?context_type,
                 context_id = context_id,
@@ -2533,6 +2675,11 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 agent_lane_settings_repo: self.agent_lane_settings_repo.clone(),
                 ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),
                 ideation_model_settings_repo: self.ideation_model_settings_repo.clone(),
+                agent_conversation_workspace_repo: self
+                    .agent_conversation_workspace_repo
+                    .lock()
+                    .unwrap()
+                    .clone(),
                 activity_event_repo: Arc::clone(&self.activity_event_repo),
                 memory_event_repo: Arc::clone(&self.memory_event_repo),
                 message_queue: Arc::clone(&self.message_queue),

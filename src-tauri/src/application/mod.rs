@@ -3,6 +3,7 @@
 
 pub mod agent_lane_settings_bootstrap;
 pub mod agent_lane_resolution;
+pub mod agent_conversation_workspace;
 pub mod agent_client_bundle;
 pub mod app_setup;
 pub mod app_state;
