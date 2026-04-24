@@ -34,6 +34,7 @@ pub fn context_matches_running_status(
         ChatContextType::Task
         | ChatContextType::Ideation
         | ChatContextType::Delegation
+        | ChatContextType::Design
         | ChatContextType::Project => false,
     }
 }

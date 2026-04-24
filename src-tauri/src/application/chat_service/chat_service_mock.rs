@@ -256,6 +256,9 @@ impl ChatService for MockChatService {
             ChatContextType::Delegation => ChatConversation::new_delegation(
                 crate::domain::entities::DelegatedSessionId::from_string(context_id),
             ),
+            ChatContextType::Design => ChatConversation::new_design(
+                crate::domain::entities::DesignSystemId::from_string(context_id),
+            ),
             ChatContextType::Task => {
                 ChatConversation::new_task(TaskId::from_string(context_id.to_string()))
             }

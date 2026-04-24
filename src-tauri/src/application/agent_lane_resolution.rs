@@ -245,6 +245,7 @@ fn execution_lane_for_context(
         ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
         ChatContextType::Ideation
         | ChatContextType::Delegation
+        | ChatContextType::Design
         | ChatContextType::Task
         | ChatContextType::Project => None,
     }

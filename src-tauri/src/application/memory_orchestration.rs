@@ -27,6 +27,7 @@ impl MemoryCategory {
         match context_type {
             ChatContextType::Ideation => MemoryCategory::Planning,
             ChatContextType::Delegation => MemoryCategory::Execution,
+            ChatContextType::Design => MemoryCategory::ProjectChat,
             ChatContextType::Task | ChatContextType::TaskExecution => MemoryCategory::Execution,
             ChatContextType::Review => MemoryCategory::Review,
             ChatContextType::Merge => MemoryCategory::Merge,

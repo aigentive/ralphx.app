@@ -167,7 +167,10 @@ fn runtime_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> 
         ChatContextType::TaskExecution => Some(AgentLane::ExecutionWorker),
         ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
         ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
-        ChatContextType::Delegation | ChatContextType::Task | ChatContextType::Project => None,
+        ChatContextType::Delegation
+        | ChatContextType::Design
+        | ChatContextType::Task
+        | ChatContextType::Project => None,
     }
 }
 
@@ -186,7 +189,9 @@ async fn project_id_for_context(
             .map(|session| session.project_id.as_str().to_string()),
         ChatContextType::Delegation => state
             .delegated_session_repo
-            .get_by_id(&crate::domain::entities::DelegatedSessionId::from_string(context_id))
+            .get_by_id(&crate::domain::entities::DelegatedSessionId::from_string(
+                context_id,
+            ))
             .await
             .ok()
             .flatten()
@@ -198,7 +203,7 @@ async fn project_id_for_context(
             .ok()
             .flatten()
             .map(|task| task.project_id.as_str().to_string()),
-        ChatContextType::Task | ChatContextType::Project => None,
+        ChatContextType::Design | ChatContextType::Task | ChatContextType::Project => None,
     }
 }
 

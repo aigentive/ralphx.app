@@ -379,6 +379,7 @@ impl MessageQueue {
         let ctx_type = match context_type {
             "ideation" => ChatContextType::Ideation,
             "delegation" => ChatContextType::Delegation,
+            "design" => ChatContextType::Design,
             "task_execution" => ChatContextType::TaskExecution,
             "task" => ChatContextType::Task,
             "project" => ChatContextType::Project,

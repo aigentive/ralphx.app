@@ -251,7 +251,10 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             // ChatResumptionRunner must unconditionally skip ideation to prevent double-spawn.
             ChatContextType::Ideation => true,
             // Other context types are not handled by StartupJobRunner
-            ChatContextType::Delegation | ChatContextType::Task | ChatContextType::Project => false,
+            ChatContextType::Delegation
+            | ChatContextType::Design
+            | ChatContextType::Task
+            | ChatContextType::Project => false,
         }
     }
 
@@ -280,7 +283,8 @@ fn context_type_priority(context_type: ChatContextType) -> u8 {
         ChatContextType::Task => 3,
         ChatContextType::Ideation => 4,
         ChatContextType::Delegation => 5,
-        ChatContextType::Project => 6, // Lowest priority
+        ChatContextType::Project => 6,
+        ChatContextType::Design => 7, // Lowest until design runtime recovery is wired
     }
 }
 

@@ -1462,7 +1462,7 @@ impl<R: Runtime> AppChatService<R> {
                 }
             }
             // Other contexts don't have status-based agent resolution yet
-            ChatContextType::Project => None,
+            ChatContextType::Design | ChatContextType::Project => None,
         }
     }
 }

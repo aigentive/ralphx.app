@@ -6,7 +6,8 @@ use uuid::Uuid;
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
 
 use super::{
-    AgentConversationWorkspaceMode, DelegatedSessionId, IdeationSessionId, ProjectId, TaskId,
+    AgentConversationWorkspaceMode, DelegatedSessionId, DesignSystemId, IdeationSessionId,
+    ProjectId, TaskId,
 };
 
 /// Unique identifier for a chat conversation
@@ -77,6 +78,8 @@ pub enum ChatContextType {
     Ideation,
     /// Delegated specialist session context
     Delegation,
+    /// Design system context
+    Design,
     /// Task-specific context
     Task,
     /// Project-level context
@@ -95,6 +98,7 @@ impl fmt::Display for ChatContextType {
         match self {
             ChatContextType::Ideation => write!(f, "ideation"),
             ChatContextType::Delegation => write!(f, "delegation"),
+            ChatContextType::Design => write!(f, "design"),
             ChatContextType::Task => write!(f, "task"),
             ChatContextType::Project => write!(f, "project"),
             ChatContextType::TaskExecution => write!(f, "task_execution"),
@@ -111,6 +115,7 @@ impl std::str::FromStr for ChatContextType {
         match s {
             "ideation" => Ok(ChatContextType::Ideation),
             "delegation" => Ok(ChatContextType::Delegation),
+            "design" => Ok(ChatContextType::Design),
             "task" => Ok(ChatContextType::Task),
             "project" => Ok(ChatContextType::Project),
             "task_execution" => Ok(ChatContextType::TaskExecution),
@@ -317,6 +322,35 @@ impl ChatConversation {
             id: ChatConversationId::new(),
             context_type: ChatContextType::Delegation,
             context_id: session_id.as_str().to_string(),
+            claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
+            agent_mode: None,
+            title: None,
+            message_count: 0,
+            last_message_at: None,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
+        }
+    }
+
+    /// Create a new conversation for a design system
+    pub fn new_design(design_system_id: DesignSystemId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: ChatConversationId::new(),
+            context_type: ChatContextType::Design,
+            context_id: design_system_id.as_str().to_string(),
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
