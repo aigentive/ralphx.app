@@ -28,7 +28,9 @@ use crate::domain::repositories::{
     AgentLaneSettingsRepository, AgentProfileRepository, AgentRunRepository, ApiKeyRepository,
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    DelegatedSessionRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
+    DelegatedSessionRepository, DesignRunRepository, DesignSchemaRepository,
+    DesignStyleguideFeedbackRepository, DesignStyleguideRepository, DesignSystemRepository,
+    DesignSystemSourceRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
     ExternalEventsRepository, GlobalExecutionSettingsRepository, IdeationEffortSettingsRepository,
     IdeationModelSettingsRepository, IdeationSessionRepository, IdeationSettingsRepository,
     MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository, MethodologyRepository,
@@ -49,7 +51,9 @@ use crate::infrastructure::memory::{
     MemoryApiKeyRepository, MemoryAppStateRepository, MemoryArtifactBucketRepository,
     MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatAttachmentRepository,
     MemoryChatConversationRepository, MemoryChatMessageRepository,
-    MemoryDelegatedSessionRepository, MemoryExecutionPlanRepository,
+    MemoryDelegatedSessionRepository, MemoryDesignRunRepository, MemoryDesignSchemaRepository,
+    MemoryDesignStyleguideFeedbackRepository, MemoryDesignStyleguideRepository,
+    MemoryDesignSystemRepository, MemoryDesignSystemSourceRepository, MemoryExecutionPlanRepository,
     MemoryExecutionSettingsRepository, MemoryExternalEventsRepository,
     MemoryGlobalExecutionSettingsRepository, MemoryIdeationEffortSettingsRepository,
     MemoryIdeationModelSettingsRepository, MemoryIdeationSessionRepository,
@@ -70,7 +74,10 @@ use crate::infrastructure::sqlite::{
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteApiKeyRepository,
     SqliteAppStateRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
     SqliteArtifactRepository, SqliteChatAttachmentRepository, SqliteChatConversationRepository,
-    SqliteChatMessageRepository, SqliteDelegatedSessionRepository, SqliteExecutionPlanRepository,
+    SqliteChatMessageRepository, SqliteDelegatedSessionRepository, SqliteDesignRunRepository,
+    SqliteDesignSchemaRepository, SqliteDesignStyleguideFeedbackRepository,
+    SqliteDesignStyleguideRepository, SqliteDesignSystemRepository,
+    SqliteDesignSystemSourceRepository, SqliteExecutionPlanRepository,
     SqliteExecutionSettingsRepository, SqliteExternalEventsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationEffortSettingsRepository,
     SqliteIdeationModelSettingsRepository, SqliteIdeationSessionRepository,
@@ -149,6 +156,18 @@ pub struct AppState {
     pub chat_conversation_repo: Arc<dyn ChatConversationRepository>,
     /// Conversation-owned branch/worktree repository for Agents starter workspaces
     pub agent_conversation_workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
+    /// Design system repository for first-class Design workspace records
+    pub design_system_repo: Arc<dyn DesignSystemRepository>,
+    /// Source manifest metadata repository for Design systems
+    pub design_system_source_repo: Arc<dyn DesignSystemSourceRepository>,
+    /// Versioned machine schema repository for Design systems
+    pub design_schema_repo: Arc<dyn DesignSchemaRepository>,
+    /// Human styleguide item repository derived from design schemas
+    pub design_styleguide_repo: Arc<dyn DesignStyleguideRepository>,
+    /// Row-level styleguide feedback repository
+    pub design_styleguide_feedback_repo: Arc<dyn DesignStyleguideFeedbackRepository>,
+    /// Design generation and feedback run repository
+    pub design_run_repo: Arc<dyn DesignRunRepository>,
     /// Agent run repository (for tracking Claude agent executions)
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     /// Activity event repository (for activity stream persistence)
@@ -473,6 +492,24 @@ impl AppState {
             agent_conversation_workspace_repo: Arc::new(
                 SqliteAgentConversationWorkspaceRepository::from_shared(Arc::clone(&shared_conn)),
             ),
+            design_system_repo: Arc::new(SqliteDesignSystemRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            design_system_source_repo: Arc::new(
+                SqliteDesignSystemSourceRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
+            design_schema_repo: Arc::new(SqliteDesignSchemaRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            design_styleguide_repo: Arc::new(SqliteDesignStyleguideRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            design_styleguide_feedback_repo: Arc::new(
+                SqliteDesignStyleguideFeedbackRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
+            design_run_repo: Arc::new(SqliteDesignRunRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -644,6 +681,14 @@ impl AppState {
             agent_conversation_workspace_repo: Arc::new(
                 MemoryAgentConversationWorkspaceRepository::new(),
             ),
+            design_system_repo: Arc::new(MemoryDesignSystemRepository::new()),
+            design_system_source_repo: Arc::new(MemoryDesignSystemSourceRepository::new()),
+            design_schema_repo: Arc::new(MemoryDesignSchemaRepository::new()),
+            design_styleguide_repo: Arc::new(MemoryDesignStyleguideRepository::new()),
+            design_styleguide_feedback_repo: Arc::new(
+                MemoryDesignStyleguideFeedbackRepository::new(),
+            ),
+            design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -751,6 +796,14 @@ impl AppState {
             agent_conversation_workspace_repo: Arc::new(
                 MemoryAgentConversationWorkspaceRepository::new(),
             ),
+            design_system_repo: Arc::new(MemoryDesignSystemRepository::new()),
+            design_system_source_repo: Arc::new(MemoryDesignSystemSourceRepository::new()),
+            design_schema_repo: Arc::new(MemoryDesignSchemaRepository::new()),
+            design_styleguide_repo: Arc::new(MemoryDesignStyleguideRepository::new()),
+            design_styleguide_feedback_repo: Arc::new(
+                MemoryDesignStyleguideFeedbackRepository::new(),
+            ),
+            design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -870,6 +923,14 @@ impl AppState {
             agent_conversation_workspace_repo: Arc::new(
                 SqliteAgentConversationWorkspaceRepository::from_shared(Arc::clone(&shared_conn)),
             ),
+            design_system_repo: Arc::new(MemoryDesignSystemRepository::new()),
+            design_system_source_repo: Arc::new(MemoryDesignSystemSourceRepository::new()),
+            design_schema_repo: Arc::new(MemoryDesignSchemaRepository::new()),
+            design_styleguide_repo: Arc::new(MemoryDesignStyleguideRepository::new()),
+            design_styleguide_feedback_repo: Arc::new(
+                MemoryDesignStyleguideFeedbackRepository::new(),
+            ),
+            design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
@@ -973,6 +1034,14 @@ impl AppState {
             agent_conversation_workspace_repo: Arc::new(
                 MemoryAgentConversationWorkspaceRepository::new(),
             ),
+            design_system_repo: Arc::new(MemoryDesignSystemRepository::new()),
+            design_system_source_repo: Arc::new(MemoryDesignSystemSourceRepository::new()),
+            design_schema_repo: Arc::new(MemoryDesignSchemaRepository::new()),
+            design_styleguide_repo: Arc::new(MemoryDesignStyleguideRepository::new()),
+            design_styleguide_feedback_repo: Arc::new(
+                MemoryDesignStyleguideFeedbackRepository::new(),
+            ),
+            design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
