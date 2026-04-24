@@ -12,12 +12,11 @@
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
-use std::{collections::HashMap, io::Write as _, path::Path, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use tauri::{Emitter, State};
-use tempfile::NamedTempFile;
 
 use crate::application::agent_conversation_workspace::{
     prepare_agent_conversation_workspace, resolve_valid_agent_conversation_workspace_path,
@@ -37,8 +36,7 @@ use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, DelegatedSessionId,
     IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
 };
-use crate::domain::services::{GithubServiceTrait, QueuedMessage};
-use crate::error::{AppError, AppResult};
+use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage};
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
 };
@@ -766,84 +764,6 @@ fn build_agent_workspace_commit_message(conversation: &ChatConversation) -> Stri
     format!("feat: {title}")
 }
 
-fn build_agent_workspace_pr_title(conversation: &ChatConversation) -> String {
-    conversation
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "Untitled agent")
-        .map(str::to_string)
-        .unwrap_or_else(|| "Agent conversation changes".to_string())
-}
-
-fn write_agent_workspace_pr_body(
-    conversation: &ChatConversation,
-    workspace: &AgentConversationWorkspace,
-) -> AppResult<NamedTempFile> {
-    let body = format!(
-        "## RalphX Agent Conversation\n\n\
-         - Conversation: `{}`\n\
-         - Base branch: `{}`\n\
-         - Feature branch: `{}`\n\n\
-         Published from a RalphX Agents conversation workspace.",
-        conversation.id, workspace.base_ref, workspace.branch_name
-    );
-    let body_file = NamedTempFile::new().map_err(|e| {
-        AppError::Infrastructure(format!("failed to create PR body temp file: {e}"))
-    })?;
-    (&body_file)
-        .write_all(body.as_bytes())
-        .map_err(|e| AppError::Infrastructure(format!("failed to write PR body temp file: {e}")))?;
-    Ok(body_file)
-}
-
-async fn publish_agent_workspace_pr(
-    github: &Arc<dyn GithubServiceTrait>,
-    worktree_path: &Path,
-    conversation: &ChatConversation,
-    workspace: &AgentConversationWorkspace,
-) -> AppResult<(i64, String, bool, &'static str)> {
-    let title = build_agent_workspace_pr_title(conversation);
-    let body_file = write_agent_workspace_pr_body(conversation, workspace)?;
-
-    if let Some(pr_number) = workspace.publication_pr_number {
-        github
-            .update_pr_details(worktree_path, pr_number, &title, body_file.path())
-            .await?;
-        let pr_url = workspace
-            .publication_pr_url
-            .clone()
-            .unwrap_or_else(|| format!("#{pr_number}"));
-        return Ok((pr_number, pr_url, false, "open"));
-    }
-
-    match github
-        .create_draft_pr(
-            worktree_path,
-            &workspace.base_ref,
-            &workspace.branch_name,
-            &title,
-            body_file.path(),
-        )
-        .await
-    {
-        Ok((pr_number, pr_url)) => Ok((pr_number, pr_url, true, "draft")),
-        Err(AppError::DuplicatePr) => {
-            let Some((pr_number, pr_url)) = github
-                .find_pr_by_head_branch(worktree_path, &workspace.branch_name)
-                .await?
-            else {
-                return Err(AppError::DuplicatePr);
-            };
-            github
-                .update_pr_details(worktree_path, pr_number, &title, body_file.path())
-                .await?;
-            Ok((pr_number, pr_url, false, "open"))
-        }
-        Err(error) => Err(error),
-    }
-}
-
 // ============================================================================
 // Commands
 // ============================================================================
@@ -1518,9 +1438,11 @@ pub async fn publish_agent_conversation_workspace(
         .await
         .map_err(|e| e.to_string())?;
 
-    let pr_result =
-        publish_agent_workspace_pr(github, &worktree_path, &conversation, &workspace).await;
-    let (pr_number, pr_url, created_pr, pr_status) = match pr_result {
+    let publisher = AgentWorkspacePrPublisher::new(github);
+    let pr_result = publisher
+        .publish_draft_pr(&worktree_path, &conversation, &workspace)
+        .await;
+    let outcome = match pr_result {
         Ok(result) => result,
         Err(error) => {
             let _ = state
@@ -1541,9 +1463,9 @@ pub async fn publish_agent_conversation_workspace(
         .agent_conversation_workspace_repo
         .update_publication(
             &workspace.conversation_id,
-            Some(pr_number),
-            Some(&pr_url),
-            Some(pr_status),
+            Some(outcome.pr_number),
+            Some(&outcome.pr_url),
+            Some(outcome.pr_status),
             Some("pushed"),
         )
         .await
@@ -1560,9 +1482,9 @@ pub async fn publish_agent_conversation_workspace(
         workspace: AgentConversationWorkspaceResponse::from(refreshed),
         commit_sha,
         pushed: true,
-        created_pr,
-        pr_number: Some(pr_number),
-        pr_url: Some(pr_url),
+        created_pr: outcome.created_pr,
+        pr_number: Some(outcome.pr_number),
+        pr_url: Some(outcome.pr_url),
     })
 }
 
