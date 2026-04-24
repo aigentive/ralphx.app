@@ -14,6 +14,7 @@ const {
   useProjectsMock,
   useProjectAgentConversationsMock,
   useConversationMock,
+  startAgentConversationMock,
   sendAgentMessageMock,
   createConversationMock,
   spawnConversationSessionNamerMock,
@@ -24,6 +25,7 @@ const {
   useProjectsMock: vi.fn(),
   useProjectAgentConversationsMock: vi.fn(),
   useConversationMock: vi.fn(),
+  startAgentConversationMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
   createConversationMock: vi.fn(),
   spawnConversationSessionNamerMock: vi.fn(),
@@ -73,6 +75,7 @@ vi.mock("@/hooks/useChat", () => ({
 
 vi.mock("@/api/chat", () => ({
   chatApi: {
+    startAgentConversation: (...args: unknown[]) => startAgentConversationMock(...args),
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
     createConversation: (...args: unknown[]) => createConversationMock(...args),
     spawnConversationSessionNamer: (...args: unknown[]) =>
@@ -358,6 +361,7 @@ describe("AgentsView", () => {
     useProjectAgentConversationsMock.mockReset();
     useProjectsMock.mockReset();
     useConversationMock.mockReset();
+    startAgentConversationMock.mockReset();
     sendAgentMessageMock.mockReset();
     createConversationMock.mockReset();
     spawnConversationSessionNamerMock.mockReset();
@@ -372,6 +376,37 @@ describe("AgentsView", () => {
       wasQueued: false,
       queuedAsPending: false,
       queuedMessageId: null,
+    });
+    startAgentConversationMock.mockResolvedValue({
+      conversation: conversation({ id: "conversation-2", contextId: "project-1" }),
+      workspace: {
+        conversationId: "conversation-2",
+        projectId: "project-1",
+        mode: "edit",
+        baseRefKind: "project_default",
+        baseRef: "main",
+        baseDisplayName: "Project default (main)",
+        baseCommit: null,
+        branchName: "ralphx/demo/agent-conversation-2",
+        worktreePath: "/tmp/ralphx/conversation-2",
+        linkedIdeationSessionId: null,
+        linkedPlanBranchId: null,
+        publicationPrNumber: null,
+        publicationPrUrl: null,
+        publicationPrStatus: null,
+        publicationPushStatus: null,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      sendResult: {
+        conversationId: "conversation-2",
+        agentRunId: "run-2",
+        isNewConversation: true,
+        wasQueued: false,
+        queuedAsPending: false,
+        queuedMessageId: null,
+      },
     });
     createConversationMock.mockResolvedValue({ id: "conversation-seeded" });
     spawnConversationSessionNamerMock.mockResolvedValue(undefined);
@@ -401,6 +436,8 @@ describe("AgentsView", () => {
     expect(screen.getByTestId("agents-start-heading")).toHaveTextContent("Start your agent");
     expect(screen.getByTestId("agents-start-heading-word")).toHaveTextContent("agent");
     expect(screen.getByTestId("agents-start-project")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-base")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-start-mode")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-provider")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-model")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-new-project")).toBeInTheDocument();
@@ -418,16 +455,18 @@ describe("AgentsView", () => {
     fireEvent.click(screen.getByTestId("agents-start-submit"));
 
     await waitFor(() =>
-      expect(sendAgentMessageMock).toHaveBeenCalledWith(
-        "project",
-        "project-1",
-        "fix agent landing flow",
-        undefined,
-        undefined,
-        {
+      expect(startAgentConversationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          content: "fix agent landing flow",
           providerHarness: "codex",
           modelId: "gpt-5.4",
-        }
+          mode: "edit",
+          base: expect.objectContaining({
+            kind: "project_default",
+            ref: "main",
+          }),
+        })
       )
     );
     await waitFor(() =>
@@ -440,13 +479,36 @@ describe("AgentsView", () => {
 
   it("uploads starter attachments against a seeded conversation before sending the first message", async () => {
     mockAgentViewData();
-    sendAgentMessageMock.mockResolvedValue({
-      conversationId: "conversation-seeded",
-      agentRunId: "run-2",
-      isNewConversation: false,
-      wasQueued: false,
-      queuedAsPending: false,
-      queuedMessageId: null,
+    startAgentConversationMock.mockResolvedValue({
+      conversation: conversation({ id: "conversation-seeded", contextId: "project-1" }),
+      workspace: {
+        conversationId: "conversation-seeded",
+        projectId: "project-1",
+        mode: "edit",
+        baseRefKind: "project_default",
+        baseRef: "main",
+        baseDisplayName: "Project default (main)",
+        baseCommit: null,
+        branchName: "ralphx/demo/agent-conversation-seeded",
+        worktreePath: "/tmp/ralphx/conversation-seeded",
+        linkedIdeationSessionId: null,
+        linkedPlanBranchId: null,
+        publicationPrNumber: null,
+        publicationPrUrl: null,
+        publicationPrStatus: null,
+        publicationPushStatus: null,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      sendResult: {
+        conversationId: "conversation-seeded",
+        agentRunId: "run-2",
+        isNewConversation: false,
+        wasQueued: false,
+        queuedAsPending: false,
+        queuedMessageId: null,
+      },
     });
     vi.mocked(invoke).mockResolvedValue({ id: "attachment-1" });
 
@@ -476,17 +538,15 @@ describe("AgentsView", () => {
       })
     );
     await waitFor(() =>
-      expect(sendAgentMessageMock).toHaveBeenCalledWith(
-        "project",
-        "project-1",
-        "review this note",
-        ["attachment-1"],
-        undefined,
-        {
+      expect(startAgentConversationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          content: "review this note",
           conversationId: "conversation-seeded",
           providerHarness: "codex",
           modelId: "gpt-5.4",
-        }
+          mode: "edit",
+        })
       )
     );
   });

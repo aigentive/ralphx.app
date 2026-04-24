@@ -95,6 +95,8 @@ impl From<SendResult> for SendAgentMessageResponse {
 pub struct StartAgentConversationInput {
     pub project_id: String,
     pub content: String,
+    /// Optional draft conversation to use after uploading pending attachments.
+    pub conversation_id: Option<String>,
     /// Optional provider harness override for the first spawn of the conversation.
     pub provider_harness: Option<String>,
     /// Optional explicit model override for the spawned agent.
@@ -771,7 +773,32 @@ pub async fn start_agent_conversation(
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Project not found: {}", input.project_id))?;
 
-    let conversation = ChatConversation::new_project(project_id);
+    let draft_conversation_id = input
+        .conversation_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|conversation_id| !conversation_id.is_empty())
+        .map(ChatConversationId::from_string);
+    let conversation = if let Some(conversation_id) = draft_conversation_id {
+        let conversation = state
+            .chat_conversation_repo
+            .get_by_id(&conversation_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("Conversation not found: {}", conversation_id))?;
+        if conversation.context_type != ChatContextType::Project
+            || conversation.context_id != input.project_id
+        {
+            return Err(format!(
+                "Conversation {} does not belong to project {}",
+                conversation.id, input.project_id
+            ));
+        }
+        conversation
+    } else {
+        ChatConversation::new_project(project_id)
+    };
+    let should_create_conversation = draft_conversation_id.is_none();
     let workspace = prepare_agent_conversation_workspace(
         &project,
         &conversation.id,
@@ -791,11 +818,15 @@ pub async fn start_agent_conversation(
     .await
     .map_err(|error| error.to_string())?;
 
-    let conversation = state
-        .chat_conversation_repo
-        .create(conversation)
-        .await
-        .map_err(|error| error.to_string())?;
+    let conversation = if should_create_conversation {
+        state
+            .chat_conversation_repo
+            .create(conversation)
+            .await
+            .map_err(|error| error.to_string())?
+    } else {
+        conversation
+    };
     let workspace = match state
         .agent_conversation_workspace_repo
         .create_or_update(workspace)
@@ -803,19 +834,23 @@ pub async fn start_agent_conversation(
     {
         Ok(workspace) => workspace,
         Err(error) => {
-            let _ = state.chat_conversation_repo.delete(&conversation.id).await;
+            if should_create_conversation {
+                let _ = state.chat_conversation_repo.delete(&conversation.id).await;
+            }
             return Err(error.to_string());
         }
     };
 
-    let _ = app.emit(
-        "agent:conversation_created",
-        AgentConversationCreatedPayload {
-            conversation_id: conversation.id.as_str(),
-            context_type: ChatContextType::Project.to_string(),
-            context_id: input.project_id.clone(),
-        },
-    );
+    if should_create_conversation {
+        let _ = app.emit(
+            "agent:conversation_created",
+            AgentConversationCreatedPayload {
+                conversation_id: conversation.id.as_str(),
+                context_type: ChatContextType::Project.to_string(),
+                context_id: input.project_id.clone(),
+            },
+        );
+    }
 
     let service = create_chat_service(
         &state,

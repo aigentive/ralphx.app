@@ -16,6 +16,8 @@ import type {
   ConversationStatsResponse,
   QueuedMessageResponse,
   SendAgentMessageResult,
+  StartAgentConversationInput,
+  StartAgentConversationResult,
 } from "@/api/chat";
 import { generateTestUuid } from "@/test/mock-data";
 import { buildFallbackConversationStats } from "@/lib/chat/conversation-stats";
@@ -428,6 +430,47 @@ export async function mockSendAgentMessage(
   };
 }
 
+export async function mockStartAgentConversation(
+  input: StartAgentConversationInput
+): Promise<StartAgentConversationResult> {
+  const conversation = input.conversationId
+    ? mockConversations.get(input.conversationId) ??
+      (await mockCreateConversation("project", input.projectId))
+    : await mockCreateConversation("project", input.projectId);
+  const sendResult: SendAgentMessageResult = {
+    conversationId: conversation.id,
+    agentRunId: generateTestUuid(),
+    isNewConversation: !input.conversationId,
+    wasQueued: false,
+    queuedAsPending: false,
+  };
+
+  return {
+    conversation,
+    workspace: {
+      conversationId: conversation.id,
+      projectId: input.projectId,
+      mode: input.mode ?? "edit",
+      baseRefKind: input.base?.kind ?? "project_default",
+      baseRef: input.base?.ref ?? "main",
+      baseDisplayName: input.base?.displayName ?? null,
+      baseCommit: null,
+      branchName: `ralphx/mock/agent-${conversation.id.slice(0, 8)}`,
+      worktreePath: `/tmp/ralphx/mock/${conversation.id}`,
+      linkedIdeationSessionId: null,
+      linkedPlanBranchId: null,
+      publicationPrNumber: null,
+      publicationPrUrl: null,
+      publicationPrStatus: null,
+      publicationPushStatus: null,
+      status: "active",
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    },
+    sendResult,
+  };
+}
+
 export async function mockGetQueuedAgentMessages(
   contextType: ContextType,
   contextId: string
@@ -487,6 +530,7 @@ export const mockChatApi = {
   restoreConversation: mockRestoreConversation,
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
+  startAgentConversation: mockStartAgentConversation,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
   deleteQueuedAgentMessage: mockDeleteQueuedAgentMessage,
