@@ -16,6 +16,12 @@ pub mod chat_attachment_repository;
 pub mod chat_conversation_repository;
 pub mod chat_message_repository;
 pub mod delegated_session_repository;
+pub mod design_run_repository;
+pub mod design_schema_repository;
+pub mod design_styleguide_feedback_repository;
+pub mod design_styleguide_repository;
+pub mod design_system_repository;
+pub mod design_system_source_repository;
 pub mod execution_plan_repository;
 pub mod external_events_repository;
 pub mod execution_settings_repository;
@@ -64,6 +70,12 @@ pub use chat_attachment_repository::ChatAttachmentRepository;
 pub use chat_conversation_repository::{ChatConversationPage, ChatConversationRepository};
 pub use chat_message_repository::ChatMessageRepository;
 pub use delegated_session_repository::DelegatedSessionRepository;
+pub use design_run_repository::DesignRunRepository;
+pub use design_schema_repository::DesignSchemaRepository;
+pub use design_styleguide_feedback_repository::DesignStyleguideFeedbackRepository;
+pub use design_styleguide_repository::DesignStyleguideRepository;
+pub use design_system_repository::DesignSystemRepository;
+pub use design_system_source_repository::DesignSystemSourceRepository;
 pub use execution_plan_repository::ExecutionPlanRepository;
 pub use execution_settings_repository::{
     ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
