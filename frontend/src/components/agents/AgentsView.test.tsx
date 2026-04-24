@@ -302,7 +302,6 @@ describe("AgentsChatHeader", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
-        runtime={runtime}
         artifactOpen={false}
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -321,7 +320,6 @@ describe("AgentsChatHeader", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
-        runtime={runtime}
         artifactOpen
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -332,6 +330,24 @@ describe("AgentsChatHeader", () => {
 
     expect(screen.queryByLabelText("Plan")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Close artifacts")).toBeInTheDocument();
+  });
+
+  it("does not render redundant runtime metadata in the title area", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Provider")).not.toBeInTheDocument();
+    expect(screen.queryByText("Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Default")).not.toBeInTheDocument();
   });
 });
 
