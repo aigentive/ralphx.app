@@ -1286,6 +1286,26 @@ pub async fn get_agent_conversation_workspace(
         .map(|workspace| workspace.map(AgentConversationWorkspaceResponse::from))
 }
 
+/// List workspace metadata for project-backed agent conversations.
+#[tauri::command]
+pub async fn list_agent_conversation_workspaces_by_project(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<AgentConversationWorkspaceResponse>, String> {
+    let project_id = ProjectId::from_string(project_id);
+    state
+        .agent_conversation_workspace_repo
+        .get_by_project_id(&project_id)
+        .await
+        .map_err(|e| e.to_string())
+        .map(|workspaces| {
+            workspaces
+                .into_iter()
+                .map(AgentConversationWorkspaceResponse::from)
+                .collect()
+        })
+}
+
 /// Commit and publish a general edit agent conversation workspace.
 #[tauri::command]
 pub async fn publish_agent_conversation_workspace(

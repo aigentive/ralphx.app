@@ -484,6 +484,14 @@ export async function mockGetAgentConversationWorkspace(
   return mockWorkspaces.get(conversationId) ?? null;
 }
 
+export async function mockListAgentConversationWorkspacesByProject(
+  projectId: string
+): Promise<AgentConversationWorkspace[]> {
+  return Array.from(mockWorkspaces.values()).filter(
+    (workspace) => workspace.projectId === projectId
+  );
+}
+
 export async function mockPublishAgentConversationWorkspace(
   conversationId: string
 ): Promise<PublishAgentConversationWorkspaceResult> {
@@ -571,6 +579,8 @@ export const mockChatApi = {
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
   getAgentConversationWorkspace: mockGetAgentConversationWorkspace,
+  listAgentConversationWorkspacesByProject:
+    mockListAgentConversationWorkspacesByProject,
   publishAgentConversationWorkspace: mockPublishAgentConversationWorkspace,
   startAgentConversation: mockStartAgentConversation,
   sendAgentMessage: mockSendAgentMessage,

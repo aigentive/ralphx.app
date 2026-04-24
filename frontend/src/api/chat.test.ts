@@ -14,6 +14,7 @@ import {
   archiveConversation,
   restoreConversation,
   getAgentRunStatus,
+  listAgentConversationWorkspacesByProject,
   sendAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
@@ -599,6 +600,43 @@ describe("chat api", () => {
     expect(result).toBeNull();
   });
 
+  it("lists agent conversation workspaces for a project", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        conversation_id: "conversation-1",
+        project_id: "project-1",
+        mode: "edit",
+        base_ref_kind: "project_default",
+        base_ref: "main",
+        base_display_name: "Project default (main)",
+        base_commit: null,
+        branch_name: "ralphx/demo/agent-conversation-1",
+        worktree_path: "/tmp/ralphx/conversation-1",
+        linked_ideation_session_id: null,
+        linked_plan_branch_id: null,
+        publication_pr_number: null,
+        publication_pr_url: null,
+        publication_pr_status: null,
+        publication_push_status: null,
+        status: "active",
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:01:00Z",
+      },
+    ]);
+
+    const result = await listAgentConversationWorkspacesByProject("project-1");
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "list_agent_conversation_workspaces_by_project",
+      { projectId: "project-1" }
+    );
+    expect(result[0]).toMatchObject({
+      conversationId: "conversation-1",
+      projectId: "project-1",
+      branchName: "ralphx/demo/agent-conversation-1",
+    });
+  });
+
   it("uses the web-mode chat mock for child session status when available", async () => {
     window.__mockChatApi = {
       reset: vi.fn(),
@@ -703,6 +741,9 @@ describe("chat api", () => {
   it("exports chatApi namespace", () => {
     expect(chatApi.sendAgentMessage).toBe(sendAgentMessage);
     expect(chatApi.listConversations).toBe(listConversations);
+    expect(chatApi.listAgentConversationWorkspacesByProject).toBe(
+      listAgentConversationWorkspacesByProject
+    );
     expect(chatApi.archiveConversation).toBe(archiveConversation);
     expect(chatApi.restoreConversation).toBe(restoreConversation);
     expect(chatApi.getConversationActiveState).toBe(getConversationActiveState);

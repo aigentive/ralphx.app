@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, GitBranch, Sparkles, type LucideIcon } from "lucide-react";
+import { BrainCircuit, Sparkles, type LucideIcon } from "lucide-react";
 
-import { getGitBranches, getGitCurrentBranch, getGitDefaultBranch } from "@/api/projects";
 import type {
   AgentConversationBaseSelection,
   AgentConversationWorkspaceMode,
@@ -20,6 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
+import {
+  fallbackBranchBaseOptions,
+  loadBranchBaseOptions,
+  type BranchBaseOption,
+} from "@/components/shared/branchBaseOptions";
 import {
   AgentComposerProjectCreateButton,
   AgentComposerSurface,
@@ -77,12 +82,6 @@ const STARTER_TYPING_INITIAL_WORD = STARTER_TYPING_WORDS[0];
 
 type StarterTypingPhase = "holding" | "typing" | "deleting";
 
-interface StartFromOption {
-  key: string;
-  label: string;
-  selection: AgentConversationBaseSelection;
-}
-
 const AGENT_MODE_OPTIONS: Array<{ id: AgentConversationWorkspaceMode; label: string }> = [
   { id: "edit", label: "Edit Agent" },
   { id: "ideation", label: "Ideation Mode" },
@@ -103,7 +102,7 @@ export function AgentsStartComposer({
   );
   const [modelId, setModelId] = useState(normalizeRuntimeSelection(defaultRuntime).modelId);
   const [mode, setMode] = useState<AgentConversationWorkspaceMode>("edit");
-  const [startFromOptions, setStartFromOptions] = useState<StartFromOption[]>([]);
+  const [startFromOptions, setStartFromOptions] = useState<BranchBaseOption[]>([]);
   const [selectedStartFromKey, setSelectedStartFromKey] = useState("");
   const [isLoadingStartFrom, setIsLoadingStartFrom] = useState(false);
   const [content, setContent] = useState("");
@@ -190,74 +189,18 @@ export function AgentsStartComposer({
     setIsLoadingStartFrom(true);
 
     async function loadStartFromOptions() {
-      const workingDirectory = activeProject!.workingDirectory;
-      const [defaultResult, currentResult, branchesResult] = await Promise.allSettled([
-        getGitDefaultBranch(workingDirectory),
-        getGitCurrentBranch(workingDirectory),
-        getGitBranches(workingDirectory),
-      ]);
+      const result = await loadBranchBaseOptions({
+        projectId: activeProject!.id,
+        workingDirectory: activeProject!.workingDirectory,
+        projectBaseBranch: activeProject!.baseBranch,
+      });
 
       if (cancelled) {
         return;
       }
 
-      const projectDefault =
-        defaultResult.status === "fulfilled" && defaultResult.value
-          ? defaultResult.value
-          : activeProject!.baseBranch ?? "main";
-      const currentBranch =
-        currentResult.status === "fulfilled" && currentResult.value
-          ? currentResult.value
-          : projectDefault;
-      const branches =
-        branchesResult.status === "fulfilled" && Array.isArray(branchesResult.value)
-          ? branchesResult.value
-          : [projectDefault];
-      const optionMap = new Map<string, StartFromOption>();
-
-      optionMap.set(`project_default:${projectDefault}`, {
-        key: `project_default:${projectDefault}`,
-        label: `Project default (${projectDefault})`,
-        selection: {
-          kind: "project_default",
-          ref: projectDefault,
-          displayName: `Project default (${projectDefault})`,
-        },
-      });
-
-      if (currentBranch && currentBranch !== projectDefault) {
-        optionMap.set(`current_branch:${currentBranch}`, {
-          key: `current_branch:${currentBranch}`,
-          label: `Current branch (${currentBranch})`,
-          selection: {
-            kind: "current_branch",
-            ref: currentBranch,
-            displayName: `Current branch (${currentBranch})`,
-          },
-        });
-      }
-
-      branches
-        .filter((branch) => branch && branch !== projectDefault && branch !== currentBranch)
-        .forEach((branch) => {
-          optionMap.set(`local_branch:${branch}`, {
-            key: `local_branch:${branch}`,
-            label: branch,
-            selection: {
-              kind: "local_branch",
-              ref: branch,
-              displayName: branch,
-            },
-          });
-        });
-
-      const options = Array.from(optionMap.values());
-      setStartFromOptions(options);
-      setSelectedStartFromKey(
-        currentBranch && currentBranch !== projectDefault
-          ? `current_branch:${currentBranch}`
-          : `project_default:${projectDefault}`
-      );
+      setStartFromOptions(result.options);
+      setSelectedStartFromKey(result.selectedKey);
       setIsLoadingStartFrom(false);
     }
 
@@ -265,19 +208,9 @@ export function AgentsStartComposer({
       if (cancelled) {
         return;
       }
-      const fallback = activeProject.baseBranch ?? "main";
-      setStartFromOptions([
-        {
-          key: `project_default:${fallback}`,
-          label: `Project default (${fallback})`,
-          selection: {
-            kind: "project_default",
-            ref: fallback,
-            displayName: `Project default (${fallback})`,
-          },
-        },
-      ]);
-      setSelectedStartFromKey(`project_default:${fallback}`);
+      const fallback = fallbackBranchBaseOptions(activeProject.baseBranch);
+      setStartFromOptions(fallback.options);
+      setSelectedStartFromKey(fallback.selectedKey);
       setIsLoadingStartFrom(false);
     });
 
@@ -402,29 +335,16 @@ export function AgentsStartComposer({
             submitLabel="Start Agent"
             submittingLabel="Starting..."
             workspaceControls={
-              <>
-                <StarterSelectPill
-                  icon={GitBranch}
-                  label="Start from"
-                  value={selectedStartFromKey}
-                  onValueChange={setSelectedStartFromKey}
-                  options={startFromOptions}
-                  placeholder={isLoadingStartFrom ? "Loading..." : "Base branch"}
-                  disabled={isLoadingStartFrom || startFromOptions.length === 0}
-                  testId="agents-start-base"
-                  className="max-w-[240px] flex-none"
-                />
-                <StarterSelectPill
-                  icon={BrainCircuit}
-                  label="Mode"
-                  value={mode}
-                  onValueChange={(value) => setMode(value as AgentConversationWorkspaceMode)}
-                  options={AGENT_MODE_OPTIONS}
-                  placeholder="Mode"
-                  testId="agents-start-mode"
-                  className="max-w-[178px] flex-none"
-                />
-              </>
+              <StarterSelectPill
+                icon={BrainCircuit}
+                label="Mode"
+                value={mode}
+                onValueChange={(value) => setMode(value as AgentConversationWorkspaceMode)}
+                options={AGENT_MODE_OPTIONS}
+                placeholder="Mode"
+                testId="agents-start-mode"
+                className="max-w-[178px] flex-none"
+              />
             }
             project={{
               value: projectId,
@@ -459,6 +379,17 @@ export function AgentsStartComposer({
               className: "max-w-[188px] flex-none",
             }}
           />
+
+          <div className="mt-3 flex w-full justify-end px-2">
+            <BranchBasePicker
+              value={selectedStartFromKey}
+              onValueChange={setSelectedStartFromKey}
+              options={startFromOptions}
+              placeholder={isLoadingStartFrom ? "Loading branch..." : "Base branch"}
+              disabled={isLoadingStartFrom || startFromOptions.length === 0}
+              testId="agents-start-base"
+            />
+          </div>
 
           {error && (
             <div

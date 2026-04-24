@@ -35,6 +35,8 @@ import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
+import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
+import type { BranchBaseOption } from "@/components/shared/branchBaseOptions";
 import {
   Tooltip,
   TooltipContent,
@@ -1011,53 +1013,58 @@ export function AgentsView({
                 contentWidthClassName={AGENTS_CHAT_CONTENT_WIDTH_CLASS}
                 inputContainerClassName="shrink-0 bg-transparent px-4 pb-4 pt-3"
                 renderComposer={(composerProps) => (
-                  <AgentComposerSurface
-                    dataTestId="agents-conversation-composer"
-                    actionTestId="agents-conversation-submit"
-                    onSend={composerProps.onSend}
-                    onStop={composerProps.onStop}
-                    agentStatus={composerProps.agentStatus}
-                    isSubmitting={composerProps.isSending}
-                    isReadOnly={composerProps.isReadOnly}
-                    autoFocus={composerProps.autoFocus}
-                    placeholder="Ask the agent to plan, build, debug, or review something"
-                    showHelperText={false}
-                    hasQueuedMessages={composerProps.hasQueuedMessages}
-                    onEditLastQueued={composerProps.onEditLastQueued}
-                    attachments={composerProps.attachments}
-                    enableAttachments={composerProps.enableAttachments}
-                    onFilesSelected={composerProps.onFilesSelected}
-                    onRemoveAttachment={composerProps.onRemoveAttachment}
-                    attachmentsUploading={composerProps.attachmentsUploading}
-                    {...(composerProps.value !== undefined
-                      ? {
-                          value: composerProps.value,
-                          onChange: composerProps.onChange,
-                        }
-                      : {})}
-                    {...(composerProps.questionMode !== undefined
-                      ? { questionMode: composerProps.questionMode }
-                      : {})}
-                    submitLabel="Send"
-                    project={{
-                      value: activeProjectId,
-                      onValueChange: () => undefined,
-                      options: activeProjectOptions,
-                      placeholder: "Current project",
-                      disabled: true,
-                    }}
-                    provider={{
-                      value: normalizedActiveRuntime.provider,
-                      onValueChange: () => undefined,
-                      options: AGENT_PROVIDER_OPTIONS,
-                      disabled: true,
-                    }}
-                    model={{
-                      value: normalizedActiveRuntime.modelId,
-                      onValueChange: handleActiveModelChange,
-                      options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
-                    }}
-                  />
+                  <>
+                    <AgentComposerSurface
+                      dataTestId="agents-conversation-composer"
+                      actionTestId="agents-conversation-submit"
+                      onSend={composerProps.onSend}
+                      onStop={composerProps.onStop}
+                      agentStatus={composerProps.agentStatus}
+                      isSubmitting={composerProps.isSending}
+                      isReadOnly={composerProps.isReadOnly}
+                      autoFocus={composerProps.autoFocus}
+                      placeholder="Ask the agent to plan, build, debug, or review something"
+                      showHelperText={false}
+                      hasQueuedMessages={composerProps.hasQueuedMessages}
+                      onEditLastQueued={composerProps.onEditLastQueued}
+                      attachments={composerProps.attachments}
+                      enableAttachments={composerProps.enableAttachments}
+                      onFilesSelected={composerProps.onFilesSelected}
+                      onRemoveAttachment={composerProps.onRemoveAttachment}
+                      attachmentsUploading={composerProps.attachmentsUploading}
+                      {...(composerProps.value !== undefined
+                        ? {
+                            value: composerProps.value,
+                            onChange: composerProps.onChange,
+                          }
+                        : {})}
+                      {...(composerProps.questionMode !== undefined
+                        ? { questionMode: composerProps.questionMode }
+                        : {})}
+                      submitLabel="Send"
+                      project={{
+                        value: activeProjectId,
+                        onValueChange: () => undefined,
+                        options: activeProjectOptions,
+                        placeholder: "Current project",
+                        disabled: true,
+                      }}
+                      provider={{
+                        value: normalizedActiveRuntime.provider,
+                        onValueChange: () => undefined,
+                        options: AGENT_PROVIDER_OPTIONS,
+                        disabled: true,
+                      }}
+                      model={{
+                        value: normalizedActiveRuntime.modelId,
+                        onValueChange: handleActiveModelChange,
+                        options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
+                      }}
+                    />
+                    <AgentConversationBaseLine
+                      workspace={conversationWorkspaceQuery.data ?? null}
+                    />
+                  </>
                 )}
                 {...(activeConversation.contextType === "project" && attachedIdeationSessionId
                   ? { additionalQuestionSessionIds: [attachedIdeationSessionId] }
@@ -1369,6 +1376,49 @@ function AgentsWorkspaceStatusPill({
         </div>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function AgentConversationBaseLine({
+  workspace,
+}: {
+  workspace: AgentConversationWorkspace | null;
+}) {
+  if (!workspace) {
+    return null;
+  }
+
+  const baseLabel = workspace.baseDisplayName ?? workspace.baseRef;
+  const option: BranchBaseOption = {
+    key: `${workspace.baseRefKind}:${workspace.baseRef}`,
+    label: baseLabel,
+    detail: workspace.baseDisplayName ? workspace.baseRef : undefined,
+    source: "local",
+    selection: {
+      kind:
+        workspace.baseRefKind === "project_default" ||
+        workspace.baseRefKind === "current_branch" ||
+        workspace.baseRefKind === "local_branch"
+          ? workspace.baseRefKind
+          : "local_branch",
+      ref: workspace.baseRef,
+      displayName: baseLabel,
+    },
+  };
+
+  return (
+    <div
+      className="mt-2 flex w-full justify-end px-2"
+      data-testid="agents-conversation-base"
+    >
+      <BranchBasePicker
+        value={option.key}
+        onValueChange={() => undefined}
+        options={[option]}
+        placeholder="Base branch"
+        readOnly
+      />
+    </div>
   );
 }
 

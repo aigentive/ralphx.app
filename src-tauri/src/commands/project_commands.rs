@@ -477,8 +477,9 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
     let branches: Vec<String> = stdout
         .lines()
         .filter_map(|line| {
-            // Remove leading whitespace and asterisk (for current branch)
-            let trimmed = line.trim().trim_start_matches("* ");
+            // Remove Git's leading branch markers:
+            // '*' = current branch, '+' = branch checked out in another worktree.
+            let trimmed = line.trim().trim_start_matches(&['*', '+'][..]).trim_start();
             // Handle remote branches like "remotes/origin/main" -> just "main"
             if let Some(remote_branch) = trimmed.strip_prefix("remotes/origin/") {
                 // Skip HEAD pointer

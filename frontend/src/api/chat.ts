@@ -904,6 +904,7 @@ export const chatApi = {
   restoreConversation,
   appendAgentBridgeMessage,
   getAgentConversationWorkspace,
+  listAgentConversationWorkspacesByProject,
   publishAgentConversationWorkspace,
   getAgentRunStatus,
   // Message sending & queue
@@ -1028,6 +1029,9 @@ const AgentConversationWorkspaceResponseSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+const AgentConversationWorkspaceListResponseSchema = z.array(
+  AgentConversationWorkspaceResponseSchema
+);
 
 const StartAgentConversationResponseSchema = z.object({
   conversation: ChatConversationResponseSchema,
@@ -1122,6 +1126,17 @@ export async function getAgentConversationWorkspace(
     AgentConversationWorkspaceResponseSchema.nullable()
   );
   return raw ? transformAgentConversationWorkspace(raw) : null;
+}
+
+export async function listAgentConversationWorkspacesByProject(
+  projectId: string
+): Promise<AgentConversationWorkspace[]> {
+  const raw = await typedInvoke(
+    "list_agent_conversation_workspaces_by_project",
+    { projectId },
+    AgentConversationWorkspaceListResponseSchema
+  );
+  return raw.map(transformAgentConversationWorkspace);
 }
 
 export async function publishAgentConversationWorkspace(
