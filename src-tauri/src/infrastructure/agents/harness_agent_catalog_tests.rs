@@ -599,12 +599,8 @@ fn codex_runtime_features_load_from_harness_metadata() {
 fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
     let root = project_root();
     let metadata = load_canonical_codex_metadata(&root, "ralphx-chat-project");
-    let prompt = load_harness_agent_prompt(
-        &root,
-        "ralphx-chat-project",
-        AgentPromptHarness::Codex,
-    )
-    .expect("missing codex prompt for ralphx-chat-project");
+    let prompt = load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Codex)
+        .expect("missing codex prompt for ralphx-chat-project");
 
     assert!(
         metadata
@@ -614,8 +610,7 @@ fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
         "project chat must be able to advance external MCP next_action=send_message flows"
     );
     assert!(
-        prompt.contains("next_action` yourself")
-            && prompt.contains("v1_send_ideation_message"),
+        prompt.contains("next_action` yourself") && prompt.contains("v1_send_ideation_message"),
         "project chat prompt must tell the agent to consume send_message actions itself"
     );
 }
@@ -1129,16 +1124,16 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
         );
         if *agent_name == "ralphx-chat-project" {
             assert!(
-                codex_path
-                    .as_ref()
-                    .is_some_and(|path| path.ends_with("agents/ralphx-chat-project/codex/prompt.md")),
+                codex_path.as_ref().is_some_and(
+                    |path| path.ends_with("agents/ralphx-chat-project/codex/prompt.md")
+                ),
                 "expected ralphx-chat-project codex prompt to resolve through codex/prompt.md"
             );
         } else {
             assert!(
-                codex_path.as_ref().is_some_and(|path| path.ends_with(format!(
-                    "agents/{agent_name}/shared/prompt.md"
-                ))),
+                codex_path.as_ref().is_some_and(
+                    |path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))
+                ),
                 "expected {agent_name} codex prompt to resolve through shared/prompt.md"
             );
         }
