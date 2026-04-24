@@ -4,11 +4,16 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MessageItem } from "./MessageItem";
+
+function renderMessageItem(ui: React.ReactElement) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
+}
 
 describe("MessageItem — team extensions", () => {
   it("renders Bot icon for assistant without teammateName", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="Hello" createdAt="2026-02-15T10:00:00Z" />,
     );
     // Bot icon is an SVG with lucide class
@@ -17,7 +22,7 @@ describe("MessageItem — team extensions", () => {
   });
 
   it("renders teammate name badge instead of Bot icon", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content="Done with auth"
@@ -33,7 +38,7 @@ describe("MessageItem — team extensions", () => {
   });
 
   it("renders color border when teammateColor is provided", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content="Hello"
@@ -49,7 +54,7 @@ describe("MessageItem — team extensions", () => {
   });
 
   it("does not render color border without teammateColor", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem role="assistant" content="Hello" createdAt="2026-02-15T10:00:00Z" />,
     );
     const wrapper = container.firstChild as HTMLElement;
@@ -57,7 +62,7 @@ describe("MessageItem — team extensions", () => {
   });
 
   it("renders teammate color dot", () => {
-    const { container } = render(
+    const { container } = renderMessageItem(
       <MessageItem
         role="assistant"
         content="Hello"
@@ -72,7 +77,7 @@ describe("MessageItem — team extensions", () => {
   });
 
   it("does not show teammate badge for user messages", () => {
-    render(
+    renderMessageItem(
       <MessageItem
         role="user"
         content="Hello"

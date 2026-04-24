@@ -82,6 +82,7 @@ import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { getTeamStatus } from "@/api/team";
 import { TimeoutWarning } from "./TimeoutWarning";
 import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
@@ -290,6 +291,10 @@ export function IntegratedChatPanel({
     isVisible,
   });
   const agentProcessContextId = agentProcessContextIdOverride ?? currentContextId;
+  const {
+    ideationTeamModeAvailable,
+    executionTeamModeAvailable,
+  } = useTeamModeAvailability(projectId);
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -313,10 +318,17 @@ export function IntegratedChatPanel({
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[storeContextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("lead");
+  const teamModeUiAvailable =
+    currentContextType === "ideation"
+      ? ideationTeamModeAvailable
+      : currentContextType === "task_execution"
+        ? executionTeamModeAvailable
+        : false;
+  const showTeamUi = isTeamActive && teamModeUiAvailable;
   const sendTarget = teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Teammate tab: resolve the teammate's conversation_id for standard chat pipeline
-  const isTeammateTab = !!teamFilter && teamFilter !== "lead";
+  const isTeammateTab = showTeamUi && !!teamFilter && teamFilter !== "lead";
   const activeTeammateSelector = useMemo(
     () => isTeammateTab ? selectTeammateByName(storeContextKey, teamFilter) : () => null,
     [storeContextKey, teamFilter, isTeammateTab],
@@ -328,6 +340,12 @@ export function IntegratedChatPanel({
   const activeTeamSelector = useMemo(() => selectActiveTeam(storeContextKey), [storeContextKey]);
   const activeTeam = useTeamStore(activeTeamSelector);
   const isTeamHistorical = activeTeam?.isHistorical === true;
+
+  useEffect(() => {
+    if (!showTeamUi && teamFilter !== "lead") {
+      setTeamFilter("lead");
+    }
+  }, [showTeamUi, teamFilter]);
 
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(storeContextKey);
@@ -480,7 +498,7 @@ export function IntegratedChatPanel({
   const activeBashCall = streamingToolCalls.find((tc) => tc.name.toLowerCase() === "bash");
   const bashStartTime = activeBashCall ? toolCallStartTimes[activeBashCall.id] : undefined;
   // Context-aware threshold: 3600s for team mode, 600s otherwise
-  const effectiveTimeoutMs = isTeamActive ? 3_600_000 : 600_000;
+  const effectiveTimeoutMs = showTeamUi ? 3_600_000 : 600_000;
   const showTimeoutWarning = activeBashCall !== undefined && bashStartTime !== undefined && activeBashCall.id !== dismissedTimeoutCallId;
 
   // Auto-reset dismissed ID when the dismissed call is no longer active
@@ -736,17 +754,17 @@ export function IntegratedChatPanel({
     const attachmentIds = attachments.map(a => a.id);
     logger.debug("[ChatScroll] handleSend firing", {
       hasAttachments: attachmentIds.length > 0,
-      isTeamActive,
+      isTeamActive: showTeamUi,
     });
     await handleSendBase(
       message,
       attachmentIds.length > 0 ? attachmentIds : undefined,
-      isTeamActive ? sendTarget : undefined
+      showTeamUi ? sendTarget : undefined
     );
     if (attachmentIds.length > 0) {
       clearAttachments();
     }
-  }, [attachments, handleSendBase, clearAttachments, isTeamActive, sendTarget]);
+  }, [attachments, handleSendBase, clearAttachments, showTeamUi, sendTarget]);
 
   // Wrapper for handleEditLastQueued that provides the queued messages
   const handleEditLastQueuedWrapper = () => {
@@ -756,14 +774,14 @@ export function IntegratedChatPanel({
   // Handle stopping agent - clear streaming state
   const handleStopAgentWrapper = useCallback(async () => {
     // Stop all teammates when team is active, otherwise just stop the lead agent
-    if (isTeamActive) {
+    if (showTeamUi) {
       teamActions.stopTeam.mutate();
     }
     await handleStopAgent();
     setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
     setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-  }, [isTeamActive, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
+  }, [showTeamUi, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
   useChatEvents({
     activeConversationId: effectiveConversationId,
@@ -1032,7 +1050,7 @@ export function IntegratedChatPanel({
           )}
 
           {/* Team Context Bar (team mode only) */}
-          {isTeamActive && teammates.length > 0 && (
+          {showTeamUi && teammates.length > 0 && (
             <TeamContextBar
               contextKey={storeContextKey}
               activeFilter={teamFilter}
@@ -1086,8 +1104,8 @@ export function IntegratedChatPanel({
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
               isFinalizing={isFinalizing}
-              teamFilter={activeTeam ? teamFilter : undefined}
-              contextKey={activeTeam ? storeContextKey : undefined}
+              teamFilter={showTeamUi && activeTeam ? teamFilter : undefined}
+              contextKey={showTeamUi && activeTeam ? storeContextKey : undefined}
               providerHarness={activeConversationMeta?.providerHarness ?? null}
               providerSessionId={activeConversationMeta?.providerSessionId ?? null}
               contentWidthClassName={contentWidthClassName}
@@ -1134,7 +1152,7 @@ export function IntegratedChatPanel({
           })()}
 
           {/* Team Plan Approval (shown when lead requests plan approval) */}
-          {pendingPlan && (
+          {showTeamUi && pendingPlan && (
             <div className="px-3">
               <div className={conversationContentShellClassName}>
                 <TeamPlanApproval
@@ -1179,7 +1197,7 @@ export function IntegratedChatPanel({
           )}
 
           {/* Team Filter Tabs (team mode — above input area) */}
-          {isTeamActive && teammates.length > 0 && (
+          {showTeamUi && teammates.length > 0 && (
             <div className="px-3">
               <div className={conversationContentShellClassName}>
                 <TeamFilterTabs

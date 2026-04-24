@@ -5,13 +5,14 @@
  * Features native vibrancy materials and refined typography.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { StepList } from "../StepList";
 import { SectionTitle, TwoColumnLayout, DetailCard, StatusBanner } from "./shared";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { executionKeys } from "@/hooks/useExecutionControl";
@@ -284,8 +285,15 @@ function ActionButtonsCard({ task }: { task: Task }) {
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [restartNote, setRestartNote] = useState("");
+  const { executionTeamModeAvailable } = useTeamModeAvailability(task.projectId);
   const taskId = task.id;
   const status = task.internalStatus;
+
+  useEffect(() => {
+    if (!executionTeamModeAvailable && executionMode !== "solo") {
+      setExecutionMode("solo");
+    }
+  }, [executionMode, executionTeamModeAvailable]);
 
   // Parse stop metadata for enhanced confirmation dialog
   const stopMetadata = useMemo(
@@ -486,13 +494,15 @@ function ActionButtonsCard({ task }: { task: Task }) {
       </div>
 
       {/* Execution Mode Selector */}
-      <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
-        <ExecutionModeSelector
-          mode={executionMode}
-          onChange={setExecutionMode}
-          disabled={restartMutation.isPending || isResuming}
-        />
-      </div>
+      {executionTeamModeAvailable && (
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--overlay-weak)" }}>
+          <ExecutionModeSelector
+            mode={executionMode}
+            onChange={setExecutionMode}
+            disabled={restartMutation.isPending || isResuming}
+          />
+        </div>
+      )}
 
       {/* Restart Note textarea (for restartable states only, not shown for start) */}
       {!isReady && (

@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { RunningProcessPopover } from "./RunningProcessPopover";
 import type { RunningProcess, RunningIdeationSession } from "@/api/running-processes";
 import { MergePipelinePopover } from "./MergePipelinePopover";
@@ -148,6 +149,10 @@ export function ExecutionControlBar({
   onOpenSettings = () => {},
   onNavigateToSession,
 }: ExecutionControlBarProps) {
+  const {
+    ideationTeamModeAvailable,
+    executionTeamModeAvailable,
+  } = useTeamModeAvailability(projectId);
   const canStop = runningCount > 0 && !isLoading;
   const isStopped = haltMode === "stopped";
   const canPauseToggle = !isLoading;
@@ -250,6 +255,8 @@ export function ExecutionControlBar({
               alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
               initialTab={activeTab}
               showIdeation={showIdeation}
+              showExecutionTeamUi={executionTeamModeAvailable}
+              showIdeationTeamUi={ideationTeamModeAvailable}
             >
               <button
                 data-testid="running-count"

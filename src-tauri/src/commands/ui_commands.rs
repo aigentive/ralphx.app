@@ -12,6 +12,7 @@ pub struct UiFeatureFlagsResponse {
     pub activity_page: bool,
     pub extensibility_page: bool,
     pub battle_mode: bool,
+    pub team_mode: bool,
 }
 
 /// Returns the current UI feature flag configuration.
@@ -23,6 +24,7 @@ pub fn get_ui_feature_flags() -> UiFeatureFlagsResponse {
         activity_page: flags.activity_page,
         extensibility_page: flags.extensibility_page,
         battle_mode: flags.battle_mode,
+        team_mode: flags.team_mode,
     }
 }
 

@@ -31,6 +31,7 @@ ui:
     activity_page: false
     extensibility_page: false
     battle_mode: false
+    team_mode: false
 
 # ── Execution defaults ────────────────────────────────────────────────────
 # Seed values for the persisted execution settings tables.

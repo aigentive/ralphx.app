@@ -820,15 +820,15 @@ function AppContent() {
         : undefined;
 
   return (
-    <main
-      className="h-screen flex flex-col overflow-hidden"
-      style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
-    >
+    <TooltipProvider delayDuration={300}>
+      <main
+        className="h-screen flex flex-col overflow-hidden"
+        style={{ backgroundColor: "var(--bg-base)", color: "var(--text-primary)" }}
+      >
       {/* Update checker - runs on mount, shows toast if update available */}
       <UpdateChecker />
 
       {/* Header - macOS Tahoe Liquid Glass */}
-      <TooltipProvider delayDuration={300}>
         <header
           className="fixed top-0 left-0 right-0 h-14 flex items-center justify-between pr-4 pl-24 border-b z-50 select-none"
           style={{
@@ -1012,7 +1012,6 @@ function AppContent() {
             )}
           </div>
         </header>
-      </TooltipProvider>
 
       {/* Spacer for fixed header */}
       <div className="h-14 flex-shrink-0" />
@@ -1282,7 +1281,8 @@ function AppContent() {
 
       {/* Toast notifications */}
       <Toaster position="bottom-left" offset={toastBottomOffset} />
-    </main>
+      </main>
+    </TooltipProvider>
   );
 }
 

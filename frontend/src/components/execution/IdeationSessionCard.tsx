@@ -13,9 +13,14 @@ import { formatElapsedTime } from "@/lib/formatters";
 interface IdeationSessionCardProps {
   session: RunningIdeationSession;
   onClick?: () => void;
+  showTeamModeBadge?: boolean;
 }
 
-export function IdeationSessionCard({ session, onClick }: IdeationSessionCardProps) {
+export function IdeationSessionCard({
+  session,
+  onClick,
+  showTeamModeBadge = true,
+}: IdeationSessionCardProps) {
   const elapsedTime = useElapsedTimer(session.elapsedSeconds, session.sessionId);
 
   return (
@@ -76,7 +81,7 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
         <span className="shrink-0 tabular-nums">
           {formatElapsedTime(elapsedTime)}
         </span>
-        {session.teamMode && (
+        {showTeamModeBadge && session.teamMode && (
           <>
             <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
               ·

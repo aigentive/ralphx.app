@@ -15,10 +15,19 @@ import { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntegratedChatPanel } from "./IntegratedChatPanel";
 import { PreviousRunBanner } from "./IntegratedChatPanel.components";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { chatApi } from "@/api/chat";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
+
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: true,
+    executionTeamModeAvailable: true,
+    isAvailableForContext: () => true,
+  }),
+}));
 
 // ============================================================================
 // Hoisted mutable state for useChat mock (vi.hoisted runs before vi.mock)
@@ -226,7 +235,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
   const queryClient = createTestQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TooltipProvider delayDuration={0}>{children}</TooltipProvider>
     </QueryClientProvider>
   );
 }

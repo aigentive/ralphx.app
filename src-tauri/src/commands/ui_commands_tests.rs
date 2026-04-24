@@ -17,6 +17,10 @@ fn test_ui_feature_flags_response_serializes_to_camel_case() {
         json.contains("\"battleMode\":"),
         "Expected camelCase 'battleMode' in JSON: {json}"
     );
+    assert!(
+        json.contains("\"teamMode\":"),
+        "Expected camelCase 'teamMode' in JSON: {json}"
+    );
     // Verify snake_case is NOT present
     assert!(
         !json.contains("\"activity_page\":"),
@@ -29,5 +33,9 @@ fn test_ui_feature_flags_response_serializes_to_camel_case() {
     assert!(
         !json.contains("\"battle_mode\":"),
         "Unexpected snake_case 'battle_mode' in JSON: {json}"
+    );
+    assert!(
+        !json.contains("\"team_mode\":"),
+        "Unexpected snake_case 'team_mode' in JSON: {json}"
     );
 }
