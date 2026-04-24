@@ -7,39 +7,25 @@
 </p>
 
 <p align="center">
-  <a href="#the-story">The Story</a> ·
   <a href="#what-it-is">What It Is</a> ·
+  <a href="#install">Install</a> ·
   <a href="#how-it-works">How It Works</a> ·
-  <a href="#the-numbers">The Numbers</a> ·
-  <a href="#getting-started">Get Started</a> ·
-  <a href="#documentation">Docs</a>
+  <a href="#who-its-for">Who It's For</a> ·
+  <a href="#documentation">Docs</a> ·
+  <a href="#origin">Origin</a>
 </p>
-
----
-
-## The Story
-
-351,000 lines of code. 10,600 automated tests. 3,637 commits. 30 days.
-
-Built by [one person](https://www.linkedin.com/in/laza-bogdan/) and a fleet of AI agents, on personal time, while working full-time as an engineer at a fintech company.
-
-It started as a 196-line bash script called `ralph.sh` — a loop that orchestrated Claude sessions. Within 24 hours it was a Tauri 2.0 desktop application. Within 30 days it was a full AI development control room: Kanban board, dependency graph, ideation studio, 24 specialized agents, a 24-state task lifecycle engine, and an automated merge pipeline.
-
-75% of all commits were co-authored with Claude AI. The tool was built by the thing it builds.
-
-> "It's open source because that's the only way you can trust it."
 
 ---
 
 ## What It Is
 
-RalphX is a native macOS desktop application — the layer between your AI agent and your git history.
+RalphX is a native macOS desktop application for orchestrating AI development work across planning, implementation, review, QA, and merge workflows.
 
-Describe what you want to build. RalphX turns that into structured tasks, assigns them to specialized agents, executes code in isolated git worktrees, reviews it, runs QA, and merges it to your base branch. You intervene when it matters. Everything else executes.
+Describe what you want to build. RalphX turns that into structured tasks, routes each step to the right agent, runs work in isolated git worktrees, reviews the result, and prepares the merge or PR according to your project settings.
 
-All data stays on your machine. Local SQLite database. No cloud dependency. No telemetry. Every agent action is logged, scoped, and reversible.
+RalphX has no hosted backend. Project state and orchestration data live locally in SQLite. Agent actions are logged, scoped, and auditable; the AI runtimes you configure still receive the context needed to perform their work.
 
-**Give every builder the power to develop software with AI — independent of any platform, vendor, or provider.**
+**Designed for provider-neutral orchestration, local ownership, and reviewable AI-generated code.**
 
 <p align="center">
   <img src="assets/public/framed-graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
@@ -47,86 +33,28 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 
 ---
 
-## How It Works
-
-Every agent has **principle-of-least-privilege** tool access enforced at three independent layers:
-
-1. **Rust spawn config** — which tools the process can call
-2. **MCP server filter** — which API endpoints the agent can reach
-3. **Agent system prompt** — behavioral constraints and role boundaries
-
-A reviewer cannot write files. A worker cannot approve its own code. A merger cannot skip validation.
-
----
-
-## The Numbers
-
-| Metric | Value |
-|--------|-------|
-| **Codebase** | 351,000 lines of code (185K Rust, 162K TypeScript) |
-| **Tests** | 10,600+ automated (4,736 Rust + 5,801 frontend + 37 MCP + 23 E2E) |
-| **Commits** | 3,637 total across 30 days |
-| **AI authorship** | 75% of commits co-authored with Claude |
-| **Velocity** | 125 commits/day, 12,107 LOC/day sustained |
-| **Agents** | 24 specialized, each with distinct roles and permissions |
-| **Task states** | 24-state lifecycle with runtime-enforced transitions |
-| **Bundle** | ~10 MB native app, ~30 MB RAM idle |
-| **Database** | Local SQLite. Zero deployment. |
-| **Origin** | 196-line bash script (Jan 23, 2026) |
-
-RalphX manages AI agent development workflows. It was itself built by AI agents. The tool is its own proof of concept.
-
----
-
-## Tech Stack
-
-| Layer | Technology | Why |
-|-------|------------|-----|
-| **Desktop** | Tauri 2.0 | ~10 MB bundle, ~30 MB RAM. Native performance without Electron. |
-| **Backend** | Rust | Memory-safe. Compile-time guarantees. No GC pauses. |
-| **Frontend** | React 19 + TypeScript | Strict types. Responsive Kanban, graph view, real-time activity stream. |
-| **Database** | SQLite (local) | Zero deployment. No server. Data never leaves your machine. |
-| **AI Runtime** | Claude + Codex via lane-based harnesses | Provider-neutral orchestration with per-lane routing, recovery, and chat lineage. |
-| **State Machine** | Rust enum + exhaustive match | Runtime-enforced transitions. Compile-time exhaustiveness checking. |
-| **Git** | Worktree isolation | Parallel execution. AI never touches your working directory. |
-
----
-
-## Who It's For
-
-**Solo developers** — One board for all your AI agents. Review diffs before merge. Stop managing terminal tabs.
-
-**Solopreneurs** — AI agents are your engineering team. Describe what you want, get shipped features with review gates that catch bugs at 2 AM.
-
-**Team leads** — Encode standards as methodology plugins. Review gates filter 80% of issues before human eyes. Scale AI output without scaling review bottleneck.
-
-**Staff+ engineers** — Plugin system encodes architectural standards as agent methodology. Every AI-generated PR follows your team's practices automatically.
-
-### Not for you (yet) if
-
-- You're on Linux or Windows (macOS only, for now)
-- You don't want to install an external agent runtime (RalphX currently targets Claude CLI and Codex CLI)
-- You need multi-user collaboration (single-developer orchestration)
-
----
-
 ## Getting Started
 
-### Prerequisites
+### Requirements
+
+To run RalphX:
 
 - macOS 13+ (Ventura or later)
 - At least one supported agent runtime installed and authenticated:
   - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
   - [Codex CLI](https://developers.openai.com/codex/cli)
+
+To build from source:
+
 - Node.js 18+ and npm
-- Rust 1.70+ (install via [rustup.rs](https://rustup.rs))
+- Rust via [rustup.rs](https://rustup.rs); this repo pins its toolchain in `rust-toolchain.toml`
 - Git
 
 RalphX can route different workflow lanes through different harnesses. Claude remains the default, while Codex can be enabled incrementally for supported lanes. See [`docs/user-guides/agent-harnesses.md`](docs/user-guides/agent-harnesses.md).
 
 Harness controls are exposed directly in the desktop app:
-- `Settings → General → Execution Agents` for worker, reviewer, re-executor, and merger lanes
-- `Settings → Ideation → Ideation Agents` for ideation, verifier, and specialist lanes
+- `Settings -> General -> Execution Agents` for worker, reviewer, re-executor, and merger lanes
+- `Settings -> Ideation -> Ideation Agents` for ideation, verifier, and specialist lanes
 
 ### Install
 
@@ -154,7 +82,7 @@ npm install
 npm run tauri dev
 ```
 
-First build compiles the Rust backend (2-5 minutes). Subsequent starts are fast.
+First build compiles the Rust backend. Subsequent starts are faster.
 
 For a fresh native dev start from the repo root:
 
@@ -167,9 +95,56 @@ For a fresh native dev start from the repo root:
 1. **Create a project** — Point RalphX at a git repository
 2. **Open Ideation** — Describe what you want to build
 3. **Apply proposals** — Review the generated tasks, apply to Kanban
-4. **Watch it execute** — Worker writes code, Reviewer checks it, Merger lands it on main
+4. **Watch it execute** — Workers write code, reviewers check it, and RalphX prepares the merge or PR according to your project settings
 
-You intervene when the review gate escalates. Otherwise, it ships.
+You intervene when a review gate escalates or when your settings require human approval. Otherwise, the workflow keeps moving.
+
+---
+
+## How It Works
+
+RalphX turns a request into planned work, creates isolated branches and worktrees, routes each step to the right agent, and keeps review, QA, merge, and PR gates explicit.
+
+Tool access is controlled at the runtime and MCP server layers, then reinforced by agent-specific prompts:
+
+1. **Rust spawn config** — which tools the process can call
+2. **MCP server filter** — which API endpoints the agent can reach
+3. **Agent system prompt** — role guidance and escalation expectations
+
+For example: reviewers run read-only, workers cannot approve their own output, and merge flows must pass the configured validation or PR gates.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| **Desktop** | Tauri 2.0 | Native macOS app shell without Electron. |
+| **Backend** | Rust | Memory-safe. Compile-time guarantees. No GC pauses. |
+| **Frontend** | React 19 + TypeScript | Strict types. Responsive Kanban, graph view, real-time activity stream. |
+| **Database** | SQLite (local) | No hosted database. Project state and orchestration history stay local. |
+| **AI Runtime** | Claude + Codex via lane-based harnesses | Provider-neutral orchestration with per-lane routing, recovery, and chat lineage. |
+| **State Machine** | Rust enum + exhaustive match | Runtime-enforced transitions. Compile-time exhaustiveness checking. |
+| **Git** | Worktree isolation | Parallel execution. AI never touches your working directory. |
+
+---
+
+## Who It's For
+
+**Solo developers** — One board for all your AI agents. Review diffs before merge. Stop managing terminal tabs.
+
+**Solopreneurs** — AI agents are your engineering team. Describe what you want, get shipped features with review gates that catch bugs at 2 AM.
+
+**Team leads** — Encode standards as methodology plugins. Review gates catch routine issues before human review.
+
+**Staff+ engineers** — Methodology plugins help encode architectural standards and team practices into agent workflows.
+
+### Not for you (yet) if
+
+- You're on Linux or Windows (macOS only, for now)
+- You don't want to install an external agent runtime (RalphX currently targets Claude CLI and Codex CLI)
+- You need fully offline AI execution
+- You need multi-user collaboration (single-developer orchestration)
 
 ---
 
@@ -184,9 +159,19 @@ You intervene when the review gate escalates. Otherwise, it ships.
 | [Execution Pipeline](docs/user-guides/execution.md) | Worker/coder/reviewer agents, concurrency, recovery |
 | [Merge Pipeline](docs/user-guides/merge.md) | Merge strategies, validation, conflict resolution |
 | [Agent Harnesses](docs/user-guides/agent-harnesses.md) | Claude/Codex lane routing, execution agent settings, chat lineage |
-| [Task State Machine](docs/user-guides/task-state-machine.md) | All 24 states, transitions, and invariants |
-| [Agent Orchestration](docs/user-guides/agent-orchestration.md) | 24 agents, roles, permissions, three-tier scoping |
+| [Task State Machine](docs/user-guides/task-state-machine.md) | Task lifecycle, transitions, and invariants |
+| [Agent Orchestration](docs/user-guides/agent-orchestration.md) | Agent roles, permissions, and tool scoping |
 | [Configuration](docs/user-guides/configuration.md) | Project settings, model config, methodology plugins |
+
+---
+
+## Origin
+
+RalphX began as a 196-line shell script called `ralph.sh` for orchestrating agent sessions and grew into a native macOS control room for planning, executing, reviewing, and merging AI-assisted software work.
+
+Built independently by [one person](https://www.linkedin.com/in/laza-bogdan/) and a fleet of AI agents.
+
+The tool was built by the thing it builds.
 
 ---
 
