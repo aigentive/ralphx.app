@@ -55,6 +55,42 @@ function allSystems(): DesignSystemResponse[] {
   return Array.from(mockSystemsByProject.values()).flat();
 }
 
+function mockStyleguideItems(designSystem: DesignSystemResponse): DesignStyleguideItemResponse[] {
+  const projectId = designSystem.primaryProjectId;
+  return [
+    {
+      id: `item-${designSystem.id}-colors`,
+      designSystemId: designSystem.id,
+      schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-version-mock",
+      itemId: "colors.primary_palette",
+      group: "colors",
+      label: "Primary palette",
+      summary: "Primary, hover, soft, and ring roles.",
+      previewArtifactId: `design-preview-${designSystem.id}-colors`,
+      sourceRefs: [{ project_id: projectId, path: "specs/design/styleguide.md" }],
+      confidence: "high",
+      approvalStatus: "needs_review",
+      feedbackStatus: "none",
+      updatedAt: nowIso(),
+    },
+    {
+      id: `item-${designSystem.id}-buttons`,
+      designSystemId: designSystem.id,
+      schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-version-mock",
+      itemId: "components.buttons",
+      group: "components",
+      label: "Buttons",
+      summary: "Primary, secondary, ghost, icon, and loading button patterns.",
+      previewArtifactId: `design-preview-${designSystem.id}-buttons`,
+      sourceRefs: [{ project_id: projectId, path: "frontend/src/components/ui/button.tsx" }],
+      confidence: "medium",
+      approvalStatus: "needs_work",
+      feedbackStatus: "open",
+      updatedAt: nowIso(),
+    },
+  ];
+}
+
 export const mockDesignApi = {
   listProjectDesignSystems: async (
     projectId: string,
@@ -92,6 +128,11 @@ export const mockDesignApi = {
       ),
     );
     return archived;
+  },
+
+  listStyleguideItems: async (designSystemId: string): Promise<DesignStyleguideItemResponse[]> => {
+    const designSystem = allSystems().find((system) => system.id === designSystemId);
+    return designSystem ? mockStyleguideItems(designSystem) : [];
   },
 
   approveStyleguideItem: async (

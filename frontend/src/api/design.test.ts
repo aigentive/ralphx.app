@@ -161,6 +161,36 @@ describe("designApi", () => {
     });
   });
 
+  it("lists styleguide items through the current-schema command", async () => {
+    mockInvoke.mockResolvedValueOnce([
+      {
+        id: "item-1",
+        designSystemId: "design-system-1",
+        schemaVersionId: "schema-1",
+        itemId: "components.buttons",
+        group: "components",
+        label: "Buttons",
+        summary: "Button patterns",
+        previewArtifactId: null,
+        sourceRefs: [],
+        confidence: "medium",
+        approvalStatus: "needs_review",
+        feedbackStatus: "none",
+        updatedAt: "2026-04-24T08:00:00Z",
+      },
+    ]);
+
+    const response = await designApi.listStyleguideItems("design-system-1");
+
+    expect(response[0]?.itemId).toBe("components.buttons");
+    expect(mockInvoke).toHaveBeenCalledWith("list_design_styleguide_items", {
+      input: {
+        designSystemId: "design-system-1",
+        schemaVersionId: undefined,
+      },
+    });
+  });
+
   it("creates styleguide feedback through the bridge command", async () => {
     mockInvoke.mockResolvedValueOnce({
       feedback: {

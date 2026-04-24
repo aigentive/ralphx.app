@@ -82,9 +82,10 @@ pub use design_commands::{
 };
 pub use design_feedback_commands::{
     approve_design_styleguide_item, create_design_styleguide_feedback,
-    resolve_design_styleguide_feedback, ApproveDesignStyleguideItemInput,
+    list_design_styleguide_items, resolve_design_styleguide_feedback,
+    ApproveDesignStyleguideItemInput,
     CreateDesignStyleguideFeedbackInput, CreateDesignStyleguideFeedbackResponse,
-    DesignStyleguideFeedbackResponse, DesignStyleguideItemResponse,
+    DesignStyleguideFeedbackResponse, DesignStyleguideItemResponse, ListDesignStyleguideItemsInput,
     ResolveDesignStyleguideFeedbackInput,
 };
 pub use diagnostic_commands::{

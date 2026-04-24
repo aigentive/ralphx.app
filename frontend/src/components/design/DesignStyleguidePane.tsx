@@ -3,6 +3,10 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { DesignReviewState, DesignStyleguideItem, DesignSystem } from "./designSystems";
+import {
+  useApproveDesignStyleguideItem,
+  useCreateDesignStyleguideFeedback,
+} from "./useProjectDesignSystems";
 
 const FILTERS: Array<{ id: "all" | DesignReviewState; label: string }> = [
   { id: "all", label: "All" },
@@ -22,6 +26,8 @@ export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps
   const [feedbackItemId, setFeedbackItemId] = useState<string | null>(null);
   const [approvalOverrides, setApprovalOverrides] = useState<Record<string, DesignReviewState>>({});
   const [feedbackDraft, setFeedbackDraft] = useState("");
+  const approveMutation = useApproveDesignStyleguideItem();
+  const feedbackMutation = useCreateDesignStyleguideFeedback();
 
   const reviewCounts = useMemo(() => {
     const counts: Record<DesignReviewState, number> = {
@@ -52,12 +58,47 @@ export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps
   }
 
   const approveItem = (item: DesignStyleguideItem) => {
+    if (item.isPersisted) {
+      approveMutation.mutate(
+        { designSystemId: designSystem.id, itemId: item.itemId },
+        {
+          onSuccess: (updatedItem) => {
+            setApprovalOverrides((current) => ({ ...current, [updatedItem.id]: "approved" }));
+            setFeedbackItemId(null);
+          },
+        },
+      );
+      return;
+    }
     setApprovalOverrides((current) => ({ ...current, [item.id]: "approved" }));
     setFeedbackItemId(null);
   };
 
   const submitFeedback = (item: DesignStyleguideItem) => {
-    if (!feedbackDraft.trim()) {
+    const feedback = feedbackDraft.trim();
+    if (!feedback) {
+      return;
+    }
+    if (item.isPersisted) {
+      feedbackMutation.mutate(
+        {
+          designSystemId: designSystem.id,
+          itemId: item.itemId,
+          feedback,
+          conversationId: designSystem.conversationId ?? undefined,
+        },
+        {
+          onSuccess: (response) => {
+            setApprovalOverrides((current) => ({
+              ...current,
+              [response.item.id]: "needs_work",
+            }));
+            setFeedbackDraft("");
+            setFeedbackItemId(null);
+            setExpandedItemId(response.item.id);
+          },
+        },
+      );
       return;
     }
     setApprovalOverrides((current) => ({ ...current, [item.id]: "needs_work" }));

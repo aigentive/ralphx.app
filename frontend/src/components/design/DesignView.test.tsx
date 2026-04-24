@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   api,
   type CreateDesignSystemInput,
+  type DesignStyleguideItemResponse,
   type DesignSystemResponse,
   type DesignSystemSourceResponse,
 } from "@/lib/tauri";
@@ -93,6 +94,27 @@ function designSystemSource(
   };
 }
 
+function styleguideItemResponse(
+  designSystemId: string,
+  itemId = "components.buttons",
+): DesignStyleguideItemResponse {
+  return {
+    id: `item-${itemId}`,
+    designSystemId,
+    schemaVersionId: "schema-version-1",
+    itemId,
+    group: "components",
+    label: "Buttons",
+    summary: "Button patterns from persisted styleguide rows",
+    previewArtifactId: "preview-buttons",
+    sourceRefs: [{ project_id: "project-1", path: "frontend/src/Button.tsx", line: 12 }],
+    confidence: "medium",
+    approvalStatus: "needs_review",
+    feedbackStatus: "none",
+    updatedAt: "2026-04-24T08:00:00Z",
+  };
+}
+
 function renderWithProviders(ui: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -144,6 +166,42 @@ describe("DesignView", () => {
         },
       };
     });
+    vi.spyOn(api.design, "listStyleguideItems").mockResolvedValue([]);
+    vi.spyOn(api.design, "approveStyleguideItem").mockImplementation(
+      async (designSystemId: string, itemId: string) => ({
+        ...styleguideItemResponse(designSystemId, itemId),
+        approvalStatus: "approved",
+        feedbackStatus: "resolved",
+      }),
+    );
+    vi.spyOn(api.design, "createStyleguideFeedback").mockImplementation(async (input) => ({
+      feedback: {
+        id: "feedback-1",
+        designSystemId: input.designSystemId,
+        schemaVersionId: "schema-version-1",
+        itemId: input.itemId,
+        conversationId: input.conversationId ?? "conversation-1",
+        messageId: "message-1",
+        previewArtifactId: null,
+        sourceRefs: [],
+        feedback: input.feedback,
+        status: "open",
+        createdAt: "2026-04-24T08:00:00Z",
+        resolvedAt: null,
+      },
+      item: {
+        ...styleguideItemResponse(input.designSystemId, input.itemId),
+        approvalStatus: "needs_work",
+        feedbackStatus: "open",
+      },
+      message: {
+        id: "message-1",
+        role: "user",
+        content: input.feedback,
+        metadata: null,
+        createdAt: "2026-04-24T08:00:00Z",
+      },
+    }));
     vi.spyOn(api.design, "createDesignSystem").mockImplementation(
       async (input: CreateDesignSystemInput) => {
         const designSystem = designSystemResponse(input.primaryProjectId, input.name, {
@@ -256,5 +314,38 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-system-created-design-system-project-1")).toHaveTextContent(
       "RalphX Design System",
     );
+  });
+
+  it("uses backend styleguide commands for persisted rows", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1"),
+    ]);
+    const approveSpy = vi.spyOn(api.design, "approveStyleguideItem");
+    const feedbackSpy = vi.spyOn(api.design, "createStyleguideFeedback");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+
+    await screen.findByText("Button patterns from persisted styleguide rows");
+    const row = await screen.findByTestId("design-styleguide-row-components.buttons");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("design-approve-components.buttons"));
+
+    await waitFor(() => {
+      expect(approveSpy).toHaveBeenCalledWith("design-system-project-1", "components.buttons");
+    });
+
+    fireEvent.click(screen.getByTestId("design-needs-work-components.buttons"));
+    fireEvent.change(screen.getByPlaceholderText("Feedback"), {
+      target: { value: "Use a clearer focus ring" },
+    });
+    fireEvent.click(screen.getByText("Send feedback to Design"));
+
+    await waitFor(() => {
+      expect(feedbackSpy).toHaveBeenCalledWith({
+        designSystemId: "design-system-project-1",
+        itemId: "components.buttons",
+        feedback: "Use a clearer focus ring",
+        conversationId: "conversation-design-system-project-1",
+      });
+    });
   });
 });

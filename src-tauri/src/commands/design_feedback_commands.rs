@@ -8,8 +8,8 @@ use crate::application::{AgentMessageCreatedPayload, AppState};
 use crate::commands::unified_chat_commands::AgentMessageResponse;
 use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, DesignApprovalStatus,
-    DesignFeedbackStatus, DesignSourceRef, DesignStyleguideFeedback, DesignStyleguideFeedbackId,
-    DesignStyleguideItem, DesignSystemId,
+    DesignFeedbackStatus, DesignSchemaVersionId, DesignSourceRef, DesignStyleguideFeedback,
+    DesignStyleguideFeedbackId, DesignStyleguideItem, DesignSystemId,
 };
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +32,13 @@ pub struct CreateDesignStyleguideFeedbackInput {
 #[serde(rename_all = "camelCase")]
 pub struct ResolveDesignStyleguideFeedbackInput {
     pub feedback_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDesignStyleguideItemsInput {
+    pub design_system_id: String,
+    pub schema_version_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -160,6 +167,57 @@ pub async fn resolve_design_styleguide_feedback(
     state: State<'_, AppState>,
 ) -> Result<DesignStyleguideFeedbackResponse, String> {
     resolve_design_styleguide_feedback_core(&state, input).await
+}
+
+#[tauri::command]
+pub async fn list_design_styleguide_items(
+    input: ListDesignStyleguideItemsInput,
+    state: State<'_, AppState>,
+) -> Result<Vec<DesignStyleguideItemResponse>, String> {
+    list_design_styleguide_items_core(&state, input).await
+}
+
+#[doc(hidden)]
+pub async fn list_design_styleguide_items_core(
+    state: &AppState,
+    input: ListDesignStyleguideItemsInput,
+) -> Result<Vec<DesignStyleguideItemResponse>, String> {
+    let design_system_id = parse_design_system_id(&input.design_system_id)?;
+    let Some(system) = state
+        .design_system_repo
+        .get_by_id(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?
+    else {
+        return Err(format!(
+            "Design system not found: {}",
+            design_system_id.as_str()
+        ));
+    };
+
+    let requested_schema_version_id = input
+        .schema_version_id
+        .as_deref()
+        .map(parse_schema_version_id)
+        .transpose()?;
+    let schema_version_id = requested_schema_version_id
+        .as_ref()
+        .or(system.current_schema_version_id.as_ref());
+    let Some(schema_version_id) = schema_version_id else {
+        return Ok(Vec::new());
+    };
+
+    state
+        .design_styleguide_repo
+        .list_items(&design_system_id, Some(schema_version_id))
+        .await
+        .map(|items| {
+            items
+                .into_iter()
+                .map(DesignStyleguideItemResponse::from)
+                .collect()
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[doc(hidden)]
@@ -442,6 +500,14 @@ fn parse_feedback_id(value: &str) -> Result<DesignStyleguideFeedbackId, String> 
     Ok(DesignStyleguideFeedbackId::from_string(value.to_string()))
 }
 
+fn parse_schema_version_id(value: &str) -> Result<DesignSchemaVersionId, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("schema_version_id is required".to_string());
+    }
+    Ok(DesignSchemaVersionId::from_string(value.to_string()))
+}
+
 fn normalize_item_id(value: &str) -> Result<String, String> {
     let value = value.trim();
     if value.is_empty() {
@@ -471,8 +537,8 @@ mod tests {
 
     use super::*;
     use crate::domain::entities::{
-        ChatConversation, DesignConfidence, DesignSchemaVersionId, DesignStyleguideGroup,
-        DesignStyleguideItemId, ProjectId,
+        ChatConversation, DesignConfidence, DesignSchemaVersionId, DesignStorageRootRef,
+        DesignStyleguideGroup, DesignStyleguideItemId, DesignSystem, DesignSystemStatus, ProjectId,
     };
 
     fn styleguide_item(design_system_id: DesignSystemId) -> DesignStyleguideItem {
@@ -497,12 +563,97 @@ mod tests {
         }
     }
 
+    fn styleguide_item_for_schema(
+        design_system_id: DesignSystemId,
+        schema_version_id: DesignSchemaVersionId,
+        item_id: &str,
+    ) -> DesignStyleguideItem {
+        let mut item = styleguide_item(design_system_id);
+        item.schema_version_id = schema_version_id;
+        item.item_id = item_id.to_string();
+        item.label = item_id.to_string();
+        item
+    }
+
+    async fn seed_design_system(
+        state: &AppState,
+        design_system_id: DesignSystemId,
+        current_schema_version_id: Option<DesignSchemaVersionId>,
+    ) {
+        let now = Utc::now();
+        state
+            .design_system_repo
+            .create(DesignSystem {
+                id: design_system_id,
+                primary_project_id: ProjectId::from_string("project-1".to_string()),
+                name: "Product UI".to_string(),
+                description: None,
+                status: DesignSystemStatus::Ready,
+                current_schema_version_id,
+                storage_root_ref: DesignStorageRootRef::from_hash_component("design-root"),
+                created_at: now,
+                updated_at: now,
+                archived_at: None,
+            })
+            .await
+            .unwrap();
+    }
+
     async fn seed_design_conversation(state: &AppState, design_system_id: &DesignSystemId) {
         state
             .chat_conversation_repo
             .create(ChatConversation::new_design(design_system_id.clone()))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_styleguide_items_uses_current_schema_version_by_default() {
+        let state = AppState::new_test();
+        let design_system_id = DesignSystemId::new();
+        let current_schema_version_id = DesignSchemaVersionId::new();
+        let stale_schema_version_id = DesignSchemaVersionId::new();
+        seed_design_system(
+            &state,
+            design_system_id.clone(),
+            Some(current_schema_version_id.clone()),
+        )
+        .await;
+
+        let current_item = styleguide_item_for_schema(
+            design_system_id.clone(),
+            current_schema_version_id.clone(),
+            "button.primary",
+        );
+        let stale_item = styleguide_item_for_schema(
+            design_system_id.clone(),
+            stale_schema_version_id.clone(),
+            "button.legacy",
+        );
+        state
+            .design_styleguide_repo
+            .replace_items_for_schema_version(&current_schema_version_id, vec![current_item])
+            .await
+            .unwrap();
+        state
+            .design_styleguide_repo
+            .replace_items_for_schema_version(&stale_schema_version_id, vec![stale_item])
+            .await
+            .unwrap();
+
+        let response = list_design_styleguide_items_core(
+            &state,
+            ListDesignStyleguideItemsInput {
+                design_system_id: design_system_id.as_str().to_string(),
+                schema_version_id: None,
+            },
+        )
+        .await
+        .expect("list styleguide items");
+
+        assert_eq!(response.len(), 1);
+        assert_eq!(response[0].item_id, "button.primary");
+        assert_eq!(response[0].schema_version_id, current_schema_version_id.as_str());
     }
 
     #[tokio::test]

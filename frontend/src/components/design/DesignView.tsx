@@ -9,6 +9,7 @@ import { DesignStyleguidePane } from "./DesignStyleguidePane";
 import {
   useCreateDesignSystem,
   useDesignSystemDetail,
+  useDesignStyleguideItems,
   useProjectDesignSystems,
 } from "./useProjectDesignSystems";
 
@@ -36,6 +37,7 @@ export function DesignView({ projectId }: DesignViewProps) {
   const selectedListDesignSystem =
     allSystems.find((system) => system.id === selectedDesignSystemId) ?? null;
   const selectedDetailQuery = useDesignSystemDetail(selectedDesignSystemId);
+  const selectedStyleguideItemsQuery = useDesignStyleguideItems(selectedDesignSystemId);
   const selectedDesignSystem = useMemo(() => {
     const detail = selectedDetailQuery.data;
     if (!detail) {
@@ -50,8 +52,14 @@ export function DesignView({ projectId }: DesignViewProps) {
     return buildDesignSystemFromResponse(project, detail.designSystem, {
       sources: detail.sources,
       conversationId: detail.conversation?.id ?? null,
+      styleguideItems: selectedStyleguideItemsQuery.data ?? [],
     });
-  }, [projects, selectedDetailQuery.data, selectedListDesignSystem]);
+  }, [
+    projects,
+    selectedDetailQuery.data,
+    selectedListDesignSystem,
+    selectedStyleguideItemsQuery.data,
+  ]);
 
   useEffect(() => {
     if (projectId) {

@@ -1,7 +1,13 @@
 import { useMemo } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { DesignSystemDetailResponse, DesignSystemResponse } from "@/api/design";
+import type {
+  CreateDesignStyleguideFeedbackInput,
+  CreateDesignStyleguideFeedbackResponse,
+  DesignStyleguideItemResponse,
+  DesignSystemDetailResponse,
+  DesignSystemResponse,
+} from "@/api/design";
 import { api, type CreateDesignSystemInput, type CreateDesignSystemResponse } from "@/lib/tauri";
 import type { Project } from "@/types/project";
 import { buildDesignSystemFromResponse, type DesignSystem } from "./designSystems";
@@ -17,6 +23,8 @@ export const designSystemKeys = {
   projectList: (projectId: string, includeArchived: boolean) =>
     [...designSystemKeys.project(projectId), "list", { includeArchived }] as const,
   detail: (designSystemId: string) => [...designSystemKeys.all, "detail", designSystemId] as const,
+  styleguideItems: (designSystemId: string) =>
+    [...designSystemKeys.all, "styleguide-items", designSystemId] as const,
 };
 
 export function useProjectDesignSystems(
@@ -71,7 +79,7 @@ export function useCreateDesignSystem() {
   const queryClient = useQueryClient();
 
   return useMutation<CreateDesignSystemResponse, Error, CreateDesignSystemInput>({
-    mutationFn: api.design.createDesignSystem,
+    mutationFn: (input) => api.design.createDesignSystem(input),
     onSuccess: (response) => {
       const projectId = response.designSystem.primaryProjectId;
       queryClient.setQueryData<DesignSystemResponse[]>(
@@ -102,5 +110,51 @@ export function useDesignSystemDetail(designSystemId: string | null) {
     queryFn: () => api.design.getDesignSystem(designSystemId!),
     enabled: !!designSystemId,
     staleTime: 10 * 1000,
+  });
+}
+
+export function useDesignStyleguideItems(designSystemId: string | null) {
+  return useQuery<DesignStyleguideItemResponse[], Error>({
+    queryKey: designSystemId
+      ? designSystemKeys.styleguideItems(designSystemId)
+      : [...designSystemKeys.all, "styleguide-items", "none"],
+    queryFn: () => api.design.listStyleguideItems(designSystemId!),
+    enabled: !!designSystemId,
+    staleTime: 10 * 1000,
+  });
+}
+
+export function useApproveDesignStyleguideItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    DesignStyleguideItemResponse,
+    Error,
+    { designSystemId: string; itemId: string }
+  >({
+    mutationFn: ({ designSystemId, itemId }) =>
+      api.design.approveStyleguideItem(designSystemId, itemId),
+    onSuccess: (item) => {
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.styleguideItems(item.designSystemId),
+      });
+    },
+  });
+}
+
+export function useCreateDesignStyleguideFeedback() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    CreateDesignStyleguideFeedbackResponse,
+    Error,
+    CreateDesignStyleguideFeedbackInput
+  >({
+    mutationFn: (input) => api.design.createStyleguideFeedback(input),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.styleguideItems(response.item.designSystemId),
+      });
+    },
   });
 }

@@ -206,6 +206,13 @@ export const designApi = {
   archiveDesignSystem: (id: string) =>
     typedInvoke("archive_design_system", { id }, DesignSystemResponseSchema),
 
+  listStyleguideItems: (designSystemId: string, schemaVersionId?: string) =>
+    typedInvoke(
+      "list_design_styleguide_items",
+      { input: { designSystemId, schemaVersionId } },
+      z.array(DesignStyleguideItemResponseSchema),
+    ),
+
   approveStyleguideItem: (designSystemId: string, itemId: string) =>
     typedInvoke(
       "approve_design_styleguide_item",

@@ -1,5 +1,9 @@
 import type { Project } from "@/types/project";
-import type { DesignSystemResponse, DesignSystemSourceResponse } from "@/api/design";
+import type {
+  DesignStyleguideItemResponse,
+  DesignSystemResponse,
+  DesignSystemSourceResponse,
+} from "@/api/design";
 
 export type DesignSystemStatus =
   | "draft"
@@ -36,9 +40,10 @@ export interface DesignStyleguideItem {
   sourceRefs: DesignSourceRef[];
   confidence: "high" | "medium" | "low";
   approvalStatus: "needs_review" | "approved" | "needs_work";
-  feedbackStatus: "none" | "open" | "in_progress" | "resolved";
+  feedbackStatus: "none" | "open" | "in_progress" | "resolved" | "dismissed";
   reviewState: DesignReviewState;
   sourceStatus: "current" | "stale";
+  isPersisted?: boolean;
 }
 
 export interface DesignStyleguideGroup {
@@ -76,9 +81,16 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
 export function buildDesignSystemFromResponse(
   project: Project,
   response: DesignSystemResponse,
-  options: { sources?: DesignSystemSourceResponse[]; conversationId?: string | null } = {},
+  options: {
+    sources?: DesignSystemSourceResponse[];
+    conversationId?: string | null;
+    styleguideItems?: DesignStyleguideItemResponse[];
+  } = {},
 ): DesignSystem {
   const styleguide = mockStyleguideModel(project.id);
+  const groups = options.styleguideItems?.length
+    ? buildStyleguideGroupsFromResponses(options.styleguideItems)
+    : styleguide.groups;
 
   return {
     ...styleguide,
@@ -90,6 +102,7 @@ export function buildDesignSystemFromResponse(
     sourceCount: options.sources?.length ?? 0,
     updatedAt: response.updatedAt,
     conversationId: options.conversationId ?? null,
+    groups,
   };
 }
 
@@ -180,6 +193,60 @@ function mockStyleguideModel(projectId: string): Pick<DesignSystem, "readySummar
   };
 }
 
+const GROUP_LABELS: Record<DesignStyleguideGroupId, string> = {
+  ui_kit: "UI Kit",
+  type: "Type",
+  colors: "Colors",
+  spacing: "Spacing",
+  components: "Components",
+  brand: "Brand",
+};
+
+function buildStyleguideGroupsFromResponses(
+  responses: DesignStyleguideItemResponse[],
+): DesignStyleguideGroup[] {
+  const groups = new Map<DesignStyleguideGroupId, DesignStyleguideItem[]>();
+  for (const response of responses) {
+    const item = styleguideItemFromResponse(response);
+    groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
+  }
+
+  return Array.from(groups.entries()).map(([id, items]) => ({
+    id,
+    label: GROUP_LABELS[id],
+    items,
+  }));
+}
+
+function styleguideItemFromResponse(response: DesignStyleguideItemResponse): DesignStyleguideItem {
+  return {
+    id: response.id,
+    itemId: response.itemId,
+    group: response.group,
+    label: response.label,
+    summary: response.summary,
+    ...(response.previewArtifactId ? { previewArtifactId: response.previewArtifactId } : {}),
+    sourceRefs: response.sourceRefs.map((sourceRef) => ({
+      projectId: sourceRef.project_id,
+      path: sourceRef.path,
+      ...(sourceRef.line ? { line: sourceRef.line } : {}),
+    })),
+    confidence: response.confidence,
+    approvalStatus: response.approvalStatus,
+    feedbackStatus: response.feedbackStatus,
+    reviewState: reviewStateForResponse(response),
+    sourceStatus: "current",
+    isPersisted: true,
+  };
+}
+
+function reviewStateForResponse(response: DesignStyleguideItemResponse): DesignReviewState {
+  if (response.feedbackStatus === "open" || response.feedbackStatus === "in_progress") {
+    return "needs_work";
+  }
+  return response.approvalStatus;
+}
+
 function styleguideItem(
   projectId: string,
   input: {
@@ -191,7 +258,7 @@ function styleguideItem(
     sourcePath: string;
     confidence: "high" | "medium" | "low";
     approvalStatus?: "needs_review" | "approved" | "needs_work";
-    feedbackStatus?: "none" | "open" | "in_progress" | "resolved";
+    feedbackStatus?: "none" | "open" | "in_progress" | "resolved" | "dismissed";
     reviewState?: DesignReviewState;
   },
 ): DesignStyleguideItem {
