@@ -9,6 +9,7 @@ import {
   DesignSystemResponseSchema,
   ExportDesignSystemPackageResponseSchema,
   GenerateDesignSystemStyleguideResponseSchema,
+  ImportDesignSystemPackageResponseSchema,
   designApi,
 } from "./design";
 
@@ -225,6 +226,53 @@ describe("design API schemas", () => {
 
     expect(parsed.redacted).toBe(true);
   });
+
+  it("parses an imported design package response", () => {
+    const parsed = ImportDesignSystemPackageResponseSchema.parse({
+      designSystem: {
+        id: "design-system-imported",
+        primaryProjectId: "project-1",
+        name: "Imported UI",
+        description: "Imported design system package",
+        status: "ready",
+        currentSchemaVersionId: "schema-1",
+        storageRootRef: "design-root",
+        createdAt: "2026-04-24T08:00:00Z",
+        updatedAt: "2026-04-24T08:00:00Z",
+        archivedAt: null,
+      },
+      sources: [
+        {
+          id: "source-1",
+          designSystemId: "design-system-imported",
+          projectId: "project-1",
+          role: "primary",
+          selectedPaths: [],
+          sourceKind: "manual_note",
+          gitCommit: null,
+          sourceHashes: {},
+          lastAnalyzedAt: "2026-04-24T08:00:00Z",
+        },
+      ],
+      conversation: {
+        id: "conversation-1",
+        contextType: "design",
+        contextId: "design-system-imported",
+        title: "Design: Imported UI",
+        messageCount: 0,
+        lastMessageAt: null,
+        createdAt: "2026-04-24T08:00:00Z",
+        updatedAt: "2026-04-24T08:00:00Z",
+        archivedAt: null,
+      },
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      packageArtifactId: "export-1",
+      items: [],
+    });
+
+    expect(parsed.packageArtifactId).toBe("export-1");
+  });
 });
 
 describe("designApi", () => {
@@ -373,6 +421,53 @@ describe("designApi", () => {
       input: {
         designSystemId: "design-system-1",
         includeFullProvenance: false,
+      },
+    });
+  });
+
+  it("imports a design package through the backend command", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      designSystem: {
+        id: "design-system-imported",
+        primaryProjectId: "project-1",
+        name: "Imported UI",
+        description: "Imported design system package",
+        status: "ready",
+        currentSchemaVersionId: "schema-1",
+        storageRootRef: "design-root",
+        createdAt: "2026-04-24T08:00:00Z",
+        updatedAt: "2026-04-24T08:00:00Z",
+        archivedAt: null,
+      },
+      sources: [],
+      conversation: {
+        id: "conversation-1",
+        contextType: "design",
+        contextId: "design-system-imported",
+        title: "Design: Imported UI",
+        messageCount: 0,
+        lastMessageAt: null,
+        createdAt: "2026-04-24T08:00:00Z",
+        updatedAt: "2026-04-24T08:00:00Z",
+        archivedAt: null,
+      },
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      packageArtifactId: "export-1",
+      items: [],
+    });
+
+    await designApi.importPackage({
+      packageArtifactId: "export-1",
+      attachProjectId: "project-1",
+      name: "Imported UI",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("import_design_system_package", {
+      input: {
+        packageArtifactId: "export-1",
+        attachProjectId: "project-1",
+        name: "Imported UI",
       },
     });
   });

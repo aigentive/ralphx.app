@@ -12,6 +12,8 @@ import type {
   DesignSystemSourceResponse,
   ExportDesignSystemPackageResponse,
   GenerateDesignSystemStyleguideResponse,
+  ImportDesignSystemPackageInput,
+  ImportDesignSystemPackageResponse,
 } from "@/api/design";
 import { getStore } from "./store";
 
@@ -261,6 +263,69 @@ export const mockDesignApi = {
           schema_version_id: schemaVersionId,
         },
       },
+    };
+  },
+
+  importPackage: async (
+    input: ImportDesignSystemPackageInput,
+  ): Promise<ImportDesignSystemPackageResponse> => {
+    const store = getStore();
+    const project = store.projects.get(input.attachProjectId);
+    if (!project) {
+      throw new Error(`Project not found: ${input.attachProjectId}`);
+    }
+    const existing = systemsForProject(input.attachProjectId);
+    const designSystem = mockDesignSystem(
+      input.attachProjectId,
+      input.name?.trim() || `${project.name} Imported Design System`,
+      {
+        id: `imported-design-system-${input.attachProjectId}-${existing.length + 1}`,
+        status: "ready",
+        currentSchemaVersionId: `schema-imported-${existing.length + 1}`,
+        sourceCount: 1,
+      },
+    );
+    const sources: DesignSystemSourceResponse[] = [
+      {
+        id: `source-${designSystem.id}-import`,
+        designSystemId: designSystem.id,
+        projectId: input.attachProjectId,
+        role: "primary",
+        selectedPaths: [],
+        sourceKind: "manual_note",
+        gitCommit: null,
+        sourceHashes: {},
+        lastAnalyzedAt: nowIso(),
+      },
+    ];
+    mockSystemsByProject.set(input.attachProjectId, [
+      designSystem,
+      ...existing.filter((system) => system.id !== designSystem.id),
+    ]);
+    mockSourcesByDesignSystem.set(designSystem.id, sources);
+
+    return {
+      designSystem,
+      sources,
+      conversation: {
+        id: `conversation-${designSystem.id}`,
+        contextType: "design",
+        contextId: designSystem.id,
+        title: `Design: ${designSystem.name}`,
+        messageCount: 0,
+        lastMessageAt: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        archivedAt: null,
+      },
+      schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-imported",
+      runId: `run-import-${designSystem.id}`,
+      packageArtifactId: input.packageArtifactId,
+      items: mockStyleguideItems(designSystem).map((item) => ({
+        ...item,
+        previewArtifactId: null,
+        sourceRefs: [],
+      })),
     };
   },
 

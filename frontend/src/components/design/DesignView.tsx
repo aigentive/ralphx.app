@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { SeparatorLine } from "@/components/ui/ResizeHandle";
 import { useProjects } from "@/hooks/useProjects";
-import type { CreateDesignSystemInput } from "@/lib/tauri";
+import type { CreateDesignSystemInput, ImportDesignSystemPackageInput } from "@/lib/tauri";
 import { buildDesignSystemFromResponse, type DesignSystem } from "./designSystems";
 import { DesignComposerSurface } from "./DesignComposerSurface";
+import { DesignPackageImportDialog } from "./DesignPackageImportDialog";
 import { DesignSidebar } from "./DesignSidebar";
 import { DesignSourceComposerDialog } from "./DesignSourceComposerDialog";
 import { DesignStyleguidePane } from "./DesignStyleguidePane";
@@ -15,6 +16,7 @@ import {
   useDesignStyleguideViewModel,
   useExportDesignSystemPackage,
   useGenerateDesignSystemStyleguide,
+  useImportDesignSystemPackage,
   useProjectDesignSystems,
 } from "./useProjectDesignSystems";
 
@@ -33,12 +35,14 @@ export function DesignView({ projectId }: DesignViewProps) {
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(projectId || null);
   const [selectedDesignSystemId, setSelectedDesignSystemId] = useState<string | null>(null);
   const [isSourceComposerOpen, setIsSourceComposerOpen] = useState(false);
+  const [isPackageImportOpen, setIsPackageImportOpen] = useState(false);
   const [exportPackageArtifactId, setExportPackageArtifactId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { groups } = useProjectDesignSystems(projects, { searchQuery });
   const createDesignSystem = useCreateDesignSystem();
   const generateStyleguide = useGenerateDesignSystemStyleguide();
   const exportPackage = useExportDesignSystemPackage();
+  const importPackage = useImportDesignSystemPackage();
   const allSystems = useMemo(
     () => groups.flatMap((group) => group.systems),
     [groups],
@@ -100,16 +104,12 @@ export function DesignView({ projectId }: DesignViewProps) {
     setSelectedDesignSystemId(system.id);
   };
 
-  const selectPreferredDesignSystem = () => {
-    const preferred =
-      allSystems.find((system) => system.primaryProjectId === focusedProjectId) ??
-      allSystems[0] ??
-      null;
-    setSelectedDesignSystemId(preferred?.id ?? null);
-  };
-
   const openSourceComposer = () => {
     setIsSourceComposerOpen(true);
+  };
+
+  const openPackageImport = () => {
+    setIsPackageImportOpen(true);
   };
 
   const createDraftDesignSystem = (input: CreateDesignSystemInput) => {
@@ -146,6 +146,19 @@ export function DesignView({ projectId }: DesignViewProps) {
     });
   };
 
+  const importDesignPackage = (input: ImportDesignSystemPackageInput) => {
+    if (importPackage.isPending) {
+      return;
+    }
+    importPackage.mutate(input, {
+      onSuccess: (response) => {
+        setFocusedProjectId(response.designSystem.primaryProjectId);
+        setSelectedDesignSystemId(response.designSystem.id);
+        setIsPackageImportOpen(false);
+      },
+    });
+  };
+
   return (
     <div className="h-full min-h-0 flex overflow-hidden" data-testid="design-view">
       <div style={{ width: DESIGN_SIDEBAR_WIDTH, minWidth: DESIGN_SIDEBAR_WIDTH }}>
@@ -158,7 +171,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           onFocusProject={setFocusedProjectId}
           onSelectDesignSystem={selectDesignSystem}
           onNewDesignSystem={openSourceComposer}
-          onImportDesignSystem={selectPreferredDesignSystem}
+          onImportDesignSystem={openPackageImport}
         />
       </div>
 
@@ -167,7 +180,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           <DesignComposerSurface
             selectedDesignSystem={selectedDesignSystem}
             onNewDesignSystem={openSourceComposer}
-            onImportDesignSystem={selectPreferredDesignSystem}
+            onImportDesignSystem={openPackageImport}
           />
         </div>
 
@@ -194,6 +207,14 @@ export function DesignView({ projectId }: DesignViewProps) {
         isCreating={createDesignSystem.isPending}
         onOpenChange={setIsSourceComposerOpen}
         onCreate={createDraftDesignSystem}
+      />
+      <DesignPackageImportDialog
+        isOpen={isPackageImportOpen}
+        projects={projects}
+        focusedProjectId={focusedProjectId}
+        isImporting={importPackage.isPending}
+        onOpenChange={setIsPackageImportOpen}
+        onImport={importDesignPackage}
       />
     </div>
   );

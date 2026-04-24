@@ -11,6 +11,8 @@ import type {
   DesignSystemResponse,
   ExportDesignSystemPackageResponse,
   GenerateDesignSystemStyleguideResponse,
+  ImportDesignSystemPackageInput,
+  ImportDesignSystemPackageResponse,
 } from "@/api/design";
 import { api, type CreateDesignSystemInput, type CreateDesignSystemResponse } from "@/lib/tauri";
 import type { Project } from "@/types/project";
@@ -204,6 +206,46 @@ export function useGenerateDesignSystemStyleguide() {
 export function useExportDesignSystemPackage() {
   return useMutation<ExportDesignSystemPackageResponse, Error, string>({
     mutationFn: (designSystemId) => api.design.exportPackage(designSystemId),
+  });
+}
+
+export function useImportDesignSystemPackage() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ImportDesignSystemPackageResponse,
+    Error,
+    ImportDesignSystemPackageInput
+  >({
+    mutationFn: (input) => api.design.importPackage(input),
+    onSuccess: (response) => {
+      const projectId = response.designSystem.primaryProjectId;
+      queryClient.setQueryData<DesignSystemResponse[]>(
+        designSystemKeys.projectList(projectId, false),
+        (current = []) => [
+          { ...response.designSystem, sourceCount: response.sources.length },
+          ...current.filter((system) => system.id !== response.designSystem.id),
+        ],
+      );
+      queryClient.setQueryData<DesignSystemDetailResponse>(
+        designSystemKeys.detail(response.designSystem.id),
+        {
+          designSystem: response.designSystem,
+          sources: response.sources,
+          conversation: response.conversation,
+        },
+      );
+      queryClient.setQueryData<DesignStyleguideItemResponse[]>(
+        designSystemKeys.styleguideItems(response.designSystem.id),
+        response.items,
+      );
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.styleguideViewModel(response.designSystem.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.project(projectId),
+      });
+    },
   });
 }
 

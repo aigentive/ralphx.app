@@ -193,6 +193,48 @@ impl DesignStoragePaths {
         })
     }
 
+    pub fn read_json_file_under_design_storage_root<T: DeserializeOwned>(
+        &self,
+        file_path: impl AsRef<Path>,
+    ) -> AppResult<T> {
+        let file_path = file_path.as_ref();
+        if !file_path.is_absolute() {
+            return Err(AppError::Validation(
+                "Design artifact file path must be absolute".to_string(),
+            ));
+        }
+
+        let design_root = self.app_data_dir.join(DESIGN_ROOT_DIR);
+        let canonical_design_root = design_root.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design storage root: {error}"
+            ))
+        })?;
+        ensure_under(
+            &canonical_design_root,
+            &self.app_data_dir,
+            "design storage root",
+        )?;
+
+        let canonical_file = file_path.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design artifact file: {error}"
+            ))
+        })?;
+        ensure_under(
+            &canonical_file,
+            &canonical_design_root,
+            "design artifact JSON file",
+        )?;
+
+        let bytes = std::fs::read(&canonical_file).map_err(|error| {
+            AppError::Infrastructure(format!("Failed to read design JSON file: {error}"))
+        })?;
+        serde_json::from_slice(&bytes).map_err(|error| {
+            AppError::Infrastructure(format!("Failed to parse design JSON file: {error}"))
+        })
+    }
+
     pub fn schema_version_component(&self, schema_version_id: &DesignSchemaVersionId) -> String {
         hashed_component(schema_version_id.as_str())
     }
@@ -385,5 +427,35 @@ mod tests {
         let result = paths.read_json_file::<serde_json::Value>(&root, &outside_file);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_json_file_under_design_storage_root_rejects_outside_paths() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside tempdir");
+        let paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
+        let storage_ref = paths
+            .storage_ref_for_design_system(&DesignSystemId::from_string("design-1".to_string()));
+        let root = paths
+            .ensure_design_system_root(&storage_ref)
+            .expect("design root");
+        let inside = paths
+            .write_json_file(
+                &root,
+                "exports/package.json",
+                &serde_json::json!({ "ok": true }),
+            )
+            .expect("inside json");
+        let outside_file = outside.path().join("package.json");
+        std::fs::write(&outside_file, "{\"ok\":true}").expect("outside json");
+
+        let inside_value: serde_json::Value = paths
+            .read_json_file_under_design_storage_root(&inside)
+            .expect("read inside json");
+        let outside_result =
+            paths.read_json_file_under_design_storage_root::<serde_json::Value>(&outside_file);
+
+        assert_eq!(inside_value["ok"].as_bool(), Some(true));
+        assert!(outside_result.is_err());
     }
 }

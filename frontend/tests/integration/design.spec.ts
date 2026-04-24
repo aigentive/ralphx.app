@@ -64,6 +64,15 @@ test.describe("Design workspace", () => {
     await page.getByTestId("design-approve-colors.primary_palette").click();
     await expect(paletteRow).toContainText("approved");
     await saveShot(page, "design-desktop-reviewed");
+
+    await page.getByTestId("design-import-package").click();
+    await expect(page.getByTestId("design-package-import-dialog")).toBeVisible();
+    await page.getByTestId("design-import-package-artifact-id").fill("export-design-system-project-mock-1-2");
+    await page.getByTestId("design-import-name").fill("Imported Demo UI");
+    await page.getByTestId("design-import-package-submit").click();
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("Imported Demo UI");
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("ready / 1 sources");
+    await saveShot(page, "design-desktop-imported");
   });
 
   test("captures the Design workspace in a compact viewport", async ({ page }) => {

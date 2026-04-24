@@ -232,7 +232,13 @@ export function DesignSidebar({
       </div>
 
       <div className="px-3.5 py-3 border-t shrink-0" style={{ borderColor: "var(--overlay-faint)" }}>
-        <Button type="button" variant="outline" className="w-full gap-2" onClick={onImportDesignSystem}>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full gap-2"
+          onClick={onImportDesignSystem}
+          data-testid="design-import-package"
+        >
           <Download className="w-4 h-4" />
           Import package
         </Button>

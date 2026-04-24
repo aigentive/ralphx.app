@@ -214,6 +214,22 @@ export const ExportDesignSystemPackageResponseSchema = z.object({
   content: z.record(z.string(), z.unknown()),
 });
 
+export const ImportDesignSystemPackageInputSchema = z.object({
+  packageArtifactId: z.string().min(1),
+  attachProjectId: z.string().min(1),
+  name: z.string().optional(),
+});
+
+export const ImportDesignSystemPackageResponseSchema = z.object({
+  designSystem: DesignSystemResponseSchema,
+  sources: z.array(DesignSystemSourceResponseSchema),
+  conversation: AgentConversationResponseSchema,
+  schemaVersionId: z.string().min(1),
+  runId: z.string().min(1),
+  packageArtifactId: z.string().min(1),
+  items: z.array(DesignStyleguideItemResponseSchema),
+});
+
 export const GenerateDesignSystemStyleguideResponseSchema = z.object({
   designSystem: DesignSystemResponseSchema,
   schemaVersionId: z.string().min(1),
@@ -276,6 +292,8 @@ export type DesignPersistedStyleguideItem = z.infer<typeof DesignPersistedStyleg
 export type DesignStyleguideViewModelResponse = z.infer<typeof DesignStyleguideViewModelResponseSchema>;
 export type DesignStyleguidePreviewResponse = z.infer<typeof DesignStyleguidePreviewResponseSchema>;
 export type ExportDesignSystemPackageResponse = z.infer<typeof ExportDesignSystemPackageResponseSchema>;
+export type ImportDesignSystemPackageInput = z.infer<typeof ImportDesignSystemPackageInputSchema>;
+export type ImportDesignSystemPackageResponse = z.infer<typeof ImportDesignSystemPackageResponseSchema>;
 export type DesignStyleguideFeedbackResponse = z.infer<typeof DesignStyleguideFeedbackResponseSchema>;
 export type CreateDesignStyleguideFeedbackInput = z.infer<typeof CreateDesignStyleguideFeedbackInputSchema>;
 export type CreateDesignStyleguideFeedbackResponse = z.infer<typeof CreateDesignStyleguideFeedbackResponseSchema>;
@@ -326,6 +344,13 @@ export const designApi = {
       "export_design_system_package",
       { input: { designSystemId, includeFullProvenance } },
       ExportDesignSystemPackageResponseSchema,
+    ),
+
+  importPackage: (input: ImportDesignSystemPackageInput) =>
+    typedInvoke(
+      "import_design_system_package",
+      { input: ImportDesignSystemPackageInputSchema.parse(input) },
+      ImportDesignSystemPackageResponseSchema,
     ),
 
   approveStyleguideItem: (designSystemId: string, itemId: string) =>

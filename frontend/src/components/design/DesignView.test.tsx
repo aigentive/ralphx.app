@@ -312,6 +312,56 @@ describe("DesignView", () => {
         },
       }),
     );
+    vi.spyOn(api.design, "importPackage").mockImplementation(async (input) => {
+      const designSystem = designSystemResponse(input.attachProjectId, input.name ?? "Imported Design System", {
+        id: `imported-design-system-${input.attachProjectId}`,
+        status: "ready",
+        currentSchemaVersionId: "schema-version-imported",
+        sourceCount: 1,
+      });
+      systemsByProject.set(input.attachProjectId, [
+        designSystem,
+        ...(systemsByProject.get(input.attachProjectId) ?? []),
+      ]);
+      return {
+        designSystem,
+        sources: [
+          {
+            id: "source-imported-primary",
+            designSystemId: designSystem.id,
+            projectId: input.attachProjectId,
+            role: "primary",
+            selectedPaths: [],
+            sourceKind: "manual_note",
+            gitCommit: null,
+            sourceHashes: {},
+            lastAnalyzedAt: "2026-04-24T08:00:00Z",
+          },
+        ],
+        conversation: {
+          id: `conversation-${designSystem.id}`,
+          contextType: "design",
+          contextId: designSystem.id,
+          title: `Design: ${designSystem.name}`,
+          messageCount: 0,
+          lastMessageAt: null,
+          createdAt: "2026-04-24T08:00:00Z",
+          updatedAt: "2026-04-24T08:00:00Z",
+          archivedAt: null,
+        },
+        schemaVersionId: "schema-version-imported",
+        runId: "run-imported",
+        packageArtifactId: input.packageArtifactId,
+        items: [
+          {
+            ...styleguideItemResponse(designSystem.id),
+            schemaVersionId: "schema-version-imported",
+            previewArtifactId: null,
+            sourceRefs: [],
+          },
+        ],
+      };
+    });
   });
 
   it("renders a project-grouped design sidebar and styleguide pane", async () => {
@@ -496,6 +546,35 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-export-result")).toHaveTextContent(
       "export-p",
     );
+  });
+
+  it("imports a design package artifact into the selected project", async () => {
+    const importSpy = vi.spyOn(api.design, "importPackage");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-styleguide-pane");
+
+    fireEvent.click(screen.getByTestId("design-import-package"));
+    await screen.findByTestId("design-package-import-dialog");
+    fireEvent.change(screen.getByTestId("design-import-package-artifact-id"), {
+      target: { value: "export-package-1" },
+    });
+    fireEvent.change(screen.getByTestId("design-import-name"), {
+      target: { value: "Imported Product UI" },
+    });
+    fireEvent.click(screen.getByTestId("design-import-project-project-2"));
+    fireEvent.click(screen.getByTestId("design-import-package-submit"));
+
+    await waitFor(() => {
+      expect(importSpy).toHaveBeenCalledWith({
+        packageArtifactId: "export-package-1",
+        attachProjectId: "project-2",
+        name: "Imported Product UI",
+      });
+    });
+    expect(await screen.findByTestId("design-system-imported-design-system-project-2")).toHaveTextContent(
+      "Imported Product UI",
+    );
+    expect(await screen.findByText("ready / 1 sources")).toBeInTheDocument();
   });
 
   it("uses backend styleguide commands for persisted rows", async () => {
