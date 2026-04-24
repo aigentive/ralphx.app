@@ -162,8 +162,6 @@ For a fresh native dev start from the repo root:
 ./dev-fresh
 ```
 
-`./dev-fresh` fails fast on Tauri JS/Rust version drift and auto-runs `npm ci` when the frontend install is missing or invalid.
-
 ### First Task
 
 1. **Create a project** — Point RalphX at a git repository
