@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>The AI development infrastructure you own, not rent.</strong>
+  <strong>The AI development infrastructure you own. Open source. Local-first. Yours.</strong>
 </p>
 
 <p align="center">
