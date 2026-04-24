@@ -7,6 +7,7 @@ import type {
   DesignStyleguideItemResponse,
   DesignSystemDetailResponse,
   DesignSystemResponse,
+  GenerateDesignSystemStyleguideResponse,
 } from "@/api/design";
 import { api, type CreateDesignSystemInput, type CreateDesignSystemResponse } from "@/lib/tauri";
 import type { Project } from "@/types/project";
@@ -121,6 +122,41 @@ export function useDesignStyleguideItems(designSystemId: string | null) {
     queryFn: () => api.design.listStyleguideItems(designSystemId!),
     enabled: !!designSystemId,
     staleTime: 10 * 1000,
+  });
+}
+
+export function useGenerateDesignSystemStyleguide() {
+  const queryClient = useQueryClient();
+
+  return useMutation<GenerateDesignSystemStyleguideResponse, Error, string>({
+    mutationFn: (designSystemId) => api.design.generateStyleguide(designSystemId),
+    onSuccess: (response) => {
+      const projectId = response.designSystem.primaryProjectId;
+      queryClient.setQueryData<DesignSystemResponse[]>(
+        designSystemKeys.projectList(projectId, false),
+        (current = []) => [
+          response.designSystem,
+          ...current.filter((system) => system.id !== response.designSystem.id),
+        ],
+      );
+      queryClient.setQueryData<DesignSystemDetailResponse | null>(
+        designSystemKeys.detail(response.designSystem.id),
+        (current) =>
+          current
+            ? {
+                ...current,
+                designSystem: response.designSystem,
+              }
+            : current,
+      );
+      queryClient.setQueryData<DesignStyleguideItemResponse[]>(
+        designSystemKeys.styleguideItems(response.designSystem.id),
+        response.items,
+      );
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.project(projectId),
+      });
+    },
   });
 }
 

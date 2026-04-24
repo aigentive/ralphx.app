@@ -10,6 +10,7 @@ import {
   useCreateDesignSystem,
   useDesignSystemDetail,
   useDesignStyleguideItems,
+  useGenerateDesignSystemStyleguide,
   useProjectDesignSystems,
 } from "./useProjectDesignSystems";
 
@@ -30,6 +31,7 @@ export function DesignView({ projectId }: DesignViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const { groups } = useProjectDesignSystems(projects, { searchQuery });
   const createDesignSystem = useCreateDesignSystem();
+  const generateStyleguide = useGenerateDesignSystemStyleguide();
   const allSystems = useMemo(
     () => groups.flatMap((group) => group.systems),
     [groups],
@@ -119,6 +121,13 @@ export function DesignView({ projectId }: DesignViewProps) {
     );
   };
 
+  const generateSelectedStyleguide = () => {
+    if (!selectedDesignSystem || generateStyleguide.isPending) {
+      return;
+    }
+    generateStyleguide.mutate(selectedDesignSystem.id);
+  };
+
   return (
     <div className="h-full min-h-0 flex overflow-hidden" data-testid="design-view">
       <div style={{ width: DESIGN_SIDEBAR_WIDTH, minWidth: DESIGN_SIDEBAR_WIDTH }}>
@@ -150,7 +159,11 @@ export function DesignView({ projectId }: DesignViewProps) {
           className="h-full shrink-0"
           style={{ width: DESIGN_STYLEGUIDE_DEFAULT_WIDTH, minWidth: DESIGN_STYLEGUIDE_MIN_WIDTH }}
         >
-          <DesignStyleguidePane designSystem={selectedDesignSystem} />
+          <DesignStyleguidePane
+            designSystem={selectedDesignSystem}
+            isGeneratingStyleguide={generateStyleguide.isPending}
+            onGenerateStyleguide={generateSelectedStyleguide}
+          />
         </div>
       </div>
     </div>

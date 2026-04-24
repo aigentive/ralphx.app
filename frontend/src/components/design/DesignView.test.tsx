@@ -255,6 +255,29 @@ describe("DesignView", () => {
         };
       },
     );
+    vi.spyOn(api.design, "generateStyleguide").mockImplementation(
+      async (designSystemId: string) => {
+        const current = Array.from(systemsByProject.values()).flat().find((system) => system.id === designSystemId);
+        const designSystem = {
+          ...(current ?? designSystemResponse("project-1", "Generated Design System")),
+          status: "ready" as const,
+          currentSchemaVersionId: "schema-version-generated",
+          updatedAt: "2026-04-24T08:10:00Z",
+        };
+        systemsByProject.set(
+          designSystem.primaryProjectId,
+          (systemsByProject.get(designSystem.primaryProjectId) ?? []).map((system) =>
+            system.id === designSystem.id ? designSystem : system,
+          ),
+        );
+        return {
+          designSystem,
+          schemaVersionId: "schema-version-generated",
+          runId: "run-generated",
+          items: [styleguideItemResponse(designSystem.id)],
+        };
+      },
+    );
   });
 
   it("renders a project-grouped design sidebar and styleguide pane", async () => {
@@ -341,6 +364,21 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-system-created-design-system-project-1")).toHaveTextContent(
       "RalphX Design System",
     );
+  });
+
+  it("generates a draft styleguide through the backend publish command", async () => {
+    const generateSpy = vi.spyOn(api.design, "generateStyleguide");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-system-design-system-project-1");
+
+    fireEvent.click(screen.getByTestId("design-new-system"));
+    await screen.findByTestId("design-system-created-design-system-project-1");
+    fireEvent.click(await screen.findByTestId("design-generate-styleguide"));
+
+    await waitFor(() => {
+      expect(generateSpy).toHaveBeenCalledWith("created-design-system-project-1");
+    });
+    expect(await screen.findByText("Button patterns from persisted styleguide rows")).toBeInTheDocument();
   });
 
   it("uses backend styleguide commands for persisted rows", async () => {

@@ -154,6 +154,7 @@ export {
   type DesignSystemDetailResponse,
   type DesignSystemResponse,
   type DesignSystemSourceResponse,
+  type GenerateDesignSystemStyleguideResponse,
   CreateDesignStyleguideFeedbackInputSchema,
   CreateDesignStyleguideFeedbackResponseSchema,
   CreateDesignSystemInputSchema,
@@ -163,6 +164,7 @@ export {
   DesignSystemDetailResponseSchema,
   DesignSystemResponseSchema,
   DesignSystemSourceResponseSchema,
+  GenerateDesignSystemStyleguideResponseSchema,
 } from "@/api/design";
 
 // Ask User Question API

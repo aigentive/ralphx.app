@@ -1,4 +1,13 @@
-import { Check, ChevronDown, ChevronRight, MessageSquare, Package, Upload } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  MessageSquare,
+  Package,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,9 +27,15 @@ const FILTERS: Array<{ id: "all" | DesignReviewState; label: string }> = [
 
 interface DesignStyleguidePaneProps {
   designSystem: DesignSystem | null;
+  isGeneratingStyleguide?: boolean;
+  onGenerateStyleguide?: () => void;
 }
 
-export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps) {
+export function DesignStyleguidePane({
+  designSystem,
+  isGeneratingStyleguide = false,
+  onGenerateStyleguide,
+}: DesignStyleguidePaneProps) {
   const [activeFilter, setActiveFilter] = useState<"all" | DesignReviewState>("all");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [feedbackItemId, setFeedbackItemId] = useState<string | null>(null);
@@ -28,6 +43,11 @@ export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps
   const [feedbackDraft, setFeedbackDraft] = useState("");
   const approveMutation = useApproveDesignStyleguideItem();
   const feedbackMutation = useCreateDesignStyleguideFeedback();
+  const hasPersistedItems =
+    designSystem?.groups.some((group) => group.items.some((item) => item.isPersisted)) ?? false;
+  const canGenerateStyleguide =
+    !!designSystem &&
+    (designSystem.status === "draft" || designSystem.status === "failed" || !hasPersistedItems);
 
   const reviewCounts = useMemo(() => {
     const counts: Record<DesignReviewState, number> = {
@@ -122,6 +142,23 @@ export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps
             v{designSystem.version}
           </div>
         </div>
+        {canGenerateStyleguide && (
+          <Button
+            type="button"
+            size="sm"
+            className="gap-2"
+            disabled={isGeneratingStyleguide || !onGenerateStyleguide}
+            onClick={onGenerateStyleguide}
+            data-testid="design-generate-styleguide"
+          >
+            {isGeneratingStyleguide ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {isGeneratingStyleguide ? "Generating" : "Generate"}
+          </Button>
+        )}
         <Button type="button" variant="outline" size="sm" className="gap-2">
           <Upload className="w-4 h-4" />
           Export
@@ -133,6 +170,19 @@ export function DesignStyleguidePane({ designSystem }: DesignStyleguidePaneProps
           <div className="text-[13px] leading-5" style={{ color: "var(--text-secondary)" }}>
             {designSystem.readySummary}
           </div>
+          {isGeneratingStyleguide && (
+            <div
+              className="rounded-lg border px-3 py-2 text-[12px]"
+              style={{
+                borderColor: "var(--accent-border)",
+                background: "var(--accent-muted)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="design-generating-state"
+            >
+              Analyzing selected sources and publishing the initial styleguide.
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5" data-testid="design-review-filters">
             {FILTERS.map((filter) => (
               <button

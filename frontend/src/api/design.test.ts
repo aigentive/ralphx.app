@@ -5,6 +5,7 @@ import {
   CreateDesignStyleguideFeedbackResponseSchema,
   CreateDesignSystemResponseSchema,
   DesignSystemResponseSchema,
+  GenerateDesignSystemStyleguideResponseSchema,
   designApi,
 } from "./design";
 
@@ -46,6 +47,24 @@ function conversationResponse() {
     created_at: "2026-04-24T08:00:00Z",
     updated_at: "2026-04-24T08:00:00Z",
     archived_at: null,
+  };
+}
+
+function styleguideItemResponse() {
+  return {
+    id: "item-1",
+    designSystemId: "design-system-1",
+    schemaVersionId: "schema-1",
+    itemId: "components.buttons",
+    group: "components",
+    label: "Buttons",
+    summary: "Button patterns",
+    previewArtifactId: "preview-1",
+    sourceRefs: [{ project_id: "project-1", path: "frontend/src/Button.tsx", line: 12 }],
+    confidence: "medium",
+    approvalStatus: "needs_review",
+    feedbackStatus: "none",
+    updatedAt: "2026-04-24T08:00:00Z",
   };
 }
 
@@ -118,6 +137,20 @@ describe("design API schemas", () => {
 
     expect(parsed.feedback.sourceRefs[0]?.project_id).toBe("project-1");
   });
+
+  it("parses generated styleguide response with source-backed items", () => {
+    const parsed = GenerateDesignSystemStyleguideResponseSchema.parse({
+      designSystem: designSystemResponse({
+        status: "ready",
+        currentSchemaVersionId: "schema-1",
+      }),
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      items: [styleguideItemResponse()],
+    });
+
+    expect(parsed.items[0]?.sourceRefs[0]?.path).toBe("frontend/src/Button.tsx");
+  });
 });
 
 describe("designApi", () => {
@@ -162,23 +195,7 @@ describe("designApi", () => {
   });
 
   it("lists styleguide items through the current-schema command", async () => {
-    mockInvoke.mockResolvedValueOnce([
-      {
-        id: "item-1",
-        designSystemId: "design-system-1",
-        schemaVersionId: "schema-1",
-        itemId: "components.buttons",
-        group: "components",
-        label: "Buttons",
-        summary: "Button patterns",
-        previewArtifactId: null,
-        sourceRefs: [],
-        confidence: "medium",
-        approvalStatus: "needs_review",
-        feedbackStatus: "none",
-        updatedAt: "2026-04-24T08:00:00Z",
-      },
-    ]);
+    mockInvoke.mockResolvedValueOnce([styleguideItemResponse()]);
 
     const response = await designApi.listStyleguideItems("design-system-1");
 
@@ -187,6 +204,27 @@ describe("designApi", () => {
       input: {
         designSystemId: "design-system-1",
         schemaVersionId: undefined,
+      },
+    });
+  });
+
+  it("generates an initial styleguide through the publish command", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      designSystem: designSystemResponse({
+        status: "ready",
+        currentSchemaVersionId: "schema-1",
+      }),
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      items: [styleguideItemResponse()],
+    });
+
+    const response = await designApi.generateStyleguide("design-system-1");
+
+    expect(response.runId).toBe("run-1");
+    expect(mockInvoke).toHaveBeenCalledWith("generate_design_system_styleguide", {
+      input: {
+        designSystemId: "design-system-1",
       },
     });
   });

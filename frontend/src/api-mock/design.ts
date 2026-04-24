@@ -7,6 +7,7 @@ import type {
   DesignStyleguideItemResponse,
   DesignSystemDetailResponse,
   DesignSystemResponse,
+  GenerateDesignSystemStyleguideResponse,
 } from "@/api/design";
 import { getStore } from "./store";
 
@@ -128,6 +129,31 @@ export const mockDesignApi = {
       ),
     );
     return archived;
+  },
+
+  generateStyleguide: async (designSystemId: string): Promise<GenerateDesignSystemStyleguideResponse> => {
+    const designSystem = allSystems().find((system) => system.id === designSystemId);
+    if (!designSystem) {
+      throw new Error(`Design system not found: ${designSystemId}`);
+    }
+    const generated = {
+      ...designSystem,
+      status: "ready" as const,
+      currentSchemaVersionId: designSystem.currentSchemaVersionId ?? `schema-${designSystem.id}`,
+      updatedAt: nowIso(),
+    };
+    mockSystemsByProject.set(
+      generated.primaryProjectId,
+      systemsForProject(generated.primaryProjectId).map((system) =>
+        system.id === generated.id ? generated : system,
+      ),
+    );
+    return {
+      designSystem: generated,
+      schemaVersionId: generated.currentSchemaVersionId,
+      runId: `run-${generated.id}`,
+      items: mockStyleguideItems(generated),
+    };
   },
 
   listStyleguideItems: async (designSystemId: string): Promise<DesignStyleguideItemResponse[]> => {

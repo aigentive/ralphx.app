@@ -141,6 +141,13 @@ export const DesignStyleguideItemResponseSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
+export const GenerateDesignSystemStyleguideResponseSchema = z.object({
+  designSystem: DesignSystemResponseSchema,
+  schemaVersionId: z.string().min(1),
+  runId: z.string().min(1),
+  items: z.array(DesignStyleguideItemResponseSchema),
+});
+
 export const DesignStyleguideFeedbackResponseSchema = z.object({
   id: z.string().min(1),
   designSystemId: z.string().min(1),
@@ -188,6 +195,9 @@ export type DesignSystemSourceResponse = z.infer<typeof DesignSystemSourceRespon
 export type DesignSystemDetailResponse = z.infer<typeof DesignSystemDetailResponseSchema>;
 export type CreateDesignSystemInput = z.infer<typeof CreateDesignSystemInputSchema>;
 export type CreateDesignSystemResponse = z.infer<typeof CreateDesignSystemResponseSchema>;
+export type GenerateDesignSystemStyleguideResponse = z.infer<
+  typeof GenerateDesignSystemStyleguideResponseSchema
+>;
 export type DesignStyleguideItemResponse = z.infer<typeof DesignStyleguideItemResponseSchema>;
 export type DesignStyleguideFeedbackResponse = z.infer<typeof DesignStyleguideFeedbackResponseSchema>;
 export type CreateDesignStyleguideFeedbackInput = z.infer<typeof CreateDesignStyleguideFeedbackInputSchema>;
@@ -205,6 +215,13 @@ export const designApi = {
 
   archiveDesignSystem: (id: string) =>
     typedInvoke("archive_design_system", { id }, DesignSystemResponseSchema),
+
+  generateStyleguide: (designSystemId: string) =>
+    typedInvoke(
+      "generate_design_system_styleguide",
+      { input: { designSystemId } },
+      GenerateDesignSystemStyleguideResponseSchema,
+    ),
 
   listStyleguideItems: (designSystemId: string, schemaVersionId?: string) =>
     typedInvoke(
