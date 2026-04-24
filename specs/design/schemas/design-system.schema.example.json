@@ -1,0 +1,268 @@
+{
+  "schema_version": "1.0",
+  "design_system": {
+    "id": "design-system-uuid",
+    "name": "RalphX Product Design System",
+    "version": "0.1.0",
+    "created_at": "2026-04-24T00:00:00Z"
+  },
+  "sources": [
+    {
+      "id": "source-ralphx-primary",
+      "project_id": "project-uuid",
+      "role": "primary",
+      "source_kind": "project_checkout",
+      "selected_paths": [
+        "frontend/src/components",
+        "frontend/src/styles",
+        "specs/design/styleguide.md"
+      ],
+      "git_commit": "source-commit-sha",
+      "confidence": "high"
+    }
+  ],
+  "brand": {
+    "summary": "Native Mac workspace for autonomous AI development.",
+    "visual_principles": [
+      {
+        "rule": "Use warm orange as the primary accent and keep the surrounding UI quiet.",
+        "source_refs": [
+          {
+            "project_id": "project-uuid",
+            "path": "frontend/src/CLAUDE.md"
+          }
+        ],
+        "confidence": "high"
+      }
+    ]
+  },
+  "tokens": {
+    "colors": {
+      "primitives": [
+        {
+          "name": "color.orange.500",
+          "value": "#ff6b35",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "specs/design/styleguide.md"
+            }
+          ],
+          "confidence": "high"
+        }
+      ],
+      "semantic_roles": [
+        {
+          "name": "color.action.primary",
+          "value_ref": "color.orange.500",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "frontend/src/styles/tokens/semantic.css"
+            }
+          ],
+          "confidence": "high"
+        }
+      ],
+      "component_roles": [
+        {
+          "name": "color.button.primary.background",
+          "value_ref": "color.action.primary",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "frontend/src/components/ui/button.tsx"
+            }
+          ],
+          "confidence": "medium"
+        }
+      ]
+    },
+    "typography": {
+      "font_stacks": [
+        {
+          "name": "font.body",
+          "value": "SF Pro, -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "frontend/src/CLAUDE.md"
+            }
+          ],
+          "confidence": "high"
+        }
+      ],
+      "sizes": [],
+      "weights": [],
+      "line_heights": [],
+      "code_font": null
+    },
+    "spacing": {
+      "scale": [],
+      "density": "desktop_app_compact",
+      "component_padding": []
+    },
+    "radius": {
+      "scale": [
+        {
+          "name": "radius.control",
+          "value": "8px",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "AGENTS.md"
+            }
+          ],
+          "confidence": "medium"
+        }
+      ],
+      "component_mappings": []
+    },
+    "shadow": {
+      "elevations": [],
+      "forbidden_treatments": [
+        {
+          "rule": "Avoid muddy stacked borders and one-note gradient decoration.",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "specs/design/first-class-design-feature.md"
+            }
+          ],
+          "confidence": "medium"
+        }
+      ]
+    },
+    "borders": [],
+    "focus_states": [],
+    "motion": []
+  },
+  "components": [
+    {
+      "id": "button.primary",
+      "kind": "component",
+      "name": "Primary Button",
+      "source_refs": [
+        {
+          "project_id": "project-uuid",
+          "path": "frontend/src/components/ui/button.tsx"
+        }
+      ],
+      "slots": [
+        "icon",
+        "label"
+      ],
+      "variants": [
+        "primary",
+        "secondary",
+        "ghost"
+      ],
+      "states": [
+        "default",
+        "hover",
+        "focus",
+        "disabled",
+        "loading"
+      ],
+      "tokens": {
+        "background": "color.action.primary",
+        "text": "color.action.on_primary",
+        "radius": "radius.control"
+      },
+      "usage": {
+        "do": [
+          "Use icon plus label for clear commands."
+        ],
+        "avoid": [
+          "Do not rely on native title for icon-only accessibility."
+        ]
+      },
+      "confidence": "medium"
+    }
+  ],
+  "screen_patterns": [
+    {
+      "id": "screen.design_workspace",
+      "kind": "screen",
+      "source_refs": [
+        {
+          "project_id": "project-uuid",
+          "path": "specs/design/first-class-design-feature.md"
+        }
+      ],
+      "layout": "left_sidebar_chat_artifact",
+      "regions": [
+        "project_sidebar",
+        "chat",
+        "styleguide_pane"
+      ],
+      "density": "desktop_app_compact",
+      "responsive_rules": [],
+      "component_refs": [
+        "button.primary"
+      ],
+      "content_rules": [
+        "Show human labels and previews before raw token/schema details."
+      ],
+      "confidence": "high"
+    }
+  ],
+  "layout_patterns": [],
+  "content_voice": {
+    "principles": [
+      {
+        "rule": "Use direct, work-focused product language.",
+        "source_refs": [
+          {
+            "project_id": "project-uuid",
+            "path": "CLAUDE.md"
+          }
+        ],
+        "confidence": "medium"
+      }
+    ]
+  },
+  "assets": [],
+  "accessibility": {
+    "rules": [
+      {
+        "rule": "Icon-only buttons require an accessible name plus the app tooltip component.",
+        "source_refs": [
+          {
+            "project_id": "project-uuid",
+            "path": ".claude/rules/icon-only-buttons.md"
+          }
+        ],
+        "confidence": "high"
+      }
+    ]
+  },
+  "usage_rules": [
+    {
+      "rule": "Generated artifacts are RalphX-owned until the user explicitly exports or hands them off.",
+      "source_refs": [
+        {
+          "project_id": "project-uuid",
+          "path": "specs/design/first-class-design-feature.md"
+        }
+      ],
+      "confidence": "high"
+    }
+  ],
+  "caveats": [
+    {
+      "id": "caveat-font-files",
+      "severity": "warning",
+      "area": "font",
+      "summary": "No bundled SF Pro font files are stored in the design package.",
+      "requested_user_action": "Confirm whether substitute system fonts are acceptable."
+    }
+  ],
+  "provenance": {
+    "source_hashes": {
+      "frontend/src/CLAUDE.md": "sha256-placeholder"
+    },
+    "generated_by_run_id": "design-run-uuid",
+    "verification_report_artifact_id": "artifact-design-verification-report"
+  }
+}
