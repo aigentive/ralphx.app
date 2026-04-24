@@ -212,7 +212,7 @@ export function AgentsStartComposer({
                 </span>
                 <span
                   aria-hidden="true"
-                  className="ml-0.5 inline-block h-[0.9em] w-[2px] rounded-full align-middle animate-pulse"
+                  className="animate-starter-caret ml-0.5 inline-block h-[0.9em] w-[2px] rounded-full align-middle"
                   style={{ background: "var(--accent-primary)" }}
                 />
               </span>
