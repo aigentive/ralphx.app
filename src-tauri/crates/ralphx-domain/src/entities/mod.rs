@@ -1,5 +1,6 @@
 pub mod activity_event;
 pub mod agent_run;
+pub mod agent_conversation_workspace;
 pub mod event_type;
 pub mod api_key;
 pub mod app_state;
@@ -39,6 +40,9 @@ pub use activity_event::{
 pub use agent_run::{
     AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage,
     InterruptedConversation,
+};
+pub use agent_conversation_workspace::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode, AgentConversationWorkspaceStatus,
 };
 pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{
