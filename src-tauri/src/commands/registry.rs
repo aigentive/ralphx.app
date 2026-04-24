@@ -240,6 +240,7 @@ macro_rules! register_tauri_commands {
             commands::task_context_commands::get_related_artifacts,
             commands::task_context_commands::search_artifacts,
             // Unified chat commands (new API - consolidates context_chat + execution_chat)
+            commands::unified_chat_commands::start_agent_conversation,
             commands::unified_chat_commands::send_agent_message,
             commands::unified_chat_commands::queue_agent_message,
             commands::unified_chat_commands::get_queued_agent_messages,

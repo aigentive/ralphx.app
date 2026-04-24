@@ -9,10 +9,10 @@ use crate::application::{
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
-    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    DelegatedSessionRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
+    AgentRunRepository, ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, DelegatedSessionRepository, ExecutionPlanRepository,
+    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
@@ -186,6 +186,7 @@ pub(crate) struct ChatRuntimeFactoryDeps {
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     pub ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    pub agent_conversation_workspace_repo: Option<Arc<dyn AgentConversationWorkspaceRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     pub task_step_repo: Option<Arc<dyn TaskStepRepository>>,
@@ -230,6 +231,7 @@ impl ChatRuntimeFactoryDeps {
             agent_lane_settings_repo: None,
             ideation_effort_settings_repo: None,
             ideation_model_settings_repo: None,
+            agent_conversation_workspace_repo: None,
             plan_branch_repo: None,
             task_proposal_repo: None,
             task_step_repo: None,
@@ -268,6 +270,14 @@ impl ChatRuntimeFactoryDeps {
         repo: Arc<dyn IdeationModelSettingsRepository>,
     ) -> Self {
         self.ideation_model_settings_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_agent_conversation_workspace_repo(
+        mut self,
+        repo: Option<Arc<dyn AgentConversationWorkspaceRepository>>,
+    ) -> Self {
+        self.agent_conversation_workspace_repo = repo;
         self
     }
 
@@ -397,6 +407,9 @@ impl ChatRuntimeFactoryDeps {
             Some(Arc::clone(&state.ideation_effort_settings_repo)),
             Some(Arc::clone(&state.ideation_model_settings_repo)),
         )
+        .with_agent_conversation_workspace_repo(Some(Arc::clone(
+            &state.agent_conversation_workspace_repo,
+        )))
         .with_chat_context_support(
             Some(Arc::clone(&state.task_proposal_repo)),
             Some(Arc::clone(&state.task_step_repo)),
@@ -448,6 +461,9 @@ pub(crate) fn build_chat_service_from_deps<R: Runtime>(
     }
     if let Some(repo) = deps.ideation_model_settings_repo.as_ref() {
         service = service.with_ideation_model_settings_repo(Arc::clone(repo));
+    }
+    if let Some(repo) = deps.agent_conversation_workspace_repo.as_ref() {
+        service = service.with_agent_conversation_workspace_repo(Arc::clone(repo));
     }
     if let Some(repo) = deps.plan_branch_repo.as_ref() {
         service = service.with_plan_branch_repo(Arc::clone(repo));

@@ -430,6 +430,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
             agent_lane_settings_repo: agent_lane_settings_repo.clone(),
             ideation_effort_settings_repo: ideation_effort_settings_repo.clone(),
             ideation_model_settings_repo: ideation_model_settings_repo.clone(),
+            agent_conversation_workspace_repo: None,
             task_proposal_repo: task_proposal_repo.clone(),
             activity_event_repo: Arc::clone(activity_event_repo),
             memory_event_repo: Arc::clone(memory_event_repo),
