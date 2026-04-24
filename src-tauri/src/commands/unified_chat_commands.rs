@@ -1237,6 +1237,21 @@ pub async fn restore_agent_conversation(
         .ok_or_else(|| "Conversation not found".to_string())
 }
 
+/// Get workspace metadata for a project-backed agent conversation.
+#[tauri::command]
+pub async fn get_agent_conversation_workspace(
+    conversation_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<AgentConversationWorkspaceResponse>, String> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation_id)
+        .await
+        .map_err(|e| e.to_string())
+        .map(|workspace| workspace.map(AgentConversationWorkspaceResponse::from))
+}
+
 /// Persist a child workflow milestone into a parent project-agent conversation.
 ///
 /// This command is intentionally not an agent send path: it does not touch queue

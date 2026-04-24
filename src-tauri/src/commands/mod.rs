@@ -177,6 +177,7 @@ pub use team_commands::{
 pub use unified_chat_commands::{
     append_agent_bridge_message, archive_agent_conversation, create_agent_conversation,
     delete_queued_agent_message, get_agent_conversation, get_agent_conversation_messages_page,
+    get_agent_conversation_workspace,
     get_agent_run_status_unified, get_queued_agent_messages, is_agent_running,
     is_chat_service_available, list_agent_conversations, list_agent_conversations_page,
     queue_agent_message,

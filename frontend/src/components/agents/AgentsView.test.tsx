@@ -15,6 +15,7 @@ const {
   useProjectAgentConversationsMock,
   useConversationMock,
   startAgentConversationMock,
+  getAgentConversationWorkspaceMock,
   sendAgentMessageMock,
   createConversationMock,
   spawnConversationSessionNamerMock,
@@ -26,6 +27,7 @@ const {
   useProjectAgentConversationsMock: vi.fn(),
   useConversationMock: vi.fn(),
   startAgentConversationMock: vi.fn(),
+  getAgentConversationWorkspaceMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
   createConversationMock: vi.fn(),
   spawnConversationSessionNamerMock: vi.fn(),
@@ -76,6 +78,8 @@ vi.mock("@/hooks/useChat", () => ({
 vi.mock("@/api/chat", () => ({
   chatApi: {
     startAgentConversation: (...args: unknown[]) => startAgentConversationMock(...args),
+    getAgentConversationWorkspace: (...args: unknown[]) =>
+      getAgentConversationWorkspaceMock(...args),
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
     createConversation: (...args: unknown[]) => createConversationMock(...args),
     spawnConversationSessionNamer: (...args: unknown[]) =>
@@ -305,6 +309,7 @@ describe("AgentsChatHeader", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
+        workspace={null}
         artifactOpen={false}
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -323,6 +328,7 @@ describe("AgentsChatHeader", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
+        workspace={null}
         artifactOpen
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -339,6 +345,7 @@ describe("AgentsChatHeader", () => {
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation()}
+        workspace={null}
         artifactOpen={false}
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -352,6 +359,44 @@ describe("AgentsChatHeader", () => {
     expect(screen.queryByText("Mode")).not.toBeInTheDocument();
     expect(screen.queryByText("Default")).not.toBeInTheDocument();
   });
+
+  it("shows the workspace branch status when available", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation()}
+        workspace={{
+          conversationId: "conversation-1",
+          projectId: "project-1",
+          mode: "edit",
+          baseRefKind: "project_default",
+          baseRef: "main",
+          baseDisplayName: "Project default (main)",
+          baseCommit: null,
+          branchName: "ralphx/ralphx/agent-abcdef12",
+          worktreePath: "/tmp/ralphx/conversation-1",
+          linkedIdeationSessionId: null,
+          linkedPlanBranchId: null,
+          publicationPrNumber: null,
+          publicationPrUrl: null,
+          publicationPrStatus: null,
+          publicationPushStatus: null,
+          status: "active",
+          createdAt: "2026-04-23T09:00:00Z",
+          updatedAt: "2026-04-23T09:00:00Z",
+        }}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent(
+      "agent-abcdef12"
+    );
+    expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent("active");
+  });
 });
 
 describe("AgentsView", () => {
@@ -362,6 +407,7 @@ describe("AgentsView", () => {
     useProjectsMock.mockReset();
     useConversationMock.mockReset();
     startAgentConversationMock.mockReset();
+    getAgentConversationWorkspaceMock.mockReset();
     sendAgentMessageMock.mockReset();
     createConversationMock.mockReset();
     spawnConversationSessionNamerMock.mockReset();
@@ -377,6 +423,7 @@ describe("AgentsView", () => {
       queuedAsPending: false,
       queuedMessageId: null,
     });
+    getAgentConversationWorkspaceMock.mockResolvedValue(null);
     startAgentConversationMock.mockResolvedValue({
       conversation: conversation({ id: "conversation-2", contextId: "project-1" }),
       workspace: {

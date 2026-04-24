@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ClipboardList,
   FileText,
+  GitBranch,
   GitPullRequestArrow,
   Menu,
   PanelRightOpen,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { chatApi } from "@/api/chat";
 import type {
   AgentConversationBaseSelection,
+  AgentConversationWorkspace,
   AgentConversationWorkspaceMode,
 } from "@/api/chat";
 import { executionApi } from "@/api/execution";
@@ -43,6 +45,7 @@ import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
 import { withAlpha } from "@/lib/theme-colors";
+import { formatBranchDisplay } from "@/lib/branch-utils";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -218,6 +221,14 @@ export function AgentsView({
     queryKey: ideationKeys.sessionWithData(attachedIdeationSessionId ?? ""),
     queryFn: () => ideationApi.sessions.getWithData(attachedIdeationSessionId!),
     enabled: !!attachedIdeationSessionId,
+    staleTime: 5_000,
+  });
+  const conversationWorkspaceQuery = useQuery({
+    queryKey: ["agents", "conversation-workspace", selectedConversationId],
+    queryFn: () => chatApi.getAgentConversationWorkspace(selectedConversationId!),
+    enabled:
+      !!selectedConversationId &&
+      activeConversation?.contextType === "project",
     staleTime: 5_000,
   });
   const attachedIdeationSessionData =
@@ -1027,6 +1038,7 @@ export function AgentsView({
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
+                    workspace={conversationWorkspaceQuery.data ?? null}
                     artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
@@ -1107,6 +1119,7 @@ export function AgentsView({
 
 interface AgentsChatHeaderProps {
   conversation: AgentConversation | null;
+  workspace: AgentConversationWorkspace | null;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
@@ -1116,6 +1129,7 @@ interface AgentsChatHeaderProps {
 
 export function AgentsChatHeader({
   conversation,
+  workspace,
   artifactOpen,
   activeArtifactTab,
   onRenameConversation,
@@ -1149,40 +1163,43 @@ export function AgentsChatHeader({
 
   return (
     <div className="flex w-full flex-1 items-center justify-between gap-3 min-w-0">
-      <div className="min-w-0 shrink">
-        {isEditing ? (
-          <Input
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            onBlur={() => void commitTitle()}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void commitTitle();
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setDraftTitle(title);
-                setIsEditing(false);
-              }
-            }}
-            className="h-7 max-w-[260px] text-sm font-semibold"
-            autoFocus
-            aria-label="Agent title"
-          />
-        ) : (
-          <button
-            type="button"
-            className="block max-w-[420px] text-left text-sm font-semibold truncate"
-            style={{ color: "var(--text-primary)" }}
-            onClick={() => conversation && setIsEditing(true)}
-            aria-label="Edit agent title"
-            data-testid="agents-chat-title-button"
-            data-theme-button-skip="true"
-          >
-            {title}
-          </button>
-        )}
+      <div className="flex min-w-0 shrink items-center gap-2">
+        <div className="min-w-0 shrink">
+          {isEditing ? (
+            <Input
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              onBlur={() => void commitTitle()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void commitTitle();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setDraftTitle(title);
+                  setIsEditing(false);
+                }
+              }}
+              className="h-7 max-w-[260px] text-sm font-semibold"
+              autoFocus
+              aria-label="Agent title"
+            />
+          ) : (
+            <button
+              type="button"
+              className="block max-w-[420px] text-left text-sm font-semibold truncate"
+              style={{ color: "var(--text-primary)" }}
+              onClick={() => conversation && setIsEditing(true)}
+              aria-label="Edit agent title"
+              data-testid="agents-chat-title-button"
+              data-theme-button-skip="true"
+            >
+              {title}
+            </button>
+          )}
+        </div>
+        {workspace && <AgentsWorkspaceStatusPill workspace={workspace} />}
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
@@ -1241,6 +1258,57 @@ export function AgentsChatHeader({
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+function AgentsWorkspaceStatusPill({
+  workspace,
+}: {
+  workspace: AgentConversationWorkspace;
+}) {
+  const branch = formatBranchDisplay(workspace.branchName);
+  const status =
+    workspace.publicationPrStatus ?? workspace.publicationPushStatus ?? workspace.status;
+  const statusLabel = status.replace(/_/g, " ");
+  const baseLabel = workspace.baseDisplayName ?? workspace.baseRef;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          tabIndex={0}
+          className="inline-flex min-w-0 max-w-[180px] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:max-w-[300px]"
+          style={{
+            color: "var(--text-secondary)",
+            background: "var(--bg-surface)",
+            borderColor: "var(--overlay-weak)",
+          }}
+          data-testid="agents-workspace-status"
+        >
+          <GitBranch className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate font-mono">{branch.short}</span>
+          <span
+            className="h-1 w-1 shrink-0 rounded-full"
+            style={{ background: "var(--accent-primary)" }}
+          />
+          <span className="shrink-0 capitalize">{statusLabel}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[360px] text-xs">
+        <div className="space-y-1">
+          <div>Branch: {branch.full}</div>
+          <div>Base: {baseLabel}</div>
+          {workspace.publicationPrUrl && (
+            <div>
+              PR:{" "}
+              {workspace.publicationPrNumber
+                ? `#${workspace.publicationPrNumber}`
+                : workspace.publicationPrUrl}
+            </div>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
