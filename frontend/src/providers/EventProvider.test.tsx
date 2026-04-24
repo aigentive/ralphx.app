@@ -36,6 +36,10 @@ vi.mock("@/hooks/useGlobalAgentLifecycle", () => ({
   useGlobalAgentLifecycle: vi.fn(),
 }));
 
+vi.mock("@/components/design/useDesignSystemEvents", () => ({
+  useDesignSystemEvents: vi.fn(),
+}));
+
 // Mock the event bus module
 vi.mock("@/lib/event-bus", () => ({
   createEventBus: vi.fn(() => ({
@@ -50,6 +54,7 @@ import {
   useReviewEvents,
   useFileChangeEvents,
 } from "@/hooks/useEvents";
+import { useDesignSystemEvents } from "@/components/design/useDesignSystemEvents";
 
 describe("EventProvider", () => {
   beforeEach(() => {
@@ -104,6 +109,16 @@ describe("EventProvider", () => {
     );
 
     expect(useFileChangeEvents).toHaveBeenCalled();
+  });
+
+  it("should call useDesignSystemEvents hook", () => {
+    render(
+      <EventProvider>
+        <div>Test</div>
+      </EventProvider>
+    );
+
+    expect(useDesignSystemEvents).toHaveBeenCalled();
   });
 
   it("should render multiple children", () => {

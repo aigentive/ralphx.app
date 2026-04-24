@@ -33,6 +33,7 @@ import { useVerificationBootstrap } from "@/hooks/useVerificationBootstrap";
 import { useFreshnessBlockedNotification } from "@/hooks/useFreshnessBlockedNotification";
 import { useGlobalAgentLifecycle } from "@/hooks/useGlobalAgentLifecycle";
 import { createEventBus, type EventBus } from "@/lib/event-bus";
+import { useDesignSystemEvents } from "@/components/design/useDesignSystemEvents";
 
 /**
  * Context for the event bus instance
@@ -89,6 +90,7 @@ function GlobalEventListeners({ children }: { children: ReactNode }) {
   useVerificationBootstrap(); // Hydrate pending verification confirmations on startup and project switch
   useFreshnessBlockedNotification(); // Show toast when task is freshness-blocked
   useGlobalAgentLifecycle(); // Global agent lifecycle → agentStatus for all sessions
+  useDesignSystemEvents(); // Keep Design workspace queries fresh on design:* events
 
   return <>{children}</>;
 }
