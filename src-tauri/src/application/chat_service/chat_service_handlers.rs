@@ -1670,6 +1670,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 working_directory,
                                 &new_session_id,
                                 resolved_project_id.as_deref(),
+                                if context_type == ChatContextType::Project {
+                                    Some(conversation_id.as_str())
+                                } else {
+                                    None
+                                },
                                 team_mode,
                                 Arc::clone(chat_attachment_repo),
                                 Arc::clone(artifact_repo),

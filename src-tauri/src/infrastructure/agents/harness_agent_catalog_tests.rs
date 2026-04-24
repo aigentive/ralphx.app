@@ -1,8 +1,8 @@
 use super::{
     list_canonical_prompt_backed_agents, load_canonical_agent_definition,
-    load_canonical_codex_metadata, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    resolve_project_root_from_catalog_path, resolve_project_root_from_plugin_dir,
-    try_load_canonical_claude_metadata, AgentPromptHarness,
+    load_canonical_claude_metadata, load_canonical_codex_metadata, load_harness_agent_prompt,
+    resolve_harness_agent_prompt_path, resolve_project_root_from_catalog_path,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use crate::infrastructure::agents::claude::get_agent_config;
 use std::fs;
@@ -616,6 +616,27 @@ fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
 }
 
 #[test]
+fn project_chat_claude_surface_uses_external_ideation_tools() {
+    let root = project_root();
+    let metadata = load_canonical_claude_metadata(&root, "ralphx-chat-project");
+    let prompt = load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Claude)
+        .expect("missing claude prompt for ralphx-chat-project");
+
+    assert_eq!(metadata.mcp_transport.as_deref(), Some("external"));
+    assert!(
+        metadata
+            .mcp_tools
+            .iter()
+            .any(|tool| tool == "v1_start_ideation"),
+        "project chat Claude must be able to start external MCP ideation runs"
+    );
+    assert!(
+        prompt.contains("v1_start_ideation") && prompt.contains("next_action` yourself"),
+        "project chat Claude prompt must describe the external ideation flow"
+    );
+}
+
+#[test]
 fn codex_runtime_features_prefer_root_agent_metadata_over_legacy_harness_file() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let agent_dir = temp.path().join("agents/test-agent");
@@ -1116,13 +1137,13 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             codex_path.is_some(),
             "expected codex prompt path for {agent_name}"
         );
-        assert!(
-            claude_path
-                .as_ref()
-                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
-            "expected {agent_name} claude prompt to resolve through shared/prompt.md"
-        );
         if *agent_name == "ralphx-chat-project" {
+            assert!(
+                claude_path.as_ref().is_some_and(
+                    |path| path.ends_with("agents/ralphx-chat-project/claude/prompt.md")
+                ),
+                "expected ralphx-chat-project claude prompt to resolve through claude/prompt.md"
+            );
             assert!(
                 codex_path.as_ref().is_some_and(
                     |path| path.ends_with("agents/ralphx-chat-project/codex/prompt.md")
@@ -1130,6 +1151,12 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
                 "expected ralphx-chat-project codex prompt to resolve through codex/prompt.md"
             );
         } else {
+            assert!(
+                claude_path.as_ref().is_some_and(
+                    |path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))
+                ),
+                "expected {agent_name} claude prompt to resolve through shared/prompt.md"
+            );
             assert!(
                 codex_path.as_ref().is_some_and(
                     |path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))

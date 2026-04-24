@@ -27,7 +27,7 @@ use crate::infrastructure::agents::claude::{
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
     build_spawnable_codex_resume_command, compose_codex_prompt, CodexCliCapabilities,
-    CodexExecCliConfig, CodexMcpRuntimeContext,
+    CodexExecCliConfig, McpRuntimeContext,
 };
 use crate::utils::truncate_str;
 
@@ -69,10 +69,11 @@ fn build_claude_spawnable_command(
     working_directory: &Path,
     effort_override: Option<&str>,
     model_override: Option<&str>,
+    mcp_runtime_context: Option<&McpRuntimeContext>,
 ) -> Result<SpawnableCommand, String> {
     #[cfg(test)]
     {
-        crate::infrastructure::agents::claude::build_spawnable_command_for_test(
+        crate::infrastructure::agents::claude::build_spawnable_command_with_mcp_runtime_context_for_test(
             cli_path,
             plugin_dir,
             prompt,
@@ -81,11 +82,12 @@ fn build_claude_spawnable_command(
             working_directory,
             effort_override,
             model_override,
+            mcp_runtime_context,
         )
     }
     #[cfg(not(test))]
     {
-        crate::infrastructure::agents::claude::build_spawnable_command(
+        crate::infrastructure::agents::claude::build_spawnable_command_with_mcp_runtime_context(
             cli_path,
             plugin_dir,
             prompt,
@@ -94,6 +96,7 @@ fn build_claude_spawnable_command(
             working_directory,
             effort_override,
             model_override,
+            mcp_runtime_context,
         )
     }
 }
@@ -108,10 +111,11 @@ fn build_claude_spawnable_interactive_command(
     is_external_mcp: bool,
     effort_override: Option<&str>,
     model_override: Option<&str>,
+    mcp_runtime_context: Option<&McpRuntimeContext>,
 ) -> Result<SpawnableCommand, String> {
     #[cfg(test)]
     {
-        crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test(
+        crate::infrastructure::agents::claude::build_spawnable_interactive_command_with_mcp_runtime_context_for_test(
             cli_path,
             plugin_dir,
             prompt,
@@ -121,11 +125,12 @@ fn build_claude_spawnable_interactive_command(
             is_external_mcp,
             effort_override,
             model_override,
+            mcp_runtime_context,
         )
     }
     #[cfg(not(test))]
     {
-        crate::infrastructure::agents::claude::build_spawnable_interactive_command(
+        crate::infrastructure::agents::claude::build_spawnable_interactive_command_with_mcp_runtime_context(
             cli_path,
             plugin_dir,
             prompt,
@@ -135,6 +140,7 @@ fn build_claude_spawnable_interactive_command(
             is_external_mcp,
             effort_override,
             model_override,
+            mcp_runtime_context,
         )
     }
 }
@@ -167,6 +173,7 @@ struct BuildHarnessResumeCommandRequest<'a> {
     working_directory: &'a Path,
     session_id: &'a str,
     project_id: Option<&'a str>,
+    parent_conversation_id: Option<String>,
     team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
@@ -347,6 +354,7 @@ impl ResolvedChatHarnessCli {
                     request.working_directory,
                     request.session_id,
                     request.project_id,
+                    request.parent_conversation_id.clone(),
                     request.team_mode,
                     request.chat_attachment_repo,
                     request.artifact_repo,
@@ -396,7 +404,7 @@ impl ResolvedChatHarnessCli {
                         request.working_directory,
                         request.session_id,
                         request.project_id,
-                        None,
+                        request.parent_conversation_id.clone(),
                         false,
                         request.artifact_repo,
                         request.ideation_session_repo,
@@ -1656,14 +1664,14 @@ fn build_codex_cli_config(
     }
 }
 
-fn build_codex_mcp_runtime_context(
+fn build_mcp_runtime_context(
     context_type: ChatContextType,
     context_id: &str,
     working_directory: &Path,
     project_id: Option<&str>,
     lead_session_id: Option<&str>,
     parent_conversation_id: Option<String>,
-) -> CodexMcpRuntimeContext {
+) -> McpRuntimeContext {
     let task_id = match context_type {
         ChatContextType::Task
         | ChatContextType::TaskExecution
@@ -1672,7 +1680,7 @@ fn build_codex_mcp_runtime_context(
         _ => None,
     };
 
-    CodexMcpRuntimeContext {
+    McpRuntimeContext {
         context_type: Some(context_type.to_string()),
         context_id: Some(context_id.to_string()),
         task_id,
@@ -1838,6 +1846,18 @@ async fn build_command_from_resolved_settings(
         }
     };
 
+    let mcp_runtime_context = build_mcp_runtime_context(
+        conversation.context_type,
+        &conversation.context_id,
+        working_directory,
+        project_id,
+        None,
+        if conversation.context_type == ChatContextType::Project {
+            Some(conversation.id.as_str())
+        } else {
+            None
+        },
+    );
     let mut spawnable = build_claude_spawnable_command(
         cli_path,
         plugin_dir,
@@ -1847,6 +1867,7 @@ async fn build_command_from_resolved_settings(
         working_directory,
         effort_override,
         Some(resolved_model),
+        Some(&mcp_runtime_context),
     )?;
 
     apply_ralphx_env_vars(
@@ -1873,6 +1894,7 @@ async fn build_recovery_command_from_resolved_settings(
     message: &str,
     working_directory: &Path,
     project_id: Option<&str>,
+    parent_conversation_id: Option<String>,
     team_mode: bool,
     artifact_repo: Arc<dyn ArtifactRepository>,
     session_messages: &[ChatMessage],
@@ -1895,6 +1917,14 @@ async fn build_recovery_command_from_resolved_settings(
     )
     .await?;
 
+    let mcp_runtime_context = build_mcp_runtime_context(
+        context_type,
+        context_id,
+        working_directory,
+        project_id,
+        None,
+        parent_conversation_id.clone(),
+    );
     let mut spawnable = build_claude_spawnable_command(
         cli_path,
         plugin_dir,
@@ -1904,6 +1934,7 @@ async fn build_recovery_command_from_resolved_settings(
         working_directory,
         effort_override,
         Some(resolved_model),
+        Some(&mcp_runtime_context),
     )?;
 
     apply_ralphx_env_vars(
@@ -1982,7 +2013,7 @@ pub async fn build_codex_command(
         Some(agent_name),
     );
 
-    let runtime_context = build_codex_mcp_runtime_context(
+    let runtime_context = build_mcp_runtime_context(
         conversation.context_type,
         &conversation.context_id,
         working_directory,
@@ -2236,6 +2267,18 @@ pub async fn build_interactive_command(
     .await?;
     let prompt = format!("{}{}", initial_prompt, attachment_context);
 
+    let mcp_runtime_context = build_mcp_runtime_context(
+        conversation.context_type,
+        &conversation.context_id,
+        working_directory,
+        project_id,
+        None,
+        if conversation.context_type == ChatContextType::Project {
+            Some(conversation.id.as_str())
+        } else {
+            None
+        },
+    );
     let mut spawnable = build_claude_spawnable_interactive_command(
         cli_path,
         plugin_dir,
@@ -2246,6 +2289,7 @@ pub async fn build_interactive_command(
         is_external_mcp,
         resolved_spawn_settings.claude_effort.as_deref(),
         Some(resolved_spawn_settings.model.as_str()),
+        Some(&mcp_runtime_context),
     )?;
 
     apply_ralphx_env_vars(
@@ -2332,6 +2376,7 @@ pub async fn build_resume_command(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    parent_conversation_id: Option<String>,
     team_mode: bool,
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
@@ -2380,6 +2425,7 @@ pub async fn build_resume_command(
         working_directory,
         session_id,
         project_id,
+        parent_conversation_id,
         team_mode,
         artifact_repo,
         session_messages,
@@ -2400,6 +2446,7 @@ async fn build_resume_command_from_resolved_settings(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    parent_conversation_id: Option<String>,
     team_mode: bool,
     artifact_repo: Arc<dyn ArtifactRepository>,
     session_messages: &[ChatMessage],
@@ -2419,6 +2466,14 @@ async fn build_resume_command_from_resolved_settings(
                 total_available,
             );
 
+            let mcp_runtime_context = build_mcp_runtime_context(
+                context_type,
+                context_id,
+                working_directory,
+                project_id,
+                None,
+                parent_conversation_id.clone(),
+            );
             let mut spawnable = build_claude_spawnable_command(
                 cli_path,
                 plugin_dir,
@@ -2428,6 +2483,7 @@ async fn build_resume_command_from_resolved_settings(
                 working_directory,
                 effort_override,
                 Some(resolved_model),
+                Some(&mcp_runtime_context),
             )?;
 
             apply_ralphx_env_vars(
@@ -2454,6 +2510,7 @@ async fn build_resume_command_from_resolved_settings(
                 message,
                 working_directory,
                 project_id,
+                parent_conversation_id,
                 team_mode,
                 artifact_repo,
                 session_messages,
@@ -2502,7 +2559,7 @@ pub async fn build_codex_resume_command(
     });
     let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
 
-    let runtime_context = build_codex_mcp_runtime_context(
+    let runtime_context = build_mcp_runtime_context(
         context_type,
         context_id,
         working_directory,
@@ -2597,6 +2654,7 @@ pub async fn build_resume_command_for_harness(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    parent_conversation_id: Option<String>,
     team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
@@ -2623,6 +2681,7 @@ pub async fn build_resume_command_for_harness(
             working_directory,
             session_id,
             project_id,
+            parent_conversation_id,
             team_mode,
             chat_attachment_repo,
             artifact_repo,

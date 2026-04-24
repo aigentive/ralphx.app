@@ -348,6 +348,11 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 working_directory,
                 session_id,
                 project_id,
+                if context_type == ChatContextType::Project {
+                    Some(conversation_id.as_str())
+                } else {
+                    None
+                },
                 team_mode,
                 Arc::clone(chat_attachment_repo),
                 Arc::clone(artifact_repo),

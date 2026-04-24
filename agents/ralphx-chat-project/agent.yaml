@@ -15,6 +15,23 @@ capabilities:
 harnesses:
   claude:
     model: sonnet
+    mcp_transport: external
+    mcp_tools:
+      - v1_get_agent_guide
+      - v1_list_projects
+      - v1_get_project_status
+      - v1_get_pipeline_overview
+      - v1_start_ideation
+      - v1_get_ideation_status
+      - v1_send_ideation_message
+      - v1_get_ideation_messages
+      - v1_list_ideation_sessions
+      - v1_get_plan
+      - v1_get_plan_verification
+      - v1_trigger_plan_verification
+      - v1_list_proposals
+      - v1_get_proposal_detail
+      - v1_get_session_tasks
     tools:
       extends: readonly_tools
     disallowed_tools:

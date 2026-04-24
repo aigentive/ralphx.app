@@ -9,8 +9,10 @@
 /// - create_mcp_config(): no --allowed-tools arg when agent has no mcp_tools config
 use super::*;
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
+    load_canonical_agent_definition, load_canonical_claude_metadata, load_harness_agent_prompt,
+    AgentPromptHarness,
 };
+use crate::infrastructure::agents::mcp_runtime_context::McpRuntimeContext;
 use serde_yaml::Value;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -166,7 +168,16 @@ fn expected_frontmatter_tools(agent_name: &str) -> BTreeSet<String> {
     if !agent_config.mcp_only {
         tools.extend(agent_config.resolved_cli_tools.iter().cloned());
     }
-    tools.extend(agent_config.allowed_mcp_tools.iter().map(|tool| {
+    let project_root = repo_project_root();
+    let claude_metadata = load_canonical_claude_metadata(&project_root, agent_name);
+    let mcp_tools = if claude_metadata.mcp_transport.as_deref() == Some("external")
+        && !claude_metadata.mcp_tools.is_empty()
+    {
+        &claude_metadata.mcp_tools
+    } else {
+        &agent_config.allowed_mcp_tools
+    };
+    tools.extend(mcp_tools.iter().map(|tool| {
         if tool.starts_with("mcp__") {
             tool.to_string()
         } else {
@@ -512,6 +523,61 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
         );
     }
     drop(dir);
+}
+
+#[test]
+fn test_create_mcp_config_uses_claude_external_mcp_transport() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project"))
+        .expect("create canonical agent dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+harnesses:
+  claude:
+    mcp_transport: external
+    mcp_tools:
+      - v1_start_ideation
+"#,
+    )
+    .expect("write agent definition");
+
+    let runtime_context = McpRuntimeContext {
+        context_type: Some("project".to_string()),
+        context_id: Some("project-123".to_string()),
+        project_id: Some("project-123".to_string()),
+        parent_conversation_id: Some("conversation 456".to_string()),
+        ..Default::default()
+    };
+    let config_path = create_mcp_config_with_runtime_context(
+        &plugin_dir,
+        "ralphx-chat-project",
+        false,
+        Some(&runtime_context),
+    )
+    .expect("should create external MCP config");
+    let content = std::fs::read_to_string(&config_path).expect("should read config");
+    let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
+    let server = &json["mcpServers"]["ralphx"];
+
+    assert_eq!(server["type"].as_str(), Some("http"));
+    assert!(
+        server["url"]
+            .as_str()
+            .is_some_and(|url| url.contains("parent_conversation_id=conversation%20456")),
+        "external MCP URL should carry encoded runtime context: {server:?}"
+    );
+    assert!(
+        server["headers"]["Authorization"]
+            .as_str()
+            .is_some_and(|header| header.starts_with("Bearer rx_tauri_")),
+        "external MCP config should use the local Tauri bypass token"
+    );
+    assert!(
+        server.get("args").is_none(),
+        "external MCP config must not launch the bundled stdio server"
+    );
 }
 
 #[test]

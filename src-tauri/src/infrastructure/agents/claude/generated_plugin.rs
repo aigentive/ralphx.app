@@ -395,7 +395,8 @@ fn build_claude_frontmatter(
         )
     })?;
     let mcp_server_name = &claude_runtime_config().mcp_server_name;
-    let tools = build_claude_frontmatter_tools(agent_config, mcp_server_name);
+    let tools = build_claude_frontmatter_tools(agent_config, claude_metadata, mcp_server_name);
+    let mcp_tools = resolved_claude_mcp_tools(agent_config, claude_metadata);
 
     let mut lines = vec![
         "---".to_string(),
@@ -413,18 +414,31 @@ fn build_claude_frontmatter(
         }
     }
 
-    if !agent_config.allowed_mcp_tools.is_empty() {
+    if !mcp_tools.is_empty() {
         lines.push("mcpServers:".to_string());
         lines.push(format!("  - {}:", yaml_scalar(mcp_server_name)?));
-        lines.push("      type: stdio".to_string());
-        lines.push("      command: node".to_string());
-        lines.push("      args:".to_string());
-        lines.push(format!(
-            "        - {}",
-            yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
-        ));
-        lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
-        lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+        if claude_metadata.mcp_transport.as_deref() == Some("external") {
+            lines.push("      type: http".to_string());
+            lines.push(format!(
+                "      url: {}",
+                yaml_scalar("http://127.0.0.1:3848/mcp")?
+            ));
+            lines.push("      headers:".to_string());
+            lines.push(format!(
+                "        Authorization: {}",
+                yaml_scalar("Bearer ${RALPHX_TAURI_MCP_BYPASS_TOKEN}")?
+            ));
+        } else {
+            lines.push("      type: stdio".to_string());
+            lines.push("      command: node".to_string());
+            lines.push("      args:".to_string());
+            lines.push(format!(
+                "        - {}",
+                yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
+            ));
+            lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
+            lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+        }
     }
 
     if !claude_metadata.disallowed_tools.is_empty() {
@@ -455,6 +469,7 @@ fn build_claude_frontmatter(
 
 fn build_claude_frontmatter_tools(
     agent_config: &crate::infrastructure::agents::claude::AgentConfig,
+    claude_metadata: &CanonicalClaudeAgentMetadata,
     mcp_server_name: &str,
 ) -> Vec<String> {
     let mut tools = Vec::new();
@@ -463,8 +478,7 @@ fn build_claude_frontmatter_tools(
     }
 
     tools.extend(
-        agent_config
-            .allowed_mcp_tools
+        resolved_claude_mcp_tools(agent_config, claude_metadata)
             .iter()
             .map(|tool| normalize_frontmatter_mcp_tool(tool, mcp_server_name)),
     );
@@ -473,6 +487,19 @@ fn build_claude_frontmatter_tools(
     let mut seen = HashSet::new();
     tools.retain(|tool| seen.insert(tool.clone()));
     tools
+}
+
+fn resolved_claude_mcp_tools<'a>(
+    agent_config: &'a crate::infrastructure::agents::claude::AgentConfig,
+    claude_metadata: &'a CanonicalClaudeAgentMetadata,
+) -> &'a [String] {
+    if claude_metadata.mcp_transport.as_deref() == Some("external")
+        && !claude_metadata.mcp_tools.is_empty()
+    {
+        &claude_metadata.mcp_tools
+    } else {
+        &agent_config.allowed_mcp_tools
+    }
 }
 
 fn normalize_frontmatter_mcp_tool(tool: &str, mcp_server_name: &str) -> String {
