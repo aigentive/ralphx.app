@@ -38,7 +38,6 @@ import { chatKeys, invalidateConversationDataQueries, useConversation } from "@/
 import { ideationKeys } from "@/hooks/useIdeation";
 import { projectKeys, useProjects } from "@/hooks/useProjects";
 import { useResponsiveSidebarLayout } from "@/hooks/useResponsiveSidebarLayout";
-import { getModelLabel } from "@/lib/model-utils";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
@@ -1038,7 +1037,6 @@ export function AgentsView({
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
-                    runtime={normalizedActiveRuntime}
                     artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
@@ -1119,7 +1117,6 @@ export function AgentsView({
 
 interface AgentsChatHeaderProps {
   conversation: AgentConversation | null;
-  runtime: AgentRuntimeSelection;
   artifactOpen: boolean;
   activeArtifactTab: AgentArtifactTab;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
@@ -1129,7 +1126,6 @@ interface AgentsChatHeaderProps {
 
 export function AgentsChatHeader({
   conversation,
-  runtime,
   artifactOpen,
   activeArtifactTab,
   onRenameConversation,
@@ -1137,9 +1133,6 @@ export function AgentsChatHeader({
   onSelectArtifact,
 }: AgentsChatHeaderProps) {
   const title = conversation?.title || "Untitled agent";
-  const modelLabel = getModelLabel(runtime.modelId);
-  const providerLabel = runtime.provider === "codex" ? "Codex" : "Claude";
-  const modeLabel = runtime.provider === "codex" ? "Medium" : "Default";
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -1200,11 +1193,6 @@ export function AgentsChatHeader({
             {title}
           </button>
         )}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] leading-none">
-          <RuntimeMetaItem label="Provider" value={providerLabel} />
-          <RuntimeMetaItem label="Model" value={modelLabel} />
-          <RuntimeMetaItem label="Mode" value={modeLabel} />
-        </div>
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
@@ -1263,15 +1251,6 @@ export function AgentsChatHeader({
         </Tooltip>
       </div>
     </div>
-  );
-}
-
-function RuntimeMetaItem({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex min-w-0 items-baseline gap-1">
-      <span className="text-[var(--text-muted)]">{label}</span>
-      <span className="truncate font-medium text-[var(--text-secondary)]">{value}</span>
-    </span>
   );
 }
 
