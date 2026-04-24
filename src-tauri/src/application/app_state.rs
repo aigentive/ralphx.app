@@ -24,16 +24,15 @@ use crate::domain::agents::{AgentHarnessKind, AgenticClient, LogicalEffort};
 use crate::domain::entities::ChatContextType;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
-    ActivePlanRepository, ActivityEventRepository, AgentLaneSettingsRepository,
-    AgentProfileRepository, AgentRunRepository, ApiKeyRepository, AppStateRepository,
-    ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
+    ActivePlanRepository, ActivityEventRepository, AgentConversationWorkspaceRepository,
+    AgentLaneSettingsRepository, AgentProfileRepository, AgentRunRepository, ApiKeyRepository,
+    AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
     DelegatedSessionRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
-    ExternalEventsRepository, GlobalExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
-    MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
-    PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
+    ExternalEventsRepository, GlobalExecutionSettingsRepository, IdeationEffortSettingsRepository,
+    IdeationModelSettingsRepository, IdeationSessionRepository, IdeationSettingsRepository,
+    MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository, MethodologyRepository,
+    PlanBranchRepository, PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
     TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
@@ -45,27 +44,29 @@ use crate::domain::services::{
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
-    MemoryActivityEventRepository, MemoryAgentLaneSettingsRepository, MemoryAgentProfileRepository,
-    MemoryAgentRunRepository, MemoryApiKeyRepository, MemoryAppStateRepository,
-    MemoryArtifactBucketRepository, MemoryArtifactFlowRepository, MemoryArtifactRepository,
-    MemoryChatAttachmentRepository, MemoryChatConversationRepository, MemoryChatMessageRepository,
+    MemoryActivityEventRepository, MemoryAgentConversationWorkspaceRepository,
+    MemoryAgentLaneSettingsRepository, MemoryAgentProfileRepository, MemoryAgentRunRepository,
+    MemoryApiKeyRepository, MemoryAppStateRepository, MemoryArtifactBucketRepository,
+    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatAttachmentRepository,
+    MemoryChatConversationRepository, MemoryChatMessageRepository,
     MemoryDelegatedSessionRepository, MemoryExecutionPlanRepository,
     MemoryExecutionSettingsRepository, MemoryExternalEventsRepository,
-    MemoryGlobalExecutionSettingsRepository,
-    MemoryIdeationEffortSettingsRepository, MemoryIdeationModelSettingsRepository,
-    MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository, MemoryMethodologyRepository,
-    MemoryPermissionRepository, MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository,
-    MemoryProcessRepository, MemoryProjectRepository, MemoryProposalDependencyRepository,
-    MemoryQuestionRepository, MemoryReviewIssueRepository, MemoryReviewRepository,
-    MemoryReviewSettingsRepository, MemorySessionLinkRepository, MemoryTaskDependencyRepository,
-    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
-    MemoryTaskStepRepository, MemoryTeamMessageRepository, MemoryTeamSessionRepository,
-    MemoryWebhookRegistrationRepository, MemoryWorkflowRepository,
+    MemoryGlobalExecutionSettingsRepository, MemoryIdeationEffortSettingsRepository,
+    MemoryIdeationModelSettingsRepository, MemoryIdeationSessionRepository,
+    MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryPermissionRepository,
+    MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
+    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
+    MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
+    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
+    MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
+    MemoryTeamMessageRepository, MemoryTeamSessionRepository, MemoryWebhookRegistrationRepository,
+    MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
-    SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentLaneSettingsRepository,
+    SqliteActivePlanRepository, SqliteActivityEventRepository,
+    SqliteAgentConversationWorkspaceRepository, SqliteAgentLaneSettingsRepository,
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteApiKeyRepository,
     SqliteAppStateRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
     SqliteArtifactRepository, SqliteChatAttachmentRepository, SqliteChatConversationRepository,
@@ -73,16 +74,15 @@ use crate::infrastructure::sqlite::{
     SqliteExecutionSettingsRepository, SqliteExternalEventsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationEffortSettingsRepository,
     SqliteIdeationModelSettingsRepository, SqliteIdeationSessionRepository,
-    SqliteIdeationSettingsRepository,
-    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
-    SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
-    SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
-    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
-    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
-    SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
-    SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWebhookRegistrationRepository,
-    SqliteWorkflowRepository,
+    SqliteIdeationSettingsRepository, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
+    SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
+    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
+    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
+    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
+    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
+    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
+    SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::GhCliGithubService;
 
@@ -147,6 +147,8 @@ pub struct AppState {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     /// Chat conversation repository (for context-aware chat)
     pub chat_conversation_repo: Arc<dyn ChatConversationRepository>,
+    /// Conversation-owned branch/worktree repository for Agents starter workspaces
+    pub agent_conversation_workspace_repo: Arc<dyn AgentConversationWorkspaceRepository>,
     /// Agent run repository (for tracking Claude agent executions)
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     /// Activity event repository (for activity stream persistence)
@@ -468,6 +470,9 @@ impl AppState {
             chat_conversation_repo: Arc::new(SqliteChatConversationRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            agent_conversation_workspace_repo: Arc::new(
+                SqliteAgentConversationWorkspaceRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -636,6 +641,9 @@ impl AppState {
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_conversation_workspace_repo: Arc::new(
+                MemoryAgentConversationWorkspaceRepository::new(),
+            ),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -740,6 +748,9 @@ impl AppState {
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_conversation_workspace_repo: Arc::new(
+                MemoryAgentConversationWorkspaceRepository::new(),
+            ),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -856,6 +867,9 @@ impl AppState {
             )),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_conversation_workspace_repo: Arc::new(
+                SqliteAgentConversationWorkspaceRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
@@ -956,6 +970,9 @@ impl AppState {
             proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
             chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
             chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_conversation_workspace_repo: Arc::new(
+                MemoryAgentConversationWorkspaceRepository::new(),
+            ),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
