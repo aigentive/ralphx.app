@@ -3,7 +3,10 @@ use std::sync::Arc;
 
 use tempfile::NamedTempFile;
 
-use crate::domain::entities::{ArtifactContent, PlanBranch, Project, Task, TaskCategory};
+use crate::domain::entities::{
+    AgentConversationWorkspace, ArtifactContent, ChatConversation, PlanBranch, Project, Task,
+    TaskCategory,
+};
 use crate::domain::repositories::{ArtifactRepository, IdeationSessionRepository};
 use crate::domain::services::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
@@ -23,6 +26,88 @@ pub struct PlanPrPublisher<'a> {
     github: &'a Arc<dyn GithubServiceTrait>,
     ideation_session_repo: Option<&'a Arc<dyn IdeationSessionRepository>>,
     artifact_repo: Option<&'a Arc<dyn ArtifactRepository>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentWorkspacePrPublishOutcome {
+    pub pr_number: i64,
+    pub pr_url: String,
+    pub created_pr: bool,
+    pub pr_status: &'static str,
+}
+
+pub struct AgentWorkspacePrPublisher<'a> {
+    github: &'a Arc<dyn GithubServiceTrait>,
+}
+
+impl<'a> AgentWorkspacePrPublisher<'a> {
+    pub fn new(github: &'a Arc<dyn GithubServiceTrait>) -> Self {
+        Self { github }
+    }
+
+    pub async fn publish_draft_pr(
+        &self,
+        working_dir: &Path,
+        conversation: &ChatConversation,
+        workspace: &AgentConversationWorkspace,
+    ) -> AppResult<AgentWorkspacePrPublishOutcome> {
+        let title = build_agent_workspace_pr_title(conversation);
+        let body_file = write_agent_workspace_pr_body(conversation, workspace)?;
+
+        if let Some(pr_number) = workspace.publication_pr_number {
+            self.github
+                .update_pr_details(working_dir, pr_number, &title, body_file.path())
+                .await?;
+            let pr_url = workspace
+                .publication_pr_url
+                .clone()
+                .unwrap_or_else(|| format!("#{pr_number}"));
+            return Ok(AgentWorkspacePrPublishOutcome {
+                pr_number,
+                pr_url,
+                created_pr: false,
+                pr_status: "open",
+            });
+        }
+
+        match self
+            .github
+            .create_draft_pr(
+                working_dir,
+                &workspace.base_ref,
+                &workspace.branch_name,
+                &title,
+                body_file.path(),
+            )
+            .await
+        {
+            Ok((pr_number, pr_url)) => Ok(AgentWorkspacePrPublishOutcome {
+                pr_number,
+                pr_url,
+                created_pr: true,
+                pr_status: "draft",
+            }),
+            Err(AppError::DuplicatePr) => {
+                let Some((pr_number, pr_url)) = self
+                    .github
+                    .find_pr_by_head_branch(working_dir, &workspace.branch_name)
+                    .await?
+                else {
+                    return Err(AppError::DuplicatePr);
+                };
+                self.github
+                    .update_pr_details(working_dir, pr_number, &title, body_file.path())
+                    .await?;
+                Ok(AgentWorkspacePrPublishOutcome {
+                    pr_number,
+                    pr_url,
+                    created_pr: false,
+                    pr_status: "open",
+                })
+            }
+            Err(error) => Err(error),
+        }
+    }
 }
 
 impl<'a> PlanPrPublisher<'a> {
@@ -247,6 +332,38 @@ fn resolve_plan_branch_pr_base(project: &Project, plan_branch: &PlanBranch) -> S
         .clone()
         .or_else(|| project.base_branch.clone())
         .unwrap_or_else(|| plan_branch.source_branch.clone())
+}
+
+fn build_agent_workspace_pr_title(conversation: &ChatConversation) -> String {
+    conversation
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "Untitled agent")
+        .map(str::to_string)
+        .unwrap_or_else(|| "Agent conversation changes".to_string())
+}
+
+fn write_agent_workspace_pr_body(
+    conversation: &ChatConversation,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<NamedTempFile> {
+    let body = format!(
+        "## RalphX Agent Conversation\n\n\
+         - Conversation: `{}`\n\
+         - Base branch: `{}`\n\
+         - Feature branch: `{}`\n\n\
+         Published from a RalphX Agents conversation workspace.",
+        conversation.id, workspace.base_ref, workspace.branch_name
+    );
+    let body_file = NamedTempFile::new().map_err(|e| {
+        AppError::Infrastructure(format!("failed to create PR body temp file: {e}"))
+    })?;
+    use std::io::Write as _;
+    (&body_file)
+        .write_all(body.as_bytes())
+        .map_err(|e| AppError::Infrastructure(format!("failed to write PR body temp file: {e}")))?;
+    Ok(body_file)
 }
 
 fn char_count(text: &str) -> usize {
