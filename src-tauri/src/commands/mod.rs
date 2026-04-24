@@ -76,9 +76,11 @@ pub use conversation_stats_commands::{
 };
 pub use chat_responses::ChatMessageResponse;
 pub use design_commands::{
-    archive_design_system, create_design_system, get_design_system, list_project_design_systems,
-    CreateDesignSystemInput, CreateDesignSystemResponse, CreateDesignSystemSourceInput,
-    DesignSystemDetailResponse, DesignSystemResponse, DesignSystemSourceResponse,
+    archive_design_system, create_design_system, generate_design_system_styleguide,
+    get_design_system, list_project_design_systems, CreateDesignSystemInput,
+    CreateDesignSystemResponse, CreateDesignSystemSourceInput, DesignSystemDetailResponse,
+    DesignSystemResponse, DesignSystemSourceResponse, GenerateDesignSystemStyleguideInput,
+    GenerateDesignSystemStyleguideResponse,
 };
 pub use design_feedback_commands::{
     approve_design_styleguide_item, create_design_styleguide_feedback,

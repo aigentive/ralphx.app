@@ -60,6 +60,7 @@ macro_rules! register_tauri_commands {
             commands::design_commands::list_project_design_systems,
             commands::design_commands::get_design_system,
             commands::design_commands::archive_design_system,
+            commands::design_commands::generate_design_system_styleguide,
             commands::design_feedback_commands::approve_design_styleguide_item,
             commands::design_feedback_commands::create_design_styleguide_feedback,
             commands::design_feedback_commands::list_design_styleguide_items,

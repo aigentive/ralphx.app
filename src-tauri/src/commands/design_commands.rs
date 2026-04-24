@@ -1,15 +1,20 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::application::AppState;
+use crate::commands::design_feedback_commands::DesignStyleguideItemResponse;
 use crate::commands::unified_chat_commands::AgentConversationResponse;
 use crate::domain::entities::{
-    ChatConversation, DesignSourceKind, DesignSourceRole, DesignSystem, DesignSystemId,
-    DesignSystemSource, DesignSystemSourceId, DesignSystemStatus, Project, ProjectId,
+    ChatConversation, DesignApprovalStatus, DesignConfidence, DesignFeedbackStatus, DesignRun,
+    DesignRunKind, DesignRunStatus, DesignSchemaVersion, DesignSchemaVersionId,
+    DesignSchemaVersionStatus, DesignSourceKind, DesignSourceRef, DesignSourceRole,
+    DesignStyleguideGroup, DesignStyleguideItem, DesignStyleguideItemId, DesignSystem,
+    DesignSystemId, DesignSystemSource, DesignSystemSourceId, DesignSystemStatus, Project,
+    ProjectId,
 };
 use crate::utils::design_source_manifest::build_design_source_manifest;
 use crate::utils::design_storage_paths::DesignStoragePaths;
@@ -33,6 +38,12 @@ pub struct CreateDesignSystemInput {
     pub selected_paths: Vec<String>,
     #[serde(default)]
     pub sources: Vec<CreateDesignSystemSourceInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateDesignSystemStyleguideInput {
+    pub design_system_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,6 +89,15 @@ pub struct CreateDesignSystemResponse {
     pub design_system: DesignSystemResponse,
     pub sources: Vec<DesignSystemSourceResponse>,
     pub conversation: AgentConversationResponse,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateDesignSystemStyleguideResponse {
+    pub design_system: DesignSystemResponse,
+    pub schema_version_id: String,
+    pub run_id: String,
+    pub items: Vec<DesignStyleguideItemResponse>,
 }
 
 impl From<DesignSystem> for DesignSystemResponse {
@@ -203,6 +223,17 @@ pub async fn archive_design_system(
         .ok_or_else(|| format!("Design system not found: {}", design_system_id.as_str()))
 }
 
+#[tauri::command]
+pub async fn generate_design_system_styleguide(
+    input: GenerateDesignSystemStyleguideInput,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<GenerateDesignSystemStyleguideResponse, String> {
+    let response = generate_design_system_styleguide_core(&state, input).await?;
+    let _ = app.emit("design:schema_published", &response);
+    Ok(response)
+}
+
 #[doc(hidden)]
 pub async fn create_design_system_core(
     state: &AppState,
@@ -276,6 +307,116 @@ pub async fn create_design_system_core(
     })
 }
 
+#[doc(hidden)]
+pub async fn generate_design_system_styleguide_core(
+    state: &AppState,
+    input: GenerateDesignSystemStyleguideInput,
+) -> Result<GenerateDesignSystemStyleguideResponse, String> {
+    let design_system_id = parse_non_empty_design_system_id(&input.design_system_id)?;
+    let mut system = state
+        .design_system_repo
+        .get_by_id(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Design system not found: {}", design_system_id.as_str()))?;
+    if system.archived_at.is_some() || system.status == DesignSystemStatus::Archived {
+        return Err("Archived design systems cannot publish new styleguides".to_string());
+    }
+
+    let sources = state
+        .design_system_source_repo
+        .list_by_design_system(&design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    if sources.is_empty() {
+        return Err("Design system has no source manifests to publish".to_string());
+    }
+
+    let now = Utc::now();
+    let mut run = DesignRun::queued(
+        design_system_id.clone(),
+        DesignRunKind::Create,
+        "Generated initial source-grounded styleguide",
+    );
+    run.status = DesignRunStatus::Running;
+    run.started_at = Some(now);
+    let mut run = state
+        .design_run_repo
+        .create(run)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let schema_version_id = DesignSchemaVersionId::new();
+    let version = next_schema_version_label(state, &design_system_id).await?;
+    let schema_version = DesignSchemaVersion {
+        id: schema_version_id.clone(),
+        design_system_id: design_system_id.clone(),
+        version,
+        schema_artifact_id: format!(
+            "design-system:{}:schema:{}",
+            design_system_id.as_str(),
+            schema_version_id.as_str()
+        ),
+        manifest_artifact_id: format!(
+            "design-system:{}:manifest:{}",
+            design_system_id.as_str(),
+            schema_version_id.as_str()
+        ),
+        styleguide_artifact_id: format!(
+            "design-system:{}:styleguide:{}",
+            design_system_id.as_str(),
+            schema_version_id.as_str()
+        ),
+        status: DesignSchemaVersionStatus::Verified,
+        created_by_run_id: Some(run.id.clone()),
+        created_at: now,
+    };
+    let schema_version = state
+        .design_schema_repo
+        .create_version(schema_version)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let items = build_initial_styleguide_items(&system, &schema_version.id, &sources, now)?;
+    state
+        .design_styleguide_repo
+        .replace_items_for_schema_version(&schema_version.id, items.clone())
+        .await
+        .map_err(|error| error.to_string())?;
+
+    system.status = DesignSystemStatus::Ready;
+    system.current_schema_version_id = Some(schema_version.id.clone());
+    system.updated_at = now;
+    state
+        .design_system_repo
+        .update(&system)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    run.status = DesignRunStatus::Completed;
+    run.completed_at = Some(now);
+    run.output_artifact_ids = vec![
+        schema_version.schema_artifact_id.clone(),
+        schema_version.manifest_artifact_id.clone(),
+        schema_version.styleguide_artifact_id.clone(),
+    ];
+    state
+        .design_run_repo
+        .update(&run)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(GenerateDesignSystemStyleguideResponse {
+        design_system: DesignSystemResponse::from(system),
+        schema_version_id: schema_version.id.as_str().to_string(),
+        run_id: run.id.as_str().to_string(),
+        items: items
+            .into_iter()
+            .map(DesignStyleguideItemResponse::from)
+            .collect(),
+    })
+}
+
 fn design_storage_paths_from_state(state: &AppState) -> Result<DesignStoragePaths, String> {
     let app_handle = state
         .app_handle
@@ -336,6 +477,156 @@ async fn build_sources(
     }
 
     Ok(sources)
+}
+
+async fn next_schema_version_label(
+    state: &AppState,
+    design_system_id: &DesignSystemId,
+) -> Result<String, String> {
+    let existing_versions = state
+        .design_schema_repo
+        .list_versions(design_system_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(format!("0.{}.0", existing_versions.len() + 1))
+}
+
+struct InitialStyleguideItem<'a> {
+    item_id: &'a str,
+    group: DesignStyleguideGroup,
+    label: &'a str,
+    summary: &'a str,
+    keywords: &'a [&'a str],
+}
+
+fn build_initial_styleguide_items(
+    system: &DesignSystem,
+    schema_version_id: &DesignSchemaVersionId,
+    sources: &[DesignSystemSource],
+    now: DateTime<Utc>,
+) -> Result<Vec<DesignStyleguideItem>, String> {
+    let source_refs = source_refs_from_manifests(sources);
+    if source_refs.is_empty() {
+        return Err("Design source manifests did not produce any file references".to_string());
+    }
+
+    let definitions = [
+        InitialStyleguideItem {
+            item_id: "ui_kit.workspace_surfaces",
+            group: DesignStyleguideGroup::UiKit,
+            label: "Workspace surfaces",
+            summary: "Reviewable layout and pane patterns inferred from source-backed app surfaces.",
+            keywords: &["app", "view", "layout", "page", "screen", "workspace"],
+        },
+        InitialStyleguideItem {
+            item_id: "type.typography_scale",
+            group: DesignStyleguideGroup::Type,
+            label: "Typography scale",
+            summary: "Text hierarchy, label density, and code-font usage inferred from style and UI files.",
+            keywords: &["font", "typography", "text", "css", "style", "theme"],
+        },
+        InitialStyleguideItem {
+            item_id: "colors.primary_palette",
+            group: DesignStyleguideGroup::Colors,
+            label: "Primary palette",
+            summary: "Primary, hover, soft, border, and focus color roles grounded in style sources.",
+            keywords: &["color", "css", "style", "theme", "tailwind", "token", "palette"],
+        },
+        InitialStyleguideItem {
+            item_id: "spacing.radii_elevation",
+            group: DesignStyleguideGroup::Spacing,
+            label: "Spacing, radii, and elevation",
+            summary: "Panel spacing, control radius, borders, focus rings, and elevation rules for review.",
+            keywords: &["spacing", "radius", "shadow", "border", "ring", "layout", "css"],
+        },
+        InitialStyleguideItem {
+            item_id: "components.core_controls",
+            group: DesignStyleguideGroup::Components,
+            label: "Core controls",
+            summary: "Button, input, composer, and compact row patterns found in reusable components.",
+            keywords: &["button", "input", "composer", "control", "component", "ui"],
+        },
+        InitialStyleguideItem {
+            item_id: "brand.visual_identity",
+            group: DesignStyleguideGroup::Brand,
+            label: "Visual identity assets",
+            summary: "Logo, icon, asset, and brand-adjacent source references available for curation.",
+            keywords: &["logo", "icon", "asset", "brand", "public", "svg", "png"],
+        },
+    ];
+
+    Ok(definitions
+        .iter()
+        .map(|definition| {
+            let (item_refs, has_keyword_match) =
+                matching_source_refs(&source_refs, definition.keywords);
+            DesignStyleguideItem {
+                id: DesignStyleguideItemId::new(),
+                design_system_id: system.id.clone(),
+                schema_version_id: schema_version_id.clone(),
+                item_id: definition.item_id.to_string(),
+                group: definition.group,
+                label: definition.label.to_string(),
+                summary: definition.summary.to_string(),
+                preview_artifact_id: Some(format!(
+                    "design-preview:{}:{}",
+                    system.id.as_str(),
+                    definition.item_id.replace('.', "-")
+                )),
+                source_refs: item_refs,
+                confidence: confidence_for_match(has_keyword_match),
+                approval_status: DesignApprovalStatus::NeedsReview,
+                feedback_status: DesignFeedbackStatus::None,
+                updated_at: now,
+            }
+        })
+        .collect())
+}
+
+fn source_refs_from_manifests(sources: &[DesignSystemSource]) -> Vec<DesignSourceRef> {
+    sources
+        .iter()
+        .flat_map(|source| {
+            source.source_hashes.keys().map(|path| DesignSourceRef {
+                project_id: source.project_id.clone(),
+                path: path.clone(),
+                line: None,
+            })
+        })
+        .collect()
+}
+
+fn matching_source_refs(
+    source_refs: &[DesignSourceRef],
+    keywords: &[&str],
+) -> (Vec<DesignSourceRef>, bool) {
+    let matched: Vec<_> = source_refs
+        .iter()
+        .filter(|source_ref| path_matches_keywords(&source_ref.path, keywords))
+        .take(3)
+        .cloned()
+        .collect();
+    if !matched.is_empty() {
+        return (matched, true);
+    }
+
+    (
+        source_refs.iter().take(3).cloned().collect::<Vec<_>>(),
+        false,
+    )
+}
+
+fn path_matches_keywords(path: &str, keywords: &[&str]) -> bool {
+    let path = path.to_ascii_lowercase();
+    keywords.iter().any(|keyword| path.contains(keyword))
+}
+
+fn confidence_for_match(has_keyword_match: bool) -> DesignConfidence {
+    if has_keyword_match {
+        DesignConfidence::High
+    } else {
+        DesignConfidence::Low
+    }
 }
 
 async fn load_project(state: &AppState, project_id: &ProjectId) -> Result<Project, String> {
@@ -450,7 +741,9 @@ fn enum_text<T: Serialize>(value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{ChatContextType, Project};
+    use crate::domain::entities::{
+        ChatContextType, DesignRunStatus, DesignSchemaVersionStatus, Project,
+    };
 
     fn write_project_file(root: &Path, relative_path: &str, content: &str) {
         let path = root.join(
@@ -529,6 +822,109 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn generate_design_system_styleguide_core_publishes_schema_items_and_run() {
+        let state = AppState::new_test();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
+        let project_root = tempfile::tempdir().expect("project tempdir");
+        write_project_file(
+            project_root.path(),
+            "frontend/src/components/ui/button.tsx",
+            "export function Button() {}\n",
+        );
+        write_project_file(
+            project_root.path(),
+            "frontend/src/styles/theme.css",
+            ":root { --accent-primary: #ff6b35; }\n",
+        );
+        write_project_file(
+            project_root.path(),
+            "frontend/src/App.tsx",
+            "export function App() {}\n",
+        );
+        write_project_file(project_root.path(), "public/logo.svg", "<svg />\n");
+        let project = Project::new(
+            "RalphX".to_string(),
+            project_root.path().to_string_lossy().to_string(),
+        );
+        state.project_repo.create(project.clone()).await.unwrap();
+
+        let draft = create_design_system_core(
+            &state,
+            &storage_paths,
+            CreateDesignSystemInput {
+                primary_project_id: project.id.as_str().to_string(),
+                name: "Product UI".to_string(),
+                description: None,
+                selected_paths: vec!["frontend/src".to_string(), "public".to_string()],
+                sources: Vec::new(),
+            },
+        )
+        .await
+        .expect("create design system");
+        let design_system_id = DesignSystemId::from_string(draft.design_system.id.clone());
+
+        let response = generate_design_system_styleguide_core(
+            &state,
+            GenerateDesignSystemStyleguideInput {
+                design_system_id: design_system_id.as_str().to_string(),
+            },
+        )
+        .await
+        .expect("generate styleguide");
+
+        assert_eq!(response.design_system.status, "ready");
+        assert_eq!(
+            response.design_system.current_schema_version_id.as_deref(),
+            Some(response.schema_version_id.as_str())
+        );
+        assert_eq!(response.items.len(), 6);
+        assert!(response
+            .items
+            .iter()
+            .any(|item| item.item_id == "colors.primary_palette"));
+        assert!(response
+            .items
+            .iter()
+            .all(|item| !item.source_refs.is_empty()));
+        for source_ref in response
+            .items
+            .iter()
+            .flat_map(|item| item.source_refs.iter())
+        {
+            assert_eq!(source_ref.project_id, project.id);
+            assert!(!Path::new(&source_ref.path).is_absolute());
+        }
+
+        let current_schema = state
+            .design_schema_repo
+            .get_current_for_design_system(&design_system_id)
+            .await
+            .unwrap()
+            .expect("current schema");
+        assert_eq!(current_schema.id.as_str(), response.schema_version_id);
+        assert_eq!(current_schema.version, "0.1.0");
+        assert_eq!(current_schema.status, DesignSchemaVersionStatus::Verified);
+        assert_eq!(
+            current_schema
+                .created_by_run_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some(response.run_id.as_str())
+        );
+
+        let runs = state
+            .design_run_repo
+            .list_by_design_system(&design_system_id)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, DesignRunStatus::Completed);
+        assert_eq!(runs[0].output_artifact_ids.len(), 3);
+        assert!(!project_root.path().join("design-systems").exists());
     }
 
     #[tokio::test]
