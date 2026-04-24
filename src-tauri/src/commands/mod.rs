@@ -10,6 +10,7 @@ pub mod chat_attachment_commands;
 pub mod conversation_stats_commands;
 pub mod chat_responses;
 pub mod design_commands;
+pub mod design_feedback_commands;
 pub mod diagnostic_commands;
 pub mod diff_commands;
 pub mod execution_commands;
@@ -78,6 +79,13 @@ pub use design_commands::{
     archive_design_system, create_design_system, get_design_system, list_project_design_systems,
     CreateDesignSystemInput, CreateDesignSystemResponse, CreateDesignSystemSourceInput,
     DesignSystemDetailResponse, DesignSystemResponse, DesignSystemSourceResponse,
+};
+pub use design_feedback_commands::{
+    approve_design_styleguide_item, create_design_styleguide_feedback,
+    resolve_design_styleguide_feedback, ApproveDesignStyleguideItemInput,
+    CreateDesignStyleguideFeedbackInput, CreateDesignStyleguideFeedbackResponse,
+    DesignStyleguideFeedbackResponse, DesignStyleguideItemResponse,
+    ResolveDesignStyleguideFeedbackInput,
 };
 pub use diagnostic_commands::{
     get_agent_health, get_codex_cli_diagnostics, AgentHealthReport,

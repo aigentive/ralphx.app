@@ -89,7 +89,7 @@ pub use chat_service_context::{
     ProviderResumeMode,
 };
 #[doc(hidden)]
-pub use chat_service_context::create_assistant_message;
+pub use chat_service_context::{create_assistant_message, create_user_message};
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
 };
