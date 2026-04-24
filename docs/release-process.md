@@ -177,7 +177,7 @@ git push origin main --tags
 
 After the tag is on `origin`, trigger `Release Build` manually from `main`:
 
-1. Go to `aigentive/ralphx` → Actions → `Release Build`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Build`
 2. Click **Run workflow**
 3. Use:
    - `ref`: `v0.2.0`
@@ -199,9 +199,9 @@ What `Release Build` does:
 
 `Release Publish` reuses the successful build artifacts instead of rebuilding.
 
-1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Publish`
 2. Confirm the auto-triggered run finished successfully
-3. Then go to `aigentive/ralphx-releases` → Releases
+3. Then go to `aigentive/ralphx.app` → Releases
 4. Find the release created or updated by the workflow
 5. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
@@ -219,7 +219,7 @@ What `Release Build` does:
 
 For recovery publishing after a successful build run, use `Release Publish` manually instead of rebuilding:
 
-1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Publish`
 2. Click **Run workflow**
 3. Provide:
    - `source_run_id`: the successful `Release Build` run ID
@@ -232,10 +232,10 @@ For recovery publishing after a successful build run, use `Release Publish` manu
 
 ## In-App Updates
 
-The release workflow now publishes Tauri updater artifacts to the public binaries repo.
+The release workflow publishes Tauri updater artifacts to the public source repo release.
 
 Current release contract:
-- updater endpoint: `https://github.com/aigentive/ralphx-releases/releases/latest/download/latest.json`
+- updater endpoint: `https://github.com/aigentive/ralphx.app/releases/latest/download/latest.json`
 - published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
 - `latest.json` points the app at those public updater bundles
 - the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
@@ -248,7 +248,7 @@ Current release contract:
 The release workflow also maintains the public tap repo `aigentive/homebrew-ralphx`.
 
 Current tap contract:
-- release artifacts stay in `aigentive/ralphx-releases`
+- release artifacts stay in `aigentive/ralphx.app`
 - `Casks/ralphx.rb` is rendered from the release workflow using the per-arch DMG sha256 values
 - only non-draft, non-prerelease releases update the tap automatically
 - testers install with `brew tap aigentive/ralphx` and `brew install --cask ralphx`
@@ -286,7 +286,6 @@ cargo tauri build
 **"Secret not found"**
 - Verify all secrets are configured in repository settings
 - Secret names are case-sensitive
-- The public release job also requires `RELEASES_REPO_TOKEN`
 - Homebrew tap publishing also requires `HOMEBREW_TAP_TOKEN`
 
 **"Certificate import failed"**
@@ -299,8 +298,8 @@ cargo tauri build
 - Check the Actions tab for `Release Build` and `Release Publish`
 
 **Public release upload failed**
-- Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
-- Confirm the target repo exists and the token owner has write access to it
+- Verify the workflow has `contents: write` permission for `aigentive/ralphx.app`
+- Confirm the tag exists and the GitHub Actions token can create or update releases
 
 **Homebrew tap update failed**
 - Verify `HOMEBREW_TAP_TOKEN` has `Contents: Read and write` on `aigentive/homebrew-ralphx`

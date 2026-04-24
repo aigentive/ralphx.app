@@ -234,7 +234,7 @@ cargo test --package ralphx --lib -- chat_session_recovery
 ## Feedback
 
 Experiencing issues with session recovery? Please report:
-- **GitHub Issues**: [ralphx/issues](https://github.com/anthropics/ralphx/issues)
+- **GitHub Issues**: [ralphx.app/issues](https://github.com/aigentive/ralphx.app/issues)
 - **Include**: Log excerpt with `event=rehydrate_failure` if available
 - **Describe**: What you were doing when recovery failed
 

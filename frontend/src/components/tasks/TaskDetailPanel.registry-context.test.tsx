@@ -129,7 +129,7 @@ function createPlanBranch(): PlanBranch {
     createdAt: "2026-01-28T12:00:00+00:00",
     mergedAt: null,
     prNumber: 68,
-    prUrl: "https://github.com/aigentive/ralphx/pull/68",
+    prUrl: "https://github.com/aigentive/ralphx.app/pull/68",
     prDraft: false,
     prPushStatus: "pushed",
     prStatus: "Open",
