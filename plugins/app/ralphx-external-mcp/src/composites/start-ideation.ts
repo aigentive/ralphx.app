@@ -32,6 +32,8 @@ export interface StartIdeationResult {
   similarityScore?: number;
   nextAction?: string;
   hint?: string;
+  parentConversationId?: string;
+  workspaceBranch?: string;
 }
 
 interface StartIdeationBackendResponse {
@@ -52,6 +54,8 @@ interface StartIdeationBackendResponse {
   similarity_score?: number;
   next_action?: string;
   hint?: string;
+  parent_conversation_id?: string;
+  workspace_branch?: string;
 }
 
 /**
@@ -119,6 +123,10 @@ export async function startIdeation(
     ...(b.similarity_score !== undefined ? { similarityScore: b.similarity_score } : {}),
     ...(b.next_action !== undefined ? { nextAction: b.next_action } : {}),
     ...(b.hint !== undefined ? { hint: b.hint } : {}),
+    ...(b.parent_conversation_id !== undefined
+      ? { parentConversationId: b.parent_conversation_id }
+      : {}),
+    ...(b.workspace_branch !== undefined ? { workspaceBranch: b.workspace_branch } : {}),
   };
 
   return result;

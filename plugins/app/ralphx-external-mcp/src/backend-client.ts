@@ -20,6 +20,9 @@ export const TAURI_MCP_HEADER = "X-RalphX-Tauri-MCP";
 /** Header for propagating the API key ID to the backend (for permission enforcement) */
 export const KEY_ID_HEADER = "X-RalphX-Key-Id";
 
+/** Header for backend-owned parent conversation/workspace binding */
+export const PARENT_CONVERSATION_HEADER = "X-RalphX-Parent-Conversation-Id";
+
 export interface BackendClientOptions {
   baseUrl: string;
   /** Timeout in milliseconds (default: 30000) */
@@ -101,6 +104,10 @@ export class BackendClient {
 
     if (keyContext.tauriOrigin === true) {
       headers[TAURI_MCP_HEADER] = "1";
+      const parentConversationId = keyContext.runtime?.parentConversationId;
+      if (parentConversationId) {
+        headers[PARENT_CONVERSATION_HEADER] = parentConversationId;
+      }
     }
 
     // Inject project scope header — comma-separated list of project IDs

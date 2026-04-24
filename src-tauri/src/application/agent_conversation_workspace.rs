@@ -28,9 +28,9 @@ pub async fn prepare_agent_conversation_workspace(
         .await
         .ok()
         .filter(|branch| branch != "HEAD");
-    let project_default = GitService::detect_default_branch(&repo_path)
-        .await
-        .unwrap_or_else(|_| project.base_branch_or_default().to_string());
+    let project_default =
+        GitService::resolve_project_default_branch(&repo_path, project.base_branch.as_deref())
+            .await;
     let kind = selection.kind.unwrap_or_else(|| {
         if current_branch
             .as_deref()

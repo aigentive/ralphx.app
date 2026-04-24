@@ -204,6 +204,7 @@ fn build_codex_mcp_overrides_passes_runtime_context_over_cli_args() {
         project_id: Some("project-456".to_string()),
         working_directory: Some(root.join("workspace")),
         lead_session_id: Some("lead-789".to_string()),
+        parent_conversation_id: None,
     };
 
     let overrides = build_codex_mcp_overrides(
@@ -306,5 +307,62 @@ harnesses:
             .iter()
             .any(|entry| entry == "features.shell_tool=false"),
         "runtime feature flags should still be preserved: {overrides:?}"
+    );
+}
+
+#[test]
+fn build_codex_mcp_overrides_threads_runtime_context_into_external_mcp_url() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let plugin_dir = create_plugin_dir(root);
+    std::fs::create_dir_all(root.join("agents/ralphx-chat-project"))
+        .expect("create canonical agent dir");
+    std::fs::write(
+        root.join("agents/ralphx-chat-project/agent.yaml"),
+        r#"name: ralphx-chat-project
+role: project_chat
+harnesses:
+  codex:
+    mcp_transport: external
+    mcp_tools:
+      - v1_start_ideation
+"#,
+    )
+    .expect("write shared definition");
+
+    let runtime_context = CodexMcpRuntimeContext {
+        context_type: Some("project".to_string()),
+        context_id: Some("project-123".to_string()),
+        task_id: None,
+        project_id: Some("project-123".to_string()),
+        working_directory: Some(root.join("workspace")),
+        lead_session_id: None,
+        parent_conversation_id: Some("conversation 456".to_string()),
+    };
+
+    let overrides = build_codex_mcp_overrides(
+        &plugin_dir,
+        "ralphx-chat-project",
+        false,
+        Some(&runtime_context),
+    )
+    .expect("overrides");
+
+    let url_override = overrides
+        .iter()
+        .find(|entry| entry.starts_with("mcp_servers.ralphx.url="))
+        .expect("external MCP URL override");
+
+    assert!(
+        url_override.contains("context_type=project"),
+        "external MCP URL should include context type: {url_override}"
+    );
+    assert!(
+        url_override.contains("project_id=project-123"),
+        "external MCP URL should include project id: {url_override}"
+    );
+    assert!(
+        url_override.contains("parent_conversation_id=conversation%20456"),
+        "external MCP URL should include encoded parent conversation id: {url_override}"
     );
 }

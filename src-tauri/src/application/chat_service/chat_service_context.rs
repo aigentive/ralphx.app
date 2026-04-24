@@ -396,6 +396,7 @@ impl ResolvedChatHarnessCli {
                         request.working_directory,
                         request.session_id,
                         request.project_id,
+                        None,
                         false,
                         request.artifact_repo,
                         request.ideation_session_repo,
@@ -459,6 +460,11 @@ impl ResolvedChatHarnessCli {
                             request.working_directory,
                             session_id,
                             request.project_id,
+                            if request.context_type == ChatContextType::Project {
+                                Some(request.conversation.id.as_str())
+                            } else {
+                                None
+                            },
                             request.runtime_team_mode,
                             request.artifact_repo,
                             request.ideation_session_repo,
@@ -1656,6 +1662,7 @@ fn build_codex_mcp_runtime_context(
     working_directory: &Path,
     project_id: Option<&str>,
     lead_session_id: Option<&str>,
+    parent_conversation_id: Option<String>,
 ) -> CodexMcpRuntimeContext {
     let task_id = match context_type {
         ChatContextType::Task
@@ -1672,6 +1679,7 @@ fn build_codex_mcp_runtime_context(
         project_id: project_id.map(str::to_string),
         working_directory: Some(working_directory.to_path_buf()),
         lead_session_id: lead_session_id.map(str::to_string),
+        parent_conversation_id,
     }
 }
 
@@ -1980,6 +1988,11 @@ pub async fn build_codex_command(
         working_directory,
         project_id,
         None,
+        if conversation.context_type == ChatContextType::Project {
+            Some(conversation.id.as_str())
+        } else {
+            None
+        },
     );
     let config_overrides = build_codex_mcp_overrides(
         plugin_dir,
@@ -2464,6 +2477,7 @@ pub async fn build_codex_resume_command(
     working_directory: &Path,
     session_id: &str,
     project_id: Option<&str>,
+    parent_conversation_id: Option<String>,
     _team_mode: bool,
     artifact_repo: Arc<dyn ArtifactRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
@@ -2494,6 +2508,7 @@ pub async fn build_codex_resume_command(
         working_directory,
         project_id,
         None,
+        parent_conversation_id,
     );
     let config_overrides = build_codex_mcp_overrides(
         plugin_dir,

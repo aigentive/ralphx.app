@@ -110,6 +110,7 @@ pub struct CodexMcpRuntimeContext {
     pub project_id: Option<String>,
     pub working_directory: Option<PathBuf>,
     pub lead_session_id: Option<String>,
+    pub parent_conversation_id: Option<String>,
 }
 
 fn encode_codex_string_literal(value: &str) -> Result<String, String> {
@@ -133,7 +134,11 @@ pub fn build_codex_mcp_overrides(
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     let codex_metadata = load_canonical_codex_metadata(&project_root, short_name);
     if codex_metadata.mcp_transport.as_deref() == Some("external") {
-        return build_codex_external_mcp_overrides(&mcp_server_name, codex_metadata);
+        return build_codex_external_mcp_overrides(
+            &mcp_server_name,
+            codex_metadata,
+            runtime_context,
+        );
     }
 
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
@@ -228,10 +233,12 @@ pub fn build_codex_mcp_overrides(
 fn build_codex_external_mcp_overrides(
     mcp_server_name: &str,
     codex_metadata: CanonicalCodexAgentMetadata,
+    runtime_context: Option<&CodexMcpRuntimeContext>,
 ) -> Result<Vec<String>, String> {
     let cfg = external_mcp_config();
     let _token = ensure_tauri_mcp_bypass_token();
-    let url = format!("http://{}:{}/mcp", cfg.host, cfg.port);
+    let mut url = format!("http://{}:{}/mcp", cfg.host, cfg.port);
+    append_codex_external_mcp_runtime_query(&mut url, runtime_context);
     let mut overrides = vec![
         format!(
             "mcp_servers.{mcp_server_name}.url={}",
@@ -256,6 +263,56 @@ fn build_codex_external_mcp_overrides(
     }
 
     Ok(overrides)
+}
+
+fn append_codex_external_mcp_runtime_query(
+    url: &mut String,
+    runtime_context: Option<&CodexMcpRuntimeContext>,
+) {
+    let Some(runtime_context) = runtime_context else {
+        return;
+    };
+
+    let mut params: Vec<(&str, &str)> = Vec::new();
+    if let Some(context_type) = runtime_context.context_type.as_deref() {
+        params.push(("context_type", context_type));
+    }
+    if let Some(context_id) = runtime_context.context_id.as_deref() {
+        params.push(("context_id", context_id));
+    }
+    if let Some(project_id) = runtime_context.project_id.as_deref() {
+        params.push(("project_id", project_id));
+    }
+    if let Some(parent_conversation_id) = runtime_context.parent_conversation_id.as_deref() {
+        params.push(("parent_conversation_id", parent_conversation_id));
+    }
+
+    if params.is_empty() {
+        return;
+    }
+
+    url.push('?');
+    for (index, (key, value)) in params.into_iter().enumerate() {
+        if index > 0 {
+            url.push('&');
+        }
+        url.push_str(key);
+        url.push('=');
+        url.push_str(&encode_query_component(value));
+    }
+}
+
+fn encode_query_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 pub fn compose_codex_prompt(

@@ -5,11 +5,13 @@ use std::sync::Arc;
 use tauri::{Manager, State};
 
 use crate::application::{
+    agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path,
     session_namer_prompt::build_session_namer_prompt, spawn_ready_task_scheduler_if_needed,
     AppState, TaskCleanupService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
+    AgentConversationWorkspace, AgentConversationWorkspaceMode,
     ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSessionId, IdeationSessionStatus,
     InternalStatus, PlanBranch, PlanBranchId, ProjectId, SessionOrigin, Task, TaskCategory, TaskId,
     TaskProposal, TaskProposalId, TaskStep,
@@ -31,6 +33,7 @@ use crate::http_server::handlers::ideation::stop_verification_children;
 /// Output of the atomic transaction closure — all data needed for post-commit operations.
 struct TxOutput {
     execution_plan_id: crate::domain::entities::ExecutionPlanId,
+    plan_branch_id: PlanBranchId,
     /// Tasks created (with final internal_status/blocked_reason already set when use_auto_status)
     created_tasks: Vec<Task>,
     dependencies_created: usize,
@@ -70,6 +73,7 @@ fn phase_upsert_plan_branch(
     project_name_tx: &str,
     project_pr_eligible_tx: bool,
     execution_plan_id: &ExecutionPlanId,
+    branch_name_override_tx: &Option<String>,
 ) -> AppResult<(PlanBranchId, String)> {
     let effective_plan_id_str = plan_artifact_id_tx
         .as_ref()
@@ -84,7 +88,9 @@ fn phase_upsert_plan_branch(
     let project_slug = slug_from_name(project_name_tx);
     let exec_plan_str = execution_plan_id.as_str();
     let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
-    let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
+    let branch_name = branch_name_override_tx
+        .clone()
+        .unwrap_or_else(|| format!("ralphx/{}/plan-{}", project_slug, short_id));
 
     let branch = PlanBranch::new(
         ArtifactId::from_string(effective_plan_id_str),
@@ -425,6 +431,31 @@ fn phase_insert_merge_task(
     Ok(())
 }
 
+async fn load_linked_agent_conversation_workspace(
+    app_state: &AppState,
+    session_id: &IdeationSessionId,
+    project_id: &ProjectId,
+) -> AppResult<Option<AgentConversationWorkspace>> {
+    let workspaces = app_state
+        .agent_conversation_workspace_repo
+        .get_by_project_id(project_id)
+        .await
+        .map_err(|error| {
+            AppError::Database(format!(
+                "Failed to load agent conversation workspaces for project {}: {}",
+                project_id.as_str(),
+                error
+            ))
+        })?;
+
+    Ok(workspaces.into_iter().find(|workspace| {
+        workspace
+            .linked_ideation_session_id
+            .as_ref()
+            .is_some_and(|linked_session_id| linked_session_id == session_id)
+    }))
+}
+
 /// Core apply-proposals logic — no Tauri types.
 ///
 /// Contains all proposal-to-task creation logic, dependency setup, and session
@@ -604,6 +635,21 @@ pub async fn apply_proposals_core(
                 session.project_id.as_str()
             ))
         })?;
+    let linked_agent_workspace = load_linked_agent_conversation_workspace(
+        app_state,
+        &session_id,
+        &session.project_id,
+    )
+    .await?;
+
+    if let Some(workspace) = linked_agent_workspace.as_ref() {
+        if workspace.mode != AgentConversationWorkspaceMode::Ideation {
+            return Err(AppError::Validation(
+                "Linked agent conversation workspace is not in ideation mode".to_string(),
+            ));
+        }
+        resolve_valid_agent_conversation_workspace_path(&project, workspace).await?;
+    }
 
     let session_base_ref = session
         .analysis
@@ -732,6 +778,9 @@ pub async fn apply_proposals_core(
     let plan_artifact_id_tx = plan_artifact_id.clone();
     let use_auto_status_tx = use_auto_status;
     let base_branch_override_tx = effective_base_branch_override.clone();
+    let agent_workspace_branch_name_tx = linked_agent_workspace
+        .as_ref()
+        .map(|workspace| workspace.branch_name.clone());
     let project_base_branch_tx = project.base_branch.clone();
     let project_name_tx = project.name.clone();
     let project_pr_eligible_tx = project.github_pr_enabled;
@@ -769,6 +818,7 @@ pub async fn apply_proposals_core(
                 &project_name_tx,
                 project_pr_eligible_tx,
                 &execution_plan_id,
+                &agent_workspace_branch_name_tx,
             )?;
 
             // ----------------------------------------------------------------
@@ -818,6 +868,7 @@ pub async fn apply_proposals_core(
 
             Ok(TxOutput {
                 execution_plan_id,
+                plan_branch_id: branch_id.clone(),
                 created_tasks,
                 dependencies_created,
                 warnings,
@@ -825,6 +876,23 @@ pub async fn apply_proposals_core(
             })
         })
         .await?;
+
+    if let Some(workspace) = linked_agent_workspace.as_ref() {
+        app_state
+            .agent_conversation_workspace_repo
+            .update_links(
+                &workspace.conversation_id,
+                Some(&session_id),
+                Some(&tx_output.plan_branch_id),
+            )
+            .await
+            .map_err(|error| {
+                AppError::Database(format!(
+                    "Failed to link agent conversation workspace to plan branch: {}",
+                    error
+                ))
+            })?;
+    }
 
     // ========================================================================
     // POST-TRANSACTION: session status transition to Accepted
