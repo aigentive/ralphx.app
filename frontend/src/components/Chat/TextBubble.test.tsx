@@ -133,6 +133,12 @@ describe("TextBubble", () => {
       expect(bubble).toHaveClass("px-3");
       expect(bubble).toHaveClass("py-2");
     });
+
+    it("uses a container-aware max width instead of a fixed bubble cap", () => {
+      const { container } = render(<TextBubble text="Hello" isUser={true} />);
+      const bubble = container.firstChild as HTMLElement;
+      expect(bubble).toHaveStyle({ maxWidth: "min(85%, 620px)" });
+    });
   });
 
   // ============================================================================
