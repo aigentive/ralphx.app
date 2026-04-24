@@ -36,7 +36,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -55,6 +54,7 @@ import {
   type AgentConversation,
 } from "./agentConversations";
 import { useProjectAgentConversations } from "./useProjectAgentConversations";
+import { useArchivedConversationCounts } from "./useArchivedConversationCounts";
 
 const PROJECT_SORT_LABELS: Record<AgentProjectSort, string> = {
   latest: "Latest",
@@ -69,6 +69,7 @@ interface AgentsSidebarProps {
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onCreateAgent: () => void;
+  onCreateProject: () => void;
   onArchiveProject: (projectId: string) => void | Promise<void>;
   onArchiveConversation: (conversation: AgentConversation) => void;
   onRestoreConversation: (conversation: AgentConversation) => void;
@@ -84,6 +85,7 @@ export function AgentsSidebar({
   onFocusProject,
   onSelectConversation,
   onCreateAgent,
+  onCreateProject,
   onArchiveProject,
   onArchiveConversation,
   onRestoreConversation,
@@ -98,6 +100,9 @@ export function AgentsSidebar({
   const setShowAllProjects = useAgentSessionStore((s) => s.setShowAllProjects);
   const setProjectSort = useAgentSessionStore((s) => s.setProjectSort);
   const normalizedSearch = searchQuery.trim().toLowerCase();
+  const { totalArchivedCount } = useArchivedConversationCounts(
+    projects.map((project) => project.id)
+  );
   const orderedProjects = useMemo(() => {
     if (projectSort === "latest") {
       return projects;
@@ -289,6 +294,34 @@ export function AgentsSidebar({
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {(showArchived || totalArchivedCount > 0) && (
+            <button
+              type="button"
+              onClick={() => onShowArchivedChange(!showArchived)}
+              data-testid="agents-show-archived-pill"
+              className="h-7 inline-flex items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors outline-none ring-0 focus:outline-none focus-visible:outline-none"
+              style={{
+                color: showArchived ? "var(--text-primary)" : "var(--text-secondary)",
+                background: showArchived
+                  ? withAlpha("var(--accent-primary)", 12)
+                  : "transparent",
+                borderColor: showArchived
+                  ? withAlpha("var(--accent-primary)", 30)
+                  : "var(--overlay-weak)",
+              }}
+            >
+              Archived
+              <span
+                className="text-[10px] font-semibold leading-none"
+                style={{
+                  color: showArchived ? "var(--accent-primary)" : "var(--text-muted)",
+                }}
+              >
+                {totalArchivedCount}
+              </span>
+            </button>
+          )}
         </div>
       )}
 
@@ -330,19 +363,23 @@ export function AgentsSidebar({
       </div>
 
       <div
-        className="px-3.5 py-2.5 border-t shrink-0"
+        className="px-3.5 py-3 border-t shrink-0"
         style={{ borderColor: "var(--overlay-faint)" }}
       >
-        <label className="h-7 flex items-center justify-between gap-3">
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Archived
-          </span>
-          <Switch
-            checked={showArchived}
-            onCheckedChange={onShowArchivedChange}
-            aria-label="Show archived sessions"
-          />
-        </label>
+        <button
+          type="button"
+          onClick={onCreateProject}
+          data-testid="agents-add-project"
+          className="w-full h-10 inline-flex items-center justify-center gap-2 rounded-xl border border-dashed text-[12px] font-medium transition-colors outline-none ring-0 focus:outline-none focus-visible:outline-none"
+          style={{
+            color: "var(--text-secondary)",
+            borderColor: "var(--overlay-weak)",
+            background: "transparent",
+          }}
+        >
+          <Plus className="w-4 h-4" />
+          Add project
+        </button>
       </div>
     </aside>
   );
@@ -426,7 +463,8 @@ function ProjectSessionGroup({
   if (
     !conversations.isLoading &&
     visibleConversations.length === 0 &&
-    (searchQuery ? !projectMatchesSearch || !showAllProjects : !showAllProjects)
+    (showArchived ||
+      (searchQuery ? !projectMatchesSearch || !showAllProjects : !showAllProjects))
   ) {
     return null;
   }

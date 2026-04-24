@@ -62,7 +62,9 @@ export interface MockChatController {
   clearChildSessionStatusOverrides(): void;
   listConversations(
     contextType: ContextType,
-    contextId: string
+    contextId: string,
+    includeArchived?: boolean,
+    archivedOnly?: boolean
   ): Promise<ChatConversation[]>;
   listConversationsPage(
     contextType: ContextType,
@@ -70,7 +72,8 @@ export interface MockChatController {
     limit: number,
     offset?: number,
     includeArchived?: boolean,
-    search?: string
+    search?: string,
+    archivedOnly?: boolean
   ): Promise<ConversationListPageResponse>;
   getConversation(
     conversationId: string
@@ -189,13 +192,16 @@ exposeMockChatController();
 export async function mockListConversations(
   contextType: ContextType,
   contextId: string,
-  includeArchived = false
+  includeArchived = false,
+  archivedOnly = false
 ): Promise<ChatConversation[]> {
   return Array.from(mockConversations.values()).filter(
     (c) =>
       c.contextType === contextType &&
       c.contextId === contextId &&
-      (includeArchived || !c.archivedAt)
+      (archivedOnly
+        ? Boolean(c.archivedAt)
+        : includeArchived || !c.archivedAt)
   );
 }
 
@@ -205,13 +211,15 @@ export async function mockListConversationsPage(
   limit: number,
   offset = 0,
   includeArchived = false,
-  search?: string
+  search?: string,
+  archivedOnly = false
 ): Promise<ConversationListPageResponse> {
   const normalizedSearch = search?.trim().toLowerCase();
   const conversations = (await mockListConversations(
     contextType,
     contextId,
-    includeArchived
+    includeArchived,
+    archivedOnly
   ))
     .filter((conversation) => {
       if (!normalizedSearch) {

@@ -8,11 +8,11 @@ export const AGENT_CONVERSATIONS_PAGE_SIZE = 6;
 export const agentConversationKeys = {
   all: ["agents", "project-conversations"] as const,
   project: (projectId: string) => [...agentConversationKeys.all, projectId] as const,
-  projectList: (projectId: string, includeArchived: boolean, search = "") =>
+  projectList: (projectId: string, archivedOnly: boolean, search = "") =>
     [
       ...agentConversationKeys.project(projectId),
       "archived",
-      includeArchived,
+      archivedOnly,
       "search",
       search.trim().toLowerCase(),
     ] as const,
@@ -20,7 +20,7 @@ export const agentConversationKeys = {
 
 export function useProjectAgentConversations(
   projectId: string | null | undefined,
-  includeArchived = false,
+  archivedOnly = false,
   options?: { search?: string; enabled?: boolean }
 ) {
   const normalizedSearch = options?.search?.trim() ?? "";
@@ -28,7 +28,7 @@ export function useProjectAgentConversations(
   const query = useInfiniteQuery({
     queryKey: agentConversationKeys.projectList(
       projectId ?? "",
-      includeArchived,
+      archivedOnly,
       normalizedSearch
     ),
     queryFn: async ({ pageParam = 0 }) => {
@@ -38,8 +38,9 @@ export function useProjectAgentConversations(
         targetProjectId,
         AGENT_CONVERSATIONS_PAGE_SIZE,
         pageParam,
-        includeArchived,
-        normalizedSearch || undefined
+        archivedOnly,
+        normalizedSearch || undefined,
+        archivedOnly
       );
 
       return {

@@ -87,6 +87,7 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         context_type: ChatContextType,
         context_id: &str,
         include_archived: bool,
+        archived_only: bool,
         offset: u32,
         limit: u32,
         search: Option<&str>,
@@ -101,7 +102,11 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             .filter(|conversation| {
                 conversation.context_type == context_type
                     && conversation.context_id == context_id
-                    && (include_archived || !conversation.is_archived())
+                    && if archived_only {
+                        conversation.is_archived()
+                    } else {
+                        include_archived || !conversation.is_archived()
+                    }
                     && normalized_search.as_ref().map_or(true, |term| {
                         conversation
                             .title
