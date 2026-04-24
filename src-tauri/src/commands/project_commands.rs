@@ -269,8 +269,13 @@ pub async fn create_project(
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: spawn project analyzer to detect build systems
-    spawn_project_analyzer(&state, created.id.as_str(), &created.working_directory, state.app_handle.clone())
-        .await;
+    spawn_project_analyzer(
+        &state,
+        created.id.as_str(),
+        &created.working_directory,
+        state.app_handle.clone(),
+    )
+    .await;
 
     Ok(ProjectResponse::from(created))
 }
@@ -480,6 +485,35 @@ pub async fn get_git_default_branch(working_directory: String) -> Result<String,
     Err("No branches found in repository".to_string())
 }
 
+/// Get the currently checked-out local branch for a git repository.
+#[tauri::command]
+pub async fn get_git_current_branch(working_directory: String) -> Result<String, String> {
+    if !std::path::Path::new(&working_directory).exists() {
+        return Err(format!("Directory does not exist: {}", working_directory));
+    }
+
+    if !is_git_initialized(&working_directory) {
+        return Err("Not a git repository".to_string());
+    }
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&working_directory)
+        .output()
+        .map_err(|e| format!("Failed to execute git: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git current branch failed: {}", stderr));
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        return Err("Repository is not currently on a local branch".to_string());
+    }
+    Ok(branch)
+}
+
 /// Get git branches for a working directory
 /// Executes `git branch -a` in the specified directory and parses the output
 #[tauri::command]
@@ -655,7 +689,13 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
         .await
         .map_err(|e| e.to_string())?;
 
-    spawn_project_analyzer(&state, &id, &project.working_directory, state.app_handle.clone()).await;
+    spawn_project_analyzer(
+        &state,
+        &id,
+        &project.working_directory,
+        state.app_handle.clone(),
+    )
+    .await;
 
     Ok(())
 }

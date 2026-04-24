@@ -149,6 +149,9 @@ pub struct IdeationSession {
     /// None = gate not triggered. Some(Pending) = awaiting user confirmation.
     /// Some(Accepted) = user confirmed the verified plan. Some(Rejected) = user rejected.
     pub verification_confirmation_status: Option<VerificationConfirmationStatus>,
+    /// Session-scoped analysis base and workspace used by ideation-family agents.
+    #[serde(default)]
+    pub analysis: IdeationAnalysisState,
     /// The last effective Claude model ID used when spawning an agent for this session.
     /// Set after each successful agent spawn. Used to display the model label in the UI.
     pub last_effective_model: Option<String>,
@@ -202,6 +205,7 @@ pub struct IdeationSessionBuilder {
     pending_initial_prompt: Option<String>,
     acceptance_status: Option<AcceptanceStatus>,
     verification_confirmation_status: Option<VerificationConfirmationStatus>,
+    analysis: Option<IdeationAnalysisState>,
 }
 
 impl IdeationSessionBuilder {
@@ -435,6 +439,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the session-scoped analysis base/workspace metadata.
+    pub fn analysis(mut self, analysis: IdeationAnalysisState) -> Self {
+        self.analysis = Some(analysis);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -485,6 +495,7 @@ impl IdeationSessionBuilder {
             pending_initial_prompt: self.pending_initial_prompt,
             acceptance_status: self.acceptance_status,
             verification_confirmation_status: self.verification_confirmation_status,
+            analysis: self.analysis.unwrap_or_default(),
             last_effective_model: None,
         }
     }
@@ -716,6 +727,35 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .as_deref()
                 .and_then(|s| s.parse().ok()),
+            analysis: IdeationAnalysisState {
+                base_ref_kind: row
+                    .get::<_, Option<String>>("analysis_base_ref_kind")
+                    .unwrap_or(None)
+                    .as_deref()
+                    .and_then(|s| s.parse().ok()),
+                base_ref: row
+                    .get::<_, Option<String>>("analysis_base_ref")
+                    .unwrap_or(None),
+                base_display_name: row
+                    .get::<_, Option<String>>("analysis_base_display_name")
+                    .unwrap_or(None),
+                workspace_kind: row
+                    .get::<_, Option<String>>("analysis_workspace_kind")
+                    .unwrap_or(None)
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_default(),
+                workspace_path: row
+                    .get::<_, Option<String>>("analysis_workspace_path")
+                    .unwrap_or(None),
+                base_commit: row
+                    .get::<_, Option<String>>("analysis_base_commit")
+                    .unwrap_or(None),
+                base_locked_at: row
+                    .get::<_, Option<String>>("analysis_base_locked_at")
+                    .unwrap_or(None)
+                    .map(Self::parse_datetime),
+            },
             last_effective_model: row
                 .get::<_, Option<String>>("last_effective_model")
                 .unwrap_or(None),

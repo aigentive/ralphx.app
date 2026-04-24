@@ -12,14 +12,13 @@ use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactType, ChatAttachment, ChatContextType,
-    ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, DelegatedSessionId,
-    GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
+    ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, DelegatedSessionId, GitMode,
+    IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     AgentLaneSettingsRepository, ArtifactRepository, ChatAttachmentRepository,
-    DelegatedSessionRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository, IdeationSessionRepository, ProjectRepository,
-    TaskRepository,
+    DelegatedSessionRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::agent_names;
 use crate::infrastructure::agents::claude::{
@@ -37,6 +36,7 @@ use super::chat_service_helpers::resolve_agent_with_team_mode;
 use crate::application::harness_runtime_registry::{
     resolve_chat_harness_cli, ResolvedChatHarnessCli,
 };
+use crate::application::ideation_workspace::resolve_ideation_workspace_path;
 
 /// Maximum number of recent messages to inject into the bootstrap prompt.
 pub const SESSION_HISTORY_LIMIT: usize = 50;
@@ -514,10 +514,7 @@ fn provider_state_home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn scan_dir_recursive(
-    root: &Path,
-    matcher: &impl Fn(&Path) -> bool,
-) -> bool {
+fn scan_dir_recursive(root: &Path, matcher: &impl Fn(&Path) -> bool) -> bool {
     let Ok(entries) = std::fs::read_dir(root) else {
         return false;
     };
@@ -545,7 +542,12 @@ fn codex_session_artifact_exists_under(home_dir: &Path, session_id: &str) -> boo
         if index.lines().any(|line| {
             serde_json::from_str::<serde_json::Value>(line)
                 .ok()
-                .and_then(|value| value.get("id").and_then(|raw| raw.as_str()).map(str::to_string))
+                .and_then(|value| {
+                    value
+                        .get("id")
+                        .and_then(|raw| raw.as_str())
+                        .map(str::to_string)
+                })
                 .is_some_and(|id| id == session_id)
         }) {
             return true;
@@ -554,8 +556,14 @@ fn codex_session_artifact_exists_under(home_dir: &Path, session_id: &str) -> boo
 
     let sessions_root = home_dir.join(".codex").join("sessions");
     scan_dir_recursive(&sessions_root, &|path| {
-        let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default();
         matches!(extension, "json" | "jsonl") && file_name.contains(session_id)
     })
 }
@@ -596,7 +604,8 @@ fn provider_resume_mode_for_session(
 }
 
 fn is_fresh_review_cycle(conversation: &ChatConversation, agent_name: &str) -> bool {
-    conversation.context_type == ChatContextType::Review && agent_name == agent_names::AGENT_REVIEWER
+    conversation.context_type == ChatContextType::Review
+        && agent_name == agent_names::AGENT_REVIEWER
 }
 
 fn stored_harness_override_for_spawn_settings(
@@ -1236,6 +1245,20 @@ pub async fn resolve_working_directory(
                 .get_by_id(&DelegatedSessionId::from_string(context_id))
                 .await
             {
+                if session.parent_context_type == ChatContextType::Ideation.to_string() {
+                    if let Ok(Some(parent_session)) = ideation_session_repo
+                        .get_by_id(&IdeationSessionId::from_string(
+                            session.parent_context_id.clone(),
+                        ))
+                        .await
+                    {
+                        if let Ok(Some(project)) =
+                            project_repo.get_by_id(&parent_session.project_id).await
+                        {
+                            return resolve_ideation_workspace_path(&parent_session, &project);
+                        }
+                    }
+                }
                 if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
                     return Ok(PathBuf::from(&project.working_directory));
                 }
@@ -1384,13 +1407,12 @@ pub async fn resolve_working_directory(
             }
         }
         ChatContextType::Ideation => {
-            // Ideation context: use project's working directory
             if let Ok(Some(session)) = ideation_session_repo
                 .get_by_id(&IdeationSessionId::from_string(context_id))
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
-                    return Ok(PathBuf::from(&project.working_directory));
+                    return resolve_ideation_workspace_path(&session, &project);
                 }
             }
         }
@@ -2825,11 +2847,11 @@ mod tests {
     use super::*;
     use crate::application::harness_runtime_registry::standard_chat_harness_cli_resolvers;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-    use crate::infrastructure::memory::{
-        MemoryArtifactRepository, MemoryChatAttachmentRepository,
-        MemoryDelegatedSessionRepository, MemoryIdeationSessionRepository, MemoryTaskRepository,
-    };
     use crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test;
+    use crate::infrastructure::memory::{
+        MemoryArtifactRepository, MemoryChatAttachmentRepository, MemoryDelegatedSessionRepository,
+        MemoryIdeationSessionRepository, MemoryTaskRepository,
+    };
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
@@ -2888,9 +2910,7 @@ exit 0
 "#;
 
         write_test_file(&script_path, script);
-        let mut permissions = fs::metadata(&script_path)
-            .expect("metadata")
-            .permissions();
+        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&script_path, permissions).expect("chmod script");
         script_path
@@ -2899,9 +2919,7 @@ exit 0
     fn make_fake_claude_cli(temp: &TempDir) -> PathBuf {
         let script_path = temp.path().join("claude");
         write_test_file(&script_path, "#!/bin/sh\nexit 0\n");
-        let mut permissions = fs::metadata(&script_path)
-            .expect("metadata")
-            .permissions();
+        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&script_path, permissions).expect("chmod script");
         script_path
@@ -3133,7 +3151,8 @@ exit 0
     }
 
     #[tokio::test]
-    async fn build_initial_prompt_with_session_artifacts_uses_codex_delegation_guidance_for_codex_ideation() {
+    async fn build_initial_prompt_with_session_artifacts_uses_codex_delegation_guidance_for_codex_ideation(
+    ) {
         let prompt = build_initial_prompt_with_session_artifacts(
             ChatContextType::Ideation,
             "session-codex",
@@ -3153,7 +3172,8 @@ exit 0
             "Codex ideation prompts should still expose the subagent model cap"
         );
         assert!(
-            prompt.contains("let the runtime resolve delegated child model selection from this cap"),
+            prompt
+                .contains("let the runtime resolve delegated child model selection from this cap"),
             "Codex ideation prompts should describe runtime-owned delegate model resolution"
         );
         assert!(
@@ -3203,14 +3223,13 @@ exit 0
         let temp = tempfile::tempdir().expect("tempdir");
         let cli_path = make_fake_codex_cli(&temp);
         let plugin_dir = repo_plugin_dir();
-        let prompt =
-            build_fresh_ideation_launch_prompt(
-                AgentHarnessKind::Codex,
-                &cli_path,
-                &plugin_dir,
-                temp.path(),
-            )
-                .await;
+        let prompt = build_fresh_ideation_launch_prompt(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            temp.path(),
+        )
+        .await;
 
         assert!(
             prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
@@ -3221,8 +3240,7 @@ exit 0
             "fresh Codex ideation launch plans must not inject synthetic session history"
         );
         assert!(
-            prompt.contains("recovery/session-state")
-                && prompt.contains("confirm emptiness"),
+            prompt.contains("recovery/session-state") && prompt.contains("confirm emptiness"),
             "fresh Codex ideation launch plans must preserve the no-recovery bootstrap instruction"
         );
     }
@@ -3232,12 +3250,9 @@ exit 0
         let temp = tempfile::tempdir().expect("tempdir");
         let cli_path = make_fake_claude_cli(&temp);
         let plugin_dir = repo_plugin_dir();
-        let prompt = build_fresh_claude_interactive_prompt_for_test(
-            &cli_path,
-            &plugin_dir,
-            temp.path(),
-        )
-        .await;
+        let prompt =
+            build_fresh_claude_interactive_prompt_for_test(&cli_path, &plugin_dir, temp.path())
+                .await;
 
         assert!(
             prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),

@@ -17,8 +17,10 @@ import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useSessionExportImport } from "@/hooks/useSessionExportImport";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProjectStore } from "@/stores/projectStore";
+import { getGitBranches, getGitCurrentBranch, getGitDefaultBranch } from "@/api/projects";
 import type { Task } from "@/types/task";
 import type { TeamMode, TeamConfig } from "@/types/ideation";
+import type { IdeationAnalysisBaseSelection } from "@/api/ideation";
 
 interface StartSessionPanelProps {
   onNewSession: () => void;
@@ -36,6 +38,13 @@ const DEFAULT_TEAM_CONFIG: TeamConfig = {
   compositionMode: "dynamic",
 };
 
+interface StartFromOption {
+  key: string;
+  label: string;
+  detail: string;
+  selection: IdeationAnalysisBaseSelection;
+}
+
 export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [isCreatingFromTask, setIsCreatingFromTask] = useState(false);
@@ -47,10 +56,18 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const addSession = useIdeationStore((state) => state.addSession);
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeProject = useProjectStore((state) =>
+    state.activeProjectId ? state.projects[state.activeProjectId] ?? null : null,
+  );
+  const [startFromOptions, setStartFromOptions] = useState<StartFromOption[]>([]);
+  const [selectedStartFromKey, setSelectedStartFromKey] = useState<string>("");
+  const [isLoadingStartFrom, setIsLoadingStartFrom] = useState(false);
   const { importSession, isImporting } = useSessionExportImport();
   const { ideationTeamModeAvailable: teamModeVisible } =
     useTeamModeAvailability(activeProjectId);
   const isTeamMode = teamModeVisible && teamMode !== "solo";
+  const activeProjectWorkingDirectory = activeProject?.workingDirectory;
+  const activeProjectBaseBranch = activeProject?.baseBranch;
 
   useEffect(() => {
     if (!teamModeVisible && teamMode !== "solo") {
@@ -84,6 +101,112 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onNewSession]);
 
+  useEffect(() => {
+    if (!activeProjectWorkingDirectory) {
+      setStartFromOptions([]);
+      setSelectedStartFromKey("");
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingStartFrom(true);
+
+    async function loadStartFromOptions() {
+      const workingDirectory = activeProjectWorkingDirectory!;
+      const [defaultResult, currentResult, branchesResult] = await Promise.allSettled([
+        getGitDefaultBranch(workingDirectory),
+        getGitCurrentBranch(workingDirectory),
+        getGitBranches(workingDirectory),
+      ]);
+
+      if (cancelled) return;
+
+      const projectDefault =
+        defaultResult.status === "fulfilled"
+          ? defaultResult.value
+          : activeProjectBaseBranch ?? "main";
+      const currentBranch =
+        currentResult.status === "fulfilled" ? currentResult.value : projectDefault;
+      const branches =
+        branchesResult.status === "fulfilled" ? branchesResult.value : [projectDefault];
+      const optionMap = new Map<string, StartFromOption>();
+
+      optionMap.set(`project_default:${projectDefault}`, {
+        key: `project_default:${projectDefault}`,
+        label: `Project default (${projectDefault})`,
+        detail: "Use the configured project base branch.",
+        selection: {
+          kind: "project_default",
+          ref: projectDefault,
+          displayName: `Project default (${projectDefault})`,
+        },
+      });
+
+      if (currentBranch && currentBranch !== projectDefault) {
+        optionMap.set(`current_branch:${currentBranch}`, {
+          key: `current_branch:${currentBranch}`,
+          label: `Current branch (${currentBranch})`,
+          detail: "Use the branch currently checked out in the project root.",
+          selection: {
+            kind: "current_branch",
+            ref: currentBranch,
+            displayName: `Current branch (${currentBranch})`,
+          },
+        });
+      }
+
+      branches
+        .filter((branch) => branch && branch !== projectDefault && branch !== currentBranch)
+        .forEach((branch) => {
+          optionMap.set(`local_branch:${branch}`, {
+            key: `local_branch:${branch}`,
+            label: branch,
+            detail: "Use a local branch in an isolated ideation workspace.",
+            selection: {
+              kind: "local_branch",
+              ref: branch,
+              displayName: branch,
+            },
+          });
+        });
+
+      const options = Array.from(optionMap.values());
+      setStartFromOptions(options);
+      setSelectedStartFromKey(
+        currentBranch && currentBranch !== projectDefault
+          ? `current_branch:${currentBranch}`
+          : `project_default:${projectDefault}`,
+      );
+      setIsLoadingStartFrom(false);
+    }
+
+    void loadStartFromOptions().catch(() => {
+      if (!cancelled) {
+        const fallback = activeProjectBaseBranch ?? "main";
+        setStartFromOptions([
+          {
+            key: `project_default:${fallback}`,
+            label: `Project default (${fallback})`,
+            detail: "Use the configured project base branch.",
+            selection: {
+              kind: "project_default",
+              ref: fallback,
+              displayName: `Project default (${fallback})`,
+            },
+          },
+        ]);
+        setSelectedStartFromKey(`project_default:${fallback}`);
+        setIsLoadingStartFrom(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProjectBaseBranch, activeProjectWorkingDirectory]);
+
+  const selectedStartFrom = startFromOptions.find((option) => option.key === selectedStartFromKey);
+
   const handleStartSession = async () => {
     if (!activeProjectId) {
       toast.error("No active project selected");
@@ -95,6 +218,9 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
       const params: Parameters<typeof createSession.mutateAsync>[0] = {
         projectId: activeProjectId,
       };
+      if (selectedStartFrom) {
+        params.analysisBase = selectedStartFrom.selection;
+      }
       if (isTeamMode) {
         params.teamMode = teamMode;
         params.teamConfig = teamConfig;
@@ -117,6 +243,9 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
         title: `Ideation: ${task.title}`,
         seedTaskId: task.id,
       };
+      if (selectedStartFrom) {
+        params.analysisBase = selectedStartFrom.selection;
+      }
       if (isTeamMode) {
         params.teamMode = teamMode;
         params.teamConfig = teamConfig;
@@ -178,6 +307,43 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
           >
             Select a session from the sidebar or start a new brainstorming session.
           </p>
+
+          <div className="mb-6 text-left">
+            <label
+              htmlFor="ideation-start-from"
+              className="block text-[12px] font-medium tracking-wide uppercase mb-2 text-center"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Start from
+            </label>
+            <select
+              id="ideation-start-from"
+              data-testid="start-from-select"
+              value={selectedStartFromKey}
+              onChange={(event) => setSelectedStartFromKey(event.target.value)}
+              disabled={isLoadingStartFrom || startFromOptions.length === 0}
+              className="w-full h-10 rounded-xl px-3 text-[13px] outline-none"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border-default)",
+                color: "var(--text-primary)",
+              }}
+            >
+              {startFromOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p
+              className="mt-2 text-[12px] text-center"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {isLoadingStartFrom
+                ? "Detecting repository branches..."
+                : selectedStartFrom?.detail ?? "The selected base is locked for this ideation session."}
+            </p>
+          </div>
 
           {teamModeVisible && (
             <>

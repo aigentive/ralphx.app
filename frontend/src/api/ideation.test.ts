@@ -211,6 +211,32 @@ describe("ideationApi.sessions", () => {
       expect(calledInput).not.toHaveProperty("team_mode");
       expect(calledInput).not.toHaveProperty("team_config");
     });
+
+    it("sends analysis base selection when provided", async () => {
+      const session = createMockSessionRaw();
+      mockInvoke.mockResolvedValue(session);
+
+      await ideationApi.sessions.create(
+        "project-1",
+        "Title",
+        undefined,
+        undefined,
+        undefined,
+        {
+          kind: "current_branch",
+          ref: "feature/current",
+          displayName: "Current branch (feature/current)",
+        },
+      );
+
+      expect(mockInvoke).toHaveBeenCalledWith("create_ideation_session", {
+        input: expect.objectContaining({
+          analysis_base_ref_kind: "current_branch",
+          analysis_base_ref: "feature/current",
+          analysis_base_display_name: "Current branch (feature/current)",
+        }),
+      });
+    });
   });
 
   describe("get", () => {

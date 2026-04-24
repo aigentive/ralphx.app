@@ -72,6 +72,16 @@ export async function getGitDefaultBranch(workingDirectory: string): Promise<str
 }
 
 /**
+ * Get the current local branch for a git repository.
+ * @param workingDirectory The path to the git repository
+ * @returns The current local branch name
+ */
+export async function getGitCurrentBranch(workingDirectory: string): Promise<string> {
+  const result = await invoke<string>("get_git_current_branch", { workingDirectory });
+  return result;
+}
+
+/**
  * Projects API object containing all typed Tauri command wrappers for projects
  */
 export const projectsApi = {

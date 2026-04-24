@@ -68,8 +68,9 @@ pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanS
 pub use ideation::{
     build_child_session, matching_blocker_followup_session, AcceptanceStatus, BusinessValueFactor,
     ChatMessage, ChatMessageAttribution, ChatMessageUsage, ChildSessionDraftInput, Complexity, ComplexityFactor, CriticalPathFactor,
-    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
-    IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
+    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode,
+    IdeationAnalysisBaseRefKind, IdeationAnalysisState, IdeationAnalysisWorkspaceKind,
+    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,

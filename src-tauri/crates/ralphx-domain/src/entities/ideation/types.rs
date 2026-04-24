@@ -5,6 +5,114 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Session-selected code ref used for all ideation-family analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdeationAnalysisBaseRefKind {
+    /// The project's configured default branch.
+    ProjectDefault,
+    /// The branch currently checked out in the project root when the session starts.
+    CurrentBranch,
+    /// Another local branch selected by the user.
+    LocalBranch,
+    /// A pull request ref selected by the user.
+    PullRequest,
+}
+
+impl std::fmt::Display for IdeationAnalysisBaseRefKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdeationAnalysisBaseRefKind::ProjectDefault => write!(f, "project_default"),
+            IdeationAnalysisBaseRefKind::CurrentBranch => write!(f, "current_branch"),
+            IdeationAnalysisBaseRefKind::LocalBranch => write!(f, "local_branch"),
+            IdeationAnalysisBaseRefKind::PullRequest => write!(f, "pull_request"),
+        }
+    }
+}
+
+impl FromStr for IdeationAnalysisBaseRefKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "project_default" => Ok(Self::ProjectDefault),
+            "current_branch" => Ok(Self::CurrentBranch),
+            "local_branch" => Ok(Self::LocalBranch),
+            "pull_request" => Ok(Self::PullRequest),
+            _ => Err(format!("unknown ideation analysis base ref kind: '{s}'")),
+        }
+    }
+}
+
+/// Workspace shape used by ideation-family agents for a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdeationAnalysisWorkspaceKind {
+    /// The project root is the correct analysis checkout.
+    ProjectRoot,
+    /// A dedicated ideation worktree was provisioned for the selected base.
+    IdeationWorktree,
+}
+
+impl Default for IdeationAnalysisWorkspaceKind {
+    fn default() -> Self {
+        Self::ProjectRoot
+    }
+}
+
+impl std::fmt::Display for IdeationAnalysisWorkspaceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdeationAnalysisWorkspaceKind::ProjectRoot => write!(f, "project_root"),
+            IdeationAnalysisWorkspaceKind::IdeationWorktree => write!(f, "ideation_worktree"),
+        }
+    }
+}
+
+impl FromStr for IdeationAnalysisWorkspaceKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "project_root" => Ok(Self::ProjectRoot),
+            "ideation_worktree" => Ok(Self::IdeationWorktree),
+            _ => Err(format!("unknown ideation analysis workspace kind: '{s}'")),
+        }
+    }
+}
+
+/// Immutable analysis base and workspace state attached to an ideation session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdeationAnalysisState {
+    pub base_ref_kind: Option<IdeationAnalysisBaseRefKind>,
+    pub base_ref: Option<String>,
+    pub base_display_name: Option<String>,
+    pub workspace_kind: IdeationAnalysisWorkspaceKind,
+    pub workspace_path: Option<String>,
+    pub base_commit: Option<String>,
+    pub base_locked_at: Option<DateTime<Utc>>,
+}
+
+impl Default for IdeationAnalysisState {
+    fn default() -> Self {
+        Self {
+            base_ref_kind: None,
+            base_ref: None,
+            base_display_name: None,
+            workspace_kind: IdeationAnalysisWorkspaceKind::ProjectRoot,
+            workspace_path: None,
+            base_commit: None,
+            base_locked_at: None,
+        }
+    }
+}
+
+impl IdeationAnalysisState {
+    pub fn requires_dedicated_workspace(&self) -> bool {
+        self.workspace_kind == IdeationAnalysisWorkspaceKind::IdeationWorktree
+    }
+}
+
 /// Origin of an ideation session — distinguishes internally created sessions from externally created ones
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

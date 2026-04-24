@@ -26,14 +26,8 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 41 SELECT columns for IdeationSession — single source of truth (DRY).
+/// SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
-/// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
-/// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
-/// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
-/// pending_initial_prompt(33), source_task_id(34), source_context_type(35),
-/// source_context_id(36), spawn_reason(37), blocker_fingerprint(38), acceptance_status(39),
-/// verification_confirmation_status(40), last_effective_model(41)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -46,7 +40,9 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
     dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
     source_context_id, spawn_reason, blocker_fingerprint, acceptance_status, \
-    verification_confirmation_status, last_effective_model";
+    verification_confirmation_status, analysis_base_ref_kind, analysis_base_ref, \
+    analysis_base_display_name, analysis_workspace_kind, analysis_workspace_path, \
+    analysis_base_commit, analysis_base_locked_at, last_effective_model";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -147,8 +143,10 @@ impl SqliteIdeationSessionRepository {
               source_project_id, source_session_id, session_purpose, \
               cross_project_checked, origin, api_key_id, idempotency_key, \
               external_activity_phase, external_last_read_message_id, dependencies_acknowledged, \
-              pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, blocker_fingerprint) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)",
+              pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, blocker_fingerprint, \
+              analysis_base_ref_kind, analysis_base_ref, analysis_base_display_name, analysis_workspace_kind, \
+              analysis_workspace_path, analysis_base_commit, analysis_base_locked_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -189,6 +187,13 @@ impl SqliteIdeationSessionRepository {
                 session.source_context_id.as_deref(),
                 session.spawn_reason.as_deref(),
                 session.blocker_fingerprint.as_deref(),
+                session.analysis.base_ref_kind.map(|kind| kind.to_string()),
+                session.analysis.base_ref.as_deref(),
+                session.analysis.base_display_name.as_deref(),
+                session.analysis.workspace_kind.to_string(),
+                session.analysis.workspace_path.as_deref(),
+                session.analysis.base_commit.as_deref(),
+                session.analysis.base_locked_at.map(|dt| dt.to_rfc3339()),
             ],
         )?;
         Ok(session.clone())

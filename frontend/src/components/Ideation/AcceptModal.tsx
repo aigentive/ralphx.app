@@ -6,10 +6,9 @@
  * - Tasks with blockers → Blocked
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { ShieldAlert } from "lucide-react";
 import { useVerificationGate } from "@/hooks/useVerificationGate";
-import { getGitBranches } from "@/api/projects";
 import type { TaskProposal } from "@/types/ideation";
 import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
 import type { IdeationSessionResponse } from "@/api/ideation";
@@ -24,10 +23,13 @@ interface AcceptModalProps {
   isAccepting?: boolean;
   warnings?: string[];
   /** Session for verification gate — shows warning and blocks accept when unverified */
-  session?: Pick<
+  session?: (Pick<
     IdeationSessionResponse,
     "id" | "planArtifactId" | "sessionPurpose" | "verificationStatus" | "verificationInProgress"
-  > | null;
+  > & {
+    analysisBaseRef?: string | null | undefined;
+    analysisBaseDisplayName?: string | null | undefined;
+  }) | null;
   /** Working directory for git branch listing */
   workingDirectory?: string | undefined;
   /** Default base branch to pre-fill the selector */
@@ -44,14 +46,9 @@ export function AcceptModal({
   isAccepting = false,
   warnings = [],
   session = null,
-  workingDirectory,
   baseBranch = "main",
 }: AcceptModalProps) {
   const verificationGate = useVerificationGate(session);
-  const [baseBranchOverride, setBaseBranchOverride] = useState<string>(baseBranch);
-  const [branches, setBranches] = useState<string[]>([]);
-  const [branchLoadError, setBranchLoadError] = useState(false);
-  const [branchesLoading, setBranchesLoading] = useState(false);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -67,21 +64,6 @@ export function AcceptModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, isAccepting, onCancel]);
 
-  // Load git branches for the base branch selector
-  useEffect(() => {
-    if (!workingDirectory) return;
-
-    setBranchLoadError(false);
-    setBranchesLoading(true);
-    getGitBranches(workingDirectory)
-      .then((result) => setBranches(result))
-      .catch(() => {
-        setBranchLoadError(true);
-        setBranches([]);
-      })
-      .finally(() => setBranchesLoading(false));
-  }, [workingDirectory]);
-
   const handleOverlayClick = useCallback(() => {
     if (!isAccepting) {
       onCancel();
@@ -92,10 +74,8 @@ export function AcceptModal({
     e.stopPropagation();
   }, []);
 
-  const normalizedBaseBranch = baseBranchOverride.trim();
-  const baseBranchValidationError = normalizedBaseBranch.length === 0
-    ? "Enter a base branch"
-    : null;
+  const lockedBaseRef = (session?.analysisBaseRef ?? baseBranch).trim();
+  const lockedBaseLabel = session?.analysisBaseDisplayName ?? lockedBaseRef;
 
   const handleAccept = useCallback(() => {
     const options: ApplyProposalsInput = {
@@ -105,12 +85,12 @@ export function AcceptModal({
       // - No blockers → Ready
       // - Has blockers → Blocked
       targetColumn: "auto",
-      ...(normalizedBaseBranch !== "" && {
-        baseBranchOverride: normalizedBaseBranch,
+      ...(lockedBaseRef !== "" && {
+        baseBranchOverride: lockedBaseRef,
       }),
     };
     onAccept(options);
-  }, [sessionId, proposals, normalizedBaseBranch, onAccept]);
+  }, [sessionId, proposals, lockedBaseRef, onAccept]);
 
   if (!isOpen) return null;
 
@@ -123,7 +103,7 @@ export function AcceptModal({
     proposalCount > 0 &&
     !isAccepting &&
     !verificationBlocked &&
-    !baseBranchValidationError;
+    lockedBaseRef.length > 0;
 
   return (
     <div
@@ -302,69 +282,31 @@ export function AcceptModal({
             className="text-xs mb-3"
             style={{ color: "var(--text-muted)" }}
           >
-            A feature branch will be created from the base branch below. A merge-to-main task is added automatically.
+            A feature branch will be created from the session base below. A merge-to-main task is added automatically.
           </p>
 
           <div className="flex items-center gap-2 mb-1">
-            <label
+            <span
               className="block text-xs font-medium"
               style={{ color: "var(--text-secondary)" }}
-              htmlFor="base-branch-input"
             >
-              Base branch
-            </label>
-            {branchesLoading && (
-              <div
-                data-testid="branch-loading-spinner"
-                className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin"
-                style={{ color: "var(--text-muted)" }}
-                aria-label="Loading branches"
-              />
-            )}
+              Session base
+            </span>
           </div>
-          <input
-            id="base-branch-input"
-            type="text"
-            list="base-branch-datalist"
-            value={baseBranchOverride}
-            onChange={(e) => setBaseBranchOverride(e.target.value)}
-            disabled={isAccepting}
-            placeholder="e.g. main"
-            data-testid="base-branch-input"
-            aria-invalid={baseBranchValidationError ? "true" : "false"}
-            className="w-full px-2 py-1.5 text-sm rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+          <div
+            data-testid="session-base-readonly"
+            className="w-full px-2 py-1.5 text-sm rounded border"
             style={{
               backgroundColor: "var(--bg-base)",
-              borderColor: baseBranchValidationError
-                ? "var(--status-danger)"
-                : "var(--border-subtle)",
+              borderColor: "var(--border-subtle)",
               color: "var(--text-primary)",
-              boxShadow: "none",
             }}
-          />
-          <datalist id="base-branch-datalist">
-            {branches.map((branch) => (
-              <option key={branch} value={branch} />
-            ))}
-          </datalist>
-          {branchLoadError && (
-            <p
-              className="mt-1 text-xs"
-              style={{ color: "var(--text-muted)" }}
-              data-testid="branch-load-error"
-            >
-              Could not load branches — type branch name manually
-            </p>
-          )}
-          {baseBranchValidationError && (
-            <p
-              className="mt-1 text-xs"
-              style={{ color: "var(--status-danger)" }}
-              data-testid="branch-validation-error"
-            >
-              {baseBranchValidationError}
-            </p>
-          )}
+          >
+            {lockedBaseLabel}
+          </div>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            This base was selected before ideation started. Start a new session to use a different base.
+          </p>
         </div>
 
         {/* Verification blocked warning */}

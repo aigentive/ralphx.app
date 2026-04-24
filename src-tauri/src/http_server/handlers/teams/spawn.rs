@@ -44,7 +44,12 @@ pub async fn request_teammate_spawn(
     ensure_team_mode_supported_for_context(&state, &context_type, &context_id).await?;
 
     // Resolve working directory (worktree-aware for task contexts)
-    let working_dir = resolve_teammate_working_dir(&state, &context_type, &context_id).await;
+    let working_dir = resolve_teammate_working_dir(&state, &context_type, &context_id)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to resolve teammate working directory");
+            (StatusCode::CONFLICT, e)
+        })?;
 
     // 3. Generate unique teammate name (add suffix for uniqueness)
     let teammate_name = generate_unique_teammate_name(&state, &team_name, &req.role).await;
@@ -102,12 +107,7 @@ pub async fn request_teammate_spawn(
     );
 
     // Resolve project ID for RALPHX_PROJECT_ID env var on teammates
-    let project_id = resolve_teammate_project_id(
-        &state,
-        &context_type,
-        &context_id,
-    )
-    .await;
+    let project_id = resolve_teammate_project_id(&state, &context_type, &context_id).await;
 
     let teammate_context = TeammateContext {
         context_id: context_id.clone(),
@@ -118,7 +118,13 @@ pub async fn request_teammate_spawn(
     // Always inject team communication tools regardless of spawn request specification.
     // Without these, teammates cannot send messages or coordinate via task lists.
     let mut tools = req.tools.clone();
-    for required in ["SendMessage", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] {
+    for required in [
+        "SendMessage",
+        "TaskCreate",
+        "TaskUpdate",
+        "TaskList",
+        "TaskGet",
+    ] {
         if !tools.contains(&required.to_string()) {
             tools.push(required.to_string());
         }
@@ -126,18 +132,17 @@ pub async fn request_teammate_spawn(
 
     let mcp_type = req.preset.as_deref().unwrap_or("ideation-team-member");
 
-    let spawn_config =
-        TeammateSpawnConfig::new(&teammate_name, &team_name, &req.prompt)
-            .with_parent_session_id(&parent_session_id)
-            .with_context(teammate_context)
-            .with_model(&req.model)
-            .with_tools(tools)
-            .with_mcp_tools(req.mcp_tools.clone())
-            .with_color(&teammate_color)
-            .with_mcp_agent_type(mcp_type)
-            .with_effort(resolve_effort(Some(mcp_type)))
-            .with_working_dir(working_dir.clone())
-            .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
+    let spawn_config = TeammateSpawnConfig::new(&teammate_name, &team_name, &req.prompt)
+        .with_parent_session_id(&parent_session_id)
+        .with_context(teammate_context)
+        .with_model(&req.model)
+        .with_tools(tools)
+        .with_mcp_tools(req.mcp_tools.clone())
+        .with_color(&teammate_color)
+        .with_mcp_agent_type(mcp_type)
+        .with_effort(resolve_effort(Some(mcp_type)))
+        .with_working_dir(working_dir.clone())
+        .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {
@@ -224,9 +229,13 @@ pub async fn request_teammate_spawn(
                         app_handle.clone(),
                         std::sync::Arc::new(state.team_tracker.clone()),
                         Some(state.team_service.clone()),
-                        Some(std::sync::Arc::clone(&state.app_state.chat_conversation_repo)),
+                        Some(std::sync::Arc::clone(
+                            &state.app_state.chat_conversation_repo,
+                        )),
                         Some(std::sync::Arc::clone(&state.app_state.chat_message_repo)),
-                        Some(std::sync::Arc::clone(&state.app_state.interactive_process_registry)),
+                        Some(std::sync::Arc::clone(
+                            &state.app_state.interactive_process_registry,
+                        )),
                         Some(std::sync::Arc::clone(&state.execution_state)),
                     ),
                 ),

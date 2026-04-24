@@ -65,6 +65,7 @@ impl ChatConversationRepository for MockChatConversationRepository {
         context_type: ChatContextType,
         context_id: &str,
         include_archived: bool,
+        archived_only: bool,
         offset: u32,
         limit: u32,
         search: Option<&str>,
@@ -76,6 +77,7 @@ impl ChatConversationRepository for MockChatConversationRepository {
                 conversation.context_type == context_type
                     && conversation.context_id == context_id
                     && (include_archived || conversation.archived_at.is_none())
+                    && (!archived_only || conversation.archived_at.is_some())
                     && search.map_or(true, |term| {
                         let normalized = term.trim().to_lowercase();
                         let title = conversation
@@ -92,7 +94,9 @@ impl ChatConversationRepository for MockChatConversationRepository {
 
         let total_count = conversations.len() as i64;
         let start = offset as usize;
-        let end = start.saturating_add(limit as usize).min(conversations.len());
+        let end = start
+            .saturating_add(limit as usize)
+            .min(conversations.len());
         let page_conversations = if start >= conversations.len() {
             Vec::new()
         } else {

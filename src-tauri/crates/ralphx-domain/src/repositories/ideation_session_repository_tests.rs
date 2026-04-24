@@ -526,6 +526,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     }
 }

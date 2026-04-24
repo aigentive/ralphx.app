@@ -59,6 +59,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        analysis: Default::default(),
         last_effective_model: None,
     }
 }
@@ -154,8 +155,9 @@ mod verification_init_tests {
             dependencies_acknowledged: false,
             pending_initial_prompt: None,
             acceptance_status: None,
-        verification_confirmation_status: None,
-        last_effective_model: None,
+            verification_confirmation_status: None,
+            analysis: Default::default(),
+            last_effective_model: None,
         }
     }
 

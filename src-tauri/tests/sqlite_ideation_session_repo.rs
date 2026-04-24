@@ -1,7 +1,8 @@
 use ralphx_lib::domain::entities::ideation::{SessionOrigin, SessionPurpose};
 use ralphx_lib::domain::entities::{
-    ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationGap, VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
+    ArtifactId, IdeationAnalysisBaseRefKind, IdeationAnalysisState, IdeationAnalysisWorkspaceKind,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationGap,
+    VerificationRoundSnapshot, VerificationRunSnapshot, VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository;
@@ -141,6 +142,30 @@ async fn test_get_by_id_preserves_all_fields() {
     assert_eq!(found.title, session.title);
     assert_eq!(found.status, IdeationSessionStatus::Archived);
     assert!(found.archived_at.is_some());
+}
+
+#[tokio::test]
+async fn test_create_preserves_analysis_base_metadata() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let mut session = create_test_session(&project_id, Some("Base-aware Session"));
+    session.analysis = IdeationAnalysisState {
+        base_ref_kind: Some(IdeationAnalysisBaseRefKind::LocalBranch),
+        base_ref: Some("feature/analysis".to_string()),
+        base_display_name: Some("feature/analysis".to_string()),
+        workspace_kind: IdeationAnalysisWorkspaceKind::IdeationWorktree,
+        workspace_path: Some("/tmp/ralphx/ideation-session".to_string()),
+        base_commit: Some("0123456789abcdef".to_string()),
+        base_locked_at: Some(chrono::Utc::now()),
+    };
+
+    repo.create(session.clone()).await.unwrap();
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+
+    assert_eq!(found.analysis, session.analysis);
 }
 
 // ==================== GET BY PROJECT TESTS ====================

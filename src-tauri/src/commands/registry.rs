@@ -49,6 +49,7 @@ macro_rules! register_tauri_commands {
             commands::project_commands::update_project,
             commands::project_commands::archive_project,
             commands::project_commands::get_git_branches,
+            commands::project_commands::get_git_current_branch,
             commands::project_commands::get_git_default_branch,
             commands::project_commands::reanalyze_project,
             commands::project_commands::update_custom_analysis,

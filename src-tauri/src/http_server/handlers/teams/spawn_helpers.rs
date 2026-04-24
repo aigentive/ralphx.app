@@ -1,6 +1,7 @@
-
 use super::*;
 use crate::application::harness_runtime_registry::resolve_default_harness_plugin_dir;
+use crate::domain::entities::ChatContextType;
+use std::sync::Arc;
 
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
@@ -38,32 +39,23 @@ pub(super) async fn resolve_teammate_working_dir(
     state: &HttpServerState,
     context_type: &str,
     context_id: &str,
-) -> PathBuf {
-    // Ideation context: session → project → project.working_directory
-    if context_type == "ideation" {
-        use crate::domain::entities::IdeationSessionId;
-        let session_id = IdeationSessionId::from_string(context_id);
-        if let Ok(Some(session)) = state
-            .app_state
-            .ideation_session_repo
-            .get_by_id(&session_id)
-            .await
-        {
-            if let Ok(Some(project)) = state
-                .app_state
-                .project_repo
-                .get_by_id(&session.project_id)
-                .await
-            {
-                return PathBuf::from(&project.working_directory);
-            }
+) -> Result<PathBuf, String> {
+    if let Ok(context_type_enum) = context_type.parse::<ChatContextType>() {
+        if matches!(
+            context_type_enum,
+            ChatContextType::Ideation | ChatContextType::Delegation
+        ) {
+            return crate::application::chat_service::chat_service_context::resolve_working_directory(
+                context_type_enum,
+                context_id,
+                Arc::clone(&state.app_state.project_repo),
+                Arc::clone(&state.app_state.task_repo),
+                Arc::clone(&state.app_state.ideation_session_repo),
+                Arc::clone(&state.app_state.delegated_session_repo),
+                &default_working_dir(),
+            )
+            .await;
         }
-        warn!(
-            context_type,
-            context_id,
-            "Teammate working dir: ideation session/project lookup failed — using default"
-        );
-        return default_working_dir();
     }
 
     // Project context: project → project.working_directory
@@ -71,19 +63,18 @@ pub(super) async fn resolve_teammate_working_dir(
         use crate::domain::entities::ProjectId;
         let project_id = ProjectId::from_string(context_id.to_string());
         if let Ok(Some(project)) = state.app_state.project_repo.get_by_id(&project_id).await {
-            return PathBuf::from(&project.working_directory);
+            return Ok(PathBuf::from(&project.working_directory));
         }
         warn!(
             context_type,
-            context_id,
-            "Teammate working dir: project lookup failed — using default"
+            context_id, "Teammate working dir: project lookup failed — using default"
         );
-        return default_working_dir();
+        return Ok(default_working_dir());
     }
 
     // Task-related contexts: task → worktree_path or project.working_directory
     if !TASK_CONTEXT_TYPES.contains(&context_type) {
-        return default_working_dir();
+        return Ok(default_working_dir());
     }
 
     let task_id = TaskId(context_id.to_string());
@@ -95,7 +86,7 @@ pub(super) async fn resolve_teammate_working_dir(
                 context_id = context_id,
                 "Teammate working dir: task not found — using default"
             );
-            return default_working_dir();
+            return Ok(default_working_dir());
         }
         Err(e) => {
             warn!(
@@ -103,7 +94,7 @@ pub(super) async fn resolve_teammate_working_dir(
                 error = %e,
                 "Teammate working dir: task lookup failed — using default"
             );
-            return default_working_dir();
+            return Ok(default_working_dir());
         }
     };
 
@@ -119,7 +110,7 @@ pub(super) async fn resolve_teammate_working_dir(
                 project_id = %task.project_id,
                 "Teammate working dir: project not found — using default"
             );
-            return default_working_dir();
+            return Ok(default_working_dir());
         }
         Err(e) => {
             warn!(
@@ -127,11 +118,11 @@ pub(super) async fn resolve_teammate_working_dir(
                 error = %e,
                 "Teammate working dir: project lookup failed — using default"
             );
-            return default_working_dir();
+            return Ok(default_working_dir());
         }
     };
 
-    if let Some(ref wt_path) = task.worktree_path {
+    Ok(if let Some(ref wt_path) = task.worktree_path {
         info!(
             task_id = context_id,
             worktree_path = wt_path,
@@ -141,7 +132,7 @@ pub(super) async fn resolve_teammate_working_dir(
     } else {
         // No worktree — use the project's working directory (repo root)
         PathBuf::from(&project.working_directory)
-    }
+    })
 }
 
 pub(super) fn resolve_teammate_plugin_dir(working_dir: &std::path::Path) -> PathBuf {

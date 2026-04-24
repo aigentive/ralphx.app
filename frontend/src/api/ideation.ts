@@ -43,6 +43,7 @@ import type {
   CreateProposalInput,
   UpdateProposalInput,
   ApplyProposalsInput,
+  IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
@@ -63,6 +64,7 @@ export type {
   CreateProposalInput,
   UpdateProposalInput,
   ApplyProposalsInput,
+  IdeationAnalysisBaseSelection,
   CreateChildSessionResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
@@ -145,6 +147,7 @@ export const ideationApi = {
       seedTaskId?: string,
       teamMode?: string,
       teamConfig?: { maxTeammates: number; modelCeiling: string; budgetLimit?: number | undefined; compositionMode: string },
+      analysisBase?: IdeationAnalysisBaseSelection,
     ): Promise<IdeationSessionResponse> => {
       const raw = await typedInvoke(
         "create_ideation_session",
@@ -153,6 +156,11 @@ export const ideationApi = {
             project_id: projectId,
             title,
             seed_task_id: seedTaskId,
+            ...(analysisBase !== undefined && {
+              analysis_base_ref_kind: analysisBase.kind,
+              analysis_base_ref: analysisBase.ref,
+              analysis_base_display_name: analysisBase.displayName,
+            }),
             ...(teamMode !== undefined && { team_mode: teamMode }),
             ...(teamConfig !== undefined && {
               team_config: {

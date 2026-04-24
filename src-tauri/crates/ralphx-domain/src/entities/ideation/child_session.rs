@@ -1,6 +1,8 @@
 use crate::entities::{IdeationSessionId, TaskId};
 
-use super::{IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, SessionOrigin, SessionPurpose};
+use super::{
+    IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, SessionOrigin, SessionPurpose,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildSessionDraftInput {
@@ -22,11 +24,14 @@ pub fn matching_blocker_followup_session(
     source_task_id: &str,
     blocker_fingerprint: &str,
 ) -> Option<IdeationSession> {
-    children.iter().find(|session| {
-        session.archived_at.is_none()
-            && session.source_task_id.as_ref().map(|id| id.as_str()) == Some(source_task_id)
-            && session.blocker_fingerprint.as_deref() == Some(blocker_fingerprint)
-    }).cloned()
+    children
+        .iter()
+        .find(|session| {
+            session.archived_at.is_none()
+                && session.source_task_id.as_ref().map(|id| id.as_str()) == Some(source_task_id)
+                && session.blocker_fingerprint.as_deref() == Some(blocker_fingerprint)
+        })
+        .cloned()
 }
 
 pub fn build_child_session(
@@ -40,7 +45,12 @@ pub fn build_child_session(
         .parent_session_id(parent_id)
         .session_purpose(input.purpose)
         .cross_project_checked(true)
-        .origin(resolve_child_origin(parent.origin, input.purpose, input.is_external_trigger));
+        .analysis(parent.analysis.clone())
+        .origin(resolve_child_origin(
+            parent.origin,
+            input.purpose,
+            input.is_external_trigger,
+        ));
 
     if let Some(title) = input.title {
         builder = builder.title(title);

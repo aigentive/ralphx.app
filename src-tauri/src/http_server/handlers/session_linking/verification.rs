@@ -213,6 +213,7 @@ mod tests {
             pending_initial_prompt: None,
             acceptance_status: None,
             verification_confirmation_status: None,
+            analysis: Default::default(),
             last_effective_model: None,
         }
     }
