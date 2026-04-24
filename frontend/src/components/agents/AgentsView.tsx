@@ -46,7 +46,6 @@ import {
   selectHasStoredArtifactState,
   useAgentSessionStore,
   type AgentArtifactTab,
-  type AgentProvider,
   type AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
@@ -64,7 +63,6 @@ import {
   DEFAULT_AGENT_RUNTIME,
   AGENT_MODEL_OPTIONS,
   AGENT_PROVIDER_OPTIONS,
-  defaultModelForProvider,
   normalizeRuntimeSelection,
 } from "./agentOptions";
 import { AgentComposerSurface } from "./AgentComposerSurface";
@@ -818,19 +816,6 @@ export function AgentsView({
     [activeProjectId, projects]
   );
 
-  const handleActiveProviderChange = useCallback(
-    (provider: AgentProvider) => {
-      if (!selectedConversationId || !activeProjectId) {
-        return;
-      }
-      setRuntimeForConversation(selectedConversationId, activeProjectId, {
-        provider,
-        modelId: defaultModelForProvider(provider),
-      });
-    },
-    [activeProjectId, selectedConversationId, setRuntimeForConversation]
-  );
-
   const handleActiveModelChange = useCallback(
     (modelId: string) => {
       if (!selectedConversationId || !activeProjectId) {
@@ -1022,8 +1007,9 @@ export function AgentsView({
                     }}
                     provider={{
                       value: normalizedActiveRuntime.provider,
-                      onValueChange: handleActiveProviderChange,
+                      onValueChange: () => undefined,
                       options: AGENT_PROVIDER_OPTIONS,
+                      disabled: true,
                     }}
                     model={{
                       value: normalizedActiveRuntime.modelId,
