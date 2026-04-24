@@ -47,7 +47,7 @@ export function DesignComposerSurface({
             {selectedDesignSystem.name}
           </div>
           <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            design context
+            {selectedDesignSystem.status.replace("_", " ")} / {selectedDesignSystem.sourceCount} sources
           </div>
         </div>
       </header>

@@ -1,4 +1,5 @@
 import type { Project } from "@/types/project";
+import type { DesignSystemResponse, DesignSystemSourceResponse } from "@/api/design";
 
 export type DesignSystemStatus =
   | "draft"
@@ -62,13 +63,38 @@ export interface DesignSystem {
   version: string;
   sourceCount: number;
   updatedAt: string;
+  conversationId?: string | null;
   readySummary: string;
   caveats: DesignCaveat[];
   groups: DesignStyleguideGroup[];
 }
 
 export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
-  return projects.map((project) => ({
+  return projects.map((project) => mockDesignSystem(project));
+}
+
+export function buildDesignSystemFromResponse(
+  project: Project,
+  response: DesignSystemResponse,
+  options: { sources?: DesignSystemSourceResponse[]; conversationId?: string | null } = {},
+): DesignSystem {
+  const styleguide = mockStyleguideModel(project.id);
+
+  return {
+    ...styleguide,
+    id: response.id,
+    primaryProjectId: response.primaryProjectId,
+    name: response.name,
+    status: response.status,
+    version: response.currentSchemaVersionId ? response.currentSchemaVersionId.slice(0, 8) : "draft",
+    sourceCount: options.sources?.length ?? 0,
+    updatedAt: response.updatedAt,
+    conversationId: options.conversationId ?? null,
+  };
+}
+
+function mockDesignSystem(project: Project): DesignSystem {
+  return {
     id: `design-system-${project.id}`,
     primaryProjectId: project.id,
     name: `${project.name} Design System`,
@@ -76,6 +102,12 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
     version: "0.1.0",
     sourceCount: 3,
     updatedAt: project.updatedAt,
+    ...mockStyleguideModel(project.id),
+  };
+}
+
+function mockStyleguideModel(projectId: string): Pick<DesignSystem, "readySummary" | "caveats" | "groups"> {
+  return {
     readySummary: "Source-backed colors, type, components, and workspace layout patterns are ready for review.",
     caveats: [
       {
@@ -91,7 +123,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
         id: "colors",
         label: "Colors",
         items: [
-          styleguideItem(project.id, {
+          styleguideItem(projectId, {
             id: "primary-palette",
             itemId: "colors.primary_palette",
             group: "colors",
@@ -106,7 +138,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
         id: "components",
         label: "Components",
         items: [
-          styleguideItem(project.id, {
+          styleguideItem(projectId, {
             id: "buttons",
             itemId: "components.buttons",
             group: "components",
@@ -118,7 +150,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
             feedbackStatus: "open",
             reviewState: "needs_work",
           }),
-          styleguideItem(project.id, {
+          styleguideItem(projectId, {
             id: "composer",
             itemId: "components.composer",
             group: "components",
@@ -133,7 +165,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
         id: "spacing",
         label: "Spacing",
         items: [
-          styleguideItem(project.id, {
+          styleguideItem(projectId, {
             id: "radii",
             itemId: "spacing.radii",
             group: "spacing",
@@ -145,7 +177,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
         ],
       },
     ],
-  }));
+  };
 }
 
 function styleguideItem(

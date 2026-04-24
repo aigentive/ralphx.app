@@ -214,7 +214,7 @@ export function DesignSidebar({
                             {system.name}
                           </span>
                           <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                            v{system.version}
+                            {system.version === "draft" ? "draft" : `v${system.version}`}
                           </span>
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[10px]" style={{ color: "var(--text-muted)" }}>

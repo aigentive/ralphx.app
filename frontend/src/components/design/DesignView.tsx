@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import { SeparatorLine } from "@/components/ui/ResizeHandle";
 import { useProjects } from "@/hooks/useProjects";
-import type { DesignSystem } from "./designSystems";
+import { buildDesignSystemFromResponse, type DesignSystem } from "./designSystems";
 import { DesignComposerSurface } from "./DesignComposerSurface";
 import { DesignSidebar } from "./DesignSidebar";
 import { DesignStyleguidePane } from "./DesignStyleguidePane";
-import { useProjectDesignSystems } from "./useProjectDesignSystems";
+import {
+  useCreateDesignSystem,
+  useDesignSystemDetail,
+  useProjectDesignSystems,
+} from "./useProjectDesignSystems";
 
 const DESIGN_SIDEBAR_WIDTH = 320;
 const DESIGN_CHAT_MIN_WIDTH = 320;
@@ -23,13 +27,31 @@ export function DesignView({ projectId }: DesignViewProps) {
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(projectId || null);
   const [selectedDesignSystemId, setSelectedDesignSystemId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const groups = useProjectDesignSystems(projects, { searchQuery });
+  const { groups } = useProjectDesignSystems(projects, { searchQuery });
+  const createDesignSystem = useCreateDesignSystem();
   const allSystems = useMemo(
     () => groups.flatMap((group) => group.systems),
     [groups],
   );
-  const selectedDesignSystem =
+  const selectedListDesignSystem =
     allSystems.find((system) => system.id === selectedDesignSystemId) ?? null;
+  const selectedDetailQuery = useDesignSystemDetail(selectedDesignSystemId);
+  const selectedDesignSystem = useMemo(() => {
+    const detail = selectedDetailQuery.data;
+    if (!detail) {
+      return selectedListDesignSystem;
+    }
+
+    const project = projects.find((candidate) => candidate.id === detail.designSystem.primaryProjectId);
+    if (!project) {
+      return selectedListDesignSystem;
+    }
+
+    return buildDesignSystemFromResponse(project, detail.designSystem, {
+      sources: detail.sources,
+      conversationId: detail.conversation?.id ?? null,
+    });
+  }, [projects, selectedDetailQuery.data, selectedListDesignSystem]);
 
   useEffect(() => {
     if (projectId) {
@@ -54,12 +76,39 @@ export function DesignView({ projectId }: DesignViewProps) {
     setSelectedDesignSystemId(system.id);
   };
 
-  const createDraftDesignSystem = () => {
+  const selectPreferredDesignSystem = () => {
     const preferred =
       allSystems.find((system) => system.primaryProjectId === focusedProjectId) ??
       allSystems[0] ??
       null;
     setSelectedDesignSystemId(preferred?.id ?? null);
+  };
+
+  const createDraftDesignSystem = () => {
+    const targetProject =
+      projects.find((project) => project.id === focusedProjectId) ??
+      projects.find((project) => project.id === projectId) ??
+      projects[0] ??
+      null;
+
+    if (!targetProject || createDesignSystem.isPending) {
+      return;
+    }
+
+    createDesignSystem.mutate(
+      {
+        primaryProjectId: targetProject.id,
+        name: `${targetProject.name} Design System`,
+        selectedPaths: [],
+        sources: [],
+      },
+      {
+        onSuccess: (response) => {
+          setFocusedProjectId(response.designSystem.primaryProjectId);
+          setSelectedDesignSystemId(response.designSystem.id);
+        },
+      },
+    );
   };
 
   return (
@@ -74,7 +123,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           onFocusProject={setFocusedProjectId}
           onSelectDesignSystem={selectDesignSystem}
           onNewDesignSystem={createDraftDesignSystem}
-          onImportDesignSystem={createDraftDesignSystem}
+          onImportDesignSystem={selectPreferredDesignSystem}
         />
       </div>
 
@@ -83,7 +132,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           <DesignComposerSurface
             selectedDesignSystem={selectedDesignSystem}
             onNewDesignSystem={createDraftDesignSystem}
-            onImportDesignSystem={createDraftDesignSystem}
+            onImportDesignSystem={selectPreferredDesignSystem}
           />
         </div>
 
