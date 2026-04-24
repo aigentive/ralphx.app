@@ -858,6 +858,7 @@ export function AgentsView({
     onCreateAgent: handleSidebarCreateAgent,
     onCreateProject,
     onArchiveProject: handleArchiveProject,
+    onRenameConversation: handleRenameConversation,
     onArchiveConversation: handleArchiveConversation,
     onRestoreConversation: handleRestoreConversation,
     showArchived,

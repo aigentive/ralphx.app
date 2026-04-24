@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
@@ -121,6 +121,7 @@ function renderSidebar(
         onCreateAgent={vi.fn()}
         onCreateProject={vi.fn()}
         onArchiveProject={vi.fn()}
+        onRenameConversation={vi.fn()}
         onArchiveConversation={vi.fn()}
         onRestoreConversation={vi.fn()}
         showArchived={false}
@@ -370,7 +371,7 @@ describe("AgentsSidebar", () => {
     expect(onArchiveProject).toHaveBeenCalledWith("project-1");
   });
 
-  it("dismisses the project actions tooltip after clicking outside the menu", async () => {
+  it("does not show a tooltip for project actions", async () => {
     const user = userEvent.setup();
     conversationsByProject.set("project-1", {
       data: [conversation()],
@@ -387,12 +388,61 @@ describe("AgentsSidebar", () => {
     const trigger = within(actions).getByRole("button", { name: "Project actions" });
 
     await user.hover(trigger);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Project actions");
-
-    fireEvent.pointerDown(trigger);
-    fireEvent.pointerDown(document.body);
-    fireEvent.click(document.body);
-
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("opens a rename dialog from session actions and saves the new title", async () => {
+    const user = userEvent.setup();
+    const onRenameConversation = vi.fn().mockResolvedValue(undefined);
+    const activeConversation = conversation({ id: "conversation-rename", title: "Untitled agent" });
+    conversationsByProject.set("project-1", {
+      data: [activeConversation],
+      total: 1,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()], { onRenameConversation });
+
+    await user.click(screen.getByRole("button", { name: "Session actions" }));
+    await user.click(screen.getByText("Rename session"));
+
+    const input = screen.getByLabelText("Session title");
+    await user.clear(input);
+    await user.type(input, "Review follow-up");
+    await user.click(screen.getByRole("button", { name: "Rename session" }));
+
+    await waitFor(() =>
+      expect(onRenameConversation).toHaveBeenCalledWith("conversation-rename", "Review follow-up")
+    );
+    expect(screen.queryByText("Rename session")).not.toBeInTheDocument();
+  });
+
+  it("confirms before archiving a session", async () => {
+    const user = userEvent.setup();
+    const onArchiveConversation = vi.fn();
+    const activeConversation = conversation({ id: "conversation-archive", title: "Untitled agent" });
+    conversationsByProject.set("project-1", {
+      data: [activeConversation],
+      total: 1,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()], { onArchiveConversation });
+
+    await user.click(screen.getByRole("button", { name: "Session actions" }));
+    await user.click(screen.getByText("Archive session"));
+
+    expect(screen.getByText("Archive session?")).toBeInTheDocument();
+    expect(onArchiveConversation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Archive session" }));
+
+    expect(onArchiveConversation).toHaveBeenCalledWith(activeConversation);
   });
 });

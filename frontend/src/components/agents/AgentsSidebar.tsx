@@ -19,23 +19,34 @@ import {
   Circle,
   Folder,
   MoreHorizontal,
+  Pencil,
   Plus,
   RotateCcw,
   Search,
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -71,6 +82,7 @@ interface AgentsSidebarProps {
   onCreateAgent: () => void;
   onCreateProject: () => void;
   onArchiveProject: (projectId: string) => void | Promise<void>;
+  onRenameConversation: (conversationId: string, title: string) => void | Promise<void>;
   onArchiveConversation: (conversation: AgentConversation) => void;
   onRestoreConversation: (conversation: AgentConversation) => void;
   showArchived: boolean;
@@ -87,6 +99,7 @@ export function AgentsSidebar({
   onCreateAgent,
   onCreateProject,
   onArchiveProject,
+  onRenameConversation,
   onArchiveConversation,
   onRestoreConversation,
   showArchived,
@@ -353,6 +366,7 @@ export function AgentsSidebar({
               onFocusProject={onFocusProject}
               onSelectConversation={onSelectConversation}
               onArchiveProject={onArchiveProject}
+              onRenameConversation={onRenameConversation}
               onArchiveConversation={onArchiveConversation}
               onRestoreConversation={onRestoreConversation}
               showArchived={showArchived}
@@ -393,6 +407,7 @@ interface ProjectSessionGroupProps {
   onFocusProject: (projectId: string) => void;
   onSelectConversation: (projectId: string, conversation: AgentConversation) => void;
   onArchiveProject: (projectId: string) => void | Promise<void>;
+  onRenameConversation: (conversationId: string, title: string) => void | Promise<void>;
   onArchiveConversation: (conversation: AgentConversation) => void;
   onRestoreConversation: (conversation: AgentConversation) => void;
   showArchived: boolean;
@@ -407,18 +422,20 @@ function ProjectSessionGroup({
   onFocusProject,
   onSelectConversation,
   onArchiveProject,
+  onRenameConversation,
   onArchiveConversation,
   onRestoreConversation,
   showArchived,
   showAllProjects,
 }: ProjectSessionGroupProps) {
-  const projectActionsWrapperRef = useRef<HTMLDivElement | null>(null);
   const projectActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [projectActionsOpen, setProjectActionsOpen] = useState(false);
-  const [projectActionsTooltipOpen, setProjectActionsTooltipOpen] = useState(false);
-  const [projectActionsTooltipSuppressed, setProjectActionsTooltipSuppressed] =
-    useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [renameDialogConversation, setRenameDialogConversation] =
+    useState<AgentConversation | null>(null);
+  const [renameDraftTitle, setRenameDraftTitle] = useState("");
+  const [archiveDialogConversation, setArchiveDialogConversation] =
+    useState<AgentConversation | null>(null);
   const expanded = useAgentSessionStore((s) => s.expandedProjectIds[project.id] ?? true);
   const toggleProjectExpanded = useAgentSessionStore((s) => s.toggleProjectExpanded);
   const conversations = useProjectAgentConversations(project.id, showArchived, {
@@ -439,26 +456,22 @@ function ProjectSessionGroup({
       (agentStatuses[rowKey] ?? "idle") !== "idle"
     );
   }).length;
+  const openRenameDialog = (conversation: AgentConversation) => {
+    setRenameDraftTitle(conversation.title || "Untitled agent");
+    setRenameDialogConversation(conversation);
+  };
+  const handleRenameSubmit = async () => {
+    if (!renameDialogConversation) {
+      return;
+    }
+    const trimmed = renameDraftTitle.trim();
+    if (!trimmed) {
+      return;
+    }
 
-  useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (
-        projectActionsWrapperRef.current?.contains(event.target as Node) ??
-        false
-      ) {
-        return;
-      }
-
-      setProjectActionsTooltipOpen(false);
-      setProjectActionsTooltipSuppressed(true);
-      projectActionsTriggerRef.current?.blur();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-    };
-  }, []);
+    await onRenameConversation(renameDialogConversation.id, trimmed);
+    setRenameDialogConversation(null);
+  };
 
   if (
     !conversations.isLoading &&
@@ -527,71 +540,37 @@ function ProjectSessionGroup({
               </span>
             )}
             <div
-              ref={projectActionsWrapperRef}
               className={`flex items-center gap-0.5 transition-opacity duration-150 ${
                 projectActionsOpen
                   ? "opacity-100"
                   : "opacity-0 group-hover/project:opacity-100 group-focus-within/project:opacity-100"
               }`}
               data-testid={`agents-project-actions-${project.id}`}
-              onPointerEnter={() => {
-                if (!projectActionsOpen) {
-                  setProjectActionsTooltipSuppressed(false);
-                }
-              }}
-              onPointerLeave={() => {
-                if (!projectActionsOpen) {
-                  setProjectActionsTooltipOpen(false);
-                  setProjectActionsTooltipSuppressed(false);
-                }
-              }}
             >
               <DropdownMenu
                 onOpenChange={(open) => {
                   setProjectActionsOpen(open);
-                  if (open) {
-                    setProjectActionsTooltipOpen(false);
-                    setProjectActionsTooltipSuppressed(true);
-                  }
                   if (!open) {
-                    setProjectActionsTooltipOpen(false);
                     requestAnimationFrame(() => {
                       projectActionsTriggerRef.current?.blur();
                     });
                   }
                 }}
               >
-                <Tooltip
-                  open={
-                    projectActionsTooltipSuppressed ? false : projectActionsTooltipOpen
-                  }
-                  onOpenChange={(open) => {
-                    if (projectActionsTooltipSuppressed && open) {
-                      return;
-                    }
-                    setProjectActionsTooltipOpen(open);
-                  }}
-                >
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        ref={projectActionsTriggerRef}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-5.5 w-5.5 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
-                        aria-label="Project actions"
-                        data-theme-button-skip="true"
-                        style={{ boxShadow: "none" }}
-                      >
-                        <MoreHorizontal className="w-3.5 h-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">
-                    Project actions
-                  </TooltipContent>
-                </Tooltip>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    ref={projectActionsTriggerRef}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-5.5 w-5.5 p-0 rounded border-0 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
+                    aria-label="Project actions"
+                    data-theme-button-skip="true"
+                    style={{ boxShadow: "none" }}
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem
                     className="gap-2 text-xs"
@@ -625,6 +604,92 @@ function ProjectSessionGroup({
                   variant="destructive"
                 >
                   Archive project
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Dialog
+            open={renameDialogConversation !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setRenameDialogConversation(null);
+              }
+            }}
+          >
+            <DialogContent hideCloseButton className="max-w-md">
+              <DialogHeader className="block space-y-1.5">
+                <DialogTitle className="text-base">Rename session</DialogTitle>
+                <DialogDescription>
+                  Update the title shown in the Agents sidebar for this conversation.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="px-6 py-4">
+                <Input
+                  value={renameDraftTitle}
+                  onChange={(event) => setRenameDraftTitle(event.target.value)}
+                  aria-label="Session title"
+                  placeholder="Untitled agent"
+                  autoFocus
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleRenameSubmit();
+                    }
+                  }}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRenameDialogConversation(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleRenameSubmit()}
+                  disabled={renameDraftTitle.trim().length === 0}
+                >
+                  Rename session
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog
+            open={archiveDialogConversation !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setArchiveDialogConversation(null);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Archive session?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This hides{" "}
+                  <span className="font-medium">
+                    {archiveDialogConversation?.title || "Untitled agent"}
+                  </span>{" "}
+                  from the active conversation list. You can restore it later from the
+                  archived filter.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    if (archiveDialogConversation) {
+                      void onArchiveConversation(archiveDialogConversation);
+                    }
+                    setArchiveDialogConversation(null);
+                  }}
+                  variant="destructive"
+                >
+                  Archive session
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -707,6 +772,14 @@ function ProjectSessionGroup({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2 text-xs"
+                                onClick={() => openRenameDialog(conversation)}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Rename session
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               {conversation.archivedAt ? (
                                 <DropdownMenuItem
                                   className="gap-2 text-xs"
@@ -718,7 +791,7 @@ function ProjectSessionGroup({
                               ) : (
                                 <DropdownMenuItem
                                   className="gap-2 text-xs"
-                                  onClick={() => onArchiveConversation(conversation)}
+                                  onClick={() => setArchiveDialogConversation(conversation)}
                                 >
                                   <Archive className="w-3.5 h-3.5" />
                                   Archive session
