@@ -284,11 +284,6 @@ VARIATION_PALETTES = {
 PUBLIC_SCREENSHOTS = [
     ('welcome-2026-02-22.png', 'framed-welcome-2026-02-22.png', 'welcome'),
     ('graph-2026-02-22.png', 'framed-graph-2026-02-22.png', 'graph'),
-    ('ideation-2026-02-21.png', 'framed-ideation-2026-02-21.png', 'ideation'),
-    ('merge-2026-02-21.png', 'framed-merge-2026-02-21.png', 'merge'),
-    ('ai-review-2026-02-22.png', 'framed-ai-review-2026-02-22.png', 'ai-review'),
-    ('merge-conflicts-2026-02-22.png', 'framed-merge-conflicts-2026-02-22.png', 'merge-conflicts'),
-    ('merged-2026-02-23.png', 'framed-merged-2026-02-23.png', 'merged'),
 ]
 
 # Additional optional screenshot entries available for manual one-off publishing.
