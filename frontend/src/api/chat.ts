@@ -903,6 +903,7 @@ export const chatApi = {
   archiveConversation,
   restoreConversation,
   appendAgentBridgeMessage,
+  getAgentConversationWorkspace,
   getAgentRunStatus,
   // Message sending & queue
   startAgentConversation,
@@ -1075,6 +1076,17 @@ function transformStartAgentConversationResponse(
     workspace: transformAgentConversationWorkspace(raw.workspace),
     sendResult: transformSendAgentMessageResponse(raw.send_result),
   };
+}
+
+export async function getAgentConversationWorkspace(
+  conversationId: string
+): Promise<AgentConversationWorkspace | null> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_workspace",
+    { conversationId },
+    AgentConversationWorkspaceResponseSchema.nullable()
+  );
+  return raw ? transformAgentConversationWorkspace(raw) : null;
 }
 
 export async function startAgentConversation(

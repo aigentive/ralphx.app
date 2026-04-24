@@ -16,6 +16,7 @@ import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import {
   mockCreateConversation,
+  mockGetAgentConversationWorkspace,
   mockGetConversation,
   mockGetConversationStats,
   mockListConversations,
@@ -189,6 +190,32 @@ const commandHandlers: Record<
   },
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  get_agent_conversation_workspace: async (args) => {
+    const workspace = await mockGetAgentConversationWorkspace(args.conversationId as string);
+    if (!workspace) {
+      return null;
+    }
+    return {
+      conversation_id: workspace.conversationId,
+      project_id: workspace.projectId,
+      mode: workspace.mode,
+      base_ref_kind: workspace.baseRefKind,
+      base_ref: workspace.baseRef,
+      base_display_name: workspace.baseDisplayName,
+      base_commit: workspace.baseCommit,
+      branch_name: workspace.branchName,
+      worktree_path: workspace.worktreePath,
+      linked_ideation_session_id: workspace.linkedIdeationSessionId,
+      linked_plan_branch_id: workspace.linkedPlanBranchId,
+      publication_pr_number: workspace.publicationPrNumber,
+      publication_pr_url: workspace.publicationPrUrl,
+      publication_pr_status: workspace.publicationPrStatus,
+      publication_push_status: workspace.publicationPushStatus,
+      status: workspace.status,
+      created_at: workspace.createdAt,
+      updated_at: workspace.updatedAt,
+    };
+  },
   create_agent_conversation: async (args) => {
     const input = args.input as {
       contextType: ContextType;

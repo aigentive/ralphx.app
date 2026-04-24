@@ -14,6 +14,7 @@ import type {
   ChildSessionStatusResponse,
   ConversationListPageResponse,
   ConversationStatsResponse,
+  AgentConversationWorkspace,
   QueuedMessageResponse,
   SendAgentMessageResult,
   StartAgentConversationInput,
@@ -35,6 +36,7 @@ import {
 const mockConversations: Map<string, ChatConversation> = new Map();
 const mockMessages: Map<string, ChatMessageResponse[]> = new Map();
 const mockQueuedMessages: Map<string, QueuedMessageResponse[]> = new Map();
+const mockWorkspaces: Map<string, AgentConversationWorkspace> = new Map();
 const mockChildSessionStatuses: Map<string, ChildSessionStatusResponse> = new Map();
 const mockChildSessionStatusOverrides: Map<string, MockChildSessionStatusOverride> = new Map();
 
@@ -89,6 +91,7 @@ export function resetMockChatState(): void {
   mockConversations.clear();
   mockMessages.clear();
   mockQueuedMessages.clear();
+  mockWorkspaces.clear();
   mockChildSessionStatuses.clear();
   mockChildSessionStatusOverrides.clear();
 }
@@ -445,30 +448,39 @@ export async function mockStartAgentConversation(
     queuedAsPending: false,
   };
 
+  const workspace: AgentConversationWorkspace = {
+    conversationId: conversation.id,
+    projectId: input.projectId,
+    mode: input.mode ?? "edit",
+    baseRefKind: input.base?.kind ?? "project_default",
+    baseRef: input.base?.ref ?? "main",
+    baseDisplayName: input.base?.displayName ?? null,
+    baseCommit: null,
+    branchName: `ralphx/mock/agent-${conversation.id.slice(0, 8)}`,
+    worktreePath: `/tmp/ralphx/mock/${conversation.id}`,
+    linkedIdeationSessionId: null,
+    linkedPlanBranchId: null,
+    publicationPrNumber: null,
+    publicationPrUrl: null,
+    publicationPrStatus: null,
+    publicationPushStatus: null,
+    status: "active",
+    createdAt: conversation.createdAt,
+    updatedAt: conversation.updatedAt,
+  };
+  mockWorkspaces.set(conversation.id, workspace);
+
   return {
     conversation,
-    workspace: {
-      conversationId: conversation.id,
-      projectId: input.projectId,
-      mode: input.mode ?? "edit",
-      baseRefKind: input.base?.kind ?? "project_default",
-      baseRef: input.base?.ref ?? "main",
-      baseDisplayName: input.base?.displayName ?? null,
-      baseCommit: null,
-      branchName: `ralphx/mock/agent-${conversation.id.slice(0, 8)}`,
-      worktreePath: `/tmp/ralphx/mock/${conversation.id}`,
-      linkedIdeationSessionId: null,
-      linkedPlanBranchId: null,
-      publicationPrNumber: null,
-      publicationPrUrl: null,
-      publicationPrStatus: null,
-      publicationPushStatus: null,
-      status: "active",
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-    },
+    workspace,
     sendResult,
   };
+}
+
+export async function mockGetAgentConversationWorkspace(
+  conversationId: string
+): Promise<AgentConversationWorkspace | null> {
+  return mockWorkspaces.get(conversationId) ?? null;
 }
 
 export async function mockGetQueuedAgentMessages(
@@ -530,6 +542,7 @@ export const mockChatApi = {
   restoreConversation: mockRestoreConversation,
   getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
+  getAgentConversationWorkspace: mockGetAgentConversationWorkspace,
   startAgentConversation: mockStartAgentConversation,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
