@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { BrainCircuit, GitBranch, Sparkles, type LucideIcon } from "lucide-react";
 
+import { getGitBranches, getGitCurrentBranch, getGitDefaultBranch } from "@/api/projects";
+import type {
+  AgentConversationBaseSelection,
+  AgentConversationWorkspaceMode,
+} from "@/api/chat";
 import type { Project } from "@/types/project";
 import { withAlpha } from "@/lib/theme-colors";
+import { cn } from "@/lib/utils";
 import type {
   AgentProvider,
   AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AgentComposerProjectCreateButton,
   AgentComposerSurface,
@@ -39,6 +52,8 @@ interface AgentsStartComposerProps {
     projectId: string;
     content: string;
     runtime: AgentRuntimeSelection;
+    mode: AgentConversationWorkspaceMode;
+    base: AgentConversationBaseSelection | null;
     files: File[];
   }) => Promise<void>;
 }
@@ -62,6 +77,17 @@ const STARTER_TYPING_INITIAL_WORD = STARTER_TYPING_WORDS[0];
 
 type StarterTypingPhase = "holding" | "typing" | "deleting";
 
+interface StartFromOption {
+  key: string;
+  label: string;
+  selection: AgentConversationBaseSelection;
+}
+
+const AGENT_MODE_OPTIONS: Array<{ id: AgentConversationWorkspaceMode; label: string }> = [
+  { id: "edit", label: "Edit Agent" },
+  { id: "ideation", label: "Ideation Mode" },
+];
+
 export function AgentsStartComposer({
   projects,
   defaultProjectId,
@@ -76,6 +102,10 @@ export function AgentsStartComposer({
     normalizeRuntimeSelection(defaultRuntime).provider
   );
   const [modelId, setModelId] = useState(normalizeRuntimeSelection(defaultRuntime).modelId);
+  const [mode, setMode] = useState<AgentConversationWorkspaceMode>("edit");
+  const [startFromOptions, setStartFromOptions] = useState<StartFromOption[]>([]);
+  const [selectedStartFromKey, setSelectedStartFromKey] = useState("");
+  const [isLoadingStartFrom, setIsLoadingStartFrom] = useState(false);
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +126,23 @@ export function AgentsStartComposer({
   }, [normalizedRuntime]);
 
   const modelOptions = AGENT_MODEL_OPTIONS[provider];
+  const activeProject = useMemo(
+    () => projects.find((project) => project.id === projectId) ?? null,
+    [projectId, projects]
+  );
+  const selectedStartFrom =
+    startFromOptions.find((option) => option.key === selectedStartFromKey) ?? null;
+  const fallbackStartFrom = useMemo<AgentConversationBaseSelection | null>(() => {
+    if (!activeProject) {
+      return null;
+    }
+    const ref = activeProject.baseBranch ?? "main";
+    return {
+      kind: "project_default",
+      ref,
+      displayName: `Project default (${ref})`,
+    };
+  }, [activeProject]);
 
   const handleProviderChange = (nextProvider: AgentProvider) => {
     setProvider(nextProvider);
@@ -131,6 +178,114 @@ export function AgentsStartComposer({
     ]);
   };
 
+  useEffect(() => {
+    if (!activeProject?.workingDirectory) {
+      setStartFromOptions([]);
+      setSelectedStartFromKey("");
+      setIsLoadingStartFrom(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingStartFrom(true);
+
+    async function loadStartFromOptions() {
+      const workingDirectory = activeProject!.workingDirectory;
+      const [defaultResult, currentResult, branchesResult] = await Promise.allSettled([
+        getGitDefaultBranch(workingDirectory),
+        getGitCurrentBranch(workingDirectory),
+        getGitBranches(workingDirectory),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const projectDefault =
+        defaultResult.status === "fulfilled" && defaultResult.value
+          ? defaultResult.value
+          : activeProject!.baseBranch ?? "main";
+      const currentBranch =
+        currentResult.status === "fulfilled" && currentResult.value
+          ? currentResult.value
+          : projectDefault;
+      const branches =
+        branchesResult.status === "fulfilled" && Array.isArray(branchesResult.value)
+          ? branchesResult.value
+          : [projectDefault];
+      const optionMap = new Map<string, StartFromOption>();
+
+      optionMap.set(`project_default:${projectDefault}`, {
+        key: `project_default:${projectDefault}`,
+        label: `Project default (${projectDefault})`,
+        selection: {
+          kind: "project_default",
+          ref: projectDefault,
+          displayName: `Project default (${projectDefault})`,
+        },
+      });
+
+      if (currentBranch && currentBranch !== projectDefault) {
+        optionMap.set(`current_branch:${currentBranch}`, {
+          key: `current_branch:${currentBranch}`,
+          label: `Current branch (${currentBranch})`,
+          selection: {
+            kind: "current_branch",
+            ref: currentBranch,
+            displayName: `Current branch (${currentBranch})`,
+          },
+        });
+      }
+
+      branches
+        .filter((branch) => branch && branch !== projectDefault && branch !== currentBranch)
+        .forEach((branch) => {
+          optionMap.set(`local_branch:${branch}`, {
+            key: `local_branch:${branch}`,
+            label: branch,
+            selection: {
+              kind: "local_branch",
+              ref: branch,
+              displayName: branch,
+            },
+          });
+        });
+
+      const options = Array.from(optionMap.values());
+      setStartFromOptions(options);
+      setSelectedStartFromKey(
+        currentBranch && currentBranch !== projectDefault
+          ? `current_branch:${currentBranch}`
+          : `project_default:${projectDefault}`
+      );
+      setIsLoadingStartFrom(false);
+    }
+
+    void loadStartFromOptions().catch(() => {
+      if (cancelled) {
+        return;
+      }
+      const fallback = activeProject.baseBranch ?? "main";
+      setStartFromOptions([
+        {
+          key: `project_default:${fallback}`,
+          label: `Project default (${fallback})`,
+          selection: {
+            kind: "project_default",
+            ref: fallback,
+            displayName: `Project default (${fallback})`,
+          },
+        },
+      ]);
+      setSelectedStartFromKey(`project_default:${fallback}`);
+      setIsLoadingStartFrom(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject]);
+
   const handleRemoveAttachment = (attachmentId: string) => {
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
   };
@@ -151,6 +306,8 @@ export function AgentsStartComposer({
         projectId,
         content: message.trim(),
         runtime: { provider, modelId },
+        mode,
+        base: selectedStartFrom?.selection ?? fallbackStartFrom,
         files: attachments.map((attachment) => attachment.file),
       });
       setContent("");
@@ -244,6 +401,31 @@ export function AgentsStartComposer({
             attachmentsUploading={isSubmitting && attachments.length > 0}
             submitLabel="Start Agent"
             submittingLabel="Starting..."
+            workspaceControls={
+              <>
+                <StarterSelectPill
+                  icon={GitBranch}
+                  label="Start from"
+                  value={selectedStartFromKey}
+                  onValueChange={setSelectedStartFromKey}
+                  options={startFromOptions}
+                  placeholder={isLoadingStartFrom ? "Loading..." : "Base branch"}
+                  disabled={isLoadingStartFrom || startFromOptions.length === 0}
+                  testId="agents-start-base"
+                  className="max-w-[240px] flex-none"
+                />
+                <StarterSelectPill
+                  icon={BrainCircuit}
+                  label="Mode"
+                  value={mode}
+                  onValueChange={(value) => setMode(value as AgentConversationWorkspaceMode)}
+                  options={AGENT_MODE_OPTIONS}
+                  placeholder="Mode"
+                  testId="agents-start-mode"
+                  className="max-w-[178px] flex-none"
+                />
+              </>
+            }
             project={{
               value: projectId,
               onValueChange: setProjectId,
@@ -291,6 +473,85 @@ export function AgentsStartComposer({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface StarterSelectPillProps {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: Array<{ key?: string; id?: string; label: string }>;
+  placeholder: string;
+  disabled?: boolean;
+  testId?: string;
+  className?: string;
+}
+
+function StarterSelectPill({
+  icon: Icon,
+  label,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  disabled = false,
+  testId,
+  className,
+}: StarterSelectPillProps) {
+  return (
+    <div
+      className={cn(
+        "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5",
+        className
+      )}
+      style={{
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+        borderColor: "var(--overlay-weak)",
+      }}
+    >
+      <div
+        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
+        style={{ color: "var(--text-secondary)" }}
+      >
+        <Icon className="h-[13px] w-[13px]" />
+      </div>
+      <div className="min-w-0">
+        <div
+          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {label}
+        </div>
+        <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+          <SelectTrigger
+            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
+            style={{
+              color: value ? "var(--text-primary)" : "var(--text-secondary)",
+              boxShadow: "none",
+              outline: "none",
+              WebkitAppearance: "none",
+              appearance: "none",
+            }}
+            data-testid={testId}
+            data-theme-button-skip="true"
+            aria-label={label}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => {
+              const optionValue = option.key ?? option.id ?? option.label;
+              return (
+                <SelectItem key={optionValue} value={optionValue}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

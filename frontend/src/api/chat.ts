@@ -905,6 +905,7 @@ export const chatApi = {
   appendAgentBridgeMessage,
   getAgentRunStatus,
   // Message sending & queue
+  startAgentConversation,
   sendAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
@@ -936,6 +937,55 @@ export interface SendAgentMessageResult {
   queuedMessageId?: string | null | undefined;
 }
 
+export type AgentConversationWorkspaceMode = "edit" | "ideation";
+export type AgentConversationBaseRefKind =
+  | "project_default"
+  | "current_branch"
+  | "local_branch";
+
+export interface AgentConversationBaseSelection {
+  kind: AgentConversationBaseRefKind;
+  ref: string;
+  displayName: string;
+}
+
+export interface AgentConversationWorkspace {
+  conversationId: string;
+  projectId: string;
+  mode: AgentConversationWorkspaceMode;
+  baseRefKind: string;
+  baseRef: string;
+  baseDisplayName: string | null;
+  baseCommit: string | null;
+  branchName: string;
+  worktreePath: string;
+  linkedIdeationSessionId: string | null;
+  linkedPlanBranchId: string | null;
+  publicationPrNumber: number | null;
+  publicationPrUrl: string | null;
+  publicationPrStatus: string | null;
+  publicationPushStatus: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StartAgentConversationInput {
+  projectId: string;
+  content: string;
+  conversationId?: string | null;
+  providerHarness?: string | null;
+  modelId?: string | null;
+  mode?: AgentConversationWorkspaceMode;
+  base?: AgentConversationBaseSelection | null;
+}
+
+export interface StartAgentConversationResult {
+  conversation: ChatConversation;
+  workspace: AgentConversationWorkspace;
+  sendResult: SendAgentMessageResult;
+}
+
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
@@ -947,6 +997,40 @@ const SendAgentMessageResponseSchema = z.object({
 
 type RawSendAgentMessageResponse = z.infer<typeof SendAgentMessageResponseSchema>;
 
+const AgentConversationWorkspaceResponseSchema = z.object({
+  conversation_id: z.string(),
+  project_id: z.string(),
+  mode: z.string(),
+  base_ref_kind: z.string(),
+  base_ref: z.string(),
+  base_display_name: z.string().nullable(),
+  base_commit: z.string().nullable(),
+  branch_name: z.string(),
+  worktree_path: z.string(),
+  linked_ideation_session_id: z.string().nullable(),
+  linked_plan_branch_id: z.string().nullable(),
+  publication_pr_number: z.number().nullable(),
+  publication_pr_url: z.string().nullable(),
+  publication_pr_status: z.string().nullable(),
+  publication_push_status: z.string().nullable(),
+  status: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const StartAgentConversationResponseSchema = z.object({
+  conversation: ChatConversationResponseSchema,
+  workspace: AgentConversationWorkspaceResponseSchema,
+  send_result: SendAgentMessageResponseSchema,
+});
+
+type RawAgentConversationWorkspace = z.infer<
+  typeof AgentConversationWorkspaceResponseSchema
+>;
+type RawStartAgentConversationResponse = z.infer<
+  typeof StartAgentConversationResponseSchema
+>;
+
 function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): SendAgentMessageResult {
   return {
     conversationId: raw.conversation_id,
@@ -956,6 +1040,68 @@ function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): Se
     queuedAsPending: raw.queued_as_pending,
     queuedMessageId: raw.queued_message_id,
   };
+}
+
+function transformAgentConversationWorkspace(
+  raw: RawAgentConversationWorkspace
+): AgentConversationWorkspace {
+  return {
+    conversationId: raw.conversation_id,
+    projectId: raw.project_id,
+    mode: raw.mode as AgentConversationWorkspaceMode,
+    baseRefKind: raw.base_ref_kind,
+    baseRef: raw.base_ref,
+    baseDisplayName: raw.base_display_name,
+    baseCommit: raw.base_commit,
+    branchName: raw.branch_name,
+    worktreePath: raw.worktree_path,
+    linkedIdeationSessionId: raw.linked_ideation_session_id,
+    linkedPlanBranchId: raw.linked_plan_branch_id,
+    publicationPrNumber: raw.publication_pr_number,
+    publicationPrUrl: raw.publication_pr_url,
+    publicationPrStatus: raw.publication_pr_status,
+    publicationPushStatus: raw.publication_push_status,
+    status: raw.status,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function transformStartAgentConversationResponse(
+  raw: RawStartAgentConversationResponse
+): StartAgentConversationResult {
+  return {
+    conversation: transformConversation(raw.conversation),
+    workspace: transformAgentConversationWorkspace(raw.workspace),
+    sendResult: transformSendAgentMessageResponse(raw.send_result),
+  };
+}
+
+export async function startAgentConversation(
+  input: StartAgentConversationInput
+): Promise<StartAgentConversationResult> {
+  const raw = await typedInvoke(
+    "start_agent_conversation",
+    {
+      input: {
+        projectId: input.projectId,
+        content: input.content,
+        ...(input.conversationId ? { conversationId: input.conversationId } : {}),
+        ...(input.providerHarness ? { providerHarness: input.providerHarness } : {}),
+        ...(input.modelId ? { modelOverride: input.modelId } : {}),
+        ...(input.mode ? { mode: input.mode } : {}),
+        ...(input.base
+          ? {
+              baseRefKind: input.base.kind,
+              baseRef: input.base.ref,
+              baseDisplayName: input.base.displayName,
+            }
+          : {}),
+      },
+    },
+    StartAgentConversationResponseSchema
+  );
+  return transformStartAgentConversationResponse(raw);
 }
 
 /**

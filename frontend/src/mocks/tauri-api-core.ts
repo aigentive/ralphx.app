@@ -15,10 +15,12 @@ import {
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import {
+  mockCreateConversation,
   mockGetConversation,
   mockGetConversationStats,
   mockListConversations,
   mockListConversationsPage,
+  mockStartAgentConversation,
 } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
@@ -187,6 +189,86 @@ const commandHandlers: Record<
   },
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  create_agent_conversation: async (args) => {
+    const input = args.input as {
+      contextType: ContextType;
+      contextId: string;
+      title?: string;
+    };
+    const conversation = await mockCreateConversation(
+      input.contextType,
+      input.contextId,
+      input.title
+    );
+    return {
+      id: conversation.id,
+      context_type: conversation.contextType,
+      context_id: conversation.contextId,
+      claude_session_id: conversation.claudeSessionId,
+      provider_session_id: conversation.providerSessionId,
+      provider_harness: conversation.providerHarness,
+      upstream_provider: conversation.upstreamProvider,
+      provider_profile: conversation.providerProfile,
+      title: conversation.title,
+      message_count: conversation.messageCount,
+      last_message_at: conversation.lastMessageAt,
+      created_at: conversation.createdAt,
+      updated_at: conversation.updatedAt,
+      archived_at: conversation.archivedAt,
+    };
+  },
+  start_agent_conversation: async (args) => {
+    const input = args.input as Parameters<typeof mockStartAgentConversation>[0];
+    const result = await mockStartAgentConversation(input);
+    const conversation = result.conversation;
+    const workspace = result.workspace;
+    return {
+      conversation: {
+        id: conversation.id,
+        context_type: conversation.contextType,
+        context_id: conversation.contextId,
+        claude_session_id: conversation.claudeSessionId,
+        provider_session_id: conversation.providerSessionId,
+        provider_harness: conversation.providerHarness,
+        upstream_provider: conversation.upstreamProvider,
+        provider_profile: conversation.providerProfile,
+        title: conversation.title,
+        message_count: conversation.messageCount,
+        last_message_at: conversation.lastMessageAt,
+        created_at: conversation.createdAt,
+        updated_at: conversation.updatedAt,
+        archived_at: conversation.archivedAt,
+      },
+      workspace: {
+        conversation_id: workspace.conversationId,
+        project_id: workspace.projectId,
+        mode: workspace.mode,
+        base_ref_kind: workspace.baseRefKind,
+        base_ref: workspace.baseRef,
+        base_display_name: workspace.baseDisplayName,
+        base_commit: workspace.baseCommit,
+        branch_name: workspace.branchName,
+        worktree_path: workspace.worktreePath,
+        linked_ideation_session_id: workspace.linkedIdeationSessionId,
+        linked_plan_branch_id: workspace.linkedPlanBranchId,
+        publication_pr_number: workspace.publicationPrNumber,
+        publication_pr_url: workspace.publicationPrUrl,
+        publication_pr_status: workspace.publicationPrStatus,
+        publication_push_status: workspace.publicationPushStatus,
+        status: workspace.status,
+        created_at: workspace.createdAt,
+        updated_at: workspace.updatedAt,
+      },
+      send_result: {
+        conversation_id: result.sendResult.conversationId,
+        agent_run_id: result.sendResult.agentRunId,
+        is_new_conversation: result.sendResult.isNewConversation,
+        was_queued: result.sendResult.wasQueued,
+        queued_as_pending: result.sendResult.queuedAsPending,
+        queued_message_id: result.sendResult.queuedMessageId,
+      },
+    };
+  },
   get_agent_conversation_stats: async (args) => {
     const stats = await mockGetConversationStats(args.conversationId as string);
     if (!stats) {

@@ -21,6 +21,10 @@ import {
 import { toast } from "sonner";
 
 import { chatApi } from "@/api/chat";
+import type {
+  AgentConversationBaseSelection,
+  AgentConversationWorkspaceMode,
+} from "@/api/chat";
 import { executionApi } from "@/api/execution";
 import { ideationApi } from "@/api/ideation";
 import { projectsApi } from "@/api/projects";
@@ -551,39 +555,38 @@ export function AgentsView({
       projectId: targetProjectId,
       content,
       runtime,
+      mode,
+      base,
       files,
     }: {
       projectId: string;
       content: string;
       runtime: AgentRuntimeSelection;
+      mode: AgentConversationWorkspaceMode;
+      base: AgentConversationBaseSelection | null;
       files: File[];
     }) => {
       const normalizedRuntime = normalizeRuntimeSelection(runtime);
       let conversationIdOverride: string | null = null;
-      let attachmentIds: string[] | undefined;
 
       if (files.length > 0) {
         const createdConversation = await chatApi.createConversation("project", targetProjectId);
         conversationIdOverride = createdConversation.id;
-        const uploadedAttachments = await Promise.all(
+        await Promise.all(
           files.map((file) => uploadDraftAttachment(createdConversation.id, file))
         );
-        attachmentIds = uploadedAttachments.map((attachment) => attachment.id);
       }
 
-      const result = await chatApi.sendAgentMessage(
-        "project",
-        targetProjectId,
+      const result = await chatApi.startAgentConversation({
+        projectId: targetProjectId,
         content,
-        attachmentIds,
-        undefined,
-        {
-          ...(conversationIdOverride ? { conversationId: conversationIdOverride } : {}),
-          providerHarness: normalizedRuntime.provider,
-          modelId: normalizedRuntime.modelId,
-        }
-      );
-      const resolvedConversationId = conversationIdOverride ?? result.conversationId;
+        ...(conversationIdOverride ? { conversationId: conversationIdOverride } : {}),
+        providerHarness: normalizedRuntime.provider,
+        modelId: normalizedRuntime.modelId,
+        mode,
+        ...(base ? { base } : {}),
+      });
+      const resolvedConversationId = result.conversation.id;
 
       setFocusedProject(targetProjectId);
       setRuntimeForConversation(resolvedConversationId, targetProjectId, normalizedRuntime);

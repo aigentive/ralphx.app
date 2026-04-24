@@ -97,6 +97,7 @@ export interface AgentComposerSurfaceProps {
   onFilesSelected?: ((files: File[]) => void | Promise<unknown>) | undefined;
   onRemoveAttachment?: ((id: string) => void | Promise<unknown>) | undefined;
   attachmentsUploading?: boolean;
+  workspaceControls?: ReactNode;
   dataTestId?: string;
   textareaTestId?: string;
   actionTestId?: string;
@@ -127,6 +128,7 @@ export function AgentComposerSurface({
   onFilesSelected,
   onRemoveAttachment,
   attachmentsUploading = false,
+  workspaceControls,
   dataTestId,
   textareaTestId,
   actionTestId,
@@ -387,6 +389,8 @@ export function AgentComposerSurface({
                 className={project.className ?? "max-w-[260px] flex-none"}
                 {...(project.endAction ? { endAction: project.endAction } : {})}
               />
+
+              {workspaceControls}
 
               <ComposerDualSelectPill
                 provider={provider}
