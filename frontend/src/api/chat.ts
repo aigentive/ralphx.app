@@ -690,7 +690,8 @@ export async function listConversationsPage(
   limit: number,
   offset = 0,
   includeArchived = false,
-  search?: string
+  search?: string,
+  archivedOnly = false
 ): Promise<ConversationListPageResponse> {
   const normalizedSearch = search?.trim();
   const raw = await typedInvoke(
@@ -699,6 +700,7 @@ export async function listConversationsPage(
       contextType,
       contextId,
       includeArchived,
+      ...(archivedOnly ? { archivedOnly } : {}),
       limit,
       offset,
       ...(normalizedSearch ? { search: normalizedSearch } : {}),

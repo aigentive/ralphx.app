@@ -76,7 +76,8 @@ describe("useProjectAgentConversations", () => {
       6,
       0,
       false,
-      undefined
+      undefined,
+      false
     );
     expect(result.current.data?.map((item) => item.id)).toEqual([
       "project-conversation",
@@ -130,7 +131,8 @@ describe("useProjectAgentConversations", () => {
       6,
       0,
       false,
-      "fix bug"
+      "fix bug",
+      false
     );
     expect(listConversationsPage).toHaveBeenNthCalledWith(
       2,
@@ -139,7 +141,35 @@ describe("useProjectAgentConversations", () => {
       6,
       1,
       false,
-      "fix bug"
+      "fix bug",
+      false
+    );
+  });
+
+  it("requests archived-only pages when the archived filter is active", async () => {
+    listConversationsPage.mockResolvedValueOnce({
+      conversations: [conversation({ id: "archived-conversation", archivedAt: "2026-04-24T10:00:00Z" })],
+      limit: 6,
+      offset: 0,
+      total: 1,
+      hasMore: false,
+    });
+
+    const { result } = renderHook(
+      () => useProjectAgentConversations("project-1", true),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(listConversationsPage).toHaveBeenCalledWith(
+      "project",
+      "project-1",
+      6,
+      0,
+      true,
+      undefined,
+      true
     );
   });
 });

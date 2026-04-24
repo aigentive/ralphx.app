@@ -883,13 +883,15 @@ pub async fn list_agent_conversations_page(
     context_type: String,
     context_id: String,
     include_archived: Option<bool>,
+    archived_only: Option<bool>,
     offset: Option<u32>,
     limit: Option<u32>,
     search: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<AgentConversationListPageResponse, String> {
     let context_type_enum = parse_context_type(&context_type)?;
-    let include_archived = include_archived.unwrap_or(false);
+    let archived_only = archived_only.unwrap_or(false);
+    let include_archived = include_archived.unwrap_or(false) || archived_only;
     let offset = offset.unwrap_or(0);
     let limit = limit.unwrap_or(6);
 
@@ -899,6 +901,7 @@ pub async fn list_agent_conversations_page(
             context_type_enum,
             &context_id,
             include_archived,
+            archived_only,
             offset,
             limit,
             search.as_deref(),

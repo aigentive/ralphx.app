@@ -155,6 +155,27 @@ describe("chat api", () => {
     });
   });
 
+  it("passes archivedOnly when requesting archived-only pages", async () => {
+    mockInvoke.mockResolvedValue({
+      conversations: [],
+      limit: 1,
+      offset: 0,
+      total: 3,
+      has_more: true,
+    });
+
+    await listConversationsPage("project", "p-page", 1, 0, true, undefined, true);
+
+    expect(mockInvoke).toHaveBeenCalledWith("list_agent_conversations_page", {
+      contextType: "project",
+      contextId: "p-page",
+      includeArchived: true,
+      archivedOnly: true,
+      limit: 1,
+      offset: 0,
+    });
+  });
+
   it("preserves unknown provider harness values", async () => {
     mockInvoke.mockResolvedValue([
       {

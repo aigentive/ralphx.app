@@ -262,6 +262,7 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         context_type: ChatContextType,
         context_id: &str,
         include_archived: bool,
+        archived_only: bool,
         offset: u32,
         limit: u32,
         search: Option<&str>,
@@ -275,7 +276,9 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
 
         self.db
             .run(move |conn| {
-                let archived_filter = if include_archived {
+                let archived_filter = if archived_only {
+                    " AND archived_at IS NOT NULL"
+                } else if include_archived {
                     ""
                 } else {
                     " AND archived_at IS NULL"

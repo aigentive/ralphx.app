@@ -208,7 +208,15 @@ async fn test_get_by_context_page_filtered_paginates_and_searches() {
     repo.create(archived.clone()).await.unwrap();
 
     let page = repo
-        .get_by_context_page_filtered(ChatContextType::Project, "project-1", false, 0, 2, None)
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            false,
+            false,
+            0,
+            2,
+            None,
+        )
         .await
         .unwrap();
 
@@ -228,7 +236,15 @@ async fn test_get_by_context_page_filtered_paginates_and_searches() {
     );
 
     let second_page = repo
-        .get_by_context_page_filtered(ChatContextType::Project, "project-1", false, 2, 2, None)
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            false,
+            false,
+            2,
+            2,
+            None,
+        )
         .await
         .unwrap();
 
@@ -248,6 +264,7 @@ async fn test_get_by_context_page_filtered_paginates_and_searches() {
             ChatContextType::Project,
             "project-1",
             false,
+            false,
             0,
             10,
             Some("sidebar search"),
@@ -266,6 +283,7 @@ async fn test_get_by_context_page_filtered_paginates_and_searches() {
             ChatContextType::Project,
             "project-1",
             true,
+            false,
             0,
             10,
             Some("sidebar search"),
@@ -284,6 +302,29 @@ async fn test_get_by_context_page_filtered_paginates_and_searches() {
             archived.id.as_str().to_string(),
             middle.id.as_str().to_string(),
         ]
+    );
+
+    let archived_only_page = repo
+        .get_by_context_page_filtered(
+            ChatContextType::Project,
+            "project-1",
+            true,
+            true,
+            0,
+            10,
+            Some("sidebar search"),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(archived_only_page.total_count, 1);
+    assert_eq!(
+        archived_only_page
+            .conversations
+            .iter()
+            .map(|conversation| conversation.id.as_str().to_string())
+            .collect::<Vec<_>>(),
+        vec![archived.id.as_str().to_string()]
     );
 }
 

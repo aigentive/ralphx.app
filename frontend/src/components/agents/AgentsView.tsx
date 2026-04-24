@@ -169,12 +169,13 @@ export function AgentsView({
   const selectedConversationData = selectedConversationQuery.data;
   const selectedConversationFallback = useMemo(() => {
     const conversation = selectedConversationData?.conversation;
+    const isArchivedConversation = Boolean(conversation?.archivedAt);
     if (
       !conversation ||
       conversation.id !== selectedConversationId ||
       conversation.contextType !== "project" ||
       conversation.contextId !== activeProjectId ||
-      (!showArchived && Boolean(conversation.archivedAt))
+      (showArchived ? !isArchivedConversation : isArchivedConversation)
     ) {
       return null;
     }
@@ -856,6 +857,7 @@ export function AgentsView({
     onFocusProject: handleSidebarFocusProject,
     onSelectConversation: handleSidebarSelectConversation,
     onCreateAgent: handleSidebarCreateAgent,
+    onCreateProject,
     onArchiveProject: handleArchiveProject,
     onArchiveConversation: handleArchiveConversation,
     onRestoreConversation: handleRestoreConversation,

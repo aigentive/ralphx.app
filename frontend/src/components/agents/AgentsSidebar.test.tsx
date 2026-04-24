@@ -23,6 +23,9 @@ type ConversationsResult = {
 const { conversationsByProject } = vi.hoisted(() => ({
   conversationsByProject: new Map<string, ConversationsResult>(),
 }));
+const { archivedConversationCounts } = vi.hoisted(() => ({
+  archivedConversationCounts: new Map<string, number>(),
+}));
 
 vi.mock("./useProjectAgentConversations", () => ({
   useProjectAgentConversations: (projectId: string | null | undefined) =>
@@ -43,6 +46,24 @@ vi.mock("./useProjectAgentConversations", () => ({
         fetchNextPage: vi.fn(),
       };
     })(),
+}));
+
+vi.mock("./useArchivedConversationCounts", () => ({
+  useArchivedConversationCounts: (projectIds: string[]) => {
+    const byProjectId = Object.fromEntries(
+      projectIds.map((projectId) => [projectId, archivedConversationCounts.get(projectId) ?? 0])
+    );
+    const totalArchivedCount = Object.values(byProjectId).reduce(
+      (sum, count) => sum + count,
+      0
+    );
+
+    return {
+      byProjectId,
+      totalArchivedCount,
+      isLoading: false,
+    };
+  },
 }));
 
 const project = (overrides: Partial<Project> = {}): Project => ({
@@ -98,6 +119,7 @@ function renderSidebar(
         onFocusProject={vi.fn()}
         onSelectConversation={vi.fn()}
         onCreateAgent={vi.fn()}
+        onCreateProject={vi.fn()}
         onArchiveProject={vi.fn()}
         onArchiveConversation={vi.fn()}
         onRestoreConversation={vi.fn()}
@@ -118,6 +140,7 @@ function getProjectRowOrder() {
 describe("AgentsSidebar", () => {
   beforeEach(() => {
     conversationsByProject.clear();
+    archivedConversationCounts.clear();
     useChatStore.setState({ activeConversationIds: {}, agentStatus: {} });
     useAgentSessionStore.setState({
       expandedProjectIds: { "project-1": true, "project-2": true },
@@ -194,6 +217,41 @@ describe("AgentsSidebar", () => {
     expect(screen.getByText("11")).toBeInTheDocument();
   });
 
+  it("shows an archived pill with the total archived count when archived sessions exist", () => {
+    const onShowArchivedChange = vi.fn();
+    archivedConversationCounts.set("project-1", 4);
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      total: 6,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()], { onShowArchivedChange });
+
+    fireEvent.click(screen.getByTestId("agents-show-archived-pill"));
+
+    expect(onShowArchivedChange).toHaveBeenCalledWith(true);
+    expect(screen.getByText("4")).toBeInTheDocument();
+  });
+
+  it("hides the archived pill when there are no archived sessions", () => {
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      total: 6,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar();
+
+    expect(screen.queryByTestId("agents-show-archived-pill")).not.toBeInTheDocument();
+  });
+
   it("hides empty projects by default", () => {
     conversationsByProject.set("project-1", {
       data: [],
@@ -226,6 +284,25 @@ describe("AgentsSidebar", () => {
     expect(screen.getByTestId("agents-project-project-1")).toBeInTheDocument();
     expect(screen.queryByText("No chats yet.")).not.toBeInTheDocument();
     expect(screen.queryByText("Start")).not.toBeInTheDocument();
+  });
+
+  it("shows an add project footer action instead of the archived switch", () => {
+    const onCreateProject = vi.fn();
+    conversationsByProject.set("project-1", {
+      data: [conversation()],
+      total: 6,
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+
+    renderSidebar([project()], { onCreateProject });
+
+    fireEvent.click(screen.getByTestId("agents-add-project"));
+
+    expect(onCreateProject).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("Show archived sessions")).not.toBeInTheDocument();
   });
 
   it("supports alphabetical sorting from the sort pill", () => {

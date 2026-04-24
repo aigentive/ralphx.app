@@ -58,6 +58,7 @@ pub trait ChatConversationRepository: Send + Sync {
         context_type: ChatContextType,
         context_id: &str,
         include_archived: bool,
+        archived_only: bool,
         offset: u32,
         limit: u32,
         search: Option<&str>,
