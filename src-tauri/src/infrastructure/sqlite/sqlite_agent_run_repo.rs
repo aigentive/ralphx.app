@@ -477,6 +477,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             provider_harness,
                             upstream_provider,
                             provider_profile,
+                            agent_mode: None,
                             title: row.get("title")?,
                             message_count: row.get("message_count")?,
                             last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),

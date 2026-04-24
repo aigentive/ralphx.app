@@ -2,7 +2,8 @@
 // Included via #[cfg(test)] mod in mod.rs
 
 use crate::domain::entities::{
-    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
+    AgentConversationWorkspaceMode, AttributionBackfillStatus, ChatContextType, ChatConversation,
+    ChatConversationId,
 };
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::repositories::ChatConversationRepository;
@@ -27,6 +28,7 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         provider_harness: None,
         upstream_provider: None,
         provider_profile: None,
+        agent_mode: None,
         title: None,
         message_count: 0,
         last_message_at: None,
@@ -80,6 +82,7 @@ async fn test_create_preserves_optional_fields() {
         provider_harness: Some(AgentHarnessKind::Claude),
         upstream_provider: Some("anthropic".to_string()),
         provider_profile: Some("default".to_string()),
+        agent_mode: Some(AgentConversationWorkspaceMode::Chat),
         title: Some("My Conversation".to_string()),
         message_count: 5,
         last_message_at: Some(now),
@@ -103,6 +106,7 @@ async fn test_create_preserves_optional_fields() {
     assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(loaded.upstream_provider.as_deref(), Some("anthropic"));
     assert_eq!(loaded.provider_profile.as_deref(), Some("default"));
+    assert_eq!(loaded.agent_mode, Some(AgentConversationWorkspaceMode::Chat));
     assert_eq!(loaded.title, Some("My Conversation".to_string()));
     assert_eq!(loaded.message_count, 5);
     assert!(loaded.last_message_at.is_some());
@@ -468,6 +472,7 @@ async fn test_clear_claude_session_id() {
         provider_harness: Some(AgentHarnessKind::Claude),
         upstream_provider: None,
         provider_profile: None,
+        agent_mode: None,
         title: None,
         message_count: 0,
         last_message_at: None,

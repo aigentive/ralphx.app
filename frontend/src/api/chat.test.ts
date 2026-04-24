@@ -15,6 +15,8 @@ import {
   restoreConversation,
   getAgentRunStatus,
   listAgentConversationWorkspacesByProject,
+  startAgentConversation,
+  switchAgentConversationMode,
   sendAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
@@ -637,6 +639,102 @@ describe("chat api", () => {
     });
   });
 
+  it("starts chat-mode agent conversations without a workspace", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation: {
+        id: "conversation-chat",
+        context_type: "project",
+        context_id: "project-1",
+        claude_session_id: null,
+        provider_session_id: null,
+        provider_harness: null,
+        agent_mode: "chat",
+        title: "Chat",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+        archived_at: null,
+      },
+      workspace: null,
+      send_result: {
+        conversation_id: "conversation-chat",
+        agent_run_id: "run-chat",
+        is_new_conversation: true,
+      },
+    });
+
+    const result = await startAgentConversation({
+      projectId: "project-1",
+      content: "What changed?",
+      mode: "chat",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("start_agent_conversation", {
+      input: {
+        projectId: "project-1",
+        content: "What changed?",
+        mode: "chat",
+      },
+    });
+    expect(result.conversation.agentMode).toBe("chat");
+    expect(result.workspace).toBeNull();
+  });
+
+  it("switches an existing agent conversation mode", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation: {
+        id: "conversation-chat",
+        context_type: "project",
+        context_id: "project-1",
+        claude_session_id: null,
+        provider_session_id: null,
+        provider_harness: null,
+        agent_mode: "edit",
+        title: "Chat",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:02:00Z",
+        archived_at: null,
+      },
+      workspace: {
+        conversation_id: "conversation-chat",
+        project_id: "project-1",
+        mode: "edit",
+        base_ref_kind: "project_default",
+        base_ref: "main",
+        base_display_name: "Project default (main)",
+        base_commit: null,
+        branch_name: "ralphx/demo/agent-conversation-chat",
+        worktree_path: "/tmp/ralphx/conversation-chat",
+        linked_ideation_session_id: null,
+        linked_plan_branch_id: null,
+        publication_pr_number: null,
+        publication_pr_url: null,
+        publication_pr_status: null,
+        publication_push_status: null,
+        status: "active",
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:02:00Z",
+      },
+    });
+
+    const result = await switchAgentConversationMode({
+      conversationId: "conversation-chat",
+      mode: "edit",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("switch_agent_conversation_mode", {
+      input: {
+        conversationId: "conversation-chat",
+        mode: "edit",
+      },
+    });
+    expect(result.conversation.agentMode).toBe("edit");
+    expect(result.workspace?.mode).toBe("edit");
+  });
+
   it("uses the web-mode chat mock for child session status when available", async () => {
     window.__mockChatApi = {
       reset: vi.fn(),
@@ -744,6 +842,7 @@ describe("chat api", () => {
     expect(chatApi.listAgentConversationWorkspacesByProject).toBe(
       listAgentConversationWorkspacesByProject
     );
+    expect(chatApi.switchAgentConversationMode).toBe(switchAgentConversationMode);
     expect(chatApi.archiveConversation).toBe(archiveConversation);
     expect(chatApi.restoreConversation).toBe(restoreConversation);
     expect(chatApi.getConversationActiveState).toBe(getConversationActiveState);

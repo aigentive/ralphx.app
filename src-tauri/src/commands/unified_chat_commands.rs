@@ -36,9 +36,9 @@ use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, DelegatedSessionId,
     IdeationAnalysisBaseRefKind, IdeationSessionId, ProjectId, TaskId,
 };
-use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage};
+use crate::domain::services::{AgentWorkspacePrPublisher, QueuedMessage, RunningAgentKey};
 use crate::infrastructure::agents::claude::agent_names::{
-    AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
 };
 
 // ============================================================================
@@ -103,7 +103,7 @@ pub struct StartAgentConversationInput {
     pub provider_harness: Option<String>,
     /// Optional explicit model override for the spawned agent.
     pub model_override: Option<String>,
-    /// Agent workspace mode: "edit" routes to ralphx-general-worker; "ideation" routes to ralphx-chat-project.
+    /// Agent mode: "chat" routes to read-only explorer; "edit" creates a workspace for ralphx-general-worker; "ideation" creates a workspace for ralphx-chat-project.
     pub mode: Option<String>,
     /// Optional base ref kind using ideation naming: project_default, current_branch, local_branch.
     pub base_ref_kind: Option<String>,
@@ -169,8 +169,29 @@ impl From<AgentConversationWorkspace> for AgentConversationWorkspaceResponse {
 #[derive(Debug, Serialize)]
 pub struct StartAgentConversationResponse {
     pub conversation: AgentConversationResponse,
-    pub workspace: AgentConversationWorkspaceResponse,
+    pub workspace: Option<AgentConversationWorkspaceResponse>,
     pub send_result: SendAgentMessageResponse,
+}
+
+/// Input for changing the active mode of an existing project-backed agent conversation.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchAgentConversationModeInput {
+    pub conversation_id: String,
+    pub mode: String,
+    /// Optional base ref kind used when upgrading a branchless chat into edit/ideation mode.
+    pub base_ref_kind: Option<String>,
+    /// Optional selected branch/ref name for the base.
+    pub base_ref: Option<String>,
+    /// Optional user-facing base ref label.
+    pub base_display_name: Option<String>,
+}
+
+/// Response from switch_agent_conversation_mode command.
+#[derive(Debug, Serialize)]
+pub struct SwitchAgentConversationModeResponse {
+    pub conversation: AgentConversationResponse,
+    pub workspace: Option<AgentConversationWorkspaceResponse>,
 }
 
 /// Response from publishing a project-backed agent conversation workspace.
@@ -228,6 +249,7 @@ pub struct AgentConversationResponse {
     pub provider_harness: Option<String>,
     pub upstream_provider: Option<String>,
     pub provider_profile: Option<String>,
+    pub agent_mode: Option<String>,
     pub title: Option<String>,
     pub message_count: i64,
     pub last_message_at: Option<String>,
@@ -250,6 +272,7 @@ impl From<ChatConversation> for AgentConversationResponse {
             provider_harness: provider_harness.map(|harness| harness.to_string()),
             upstream_provider: c.upstream_provider,
             provider_profile: c.provider_profile,
+            agent_mode: c.agent_mode.map(|mode| mode.to_string()),
             title: c.title,
             message_count: c.message_count,
             last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
@@ -748,9 +771,14 @@ fn parse_agent_workspace_base_kind(
 
 fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'static str {
     match mode {
+        AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
         AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
         AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
     }
+}
+
+fn agent_mode_requires_workspace(mode: AgentConversationWorkspaceMode) -> bool {
+    !matches!(mode, AgentConversationWorkspaceMode::Chat)
 }
 
 fn build_agent_workspace_commit_message(conversation: &ChatConversation) -> String {
@@ -810,7 +838,7 @@ pub async fn start_agent_conversation(
         .map(str::trim)
         .filter(|conversation_id| !conversation_id.is_empty())
         .map(ChatConversationId::from_string);
-    let conversation = if let Some(conversation_id) = draft_conversation_id {
+    let mut conversation = if let Some(conversation_id) = draft_conversation_id {
         let conversation = state
             .chat_conversation_repo
             .get_by_id(&conversation_id)
@@ -829,25 +857,32 @@ pub async fn start_agent_conversation(
     } else {
         ChatConversation::new_project(project_id)
     };
+    conversation.set_agent_mode(Some(mode));
     let should_create_conversation = draft_conversation_id.is_none();
-    let workspace = prepare_agent_conversation_workspace(
-        &project,
-        &conversation.id,
-        mode,
-        AgentConversationWorkspaceBaseSelection {
-            kind: base_ref_kind,
-            base_ref: input
-                .base_ref
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
-            display_name: input
-                .base_display_name
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty()),
-        },
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let workspace = if agent_mode_requires_workspace(mode) {
+        Some(
+            prepare_agent_conversation_workspace(
+                &project,
+                &conversation.id,
+                mode,
+                AgentConversationWorkspaceBaseSelection {
+                    kind: base_ref_kind,
+                    base_ref: input
+                        .base_ref
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty()),
+                    display_name: input
+                        .base_display_name
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty()),
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
 
     let conversation = if should_create_conversation {
         state
@@ -856,20 +891,28 @@ pub async fn start_agent_conversation(
             .await
             .map_err(|error| error.to_string())?
     } else {
+        state
+            .chat_conversation_repo
+            .update_agent_mode(&conversation.id, Some(mode))
+            .await
+            .map_err(|error| error.to_string())?;
         conversation
     };
-    let workspace = match state
-        .agent_conversation_workspace_repo
-        .create_or_update(workspace)
-        .await
-    {
-        Ok(workspace) => workspace,
-        Err(error) => {
-            if should_create_conversation {
-                let _ = state.chat_conversation_repo.delete(&conversation.id).await;
+    let workspace = match workspace {
+        Some(workspace) => match state
+            .agent_conversation_workspace_repo
+            .create_or_update(workspace)
+            .await
+        {
+            Ok(workspace) => Some(workspace),
+            Err(error) => {
+                if should_create_conversation {
+                    let _ = state.chat_conversation_repo.delete(&conversation.id).await;
+                }
+                return Err(error.to_string());
             }
-            return Err(error.to_string());
-        }
+        },
+        None => None,
     };
 
     if should_create_conversation {
@@ -919,8 +962,145 @@ pub async fn start_agent_conversation(
 
     Ok(StartAgentConversationResponse {
         conversation: AgentConversationResponse::from(conversation),
-        workspace: AgentConversationWorkspaceResponse::from(workspace),
+        workspace: workspace.map(AgentConversationWorkspaceResponse::from),
         send_result,
+    })
+}
+
+/// Switch a project-backed agent conversation between chat/edit/ideation modes.
+#[tauri::command]
+pub async fn switch_agent_conversation_mode(
+    input: SwitchAgentConversationModeInput,
+    state: State<'_, AppState>,
+) -> Result<SwitchAgentConversationModeResponse, String> {
+    let conversation_id = ChatConversationId::from_string(input.conversation_id.clone());
+    let target_mode = parse_agent_workspace_mode(Some(input.mode.as_str()))?;
+    let base_ref_kind = parse_agent_workspace_base_kind(input.base_ref_kind.as_deref())?;
+
+    let mut conversation = state
+        .chat_conversation_repo
+        .get_by_id(&conversation_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Conversation not found: {}", conversation_id))?;
+    if conversation.context_type != ChatContextType::Project {
+        return Err("Only project agent conversations can change mode".to_string());
+    }
+
+    let running_key = RunningAgentKey::new(
+        ChatContextType::Project.to_string(),
+        conversation.id.as_str(),
+    );
+    if state.running_agent_registry.is_running(&running_key).await {
+        return Err("Cannot change mode while the agent is running".to_string());
+    }
+
+    let existing_workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation.id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let current_mode = conversation
+        .agent_mode
+        .or_else(|| existing_workspace.as_ref().map(|workspace| workspace.mode))
+        .unwrap_or(AgentConversationWorkspaceMode::Chat);
+
+    if current_mode == AgentConversationWorkspaceMode::Ideation
+        && target_mode != AgentConversationWorkspaceMode::Ideation
+    {
+        return Err(
+            "Ideation mode conversations cannot be switched to another mode yet".to_string(),
+        );
+    }
+    if let Some(workspace) = existing_workspace.as_ref() {
+        if (workspace.linked_ideation_session_id.is_some()
+            || workspace.linked_plan_branch_id.is_some())
+            && target_mode != AgentConversationWorkspaceMode::Ideation
+        {
+            return Err(
+                "This workspace is owned by ideation or execution state and cannot leave Ideation Mode"
+                    .to_string(),
+            );
+        }
+    }
+
+    let workspace = if agent_mode_requires_workspace(target_mode) {
+        Some(match existing_workspace {
+            Some(mut workspace) => {
+                if workspace.mode != target_mode {
+                    workspace.mode = target_mode;
+                    workspace.updated_at = chrono::Utc::now();
+                    state
+                        .agent_conversation_workspace_repo
+                        .create_or_update(workspace)
+                        .await
+                        .map_err(|error| error.to_string())?
+                } else {
+                    workspace
+                }
+            }
+            None => {
+                let project_id = ProjectId::from_string(conversation.context_id.clone());
+                let project = state
+                    .project_repo
+                    .get_by_id(&project_id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| format!("Project not found: {}", conversation.context_id))?;
+                let workspace = prepare_agent_conversation_workspace(
+                    &project,
+                    &conversation.id,
+                    target_mode,
+                    AgentConversationWorkspaceBaseSelection {
+                        kind: base_ref_kind,
+                        base_ref: input
+                            .base_ref
+                            .map(|value| value.trim().to_string())
+                            .filter(|value| !value.is_empty()),
+                        display_name: input
+                            .base_display_name
+                            .map(|value| value.trim().to_string())
+                            .filter(|value| !value.is_empty()),
+                    },
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+                state
+                    .agent_conversation_workspace_repo
+                    .create_or_update(workspace)
+                    .await
+                    .map_err(|error| error.to_string())?
+            }
+        })
+    } else {
+        existing_workspace
+    };
+
+    state
+        .chat_conversation_repo
+        .update_agent_mode(&conversation.id, Some(target_mode))
+        .await
+        .map_err(|error| error.to_string())?;
+    conversation.set_agent_mode(Some(target_mode));
+    if current_mode != target_mode {
+        state
+            .chat_conversation_repo
+            .clear_provider_session_ref(&conversation.id)
+            .await
+            .map_err(|error| error.to_string())?;
+        conversation.clear_provider_session_ref();
+    }
+
+    let conversation = state
+        .chat_conversation_repo
+        .get_by_id(&conversation.id)
+        .await
+        .map_err(|error| error.to_string())?
+        .unwrap_or(conversation);
+
+    Ok(SwitchAgentConversationModeResponse {
+        conversation: AgentConversationResponse::from(conversation),
+        workspace: workspace.map(AgentConversationWorkspaceResponse::from),
     })
 }
 
@@ -1815,7 +1995,12 @@ pub async fn get_agent_run_status_unified(
     // Look up conversation to get context_type/context_id for registry lookup
     let (model_id, model_label) =
         if let Ok(Some(conv)) = state.chat_conversation_repo.get_by_id(&conv_id).await {
-            let key = RunningAgentKey::new(conv.context_type.to_string(), conv.context_id.clone());
+            let runtime_context_id = if conv.context_type == ChatContextType::Project {
+                conv.id.as_str().to_string()
+            } else {
+                conv.context_id.clone()
+            };
+            let key = RunningAgentKey::new(conv.context_type.to_string(), runtime_context_id);
             let agent_info = state.running_agent_registry.get(&key).await;
             let mid = agent_info.and_then(|info| info.model);
             let mlabel = mid.as_deref().map(|id| model_id_to_label(id));

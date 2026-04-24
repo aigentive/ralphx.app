@@ -20,6 +20,8 @@ import type {
   SendAgentMessageResult,
   StartAgentConversationInput,
   StartAgentConversationResult,
+  SwitchAgentConversationModeInput,
+  SwitchAgentConversationModeResult,
 } from "@/api/chat";
 import { generateTestUuid } from "@/test/mock-data";
 import { buildFallbackConversationStats } from "@/lib/chat/conversation-stats";
@@ -441,6 +443,13 @@ export async function mockStartAgentConversation(
     ? mockConversations.get(input.conversationId) ??
       (await mockCreateConversation("project", input.projectId))
     : await mockCreateConversation("project", input.projectId);
+  const mode = input.mode ?? "edit";
+  const modeConversation: ChatConversation = {
+    ...conversation,
+    agentMode: mode,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(conversation.id, modeConversation);
   const sendResult: SendAgentMessageResult = {
     conversationId: conversation.id,
     agentRunId: generateTestUuid(),
@@ -449,13 +458,68 @@ export async function mockStartAgentConversation(
     queuedAsPending: false,
   };
 
-  const workspace: AgentConversationWorkspace = {
+  const workspace =
+    mode === "chat" ? null : createMockWorkspace(modeConversation, input.projectId, mode, input.base);
+  if (workspace) {
+    mockWorkspaces.set(conversation.id, workspace);
+  }
+
+  return {
+    conversation: modeConversation,
+    workspace,
+    sendResult,
+  };
+}
+
+export async function mockSwitchAgentConversationMode(
+  input: SwitchAgentConversationModeInput
+): Promise<SwitchAgentConversationModeResult> {
+  const conversation = mockConversations.get(input.conversationId);
+  if (!conversation) {
+    throw new Error(`No mock conversation seeded for ${input.conversationId}`);
+  }
+  const updatedConversation: ChatConversation = {
+    ...conversation,
+    agentMode: input.mode,
+    providerSessionId: null,
+    providerHarness: null,
+    claudeSessionId: null,
+    updatedAt: new Date().toISOString(),
+  };
+  mockConversations.set(input.conversationId, updatedConversation);
+
+  let workspace = mockWorkspaces.get(input.conversationId) ?? null;
+  if (input.mode !== "chat") {
+    workspace = workspace
+      ? { ...workspace, mode: input.mode, updatedAt: updatedConversation.updatedAt }
+      : createMockWorkspace(
+          updatedConversation,
+          updatedConversation.contextId,
+          input.mode,
+          input.base
+        );
+    mockWorkspaces.set(input.conversationId, workspace);
+  }
+
+  return {
+    conversation: updatedConversation,
+    workspace,
+  };
+}
+
+function createMockWorkspace(
+  conversation: ChatConversation,
+  projectId: string,
+  mode: Exclude<StartAgentConversationInput["mode"], "chat" | undefined>,
+  base: StartAgentConversationInput["base"]
+): AgentConversationWorkspace {
+  return {
     conversationId: conversation.id,
-    projectId: input.projectId,
-    mode: input.mode ?? "edit",
-    baseRefKind: input.base?.kind ?? "project_default",
-    baseRef: input.base?.ref ?? "main",
-    baseDisplayName: input.base?.displayName ?? null,
+    projectId,
+    mode,
+    baseRefKind: base?.kind ?? "project_default",
+    baseRef: base?.ref ?? "main",
+    baseDisplayName: base?.displayName ?? null,
     baseCommit: null,
     branchName: `ralphx/mock/agent-${conversation.id.slice(0, 8)}`,
     worktreePath: `/tmp/ralphx/mock/${conversation.id}`,
@@ -468,13 +532,6 @@ export async function mockStartAgentConversation(
     status: "active",
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
-  };
-  mockWorkspaces.set(conversation.id, workspace);
-
-  return {
-    conversation,
-    workspace,
-    sendResult,
   };
 }
 
@@ -583,6 +640,7 @@ export const mockChatApi = {
     mockListAgentConversationWorkspacesByProject,
   publishAgentConversationWorkspace: mockPublishAgentConversationWorkspace,
   startAgentConversation: mockStartAgentConversation,
+  switchAgentConversationMode: mockSwitchAgentConversationMode,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
   deleteQueuedAgentMessage: mockDeleteQueuedAgentMessage,

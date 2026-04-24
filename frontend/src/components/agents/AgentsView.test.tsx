@@ -19,6 +19,7 @@ const {
   listAgentConversationWorkspacesByProjectMock,
   listConversationsMock,
   publishAgentConversationWorkspaceMock,
+  switchAgentConversationModeMock,
   sendAgentMessageMock,
   createConversationMock,
   spawnConversationSessionNamerMock,
@@ -36,6 +37,7 @@ const {
   listAgentConversationWorkspacesByProjectMock: vi.fn(),
   listConversationsMock: vi.fn(),
   publishAgentConversationWorkspaceMock: vi.fn(),
+  switchAgentConversationModeMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
   createConversationMock: vi.fn(),
   spawnConversationSessionNamerMock: vi.fn(),
@@ -95,6 +97,8 @@ vi.mock("@/api/chat", () => ({
     listConversations: (...args: unknown[]) => listConversationsMock(...args),
     publishAgentConversationWorkspace: (...args: unknown[]) =>
       publishAgentConversationWorkspaceMock(...args),
+    switchAgentConversationMode: (...args: unknown[]) =>
+      switchAgentConversationModeMock(...args),
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
     createConversation: (...args: unknown[]) => createConversationMock(...args),
     spawnConversationSessionNamer: (...args: unknown[]) =>
@@ -489,6 +493,7 @@ describe("AgentsView", () => {
     listAgentConversationWorkspacesByProjectMock.mockReset();
     listConversationsMock.mockReset();
     publishAgentConversationWorkspaceMock.mockReset();
+    switchAgentConversationModeMock.mockReset();
     sendAgentMessageMock.mockReset();
     createConversationMock.mockReset();
     spawnConversationSessionNamerMock.mockReset();
@@ -537,6 +542,33 @@ describe("AgentsView", () => {
       createdPr: true,
       prNumber: 42,
       prUrl: "https://github.com/mock/project/pull/42",
+    });
+    switchAgentConversationModeMock.mockResolvedValue({
+      conversation: conversation({
+        id: "conversation-1",
+        contextId: "project-1",
+        agentMode: "edit",
+      }),
+      workspace: {
+        conversationId: "conversation-1",
+        projectId: "project-1",
+        mode: "edit",
+        baseRefKind: "project_default",
+        baseRef: "main",
+        baseDisplayName: "Project default (main)",
+        baseCommit: null,
+        branchName: "ralphx/demo/agent-conversation-1",
+        worktreePath: "/tmp/ralphx/conversation-1",
+        linkedIdeationSessionId: null,
+        linkedPlanBranchId: null,
+        publicationPrNumber: null,
+        publicationPrUrl: null,
+        publicationPrStatus: null,
+        publicationPushStatus: null,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
     });
     startAgentConversationMock.mockResolvedValue({
       conversation: conversation({ id: "conversation-2", contextId: "project-1" }),
