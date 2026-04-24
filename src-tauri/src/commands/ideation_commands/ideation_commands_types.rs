@@ -3,7 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal};
+use crate::domain::entities::{
+    DependencyGraph, IdeationAnalysisBaseRefKind, IdeationSession, TaskProposal,
+};
 
 // Re-export shared ChatMessageResponse
 pub use crate::commands::chat_responses::ChatMessageResponse;
@@ -44,6 +46,9 @@ pub struct CreateSessionInput {
     pub seed_task_id: Option<String>,
     pub team_mode: Option<String>,
     pub team_config: Option<TeamConfigInput>,
+    pub analysis_base_ref_kind: Option<IdeationAnalysisBaseRefKind>,
+    pub analysis_base_ref: Option<String>,
+    pub analysis_base_display_name: Option<String>,
 }
 
 /// Response wrapper for ideation session operations
@@ -76,6 +81,13 @@ pub struct IdeationSessionResponse {
     pub blocker_fingerprint: Option<String>,
     pub session_purpose: String,
     pub cross_project_checked: bool,
+    pub analysis_base_ref_kind: Option<String>,
+    pub analysis_base_ref: Option<String>,
+    pub analysis_base_display_name: Option<String>,
+    pub analysis_workspace_kind: String,
+    pub analysis_workspace_path: Option<String>,
+    pub analysis_base_commit: Option<String>,
+    pub analysis_base_locked_at: Option<String>,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
@@ -101,7 +113,9 @@ impl From<IdeationSession> for IdeationSessionResponse {
             verification_status: session.verification_status.to_string(),
             verification_in_progress: session.verification_in_progress,
             gap_score,
-            inherited_plan_artifact_id: session.inherited_plan_artifact_id.map(|id| id.as_str().to_string()),
+            inherited_plan_artifact_id: session
+                .inherited_plan_artifact_id
+                .map(|id| id.as_str().to_string()),
             source_project_id: session.source_project_id,
             source_session_id: session.source_session_id,
             source_task_id: session.source_task_id.map(|id| id.as_str().to_string()),
@@ -111,6 +125,13 @@ impl From<IdeationSession> for IdeationSessionResponse {
             blocker_fingerprint: session.blocker_fingerprint,
             session_purpose: session.session_purpose.to_string(),
             cross_project_checked: session.cross_project_checked,
+            analysis_base_ref_kind: session.analysis.base_ref_kind.map(|kind| kind.to_string()),
+            analysis_base_ref: session.analysis.base_ref,
+            analysis_base_display_name: session.analysis.base_display_name,
+            analysis_workspace_kind: session.analysis.workspace_kind.to_string(),
+            analysis_workspace_path: session.analysis.workspace_path,
+            analysis_base_commit: session.analysis.base_commit,
+            analysis_base_locked_at: session.analysis.base_locked_at.map(|dt| dt.to_rfc3339()),
         }
     }
 }
@@ -475,7 +496,6 @@ impl From<ApplyProposalsResult> for ApplyProposalsResultResponse {
         }
     }
 }
-
 
 // ============================================================================
 // Chat Message Types

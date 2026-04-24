@@ -31,7 +31,26 @@ vi.mock("@/stores/ideationStore", () => ({
 let mockActiveProjectId: string | null = "project-1";
 vi.mock("@/stores/projectStore", () => ({
   useProjectStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ activeProjectId: mockActiveProjectId }),
+    selector({
+      activeProjectId: mockActiveProjectId,
+      projects: {
+        "project-1": {
+          id: "project-1",
+          name: "Mock Project",
+          workingDirectory: "/mock/repo",
+          baseBranch: "main",
+        },
+      },
+    }),
+}));
+
+const mockGetGitDefaultBranch = vi.fn();
+const mockGetGitCurrentBranch = vi.fn();
+const mockGetGitBranches = vi.fn();
+vi.mock("@/api/projects", () => ({
+  getGitDefaultBranch: (...args: unknown[]) => mockGetGitDefaultBranch(...args),
+  getGitCurrentBranch: (...args: unknown[]) => mockGetGitCurrentBranch(...args),
+  getGitBranches: (...args: unknown[]) => mockGetGitBranches(...args),
 }));
 
 // Mock sonner toast
@@ -78,6 +97,9 @@ describe("StartSessionPanel", () => {
     mockActiveProjectId = "project-1";
     mockMutateAsync.mockResolvedValue({ id: "session-1", projectId: "project-1" });
     mockIdeationTeamModeAvailable = true;
+    mockGetGitDefaultBranch.mockResolvedValue("main");
+    mockGetGitCurrentBranch.mockResolvedValue("main");
+    mockGetGitBranches.mockResolvedValue(["main", "feature/mock"]);
   });
 
   describe("mode selector", () => {
@@ -143,6 +165,9 @@ describe("StartSessionPanel", () => {
 
     it("calls createSession.mutateAsync in team mode", async () => {
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
       fireEvent.click(screen.getByText(/Research Team/));
 
       await act(async () => {
@@ -152,6 +177,10 @@ describe("StartSessionPanel", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: "project-1",
+          analysisBase: expect.objectContaining({
+            kind: "project_default",
+            ref: "main",
+          }),
           teamMode: "research",
           teamConfig: expect.objectContaining({ maxTeammates: 5 }),
         }),
@@ -160,6 +189,9 @@ describe("StartSessionPanel", () => {
 
     it("adds session to store and sets active on success", async () => {
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
       fireEvent.click(screen.getByText(/Research Team/));
 
       await act(async () => {
@@ -186,6 +218,9 @@ describe("StartSessionPanel", () => {
     it("shows toast error on createSession failure", async () => {
       mockMutateAsync.mockRejectedValueOnce(new Error("API error"));
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
       fireEvent.click(screen.getByText(/Research Team/));
 
       await act(async () => {
@@ -197,8 +232,23 @@ describe("StartSessionPanel", () => {
   });
 
   describe("handleSeedFromTask", () => {
+    it("preselects current branch when it differs from project default", async () => {
+      mockGetGitCurrentBranch.mockResolvedValueOnce("feature/current");
+      mockGetGitBranches.mockResolvedValueOnce(["main", "feature/current", "feature/other"]);
+
+      render(<StartSessionPanel onNewSession={onNewSession} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("current_branch:feature/current");
+      });
+      expect(screen.getByText("Project default (main)")).toBeInTheDocument();
+    });
+
     it("includes team params when in team mode", async () => {
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
       fireEvent.click(screen.getByText(/Debate Team/));
 
       // Open task picker via secondary button
@@ -217,6 +267,10 @@ describe("StartSessionPanel", () => {
           projectId: "project-1",
           title: "Ideation: Mock Task",
           seedTaskId: "task-1",
+          analysisBase: expect.objectContaining({
+            kind: "project_default",
+            ref: "main",
+          }),
           teamMode: "debate",
           teamConfig: expect.objectContaining({ compositionMode: "dynamic" }),
         }),
@@ -225,6 +279,9 @@ describe("StartSessionPanel", () => {
 
     it("omits team params when in solo mode", async () => {
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
 
       fireEvent.click(screen.getByText("Seed from Draft Task"));
 
@@ -246,11 +303,17 @@ describe("StartSessionPanel", () => {
       const callArgs = mockMutateAsync.mock.calls[0]![0];
       expect(callArgs.teamMode).toBeUndefined();
       expect(callArgs.teamConfig).toBeUndefined();
+      expect(callArgs.analysisBase).toEqual(
+        expect.objectContaining({ kind: "project_default", ref: "main" }),
+      );
     });
 
     it("shows toast error on seed failure", async () => {
       mockMutateAsync.mockRejectedValueOnce(new Error("Seed fail"));
       render(<StartSessionPanel onNewSession={onNewSession} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("start-from-select")).toHaveValue("project_default:main");
+      });
 
       fireEvent.click(screen.getByText("Seed from Draft Task"));
 

@@ -11,18 +11,18 @@ use crate::application::{
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSessionId, IdeationSessionStatus,
-    InternalStatus, PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal,
-    TaskProposalId, TaskStep,
+    InternalStatus, PlanBranch, PlanBranchId, ProjectId, SessionOrigin, Task, TaskCategory, TaskId,
+    TaskProposal, TaskProposalId, TaskStep,
 };
 use crate::error::{AppError, AppResult};
 
 use super::ideation_commands_types::{
     ApplyProposalsInput, ApplyProposalsResult, ApplyProposalsResultResponse,
 };
+use super::is_local_proposal;
 use crate::commands::branch_helpers::ensure_base_branch_exists;
 use crate::commands::plan_branch_commands::slug_from_name;
 use crate::http_server::handlers::ideation::stop_verification_children;
-use super::is_local_proposal;
 
 // ============================================================================
 // Core Result Type
@@ -75,14 +75,12 @@ fn phase_upsert_plan_branch(
         .as_ref()
         .map(|id| id.as_str().to_string())
         .unwrap_or_else(|| session_id_str.to_string());
-    let base_branch = base_branch_override_tx
-        .clone()
-        .unwrap_or_else(|| {
-            project_base_branch_tx
-                .as_deref()
-                .unwrap_or("main")
-                .to_string()
-        });
+    let base_branch = base_branch_override_tx.clone().unwrap_or_else(|| {
+        project_base_branch_tx
+            .as_deref()
+            .unwrap_or("main")
+            .to_string()
+    });
     let project_slug = slug_from_name(project_name_tx);
     let exec_plan_str = execution_plan_id.as_str();
     let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
@@ -168,13 +166,14 @@ fn phase_insert_tasks_and_steps(
         .collect();
 
     for proposal in proposals_tx {
-        let mut task =
-            Task::new(ProjectId::from_string(project_id_str.to_string()), proposal.title.clone());
+        let mut task = Task::new(
+            ProjectId::from_string(project_id_str.to_string()),
+            proposal.title.clone(),
+        );
         task.description = proposal.description.clone();
         task.category = TaskCategory::Regular;
         task.internal_status = InternalStatus::Backlog;
-        task.ideation_session_id =
-            Some(IdeationSessionId::from_string(session_id_str.to_string()));
+        task.ideation_session_id = Some(IdeationSessionId::from_string(session_id_str.to_string()));
         task.execution_plan_id = Some(execution_plan_id.clone());
         task.priority = proposal.priority_score;
         task.source_proposal_id = Some(proposal.id.clone());
@@ -204,8 +203,7 @@ fn phase_insert_tasks_and_steps(
                     .cloned()
                     .collect();
                 task.internal_status = InternalStatus::Blocked;
-                task.blocked_reason =
-                    Some(format!("Waiting for: {}", blocker_names.join(", ")));
+                task.blocked_reason = Some(format!("Waiting for: {}", blocker_names.join(", ")));
             } else {
                 task.internal_status = InternalStatus::Ready;
                 any_ready_tasks = true;
@@ -245,16 +243,10 @@ fn phase_insert_tasks_and_steps(
 
         // Insert task steps
         if let Some(steps_json) = &proposal.steps {
-            if let Ok(step_titles) =
-                serde_json::from_str::<Vec<String>>(steps_json)
-            {
+            if let Ok(step_titles) = serde_json::from_str::<Vec<String>>(steps_json) {
                 for (idx, title) in step_titles.into_iter().enumerate() {
-                    let step = TaskStep::new(
-                        task.id.clone(),
-                        title,
-                        idx as i32,
-                        "proposal".to_string(),
-                    );
+                    let step =
+                        TaskStep::new(task.id.clone(), title, idx as i32, "proposal".to_string());
                     conn.execute(
                         "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
@@ -281,8 +273,10 @@ fn phase_insert_tasks_and_steps(
             }
         }
 
-        proposal_to_task
-            .insert(proposal.id.as_str().to_string(), task.id.as_str().to_string());
+        proposal_to_task.insert(
+            proposal.id.as_str().to_string(),
+            task.id.as_str().to_string(),
+        );
         created_tasks.push(task);
     }
 
@@ -341,15 +335,9 @@ fn phase_update_proposals(
         if let Some(task_id) = proposal_to_task.get(proposal.id.as_str()) {
             conn.execute(
                 "UPDATE task_proposals SET created_task_id = ?2, updated_at = ?3 WHERE id = ?1",
-                rusqlite::params![
-                    proposal.id.as_str(),
-                    task_id.as_str(),
-                    now_str
-                ],
+                rusqlite::params![proposal.id.as_str(), task_id.as_str(), now_str],
             )
-            .map_err(|e| {
-                AppError::Database(format!("Failed to link proposal to task: {}", e))
-            })?;
+            .map_err(|e| AppError::Database(format!("Failed to link proposal to task: {}", e)))?;
         }
     }
     Ok(())
@@ -381,8 +369,7 @@ fn phase_insert_merge_task(
         Some(IdeationSessionId::from_string(session_id_str.to_string()));
     merge_task.execution_plan_id = Some(execution_plan_id.clone());
     merge_task.internal_status = InternalStatus::Blocked;
-    merge_task.blocked_reason =
-        Some("Waiting for all plan tasks to complete".to_string());
+    merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 
     conn.execute(
         "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
@@ -433,9 +420,7 @@ fn phase_insert_merge_task(
         "UPDATE plan_branches SET merge_task_id = ?2 WHERE id = ?1",
         rusqlite::params![branch_id.as_str(), merge_task.id.as_str()],
     )
-    .map_err(|e| {
-        AppError::Database(format!("Failed to set merge task ID: {}", e))
-    })?;
+    .map_err(|e| AppError::Database(format!("Failed to set merge task ID: {}", e)))?;
 
     Ok(())
 }
@@ -487,13 +472,9 @@ pub async fn apply_proposals_core(
         .get_settings()
         .await
         .map_err(|e| AppError::Database(format!("Failed to get ideation settings: {}", e)))?;
-    let effective_policy = crate::domain::services::resolve_effective_gate_policy(
-        &ideation_settings,
-        session.origin,
-    );
-    if let Err(e) =
-        crate::domain::services::check_verification_gate(&session, &effective_policy)
-    {
+    let effective_policy =
+        crate::domain::services::resolve_effective_gate_policy(&ideation_settings, session.origin);
+    if let Err(e) = crate::domain::services::check_verification_gate(&session, &effective_policy) {
         return Err(AppError::Validation(e.to_string()));
     }
 
@@ -556,10 +537,7 @@ pub async fn apply_proposals_core(
                 .mark_superseded(&existing_plan.id)
                 .await
                 .map_err(|e| {
-                    AppError::Database(format!(
-                        "Failed to supersede orphan execution plan: {}",
-                        e
-                    ))
+                    AppError::Database(format!("Failed to supersede orphan execution plan: {}", e))
                 })?;
 
             tracing::warn!(
@@ -627,9 +605,25 @@ pub async fn apply_proposals_core(
             ))
         })?;
 
+    let session_base_ref = session
+        .analysis
+        .base_ref
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned();
+    let effective_base_branch_override = if session.origin == SessionOrigin::Internal {
+        session_base_ref
+            .clone()
+            .or(input.base_branch_override.clone())
+    } else {
+        input
+            .base_branch_override
+            .clone()
+            .or(session_base_ref.clone())
+    };
+
     // Ensure base branch exists before creating any rows — failure returns early cleanly.
-    if input.base_branch_override.is_some() {
-        let base_branch = input.base_branch_override.as_deref().unwrap();
+    if let Some(base_branch) = effective_base_branch_override.as_deref() {
         let repo_path = std::path::PathBuf::from(&project.working_directory);
         let was_created =
             ensure_base_branch_exists(&repo_path, base_branch, project.base_branch.as_deref())
@@ -737,7 +731,7 @@ pub async fn apply_proposals_core(
     let project_id_str = session.project_id.as_str().to_string();
     let plan_artifact_id_tx = plan_artifact_id.clone();
     let use_auto_status_tx = use_auto_status;
-    let base_branch_override_tx = input.base_branch_override.clone();
+    let base_branch_override_tx = effective_base_branch_override.clone();
     let project_base_branch_tx = project.base_branch.clone();
     let project_name_tx = project.name.clone();
     let project_pr_eligible_tx = project.github_pr_enabled;
@@ -780,17 +774,16 @@ pub async fn apply_proposals_core(
             // ----------------------------------------------------------------
             // (c) INSERT tasks + task_steps
             // ----------------------------------------------------------------
-            let (created_tasks, proposal_to_task, any_ready_tasks) =
-                phase_insert_tasks_and_steps(
-                    conn,
-                    &proposals_tx,
-                    &project_id_str,
-                    &session_id_str,
-                    &plan_artifact_id_tx,
-                    use_auto_status_tx,
-                    &proposal_deps_tx,
-                    &execution_plan_id,
-                )?;
+            let (created_tasks, proposal_to_task, any_ready_tasks) = phase_insert_tasks_and_steps(
+                conn,
+                &proposals_tx,
+                &project_id_str,
+                &session_id_str,
+                &plan_artifact_id_tx,
+                use_auto_status_tx,
+                &proposal_deps_tx,
+                &execution_plan_id,
+            )?;
 
             // ----------------------------------------------------------------
             // (d) INSERT task_dependencies
@@ -946,7 +939,9 @@ pub async fn apply_proposals_to_kanban(
         }
 
         // Stop and archive any running verification child agents (best-effort).
-        stop_verification_children(&result.session_id, &state).await.ok();
+        stop_verification_children(&result.session_id, &state)
+            .await
+            .ok();
     }
 
     // Re-trigger ralphx-utility-session-namer if title was not manually set by user.

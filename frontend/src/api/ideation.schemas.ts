@@ -39,6 +39,13 @@ export const IdeationSessionResponseSchema = z.object({
   inherited_plan_artifact_id: z.string().nullable().optional(),
   session_purpose: z.enum(["general", "verification"]).optional(),
   acceptance_status: z.enum(["pending", "accepted", "rejected"]).nullable().optional(),
+  analysis_base_ref_kind: z.enum(["project_default", "current_branch", "local_branch", "pull_request"]).nullable().optional(),
+  analysis_base_ref: z.string().nullable().optional(),
+  analysis_base_display_name: z.string().nullable().optional(),
+  analysis_workspace_kind: z.enum(["project_root", "ideation_worktree"]).optional(),
+  analysis_workspace_path: z.string().nullable().optional(),
+  analysis_base_commit: z.string().nullable().optional(),
+  analysis_base_locked_at: z.string().nullable().optional(),
   last_effective_model: z.string().nullable().optional(),
 });
 

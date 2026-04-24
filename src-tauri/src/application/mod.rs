@@ -7,6 +7,7 @@ pub mod agent_client_bundle;
 pub mod app_setup;
 pub mod app_state;
 pub mod ideation_harness_availability;
+pub mod ideation_workspace;
 pub mod apply_service;
 pub mod chat_attachment_service;
 pub mod chat_resumption;

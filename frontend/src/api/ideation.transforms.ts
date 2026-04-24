@@ -71,6 +71,13 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     blockerFingerprint: raw.blocker_fingerprint ?? null,
     sessionPurpose: raw.session_purpose ?? "general",
     acceptanceStatus: raw.acceptance_status ?? null,
+    analysisBaseRefKind: raw.analysis_base_ref_kind ?? null,
+    analysisBaseRef: raw.analysis_base_ref ?? null,
+    analysisBaseDisplayName: raw.analysis_base_display_name ?? null,
+    analysisWorkspaceKind: raw.analysis_workspace_kind ?? "project_root",
+    analysisWorkspacePath: raw.analysis_workspace_path ?? null,
+    analysisBaseCommit: raw.analysis_base_commit ?? null,
+    analysisBaseLockedAt: raw.analysis_base_locked_at ?? null,
     lastEffectiveModel: raw.last_effective_model ?? null,
   };
 }

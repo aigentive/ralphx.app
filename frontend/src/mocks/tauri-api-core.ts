@@ -5,7 +5,13 @@
  * This mock provides command handlers that return proper mock data.
  */
 
-import { mockWorkflowsApi, mockProjectsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "@/api-mock/projects";
+import {
+  mockWorkflowsApi,
+  mockProjectsApi,
+  mockGetGitBranches,
+  mockGetGitCurrentBranch,
+  mockGetGitDefaultBranch,
+} from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import {
@@ -55,6 +61,7 @@ const commandHandlers: Record<
   list_projects: async () => mockProjectsApi.list(),
   get_project: async (args) => mockProjectsApi.get(args.projectId as string),
   get_git_branches: async (args) => mockGetGitBranches(args.workingDirectory as string),
+  get_git_current_branch: async (args) => mockGetGitCurrentBranch(args.workingDirectory as string),
   get_git_default_branch: async (args) => mockGetGitDefaultBranch(args.workingDirectory as string),
 
   // Plan commands

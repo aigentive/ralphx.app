@@ -1,12 +1,10 @@
 use async_trait::async_trait;
 use ralphx_lib::application::chat_service::{
-    build_command, build_initial_prompt, build_resume_command,
-    build_resume_command_for_harness, build_resume_initial_prompt,
-    create_assistant_message, finalize_assistant_message_for_test,
-    finalize_structured_assistant_message_for_test,
-    format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
-    is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
-    ProviderResumeMode,
+    build_command, build_initial_prompt, build_resume_command, build_resume_command_for_harness,
+    build_resume_initial_prompt, create_assistant_message, finalize_assistant_message_for_test,
+    finalize_structured_assistant_message_for_test, format_attachments_for_agent,
+    format_session_history, get_entity_status_for_resume, is_text_file,
+    provider_resume_mode_for_session_under, resolve_working_directory, ProviderResumeMode,
 };
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
@@ -35,10 +33,7 @@ fn claude_spawn_override_lock() -> &'static Mutex<()> {
 }
 
 #[allow(clippy::await_holding_lock)]
-async fn with_provider_state_home_override<T, Fut>(
-    home: &Path,
-    f: impl FnOnce() -> Fut,
-) -> T
+async fn with_provider_state_home_override<T, Fut>(home: &Path, f: impl FnOnce() -> Fut) -> T
 where
     Fut: Future<Output = T>,
 {
@@ -126,9 +121,7 @@ exit 0
 "#;
 
     write_file(&script_path, script);
-    let mut permissions = fs::metadata(&script_path)
-        .expect("metadata")
-        .permissions();
+    let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&script_path, permissions).expect("chmod script");
     script_path
@@ -327,7 +320,9 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
             id: Some("tool-1".to_string()),
             name: "mcp__ralphx__fs_read_file".to_string(),
             arguments: serde_json::json!({ "path": "frontend/src/api/task-graph.ts" }),
-            result: Some(serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }])),
+            result: Some(
+                serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }]),
+            ),
             parent_tool_use_id: None,
             diff_context: None,
             stats: None,
@@ -336,7 +331,9 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
             id: Some("tool-2".to_string()),
             name: "mcp__ralphx__fs_grep".to_string(),
             arguments: serde_json::json!({ "pattern": "getTimelineEvents" }),
-            result: Some(serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }])),
+            result: Some(
+                serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }]),
+            ),
             parent_tool_use_id: None,
             diff_context: None,
             stats: None,
@@ -359,7 +356,9 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
             id: Some("tool-1".to_string()),
             name: "mcp__ralphx__fs_read_file".to_string(),
             arguments: serde_json::json!({ "path": "frontend/src/api/task-graph.ts" }),
-            result: Some(serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }])),
+            result: Some(
+                serde_json::json!([{ "type": "text", "text": "FILE: /workspace/project/frontend/src/api/task-graph.ts" }]),
+            ),
             parent_tool_use_id: None,
             diff_context: None,
         },
@@ -367,7 +366,9 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
             id: Some("tool-2".to_string()),
             name: "mcp__ralphx__fs_grep".to_string(),
             arguments: serde_json::json!({ "pattern": "getTimelineEvents" }),
-            result: Some(serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }])),
+            result: Some(
+                serde_json::json!([{ "type": "text", "text": "frontend/src/api/task-graph.ts:103:getTimelineEvents" }]),
+            ),
             parent_tool_use_id: None,
             diff_context: None,
         },
@@ -409,13 +410,20 @@ async fn finalize_structured_assistant_message_splits_verification_transcript_se
         .filter(|message| message.role == MessageRole::Orchestrator)
         .collect();
 
-    assert_eq!(assistant_messages.len(), 2, "verification transcript should split into step-level messages");
+    assert_eq!(
+        assistant_messages.len(),
+        2,
+        "verification transcript should split into step-level messages"
+    );
     assert_eq!(assistant_messages[0].id.as_str(), message_id);
     assert_eq!(
         assistant_messages[0].content,
         "Round 1: needs_revision. Reading source to address gaps."
     );
-    assert_eq!(assistant_messages[1].content, "Plan revised. Running round 2.");
+    assert_eq!(
+        assistant_messages[1].content,
+        "Plan revised. Running round 2."
+    );
 
     let first_tools: Vec<ToolCall> = serde_json::from_str(
         assistant_messages[0]
@@ -873,11 +881,7 @@ impl IdeationSessionRepository for MockIdeationRepo {
         Ok(())
     }
 
-    async fn update_last_effective_model(
-        &self,
-        _session_id: &str,
-        _model: &str,
-    ) -> AppResult<()> {
+    async fn update_last_effective_model(&self, _session_id: &str, _model: &str) -> AppResult<()> {
         Ok(())
     }
 
@@ -952,10 +956,7 @@ impl IdeationSessionRepository for MockIdeationRepo {
         Ok(vec![])
     }
 
-    async fn count_active_proposals(
-        &self,
-        _session_id: &IdeationSessionId,
-    ) -> AppResult<usize> {
+    async fn count_active_proposals(&self, _session_id: &IdeationSessionId) -> AppResult<usize> {
         Ok(0)
     }
 
@@ -971,10 +972,7 @@ struct MockTaskRepo;
 
 #[async_trait]
 impl TaskRepository for MockTaskRepo {
-    async fn create(
-        &self,
-        task: entities::Task,
-    ) -> AppResult<entities::Task> {
+    async fn create(&self, task: entities::Task) -> AppResult<entities::Task> {
         Ok(task)
     }
 
@@ -982,10 +980,7 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_by_project(
-        &self,
-        _project_id: &ProjectId,
-    ) -> AppResult<Vec<entities::Task>> {
+    async fn get_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
@@ -1114,17 +1109,11 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_oldest_ready_tasks(
-        &self,
-        _limit: u32,
-    ) -> AppResult<Vec<entities::Task>> {
+    async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
-    async fn get_stale_ready_tasks(
-        &self,
-        _threshold_secs: u64,
-    ) -> AppResult<Vec<entities::Task>> {
+    async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
@@ -1147,12 +1136,8 @@ impl TaskRepository for MockTaskRepo {
     async fn get_status_history_batch(
         &self,
         _task_ids: &[entities::TaskId],
-    ) -> AppResult<
-        std::collections::HashMap<
-            entities::TaskId,
-            Vec<repositories::StatusTransition>,
-        >,
-    > {
+    ) -> AppResult<std::collections::HashMap<entities::TaskId, Vec<repositories::StatusTransition>>>
+    {
         Ok(std::collections::HashMap::new())
     }
 }
@@ -1358,10 +1343,20 @@ fn test_build_resume_initial_prompt_project_includes_context_id_no_recovery_note
 fn test_build_resume_initial_prompt_task_execution_delegates_to_initial_prompt() {
     let context_id = "task-exec-123";
     let user_message = "execute";
-    let resume =
-        build_resume_initial_prompt(ChatContextType::TaskExecution, context_id, user_message, &[], 0);
-    let initial =
-        build_initial_prompt(ChatContextType::TaskExecution, context_id, user_message, &[], 0);
+    let resume = build_resume_initial_prompt(
+        ChatContextType::TaskExecution,
+        context_id,
+        user_message,
+        &[],
+        0,
+    );
+    let initial = build_initial_prompt(
+        ChatContextType::TaskExecution,
+        context_id,
+        user_message,
+        &[],
+        0,
+    );
     assert_eq!(resume, initial);
 }
 
@@ -1688,7 +1683,6 @@ async fn codex_verifier_command_disables_shell_tool() {
     );
 }
 
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests for format_session_history
 //
@@ -1824,7 +1818,11 @@ fn format_session_history_8000_char_cap() {
     let count_start = count_attr_start + 7;
     let count_end = result[count_start..].find('"').unwrap() + count_start;
     let count: usize = result[count_start..count_end].parse().unwrap();
-    assert!(count < 6, "Expected fewer than 6 messages due to 8000-char cap, got {}", count);
+    assert!(
+        count < 6,
+        "Expected fewer than 6 messages due to 8000-char cap, got {}",
+        count
+    );
     // Directional: newest messages (highest index) MUST be present; oldest MUST be absent.
     // Without .rev(), oldest messages would survive the cap and newest would be dropped.
     // Use content-specific substrings (not just "0:" / "5:") to avoid false positives
@@ -1951,9 +1949,15 @@ fn format_session_history_newest_priority_under_char_cap() {
     let result = format_session_history(&msgs, 6);
     assert!(result.contains("truncated=\"true\""));
     // Newest message must always be present
-    assert!(result.contains("NEWEST_MSG"), "Newest message must survive the char cap");
+    assert!(
+        result.contains("NEWEST_MSG"),
+        "Newest message must survive the char cap"
+    );
     // Oldest message must be dropped (oldest-first eviction)
-    assert!(!result.contains("OLDEST_MSG"), "Oldest message must be evicted when cap is hit");
+    assert!(
+        !result.contains("OLDEST_MSG"),
+        "Oldest message must be evicted when cap is hit"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1982,13 +1986,7 @@ fn build_initial_prompt_ideation_with_messages_injects_session_history() {
 
 #[test]
 fn build_initial_prompt_ideation_empty_messages_no_session_history_block() {
-    let result = build_initial_prompt(
-        ChatContextType::Ideation,
-        "session-123",
-        "hello",
-        &[],
-        0,
-    );
+    let result = build_initial_prompt(ChatContextType::Ideation, "session-123", "hello", &[], 0);
     assert!(!result.contains("<session_history"));
     assert!(result.contains("<user_message>hello</user_message>"));
 }
@@ -2045,7 +2043,10 @@ fn integration_ideation_spawn_prompt_pipeline_injects_session_history() {
     );
 
     // Verify session_history is present and contains prior messages
-    assert!(prompt.contains("<session_history"), "prompt must contain <session_history> block");
+    assert!(
+        prompt.contains("<session_history"),
+        "prompt must contain <session_history> block"
+    );
     assert!(
         prompt.contains("I want to add dark mode"),
         "prior user message must appear in history"
@@ -2475,6 +2476,90 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
     );
 }
 
+#[tokio::test]
+async fn resolve_working_directory_ideation_uses_session_workspace() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let project_dir = parent.path().join("main-repo");
+    let analysis_dir = parent.path().join("ideation-worktree");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    std::fs::create_dir_all(&analysis_dir).unwrap();
+
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_id = ProjectId::from_string("proj-ideation".to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_string_lossy().to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut session = IdeationSession::new(project_id);
+    session.analysis.workspace_kind = IdeationAnalysisWorkspaceKind::IdeationWorktree;
+    session.analysis.workspace_path = Some(analysis_dir.to_string_lossy().to_string());
+    let session_id = session.id.clone();
+    let ideation_repo = Arc::new(MockIdeationRepo::with_session(session));
+
+    let result = resolve_working_directory(
+        ChatContextType::Ideation,
+        session_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        ideation_repo,
+        empty_delegated_session_repo(),
+        std::path::Path::new("/tmp/default"),
+    )
+    .await
+    .expect("ideation workspace should resolve");
+
+    assert_eq!(result, analysis_dir);
+}
+
+#[tokio::test]
+async fn resolve_working_directory_ideation_rejects_missing_session_workspace() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_id = ProjectId::from_string("proj-ideation".to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_string_lossy().to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut session = IdeationSession::new(project_id);
+    session.analysis.workspace_kind = IdeationAnalysisWorkspaceKind::IdeationWorktree;
+    session.analysis.workspace_path = Some(
+        parent
+            .path()
+            .join("missing-ideation-worktree")
+            .to_string_lossy()
+            .to_string(),
+    );
+    let session_id = session.id.clone();
+    let ideation_repo = Arc::new(MockIdeationRepo::with_session(session));
+
+    let result = resolve_working_directory(
+        ChatContextType::Ideation,
+        session_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        ideation_repo,
+        empty_delegated_session_repo(),
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Ideation sessions requiring a dedicated workspace must not fall back to project root"
+    );
+}
+
 // --- Verifier subagent cap injection tests ---
 //
 // These tests verify that build_command correctly resolves CLAUDE_CODE_SUBAGENT_MODEL
@@ -2728,7 +2813,7 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
             &conv,
             "continue",
             std::path::Path::new("/tmp"),
-            None,          // no entity_status → ralphx-ideation
+            None, // no entity_status → ralphx-ideation
             Some("proj-1"),
             false,
             attachment_repo,
@@ -2739,7 +2824,7 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
             &[],
             0,
             None,
-            None,          // model_override=None; primary model is "opus" from lane row
+            None, // model_override=None; primary model is "opus" from lane row
         )
         .await
     })
@@ -2819,7 +2904,11 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
     })
     .await;
 
-    assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
+    assert!(
+        build_result.is_ok(),
+        "build_command failed: {:?}",
+        build_result.err()
+    );
     let build_cmd = build_result.unwrap();
     let build_envs = build_cmd.get_envs_for_test();
     let build_subagent = build_envs
@@ -2861,7 +2950,11 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
     })
     .await;
 
-    assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
+    assert!(
+        resume_result.is_ok(),
+        "build_resume_command failed: {:?}",
+        resume_result.err()
+    );
     let resume_cmd = resume_result.unwrap();
     let resume_envs = resume_cmd.get_envs_for_test();
     let resume_subagent = resume_envs

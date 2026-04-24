@@ -38,7 +38,26 @@ export interface IdeationSessionResponse {
   inheritedPlanArtifactId?: string | null;
   sessionPurpose: "general" | "verification";
   acceptanceStatus: "pending" | "accepted" | "rejected" | null;
+  analysisBaseRefKind?: "project_default" | "current_branch" | "local_branch" | "pull_request" | null;
+  analysisBaseRef?: string | null;
+  analysisBaseDisplayName?: string | null;
+  analysisWorkspaceKind?: "project_root" | "ideation_worktree";
+  analysisWorkspacePath?: string | null;
+  analysisBaseCommit?: string | null;
+  analysisBaseLockedAt?: string | null;
   lastEffectiveModel?: string | null;
+}
+
+export type IdeationAnalysisBaseRefKind =
+  | "project_default"
+  | "current_branch"
+  | "local_branch"
+  | "pull_request";
+
+export interface IdeationAnalysisBaseSelection {
+  kind: IdeationAnalysisBaseRefKind;
+  ref: string;
+  displayName: string;
 }
 
 export interface VerificationStatusResponse {

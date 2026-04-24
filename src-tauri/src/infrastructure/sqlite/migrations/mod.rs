@@ -308,9 +308,12 @@ mod v20260415164250_merge_validation_mode_off_tests;
 mod v20260422140039_chat_conversation_archived_at;
 #[cfg(test)]
 mod v20260422140039_chat_conversation_archived_at_tests;
+mod v20260424090000_ideation_analysis_base;
+#[cfg(test)]
+mod v20260424090000_ideation_analysis_base_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260422140039;
+pub const SCHEMA_VERSION: i64 = 20260424090000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -879,6 +882,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260422140039,
         name: "chat_conversation_archived_at",
         migrate: v20260422140039_chat_conversation_archived_at::migrate,
+    },
+    Migration {
+        version: 20260424090000,
+        name: "ideation_analysis_base",
+        migrate: v20260424090000_ideation_analysis_base::migrate,
     },
 ];
 

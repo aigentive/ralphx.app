@@ -8,13 +8,16 @@ use tauri::{Emitter, State};
 use ralphx_domain::entities::EventType;
 
 use crate::application::git_service::GitService;
+use crate::application::ideation_workspace::{
+    prepare_ideation_analysis_state, IdeationAnalysisBaseSelection,
+};
 use crate::application::session_namer_prompt::build_session_namer_prompt;
 use crate::application::AppState;
 use crate::application::{StopMode, TaskCleanupService};
 use crate::domain::entities::plan_branch::PlanBranchStatus;
 use crate::domain::entities::{
-    ChatContextType, ChatConversationId, IdeationSession, IdeationSessionId,
-    IdeationSessionStatus, ProjectId, TaskId,
+    ChatContextType, ChatConversationId, IdeationSession, IdeationSessionId, IdeationSessionStatus,
+    ProjectId, TaskId,
 };
 
 use super::ideation_commands_types::{
@@ -36,8 +39,17 @@ pub async fn create_ideation_session_impl<R: tauri::Runtime>(
     input: CreateSessionInput,
 ) -> Result<IdeationSessionResponse, String> {
     let project_id = ProjectId::from_string(input.project_id);
+    let project = state
+        .project_repo
+        .get_by_id(&project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))?;
     let seed_task_id = input.seed_task_id.map(TaskId::from_string);
-    let team_mode_requested = input.team_mode.as_deref().is_some_and(|mode| mode != "solo");
+    let team_mode_requested = input
+        .team_mode
+        .as_deref()
+        .is_some_and(|mode| mode != "solo");
     let team_mode_supported = crate::application::ideation_harness_availability::ideation_team_mode_supported_for_project(
         &state.agent_lane_settings_repo,
         Some(project_id.as_str()),
@@ -55,14 +67,31 @@ pub async fn create_ideation_session_impl<R: tauri::Runtime>(
     let normalized_team_config_json = if team_mode_requested && !team_mode_supported {
         None
     } else {
-        input.team_config
+        input
+            .team_config
             .as_ref()
             .map(serde_json::to_string)
             .transpose()
             .map_err(|e| e.to_string())?
     };
 
-    let mut builder = IdeationSession::builder().project_id(project_id);
+    let session_id = IdeationSessionId::new();
+    let analysis = prepare_ideation_analysis_state(
+        &project,
+        &session_id,
+        IdeationAnalysisBaseSelection {
+            kind: input.analysis_base_ref_kind,
+            base_ref: input.analysis_base_ref,
+            display_name: input.analysis_base_display_name,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut builder = IdeationSession::builder()
+        .id(session_id)
+        .project_id(project_id)
+        .analysis(analysis);
 
     if let Some(title) = input.title {
         builder = builder.title(title);
@@ -577,7 +606,11 @@ pub async fn spawn_session_namer(
                     (conversation.context_type == ChatContextType::Project)
                         .then_some(conversation.context_id)
                 });
-            (prompt, project_id, format!("conversation:{conversation_id}"))
+            (
+                prompt,
+                project_id,
+                format!("conversation:{conversation_id}"),
+            )
         }
         (Some(_), Some(_)) | (None, None) => {
             return Err(

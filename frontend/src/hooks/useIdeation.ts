@@ -7,7 +7,13 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import { ideationApi, type SessionWithDataResponse, type IdeationSessionResponse, type ApplyProposalsInput } from "@/api/ideation";
+import {
+  ideationApi,
+  type SessionWithDataResponse,
+  type IdeationSessionResponse,
+  type ApplyProposalsInput,
+  type IdeationAnalysisBaseSelection,
+} from "@/api/ideation";
 import { planBranchApi } from "@/api/plan-branch";
 import { taskKeys } from "@/hooks/useTasks";
 import type { SessionGroupCounts } from "@/types/ideation";
@@ -108,6 +114,7 @@ interface CreateSessionInput {
   seedTaskId?: string;
   teamMode?: string;
   teamConfig?: { maxTeammates: number; modelCeiling: string; budgetLimit?: number | undefined; compositionMode: string };
+  analysisBase?: IdeationAnalysisBaseSelection;
 }
 
 /**
@@ -132,7 +139,8 @@ export function useCreateIdeationSession() {
   const queryClient = useQueryClient();
 
   return useMutation<IdeationSessionResponse, Error, CreateSessionInput>({
-    mutationFn: ({ projectId, title, seedTaskId, teamMode, teamConfig }) => ideationApi.sessions.create(projectId, title, seedTaskId, teamMode, teamConfig),
+    mutationFn: ({ projectId, title, seedTaskId, teamMode, teamConfig, analysisBase }) =>
+      ideationApi.sessions.create(projectId, title, seedTaskId, teamMode, teamConfig, analysisBase),
     onSuccess: () => {
       // Broad invalidation: covers sessionList, sessionGroupCounts, and sessionsByGroup
       queryClient.invalidateQueries({

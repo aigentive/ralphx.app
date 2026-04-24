@@ -45,8 +45,12 @@ pub(super) async fn execute_team_spawn(
     }
 
     // 2. Resolve the working directory (worktree-aware for task contexts)
-    let working_dir =
-        resolve_teammate_working_dir(state, &plan.context_type, &plan.context_id).await;
+    let working_dir = resolve_teammate_working_dir(state, &plan.context_type, &plan.context_id)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to resolve teammate working directory");
+            (StatusCode::CONFLICT, e)
+        })?;
     info!(
         plan_id = %plan_id,
         context_type = %plan.context_type,
@@ -56,8 +60,7 @@ pub(super) async fn execute_team_spawn(
     );
 
     // 2b. Resolve project ID for RALPHX_PROJECT_ID env var on teammates
-    let project_id =
-        resolve_teammate_project_id(state, &plan.context_type, &plan.context_id).await;
+    let project_id = resolve_teammate_project_id(state, &plan.context_type, &plan.context_id).await;
 
     // 3. Register, spawn, and stream each teammate as a separate CLI process.
     //    This is the ONLY place where teammate worker processes are created.
@@ -128,24 +131,29 @@ pub(super) async fn execute_team_spawn(
         // Always inject team communication tools regardless of plan specification.
         // Without these, teammates cannot send messages or coordinate via task lists.
         let mut tools = pending.tools.clone();
-        for required in ["SendMessage", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] {
+        for required in [
+            "SendMessage",
+            "TaskCreate",
+            "TaskUpdate",
+            "TaskList",
+            "TaskGet",
+        ] {
             if !tools.contains(&required.to_string()) {
                 tools.push(required.to_string());
             }
         }
 
-        let spawn_config =
-            TeammateSpawnConfig::new(&teammate_name, &team_name, &pending.prompt)
-                .with_parent_session_id(&parent_session_id)
-                .with_context(teammate_context)
-                .with_model(&pending.model)
-                .with_tools(tools)
-                .with_mcp_tools(pending.mcp_tools.clone())
-                .with_color(&teammate_color)
-                .with_mcp_agent_type(mcp_type)
-                .with_effort(resolve_effort(Some(mcp_type)))
-                .with_working_dir(working_dir.clone())
-                .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
+        let spawn_config = TeammateSpawnConfig::new(&teammate_name, &team_name, &pending.prompt)
+            .with_parent_session_id(&parent_session_id)
+            .with_context(teammate_context)
+            .with_model(&pending.model)
+            .with_tools(tools)
+            .with_mcp_tools(pending.mcp_tools.clone())
+            .with_color(&teammate_color)
+            .with_mcp_agent_type(mcp_type)
+            .with_effort(resolve_effort(Some(mcp_type)))
+            .with_working_dir(working_dir.clone())
+            .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
 
         let client = ClaudeCodeClient::new();
         match client.spawn_teammate_interactive(spawn_config).await {
@@ -231,7 +239,9 @@ pub(super) async fn execute_team_spawn(
                             app_handle.clone(),
                             std::sync::Arc::new(state.team_tracker.clone()),
                             Some(state.team_service.clone()),
-                            Some(std::sync::Arc::clone(&state.app_state.chat_conversation_repo)),
+                            Some(std::sync::Arc::clone(
+                                &state.app_state.chat_conversation_repo,
+                            )),
                             Some(std::sync::Arc::clone(&state.app_state.chat_message_repo)),
                             Some(std::sync::Arc::clone(
                                 &state.app_state.interactive_process_registry,

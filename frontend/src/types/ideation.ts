@@ -102,6 +102,13 @@ export const IdeationSessionSchema = z.object({
   blockerFingerprint: z.string().nullable().optional(),
   sessionPurpose: z.enum(["general", "verification"]).default("general"),
   acceptanceStatus: z.enum(["pending", "accepted", "rejected"]).nullable().optional(),
+  analysisBaseRefKind: z.enum(["project_default", "current_branch", "local_branch", "pull_request"]).nullable().optional(),
+  analysisBaseRef: z.string().nullable().optional(),
+  analysisBaseDisplayName: z.string().nullable().optional(),
+  analysisWorkspaceKind: z.enum(["project_root", "ideation_worktree"]).optional(),
+  analysisWorkspacePath: z.string().nullable().optional(),
+  analysisBaseCommit: z.string().nullable().optional(),
+  analysisBaseLockedAt: z.string().nullable().optional(),
   lastEffectiveModel: z.string().nullable().optional(),
 });
 
