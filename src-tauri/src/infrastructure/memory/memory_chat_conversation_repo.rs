@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
-    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
+    AgentConversationWorkspaceMode, AttributionBackfillStatus, ChatContextType, ChatConversation,
+    ChatConversationId, ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
 use crate::domain::repositories::{ChatConversationPage, ChatConversationRepository};
 use crate::error::AppResult;
@@ -186,6 +186,18 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
                 upstream_provider.map(str::to_string),
                 provider_profile.map(str::to_string),
             );
+        }
+        Ok(())
+    }
+
+    async fn update_agent_mode(
+        &self,
+        id: &ChatConversationId,
+        mode: Option<AgentConversationWorkspaceMode>,
+    ) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conversation) = convos.get_mut(id) {
+            conversation.set_agent_mode(mode);
         }
         Ok(())
     }

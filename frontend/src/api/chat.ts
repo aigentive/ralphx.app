@@ -2,7 +2,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import type { ChatConversation, AgentRun, ContextType } from "../types/chat-conversation";
+import type {
+  AgentConversationMode,
+  ChatConversation,
+  AgentRun,
+  ContextType,
+} from "../types/chat-conversation";
 import { normalizeConversationProviderMetadata } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
@@ -341,6 +346,7 @@ const ChatConversationResponseSchema = z.object({
   provider_harness: z.string().min(1).nullable().optional(),
   upstream_provider: z.string().nullable().optional(),
   provider_profile: z.string().nullable().optional(),
+  agent_mode: z.enum(["chat", "edit", "ideation"]).nullable().optional(),
   title: z.string().nullable(),
   message_count: z.number(),
   last_message_at: z.string().nullable(),
@@ -386,6 +392,7 @@ function transformConversation(raw: RawConversation): ChatConversation {
     ...providerMetadata,
     upstreamProvider: raw.upstream_provider ?? null,
     providerProfile: raw.provider_profile ?? null,
+    agentMode: raw.agent_mode ?? null,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,
@@ -909,6 +916,7 @@ export const chatApi = {
   getAgentRunStatus,
   // Message sending & queue
   startAgentConversation,
+  switchAgentConversationMode,
   sendAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
@@ -940,7 +948,7 @@ export interface SendAgentMessageResult {
   queuedMessageId?: string | null | undefined;
 }
 
-export type AgentConversationWorkspaceMode = "edit" | "ideation";
+export type AgentConversationWorkspaceMode = AgentConversationMode;
 export type AgentConversationBaseRefKind =
   | "project_default"
   | "current_branch"
@@ -985,8 +993,19 @@ export interface StartAgentConversationInput {
 
 export interface StartAgentConversationResult {
   conversation: ChatConversation;
-  workspace: AgentConversationWorkspace;
+  workspace: AgentConversationWorkspace | null;
   sendResult: SendAgentMessageResult;
+}
+
+export interface SwitchAgentConversationModeInput {
+  conversationId: string;
+  mode: AgentConversationWorkspaceMode;
+  base?: AgentConversationBaseSelection | null;
+}
+
+export interface SwitchAgentConversationModeResult {
+  conversation: ChatConversation;
+  workspace: AgentConversationWorkspace | null;
 }
 
 export interface PublishAgentConversationWorkspaceResult {
@@ -1035,8 +1054,13 @@ const AgentConversationWorkspaceListResponseSchema = z.array(
 
 const StartAgentConversationResponseSchema = z.object({
   conversation: ChatConversationResponseSchema,
-  workspace: AgentConversationWorkspaceResponseSchema,
+  workspace: AgentConversationWorkspaceResponseSchema.nullable(),
   send_result: SendAgentMessageResponseSchema,
+});
+
+const SwitchAgentConversationModeResponseSchema = z.object({
+  conversation: ChatConversationResponseSchema,
+  workspace: AgentConversationWorkspaceResponseSchema.nullable(),
 });
 
 const PublishAgentConversationWorkspaceResponseSchema = z.object({
@@ -1053,6 +1077,9 @@ type RawAgentConversationWorkspace = z.infer<
 >;
 type RawStartAgentConversationResponse = z.infer<
   typeof StartAgentConversationResponseSchema
+>;
+type RawSwitchAgentConversationModeResponse = z.infer<
+  typeof SwitchAgentConversationModeResponseSchema
 >;
 type RawPublishAgentConversationWorkspaceResponse = z.infer<
   typeof PublishAgentConversationWorkspaceResponseSchema
@@ -1099,8 +1126,17 @@ function transformStartAgentConversationResponse(
 ): StartAgentConversationResult {
   return {
     conversation: transformConversation(raw.conversation),
-    workspace: transformAgentConversationWorkspace(raw.workspace),
+    workspace: raw.workspace ? transformAgentConversationWorkspace(raw.workspace) : null,
     sendResult: transformSendAgentMessageResponse(raw.send_result),
+  };
+}
+
+function transformSwitchAgentConversationModeResponse(
+  raw: RawSwitchAgentConversationModeResponse
+): SwitchAgentConversationModeResult {
+  return {
+    conversation: transformConversation(raw.conversation),
+    workspace: raw.workspace ? transformAgentConversationWorkspace(raw.workspace) : null,
   };
 }
 
@@ -1175,6 +1211,29 @@ export async function startAgentConversation(
     StartAgentConversationResponseSchema
   );
   return transformStartAgentConversationResponse(raw);
+}
+
+export async function switchAgentConversationMode(
+  input: SwitchAgentConversationModeInput
+): Promise<SwitchAgentConversationModeResult> {
+  const raw = await typedInvoke(
+    "switch_agent_conversation_mode",
+    {
+      input: {
+        conversationId: input.conversationId,
+        mode: input.mode,
+        ...(input.base
+          ? {
+              baseRefKind: input.base.kind,
+              baseRef: input.base.ref,
+              baseDisplayName: input.base.displayName,
+            }
+          : {}),
+      },
+    },
+    SwitchAgentConversationModeResponseSchema
+  );
+  return transformSwitchAgentConversationModeResponse(raw);
 }
 
 /**

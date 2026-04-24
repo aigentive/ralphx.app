@@ -157,6 +157,7 @@ fn test_agent_run_status_response_serializes_model_absent() {
 mod ipc_contract {
     use ralphx_lib::commands::unified_chat_commands::{
         CreateAgentConversationInput, QueueAgentMessageInput, SendAgentMessageInput,
+        StartAgentConversationInput, SwitchAgentConversationModeInput,
         UpdateAgentConversationTitleInput,
     };
 
@@ -240,5 +241,25 @@ mod ipc_contract {
         let input: UpdateAgentConversationTitleInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.conversation_id, "conv-123");
         assert_eq!(input.title, "Fix title editing");
+    }
+
+    #[test]
+    fn start_agent_conversation_input_accepts_chat_mode_without_base() {
+        let json = r#"{"projectId":"project-1","content":"What changed?","mode":"chat","providerHarness":"codex","modelOverride":"gpt-5.4"}"#;
+        let input: StartAgentConversationInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "project-1");
+        assert_eq!(input.mode.as_deref(), Some("chat"));
+        assert!(input.base_ref_kind.is_none());
+        assert!(input.base_ref.is_none());
+    }
+
+    #[test]
+    fn switch_agent_conversation_mode_input_deserializes_camel_case() {
+        let json = r#"{"conversationId":"conv-123","mode":"edit","baseRefKind":"project_default","baseRef":"main","baseDisplayName":"Project default (main)"}"#;
+        let input: SwitchAgentConversationModeInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.conversation_id, "conv-123");
+        assert_eq!(input.mode, "edit");
+        assert_eq!(input.base_ref_kind.as_deref(), Some("project_default"));
+        assert_eq!(input.base_ref.as_deref(), Some("main"));
     }
 }

@@ -59,7 +59,7 @@ use crate::domain::services::{
     RunningAgentKey, RunningAgentRegistry,
 };
 use crate::infrastructure::agents::claude::agent_names::{
-    AGENT_CHAT_PROJECT, AGENT_GENERAL_WORKER,
+    AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
 };
 use async_trait::async_trait;
 use serde::Serialize;
@@ -1825,17 +1825,30 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             entity_status.as_deref(),
             team_mode_val,
         );
-        let workspace_agent_name = agent_workspace
-            .as_ref()
-            .map(|workspace| match workspace.mode {
-                AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
-                AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
-            });
+        let agent_conversation_mode = conversation
+            .agent_mode
+            .or_else(|| agent_workspace.as_ref().map(|workspace| workspace.mode));
+        let workspace_agent_name = agent_conversation_mode.map(|mode| match mode {
+            AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
+            AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
+            AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+        });
         let agent_name = options
             .agent_name_override
             .as_deref()
             .or(workspace_agent_name)
             .unwrap_or(resolved_context_agent);
+        if matches!(
+            agent_conversation_mode,
+            Some(AgentConversationWorkspaceMode::Edit | AgentConversationWorkspaceMode::Ideation)
+        ) && agent_workspace.is_none()
+        {
+            return Err(ChatServiceError::SpawnFailed(format!(
+                "Agent conversation {} is in {} mode but has no isolated workspace",
+                conversation.id,
+                agent_conversation_mode.unwrap()
+            )));
+        }
         let spawn_harness_override =
             options
                 .harness_override

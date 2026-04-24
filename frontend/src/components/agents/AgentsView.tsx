@@ -12,6 +12,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
   ClipboardList,
+  BrainCircuit,
   FileText,
   GitBranch,
   GitPullRequestArrow,
@@ -37,6 +38,13 @@ import { Input } from "@/components/ui/input";
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
 import type { BranchBaseOption } from "@/components/shared/branchBaseOptions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -102,6 +110,14 @@ const AGENTS_CHAT_MIN_WIDTH = 320;
 const AGENTS_ARTIFACT_DEFAULT_WIDTH = "66.666667%";
 const AGENTS_CHAT_CONTENT_WIDTH_CLASS = "max-w-[980px]";
 const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
+const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
+  id: AgentConversationWorkspaceMode;
+  label: string;
+}> = [
+  { id: "chat", label: "Chat" },
+  { id: "edit", label: "Edit Agent" },
+  { id: "ideation", label: "Ideation Mode" },
+];
 
 interface AgentsViewProps {
   projectId: string;
@@ -115,6 +131,7 @@ export function AgentsView({
   const queryClient = useQueryClient();
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [publishingConversationId, setPublishingConversationId] = useState<string | null>(null);
+  const [switchingConversationModeId, setSwitchingConversationModeId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [artifactPanelWidth, setArtifactPanelWidth] = useState<number | null>(() => {
     const saved = window.localStorage.getItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
@@ -359,6 +376,13 @@ export function AgentsView({
       null
     : null;
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
+  const activeWorkspace = conversationWorkspaceQuery.data ?? null;
+  const activeConversationMode =
+    activeConversation?.contextType === "project"
+      ? resolveConversationAgentMode(activeConversation, activeWorkspace)
+      : null;
+  const activeConversationModeLocked =
+    activeConversationMode === "ideation" || isWorkspaceModeLocked(activeWorkspace);
 
   useEffect(() => {
     if (!projectId || syncedProjectIdRef.current === projectId) {
@@ -877,6 +901,53 @@ export function AgentsView({
     ]
   );
 
+  const handleActiveConversationModeChange = useCallback(
+    async (mode: AgentConversationWorkspaceMode) => {
+      if (
+        !selectedConversationId ||
+        !activeProjectId ||
+        !activeConversation ||
+        activeConversation.contextType !== "project" ||
+        activeConversationModeLocked
+      ) {
+        return;
+      }
+
+      const currentMode = resolveConversationAgentMode(activeConversation, activeWorkspace);
+      if (currentMode === mode) {
+        return;
+      }
+
+      setSwitchingConversationModeId(selectedConversationId);
+      try {
+        await chatApi.switchAgentConversationMode({
+          conversationId: selectedConversationId,
+          mode,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ["agents", "conversation-workspace", selectedConversationId],
+          }),
+          invalidateProjectConversations(activeProjectId),
+          invalidateConversationDataQueries(queryClient, selectedConversationId),
+        ]);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to change agent mode");
+      } finally {
+        setSwitchingConversationModeId(null);
+      }
+    },
+    [
+      activeConversation,
+      activeConversationModeLocked,
+      activeProjectId,
+      activeWorkspace,
+      invalidateProjectConversations,
+      queryClient,
+      selectedConversationId,
+    ]
+  );
+
   const sidebarProps = {
     projects,
     focusedProjectId: focusedProjectId ?? defaultProjectId,
@@ -1042,6 +1113,19 @@ export function AgentsView({
                         ? { questionMode: composerProps.questionMode }
                         : {})}
                       submitLabel="Send"
+                      workspaceControls={
+                        activeConversationMode ? (
+                          <AgentConversationModeSelect
+                            value={activeConversationMode}
+                            onValueChange={handleActiveConversationModeChange}
+                            disabled={
+                              activeConversationModeLocked ||
+                              composerProps.agentStatus !== "idle" ||
+                              switchingConversationModeId === selectedConversationId
+                            }
+                          />
+                        ) : undefined
+                      }
                       project={{
                         value: activeProjectId,
                         onValueChange: () => undefined,
@@ -1062,7 +1146,7 @@ export function AgentsView({
                       }}
                     />
                     <AgentConversationBaseLine
-                      workspace={conversationWorkspaceQuery.data ?? null}
+                      workspace={activeWorkspace}
                     />
                   </>
                 )}
@@ -1072,7 +1156,7 @@ export function AgentsView({
                 headerContent={
                   <AgentsChatHeader
                     conversation={activeConversation}
-                    workspace={conversationWorkspaceQuery.data ?? null}
+                    workspace={activeWorkspace}
                     artifactOpen={artifactPaneOpen}
                     activeArtifactTab={artifactState.activeTab}
                     onRenameConversation={handleRenameConversation}
@@ -1328,6 +1412,71 @@ export function AgentsChatHeader({
   );
 }
 
+function AgentConversationModeSelect({
+  value,
+  onValueChange,
+  disabled,
+}: {
+  value: AgentConversationWorkspaceMode;
+  onValueChange: (value: AgentConversationWorkspaceMode) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      className="inline-flex min-h-10 max-w-[178px] flex-none items-center gap-2 rounded-[12px] border px-2.5 py-1.5"
+      style={{
+        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+        borderColor: "var(--overlay-weak)",
+      }}
+    >
+      <div
+        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
+        style={{ color: "var(--text-secondary)" }}
+      >
+        <BrainCircuit className="h-[13px] w-[13px]" />
+      </div>
+      <div className="min-w-0">
+        <div
+          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Mode
+        </div>
+        <Select
+          value={value}
+          onValueChange={(nextValue) =>
+            onValueChange(nextValue as AgentConversationWorkspaceMode)
+          }
+          disabled={disabled}
+        >
+          <SelectTrigger
+            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
+            style={{
+              color: "var(--text-primary)",
+              boxShadow: "none",
+              outline: "none",
+              WebkitAppearance: "none",
+              appearance: "none",
+            }}
+            data-testid="agents-conversation-mode"
+            data-theme-button-skip="true"
+            aria-label="Agent mode"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {AGENT_CONVERSATION_MODE_OPTIONS.map((option) => (
+              <SelectItem key={option.id} value={option.id}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 function AgentsWorkspaceStatusPill({
   workspace,
 }: {
@@ -1458,4 +1607,15 @@ function runtimeFromConversation(
   }
 
   return null;
+}
+
+function resolveConversationAgentMode(
+  conversation: AgentConversation,
+  workspace: AgentConversationWorkspace | null
+): AgentConversationWorkspaceMode {
+  return conversation.agentMode ?? workspace?.mode ?? "chat";
+}
+
+function isWorkspaceModeLocked(workspace: AgentConversationWorkspace | null): boolean {
+  return Boolean(workspace?.linkedIdeationSessionId || workspace?.linkedPlanBranchId);
 }

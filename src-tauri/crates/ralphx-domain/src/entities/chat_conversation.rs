@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
 
-use super::{DelegatedSessionId, IdeationSessionId, ProjectId, TaskId};
+use super::{
+    AgentConversationWorkspaceMode, DelegatedSessionId, IdeationSessionId, ProjectId, TaskId,
+};
 
 /// Unique identifier for a chat conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -223,6 +225,8 @@ pub struct ChatConversation {
     pub upstream_provider: Option<String>,
     /// Optional runtime/profile selector for the upstream provider.
     pub provider_profile: Option<String>,
+    /// Current project-agent mode for Agents conversations.
+    pub agent_mode: Option<AgentConversationWorkspaceMode>,
     /// Auto-generated or user-set title for this conversation
     pub title: Option<String>,
     /// Number of messages in this conversation
@@ -260,6 +264,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -288,6 +293,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -316,6 +322,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -344,6 +351,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -373,6 +381,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -401,6 +410,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -429,6 +439,7 @@ impl ChatConversation {
             provider_harness: None,
             upstream_provider: None,
             provider_profile: None,
+            agent_mode: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -498,6 +509,11 @@ impl ChatConversation {
     ) {
         self.upstream_provider = upstream_provider;
         self.provider_profile = provider_profile;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn set_agent_mode(&mut self, mode: Option<AgentConversationWorkspaceMode>) {
+        self.agent_mode = mode;
         self.updated_at = Utc::now();
     }
 

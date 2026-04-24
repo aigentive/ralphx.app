@@ -181,7 +181,8 @@ pub use unified_chat_commands::{
     publish_agent_conversation_workspace, get_agent_run_status_unified, get_queued_agent_messages,
     is_agent_running, is_chat_service_available, list_agent_conversations,
     list_agent_conversations_page, queue_agent_message, restore_agent_conversation,
-    send_agent_message, start_agent_conversation, stop_agent, update_agent_conversation_title,
+    send_agent_message, start_agent_conversation, stop_agent, switch_agent_conversation_mode,
+    update_agent_conversation_title,
     AgentConversationWorkspaceResponse, PublishAgentConversationWorkspaceResponse,
     AgentConversationListPageResponse, AgentConversationMessagesPageResponse,
     AgentConversationResponse,
@@ -189,6 +190,7 @@ pub use unified_chat_commands::{
     AppendAgentBridgeMessageInput, CreateAgentConversationInput, QueueAgentMessageInput,
     QueuedMessageResponse as UnifiedQueuedMessageResponse, SendAgentMessageInput,
     SendAgentMessageResponse, StartAgentConversationInput, StartAgentConversationResponse,
+    SwitchAgentConversationModeInput, SwitchAgentConversationModeResponse,
     UpdateAgentConversationTitleInput,
 };
 // Plan branch commands (Phase 85 - Feature branch for plan groups)
