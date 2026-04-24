@@ -45,6 +45,22 @@ interface AgentsStartComposerProps {
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const STARTER_TYPING_WORDS = [
+  "agent",
+  "project",
+  "plan",
+  "idea",
+  "build",
+  "PR",
+  "feature",
+  "bugfix",
+] as const;
+const STARTER_TYPING_HOLD_MS = 1600;
+const STARTER_TYPING_SPEED_MS = 72;
+const STARTER_DELETING_SPEED_MS = 44;
+const STARTER_TYPING_INITIAL_WORD = STARTER_TYPING_WORDS[0];
+
+type StarterTypingPhase = "holding" | "typing" | "deleting";
 
 export function AgentsStartComposer({
   projects,
@@ -63,6 +79,7 @@ export function AgentsStartComposer({
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const animatedHeadingWord = useAnimatedStarterWord();
 
   const normalizedRuntime = useMemo(
     () => normalizeRuntimeSelection(defaultRuntime ?? DEFAULT_AGENT_RUNTIME),
@@ -182,8 +199,24 @@ export function AgentsStartComposer({
           <h2
             className="text-[clamp(1.9rem,3.4vw,2.9rem)] font-semibold tracking-[-0.05em] leading-[1.02]"
             style={{ color: "var(--text-primary)" }}
+            data-testid="agents-start-heading"
           >
-            Start your agent
+            <span className="inline-flex items-baseline justify-center whitespace-nowrap">
+              <span>Start your&nbsp;</span>
+              <span className="inline-flex items-baseline whitespace-nowrap">
+                <span
+                  data-testid="agents-start-heading-word"
+                  style={{ color: "var(--accent-primary)" }}
+                >
+                  {animatedHeadingWord}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="ml-0.5 inline-block h-[0.9em] w-[2px] rounded-full align-middle animate-pulse"
+                  style={{ background: "var(--accent-primary)" }}
+                />
+              </span>
+            </span>
           </h2>
           <p
             className="mx-auto mt-3 max-w-[520px] text-[13px] leading-relaxed"
@@ -260,5 +293,105 @@ export function AgentsStartComposer({
         </div>
       </div>
     </div>
+  );
+}
+
+function useAnimatedStarterWord() {
+  const [wordIndex, setWordIndex] = useState(0);
+  const [characterCount, setCharacterCount] = useState(
+    STARTER_TYPING_INITIAL_WORD.length
+  );
+  const [phase, setPhase] = useState<StarterTypingPhase>("holding");
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => {
+      setPrefersReducedMotion(mediaQuery.matches);
+    };
+
+    handleChange();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      return;
+    }
+
+    const currentWord = STARTER_TYPING_WORDS[wordIndex] ?? STARTER_TYPING_INITIAL_WORD;
+    const timeoutMs =
+      phase === "holding"
+        ? STARTER_TYPING_HOLD_MS
+        : phase === "typing"
+          ? STARTER_TYPING_SPEED_MS
+          : STARTER_DELETING_SPEED_MS;
+
+    const timeout = window.setTimeout(() => {
+      if (phase === "holding") {
+        setPhase("deleting");
+        return;
+      }
+
+      if (phase === "deleting") {
+        if (characterCount > 0) {
+          setCharacterCount((current) => current - 1);
+          return;
+        }
+
+        setWordIndex((current) => (current + 1) % STARTER_TYPING_WORDS.length);
+        setPhase("typing");
+        return;
+      }
+
+      if (characterCount < currentWord.length) {
+        setCharacterCount((current) => current + 1);
+        return;
+      }
+
+      setPhase("holding");
+    }, timeoutMs);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [characterCount, phase, prefersReducedMotion, wordIndex]);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setWordIndex(0);
+      setCharacterCount(STARTER_TYPING_INITIAL_WORD.length);
+      setPhase("holding");
+      return;
+    }
+
+    if (phase === "typing" && characterCount === 0) {
+      return;
+    }
+
+    const currentWord = STARTER_TYPING_WORDS[wordIndex] ?? STARTER_TYPING_INITIAL_WORD;
+    if (phase === "typing" && characterCount > currentWord.length) {
+      setCharacterCount(currentWord.length);
+    }
+  }, [characterCount, phase, prefersReducedMotion, wordIndex]);
+
+  if (prefersReducedMotion) {
+    return STARTER_TYPING_INITIAL_WORD;
+  }
+
+  return (STARTER_TYPING_WORDS[wordIndex] ?? STARTER_TYPING_INITIAL_WORD).slice(
+    0,
+    characterCount
   );
 }
