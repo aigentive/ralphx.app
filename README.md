@@ -167,7 +167,7 @@ For example: reviewers run read-only, workers cannot approve their own output, a
 
 ## Origin
 
-RalphX.app began as a 196-line shell script called `ralph.sh` for orchestrating agent sessions and grew into a native macOS control room for planning, executing, reviewing, and merging AI-assisted software work.
+RalphX.app began as a shell script running a Ralph Wiggum loop for orchestrating agent sessions and grew into a native macOS control room for planning, executing, reviewing, and merging AI-assisted software work.
 
 Built independently by [one person](https://www.linkedin.com/in/laza-bogdan/) and a fleet of AI agents.
 
