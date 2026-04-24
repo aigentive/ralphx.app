@@ -13,6 +13,14 @@ vi.mock("@/hooks/useTaskSteps", () => ({
   useTaskSteps: vi.fn(),
 }));
 
+let mockExecutionTeamModeAvailable = true;
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: true,
+    executionTeamModeAvailable: mockExecutionTeamModeAvailable,
+  }),
+}));
+
 const mockConfirmation = {
   confirm: vi.fn(async () => true),
   confirmationDialogProps: {},
@@ -622,6 +630,7 @@ describe("BasicTaskDetail", () => {
   describe("execution mode selector", () => {
     beforeEach(() => {
       vi.clearAllMocks();
+      mockExecutionTeamModeAvailable = true;
       mockUseTaskSteps.mockReturnValue({
         data: [],
         isLoading: false,
@@ -697,6 +706,15 @@ describe("BasicTaskDetail", () => {
           }),
         );
       });
+    });
+
+    it("hides the execution mode selector when team mode is unavailable", () => {
+      mockExecutionTeamModeAvailable = false;
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("execution-mode-selector")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("mode-team")).not.toBeInTheDocument();
     });
   });
 

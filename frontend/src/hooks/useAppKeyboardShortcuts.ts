@@ -11,6 +11,7 @@ const ALL_ENABLED_FLAGS: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
   battleMode: true,
+  teamMode: false,
 };
 
 interface UseAppKeyboardShortcutsProps {

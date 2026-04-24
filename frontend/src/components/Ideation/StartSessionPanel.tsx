@@ -10,6 +10,7 @@ import { Lightbulb, Zap, FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { withAlpha } from "@/lib/theme-colors";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { TaskPickerDialog } from "./TaskPickerDialog";
 import { TeamConfigPanel } from "./TeamConfigPanel";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
@@ -47,8 +48,15 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const { importSession, isImporting } = useSessionExportImport();
+  const { ideationTeamModeAvailable: teamModeVisible } =
+    useTeamModeAvailability(activeProjectId);
+  const isTeamMode = teamModeVisible && teamMode !== "solo";
 
-  const isTeamMode = teamMode !== "solo";
+  useEffect(() => {
+    if (!teamModeVisible && teamMode !== "solo") {
+      setTeamMode("solo");
+    }
+  }, [teamMode, teamModeVisible]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -171,67 +179,71 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
             Select a session from the sidebar or start a new brainstorming session.
           </p>
 
-          {/* Team Mode Selector */}
-          <div className="mb-6">
-            <p
-              className="text-[12px] font-medium tracking-wide uppercase mb-3"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Ideation Mode
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              {TEAM_MODES.map((mode) => {
-                const isSelected = teamMode === mode.value;
-                return (
-                  <button
-                    key={mode.value}
-                    onClick={() => setTeamMode(mode.value)}
-                    className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
-                    style={{
-                      background: isSelected ? "var(--accent-muted)" : "var(--overlay-faint)",
-                      border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--overlay-weak)"}`,
-                      color: isSelected ? "var(--accent-primary)" : "var(--text-secondary)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor = "var(--overlay-moderate)";
-                        e.currentTarget.style.color = "var(--text-primary)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.currentTarget.style.borderColor = "var(--overlay-weak)";
-                        e.currentTarget.style.color = "var(--text-secondary)";
-                      }
-                    }}
-                  >
-                    {mode.recommended && "\u2605 "}
-                    {mode.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {teamModeVisible && (
+            <>
+              {/* Team Mode Selector */}
+              <div className="mb-6">
+                <p
+                  className="text-[12px] font-medium tracking-wide uppercase mb-3"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Ideation Mode
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  {TEAM_MODES.map((mode) => {
+                    const isSelected = teamMode === mode.value;
+                    return (
+                      <button
+                        key={mode.value}
+                        onClick={() => setTeamMode(mode.value)}
+                        className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
+                        style={{
+                          background: isSelected ? "var(--accent-muted)" : "var(--overlay-faint)",
+                          border: `1px solid ${isSelected ? "var(--accent-primary)" : "var(--overlay-weak)"}`,
+                          color: isSelected ? "var(--accent-primary)" : "var(--text-secondary)",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = "var(--overlay-moderate)";
+                            e.currentTarget.style.color = "var(--text-primary)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = "var(--overlay-weak)";
+                            e.currentTarget.style.color = "var(--text-secondary)";
+                          }
+                        }}
+                      >
+                        {mode.recommended && "\u2605 "}
+                        {mode.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Team Config Panel (animated) */}
-          <div
-            className="overflow-hidden transition-all duration-200 ease-out"
-            style={{
-              maxHeight: isTeamMode ? "280px" : "0px",
-              opacity: isTeamMode ? 1 : 0,
-            }}
-          >
-            <TeamConfigPanel config={teamConfig} onChange={setTeamConfig} />
+              {/* Team Config Panel (animated) */}
+              <div
+                className="overflow-hidden transition-all duration-200 ease-out"
+                style={{
+                  maxHeight: isTeamMode ? "280px" : "0px",
+                  opacity: isTeamMode ? 1 : 0,
+                }}
+              >
+                <TeamConfigPanel config={teamConfig} onChange={setTeamConfig} />
 
-            {/* Info text */}
-            <p
-              className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <span className="text-[14px]">&#9432;</span>
-              The lead agent will decide what specialist roles to create based on your task.
-            </p>
-          </div>
+                {/* Info text */}
+                <p
+                  className="text-[12px] mt-3 flex items-center justify-center gap-1.5"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <span className="text-[14px]">&#9432;</span>
+                  The lead agent will decide what specialist roles to create based on your task.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Primary Action */}
           <Button

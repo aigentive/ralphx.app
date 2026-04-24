@@ -154,10 +154,11 @@ function saveSessionByProject(map: Record<string, string | null>): void {
 // Feature Flags (cached for synchronous guard use in Zustand actions)
 // ============================================================================
 
-const ALL_ENABLED_FLAGS: FeatureFlags = {
+const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
   battleMode: true,
+  teamMode: false,
 };
 
 // ============================================================================
@@ -494,7 +495,7 @@ export const useUiStore = create<UiState & UiActions>()(
     collapsedColumns: loadCollapsedColumns(),
     viewByProject: loadViewByProject(),
     sessionByProject: loadSessionByProject(),
-    featureFlags: ALL_ENABLED_FLAGS,
+  featureFlags: DEFAULT_FEATURE_FLAGS,
     pendingConfirmationQueue: [],
     autoAcceptPlans: false,
     autoAcceptSessions: new Set<string>(),
@@ -983,8 +984,8 @@ if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
 
 // One-time feature flag initialization on module load.
 // Zustand stores cannot use React hooks, so flags are fetched via invoke directly.
-// Defaults to ALL_ENABLED until the async fetch resolves (prevents startup flash).
-// Errors are silently ignored — all-enabled defaults remain active.
+// Defaults to the app's startup flag baseline until the async fetch resolves.
+// Errors are silently ignored — those defaults remain active.
 void invoke<unknown>("get_ui_feature_flags")
   .then((raw) => {
     const result = featureFlagsSchema.safeParse(raw);

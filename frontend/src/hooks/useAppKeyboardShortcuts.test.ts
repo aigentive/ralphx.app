@@ -45,7 +45,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘4 navigates to extensibility when extensibilityPage flag is true", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -57,7 +57,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘5 navigates to activity when activityPage flag is true", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -71,7 +71,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘4 is a no-op when extensibilityPage flag is false", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -83,7 +83,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘5 is a no-op when activityPage flag is false", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true };
+    const flags: FeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -95,7 +95,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘4 blocked does not affect ⌘5 when activityPage is true", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -133,7 +133,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘1 still navigates to ideation regardless of flags", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true };
+    const flags: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -145,7 +145,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘3 still navigates to kanban regardless of flags", () => {
     const setCurrentView = vi.fn();
-    const flags: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true };
+    const flags: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ setCurrentView, featureFlags: flags }))
@@ -159,7 +159,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘⇧B is a no-op when featureFlags.battleMode is false", () => {
     const onBattleModeToggle = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: false };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: false, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ currentView: "graph", onBattleModeToggle, featureFlags: flags }))
@@ -171,7 +171,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘⇧B calls onBattleModeToggle when flag is enabled and currentView is graph", () => {
     const onBattleModeToggle = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ currentView: "graph", onBattleModeToggle, featureFlags: flags }))
@@ -183,7 +183,7 @@ describe("useAppKeyboardShortcuts — feature flag gating", () => {
 
   it("⌘⇧B is a no-op when flag is enabled but currentView is not graph", () => {
     const onBattleModeToggle = vi.fn();
-    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+    const flags: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true, teamMode: false };
 
     renderHook(() =>
       useAppKeyboardShortcuts(makeProps({ currentView: "kanban", onBattleModeToggle, featureFlags: flags }))

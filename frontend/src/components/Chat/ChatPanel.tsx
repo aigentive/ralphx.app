@@ -53,6 +53,7 @@ import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
+import { useTeamModeAvailability } from "@/hooks/useTeamModeAvailability";
 import { TimeoutWarning } from "./TimeoutWarning";
 
 const COLLAPSED_WIDTH = 40;
@@ -206,6 +207,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     [selectedTask?.internalStatus, context.ideationSessionId, context.selectedTaskId]
   );
   const contextId = context.ideationSessionId ?? context.selectedTaskId ?? context.projectId;
+  const {
+    ideationTeamModeAvailable,
+    executionTeamModeAvailable,
+  } = useTeamModeAvailability(context.projectId);
   const contextKey = useMemo(
     () => buildStoreKey(contextType, contextId),
     [contextType, contextId]
@@ -220,12 +225,25 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[contextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("lead");
+  const teamModeUiAvailable =
+    contextType === "ideation"
+      ? ideationTeamModeAvailable
+      : contextType === "task_execution"
+        ? executionTeamModeAvailable
+        : false;
+  const showTeamUi = isTeamActive && teamModeUiAvailable;
   const sendTarget = teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Track whether the team in this context is historical
   const activeTeamSelector = useMemo(() => selectActiveTeam(contextKey), [contextKey]);
   const activeTeam = useTeamStore(activeTeamSelector);
   const isTeamHistorical = activeTeam?.isHistorical === true;
+
+  useEffect(() => {
+    if (!showTeamUi && teamFilter !== "lead") {
+      setTeamFilter("lead");
+    }
+  }, [showTeamUi, teamFilter]);
 
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(contextKey);
@@ -342,7 +360,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const activeBashCall = streamingToolCalls.find((tc) => tc.name.toLowerCase() === "bash");
   const bashStartTime = activeBashCall ? toolCallStartTimes[activeBashCall.id] : undefined;
   // Context-aware threshold: 3600s for team mode, 600s otherwise
-  const effectiveTimeoutMs = isTeamActive ? 3_600_000 : 600_000;
+  const effectiveTimeoutMs = showTeamUi ? 3_600_000 : 600_000;
   const showTimeoutWarning = activeBashCall !== undefined && bashStartTime !== undefined && activeBashCall.id !== dismissedTimeoutCallId;
 
   // Auto-reset dismissed ID when the dismissed call is no longer active
@@ -376,14 +394,14 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
   // Wrapper for stop that clears streaming state and stops team if active
   const handleStopAgentWrapper = useCallback(async () => {
-    if (isTeamActive) {
+    if (showTeamUi) {
       teamActions.stopTeam.mutate();
     }
     await handleStopAgent();
     setStreamingToolCalls([]);
     setStreamingContentBlocks([]);
     setStreamingTasks(new Map());
-  }, [isTeamActive, teamActions, handleStopAgent]);
+  }, [showTeamUi, teamActions, handleStopAgent]);
 
   // Unified event subscriptions (replaces useChatPanelHandlers event logic)
   useChatEvents({
@@ -445,12 +463,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     await handleSend(
       content,
       attachmentIds.length > 0 ? attachmentIds : undefined,
-      isTeamActive ? sendTarget : undefined
+      showTeamUi ? sendTarget : undefined
     );
 
     // Clear attachments after successful send
     clearAttachments();
-  }, [handleSend, clearAttachments, attachments, isTeamActive, sendTarget]);
+  }, [handleSend, clearAttachments, attachments, showTeamUi, sendTarget]);
 
   // Close with animation
   const handleClose = useCallback(() => {
@@ -555,7 +573,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         </div>
 
         {/* Team Context Bar (team mode only) */}
-        {isTeamActive && teammates.length > 0 && (
+        {showTeamUi && teammates.length > 0 && (
           <TeamContextBar
             contextKey={contextKey}
             activeFilter={teamFilter}
@@ -604,8 +622,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
               isFinalizing={isFinalizing}
-              teamFilter={activeTeam ? teamFilter : undefined}
-              contextKey={activeTeam ? contextKey : undefined}
+              teamFilter={showTeamUi && activeTeam ? teamFilter : undefined}
+              contextKey={showTeamUi && activeTeam ? contextKey : undefined}
             />
           </div>
         )}
@@ -625,7 +643,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         })()}
 
         {/* Team Plan Approval (shown when lead requests plan approval) */}
-        {pendingPlan && (
+        {showTeamUi && pendingPlan && (
           <TeamPlanApproval
             plan={pendingPlan}
             contextKey={contextKey}
@@ -633,7 +651,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         )}
 
         {/* Team Filter Tabs (team mode — above input area) */}
-        {isTeamActive && teammates.length > 0 && (
+        {showTeamUi && teammates.length > 0 && (
           <TeamFilterTabs
             teammates={teammates}
             activeFilter={teamFilter}

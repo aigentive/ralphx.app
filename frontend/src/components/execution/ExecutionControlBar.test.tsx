@@ -8,6 +8,13 @@ import type { ComponentProps, ReactNode } from "react";
 import { ExecutionControlBar } from "./ExecutionControlBar";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: true,
+    executionTeamModeAvailable: true,
+  }),
+}));
+
 vi.mock("./RunningProcessPopover", () => ({
   RunningProcessPopover: ({
     children,

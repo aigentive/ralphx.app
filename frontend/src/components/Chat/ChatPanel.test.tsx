@@ -9,7 +9,16 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatPanel } from "./ChatPanel";
 import { EventProvider } from "@/providers/EventProvider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ChatContext } from "@/types/chat";
+
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: true,
+    executionTeamModeAvailable: true,
+    isAvailableForContext: () => true,
+  }),
+}));
 
 // Mock scrollIntoView before tests run
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -246,7 +255,9 @@ const createWrapper = () => {
   });
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <EventProvider>{children}</EventProvider>
+      <TooltipProvider delayDuration={0}>
+        <EventProvider>{children}</EventProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };

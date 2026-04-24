@@ -51,6 +51,13 @@ vi.mock("@/hooks/useSessionExportImport", () => ({
   }),
 }));
 
+let mockIdeationTeamModeAvailable = true;
+vi.mock("@/hooks/useTeamModeAvailability", () => ({
+  useTeamModeAvailability: () => ({
+    ideationTeamModeAvailable: mockIdeationTeamModeAvailable,
+  }),
+}));
+
 // Mock TaskPickerDialog to avoid complex rendering
 vi.mock("./TaskPickerDialog", () => ({
   TaskPickerDialog: ({ isOpen, onSelect }: { isOpen: boolean; onClose: () => void; onSelect: (task: unknown) => void }) =>
@@ -70,6 +77,7 @@ describe("StartSessionPanel", () => {
     vi.clearAllMocks();
     mockActiveProjectId = "project-1";
     mockMutateAsync.mockResolvedValue({ id: "session-1", projectId: "project-1" });
+    mockIdeationTeamModeAvailable = true;
   });
 
   describe("mode selector", () => {
@@ -95,6 +103,17 @@ describe("StartSessionPanel", () => {
       render(<StartSessionPanel onNewSession={onNewSession} />);
       fireEvent.click(screen.getByText(/Debate Team/));
       expect(screen.getByText("Start Debate Session")).toBeInTheDocument();
+    });
+
+    it("hides team mode controls when team mode is unavailable", () => {
+      mockIdeationTeamModeAvailable = false;
+
+      render(<StartSessionPanel onNewSession={onNewSession} />);
+
+      expect(screen.queryByText("Ideation Mode")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Research Team/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Debate Team/)).not.toBeInTheDocument();
+      expect(screen.getByText("Start New Session")).toBeInTheDocument();
     });
   });
 

@@ -827,6 +827,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     if let Some(v) = lookup("RALPHX_UI_BATTLE_MODE") {
         cfg.ui_feature_flags.battle_mode = matches!(v.to_lowercase().as_str(), "true" | "1");
     }
+    if let Some(v) = lookup("RALPHX_UI_TEAM_MODE") {
+        cfg.ui_feature_flags.team_mode =
+            matches!(v.to_lowercase().as_str(), "true" | "1");
+    }
 }
 
 /// Validate ReconciliationConfig fields and clamp to safe defaults on invalid values (GAP M7).
