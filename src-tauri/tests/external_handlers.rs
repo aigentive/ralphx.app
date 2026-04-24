@@ -550,6 +550,131 @@ async fn test_start_ideation_creates_session() {
     assert_eq!(response.status, "ideating");
 }
 
+#[tokio::test]
+async fn test_start_ideation_tauri_parent_workspace_binds_analysis_and_links_workspace() {
+    use ralphx_lib::application::agent_conversation_workspace::{
+        prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+    };
+    use ralphx_lib::domain::entities::{
+        AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
+        IdeationAnalysisWorkspaceKind,
+    };
+
+    let state = setup_test_state().await;
+    let repo_dir = tempfile::TempDir::new().unwrap();
+    let repo_path = repo_dir.path();
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git config email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git config name");
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git commit");
+    let worktree_parent = tempfile::TempDir::new().unwrap();
+
+    let project_id = "proj-parent-workspace";
+    let mut project = Project::new(
+        "Workspace Project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+    project.id = ProjectId::from_string(project_id.to_string());
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(worktree_parent.path().to_string_lossy().to_string());
+    let project = state.app_state.project_repo.create(project).await.unwrap();
+
+    let conversation = state
+        .app_state
+        .chat_conversation_repo
+        .create(ChatConversation::new_project(project.id.clone()))
+        .await
+        .expect("create project conversation");
+    let workspace = prepare_agent_conversation_workspace(
+        &project,
+        &conversation.id,
+        AgentConversationWorkspaceMode::Ideation,
+        AgentConversationWorkspaceBaseSelection {
+            kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+            base_ref: Some("main".to_string()),
+            display_name: Some("Project default (main)".to_string()),
+        },
+    )
+    .await
+    .expect("prepare agent workspace");
+    state
+        .app_state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace.clone())
+        .await
+        .expect("save agent workspace");
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("x-ralphx-tauri-mcp", "1".parse().unwrap());
+    headers.insert(
+        "x-ralphx-parent-conversation-id",
+        conversation.id.as_str().parse().unwrap(),
+    );
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        headers,
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: Some("Workspace ideation".to_string()),
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await
+    .expect("start ideation should bind parent workspace")
+    .0;
+
+    assert_eq!(result.parent_conversation_id, Some(conversation.id.as_str()));
+    assert_eq!(result.workspace_branch.as_deref(), Some(workspace.branch_name.as_str()));
+
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(result.session_id.clone()))
+        .await
+        .unwrap()
+        .expect("session should exist");
+    assert_eq!(
+        session.analysis.workspace_kind,
+        IdeationAnalysisWorkspaceKind::IdeationWorktree
+    );
+    assert_eq!(
+        session.analysis.workspace_path.as_deref(),
+        Some(workspace.worktree_path.as_str())
+    );
+
+    let linked_workspace = state
+        .app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation.id)
+        .await
+        .unwrap()
+        .expect("workspace should still exist");
+    assert_eq!(
+        linked_workspace.linked_ideation_session_id.as_ref(),
+        Some(&session.id)
+    );
+}
+
 
 #[tokio::test]
 async fn test_start_ideation_scope_violation() {

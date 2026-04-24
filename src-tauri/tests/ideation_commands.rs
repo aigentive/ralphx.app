@@ -2534,6 +2534,109 @@ async fn test_apply_proposals_core_internal_session_uses_session_analysis_base()
     assert_eq!(plan_branch.base_branch_override.as_deref(), Some("main"));
 }
 
+#[tokio::test]
+async fn test_apply_proposals_core_linked_agent_workspace_reuses_conversation_branch() {
+    use ralphx_lib::application::agent_conversation_workspace::{
+        prepare_agent_conversation_workspace, AgentConversationWorkspaceBaseSelection,
+    };
+    use ralphx_lib::domain::entities::{
+        AgentConversationWorkspaceMode, ChatConversation, IdeationAnalysisBaseRefKind,
+        IdeationAnalysisState, IdeationAnalysisWorkspaceKind, IdeationSession, Priority, Project,
+        ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+    let repo_dir = setup_git_repo_for_apply_test();
+    let worktree_parent = tempfile::TempDir::new().unwrap();
+    let mut project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(worktree_parent.path().to_string_lossy().to_string());
+    let project = state.project_repo.create(project).await.unwrap();
+
+    let conversation = state
+        .chat_conversation_repo
+        .create(ChatConversation::new_project(project.id.clone()))
+        .await
+        .expect("create project conversation");
+    let mut workspace = prepare_agent_conversation_workspace(
+        &project,
+        &conversation.id,
+        AgentConversationWorkspaceMode::Ideation,
+        AgentConversationWorkspaceBaseSelection {
+            kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+            base_ref: Some("main".to_string()),
+            display_name: Some("Project default (main)".to_string()),
+        },
+    )
+    .await
+    .expect("prepare agent conversation workspace");
+
+    let mut session = IdeationSession::new(project.id.clone());
+    session.analysis = IdeationAnalysisState {
+        base_ref_kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+        base_ref: Some("main".to_string()),
+        base_display_name: Some("Project default (main)".to_string()),
+        workspace_kind: IdeationAnalysisWorkspaceKind::IdeationWorktree,
+        workspace_path: Some(workspace.worktree_path.clone()),
+        base_commit: workspace.base_commit.clone(),
+        base_locked_at: Some(chrono::Utc::now()),
+    };
+    let session = state.ideation_session_repo.create(session).await.unwrap();
+    workspace.linked_ideation_session_id = Some(session.id.clone());
+    let workspace = state
+        .agent_conversation_workspace_repo
+        .create_or_update(workspace)
+        .await
+        .expect("persist linked workspace");
+
+    let proposal = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Test Proposal",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .unwrap();
+
+    apply_proposals_core(
+        &state,
+        ApplyProposalsInput {
+            session_id: session.id.as_str().to_string(),
+            proposal_ids: vec![proposal.id.as_str().to_string()],
+            target_column: "auto".to_string(),
+            base_branch_override: None,
+        },
+    )
+    .await
+    .expect("apply should reuse linked agent conversation branch");
+
+    let plan_branch = state
+        .plan_branch_repo
+        .get_by_session_id(&session.id)
+        .await
+        .unwrap()
+        .expect("plan branch should exist");
+    assert_eq!(plan_branch.branch_name, workspace.branch_name);
+    assert_eq!(plan_branch.source_branch, "main");
+    assert_eq!(plan_branch.base_branch_override.as_deref(), Some("main"));
+
+    let linked_workspace = state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(&conversation.id)
+        .await
+        .unwrap()
+        .expect("workspace should still exist");
+    assert_eq!(
+        linked_workspace.linked_plan_branch_id.as_ref(),
+        Some(&plan_branch.id)
+    );
+}
+
 /// Proof Obligation #5: when `create_branch` fails (source branch nonexistent),
 /// `apply_proposals_core` returns an error AND no ExecutionPlan row is created.
 /// Validates that branch validation (Phase 0) occurs before ExecutionPlan creation.

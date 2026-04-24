@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 use crate::application::git_service::GitService;
 use crate::domain::entities::{
+    AgentConversationWorkspace,
     IdeationAnalysisBaseRefKind, IdeationAnalysisState, IdeationAnalysisWorkspaceKind,
     IdeationSession, IdeationSessionId, Project,
 };
@@ -65,7 +66,9 @@ pub async fn prepare_ideation_analysis_state(
         .await
         .ok()
         .filter(|branch| branch != "HEAD");
-    let project_default = project.base_branch_or_default().to_string();
+    let project_default =
+        GitService::resolve_project_default_branch(&repo_path, project.base_branch.as_deref())
+            .await;
     let explicit_kind = selection.kind.is_some();
     let kind = selection.kind.unwrap_or_else(|| {
         if current_branch
@@ -155,6 +158,32 @@ pub async fn prepare_ideation_analysis_state(
         base_ref: Some(base_ref),
         base_display_name: Some(display_name),
         workspace_kind,
+        workspace_path: Some(workspace_path.to_string_lossy().to_string()),
+        base_commit,
+        base_locked_at: Some(Utc::now()),
+    })
+}
+
+pub async fn prepare_ideation_analysis_state_from_agent_workspace(
+    project: &Project,
+    workspace: &AgentConversationWorkspace,
+) -> AppResult<IdeationAnalysisState> {
+    let workspace_path =
+        crate::application::agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path(
+            project,
+            workspace,
+        )
+        .await?;
+    let base_commit = GitService::get_head_sha(&workspace_path)
+        .await
+        .ok()
+        .or_else(|| workspace.base_commit.clone());
+
+    Ok(IdeationAnalysisState {
+        base_ref_kind: Some(workspace.base_ref_kind),
+        base_ref: Some(workspace.base_ref.clone()),
+        base_display_name: workspace.base_display_name.clone(),
+        workspace_kind: IdeationAnalysisWorkspaceKind::IdeationWorktree,
         workspace_path: Some(workspace_path.to_string_lossy().to_string()),
         base_commit,
         base_locked_at: Some(Utc::now()),

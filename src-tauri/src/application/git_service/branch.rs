@@ -68,6 +68,26 @@ impl GitService {
         ))
     }
 
+    /// Resolve the default branch for project workflows.
+    ///
+    /// Explicit project settings win; otherwise this uses the same automatic
+    /// detection chain as the Settings UI before falling back to `main`.
+    pub async fn resolve_project_default_branch(
+        repo: &Path,
+        configured_base_branch: Option<&str>,
+    ) -> String {
+        if let Some(branch) = configured_base_branch
+            .map(str::trim)
+            .filter(|branch| !branch.is_empty())
+        {
+            return branch.to_string();
+        }
+
+        Self::detect_default_branch(repo)
+            .await
+            .unwrap_or_else(|_| "main".to_string())
+    }
+
     /// Create a new branch pointing at a specific commit SHA
     ///
     /// Unlike `create_branch` which branches from another branch name,
