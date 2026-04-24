@@ -16,6 +16,8 @@ const {
   useConversationMock,
   startAgentConversationMock,
   getAgentConversationWorkspaceMock,
+  listAgentConversationWorkspacesByProjectMock,
+  listConversationsMock,
   publishAgentConversationWorkspaceMock,
   sendAgentMessageMock,
   createConversationMock,
@@ -23,12 +25,16 @@ const {
   updateConversationTitleMock,
   archiveConversationMock,
   restoreConversationMock,
+  getPlanBranchesMock,
+  listIdeationSessionsMock,
 } = vi.hoisted(() => ({
   useProjectsMock: vi.fn(),
   useProjectAgentConversationsMock: vi.fn(),
   useConversationMock: vi.fn(),
   startAgentConversationMock: vi.fn(),
   getAgentConversationWorkspaceMock: vi.fn(),
+  listAgentConversationWorkspacesByProjectMock: vi.fn(),
+  listConversationsMock: vi.fn(),
   publishAgentConversationWorkspaceMock: vi.fn(),
   sendAgentMessageMock: vi.fn(),
   createConversationMock: vi.fn(),
@@ -36,6 +42,8 @@ const {
   updateConversationTitleMock: vi.fn(),
   archiveConversationMock: vi.fn(),
   restoreConversationMock: vi.fn(),
+  getPlanBranchesMock: vi.fn(),
+  listIdeationSessionsMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -82,6 +90,9 @@ vi.mock("@/api/chat", () => ({
     startAgentConversation: (...args: unknown[]) => startAgentConversationMock(...args),
     getAgentConversationWorkspace: (...args: unknown[]) =>
       getAgentConversationWorkspaceMock(...args),
+    listAgentConversationWorkspacesByProject: (...args: unknown[]) =>
+      listAgentConversationWorkspacesByProjectMock(...args),
+    listConversations: (...args: unknown[]) => listConversationsMock(...args),
     publishAgentConversationWorkspace: (...args: unknown[]) =>
       publishAgentConversationWorkspaceMock(...args),
     sendAgentMessage: (...args: unknown[]) => sendAgentMessageMock(...args),
@@ -98,6 +109,7 @@ vi.mock("@/api/ideation", () => ({
   ideationApi: {
     sessions: {
       getWithData: vi.fn(),
+      list: (...args: unknown[]) => listIdeationSessionsMock(...args),
       updateTitle: vi.fn(),
       archive: vi.fn(),
       reopen: vi.fn(),
@@ -105,19 +117,42 @@ vi.mock("@/api/ideation", () => ({
   },
 }));
 
+vi.mock("@/api/plan-branch", () => ({
+  planBranchApi: {
+    getByProject: (...args: unknown[]) => getPlanBranchesMock(...args),
+  },
+}));
+
 vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
   IntegratedChatPanel: ({
     headerContent,
     contentWidthClassName,
+    renderComposer,
   }: {
     headerContent?: ReactNode;
     contentWidthClassName?: string;
+    renderComposer?: (props: Record<string, unknown>) => ReactNode;
   }) => (
     <div
       data-testid="integrated-chat-panel"
       data-content-width-class={contentWidthClassName ?? ""}
     >
       {headerContent}
+      {renderComposer?.({
+        onSend: vi.fn(),
+        onStop: vi.fn(),
+        agentStatus: "idle",
+        isSending: false,
+        isReadOnly: false,
+        autoFocus: false,
+        hasQueuedMessages: false,
+        onEditLastQueued: vi.fn(),
+        attachments: [],
+        enableAttachments: false,
+        onFilesSelected: vi.fn(),
+        onRemoveAttachment: vi.fn(),
+        attachmentsUploading: false,
+      })}
     </div>
   ),
 }));
@@ -451,6 +486,8 @@ describe("AgentsView", () => {
     useConversationMock.mockReset();
     startAgentConversationMock.mockReset();
     getAgentConversationWorkspaceMock.mockReset();
+    listAgentConversationWorkspacesByProjectMock.mockReset();
+    listConversationsMock.mockReset();
     publishAgentConversationWorkspaceMock.mockReset();
     sendAgentMessageMock.mockReset();
     createConversationMock.mockReset();
@@ -458,6 +495,8 @@ describe("AgentsView", () => {
     updateConversationTitleMock.mockReset();
     archiveConversationMock.mockReset();
     restoreConversationMock.mockReset();
+    getPlanBranchesMock.mockReset();
+    listIdeationSessionsMock.mockReset();
 
     sendAgentMessageMock.mockResolvedValue({
       conversationId: "conversation-2",
@@ -468,6 +507,10 @@ describe("AgentsView", () => {
       queuedMessageId: null,
     });
     getAgentConversationWorkspaceMock.mockResolvedValue(null);
+    listAgentConversationWorkspacesByProjectMock.mockResolvedValue([]);
+    listConversationsMock.mockResolvedValue([]);
+    getPlanBranchesMock.mockResolvedValue([]);
+    listIdeationSessionsMock.mockResolvedValue([]);
     publishAgentConversationWorkspaceMock.mockResolvedValue({
       workspace: {
         conversationId: "conversation-2",
@@ -774,6 +817,37 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
     );
     expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
+  });
+
+  it("shows the conversation base branch as a read-only start-from line", async () => {
+    mockAgentViewData();
+    getAgentConversationWorkspaceMock.mockResolvedValue({
+      conversationId: "conversation-1",
+      projectId: "project-1",
+      mode: "edit",
+      baseRefKind: "project_default",
+      baseRef: "main",
+      baseDisplayName: "Project default (main)",
+      baseCommit: null,
+      branchName: "ralphx/demo/agent-conversation-1",
+      worktreePath: "/tmp/ralphx/conversation-1",
+      linkedIdeationSessionId: null,
+      linkedPlanBranchId: null,
+      publicationPrNumber: null,
+      publicationPrUrl: null,
+      publicationPrStatus: null,
+      publicationPushStatus: null,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    const baseLine = await screen.findByTestId("agents-conversation-base");
+    expect(baseLine).toHaveTextContent("Project default (main)");
+    expect(within(baseLine).getByRole("button", { name: "Start from" })).toBeDisabled();
   });
 
   it("keeps the artifact pane closed by default when the conversation has nothing to show", async () => {
