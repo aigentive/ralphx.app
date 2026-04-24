@@ -28,10 +28,6 @@ describe("TextBubble", () => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
     });
 
-    it("renders the copy button", () => {
-      render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
-    });
   });
 
   // ============================================================================
@@ -115,23 +111,31 @@ describe("TextBubble", () => {
       expect(bubble.getAttribute("style")).toContain("border-width: 1px");
     });
 
-    it("applies assistant styling (dark background)", () => {
+    it("renders assistant text without a filled bubble background", () => {
       const { container } = render(<TextBubble text="Hello" isUser={false} />);
       const bubble = container.firstChild as HTMLElement;
-      expect(bubble).toHaveStyle({ background: "var(--bg-elevated)" });
+      expect(bubble).toHaveStyle({ background: "transparent" });
     });
 
-    it("applies rounded corners", () => {
+    it("applies rounded corners to user bubbles", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
       expect(bubble).toHaveClass("rounded-xl");
     });
 
-    it("applies padding", () => {
+    it("keeps user bubble padding", () => {
       const { container } = render(<TextBubble text="Hello" isUser={true} />);
       const bubble = container.firstChild as HTMLElement;
       expect(bubble).toHaveClass("px-3");
       expect(bubble).toHaveClass("py-2");
+    });
+
+    it("removes bubble padding and rounding for assistant text", () => {
+      const { container } = render(<TextBubble text="Hello" isUser={false} />);
+      const bubble = container.firstChild as HTMLElement;
+      expect(bubble).toHaveClass("px-0");
+      expect(bubble).toHaveClass("py-0");
+      expect(bubble).toHaveClass("rounded-none");
     });
 
     it("uses a container-aware max width instead of a fixed bubble cap", () => {
@@ -141,38 +145,10 @@ describe("TextBubble", () => {
     });
   });
 
-  // ============================================================================
-  // Copy Functionality Tests
-  // ============================================================================
-
-  describe("copy functionality", () => {
-    it("renders copy button with correct label", () => {
+  describe("copy control ownership", () => {
+    it("does not render an inline copy button inside the text bubble", () => {
       render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
-    });
-
-    it("copy button is present and accessible", () => {
-      render(<TextBubble text="Hello" isUser={false} />);
-      const copyButton = screen.getByLabelText("Copy message");
-      expect(copyButton).toBeInTheDocument();
-      expect(copyButton.tagName).toBe("BUTTON");
-    });
-  });
-
-  // ============================================================================
-  // Accessibility Tests
-  // ============================================================================
-
-  describe("accessibility", () => {
-    it("copy button has proper aria-label", () => {
-      render(<TextBubble text="Hello" isUser={true} />);
-      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
-    });
-
-    it("copy button is keyboard accessible", () => {
-      render(<TextBubble text="Hello" isUser={false} />);
-      const button = screen.getByLabelText("Copy message");
-      expect(button.tagName).toBe("BUTTON");
+      expect(screen.queryByLabelText("Copy message")).not.toBeInTheDocument();
     });
   });
 });
