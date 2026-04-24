@@ -165,16 +165,7 @@ export const mockDesignApi = {
     designSystemId: string,
     itemId: string,
   ): Promise<DesignStyleguideItemResponse> => ({
-    id: `item-${itemId}`,
-    designSystemId,
-    schemaVersionId: "schema-version-mock",
-    itemId,
-    group: "components",
-    label: itemId,
-    summary: "",
-    previewArtifactId: null,
-    sourceRefs: [],
-    confidence: "medium",
+    ...mockStyleguideItemForAction(designSystemId, itemId),
     approvalStatus: "approved",
     feedbackStatus: "resolved",
     updatedAt: nowIso(),
@@ -198,16 +189,7 @@ export const mockDesignApi = {
       resolvedAt: null,
     },
     item: {
-      id: `item-${input.itemId}`,
-      designSystemId: input.designSystemId,
-      schemaVersionId: "schema-version-mock",
-      itemId: input.itemId,
-      group: "components",
-      label: input.itemId,
-      summary: "",
-      previewArtifactId: null,
-      sourceRefs: [],
-      confidence: "medium",
+      ...mockStyleguideItemForAction(input.designSystemId, input.itemId),
       approvalStatus: "needs_work",
       feedbackStatus: "open",
       updatedAt: nowIso(),
@@ -236,6 +218,32 @@ export const mockDesignApi = {
     resolvedAt: nowIso(),
   }),
 } as const;
+
+function mockStyleguideItemForAction(
+  designSystemId: string,
+  itemId: string,
+): DesignStyleguideItemResponse {
+  const designSystem = allSystems().find((system) => system.id === designSystemId);
+  return (
+    designSystem
+      ? mockStyleguideItems(designSystem).find((item) => item.itemId === itemId)
+      : null
+  ) ?? {
+    id: `item-${designSystemId}-${itemId}`,
+    designSystemId,
+    schemaVersionId: "schema-version-mock",
+    itemId,
+    group: "components",
+    label: itemId,
+    summary: "",
+    previewArtifactId: null,
+    sourceRefs: [],
+    confidence: "medium",
+    approvalStatus: "needs_review",
+    feedbackStatus: "none",
+    updatedAt: nowIso(),
+  };
+}
 
 function createMockDesignSystem(input: CreateDesignSystemInput): CreateDesignSystemResponse {
   const existing = systemsForProject(input.primaryProjectId);
