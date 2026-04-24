@@ -9,6 +9,8 @@ pub mod artifact_commands;
 pub mod chat_attachment_commands;
 pub mod conversation_stats_commands;
 pub mod chat_responses;
+pub mod design_artifact_commands;
+pub(crate) mod design_artifact_persistence;
 pub mod design_commands;
 pub mod design_feedback_commands;
 pub mod diagnostic_commands;
@@ -75,6 +77,11 @@ pub use conversation_stats_commands::{
     UsageBucketResponse, UsageTotalsResponse,
 };
 pub use chat_responses::ChatMessageResponse;
+pub use design_artifact_commands::{
+    export_design_system_package, get_design_styleguide_preview, get_design_styleguide_view_model,
+    DesignArtifactJsonResponse, ExportDesignSystemPackageInput, ExportDesignSystemPackageResponse,
+    GetDesignStyleguidePreviewInput, GetDesignStyleguideViewModelInput,
+};
 pub use design_commands::{
     archive_design_system, create_design_system, generate_design_system_styleguide,
     get_design_system, list_project_design_systems, CreateDesignSystemInput,

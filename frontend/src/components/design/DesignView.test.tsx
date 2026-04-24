@@ -192,6 +192,27 @@ describe("DesignView", () => {
       };
     });
     vi.spyOn(api.design, "listStyleguideItems").mockResolvedValue([]);
+    vi.spyOn(api.design, "getStyleguideViewModel").mockResolvedValue(null);
+    vi.spyOn(api.design, "getStyleguidePreview").mockImplementation(
+      async (designSystemId: string, previewArtifactId: string) => ({
+        designSystemId,
+        schemaVersionId: "schema-version-1",
+        artifactId: previewArtifactId,
+        artifactType: "design_doc",
+        content: {
+          design_system_id: designSystemId,
+          schema_version_id: "schema-version-1",
+          item_id: "components.buttons",
+          group: "components",
+          label: "Buttons",
+          summary: "Button patterns from persisted preview",
+          preview_kind: "component_sample",
+          confidence: "medium",
+          source_refs: [{ project_id: "project-1", path: "frontend/src/Button.tsx", line: 12 }],
+          generated_at: "2026-04-24T08:00:00Z",
+        },
+      }),
+    );
     vi.spyOn(api.design, "approveStyleguideItem").mockImplementation(
       async (designSystemId: string, itemId: string) => ({
         ...styleguideItemResponse(designSystemId, itemId),
@@ -278,6 +299,19 @@ describe("DesignView", () => {
         };
       },
     );
+    vi.spyOn(api.design, "exportPackage").mockImplementation(
+      async (designSystemId: string) => ({
+        designSystemId,
+        schemaVersionId: "schema-version-1",
+        artifactId: "export-package-1",
+        redacted: true,
+        exportedAt: "2026-04-24T08:00:00Z",
+        content: {
+          package_version: "1.0",
+          redacted: true,
+        },
+      }),
+    );
   });
 
   it("renders a project-grouped design sidebar and styleguide pane", async () => {
@@ -291,6 +325,57 @@ describe("DesignView", () => {
     expect(await screen.findByText("ready / 2 sources")).toBeInTheDocument();
     expect(screen.getByTestId("design-styleguide-group-colors")).toHaveTextContent(
       "Primary palette",
+    );
+  });
+
+  it("hydrates the styleguide pane from the persisted styleguide artifact", async () => {
+    vi.mocked(api.design.getStyleguideViewModel).mockResolvedValue({
+      designSystemId: "design-system-project-1",
+      schemaVersionId: "schema-version-1",
+      artifactId: "styleguide-artifact-1",
+      artifactType: "design_doc",
+      content: {
+        design_system_id: "design-system-project-1",
+        schema_version_id: "schema-version-1",
+        version: "0.1.0",
+        generated_at: "2026-04-24T08:00:00Z",
+        ready_summary: "Persisted artifact summary is ready for review.",
+        caveats: [
+          {
+            item_id: "components.buttons",
+            severity: "medium",
+            summary: "Check source confidence before approval.",
+          },
+        ],
+        groups: [
+          {
+            id: "components",
+            label: "Components",
+            items: [
+              {
+                id: "components.buttons",
+                group: "components",
+                label: "Buttons",
+                summary: "Buttons from the persisted styleguide artifact",
+                preview_artifact_id: "preview-buttons",
+                source_refs: [{ project_id: "project-1", path: "frontend/src/Button.tsx" }],
+                confidence: "medium",
+                approval_status: "needs_review",
+                feedback_status: "none",
+                updated_at: "2026-04-24T08:00:00Z",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+
+    expect(await screen.findByText("Persisted artifact summary is ready for review.")).toBeInTheDocument();
+    expect(await screen.findByText("Buttons from the persisted styleguide artifact")).toBeInTheDocument();
+    expect(screen.getByTestId("design-caveat")).toHaveTextContent(
+      "Check source confidence before approval.",
     );
   });
 
@@ -346,19 +431,34 @@ describe("DesignView", () => {
     );
   });
 
-  it("creates a draft design system for the focused project", async () => {
+  it("creates a draft design system from selected source projects and paths", async () => {
     const createSpy = vi.spyOn(api.design, "createDesignSystem");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
     await screen.findByTestId("design-system-design-system-project-1");
 
     fireEvent.click(screen.getByTestId("design-new-system"));
+    await screen.findByTestId("design-source-composer");
+    fireEvent.change(screen.getByTestId("design-primary-paths"), {
+      target: { value: "frontend/src\ncomponents, frontend/src" },
+    });
+    fireEvent.click(screen.getByTestId("design-reference-source-project-2"));
+    fireEvent.change(screen.getByTestId("design-reference-paths-project-2"), {
+      target: { value: "docs" },
+    });
+    fireEvent.click(screen.getByTestId("design-create-from-sources"));
 
     await waitFor(() => {
       expect(createSpy.mock.calls[0]?.[0]).toEqual({
         primaryProjectId: "project-1",
         name: "RalphX Design System",
-        selectedPaths: [],
-        sources: [],
+        selectedPaths: ["frontend/src", "components"],
+        sources: [
+          {
+            projectId: "project-2",
+            role: "reference",
+            selectedPaths: ["docs"],
+          },
+        ],
       });
     });
     expect(await screen.findByTestId("design-system-created-design-system-project-1")).toHaveTextContent(
@@ -372,6 +472,8 @@ describe("DesignView", () => {
     await screen.findByTestId("design-system-design-system-project-1");
 
     fireEvent.click(screen.getByTestId("design-new-system"));
+    await screen.findByTestId("design-source-composer");
+    fireEvent.click(screen.getByTestId("design-create-from-sources"));
     await screen.findByTestId("design-system-created-design-system-project-1");
     fireEvent.click(await screen.findByTestId("design-generate-styleguide"));
 
@@ -381,10 +483,26 @@ describe("DesignView", () => {
     expect(await screen.findByText("Button patterns from persisted styleguide rows")).toBeInTheDocument();
   });
 
+  it("exports the selected design system package", async () => {
+    const exportSpy = vi.spyOn(api.design, "exportPackage");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-styleguide-pane");
+
+    fireEvent.click(screen.getByTestId("design-export-package"));
+
+    await waitFor(() => {
+      expect(exportSpy).toHaveBeenCalledWith("design-system-project-1");
+    });
+    expect(await screen.findByTestId("design-export-result")).toHaveTextContent(
+      "export-p",
+    );
+  });
+
   it("uses backend styleguide commands for persisted rows", async () => {
     vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
       styleguideItemResponse("design-system-project-1"),
     ]);
+    const previewSpy = vi.spyOn(api.design, "getStyleguidePreview");
     const approveSpy = vi.spyOn(api.design, "approveStyleguideItem");
     const feedbackSpy = vi.spyOn(api.design, "createStyleguideFeedback");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
@@ -392,6 +510,10 @@ describe("DesignView", () => {
     await screen.findByText("Button patterns from persisted styleguide rows");
     const row = await screen.findByTestId("design-styleguide-row-components.buttons");
     fireEvent.click(row);
+    expect(await screen.findByTestId("design-preview-kind")).toHaveTextContent(
+      "component sample / 1 sources",
+    );
+    expect(previewSpy).toHaveBeenCalledWith("design-system-project-1", "preview-buttons");
     fireEvent.click(screen.getByTestId("design-approve-components.buttons"));
 
     await waitFor(() => {

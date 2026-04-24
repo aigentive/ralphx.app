@@ -5,13 +5,18 @@ import type {
   CreateDesignSystemResponse,
   DesignStyleguideFeedbackResponse,
   DesignStyleguideItemResponse,
+  DesignStyleguidePreviewResponse,
+  DesignStyleguideViewModelResponse,
   DesignSystemDetailResponse,
   DesignSystemResponse,
+  DesignSystemSourceResponse,
+  ExportDesignSystemPackageResponse,
   GenerateDesignSystemStyleguideResponse,
 } from "@/api/design";
 import { getStore } from "./store";
 
 const mockSystemsByProject = new Map<string, DesignSystemResponse[]>();
+const mockSourcesByDesignSystem = new Map<string, DesignSystemSourceResponse[]>();
 
 function nowIso() {
   return new Date("2026-04-24T08:00:00.000Z").toISOString();
@@ -106,7 +111,7 @@ export const mockDesignApi = {
     }
     return {
       designSystem,
-      sources: [],
+      sources: mockSourcesByDesignSystem.get(designSystem.id) ?? [],
       conversation: null,
     };
   },
@@ -159,6 +164,104 @@ export const mockDesignApi = {
   listStyleguideItems: async (designSystemId: string): Promise<DesignStyleguideItemResponse[]> => {
     const designSystem = allSystems().find((system) => system.id === designSystemId);
     return designSystem ? mockStyleguideItems(designSystem) : [];
+  },
+
+  getStyleguideViewModel: async (
+    designSystemId: string,
+  ): Promise<DesignStyleguideViewModelResponse | null> => {
+    const designSystem = allSystems().find((system) => system.id === designSystemId);
+    if (!designSystem?.currentSchemaVersionId) {
+      return null;
+    }
+    const items = mockStyleguideItems(designSystem);
+    return {
+      designSystemId,
+      schemaVersionId: designSystem.currentSchemaVersionId,
+      artifactId: `styleguide-${designSystem.id}`,
+      artifactType: "design_doc",
+      content: {
+        design_system_id: designSystem.id,
+        schema_version_id: designSystem.currentSchemaVersionId,
+        version: "0.1.0",
+        generated_at: nowIso(),
+        ready_summary: `${designSystem.name} is ready for source-grounded styleguide review.`,
+        caveats: [],
+        groups: [
+          {
+            id: "colors",
+            label: "Colors",
+            items: items
+              .filter((item) => item.group === "colors")
+              .map((item) => styleguideItemContent(item)),
+          },
+          {
+            id: "components",
+            label: "Components",
+            items: items
+              .filter((item) => item.group === "components")
+              .map((item) => styleguideItemContent(item)),
+          },
+        ],
+      },
+    };
+  },
+
+  getStyleguidePreview: async (
+    designSystemId: string,
+    previewArtifactId: string,
+  ): Promise<DesignStyleguidePreviewResponse> => {
+    const designSystem = allSystems().find((system) => system.id === designSystemId);
+    const item =
+      designSystem
+        ? mockStyleguideItems(designSystem).find(
+            (candidate) => candidate.previewArtifactId === previewArtifactId,
+          )
+        : null;
+    const fallback = item ?? mockStyleguideItemForAction(designSystemId, "components.buttons");
+    return {
+      designSystemId,
+      schemaVersionId: fallback.schemaVersionId,
+      artifactId: previewArtifactId,
+      artifactType: "design_doc",
+      content: {
+        design_system_id: designSystemId,
+        schema_version_id: fallback.schemaVersionId,
+        item_id: fallback.itemId,
+        group: fallback.group,
+        label: fallback.label,
+        summary: fallback.summary,
+        preview_kind: fallback.group === "colors" ? "color_swatch" : "component_sample",
+        confidence: fallback.confidence,
+        source_refs: fallback.sourceRefs,
+        generated_at: nowIso(),
+      },
+    };
+  },
+
+  exportPackage: async (
+    designSystemId: string,
+    includeFullProvenance = false,
+  ): Promise<ExportDesignSystemPackageResponse> => {
+    const designSystem =
+      allSystems().find((system) => system.id === designSystemId) ??
+      mockDesignSystem("project-mock");
+    const schemaVersionId = designSystem.currentSchemaVersionId ?? `schema-${designSystem.id}`;
+    return {
+      designSystemId,
+      schemaVersionId,
+      artifactId: `export-${designSystem.id}`,
+      redacted: !includeFullProvenance,
+      exportedAt: nowIso(),
+      content: {
+        package_version: "1.0",
+        redacted: !includeFullProvenance,
+        design_system: {
+          id: designSystem.id,
+          name: designSystem.name,
+          schema_version_id: schemaVersionId,
+        },
+      },
+    };
   },
 
   approveStyleguideItem: async (
@@ -245,6 +348,21 @@ function mockStyleguideItemForAction(
   };
 }
 
+function styleguideItemContent(item: DesignStyleguideItemResponse) {
+  return {
+    id: item.itemId,
+    group: item.group,
+    label: item.label,
+    summary: item.summary,
+    preview_artifact_id: item.previewArtifactId,
+    source_refs: item.sourceRefs,
+    confidence: item.confidence,
+    approval_status: item.approvalStatus,
+    feedback_status: item.feedbackStatus,
+    updated_at: item.updatedAt,
+  };
+}
+
 function createMockDesignSystem(input: CreateDesignSystemInput): CreateDesignSystemResponse {
   const existing = systemsForProject(input.primaryProjectId);
   const designSystem = mockDesignSystem(input.primaryProjectId, input.name, {
@@ -253,14 +371,43 @@ function createMockDesignSystem(input: CreateDesignSystemInput): CreateDesignSys
     status: "draft",
   });
 
+  const sources: DesignSystemSourceResponse[] = [
+    {
+      id: `source-${designSystem.id}-primary`,
+      designSystemId: designSystem.id,
+      projectId: input.primaryProjectId,
+      role: "primary",
+      selectedPaths: input.selectedPaths,
+      sourceKind: "project_checkout",
+      gitCommit: null,
+      sourceHashes: {},
+      lastAnalyzedAt: null,
+    },
+    ...input.sources.map((source, index) => ({
+      id: `source-${designSystem.id}-${index}`,
+      designSystemId: designSystem.id,
+      projectId: source.projectId,
+      role: source.role ?? "reference",
+      selectedPaths: source.selectedPaths,
+      sourceKind: "project_checkout" as const,
+      gitCommit: null,
+      sourceHashes: {},
+      lastAnalyzedAt: null,
+    })),
+  ];
+  const designSystemWithSourceCount = {
+    ...designSystem,
+    sourceCount: sources.length,
+  };
   mockSystemsByProject.set(input.primaryProjectId, [
-    designSystem,
+    designSystemWithSourceCount,
     ...existing.filter((system) => system.id !== designSystem.id),
   ]);
+  mockSourcesByDesignSystem.set(designSystem.id, sources);
 
   return {
-    designSystem,
-    sources: [],
+    designSystem: designSystemWithSourceCount,
+    sources,
     conversation: {
       id: `conversation-${designSystem.id}`,
       contextType: "design",

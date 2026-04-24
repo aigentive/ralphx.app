@@ -1,6 +1,8 @@
 import type { Project } from "@/types/project";
 import type {
+  DesignPersistedStyleguideItem,
   DesignStyleguideItemResponse,
+  DesignStyleguideViewModelResponse,
   DesignSystemResponse,
   DesignSystemSourceResponse,
 } from "@/api/design";
@@ -85,11 +87,15 @@ export function buildDesignSystemFromResponse(
     sources?: DesignSystemSourceResponse[];
     conversationId?: string | null;
     styleguideItems?: DesignStyleguideItemResponse[];
+    styleguideViewModel?: DesignStyleguideViewModelResponse | null;
   } = {},
 ): DesignSystem {
   const styleguide = mockStyleguideModel(project.id);
+  const persistedViewModel = options.styleguideViewModel?.content;
   const groups = options.styleguideItems?.length
     ? buildStyleguideGroupsFromResponses(options.styleguideItems)
+    : persistedViewModel?.groups.length
+      ? buildStyleguideGroupsFromViewModel(persistedViewModel.groups)
     : styleguide.groups;
 
   return {
@@ -99,9 +105,13 @@ export function buildDesignSystemFromResponse(
     name: response.name,
     status: response.status,
     version: response.currentSchemaVersionId ? response.currentSchemaVersionId.slice(0, 8) : "draft",
-    sourceCount: options.sources?.length ?? 0,
+    sourceCount: response.sourceCount ?? options.sources?.length ?? 0,
     updatedAt: response.updatedAt,
     conversationId: options.conversationId ?? null,
+    readySummary: persistedViewModel?.ready_summary ?? styleguide.readySummary,
+    caveats: persistedViewModel?.caveats.length
+      ? caveatsFromViewModel(persistedViewModel.caveats)
+      : styleguide.caveats,
     groups,
   };
 }
@@ -218,6 +228,16 @@ function buildStyleguideGroupsFromResponses(
   }));
 }
 
+function buildStyleguideGroupsFromViewModel(
+  groups: DesignStyleguideViewModelResponse["content"]["groups"],
+): DesignStyleguideGroup[] {
+  return groups.map((group) => ({
+    id: group.id,
+    label: group.label || GROUP_LABELS[group.id],
+    items: group.items.map(styleguideItemFromViewModel),
+  }));
+}
+
 function styleguideItemFromResponse(response: DesignStyleguideItemResponse): DesignStyleguideItem {
   return {
     id: response.id,
@@ -226,11 +246,7 @@ function styleguideItemFromResponse(response: DesignStyleguideItemResponse): Des
     label: response.label,
     summary: response.summary,
     ...(response.previewArtifactId ? { previewArtifactId: response.previewArtifactId } : {}),
-    sourceRefs: response.sourceRefs.map((sourceRef) => ({
-      projectId: sourceRef.project_id,
-      path: sourceRef.path,
-      ...(sourceRef.line ? { line: sourceRef.line } : {}),
-    })),
+    sourceRefs: response.sourceRefs.map(sourceRefFromResponse),
     confidence: response.confidence,
     approvalStatus: response.approvalStatus,
     feedbackStatus: response.feedbackStatus,
@@ -240,11 +256,68 @@ function styleguideItemFromResponse(response: DesignStyleguideItemResponse): Des
   };
 }
 
+function styleguideItemFromViewModel(item: DesignPersistedStyleguideItem): DesignStyleguideItem {
+  const approvalStatus = item.approval_status ?? "needs_review";
+  const feedbackStatus = item.feedback_status ?? "none";
+  return {
+    id: item.id,
+    itemId: item.id,
+    group: item.group,
+    label: item.label,
+    summary: item.summary,
+    ...(item.preview_artifact_id ? { previewArtifactId: item.preview_artifact_id } : {}),
+    sourceRefs: item.source_refs.map(sourceRefFromResponse),
+    confidence: item.confidence ?? "medium",
+    approvalStatus,
+    feedbackStatus,
+    reviewState: reviewStateForStatus(approvalStatus, feedbackStatus),
+    sourceStatus: "current",
+    isPersisted: true,
+  };
+}
+
 function reviewStateForResponse(response: DesignStyleguideItemResponse): DesignReviewState {
-  if (response.feedbackStatus === "open" || response.feedbackStatus === "in_progress") {
+  return reviewStateForStatus(response.approvalStatus, response.feedbackStatus);
+}
+
+function reviewStateForStatus(
+  approvalStatus: DesignStyleguideItem["approvalStatus"],
+  feedbackStatus: DesignStyleguideItem["feedbackStatus"],
+): DesignReviewState {
+  if (feedbackStatus === "open" || feedbackStatus === "in_progress") {
     return "needs_work";
   }
-  return response.approvalStatus;
+  return approvalStatus;
+}
+
+function sourceRefFromResponse(sourceRef: {
+  project_id: string;
+  path: string;
+  line?: number | null | undefined;
+}): DesignSourceRef {
+  return {
+    projectId: sourceRef.project_id,
+    path: sourceRef.path,
+    ...(sourceRef.line ? { line: sourceRef.line } : {}),
+  };
+}
+
+function caveatsFromViewModel(
+  caveats: DesignStyleguideViewModelResponse["content"]["caveats"],
+): DesignCaveat[] {
+  return caveats.map((caveat, index) => ({
+    id: caveat.id ?? caveat.item_id ?? `caveat-${index}`,
+    severity: caveatSeverity(caveat.severity),
+    title: caveat.title ?? "Review caveat",
+    body: caveat.body ?? caveat.summary ?? "",
+  }));
+}
+
+function caveatSeverity(value: string | undefined): DesignCaveat["severity"] {
+  if (value === "blocker" || value === "warning" || value === "info") {
+    return value;
+  }
+  return "warning";
 }
 
 function styleguideItem(

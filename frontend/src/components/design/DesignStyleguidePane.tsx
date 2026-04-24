@@ -2,11 +2,11 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
   Loader2,
   MessageSquare,
   Package,
   Sparkles,
-  Upload,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -15,6 +15,7 @@ import type { DesignReviewState, DesignStyleguideItem, DesignSystem } from "./de
 import {
   useApproveDesignStyleguideItem,
   useCreateDesignStyleguideFeedback,
+  useDesignStyleguidePreview,
 } from "./useProjectDesignSystems";
 
 const FILTERS: Array<{ id: "all" | DesignReviewState; label: string }> = [
@@ -28,13 +29,19 @@ const FILTERS: Array<{ id: "all" | DesignReviewState; label: string }> = [
 interface DesignStyleguidePaneProps {
   designSystem: DesignSystem | null;
   isGeneratingStyleguide?: boolean;
+  isExportingPackage?: boolean;
+  exportPackageArtifactId?: string | null;
   onGenerateStyleguide?: () => void;
+  onExportPackage?: () => void;
 }
 
 export function DesignStyleguidePane({
   designSystem,
   isGeneratingStyleguide = false,
+  isExportingPackage = false,
+  exportPackageArtifactId = null,
   onGenerateStyleguide,
+  onExportPackage,
 }: DesignStyleguidePaneProps) {
   const [activeFilter, setActiveFilter] = useState<"all" | DesignReviewState>("all");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -159,9 +166,21 @@ export function DesignStyleguidePane({
             {isGeneratingStyleguide ? "Generating" : "Generate"}
           </Button>
         )}
-        <Button type="button" variant="outline" size="sm" className="gap-2">
-          <Upload className="w-4 h-4" />
-          Export
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={designSystem.version === "draft" || isExportingPackage || !onExportPackage}
+          onClick={onExportPackage}
+          data-testid="design-export-package"
+        >
+          {isExportingPackage ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
+          {isExportingPackage ? "Exporting" : "Export"}
         </Button>
       </header>
 
@@ -181,6 +200,19 @@ export function DesignStyleguidePane({
               data-testid="design-generating-state"
             >
               Analyzing selected sources and publishing the initial styleguide.
+            </div>
+          )}
+          {exportPackageArtifactId && (
+            <div
+              className="rounded-lg border px-3 py-2 text-[12px]"
+              style={{
+                borderColor: "var(--overlay-weak)",
+                background: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="design-export-result"
+            >
+              Export package artifact {exportPackageArtifactId.slice(0, 8)} is ready.
             </div>
           )}
           <div className="flex flex-wrap gap-1.5" data-testid="design-review-filters">
@@ -245,6 +277,7 @@ export function DesignStyleguidePane({
                 {visibleItems.map((item) => (
                   <StyleguideRow
                     key={item.id}
+                    designSystemId={designSystem.id}
                     item={item}
                     reviewState={approvalOverrides[item.id] ?? item.reviewState}
                     isExpanded={expandedItemId === item.id}
@@ -274,6 +307,7 @@ export function DesignStyleguidePane({
 }
 
 function StyleguideRow({
+  designSystemId,
   item,
   reviewState,
   isExpanded,
@@ -286,6 +320,7 @@ function StyleguideRow({
   onSubmitFeedback,
   onCancelFeedback,
 }: {
+  designSystemId: string;
   item: DesignStyleguideItem;
   reviewState: DesignReviewState;
   isExpanded: boolean;
@@ -322,7 +357,7 @@ function StyleguideRow({
 
       {isExpanded && (
         <div className="border-t p-3 space-y-3" style={{ borderColor: "var(--overlay-faint)" }}>
-          <PreviewBlock item={item} />
+          <PreviewBlock designSystemId={designSystemId} item={item} />
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -371,7 +406,92 @@ function StyleguideRow({
   );
 }
 
-function PreviewBlock({ item }: { item: DesignStyleguideItem }) {
+function PreviewBlock({ designSystemId, item }: { designSystemId: string; item: DesignStyleguideItem }) {
+  const persistedPreviewArtifactId = item.isPersisted ? item.previewArtifactId ?? null : null;
+  const previewQuery = useDesignStyleguidePreview(
+    designSystemId,
+    persistedPreviewArtifactId,
+  );
+  const preview = previewQuery.data?.content;
+  const sourceCount = preview?.source_refs.length ?? item.sourceRefs.length;
+
+  if (!item.isPersisted) {
+    return <LocalPreviewBlock item={item} />;
+  }
+
+  if (!item.previewArtifactId) {
+    return (
+      <div
+        className="min-h-24 rounded-lg border flex items-center justify-center gap-2 px-3"
+        style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+        data-testid="design-preview-empty"
+      >
+        <Package className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+        <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+          Preview pending
+        </span>
+      </div>
+    );
+  }
+
+  if (previewQuery.isLoading) {
+    return (
+      <div
+        className="min-h-24 rounded-lg border flex items-center justify-center gap-2 px-3"
+        style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+        data-testid="design-preview-loading"
+      >
+        <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--accent-primary)" }} />
+        <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+          Loading preview
+        </span>
+      </div>
+    );
+  }
+
+  if (item.group === "colors") {
+    return (
+      <div className="grid grid-cols-2 gap-2" data-testid="design-color-preview">
+        {[
+          preview?.label ?? item.label,
+          `${preview?.preview_kind.replace("_", " ") ?? "color swatch"} / ${sourceCount} sources`,
+        ].map((label, index) => (
+          <div
+            key={label}
+            className="min-h-20 rounded-lg border p-2"
+            style={{
+              borderColor: "var(--overlay-weak)",
+              background: index === 0 ? "var(--accent-primary)" : "var(--accent-muted)",
+              color: index === 0 ? "var(--bg-base)" : "var(--accent-primary)",
+            }}
+          >
+            <div className="text-[10px] font-semibold uppercase">{label}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-h-24 rounded-lg border flex items-center justify-center gap-2 px-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-component-preview"
+    >
+      <Package className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
+      <div className="min-w-0 text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+        <div className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
+          {preview?.label ?? item.label}
+        </div>
+        <div className="truncate" data-testid="design-preview-kind">
+          {preview?.preview_kind.replace("_", " ") ?? "persisted preview"} / {sourceCount} sources
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocalPreviewBlock({ item }: { item: DesignStyleguideItem }) {
   if (item.group === "colors") {
     return (
       <div className="grid grid-cols-2 gap-2" data-testid="design-color-preview">

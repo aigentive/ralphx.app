@@ -39,9 +39,15 @@ test.describe("Design workspace", () => {
     await saveShot(page, "design-desktop-initial");
 
     await page.getByTestId("design-new-system").click();
-    await expect(page.getByTestId("integrated-chat-header")).toContainText("draft / 0 sources");
+    await expect(page.getByTestId("design-source-composer")).toBeVisible();
+    await saveShot(page, "design-source-composer");
+    await page.getByTestId("design-primary-paths").fill("frontend/src");
+    await page.getByTestId("design-create-from-sources").click();
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("draft / 1 sources");
     await page.getByTestId("design-generate-styleguide").click();
-    await expect(page.getByTestId("integrated-chat-header")).toContainText("ready / 0 sources");
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("ready / 1 sources");
+    await page.getByTestId("design-export-package").click();
+    await expect(page.getByTestId("design-export-result")).toContainText("Export package artifact");
     await saveShot(page, "design-desktop-generated");
 
     const buttonRow = page.getByTestId("design-styleguide-row-components.buttons");

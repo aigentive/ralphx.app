@@ -26,6 +26,7 @@ export const DesignSystemResponseSchema = z.object({
   status: DesignSystemStatusSchema,
   currentSchemaVersionId: z.string().nullable(),
   storageRootRef: z.string().min(1),
+  sourceCount: z.number().int().nonnegative().optional(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
   archivedAt: z.string().nullable(),
@@ -141,6 +142,78 @@ export const DesignStyleguideItemResponseSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
+export const DesignPersistedStyleguideItemSchema = z.object({
+  id: z.string().min(1),
+  group: z.enum(["ui_kit", "type", "colors", "spacing", "components", "brand"]),
+  label: z.string().min(1),
+  summary: z.string(),
+  preview_artifact_id: z.string().nullable().optional(),
+  source_refs: z.array(DesignSourceRefSchema).default([]),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
+  approval_status: z.enum(["needs_review", "approved", "needs_work"]).optional(),
+  feedback_status: z.enum(["none", "open", "in_progress", "resolved", "dismissed"]).optional(),
+  updated_at: z.string().optional(),
+}).passthrough();
+
+export const DesignStyleguideViewModelContentSchema = z.object({
+  design_system_id: z.string().min(1),
+  schema_version_id: z.string().min(1),
+  version: z.string().min(1),
+  generated_at: z.string().min(1),
+  ready_summary: z.string().optional(),
+  caveats: z.array(z.object({
+    id: z.string().optional(),
+    item_id: z.string().optional(),
+    severity: z.string().optional(),
+    title: z.string().optional(),
+    body: z.string().optional(),
+    summary: z.string().optional(),
+  }).passthrough()).default([]),
+  groups: z.array(z.object({
+    id: z.enum(["ui_kit", "type", "colors", "spacing", "components", "brand"]),
+    label: z.string().min(1),
+    items: z.array(DesignPersistedStyleguideItemSchema),
+  })),
+}).passthrough();
+
+export const DesignStyleguidePreviewContentSchema = z.object({
+  design_system_id: z.string().min(1),
+  schema_version_id: z.string().min(1),
+  item_id: z.string().min(1),
+  group: z.enum(["ui_kit", "type", "colors", "spacing", "components", "brand"]),
+  label: z.string().min(1),
+  summary: z.string(),
+  preview_kind: z.string().min(1),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
+  source_refs: z.array(DesignSourceRefSchema).default([]),
+  generated_at: z.string().min(1),
+}).passthrough();
+
+export const DesignStyleguideViewModelResponseSchema = z.object({
+  designSystemId: z.string().min(1),
+  schemaVersionId: z.string().min(1),
+  artifactId: z.string().min(1),
+  artifactType: z.string().min(1),
+  content: DesignStyleguideViewModelContentSchema,
+});
+
+export const DesignStyleguidePreviewResponseSchema = z.object({
+  designSystemId: z.string().min(1),
+  schemaVersionId: z.string().min(1),
+  artifactId: z.string().min(1),
+  artifactType: z.string().min(1),
+  content: DesignStyleguidePreviewContentSchema,
+});
+
+export const ExportDesignSystemPackageResponseSchema = z.object({
+  designSystemId: z.string().min(1),
+  schemaVersionId: z.string().min(1),
+  artifactId: z.string().min(1),
+  redacted: z.boolean(),
+  exportedAt: z.string().min(1),
+  content: z.record(z.string(), z.unknown()),
+});
+
 export const GenerateDesignSystemStyleguideResponseSchema = z.object({
   designSystem: DesignSystemResponseSchema,
   schemaVersionId: z.string().min(1),
@@ -199,6 +272,10 @@ export type GenerateDesignSystemStyleguideResponse = z.infer<
   typeof GenerateDesignSystemStyleguideResponseSchema
 >;
 export type DesignStyleguideItemResponse = z.infer<typeof DesignStyleguideItemResponseSchema>;
+export type DesignPersistedStyleguideItem = z.infer<typeof DesignPersistedStyleguideItemSchema>;
+export type DesignStyleguideViewModelResponse = z.infer<typeof DesignStyleguideViewModelResponseSchema>;
+export type DesignStyleguidePreviewResponse = z.infer<typeof DesignStyleguidePreviewResponseSchema>;
+export type ExportDesignSystemPackageResponse = z.infer<typeof ExportDesignSystemPackageResponseSchema>;
 export type DesignStyleguideFeedbackResponse = z.infer<typeof DesignStyleguideFeedbackResponseSchema>;
 export type CreateDesignStyleguideFeedbackInput = z.infer<typeof CreateDesignStyleguideFeedbackInputSchema>;
 export type CreateDesignStyleguideFeedbackResponse = z.infer<typeof CreateDesignStyleguideFeedbackResponseSchema>;
@@ -228,6 +305,27 @@ export const designApi = {
       "list_design_styleguide_items",
       { input: { designSystemId, schemaVersionId } },
       z.array(DesignStyleguideItemResponseSchema),
+    ),
+
+  getStyleguideViewModel: (designSystemId: string, schemaVersionId?: string) =>
+    typedInvoke(
+      "get_design_styleguide_view_model",
+      { input: { designSystemId, schemaVersionId } },
+      DesignStyleguideViewModelResponseSchema.nullable(),
+    ),
+
+  getStyleguidePreview: (designSystemId: string, previewArtifactId: string) =>
+    typedInvoke(
+      "get_design_styleguide_preview",
+      { input: { designSystemId, previewArtifactId } },
+      DesignStyleguidePreviewResponseSchema,
+    ),
+
+  exportPackage: (designSystemId: string, includeFullProvenance = false) =>
+    typedInvoke(
+      "export_design_system_package",
+      { input: { designSystemId, includeFullProvenance } },
+      ExportDesignSystemPackageResponseSchema,
     ),
 
   approveStyleguideItem: (designSystemId: string, itemId: string) =>

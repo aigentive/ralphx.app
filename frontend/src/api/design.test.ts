@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CreateDesignStyleguideFeedbackResponseSchema,
   CreateDesignSystemResponseSchema,
+  DesignStyleguidePreviewResponseSchema,
+  DesignStyleguideViewModelResponseSchema,
   DesignSystemResponseSchema,
+  ExportDesignSystemPackageResponseSchema,
   GenerateDesignSystemStyleguideResponseSchema,
   designApi,
 } from "./design";
@@ -151,6 +154,77 @@ describe("design API schemas", () => {
 
     expect(parsed.items[0]?.sourceRefs[0]?.path).toBe("frontend/src/Button.tsx");
   });
+
+  it("parses persisted styleguide and preview artifact responses", () => {
+    const viewModel = DesignStyleguideViewModelResponseSchema.parse({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      artifactId: "styleguide-1",
+      artifactType: "design_doc",
+      content: {
+        design_system_id: "design-system-1",
+        schema_version_id: "schema-1",
+        version: "0.1.0",
+        generated_at: "2026-04-24T08:00:00Z",
+        ready_summary: "Product UI is ready for review.",
+        caveats: [{ item_id: "components.buttons", severity: "medium", summary: "Check focus states." }],
+        groups: [
+          {
+            id: "components",
+            label: "Components",
+            items: [
+              {
+                id: "components.buttons",
+                group: "components",
+                label: "Buttons",
+                summary: "Button patterns",
+                preview_artifact_id: "preview-1",
+                source_refs: [{ project_id: "project-1", path: "frontend/src/Button.tsx" }],
+                confidence: "medium",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const preview = DesignStyleguidePreviewResponseSchema.parse({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      artifactId: "preview-1",
+      artifactType: "design_doc",
+      content: {
+        design_system_id: "design-system-1",
+        schema_version_id: "schema-1",
+        item_id: "components.buttons",
+        group: "components",
+        label: "Buttons",
+        summary: "Button patterns",
+        preview_kind: "component_sample",
+        confidence: "medium",
+        source_refs: [{ project_id: "project-1", path: "frontend/src/Button.tsx" }],
+        generated_at: "2026-04-24T08:00:00Z",
+      },
+    });
+
+    expect(viewModel.content.groups[0]?.items[0]?.preview_artifact_id).toBe("preview-1");
+    expect(preview.content.preview_kind).toBe("component_sample");
+  });
+
+  it("parses a redacted design export package response", () => {
+    const parsed = ExportDesignSystemPackageResponseSchema.parse({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      artifactId: "export-1",
+      redacted: true,
+      exportedAt: "2026-04-24T08:00:00Z",
+      content: {
+        package_version: "1.0",
+        redacted: true,
+      },
+    });
+
+    expect(parsed.redacted).toBe(true);
+  });
 });
 
 describe("designApi", () => {
@@ -225,6 +299,80 @@ describe("designApi", () => {
     expect(mockInvoke).toHaveBeenCalledWith("generate_design_system_styleguide", {
       input: {
         designSystemId: "design-system-1",
+      },
+    });
+  });
+
+  it("loads persisted styleguide and preview artifacts through design commands", async () => {
+    mockInvoke
+      .mockResolvedValueOnce({
+        designSystemId: "design-system-1",
+        schemaVersionId: "schema-1",
+        artifactId: "styleguide-1",
+        artifactType: "design_doc",
+        content: {
+          design_system_id: "design-system-1",
+          schema_version_id: "schema-1",
+          version: "0.1.0",
+          generated_at: "2026-04-24T08:00:00Z",
+          caveats: [],
+          groups: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        designSystemId: "design-system-1",
+        schemaVersionId: "schema-1",
+        artifactId: "preview-1",
+        artifactType: "design_doc",
+        content: {
+          design_system_id: "design-system-1",
+          schema_version_id: "schema-1",
+          item_id: "components.buttons",
+          group: "components",
+          label: "Buttons",
+          summary: "Button patterns",
+          preview_kind: "component_sample",
+          source_refs: [],
+          generated_at: "2026-04-24T08:00:00Z",
+        },
+      });
+
+    await designApi.getStyleguideViewModel("design-system-1");
+    await designApi.getStyleguidePreview("design-system-1", "preview-1");
+
+    expect(mockInvoke).toHaveBeenNthCalledWith(1, "get_design_styleguide_view_model", {
+      input: {
+        designSystemId: "design-system-1",
+        schemaVersionId: undefined,
+      },
+    });
+    expect(mockInvoke).toHaveBeenNthCalledWith(2, "get_design_styleguide_preview", {
+      input: {
+        designSystemId: "design-system-1",
+        previewArtifactId: "preview-1",
+      },
+    });
+  });
+
+  it("exports a redacted design package through the backend command", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      artifactId: "export-1",
+      redacted: true,
+      exportedAt: "2026-04-24T08:00:00Z",
+      content: {
+        package_version: "1.0",
+        redacted: true,
+      },
+    });
+
+    await designApi.exportPackage("design-system-1");
+
+    expect(mockInvoke).toHaveBeenCalledWith("export_design_system_package", {
+      input: {
+        designSystemId: "design-system-1",
+        includeFullProvenance: false,
       },
     });
   });

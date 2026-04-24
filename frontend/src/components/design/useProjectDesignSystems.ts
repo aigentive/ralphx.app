@@ -5,8 +5,11 @@ import type {
   CreateDesignStyleguideFeedbackInput,
   CreateDesignStyleguideFeedbackResponse,
   DesignStyleguideItemResponse,
+  DesignStyleguidePreviewResponse,
+  DesignStyleguideViewModelResponse,
   DesignSystemDetailResponse,
   DesignSystemResponse,
+  ExportDesignSystemPackageResponse,
   GenerateDesignSystemStyleguideResponse,
 } from "@/api/design";
 import { api, type CreateDesignSystemInput, type CreateDesignSystemResponse } from "@/lib/tauri";
@@ -26,6 +29,10 @@ export const designSystemKeys = {
   detail: (designSystemId: string) => [...designSystemKeys.all, "detail", designSystemId] as const,
   styleguideItems: (designSystemId: string) =>
     [...designSystemKeys.all, "styleguide-items", designSystemId] as const,
+  styleguideViewModel: (designSystemId: string) =>
+    [...designSystemKeys.all, "styleguide-view-model", designSystemId] as const,
+  styleguidePreview: (designSystemId: string, previewArtifactId: string) =>
+    [...designSystemKeys.all, "styleguide-preview", designSystemId, previewArtifactId] as const,
 };
 
 export function useProjectDesignSystems(
@@ -86,7 +93,7 @@ export function useCreateDesignSystem() {
       queryClient.setQueryData<DesignSystemResponse[]>(
         designSystemKeys.projectList(projectId, false),
         (current = []) => [
-          response.designSystem,
+          { ...response.designSystem, sourceCount: response.sources.length },
           ...current.filter((system) => system.id !== response.designSystem.id),
         ],
       );
@@ -125,6 +132,31 @@ export function useDesignStyleguideItems(designSystemId: string | null) {
   });
 }
 
+export function useDesignStyleguideViewModel(designSystemId: string | null) {
+  return useQuery<DesignStyleguideViewModelResponse | null, Error>({
+    queryKey: designSystemId
+      ? designSystemKeys.styleguideViewModel(designSystemId)
+      : [...designSystemKeys.all, "styleguide-view-model", "none"],
+    queryFn: () => api.design.getStyleguideViewModel(designSystemId!),
+    enabled: !!designSystemId,
+    staleTime: 10 * 1000,
+  });
+}
+
+export function useDesignStyleguidePreview(
+  designSystemId: string | null,
+  previewArtifactId: string | null,
+) {
+  return useQuery<DesignStyleguidePreviewResponse, Error>({
+    queryKey: designSystemId && previewArtifactId
+      ? designSystemKeys.styleguidePreview(designSystemId, previewArtifactId)
+      : [...designSystemKeys.all, "styleguide-preview", "none"],
+    queryFn: () => api.design.getStyleguidePreview(designSystemId!, previewArtifactId!),
+    enabled: !!designSystemId && !!previewArtifactId,
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useGenerateDesignSystemStyleguide() {
   const queryClient = useQueryClient();
 
@@ -134,10 +166,16 @@ export function useGenerateDesignSystemStyleguide() {
       const projectId = response.designSystem.primaryProjectId;
       queryClient.setQueryData<DesignSystemResponse[]>(
         designSystemKeys.projectList(projectId, false),
-        (current = []) => [
-          response.designSystem,
-          ...current.filter((system) => system.id !== response.designSystem.id),
-        ],
+        (current = []) => {
+          const previous = current.find((system) => system.id === response.designSystem.id);
+          return [
+            {
+              ...response.designSystem,
+              sourceCount: previous?.sourceCount,
+            },
+            ...current.filter((system) => system.id !== response.designSystem.id),
+          ];
+        },
       );
       queryClient.setQueryData<DesignSystemDetailResponse | null>(
         designSystemKeys.detail(response.designSystem.id),
@@ -154,9 +192,18 @@ export function useGenerateDesignSystemStyleguide() {
         response.items,
       );
       queryClient.invalidateQueries({
+        queryKey: designSystemKeys.styleguideViewModel(response.designSystem.id),
+      });
+      queryClient.invalidateQueries({
         queryKey: designSystemKeys.project(projectId),
       });
     },
+  });
+}
+
+export function useExportDesignSystemPackage() {
+  return useMutation<ExportDesignSystemPackageResponse, Error, string>({
+    mutationFn: (designSystemId) => api.design.exportPackage(designSystemId),
   });
 }
 

@@ -2,14 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 
 import { SeparatorLine } from "@/components/ui/ResizeHandle";
 import { useProjects } from "@/hooks/useProjects";
+import type { CreateDesignSystemInput } from "@/lib/tauri";
 import { buildDesignSystemFromResponse, type DesignSystem } from "./designSystems";
 import { DesignComposerSurface } from "./DesignComposerSurface";
 import { DesignSidebar } from "./DesignSidebar";
+import { DesignSourceComposerDialog } from "./DesignSourceComposerDialog";
 import { DesignStyleguidePane } from "./DesignStyleguidePane";
 import {
   useCreateDesignSystem,
   useDesignSystemDetail,
   useDesignStyleguideItems,
+  useDesignStyleguideViewModel,
+  useExportDesignSystemPackage,
   useGenerateDesignSystemStyleguide,
   useProjectDesignSystems,
 } from "./useProjectDesignSystems";
@@ -28,10 +32,13 @@ export function DesignView({ projectId }: DesignViewProps) {
   const { data: projects = [] } = useProjects();
   const [focusedProjectId, setFocusedProjectId] = useState<string | null>(projectId || null);
   const [selectedDesignSystemId, setSelectedDesignSystemId] = useState<string | null>(null);
+  const [isSourceComposerOpen, setIsSourceComposerOpen] = useState(false);
+  const [exportPackageArtifactId, setExportPackageArtifactId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { groups } = useProjectDesignSystems(projects, { searchQuery });
   const createDesignSystem = useCreateDesignSystem();
   const generateStyleguide = useGenerateDesignSystemStyleguide();
+  const exportPackage = useExportDesignSystemPackage();
   const allSystems = useMemo(
     () => groups.flatMap((group) => group.systems),
     [groups],
@@ -40,6 +47,7 @@ export function DesignView({ projectId }: DesignViewProps) {
     allSystems.find((system) => system.id === selectedDesignSystemId) ?? null;
   const selectedDetailQuery = useDesignSystemDetail(selectedDesignSystemId);
   const selectedStyleguideItemsQuery = useDesignStyleguideItems(selectedDesignSystemId);
+  const selectedStyleguideViewModelQuery = useDesignStyleguideViewModel(selectedDesignSystemId);
   const selectedDesignSystem = useMemo(() => {
     const detail = selectedDetailQuery.data;
     if (!detail) {
@@ -55,12 +63,14 @@ export function DesignView({ projectId }: DesignViewProps) {
       sources: detail.sources,
       conversationId: detail.conversation?.id ?? null,
       styleguideItems: selectedStyleguideItemsQuery.data ?? [],
+      styleguideViewModel: selectedStyleguideViewModelQuery.data ?? null,
     });
   }, [
     projects,
     selectedDetailQuery.data,
     selectedListDesignSystem,
     selectedStyleguideItemsQuery.data,
+    selectedStyleguideViewModelQuery.data,
   ]);
 
   useEffect(() => {
@@ -68,6 +78,10 @@ export function DesignView({ projectId }: DesignViewProps) {
       setFocusedProjectId(projectId);
     }
   }, [projectId]);
+
+  useEffect(() => {
+    setExportPackageArtifactId(null);
+  }, [selectedDesignSystemId]);
 
   useEffect(() => {
     if (selectedDesignSystemId && allSystems.some((system) => system.id === selectedDesignSystemId)) {
@@ -94,28 +108,21 @@ export function DesignView({ projectId }: DesignViewProps) {
     setSelectedDesignSystemId(preferred?.id ?? null);
   };
 
-  const createDraftDesignSystem = () => {
-    const targetProject =
-      projects.find((project) => project.id === focusedProjectId) ??
-      projects.find((project) => project.id === projectId) ??
-      projects[0] ??
-      null;
+  const openSourceComposer = () => {
+    setIsSourceComposerOpen(true);
+  };
 
-    if (!targetProject || createDesignSystem.isPending) {
+  const createDraftDesignSystem = (input: CreateDesignSystemInput) => {
+    if (createDesignSystem.isPending) {
       return;
     }
-
     createDesignSystem.mutate(
-      {
-        primaryProjectId: targetProject.id,
-        name: `${targetProject.name} Design System`,
-        selectedPaths: [],
-        sources: [],
-      },
+      input,
       {
         onSuccess: (response) => {
           setFocusedProjectId(response.designSystem.primaryProjectId);
           setSelectedDesignSystemId(response.designSystem.id);
+          setIsSourceComposerOpen(false);
         },
       },
     );
@@ -126,6 +133,17 @@ export function DesignView({ projectId }: DesignViewProps) {
       return;
     }
     generateStyleguide.mutate(selectedDesignSystem.id);
+  };
+
+  const exportSelectedPackage = () => {
+    if (!selectedDesignSystem || exportPackage.isPending) {
+      return;
+    }
+    exportPackage.mutate(selectedDesignSystem.id, {
+      onSuccess: (response) => {
+        setExportPackageArtifactId(response.artifactId);
+      },
+    });
   };
 
   return (
@@ -139,7 +157,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           onSearchQueryChange={setSearchQuery}
           onFocusProject={setFocusedProjectId}
           onSelectDesignSystem={selectDesignSystem}
-          onNewDesignSystem={createDraftDesignSystem}
+          onNewDesignSystem={openSourceComposer}
           onImportDesignSystem={selectPreferredDesignSystem}
         />
       </div>
@@ -148,7 +166,7 @@ export function DesignView({ projectId }: DesignViewProps) {
         <div className="flex-1 min-w-0 h-full" style={{ minWidth: DESIGN_CHAT_MIN_WIDTH }}>
           <DesignComposerSurface
             selectedDesignSystem={selectedDesignSystem}
-            onNewDesignSystem={createDraftDesignSystem}
+            onNewDesignSystem={openSourceComposer}
             onImportDesignSystem={selectPreferredDesignSystem}
           />
         </div>
@@ -162,10 +180,21 @@ export function DesignView({ projectId }: DesignViewProps) {
           <DesignStyleguidePane
             designSystem={selectedDesignSystem}
             isGeneratingStyleguide={generateStyleguide.isPending}
+            isExportingPackage={exportPackage.isPending}
+            exportPackageArtifactId={exportPackageArtifactId}
             onGenerateStyleguide={generateSelectedStyleguide}
+            onExportPackage={exportSelectedPackage}
           />
         </div>
       </div>
+      <DesignSourceComposerDialog
+        isOpen={isSourceComposerOpen}
+        projects={projects}
+        focusedProjectId={focusedProjectId}
+        isCreating={createDesignSystem.isPending}
+        onOpenChange={setIsSourceComposerOpen}
+        onCreate={createDraftDesignSystem}
+      />
     </div>
   );
 }
