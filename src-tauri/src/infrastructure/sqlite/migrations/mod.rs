@@ -311,6 +311,9 @@ mod v20260422140039_chat_conversation_archived_at_tests;
 mod v20260424090000_ideation_analysis_base;
 #[cfg(test)]
 mod v20260424090000_ideation_analysis_base_tests;
+mod v20260424113000_design_system_store;
+#[cfg(test)]
+mod v20260424113000_design_system_store_tests;
 mod v20260424150000_agent_conversation_workspaces;
 mod v20260424193000_chat_conversation_agent_mode;
 #[cfg(test)]
@@ -891,6 +894,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260424090000,
         name: "ideation_analysis_base",
         migrate: v20260424090000_ideation_analysis_base::migrate,
+    },
+    Migration {
+        version: 20260424113000,
+        name: "design_system_store",
+        migrate: v20260424113000_design_system_store::migrate,
     },
     Migration {
         version: 20260424150000,
