@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/public/framed-welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
+  <img src="assets/public/framed-welcome-2026-02-22.png" alt="RalphX.app — Describe it. Ship it." width="100%">
 </p>
 
 <p align="center">
@@ -19,16 +19,16 @@
 
 ## What It Is
 
-RalphX is a native macOS desktop application for orchestrating AI development work across planning, implementation, review, QA, and merge workflows.
+RalphX.app is a native macOS desktop application for orchestrating AI development work across planning, implementation, review, QA, and merge workflows.
 
-Describe what you want to build. RalphX turns that into structured tasks, routes each step to the right agent, runs work in isolated git worktrees, reviews the result, and prepares the merge or PR according to your project settings.
+Describe what you want to build. RalphX.app turns that into structured tasks, routes each step to the right agent, runs work in isolated git worktrees, reviews the result, and prepares the merge or PR according to your project settings.
 
-RalphX has no hosted backend. Project state and orchestration data live locally in SQLite. Agent actions are logged, scoped, and auditable; the AI runtimes you configure still receive the context needed to perform their work.
+RalphX.app has no hosted backend. Project state and orchestration data live locally in SQLite. Agent actions are logged, scoped, and auditable; the AI runtimes you configure still receive the context needed to perform their work.
 
 **Designed for provider-neutral orchestration, local ownership, and reviewable AI-generated code.**
 
 <p align="center">
-  <img src="assets/public/framed-graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
+  <img src="assets/public/framed-graph-2026-02-22.png" alt="RalphX.app dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
 </p>
 
 ---
@@ -37,7 +37,7 @@ RalphX has no hosted backend. Project state and orchestration data live locally 
 
 ### Requirements
 
-To run RalphX:
+To run RalphX.app:
 
 - macOS 13+ (Ventura or later)
 - At least one supported agent runtime installed and authenticated:
@@ -50,7 +50,7 @@ To build from source:
 - Rust via [rustup.rs](https://rustup.rs); this repo pins its toolchain in `rust-toolchain.toml`
 - Git
 
-RalphX can route different workflow lanes through different harnesses. Claude remains the default, while Codex can be enabled incrementally for supported lanes. See [`docs/user-guides/agent-harnesses.md`](docs/user-guides/agent-harnesses.md).
+RalphX.app can route different workflow lanes through different harnesses. Claude remains the default, while Codex can be enabled incrementally for supported lanes. See [`docs/user-guides/agent-harnesses.md`](docs/user-guides/agent-harnesses.md).
 
 Harness controls are exposed directly in the desktop app:
 - `Settings -> General -> Execution Agents` for worker, reviewer, re-executor, and merger lanes
@@ -65,7 +65,7 @@ brew tap aigentive/ralphx
 brew install --cask ralphx
 ```
 
-This is the recommended path. The tap installs the signed DMG for your Mac and keeps RalphX available through normal Homebrew updates.
+This is the recommended path. The tap installs the signed DMG for your Mac and keeps RalphX.app available through normal Homebrew updates.
 
 #### Direct Download
 
@@ -75,8 +75,8 @@ This is the recommended path. The tap installs the signed DMG for your Mac and k
 #### Build From Source
 
 ```bash
-git clone https://github.com/aigentive/ralphx.app.git ralphx
-cd ralphx
+git clone https://github.com/aigentive/ralphx.app.git ralphx.app
+cd ralphx.app
 cd frontend
 npm install
 npm run tauri dev
@@ -92,10 +92,10 @@ For a fresh native dev start from the repo root:
 
 ### First Task
 
-1. **Create a project** — Point RalphX at a git repository
+1. **Create a project** — Point RalphX.app at a git repository
 2. **Open Ideation** — Describe what you want to build
 3. **Apply proposals** — Review the generated tasks, apply to Kanban
-4. **Watch it execute** — Workers write code, reviewers check it, and RalphX prepares the merge or PR according to your project settings
+4. **Watch it execute** — Workers write code, reviewers check it, and RalphX.app prepares the merge or PR according to your project settings
 
 You intervene when a review gate escalates or when your settings require human approval. Otherwise, the workflow keeps moving.
 
@@ -103,7 +103,7 @@ You intervene when a review gate escalates or when your settings require human a
 
 ## How It Works
 
-RalphX turns a request into planned work, creates isolated branches and worktrees, routes each step to the right agent, and keeps review, QA, merge, and PR gates explicit.
+RalphX.app turns a request into planned work, creates isolated branches and worktrees, routes each step to the right agent, and keeps review, QA, merge, and PR gates explicit.
 
 Tool access is controlled at the runtime and MCP server layers, then reinforced by agent-specific prompts:
 
@@ -142,7 +142,7 @@ For example: reviewers run read-only, workers cannot approve their own output, a
 ### Not for you (yet) if
 
 - You're on Linux or Windows (macOS only, for now)
-- You don't want to install an external agent runtime (RalphX currently targets Claude CLI and Codex CLI)
+- You don't want to install an external agent runtime (RalphX.app currently targets Claude CLI and Codex CLI)
 - You need fully offline AI execution
 - You need multi-user collaboration (single-developer orchestration)
 
@@ -167,7 +167,7 @@ For example: reviewers run read-only, workers cannot approve their own output, a
 
 ## Origin
 
-RalphX began as a 196-line shell script called `ralph.sh` for orchestrating agent sessions and grew into a native macOS control room for planning, executing, reviewing, and merging AI-assisted software work.
+RalphX.app began as a 196-line shell script called `ralph.sh` for orchestrating agent sessions and grew into a native macOS control room for planning, executing, reviewing, and merging AI-assisted software work.
 
 Built independently by [one person](https://www.linkedin.com/in/laza-bogdan/) and a fleet of AI agents.
 
@@ -184,7 +184,7 @@ Use it however you want. Build commercial products with it. Modify it. Distribut
 ---
 
 <p align="center">
-  <strong>RalphX</strong> — Describe it. Ship it.
+  <strong>RalphX.app</strong> — Describe it. Ship it.
   <br>
   <sub>Open source. Local-first. Yours.</sub>
   <br><br>
