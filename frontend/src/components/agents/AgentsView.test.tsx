@@ -30,6 +30,10 @@ const {
   restoreConversationMock,
   getPlanBranchesMock,
   listIdeationSessionsMock,
+  getWorkspaceChangesMock,
+  getWorkspaceDiffMock,
+  toastErrorMock,
+  toastSuccessMock,
 } = vi.hoisted(() => ({
   useProjectsMock: vi.fn(),
   useProjectAgentConversationsMock: vi.fn(),
@@ -48,6 +52,10 @@ const {
   restoreConversationMock: vi.fn(),
   getPlanBranchesMock: vi.fn(),
   listIdeationSessionsMock: vi.fn(),
+  getWorkspaceChangesMock: vi.fn(),
+  getWorkspaceDiffMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -123,6 +131,22 @@ vi.mock("@/api/ideation", () => ({
   },
 }));
 
+vi.mock("@/api/diff", () => ({
+  diffApi: {
+    getAgentConversationWorkspaceFileChanges: (...args: unknown[]) =>
+      getWorkspaceChangesMock(...args),
+    getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
+      getWorkspaceDiffMock(...args),
+  },
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => toastErrorMock(...args),
+    success: (...args: unknown[]) => toastSuccessMock(...args),
+  },
+}));
+
 vi.mock("@/api/plan-branch", () => ({
   planBranchApi: {
     getByProject: (...args: unknown[]) => getPlanBranchesMock(...args),
@@ -164,7 +188,25 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
 }));
 
 vi.mock("./AgentsArtifactPane", () => ({
-  AgentsArtifactPane: () => <div data-testid="agents-artifact-pane" />,
+  AgentsArtifactPane: ({
+    conversation,
+    onPublishWorkspace,
+  }: {
+    conversation: AgentConversation | null;
+    onPublishWorkspace?: (conversationId: string) => Promise<void>;
+  }) => (
+    <div data-testid="agents-artifact-pane">
+      {conversation && onPublishWorkspace ? (
+        <button
+          type="button"
+          data-testid="agents-publish-confirm"
+          onClick={() => void onPublishWorkspace(conversation.id)}
+        >
+          Publish
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("./useProjectAgentBridgeEvents", () => ({
@@ -661,6 +703,10 @@ describe("AgentsView", () => {
     restoreConversationMock.mockReset();
     getPlanBranchesMock.mockReset();
     listIdeationSessionsMock.mockReset();
+    getWorkspaceChangesMock.mockReset();
+    getWorkspaceDiffMock.mockReset();
+    toastErrorMock.mockReset();
+    toastSuccessMock.mockReset();
 
     sendAgentMessageMock.mockResolvedValue({
       conversationId: "conversation-2",
@@ -675,6 +721,8 @@ describe("AgentsView", () => {
     listConversationsMock.mockResolvedValue([]);
     getPlanBranchesMock.mockResolvedValue([]);
     listIdeationSessionsMock.mockResolvedValue([]);
+    getWorkspaceChangesMock.mockResolvedValue([]);
+    getWorkspaceDiffMock.mockResolvedValue("");
     publishAgentConversationWorkspaceMock.mockResolvedValue({
       workspace: {
         conversationId: "conversation-2",
@@ -1042,6 +1090,7 @@ describe("AgentsView", () => {
     );
     mockSessionWithData({ planArtifactId: "plan-1" });
     resetAgentSessionState({
+      selectedConversationId: "conversation-1",
       artifactByConversationId: {
         "conversation-1": {
           isOpen: true,
@@ -1185,6 +1234,26 @@ describe("AgentsView", () => {
       expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
     );
     expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
+  });
+
+  it("shows string publish failures returned by Tauri", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    publishAgentConversationWorkspaceMock.mockRejectedValue(
+      "Failed to commit: typecheck failed"
+    );
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await screen.findByTestId("agents-publish-workspace");
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    await screen.findByTestId("agents-publish-confirm");
+    fireEvent.click(screen.getByTestId("agents-publish-confirm"));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Failed to commit: typecheck failed")
+    );
   });
 
   it("keeps the artifact pane closed by default when the conversation has nothing to show", async () => {

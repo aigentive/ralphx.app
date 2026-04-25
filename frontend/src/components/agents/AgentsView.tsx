@@ -119,6 +119,16 @@ const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
 ];
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  return fallback;
+}
+
 interface AgentsViewProps {
   projectId: string;
   onCreateProject: () => void;
@@ -948,7 +958,7 @@ export function AgentsView({
             : Promise.resolve(),
         ]);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to publish branch");
+        toast.error(getErrorMessage(err, "Failed to publish branch"));
       } finally {
         setPublishingConversationId(null);
       }
