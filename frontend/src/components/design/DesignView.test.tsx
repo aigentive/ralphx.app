@@ -17,6 +17,12 @@ const { useProjectsMock } = vi.hoisted(() => ({
   useProjectsMock: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
+
 vi.mock("@/hooks/useProjects", () => ({
   useProjects: () => useProjectsMock(),
 }));
@@ -533,6 +539,30 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-system-created-design-system-project-1")).toHaveTextContent(
       "RalphX Design System",
     );
+  });
+
+  it("keeps the source composer open and shows create failures", async () => {
+    const { toast } = await import("sonner");
+    vi.spyOn(api.design, "createDesignSystem").mockRejectedValueOnce(
+      new Error("Failed to canonicalize selected design source path: No such file or directory"),
+    );
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-system-design-system-project-1");
+
+    fireEvent.click(screen.getByTestId("design-new-system"));
+    await screen.findByTestId("design-source-composer");
+    fireEvent.change(screen.getByTestId("design-primary-paths"), {
+      target: { value: "components" },
+    });
+    fireEvent.click(screen.getByTestId("design-create-from-sources"));
+
+    expect(await screen.findByTestId("design-source-create-error")).toHaveTextContent(
+      "Failed to canonicalize selected design source path",
+    );
+    expect(screen.getByTestId("design-source-composer")).toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledWith("Failed to create design system", {
+      description: "Failed to canonicalize selected design source path: No such file or directory",
+    });
   });
 
   it("generates a draft styleguide through the backend publish command", async () => {

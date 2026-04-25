@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
+use tracing::warn;
 
 use crate::application::AppState;
 use crate::commands::design_artifact_persistence::persist_design_generation_artifacts;
@@ -141,8 +142,36 @@ pub async fn create_design_system(
     input: CreateDesignSystemInput,
     state: State<'_, AppState>,
 ) -> Result<CreateDesignSystemResponse, String> {
-    let storage_paths = design_storage_paths_from_state(&state)?;
-    create_design_system_core(&state, &storage_paths, input).await
+    let primary_project_id = input.primary_project_id.clone();
+    let selected_path_count = input.selected_paths.len();
+    let additional_source_count = input.sources.len();
+    let storage_paths = match design_storage_paths_from_state(&state) {
+        Ok(paths) => paths,
+        Err(error) => {
+            warn!(
+                %error,
+                primary_project_id = %primary_project_id,
+                selected_path_count,
+                additional_source_count,
+                "Failed to prepare design system storage"
+            );
+            return Err(error);
+        }
+    };
+
+    match create_design_system_core(&state, &storage_paths, input).await {
+        Ok(response) => Ok(response),
+        Err(error) => {
+            warn!(
+                %error,
+                primary_project_id = %primary_project_id,
+                selected_path_count,
+                additional_source_count,
+                "Failed to create design system"
+            );
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]

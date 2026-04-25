@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { SeparatorLine } from "@/components/ui/ResizeHandle";
 import { useProjects } from "@/hooks/useProjects";
+import { extractErrorMessage } from "@/lib/errors";
 import type { CreateDesignSystemInput, ImportDesignSystemPackageInput } from "@/lib/tauri";
 import { buildDesignSystemFromResponse, type DesignSystem } from "./designSystems";
 import { DesignComposerSurface } from "./DesignComposerSurface";
@@ -76,6 +78,9 @@ export function DesignView({ projectId }: DesignViewProps) {
     selectedStyleguideItemsQuery.data,
     selectedStyleguideViewModelQuery.data,
   ]);
+  const createDesignSystemError = createDesignSystem.error
+    ? extractErrorMessage(createDesignSystem.error, "Failed to create design system")
+    : null;
 
   useEffect(() => {
     if (projectId) {
@@ -105,7 +110,15 @@ export function DesignView({ projectId }: DesignViewProps) {
   };
 
   const openSourceComposer = () => {
+    createDesignSystem.reset();
     setIsSourceComposerOpen(true);
+  };
+
+  const setSourceComposerOpen = (open: boolean) => {
+    if (!open) {
+      createDesignSystem.reset();
+    }
+    setIsSourceComposerOpen(open);
   };
 
   const openPackageImport = () => {
@@ -123,6 +136,12 @@ export function DesignView({ projectId }: DesignViewProps) {
           setFocusedProjectId(response.designSystem.primaryProjectId);
           setSelectedDesignSystemId(response.designSystem.id);
           setIsSourceComposerOpen(false);
+        },
+        onError: (error) => {
+          const message = extractErrorMessage(error, "Failed to create design system");
+          toast.error("Failed to create design system", {
+            description: message,
+          });
         },
       },
     );
@@ -205,7 +224,8 @@ export function DesignView({ projectId }: DesignViewProps) {
         projects={projects}
         focusedProjectId={focusedProjectId}
         isCreating={createDesignSystem.isPending}
-        onOpenChange={setIsSourceComposerOpen}
+        createError={createDesignSystemError}
+        onOpenChange={setSourceComposerOpen}
         onCreate={createDraftDesignSystem}
       />
       <DesignPackageImportDialog

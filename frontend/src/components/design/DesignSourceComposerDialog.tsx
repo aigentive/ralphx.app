@@ -19,6 +19,7 @@ interface DesignSourceComposerDialogProps {
   projects: Project[];
   focusedProjectId: string | null;
   isCreating?: boolean;
+  createError?: string | null;
   onOpenChange: (open: boolean) => void;
   onCreate: (input: CreateDesignSystemInput) => void;
 }
@@ -28,6 +29,7 @@ export function DesignSourceComposerDialog({
   projects,
   focusedProjectId,
   isCreating = false,
+  createError = null,
   onOpenChange,
   onCreate,
 }: DesignSourceComposerDialogProps) {
@@ -216,6 +218,21 @@ export function DesignSourceComposerDialog({
           </section>
         </div>
 
+        {createError && (
+          <div
+            role="alert"
+            className="mx-6 mb-4 rounded-md border px-3 py-2 text-[12px]"
+            style={{
+              borderColor: "var(--status-error)",
+              background: "color-mix(in srgb, var(--status-error) 12%, transparent)",
+              color: "var(--text-primary)",
+            }}
+            data-testid="design-source-create-error"
+          >
+            {createError}
+          </div>
+        )}
+
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
@@ -260,7 +277,7 @@ function PathTextarea({
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-[12px] outline-none"
         style={{ borderColor: "var(--overlay-weak)", color: "var(--text-primary)" }}
-        placeholder="frontend/src, components"
+        placeholder="frontend/src, frontend/src/components"
         data-testid={testId}
       />
     </div>
