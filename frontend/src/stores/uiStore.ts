@@ -69,6 +69,7 @@ const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
   kanban: true, // visible by default (integrated layout)
   graph: false, // hidden by default (focus on visualization)
   ideation: true, // always visible (built-in chat)
+  design: false, // design view owns its own chat surface
   agents: false, // agents view has its own embedded chat
   extensibility: false,
   activity: false,

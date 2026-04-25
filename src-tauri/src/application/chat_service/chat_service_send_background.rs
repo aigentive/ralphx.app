@@ -32,10 +32,11 @@ use crate::domain::entities::{
 use crate::domain::repositories::{
     ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
     AgentRunRepository, ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, DelegatedSessionRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ChatMessageRepository, DelegatedSessionRepository, DesignSystemRepository,
+    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
@@ -53,6 +54,7 @@ pub(super) struct BackgroundRunRepos {
     pub project_repo: Arc<dyn ProjectRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     pub delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
+    pub design_system_repo: Arc<dyn DesignSystemRepository>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
@@ -479,6 +481,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             project_repo,
             ideation_session_repo,
             delegated_session_repo,
+            design_system_repo,
             execution_settings_repo,
             agent_lane_settings_repo,
             ideation_effort_settings_repo,
@@ -533,6 +536,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Arc::clone(&task_repo),
             Arc::clone(&ideation_session_repo),
             Arc::clone(&delegated_session_repo),
+            Arc::clone(&design_system_repo),
         )
         .await;
         let resolved_project_id_typed = resolved_project_id.as_ref().map(|s| crate::domain::entities::ProjectId::from_string(s.clone()));
@@ -967,6 +971,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                             Arc::clone(&running_agent_registry),
                             Arc::clone(&memory_event_repo),
                         )
+                        .with_design_system_repo(Arc::clone(&design_system_repo))
                         .with_runtime_support(
                             Some(exec_settings.clone()),
                             agent_lane_settings_repo.as_ref().map(Arc::clone),

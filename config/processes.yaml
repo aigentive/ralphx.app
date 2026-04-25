@@ -26,6 +26,8 @@ process_mapping:
     default: ralphx-chat-task
   chat_project:
     default: ralphx-chat-project
+  design:
+    default: ralphx-design-steward
 
 team_constraints:
   # Defaults applied to processes that do not override a given field explicitly.

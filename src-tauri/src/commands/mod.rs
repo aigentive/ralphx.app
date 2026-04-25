@@ -10,6 +10,10 @@ pub mod artifact_commands;
 pub mod chat_attachment_commands;
 pub mod conversation_stats_commands;
 pub mod chat_responses;
+pub mod design_artifact_commands;
+pub(crate) mod design_artifact_persistence;
+pub mod design_commands;
+pub mod design_feedback_commands;
 pub mod diagnostic_commands;
 pub mod diff_commands;
 pub mod execution_commands;
@@ -79,6 +83,29 @@ pub use conversation_stats_commands::{
     UsageBucketResponse, UsageTotalsResponse,
 };
 pub use chat_responses::ChatMessageResponse;
+pub use design_artifact_commands::{
+    export_design_system_package, generate_design_artifact, get_design_styleguide_preview,
+    get_design_styleguide_view_model, import_design_system_package, DesignArtifactJsonResponse,
+    ExportDesignSystemPackageInput, ExportDesignSystemPackageResponse,
+    GenerateDesignArtifactInput, GenerateDesignArtifactResponse, GetDesignStyleguidePreviewInput,
+    GetDesignStyleguideViewModelInput, ImportDesignSystemPackageInput,
+    ImportDesignSystemPackageResponse,
+};
+pub use design_commands::{
+    archive_design_system, create_design_system, generate_design_system_styleguide,
+    get_design_system, list_project_design_systems, CreateDesignSystemInput,
+    CreateDesignSystemResponse, CreateDesignSystemSourceInput, DesignSystemDetailResponse,
+    DesignSystemResponse, DesignSystemSourceResponse, GenerateDesignSystemStyleguideInput,
+    GenerateDesignSystemStyleguideResponse,
+};
+pub use design_feedback_commands::{
+    approve_design_styleguide_item, create_design_styleguide_feedback,
+    list_design_styleguide_items, resolve_design_styleguide_feedback,
+    ApproveDesignStyleguideItemInput,
+    CreateDesignStyleguideFeedbackInput, CreateDesignStyleguideFeedbackResponse,
+    DesignStyleguideFeedbackResponse, DesignStyleguideItemResponse, ListDesignStyleguideItemsInput,
+    ResolveDesignStyleguideFeedbackInput,
+};
 pub use diagnostic_commands::{
     get_agent_health, get_codex_cli_diagnostics, AgentHealthReport,
     CodexCliDiagnosticsResponse, IprEntryResponse, RunningAgentResponse,

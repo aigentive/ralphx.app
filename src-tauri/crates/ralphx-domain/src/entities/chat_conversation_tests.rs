@@ -19,6 +19,8 @@ fn test_conversation_id_from_string() {
 #[test]
 fn test_context_type_serialization() {
     assert_eq!(ChatContextType::Ideation.to_string(), "ideation");
+    assert_eq!(ChatContextType::Delegation.to_string(), "delegation");
+    assert_eq!(ChatContextType::Design.to_string(), "design");
     assert_eq!(ChatContextType::Task.to_string(), "task");
     assert_eq!(ChatContextType::Project.to_string(), "project");
     assert_eq!(ChatContextType::TaskExecution.to_string(), "task_execution");
@@ -30,6 +32,14 @@ fn test_context_type_parsing() {
     assert_eq!(
         "ideation".parse::<ChatContextType>().unwrap(),
         ChatContextType::Ideation
+    );
+    assert_eq!(
+        "delegation".parse::<ChatContextType>().unwrap(),
+        ChatContextType::Delegation
+    );
+    assert_eq!(
+        "design".parse::<ChatContextType>().unwrap(),
+        ChatContextType::Design
     );
     assert_eq!(
         "task".parse::<ChatContextType>().unwrap(),
@@ -265,6 +275,20 @@ fn test_display_title_default() {
     let session_id = IdeationSessionId::new();
     let conv = ChatConversation::new_ideation(session_id);
     assert_eq!(conv.display_title(), "Untitled conversation");
+}
+
+#[test]
+fn test_new_design_conversation() {
+    let design_system_id = DesignSystemId::new();
+    let expected_context_id = design_system_id.as_str().to_string();
+    let conv = ChatConversation::new_design(design_system_id);
+
+    assert_eq!(conv.context_type, ChatContextType::Design);
+    assert_eq!(conv.context_id, expected_context_id);
+    assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
+    assert_eq!(conv.message_count, 0);
+    assert!(!conv.has_claude_session());
 }
 
 #[test]

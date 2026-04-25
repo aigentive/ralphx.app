@@ -5,7 +5,8 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ChatConversationId, IdeationSessionId, ProjectId, TaskId,
+    ChatContextType, ChatConversation, ChatConversationId, DesignSystemId, IdeationSessionId,
+    ProjectId, TaskId,
 };
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 
@@ -55,6 +56,9 @@ pub async fn get_or_create_conversation(
         ChatContextType::Delegation => ChatConversation::new_delegation(
             crate::domain::entities::DelegatedSessionId::from_string(context_id),
         ),
+        ChatContextType::Design => {
+            ChatConversation::new_design(DesignSystemId::from_string(context_id.to_string()))
+        }
         ChatContextType::Task => {
             ChatConversation::new_task(TaskId::from_string(context_id.to_string()))
         }

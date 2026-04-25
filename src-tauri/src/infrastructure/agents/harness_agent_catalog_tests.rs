@@ -140,6 +140,11 @@ const CROSS_HARNESS_WORKFLOW_AGENTS: &[(&str, &str, &str)] = &[
 const CROSS_HARNESS_CHAT_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-chat-task", "task_chat", "ralphx-chat-task"),
     ("ralphx-chat-project", "project_chat", "ralphx-chat-project"),
+    (
+        "ralphx-design-steward",
+        "design_steward",
+        "ralphx-design-steward",
+    ),
 ];
 
 const CROSS_HARNESS_SUPPORT_AGENTS: &[(&str, &str, &str)] = &[
@@ -209,6 +214,7 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
     "ralphx-utility-session-namer",
     "ralphx-chat-task",
     "ralphx-chat-project",
+    "ralphx-design-steward",
     "ralphx-review-chat",
     "ralphx-review-history",
     "ralphx-execution-orchestrator",
@@ -232,6 +238,7 @@ const CANONICAL_MCP_TOOL_OWNED_AGENTS: &[&str] = &[
 
 const CANONICAL_CODEX_RUNTIME_FEATURE_OWNED_AGENTS: &[&str] = &[
     "ralphx-general-explorer",
+    "ralphx-design-steward",
     "ralphx-plan-verifier",
     "ralphx-plan-critic-completeness",
     "ralphx-plan-critic-implementation-feasibility",
@@ -271,6 +278,10 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
         &["Write", "Edit", "NotebookEdit", "Bash"],
     ),
     ("ralphx-qa-prep", &["Write", "Edit", "Bash", "NotebookEdit"]),
+    (
+        "ralphx-design-steward",
+        &["Write", "Edit", "NotebookEdit", "Bash", "Task"],
+    ),
     (
         "ralphx-ideation-specialist-backend",
         &["Write", "Edit", "NotebookEdit", "Bash"],
@@ -328,6 +339,7 @@ const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
     "ralphx-utility-session-namer",
     "ralphx-chat-task",
     "ralphx-chat-project",
+    "ralphx-design-steward",
     "ralphx-review-chat",
     "ralphx-review-history",
     "ralphx-execution-orchestrator",
@@ -373,6 +385,7 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-utility-session-namer", "sonnet"),
     ("ralphx-chat-task", "sonnet"),
     ("ralphx-chat-project", "sonnet"),
+    ("ralphx-design-steward", "sonnet"),
     ("ralphx-review-chat", "sonnet"),
     ("ralphx-review-history", "sonnet"),
     ("ralphx-execution-orchestrator", "opus"),
@@ -418,6 +431,7 @@ const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = 
     ),
     ("ralphx-chat-task", "base_tools", &["Task"], false),
     ("ralphx-chat-project", "readonly_tools", &[], false),
+    ("ralphx-design-steward", "readonly_tools", &[], false),
     ("ralphx-review-chat", "base_tools", &["Task"], false),
     ("ralphx-review-history", "base_tools", &["Task"], false),
     (

@@ -777,6 +777,7 @@ async fn test_all_context_types_round_trip() {
 
     let types_and_ids: Vec<(ChatConversation, ChatContextType)> = vec![
         (make_conversation(ChatContextType::Ideation, "ctx"), ChatContextType::Ideation),
+        (make_conversation(ChatContextType::Design, "ctx"), ChatContextType::Design),
         (make_conversation(ChatContextType::Task, "ctx"), ChatContextType::Task),
         (make_conversation(ChatContextType::Project, "ctx"), ChatContextType::Project),
         (make_conversation(ChatContextType::Review, "ctx"), ChatContextType::Review),

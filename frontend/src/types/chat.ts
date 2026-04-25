@@ -14,6 +14,7 @@ export const VIEW_TYPE_VALUES = [
   "kanban",
   "graph",
   "ideation",
+  "design",
   "agents",
   "extensibility",
   "activity",
@@ -43,6 +44,8 @@ export const ChatContextSchema = z.object({
   selectedTaskId: z.string().optional(),
   /** Current ideation session ID (for ideation view) */
   ideationSessionId: z.string().optional(),
+  /** Current design system ID (for design view) */
+  designSystemId: z.string().optional(),
 });
 
 export type ChatContext = z.infer<typeof ChatContextSchema>;
@@ -63,6 +66,13 @@ export function isKanbanContext(context: ChatContext): boolean {
  */
 export function isIdeationContext(context: ChatContext): boolean {
   return context.view === "ideation";
+}
+
+/**
+ * Check if context is in design view
+ */
+export function isDesignContext(context: ChatContext): boolean {
+  return context.view === "design";
 }
 
 /**
@@ -144,7 +154,7 @@ export function createTaskDetailContext(
  */
 export function createProjectContext(
   projectId: string,
-  view: "activity" | "insights" | "agents"
+  view: "activity" | "insights" | "agents" | "design"
 ): ChatContext {
   return {
     view,

@@ -1,0 +1,32 @@
+{
+  "event_type": "design:styleguide_feedback",
+  "event_key": "design-system-uuid:schema-version-uuid:components.buttons:2026-04-24T10:47:00Z",
+  "design_system_id": "design-system-uuid",
+  "conversation_id": "chat-conversation-uuid",
+  "schema_version_id": "schema-version-uuid",
+  "item_id": "components.buttons",
+  "item_group": "components",
+  "item_label": "Buttons",
+  "preview_artifact_id": "design-preview-buttons",
+  "source_refs": [
+    {
+      "project_id": "project-uuid",
+      "path": "frontend/src/components/ui/button.tsx"
+    }
+  ],
+  "feedback": "The primary button is too pill-shaped. Match the app's 8px control radius.",
+  "created_at": "2026-04-24T10:47:00Z",
+  "bridge_message_metadata": {
+    "kind": "design_styleguide_feedback",
+    "design_system_id": "design-system-uuid",
+    "schema_version_id": "schema-version-uuid",
+    "item_id": "components.buttons",
+    "preview_artifact_id": "design-preview-buttons",
+    "source_refs": [
+      {
+        "project_id": "project-uuid",
+        "path": "frontend/src/components/ui/button.tsx"
+      }
+    ]
+  }
+}

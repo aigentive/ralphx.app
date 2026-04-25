@@ -168,6 +168,7 @@ pub(super) async fn queue_key_matches_project(
         ChatContextType::Project => Ok(resolve_project_queue_context(key, app_state)
             .await?
             .is_some_and(|(context_id, _)| context_id == project_id.as_str())),
+        ChatContextType::Design => Ok(false),
     }
 }
 

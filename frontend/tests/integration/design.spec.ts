@@ -1,0 +1,93 @@
+import { expect, test, type Page } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
+const OUTPUT_ROOT = join(
+  process.cwd(),
+  "..",
+  ".artifacts",
+  "specs",
+  "ralphx-design-feature",
+  "playwright",
+);
+
+async function openDesign(page: Page) {
+  await page.goto("/");
+  await page.waitForSelector('[data-testid="app-header"]', { timeout: 15000 });
+  await page.getByTestId("nav-design").click();
+  await expect(page.getByTestId("design-view")).toBeVisible();
+}
+
+async function saveShot(page: Page, name: string) {
+  await mkdir(OUTPUT_ROOT, { recursive: true });
+  await page.screenshot({
+    path: join(OUTPUT_ROOT, `${name}.png`),
+    fullPage: true,
+  });
+}
+
+test.describe("Design workspace", () => {
+  test("validates the create, generate, review, and feedback flow", async ({ page }) => {
+    await openDesign(page);
+
+    await expect(page.getByTestId("design-sidebar")).toBeVisible();
+    await expect(page.getByTestId("design-styleguide-pane")).toBeVisible();
+    await expect(page.getByTestId("integrated-chat-panel")).toBeVisible();
+    await expect(page.getByTestId("design-styleguide-group-colors")).toContainText(
+      "Primary palette",
+    );
+    await saveShot(page, "design-desktop-initial");
+
+    await page.getByTestId("design-new-system").click();
+    await expect(page.getByTestId("design-source-composer")).toBeVisible();
+    await saveShot(page, "design-source-composer");
+    await page.getByTestId("design-primary-paths").fill("frontend/src");
+    await page.getByTestId("design-create-from-sources").click();
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("draft / 1 sources");
+    await page.getByTestId("design-generate-styleguide").click();
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("ready / 1 sources");
+    await page.getByTestId("design-export-package").click();
+    await expect(page.getByTestId("design-export-result")).toContainText("Export package artifact");
+    await saveShot(page, "design-desktop-generated");
+
+    const buttonRow = page.getByTestId("design-styleguide-row-components.buttons");
+    await buttonRow.click();
+    await expect(page.getByTestId("design-component-preview")).toBeVisible();
+    await page.getByTestId("design-open-full-preview-components.buttons").click();
+    await expect(page.getByTestId("design-focused-item-drawer")).toContainText("Buttons");
+    await page.getByTestId("design-close-focused-preview").click();
+    await page.getByTestId("design-generate-artifact-components.buttons").click();
+    await expect(page.getByTestId("design-generated-artifact-result")).toContainText(
+      "Generated component artifact",
+    );
+
+    await page.getByTestId("design-needs-work-components.buttons").click();
+    await page.getByPlaceholder("Feedback").fill("Use the app's compact 8px control radius.");
+    await page.getByText("Send feedback to Design").click();
+    await expect(buttonRow).toContainText("needs work");
+
+    const paletteRow = page.getByTestId("design-styleguide-row-colors.primary_palette");
+    await paletteRow.click();
+    await page.getByTestId("design-approve-colors.primary_palette").click();
+    await expect(paletteRow).toContainText("approved");
+    await saveShot(page, "design-desktop-reviewed");
+
+    await page.getByTestId("design-import-package").click();
+    await expect(page.getByTestId("design-package-import-dialog")).toBeVisible();
+    await page.getByTestId("design-import-package-artifact-id").fill("export-design-system-project-mock-1-2");
+    await page.getByTestId("design-import-name").fill("Imported Demo UI");
+    await page.getByTestId("design-import-package-submit").click();
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("Imported Demo UI");
+    await expect(page.getByTestId("integrated-chat-header")).toContainText("ready / 1 sources");
+    await saveShot(page, "design-desktop-imported");
+  });
+
+  test("captures the Design workspace in a compact viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openDesign(page);
+
+    await expect(page.getByTestId("design-sidebar")).toBeVisible();
+    await expect(page.getByTestId("design-styleguide-pane")).toBeVisible();
+    await saveShot(page, "design-compact-initial");
+  });
+});

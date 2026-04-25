@@ -251,6 +251,32 @@ pub async fn start_http_server(
         // Project tools (ralphx-chat-project agent)
         .route("/api/list_tasks", post(list_tasks))
         .route("/api/suggest_task", post(suggest_task))
+        // Design tools (ralphx-design-steward agent)
+        .route("/api/design/systems/:id", get(get_design_system_for_tool))
+        .route(
+            "/api/design/systems/:id/source-manifest",
+            get(get_design_source_manifest_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/styleguide",
+            get(get_design_styleguide_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/styleguide/items/update",
+            post(update_design_styleguide_item_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/styleguide/feedback",
+            post(record_design_styleguide_feedback_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/artifacts",
+            get(list_design_artifacts_for_tool),
+        )
+        .route(
+            "/api/design/systems/:id/artifacts/create",
+            post(create_design_artifact_for_tool),
+        )
         // Review tools (reviewer agent)
         .route("/api/complete_review", post(complete_review))
         .route("/api/review_notes/:task_id", get(get_review_notes))

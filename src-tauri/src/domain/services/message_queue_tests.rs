@@ -136,6 +136,11 @@ fn test_different_contexts_isolated() {
         "Project message".to_string(),
     );
     queue.queue(
+        ChatContextType::Design,
+        "id-1",
+        "Design message".to_string(),
+    );
+    queue.queue(
         ChatContextType::TaskExecution,
         "id-1",
         "Execution message".to_string(),
@@ -145,6 +150,7 @@ fn test_different_contexts_isolated() {
     assert_eq!(queue.get_queued(ChatContextType::Ideation, "id-1").len(), 1);
     assert_eq!(queue.get_queued(ChatContextType::Task, "id-1").len(), 1);
     assert_eq!(queue.get_queued(ChatContextType::Project, "id-1").len(), 1);
+    assert_eq!(queue.get_queued(ChatContextType::Design, "id-1").len(), 1);
     assert_eq!(
         queue
             .get_queued(ChatContextType::TaskExecution, "id-1")
@@ -159,6 +165,26 @@ fn test_different_contexts_isolated() {
 
     assert_eq!(queue.get_queued(ChatContextType::Ideation, "id-1").len(), 0);
     assert_eq!(queue.get_queued(ChatContextType::Task, "id-1").len(), 1);
+    assert_eq!(queue.get_queued(ChatContextType::Design, "id-1").len(), 1);
+}
+
+#[test]
+fn test_count_for_context_supports_design() {
+    let queue = MessageQueue::new();
+
+    queue.queue(
+        ChatContextType::Design,
+        "design-system-1",
+        "Design message".to_string(),
+    );
+    queue.queue(
+        ChatContextType::Design,
+        "design-system-1",
+        "Second design message".to_string(),
+    );
+
+    assert_eq!(queue.count_for_context("design", "design-system-1"), 2);
+    assert_eq!(queue.count_for_context("unknown", "design-system-1"), 0);
 }
 
 #[test]

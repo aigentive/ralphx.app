@@ -138,6 +138,11 @@ function getContextTypeAndId(context: ChatContext): {
         throw new Error("Ideation context requires ideationSessionId");
       }
       return { contextType: "ideation", contextId: context.ideationSessionId };
+    case "design":
+      if (!context.designSystemId) {
+        throw new Error("Design context requires designSystemId");
+      }
+      return { contextType: "design", contextId: context.designSystemId };
     case "task_detail":
       if (!context.selectedTaskId) {
         throw new Error("Task detail context requires selectedTaskId");

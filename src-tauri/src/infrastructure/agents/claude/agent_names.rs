@@ -18,6 +18,7 @@ pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "ralphx-ideation-readonly
 pub const SHORT_SESSION_NAMER: &str = "ralphx-utility-session-namer";
 pub const SHORT_CHAT_TASK: &str = "ralphx-chat-task";
 pub const SHORT_CHAT_PROJECT: &str = "ralphx-chat-project";
+pub const SHORT_DESIGN_STEWARD: &str = "ralphx-design-steward";
 pub const SHORT_REVIEW_CHAT: &str = "ralphx-review-chat";
 pub const SHORT_REVIEW_HISTORY: &str = "ralphx-review-history";
 pub const SHORT_WORKER: &str = "ralphx-execution-worker";
@@ -53,8 +54,10 @@ pub const SHORT_IDEATION_SPECIALIST_UX: &str = "ralphx-ideation-specialist-ux";
 pub const SHORT_IDEATION_SPECIALIST_CODE_QUALITY: &str = "ralphx-ideation-specialist-code-quality";
 pub const SHORT_IDEATION_ADVOCATE: &str = "ralphx-ideation-advocate";
 pub const SHORT_IDEATION_CRITIC: &str = "ralphx-ideation-critic";
-pub const SHORT_IDEATION_SPECIALIST_PIPELINE_SAFETY: &str = "ralphx-ideation-specialist-pipeline-safety";
-pub const SHORT_IDEATION_SPECIALIST_STATE_MACHINE: &str = "ralphx-ideation-specialist-state-machine";
+pub const SHORT_IDEATION_SPECIALIST_PIPELINE_SAFETY: &str =
+    "ralphx-ideation-specialist-pipeline-safety";
+pub const SHORT_IDEATION_SPECIALIST_STATE_MACHINE: &str =
+    "ralphx-ideation-specialist-state-machine";
 
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 
@@ -86,6 +89,9 @@ pub const AGENT_GENERAL_EXPLORER: &str = "ralphx:ralphx-general-explorer";
 
 /// General edit worker for project-scoped agent conversations
 pub const AGENT_GENERAL_WORKER: &str = "ralphx:ralphx-general-worker";
+
+/// Design system steward (ChatContextType::Design)
+pub const AGENT_DESIGN_STEWARD: &str = "ralphx:ralphx-design-steward";
 
 /// Worker execution agent (ChatContextType::TaskExecution)
 pub const AGENT_WORKER: &str = "ralphx:ralphx-execution-worker";

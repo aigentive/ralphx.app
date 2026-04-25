@@ -55,6 +55,10 @@ fn test_context_type_priority_ordering() {
         context_type_priority(ChatContextType::Ideation)
             < context_type_priority(ChatContextType::Project)
     );
+    assert!(
+        context_type_priority(ChatContextType::Project)
+            < context_type_priority(ChatContextType::Design)
+    );
 }
 
 #[test]

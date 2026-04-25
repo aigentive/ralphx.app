@@ -142,6 +142,45 @@ export {
   CustomDepthInputSchema,
 } from "@/api/research";
 
+// Design API
+export {
+  designApi,
+  type CreateDesignStyleguideFeedbackInput,
+  type CreateDesignStyleguideFeedbackResponse,
+  type CreateDesignSystemInput,
+  type CreateDesignSystemResponse,
+  type DesignStyleguideFeedbackResponse,
+  type DesignStyleguideItemResponse,
+  type DesignStyleguidePreviewResponse,
+  type DesignStyleguideViewModelResponse,
+  type DesignSystemDetailResponse,
+  type DesignSystemResponse,
+  type DesignSystemSourceResponse,
+  type ExportDesignSystemPackageResponse,
+  type GenerateDesignArtifactInput,
+  type GenerateDesignArtifactResponse,
+  type GenerateDesignSystemStyleguideResponse,
+  type ImportDesignSystemPackageInput,
+  type ImportDesignSystemPackageResponse,
+  CreateDesignStyleguideFeedbackInputSchema,
+  CreateDesignStyleguideFeedbackResponseSchema,
+  CreateDesignSystemInputSchema,
+  CreateDesignSystemResponseSchema,
+  DesignStyleguideFeedbackResponseSchema,
+  DesignStyleguideItemResponseSchema,
+  DesignStyleguidePreviewResponseSchema,
+  DesignStyleguideViewModelResponseSchema,
+  DesignSystemDetailResponseSchema,
+  DesignSystemResponseSchema,
+  DesignSystemSourceResponseSchema,
+  ExportDesignSystemPackageResponseSchema,
+  GenerateDesignArtifactInputSchema,
+  GenerateDesignArtifactResponseSchema,
+  GenerateDesignSystemStyleguideResponseSchema,
+  ImportDesignSystemPackageInputSchema,
+  ImportDesignSystemPackageResponseSchema,
+} from "@/api/design";
+
 // Ask User Question API
 export { askUserQuestionApi, type ResolveQuestionInput } from "@/api/ask-user-question";
 
@@ -220,6 +259,7 @@ import { projectsApi, workflowsApi } from "@/api/projects";
 import { methodologiesApi } from "@/api/methodologies";
 import { artifactsApi } from "@/api/artifacts";
 import { researchApi } from "@/api/research";
+import { designApi } from "@/api/design";
 import { askUserQuestionApi } from "@/api/ask-user-question";
 import { permissionApi } from "@/api/permission";
 import { qaApi } from "@/api/qa-api";
@@ -248,6 +288,7 @@ const realApi = {
   methodologies: methodologiesApi,
   artifacts: artifactsApi,
   research: researchApi,
+  design: designApi,
   askUserQuestion: askUserQuestionApi,
   permission: permissionApi,
   qa: qaApi,

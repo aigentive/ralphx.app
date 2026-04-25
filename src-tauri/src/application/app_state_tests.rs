@@ -4,8 +4,8 @@ use crate::domain::agents::{
     AgentHarnessKind, AgentLane, AgentLaneSettings, AgenticClient, ClientType, LogicalEffort,
 };
 use crate::domain::entities::{
-    ChatMessage, IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory,
-    Task, TaskProposal,
+    ChatMessage, DesignStorageRootRef, DesignSystem, IdeationSession, InternalStatus, Priority,
+    Project, ProjectId, ProposalCategory, Task, TaskProposal,
 };
 use crate::infrastructure::{MockAgenticClient, MockCallType};
 
@@ -21,6 +21,31 @@ async fn test_new_test_creates_empty_repositories() {
     // Project repo should be empty
     let projects = state.project_repo.get_all().await.unwrap();
     assert!(projects.is_empty());
+}
+
+#[tokio::test]
+async fn test_new_test_exposes_design_repositories() {
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+    let design_system = DesignSystem::new(
+        project_id.clone(),
+        "Product UI",
+        DesignStorageRootRef::from_hash_component("design-state-test"),
+    );
+
+    state
+        .design_system_repo
+        .create(design_system.clone())
+        .await
+        .unwrap();
+
+    let systems = state
+        .design_system_repo
+        .list_by_project(&project_id, false)
+        .await
+        .unwrap();
+    assert_eq!(systems.len(), 1);
+    assert_eq!(systems[0].id, design_system.id);
 }
 
 #[tokio::test]

@@ -1,0 +1,130 @@
+{
+  "design_system_id": "design-system-uuid",
+  "schema_version_id": "schema-version-uuid",
+  "title": "RalphX Product Design System",
+  "status": "ready",
+  "ready_summary": "The initial styleguide is ready for review with source-backed colors, type, spacing, component, and workspace layout patterns.",
+  "review_counts": {
+    "needs_review": 3,
+    "approved": 1,
+    "needs_work": 1,
+    "stale": 0
+  },
+  "caveats": [
+    {
+      "id": "caveat-font-files",
+      "severity": "warning",
+      "title": "Missing brand font files",
+      "body": "Typography is represented with the documented system font stack until user-provided font files are attached.",
+      "action_label": "Upload fonts",
+      "action_kind": "attach_asset"
+    }
+  ],
+  "groups": [
+    {
+      "id": "colors",
+      "label": "Colors",
+      "items": [
+        {
+          "id": "styleguide-item-primary-palette",
+          "item_id": "colors.primary_palette",
+          "group": "colors",
+          "label": "Primary palette",
+          "summary": "RalphX orange primary, hover, soft, and ring roles.",
+          "preview_artifact_id": "design-preview-primary-palette",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "specs/design/styleguide.md"
+            },
+            {
+              "project_id": "project-uuid",
+              "path": "frontend/src/styles/tokens/semantic.css"
+            }
+          ],
+          "confidence": "high",
+          "approval_status": "needs_review",
+          "feedback_status": "none",
+          "review_state": "needs_review",
+          "source_status": "current",
+          "last_feedback_message_id": null,
+          "last_feedback_run_id": null,
+          "preview": {
+            "kind": "color_swatches",
+            "swatches": [
+              {
+                "label": "Primary",
+                "token": "color.action.primary",
+                "value": "#ff6b35"
+              },
+              {
+                "label": "Primary soft",
+                "token": "color.action.primary_soft",
+                "value": "rgba(255, 107, 53, 0.12)"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "components",
+      "label": "Components",
+      "items": [
+        {
+          "id": "styleguide-item-buttons",
+          "item_id": "components.buttons",
+          "group": "components",
+          "label": "Buttons",
+          "summary": "Primary, secondary, ghost, icon, and loading button patterns.",
+          "preview_artifact_id": "design-preview-buttons",
+          "source_refs": [
+            {
+              "project_id": "project-uuid",
+              "path": "frontend/src/components/ui/button.tsx"
+            }
+          ],
+          "confidence": "medium",
+          "approval_status": "needs_work",
+          "feedback_status": "open",
+          "review_state": "needs_work",
+          "source_status": "current",
+          "last_feedback_message_id": "chat-message-uuid",
+          "last_feedback_run_id": "design-run-feedback-uuid",
+          "preview": {
+            "kind": "component_states",
+            "states": [
+              "default",
+              "hover",
+              "focus",
+              "disabled",
+              "loading"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "activity": [
+    {
+      "id": "activity-1",
+      "occurred_at": "2026-04-24T10:42:00Z",
+      "summary": "Generated initial styleguide",
+      "target_item_id": null
+    },
+    {
+      "id": "activity-2",
+      "occurred_at": "2026-04-24T10:47:00Z",
+      "summary": "Feedback added on Buttons",
+      "target_item_id": "components.buttons"
+    }
+  ],
+  "export_options": {
+    "default_contents": "human_styleguide_plus_machine_schema",
+    "privacy_defaults": {
+      "redact_absolute_paths": true,
+      "exclude_raw_source_snippets": true,
+      "include_full_provenance": false
+    }
+  }
+}

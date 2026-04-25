@@ -5,6 +5,7 @@ import {
   ChatContextSchema,
   isKanbanContext,
   isIdeationContext,
+  isDesignContext,
   isTaskDetailContext,
   createKanbanContext,
   createIdeationContext,
@@ -13,8 +14,8 @@ import {
 } from "./chat";
 
 describe("ViewTypeSchema", () => {
-  it("should have 9 view type values", () => {
-    expect(VIEW_TYPE_VALUES.length).toBe(9);
+  it("should have 10 view type values", () => {
+    expect(VIEW_TYPE_VALUES.length).toBe(10);
   });
 
   it("should parse all valid view types", () => {
@@ -27,6 +28,7 @@ describe("ViewTypeSchema", () => {
     expect(VIEW_TYPE_VALUES).toContain("kanban");
     expect(VIEW_TYPE_VALUES).toContain("graph");
     expect(VIEW_TYPE_VALUES).toContain("ideation");
+    expect(VIEW_TYPE_VALUES).toContain("design");
     expect(VIEW_TYPE_VALUES).toContain("agents");
     expect(VIEW_TYPE_VALUES).toContain("extensibility");
     expect(VIEW_TYPE_VALUES).toContain("activity");
@@ -91,6 +93,14 @@ describe("ChatContextSchema", () => {
     expect(() => ChatContextSchema.parse(context)).not.toThrow();
   });
 
+  it("should parse design context", () => {
+    const context = {
+      view: "design" as const,
+      projectId: "project-123",
+    };
+    expect(() => ChatContextSchema.parse(context)).not.toThrow();
+  });
+
   it("should reject context with empty project id", () => {
     expect(() =>
       ChatContextSchema.parse({
@@ -129,6 +139,16 @@ describe("Context helper functions", () => {
 
     it("should return false for other views", () => {
       expect(isIdeationContext({ view: "kanban", projectId: "p1" })).toBe(false);
+    });
+  });
+
+  describe("isDesignContext", () => {
+    it("should return true for design view", () => {
+      expect(isDesignContext({ view: "design", projectId: "p1" })).toBe(true);
+    });
+
+    it("should return false for other views", () => {
+      expect(isDesignContext({ view: "agents", projectId: "p1" })).toBe(false);
     });
   });
 
@@ -187,6 +207,11 @@ describe("Context factory functions", () => {
     it("should create activity context", () => {
       const ctx = createProjectContext("project-123", "activity");
       expect(ctx.view).toBe("activity");
+    });
+
+    it("should create design context", () => {
+      const ctx = createProjectContext("project-123", "design");
+      expect(ctx.view).toBe("design");
     });
   });
 });

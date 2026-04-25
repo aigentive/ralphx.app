@@ -8,9 +8,10 @@ use crate::domain::agents::{
 };
 use crate::domain::entities::{ChatContextType, MessageRole};
 use crate::infrastructure::agents::claude::agent_names::{
-    AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
-    AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_PLAN_VERIFIER,
-    AGENT_REVIEWER, AGENT_REVIEW_CHAT, AGENT_REVIEW_HISTORY, AGENT_WORKER, AGENT_WORKER_TEAM,
+    AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_DESIGN_STEWARD, AGENT_IDEATION_TEAM_LEAD,
+    AGENT_MERGER, AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY,
+    AGENT_PLAN_VERIFIER, AGENT_REVIEWER, AGENT_REVIEW_CHAT, AGENT_REVIEW_HISTORY, AGENT_WORKER,
+    AGENT_WORKER_TEAM,
 };
 
 /// Agent Resolution System
@@ -85,6 +86,7 @@ pub fn resolve_agent_with_team_mode(
     match context_type {
         ChatContextType::Ideation => AGENT_ORCHESTRATOR_IDEATION,
         ChatContextType::Delegation => AGENT_CHAT_PROJECT,
+        ChatContextType::Design => AGENT_DESIGN_STEWARD,
         ChatContextType::Task => AGENT_CHAT_TASK,
         ChatContextType::Project => AGENT_CHAT_PROJECT,
         ChatContextType::TaskExecution => AGENT_WORKER,
@@ -194,6 +196,7 @@ pub fn context_type_to_process(context_type: &ChatContextType) -> &'static str {
     match context_type {
         ChatContextType::Ideation => "ideation",
         ChatContextType::Delegation => "delegation",
+        ChatContextType::Design => "design",
         ChatContextType::Task => "task",
         ChatContextType::Project => "project",
         ChatContextType::TaskExecution => "execution",

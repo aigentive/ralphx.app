@@ -43,6 +43,7 @@ import {
   WORKER,
   MERGER,
   CHAT_PROJECT,
+  DESIGN_STEWARD,
 } from '../agentNames.js';
 
 function toolsByAgent(): Record<string, string[]> {
@@ -1218,6 +1219,35 @@ describe('delegation bridge tools', () => {
     expect(toolNames).not.toContain('delegate_start');
     expect(toolNames).not.toContain('delegate_wait');
     expect(toolNames).not.toContain('delegate_cancel');
+  });
+});
+
+describe('design steward tools', () => {
+  const designTools = [
+    'get_design_system',
+    'get_design_source_manifest',
+    'get_design_styleguide',
+    'update_design_styleguide_item',
+    'record_design_styleguide_feedback',
+    'create_design_artifact',
+    'list_design_artifacts',
+  ] as const;
+
+  it.each(designTools)('%s should exist in ALL_TOOLS', (toolName) => {
+    expect(getAllTools().find((tool) => tool.name === toolName)).toBeDefined();
+  });
+
+  it('design steward allowlist stays aligned with canonical metadata', () => {
+    expect(toolsByAgent()[DESIGN_STEWARD]).toEqual(loadCanonicalMcpTools(DESIGN_STEWARD));
+    expect(toolsByAgent()[DESIGN_STEWARD]).toEqual([...designTools]);
+  });
+
+  it('returns only design tools for the design steward', () => {
+    setAgentType(DESIGN_STEWARD);
+    const toolNames = getFilteredTools().map((tool) => tool.name);
+    expect(toolNames).toEqual([...designTools]);
+    expect(toolNames).not.toContain('suggest_task');
+    expect(toolNames).not.toContain('get_session_plan');
   });
 });
 

@@ -12,6 +12,7 @@ import { FILESYSTEM_TOOLS } from "./filesystem-tools.js";
 import { IDEATION_TOOLS } from "./ideation-tools.js";
 import { WORKFLOW_TOOLS } from "./workflow-tools.js";
 import { SUPPORT_TOOLS } from "./support-tools.js";
+import { DESIGN_TOOLS } from "./design-tools.js";
 import {
   formatToolErrorMessageFromRegistry,
   getToolRecoveryHintFromRegistry,
@@ -57,6 +58,8 @@ export const ALL_TOOLS: Tool[] = [
   ...ISSUE_TOOLS,
 
   ...SUPPORT_TOOLS,
+
+  ...DESIGN_TOOLS,
 ];
 
 const ALL_TOOL_NAMES = ALL_TOOLS.map((tool) => tool.name);

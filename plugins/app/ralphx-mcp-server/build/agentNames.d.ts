@@ -7,6 +7,7 @@ export declare const ORCHESTRATOR_IDEATION = "ralphx-ideation";
 export declare const ORCHESTRATOR_IDEATION_READONLY = "ralphx-ideation-readonly";
 export declare const CHAT_TASK = "ralphx-chat-task";
 export declare const CHAT_PROJECT = "ralphx-chat-project";
+export declare const DESIGN_STEWARD = "ralphx-design-steward";
 export declare const REVIEWER = "ralphx-execution-reviewer";
 export declare const REVIEW_CHAT = "ralphx-review-chat";
 export declare const REVIEW_HISTORY = "ralphx-review-history";

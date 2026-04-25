@@ -4,7 +4,7 @@
  * Verifies:
  * - All 24 internal statuses map to correct context types
  * - Store keys are formatted correctly
- * - Registry has entries for all 6 context types
+ * - Registry has entries for all context types
  * - Feature flags are consistent
  */
 
@@ -68,6 +68,10 @@ describe("buildStoreKey", () => {
   it("formats merge keys as merge:{id}", () => {
     expect(buildStoreKey("merge", "task-456")).toBe("merge:task-456");
   });
+
+  it("formats design keys as design:{id}", () => {
+    expect(buildStoreKey("design", "design-system-123")).toBe("design:design-system-123");
+  });
 });
 
 // ============================================================================
@@ -97,6 +101,13 @@ describe("parseStoreKey", () => {
 
   it("parses merge key", () => {
     expect(parseStoreKey("merge:task-456")).toEqual({ contextType: "merge", contextId: "task-456" });
+  });
+
+  it("parses design key", () => {
+    expect(parseStoreKey("design:design-system-123")).toEqual({
+      contextType: "design",
+      contextId: "design-system-123",
+    });
   });
 
   it("is the reverse of buildStoreKey for all context types", () => {
@@ -215,6 +226,7 @@ describe("getContextConfig", () => {
     expect(getContextConfig("task_execution").agentType).toBe("worker");
     expect(getContextConfig("review").agentType).toBe("reviewer");
     expect(getContextConfig("merge").agentType).toBe("merger");
+    expect(getContextConfig("design").placeholder).toBe("Ask Design to analyze, refine, or generate a screen...");
   });
 });
 
@@ -233,5 +245,6 @@ describe("isAgentContext", () => {
     expect(isAgentContext("ideation")).toBe(false);
     expect(isAgentContext("task")).toBe(false);
     expect(isAgentContext("project")).toBe(false);
+    expect(isAgentContext("design")).toBe(false);
   });
 });

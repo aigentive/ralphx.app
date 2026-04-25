@@ -127,6 +127,18 @@ const RALPHX_PROJECT_ID = runtimeContext.projectId;
 const RALPHX_WORKING_DIRECTORY = runtimeContext.workingDirectory;
 const RALPHX_CONTEXT_TYPE = runtimeContext.contextType;
 const RALPHX_CONTEXT_ID = runtimeContext.contextId;
+function resolveDesignSystemId(args) {
+    const explicit = typeof args?.design_system_id === "string"
+        ? args.design_system_id.trim()
+        : "";
+    if (explicit) {
+        return explicit;
+    }
+    if (RALPHX_CONTEXT_TYPE === "design" && RALPHX_CONTEXT_ID) {
+        return RALPHX_CONTEXT_ID;
+    }
+    throw new Error("Design tool call requires design_system_id outside a design chat context");
+}
 function buildArtifactMutationTransportHeaders() {
     if (RALPHX_CONTEXT_TYPE !== "ideation" || !RALPHX_CONTEXT_ID) {
         return undefined;
@@ -459,6 +471,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // Also handle get_session_plan as GET
             const { session_id } = args;
             result = await callTauriGet(`get_session_plan/${session_id}`);
+        }
+        else if (name === "get_design_system") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            result = await callTauriGet(`design/systems/${designSystemId}`);
+        }
+        else if (name === "get_design_source_manifest") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            result = await callTauriGet(`design/systems/${designSystemId}/source-manifest`);
+        }
+        else if (name === "get_design_styleguide") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { schema_version_id } = args;
+            const query = schema_version_id ? `?schema_version_id=${encodeURIComponent(schema_version_id)}` : "";
+            result = await callTauriGet(`design/systems/${designSystemId}/styleguide${query}`);
+        }
+        else if (name === "update_design_styleguide_item") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { item_id, approval_status } = args;
+            result = await callTauri(`design/systems/${designSystemId}/styleguide/items/update`, {
+                item_id,
+                approval_status,
+            });
+        }
+        else if (name === "record_design_styleguide_feedback") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { item_id, feedback, conversation_id } = args;
+            result = await callTauri(`design/systems/${designSystemId}/styleguide/feedback`, {
+                item_id,
+                feedback,
+                conversation_id,
+            });
+        }
+        else if (name === "create_design_artifact") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { artifact_kind, name: artifactName, brief, source_item_id } = args;
+            result = await callTauri(`design/systems/${designSystemId}/artifacts/create`, {
+                artifact_kind,
+                name: artifactName,
+                brief,
+                source_item_id,
+            });
+        }
+        else if (name === "list_design_artifacts") {
+            const designSystemId = encodeURIComponent(resolveDesignSystemId(args));
+            const { schema_version_id } = args;
+            const query = schema_version_id ? `?schema_version_id=${encodeURIComponent(schema_version_id)}` : "";
+            result = await callTauriGet(`design/systems/${designSystemId}/artifacts${query}`);
         }
         else if (name === "update_plan_artifact" || name === "edit_plan_artifact") {
             const artifactMutationArgs = { ...(args ?? {}) };
