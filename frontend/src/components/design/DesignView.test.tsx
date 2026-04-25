@@ -909,6 +909,115 @@ describe("DesignView", () => {
     }
   });
 
+  it("renders source-backed logo assets and exact component style samples", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1", "components.buttons", {
+        label: "Button System",
+        summary: "Primary, secondary, accent, and nav button variants.",
+        previewArtifactId: "preview-button-system",
+        confidence: "high",
+      }),
+      styleguideItemResponse("design-system-project-1", "brand.logo", {
+        group: "brand",
+        label: "Logo",
+        summary: "Three logo variants from source assets.",
+        previewArtifactId: "preview-logo-assets",
+        sourceRefs: [
+          { project_id: "project-1", path: "assets/logo.svg", line: null },
+          { project_id: "project-1", path: "assets/logo_black.svg", line: null },
+        ],
+        confidence: "high",
+      }),
+    ]);
+    vi.mocked(api.design.getStyleguidePreview).mockImplementation(
+      async (designSystemId: string, previewArtifactId: string) => {
+        if (previewArtifactId === "preview-logo-assets") {
+          return {
+            designSystemId,
+            schemaVersionId: "schema-version-1",
+            artifactId: previewArtifactId,
+            artifactType: "design_doc",
+            content: {
+              design_system_id: designSystemId,
+              schema_version_id: "schema-version-1",
+              item_id: "brand.logo",
+              group: "brand",
+              label: "Logo",
+              summary: "Three logo variants from source assets.",
+              preview_kind: "asset_sample",
+              confidence: "high",
+              source_refs: [{ project_id: "project-1", path: "assets/logo.svg", line: null }],
+              asset_samples: [
+                {
+                  label: "Logo",
+                  path: "assets/logo.svg",
+                  media_type: "image/svg+xml",
+                  uri: "data:image/svg+xml;base64,PHN2Zy8+",
+                  surface: "dark",
+                },
+                {
+                  label: "Logo Black",
+                  path: "assets/logo_black.svg",
+                  media_type: "image/svg+xml",
+                  uri: "data:image/svg+xml;base64,PHN2Zy8+",
+                  surface: "light",
+                },
+              ],
+              generated_at: "2026-04-24T08:00:00Z",
+            },
+          };
+        }
+        return {
+          designSystemId,
+          schemaVersionId: "schema-version-1",
+          artifactId: previewArtifactId,
+          artifactType: "design_doc",
+          content: {
+            design_system_id: designSystemId,
+            schema_version_id: "schema-version-1",
+            item_id: "components.buttons",
+            group: "components",
+            label: "Button System",
+            summary: "Primary, secondary, accent, and nav button variants.",
+            preview_kind: "component_sample",
+            confidence: "high",
+            source_refs: [{ project_id: "project-1", path: "src/styles.css", line: null }],
+            component_samples: [
+              {
+                kind: "button",
+                label: "Primary",
+                selector: ".button.primary",
+                styles: {
+                  background: "linear-gradient(135deg, #29231e, #181512)",
+                  color: "#fff",
+                  "border-radius": "999px",
+                  "min-height": "44px",
+                  padding: "0 17px",
+                  "font-weight": "600",
+                },
+              },
+            ],
+            generated_at: "2026-04-24T08:00:00Z",
+          },
+        };
+      },
+    );
+
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+
+    fireEvent.click(await screen.findByTestId("design-styleguide-row-components.buttons"));
+    const buttonPreview = await screen.findByTestId("design-button-system-preview");
+    expect(buttonPreview).toHaveTextContent("Primary");
+    const primaryButton = within(buttonPreview).getByRole("button", { name: "Primary" });
+    expect(primaryButton).toHaveAttribute("style", expect.stringContaining("border-radius: 999px"));
+    expect(primaryButton).toHaveAttribute("style", expect.stringContaining("min-height: 44px"));
+
+    fireEvent.click(await screen.findByTestId("design-styleguide-row-brand.logo"));
+    const assetImages = await screen.findAllByTestId("design-asset-image");
+    expect(assetImages[0]).toHaveAttribute("src", expect.stringContaining("data:image/svg+xml"));
+    expect(screen.getByTestId("design-asset-preview")).toHaveTextContent("assets/logo.svg");
+  });
+
   it("generates a schema-aligned artifact from a persisted styleguide row", async () => {
     vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
       styleguideItemResponse("design-system-project-1"),

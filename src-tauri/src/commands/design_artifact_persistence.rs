@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -299,6 +300,7 @@ async fn build_preview_json(
         "component_samples": source_hints.component_samples,
         "layout_regions": source_hints.layout_regions,
         "asset_samples": source_hints.asset_samples,
+        "hero_artifact": source_hints.hero_artifact,
         "generated_at": generated_at.to_rfc3339(),
     })
 }
@@ -312,12 +314,15 @@ struct PreviewSourceHints {
     component_samples: Vec<JsonValue>,
     layout_regions: Vec<JsonValue>,
     asset_samples: Vec<JsonValue>,
+    hero_artifact: Option<JsonValue>,
 }
 
 struct SourceSnapshot {
     path: String,
     label: String,
     content: String,
+    asset_data_uri: Option<String>,
+    asset_media_type: Option<String>,
 }
 
 async fn build_preview_source_hints(
@@ -368,15 +373,8 @@ async fn build_preview_source_hints(
             })
             .collect()
     };
-    let component_samples = labels
-        .iter()
-        .take(5)
-        .map(|label| {
-            json!({
-                "label": label,
-            })
-        })
-        .collect();
+    let css_variables = extract_css_variables(&snapshots);
+    let component_samples = build_component_samples(item, &snapshots, &labels, &css_variables);
     let layout_regions = labels
         .iter()
         .take(3)
@@ -394,9 +392,13 @@ async fn build_preview_source_hints(
             json!({
                 "label": snapshot.label,
                 "path": snapshot.path,
+                "media_type": snapshot.asset_media_type,
+                "uri": snapshot.asset_data_uri,
+                "surface": asset_surface(&snapshot.path),
             })
         })
         .collect();
+    let hero_artifact = build_hero_artifact_sample(item, &snapshots, &css_variables);
 
     PreviewSourceHints {
         paths,
@@ -406,6 +408,7 @@ async fn build_preview_source_hints(
         component_samples,
         layout_regions,
         asset_samples,
+        hero_artifact,
     }
 }
 
@@ -420,6 +423,8 @@ async fn collect_source_snapshots(
                 path: source_ref.path.clone(),
                 label: source_label(&source_ref.path),
                 content: String::new(),
+                asset_data_uri: None,
+                asset_media_type: None,
             });
             continue;
         };
@@ -448,11 +453,18 @@ async fn read_source_snapshot(
     if !metadata.is_file() || metadata.len() > 512 * 1024 {
         return None;
     }
-    let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+    let bytes = std::fs::read(&file_path).ok()?;
+    let content = String::from_utf8_lossy(&bytes).to_string();
+    let asset_media_type = media_type_for_asset_path(&source_ref.path);
+    let asset_data_uri = asset_media_type
+        .as_deref()
+        .map(|media_type| data_uri(media_type, &bytes));
     Some(SourceSnapshot {
         path: source_ref.path.clone(),
         label: source_label(&source_ref.path),
         content,
+        asset_data_uri,
+        asset_media_type,
     })
 }
 
@@ -548,6 +560,287 @@ fn font_value_from_line(line: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
+fn build_component_samples(
+    item: &DesignStyleguideItem,
+    snapshots: &[SourceSnapshot],
+    labels: &[String],
+    css_variables: &BTreeMap<String, String>,
+) -> Vec<JsonValue> {
+    let mut samples = Vec::new();
+    let item_text = format!("{} {}", item.label, item.summary).to_ascii_lowercase();
+
+    if item_text.contains("button")
+        || snapshots
+            .iter()
+            .any(|snapshot| snapshot.content.to_ascii_lowercase().contains(".button"))
+    {
+        for block in snapshots
+            .iter()
+            .flat_map(|snapshot| css_blocks(&snapshot.content))
+        {
+            let selector = block.selector.to_ascii_lowercase();
+            if !selector.contains("button") {
+                continue;
+            }
+            let styles = style_json_from_declarations(
+                &css_declarations(block.body),
+                css_variables,
+                &[
+                    "background",
+                    "background-color",
+                    "color",
+                    "border",
+                    "border-radius",
+                    "box-shadow",
+                    "min-height",
+                    "height",
+                    "padding",
+                    "font-size",
+                    "font-weight",
+                    "letter-spacing",
+                    "transform",
+                ],
+            );
+            samples.push(json!({
+                "kind": "button",
+                "label": label_from_selector(block.selector).unwrap_or_else(|| "Button".to_string()),
+                "selector": block.selector.trim(),
+                "styles": styles,
+                "states": ["default", "hover", "focus", "loading"],
+            }));
+            if samples.len() >= 6 {
+                break;
+            }
+        }
+    }
+
+    if samples.is_empty()
+        && (item_text.contains("hero artifact") || item_text.contains("hero sample"))
+    {
+        samples.push(json!({
+            "kind": "hero_artifact",
+            "label": item.label,
+        }));
+    }
+
+    if samples.is_empty() {
+        samples = labels
+            .iter()
+            .take(5)
+            .map(|label| {
+                json!({
+                    "kind": "source_chip",
+                    "label": label,
+                })
+            })
+            .collect();
+    }
+
+    samples
+}
+
+fn build_hero_artifact_sample(
+    item: &DesignStyleguideItem,
+    snapshots: &[SourceSnapshot],
+    css_variables: &BTreeMap<String, String>,
+) -> Option<JsonValue> {
+    let evidence = format!(
+        "{} {} {}",
+        item.label,
+        item.summary,
+        snapshots
+            .iter()
+            .map(|snapshot| snapshot.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+    .to_ascii_lowercase();
+    if !evidence.contains("hero-sample")
+        && !evidence.contains("hero artifact")
+        && !evidence.contains("workflow block")
+    {
+        return None;
+    }
+
+    let blocks = snapshots
+        .iter()
+        .flat_map(|snapshot| css_blocks(&snapshot.content))
+        .collect::<Vec<_>>();
+    let panel_styles =
+        style_json_from_matching_block(&blocks, css_variables, &["hero-sample", "hero sample"]);
+    let trigger_styles =
+        style_json_from_matching_block(&blocks, css_variables, &["trigger", "whatsapp", "message"]);
+    let workflow_styles =
+        style_json_from_matching_block(&blocks, css_variables, &["workflow", "artifact"]);
+
+    Some(json!({
+        "kind": "hero_artifact",
+        "label": item.label,
+        "summary": item.summary,
+        "panel_styles": panel_styles,
+        "trigger_styles": trigger_styles,
+        "workflow_styles": workflow_styles,
+        "agent_label": "Agent AI",
+        "status_label": "Workflow running",
+        "channel_label": "WhatsApp",
+        "steps": [
+            { "label": "Lead captured", "state": "done" },
+            { "label": "CRM checked", "state": "done" },
+            { "label": "Proposal drafted", "state": "pending" }
+        ],
+    }))
+}
+
+fn extract_css_variables(snapshots: &[SourceSnapshot]) -> BTreeMap<String, String> {
+    let mut variables = BTreeMap::new();
+    for declarations in snapshots
+        .iter()
+        .flat_map(|snapshot| css_blocks(&snapshot.content))
+        .map(|block| css_declarations(block.body))
+    {
+        for (property, value) in declarations {
+            if property.starts_with("--") {
+                variables.entry(property).or_insert(value);
+            }
+        }
+    }
+    variables
+}
+
+struct CssBlock<'a> {
+    selector: &'a str,
+    body: &'a str,
+}
+
+fn css_blocks(content: &str) -> Vec<CssBlock<'_>> {
+    let mut blocks = Vec::new();
+    let mut search_start = 0;
+    while let Some(open_offset) = content[search_start..].find('{') {
+        let open = search_start + open_offset;
+        let selector_start = content[..open]
+            .rfind('}')
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let selector = content[selector_start..open].trim();
+        let Some(close_offset) = content[open + 1..].find('}') else {
+            break;
+        };
+        let close = open + 1 + close_offset;
+        let body = &content[open + 1..close];
+        if !selector.is_empty() {
+            blocks.push(CssBlock { selector, body });
+        }
+        search_start = close + 1;
+    }
+    blocks
+}
+
+fn css_declarations(body: &str) -> BTreeMap<String, String> {
+    let mut declarations = BTreeMap::new();
+    for declaration in body.split(';') {
+        let Some((property, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let property = property.trim().to_ascii_lowercase();
+        let value = value.trim();
+        if property.is_empty() || value.is_empty() {
+            continue;
+        }
+        declarations.insert(property, value.to_string());
+    }
+    declarations
+}
+
+fn style_json_from_matching_block(
+    blocks: &[CssBlock<'_>],
+    css_variables: &BTreeMap<String, String>,
+    needles: &[&str],
+) -> JsonValue {
+    let declarations = blocks
+        .iter()
+        .find(|block| {
+            let selector = block.selector.to_ascii_lowercase();
+            needles.iter().any(|needle| selector.contains(needle))
+        })
+        .map(|block| css_declarations(block.body))
+        .unwrap_or_default();
+    style_json_from_declarations(
+        &declarations,
+        css_variables,
+        &[
+            "background",
+            "background-color",
+            "border",
+            "border-radius",
+            "box-shadow",
+            "padding",
+            "min-height",
+            "color",
+        ],
+    )
+}
+
+fn style_json_from_declarations(
+    declarations: &BTreeMap<String, String>,
+    css_variables: &BTreeMap<String, String>,
+    allowed_properties: &[&str],
+) -> JsonValue {
+    let mut styles = serde_json::Map::new();
+    for property in allowed_properties {
+        let Some(value) = declarations.get(*property) else {
+            continue;
+        };
+        styles.insert(
+            (*property).to_string(),
+            JsonValue::String(resolve_css_value(value, css_variables)),
+        );
+    }
+    JsonValue::Object(styles)
+}
+
+fn resolve_css_value(value: &str, css_variables: &BTreeMap<String, String>) -> String {
+    let mut output = value.trim().to_string();
+    for _ in 0..4 {
+        let Some(start) = output.find("var(") else {
+            break;
+        };
+        let Some(relative_end) = output[start..].find(')') else {
+            break;
+        };
+        let end = start + relative_end;
+        let inner = &output[start + 4..end];
+        let mut parts = inner.split(',').map(str::trim);
+        let variable = parts.next().unwrap_or_default();
+        let fallback = parts.next();
+        let replacement = css_variables
+            .get(variable)
+            .map(String::as_str)
+            .or(fallback)
+            .unwrap_or(variable)
+            .to_string();
+        output.replace_range(start..=end, &replacement);
+    }
+    output
+}
+
+fn label_from_selector(selector: &str) -> Option<String> {
+    let lower = selector.to_ascii_lowercase();
+    let label = if lower.contains("primary") {
+        "Primary"
+    } else if lower.contains("secondary") {
+        "Secondary"
+    } else if lower.contains("accent") {
+        "Accent"
+    } else if lower.contains("nav") {
+        "Nav"
+    } else if lower.contains("ghost") {
+        "Ghost"
+    } else {
+        "Base"
+    };
+    Some(label.to_string())
+}
+
 fn unique_limited<I>(values: I, limit: usize) -> Vec<String>
 where
     I: IntoIterator<Item = String>,
@@ -597,6 +890,63 @@ fn is_asset_path(path: &str) -> bool {
     [".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"]
         .iter()
         .any(|extension| lower.ends_with(extension))
+}
+
+fn media_type_for_asset_path(path: &str) -> Option<String> {
+    let lower = path.to_ascii_lowercase();
+    let media_type = if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".ico") {
+        "image/x-icon"
+    } else {
+        return None;
+    };
+    Some(media_type.to_string())
+}
+
+fn data_uri(media_type: &str, bytes: &[u8]) -> String {
+    format!("data:{media_type};base64,{}", base64_encode(bytes))
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = *chunk.get(1).unwrap_or(&0);
+        let third = *chunk.get(2).unwrap_or(&0);
+        let triple = ((first as u32) << 16) | ((second as u32) << 8) | third as u32;
+        output.push(ALPHABET[((triple >> 18) & 0x3f) as usize] as char);
+        output.push(ALPHABET[((triple >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            output.push(ALPHABET[((triple >> 6) & 0x3f) as usize] as char);
+        } else {
+            output.push('=');
+        }
+        if chunk.len() > 2 {
+            output.push(ALPHABET[(triple & 0x3f) as usize] as char);
+        } else {
+            output.push('=');
+        }
+    }
+    output
+}
+
+fn asset_surface(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    if lower.contains("logo.svg") && !lower.contains("black") {
+        "dark"
+    } else {
+        "light"
+    }
 }
 
 fn sources_json(sources: &[DesignSystemSource]) -> Vec<JsonValue> {

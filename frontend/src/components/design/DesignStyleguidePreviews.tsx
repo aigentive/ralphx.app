@@ -1,4 +1,5 @@
 import { Loader2, Package, Sparkles } from "lucide-react";
+import type { CSSProperties } from "react";
 
 import type { DesignStyleguidePreviewResponse } from "@/api/design";
 import type { DesignStyleguideItem } from "./designSystems";
@@ -117,6 +118,58 @@ function previewStringArray(preview: DesignPreviewContent | undefined, key: stri
 function recordString(record: PreviewRecord, key: string): string | null {
   const value = record[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function previewRecord(preview: DesignPreviewContent | undefined, key: string): PreviewRecord | null {
+  const value = (preview as PreviewRecord | undefined)?.[key];
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    ? value as PreviewRecord
+    : null;
+}
+
+function recordObject(record: PreviewRecord, key: string): PreviewRecord | null {
+  const value = record[key];
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    ? value as PreviewRecord
+    : null;
+}
+
+function recordArray(record: PreviewRecord, key: string): PreviewRecord[] {
+  const value = record[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is PreviewRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+}
+
+const CSS_STYLE_KEYS: Record<string, keyof CSSProperties> = {
+  background: "background",
+  "background-color": "backgroundColor",
+  border: "border",
+  "border-radius": "borderRadius",
+  "box-shadow": "boxShadow",
+  color: "color",
+  height: "height",
+  "min-height": "minHeight",
+  padding: "padding",
+  "font-size": "fontSize",
+  "font-weight": "fontWeight",
+  "letter-spacing": "letterSpacing",
+  transform: "transform",
+};
+
+function cssStyleFromRecord(record: PreviewRecord | null): CSSProperties {
+  if (!record) {
+    return {};
+  }
+  const style: CSSProperties = {};
+  for (const [sourceKey, targetKey] of Object.entries(CSS_STYLE_KEYS)) {
+    const value = recordString(record, sourceKey);
+    if (value) {
+      (style as Record<string, string | number>)[targetKey] = value;
+    }
+  }
+  return style;
 }
 
 function sourceLabelsForPreview(
@@ -325,11 +378,39 @@ function ComponentPreview({
   previewKind: string;
   sourceCount: number;
 }) {
-  const componentSamples = previewRecords(preview, "component_samples")
+  const heroArtifact = previewRecord(preview, "hero_artifact");
+  if (heroArtifact) {
+    return (
+      <HeroArtifactPreview
+        item={item}
+        preview={preview}
+        heroArtifact={heroArtifact}
+        sourceCount={sourceCount}
+      />
+    );
+  }
+
+  const componentSamples = previewRecords(preview, "component_samples");
+  const buttonSamples = componentSamples.filter(
+    (sample) => recordString(sample, "kind") === "button",
+  );
+  if (buttonSamples.length > 0) {
+    return (
+      <ButtonSystemPreview
+        item={item}
+        preview={preview}
+        samples={buttonSamples}
+        previewKind={previewKind}
+        sourceCount={sourceCount}
+      />
+    );
+  }
+
+  const labels = componentSamples
     .map((sample) => recordString(sample, "label"))
     .filter((label): label is string => Boolean(label));
-  const labels = componentSamples.length > 0
-    ? componentSamples
+  const previewLabels = labels.length > 0
+    ? labels
     : sourceLabelsForPreview(item, preview, 4);
   const stateLabels = ["default", "hover", "focus", "loading"];
 
@@ -340,7 +421,7 @@ function ComponentPreview({
       data-testid="design-component-preview"
     >
       <div className="flex flex-wrap items-center gap-2">
-        {labels.map((label, index) => (
+        {previewLabels.map((label, index) => (
           <button
             key={`${label}-${index}`}
             type="button"
@@ -388,6 +469,201 @@ function ComponentPreview({
         </span>
       </div>
       <PreviewMeta previewKind={previewKind} sourceCount={sourceCount} />
+    </div>
+  );
+}
+
+function ButtonSystemPreview({
+  item,
+  preview,
+  samples,
+  previewKind,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  samples: PreviewRecord[];
+  previewKind: string;
+  sourceCount: number;
+}) {
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-button-system-preview"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {samples.map((sample, index) => {
+          const label = recordString(sample, "label") ?? `Button ${index + 1}`;
+          const sampleStyle = cssStyleFromRecord(recordObject(sample, "styles"));
+          return (
+            <button
+              key={`${label}-${index}`}
+              type="button"
+              className="inline-flex items-center justify-center whitespace-nowrap transition-transform"
+              style={{
+                minHeight: "var(--space-10)",
+                padding: "0 var(--space-4)",
+                borderRadius: "var(--radius-full)",
+                border: "1px solid var(--overlay-weak)",
+                fontSize: "var(--font-size-sm)",
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                background: "var(--bg-base)",
+                ...sampleStyle,
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {["default", "hover", "focus", "loading"].map((stateLabel) => {
+          const sample = samples[0] ?? null;
+          const sampleStyle = cssStyleFromRecord(sample ? recordObject(sample, "styles") : null);
+          return (
+            <button
+              key={stateLabel}
+              type="button"
+              className="inline-flex min-w-0 items-center justify-center truncate border px-2 text-[11px] font-semibold"
+              style={{
+                minHeight: "var(--space-9)",
+                borderColor: "var(--overlay-weak)",
+                borderRadius: sampleStyle.borderRadius ?? "var(--radius-full)",
+                color: sampleStyle.color ?? "var(--text-primary)",
+                background: sampleStyle.background ?? sampleStyle.backgroundColor ?? "var(--bg-base)",
+                boxShadow: stateLabel === "focus"
+                  ? `0 0 0 2px var(--accent-muted), ${sampleStyle.boxShadow ?? "none"}`
+                  : sampleStyle.boxShadow,
+                transform: stateLabel === "hover"
+                  ? sampleStyle.transform ?? "translateY(-1px)"
+                  : undefined,
+                opacity: stateLabel === "loading" ? 0.78 : undefined,
+              }}
+            >
+              {stateLabel === "loading" ? "Loading ..." : stateLabel}
+            </button>
+          );
+        })}
+      </div>
+      <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+        {preview?.summary ?? item.summary}
+      </div>
+      <PreviewMeta previewKind={previewKind} sourceCount={sourceCount} />
+    </div>
+  );
+}
+
+function HeroArtifactPreview({
+  item,
+  preview,
+  heroArtifact,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  heroArtifact: PreviewRecord;
+  sourceCount: number;
+}) {
+  const panelStyle = cssStyleFromRecord(recordObject(heroArtifact, "panel_styles"));
+  const triggerStyle = cssStyleFromRecord(recordObject(heroArtifact, "trigger_styles"));
+  const workflowStyle = cssStyleFromRecord(recordObject(heroArtifact, "workflow_styles"));
+  const steps = recordArray(heroArtifact, "steps");
+  const stepRows = steps.length > 0
+    ? steps
+    : [
+        { label: "Lead captured", state: "done" },
+        { label: "CRM checked", state: "done" },
+        { label: "Proposal drafted", state: "pending" },
+      ];
+
+  return (
+    <div
+      className="rounded-lg border p-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-hero-artifact-preview"
+    >
+      <div
+        className="space-y-3 rounded-xl border p-3 shadow-lg"
+        style={{
+          borderColor: "var(--overlay-faint)",
+          background: "var(--bg-base)",
+          ...panelStyle,
+        }}
+      >
+        <div
+          className="rounded-lg border p-3"
+          style={{
+            borderColor: "var(--status-success-border)",
+            background: "var(--status-success-muted)",
+            ...triggerStyle,
+          }}
+        >
+          <div className="flex items-center justify-between gap-3 text-[11px] font-semibold">
+            <span style={{ color: "var(--status-success)" }}>
+              {recordString(heroArtifact, "channel_label") ?? "WhatsApp"}
+            </span>
+            <span style={{ color: "var(--text-muted)" }}>09:41</span>
+          </div>
+          <div className="mt-2 text-[12px] leading-5" style={{ color: "var(--text-primary)" }}>
+            New qualified lead asked for a deployment quote.
+          </div>
+        </div>
+
+        <div
+          className="rounded-lg border p-3"
+          style={{
+            borderColor: "var(--overlay-weak)",
+            background: "var(--bg-surface)",
+            ...workflowStyle,
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 text-[12px] font-semibold" style={{ color: "var(--accent-primary)" }}>
+              <Sparkles className="h-4 w-4" />
+              {recordString(heroArtifact, "agent_label") ?? "Agent AI"}
+            </div>
+            <span
+              className="rounded-full border px-2 py-1 text-[11px]"
+              style={{
+                borderColor: "var(--accent-border)",
+                background: "var(--accent-muted)",
+                color: "var(--accent-primary)",
+              }}
+            >
+              {recordString(heroArtifact, "status_label") ?? "Workflow running"}
+            </span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {stepRows.map((step, index) => {
+              const label = recordString(step as PreviewRecord, "label") ?? `Step ${index + 1}`;
+              const state = recordString(step as PreviewRecord, "state") ?? "pending";
+              return (
+                <div key={`${label}-${index}`} className="flex items-center gap-2 text-[12px]">
+                  <span
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full border text-[10px]"
+                    style={{
+                      borderColor: state === "done" ? "var(--status-success-border)" : "var(--overlay-weak)",
+                      background: state === "done" ? "var(--status-success-muted)" : "var(--bg-base)",
+                      color: state === "done" ? "var(--status-success)" : "var(--text-muted)",
+                    }}
+                  >
+                    {state === "done" ? "ok" : "-"}
+                  </span>
+                  <span style={{ color: "var(--text-primary)" }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 rounded-md border p-2 text-[12px] leading-5" style={{ borderColor: "var(--overlay-faint)", color: "var(--text-secondary)" }}>
+            {preview?.summary ?? item.summary}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3">
+        <PreviewMeta previewKind={preview?.preview_kind ?? "component_sample"} sourceCount={sourceCount} />
+      </div>
     </div>
   );
 }
@@ -526,11 +802,26 @@ function AssetPreview({
     .map((asset) => ({
       label: recordString(asset, "label"),
       path: recordString(asset, "path"),
+      uri: recordString(asset, "uri"),
+      mediaType: recordString(asset, "media_type"),
+      surface: recordString(asset, "surface") ?? "light",
     }))
-    .filter((asset): asset is { label: string; path: string | null } => Boolean(asset.label));
+    .filter((asset): asset is {
+      label: string;
+      path: string | null;
+      uri: string | null;
+      mediaType: string | null;
+      surface: string;
+    } => Boolean(asset.label));
   const labels = assets.length > 0
     ? assets
-    : sourceLabelsForPreview(item, preview, 4).map((label) => ({ label, path: null }));
+    : sourceLabelsForPreview(item, preview, 4).map((label) => ({
+        label,
+        path: null,
+        uri: null,
+        mediaType: null,
+        surface: "light",
+      }));
 
   return (
     <div
@@ -540,20 +831,37 @@ function AssetPreview({
     >
       <div className="grid gap-2 sm:grid-cols-2">
         {labels.map((asset) => (
-          <div key={asset.label} className="flex items-center gap-3 rounded-md border p-2" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}>
+          <div key={asset.label} className="rounded-md border p-2" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}>
             <div
-              className="flex h-10 w-10 items-center justify-center rounded-lg border"
-              style={{ borderColor: "var(--accent-border)", background: "var(--accent-muted)", color: "var(--accent-primary)" }}
+              className="flex min-h-20 items-center justify-center rounded-lg border p-3"
+              style={{
+                borderColor: "var(--overlay-faint)",
+                background: asset.surface === "dark" ? "var(--text-primary)" : "var(--bg-surface)",
+              }}
             >
-              <Sparkles className="h-4 w-4" />
+              {asset.uri ? (
+                <img
+                  alt={asset.label}
+                  className="max-h-14 max-w-full object-contain"
+                  src={asset.uri}
+                  data-testid="design-asset-image"
+                />
+              ) : (
+                <Sparkles className="h-4 w-4" style={{ color: "var(--accent-primary)" }} />
+              )}
             </div>
-            <div className="min-w-0">
+            <div className="mt-2 min-w-0">
               <div className="truncate text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
                 {asset.label}
               </div>
               {asset.path ? (
                 <div className="truncate text-[11px]" style={{ color: "var(--text-muted)" }}>
                   {asset.path}
+                </div>
+              ) : null}
+              {asset.mediaType ? (
+                <div className="truncate text-[10px]" style={{ color: "var(--text-muted)" }}>
+                  {asset.mediaType}
                 </div>
               ) : null}
             </div>
