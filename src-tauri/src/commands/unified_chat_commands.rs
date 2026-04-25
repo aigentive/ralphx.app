@@ -786,6 +786,29 @@ fn agent_mode_requires_workspace(mode: AgentConversationWorkspaceMode) -> bool {
     )
 }
 
+fn validate_agent_conversation_mode_transition(
+    current_mode: AgentConversationWorkspaceMode,
+    target_mode: AgentConversationWorkspaceMode,
+    workspace_has_state_owner: bool,
+) -> Result<(), String> {
+    if current_mode == AgentConversationWorkspaceMode::Ideation
+        && target_mode != AgentConversationWorkspaceMode::Ideation
+    {
+        return Err(
+            "Ideation mode conversations cannot be switched to another mode yet".to_string(),
+        );
+    }
+
+    if workspace_has_state_owner && target_mode != AgentConversationWorkspaceMode::Ideation {
+        return Err(
+            "This workspace is owned by ideation or execution state and cannot leave Ideation Mode"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod agent_mode_workspace_tests {
     use super::*;
@@ -801,6 +824,89 @@ mod agent_mode_workspace_tests {
         assert!(agent_mode_requires_workspace(
             AgentConversationWorkspaceMode::Ideation
         ));
+    }
+
+    #[test]
+    fn active_agent_conversations_support_expected_valid_mode_transition_matrix() {
+        let valid_transitions = [
+            (
+                AgentConversationWorkspaceMode::Chat,
+                AgentConversationWorkspaceMode::Chat,
+            ),
+            (
+                AgentConversationWorkspaceMode::Chat,
+                AgentConversationWorkspaceMode::Edit,
+            ),
+            (
+                AgentConversationWorkspaceMode::Chat,
+                AgentConversationWorkspaceMode::Ideation,
+            ),
+            (
+                AgentConversationWorkspaceMode::Edit,
+                AgentConversationWorkspaceMode::Chat,
+            ),
+            (
+                AgentConversationWorkspaceMode::Edit,
+                AgentConversationWorkspaceMode::Edit,
+            ),
+            (
+                AgentConversationWorkspaceMode::Edit,
+                AgentConversationWorkspaceMode::Ideation,
+            ),
+            (
+                AgentConversationWorkspaceMode::Ideation,
+                AgentConversationWorkspaceMode::Ideation,
+            ),
+        ];
+
+        for (current_mode, target_mode) in valid_transitions {
+            assert!(
+                validate_agent_conversation_mode_transition(current_mode, target_mode, false)
+                    .is_ok(),
+                "{current_mode} -> {target_mode} should be allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn active_ideation_conversations_cannot_leave_ideation_mode() {
+        for target_mode in [
+            AgentConversationWorkspaceMode::Chat,
+            AgentConversationWorkspaceMode::Edit,
+        ] {
+            let error = validate_agent_conversation_mode_transition(
+                AgentConversationWorkspaceMode::Ideation,
+                target_mode,
+                false,
+            )
+            .expect_err("ideation conversations should not leave ideation mode");
+
+            assert!(error.contains("Ideation mode conversations cannot be switched"));
+        }
+    }
+
+    #[test]
+    fn state_owned_workspaces_can_only_target_ideation_mode() {
+        for target_mode in [
+            AgentConversationWorkspaceMode::Chat,
+            AgentConversationWorkspaceMode::Edit,
+        ] {
+            let error = validate_agent_conversation_mode_transition(
+                AgentConversationWorkspaceMode::Chat,
+                target_mode,
+                true,
+            )
+            .expect_err("state-owned workspaces should not leave ideation ownership");
+
+            assert!(error.contains("owned by ideation or execution state"));
+        }
+
+        assert!(validate_agent_conversation_mode_transition(
+            AgentConversationWorkspaceMode::Chat,
+            AgentConversationWorkspaceMode::Ideation,
+            true,
+        )
+        .is_ok());
     }
 }
 
@@ -1028,24 +1134,17 @@ pub async fn switch_agent_conversation_mode(
         .or_else(|| existing_workspace.as_ref().map(|workspace| workspace.mode))
         .unwrap_or(AgentConversationWorkspaceMode::Chat);
 
-    if current_mode == AgentConversationWorkspaceMode::Ideation
-        && target_mode != AgentConversationWorkspaceMode::Ideation
-    {
-        return Err(
-            "Ideation mode conversations cannot be switched to another mode yet".to_string(),
-        );
-    }
-    if let Some(workspace) = existing_workspace.as_ref() {
-        if (workspace.linked_ideation_session_id.is_some()
-            || workspace.linked_plan_branch_id.is_some())
-            && target_mode != AgentConversationWorkspaceMode::Ideation
-        {
-            return Err(
-                "This workspace is owned by ideation or execution state and cannot leave Ideation Mode"
-                    .to_string(),
-            );
-        }
-    }
+    validate_agent_conversation_mode_transition(
+        current_mode,
+        target_mode,
+        existing_workspace
+            .as_ref()
+            .map(|workspace| {
+                workspace.linked_ideation_session_id.is_some()
+                    || workspace.linked_plan_branch_id.is_some()
+            })
+            .unwrap_or(false),
+    )?;
 
     let workspace = if agent_mode_requires_workspace(target_mode) {
         Some(match existing_workspace {

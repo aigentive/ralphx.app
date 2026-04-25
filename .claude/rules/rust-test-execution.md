@@ -17,6 +17,7 @@ paths:
 | Use `cargo-nextest` for broad Rust runs | ✅ `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` for broad lib coverage and CI; keep `cargo test` for pinpoint filters and doctests |
 | Use the fast wrapper for CI-shaped local loops | ✅ `scripts/test-rust-fast.sh pr` / `main` / `ipc` / `lib-1` / `lib-2`; `*-parallel` modes are local-only wall-clock optimizers that isolate `CARGO_TARGET_DIR` per lane |
 | Keep helper runs checkout-local | `scripts/test-rust-fast.sh` resolves paths relative to its own checkout/worktree and refuses to run if the current cwd belongs to a different RalphX checkout |
+| PATH must honor rustup toolchain | If Cargo reports an older compiler despite `rust-toolchain.toml`, run with `RUSTC=$(rustup which --toolchain 1.91.0 rustc) rustup run 1.91.0 cargo test ...`; Homebrew `cargo` can otherwise drive Homebrew `rustc` |
 | `cargo test` name filters are single-filter only | `cargo test <TESTNAME>` / `cargo test --lib <FILTER>` accepts one substring filter; do not append multiple test names and expect Cargo/libtest to combine them |
 | No broad formatter runs | ❌ `cargo fmt` / broad `rustfmt` unless user explicitly asks; they can touch hundreds of files and hide the real diff |
 | Keep diffs reviewable | Use `apply_patch` for code edits, then verify `git diff` / `git diff --staged` only shows intended hunks |
@@ -134,6 +135,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 |---|---|
 | Repo Rust toolchain | `rust-toolchain.toml` pins Rust `1.91.0`; keep CI and local development aligned to that file |
 | Activate pinned toolchain locally | `rustup toolchain install 1.91.0 && rustup override set 1.91.0` from repo root |
+| Homebrew Rust ahead of rustup in PATH | `RUSTC=$(rustup which --toolchain 1.91.0 rustc) rustup run 1.91.0 cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` |
 | Install on macOS | `brew install cargo-nextest` |
 | Install from Cargo | `cargo install cargo-nextest --locked` |
 | Broad local lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib` |

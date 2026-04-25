@@ -290,6 +290,32 @@ fn interactive_run_started_provider_session(
     (harness, provider_session_id)
 }
 
+fn agent_name_for_conversation_mode(mode: AgentConversationWorkspaceMode) -> &'static str {
+    match mode {
+        AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
+        AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
+        AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
+    }
+}
+
+fn resolve_agent_name_for_send<'a>(
+    context_type: &ChatContextType,
+    entity_status: Option<&'a str>,
+    team_mode: bool,
+    agent_name_override: Option<&'a str>,
+    agent_conversation_mode: Option<AgentConversationWorkspaceMode>,
+) -> &'a str {
+    agent_name_override
+        .or_else(|| agent_conversation_mode.map(agent_name_for_conversation_mode))
+        .unwrap_or_else(|| {
+            chat_service_helpers::resolve_agent_with_team_mode(
+                context_type,
+                entity_status,
+                team_mode,
+            )
+        })
+}
+
 fn continuation_metadata_requests_lineage(task_metadata: Option<&str>) -> bool {
     let metadata = task_metadata
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
@@ -1820,24 +1846,16 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .await?;
         let entity_status = self.get_entity_status(context_type, context_id).await;
         let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-        let resolved_context_agent = chat_service_helpers::resolve_agent_with_team_mode(
-            &context_type,
-            entity_status.as_deref(),
-            team_mode_val,
-        );
         let agent_conversation_mode = conversation
             .agent_mode
             .or_else(|| agent_workspace.as_ref().map(|workspace| workspace.mode));
-        let workspace_agent_name = agent_conversation_mode.map(|mode| match mode {
-            AgentConversationWorkspaceMode::Chat => AGENT_GENERAL_EXPLORER,
-            AgentConversationWorkspaceMode::Edit => AGENT_GENERAL_WORKER,
-            AgentConversationWorkspaceMode::Ideation => AGENT_CHAT_PROJECT,
-        });
-        let agent_name = options
-            .agent_name_override
-            .as_deref()
-            .or(workspace_agent_name)
-            .unwrap_or(resolved_context_agent);
+        let agent_name = resolve_agent_name_for_send(
+            &context_type,
+            entity_status.as_deref(),
+            team_mode_val,
+            options.agent_name_override.as_deref(),
+            agent_conversation_mode,
+        );
         if matches!(
             agent_conversation_mode,
             Some(AgentConversationWorkspaceMode::Edit | AgentConversationWorkspaceMode::Ideation)
@@ -2433,17 +2451,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .as_ref()
             .map(|session_ref| session_ref.provider_session_id.clone());
         let is_new_conversation = stored_session_id.is_none();
-        let resolved_agent_name = options
-            .agent_name_override
-            .clone()
-            .unwrap_or_else(|| {
-                chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    runtime_team_mode,
-                )
-                .to_string()
-            });
+        let resolved_agent_name = agent_name.to_string();
         let (upstream_provider, provider_profile) =
             chat_service_helpers::provider_origin_for_harness(
                 resolved_spawn_settings.effective_harness,

@@ -57,6 +57,7 @@ Primary project docs:
 - Rust test runner split: use `cargo test` for selective filters/doctests and `cargo nextest run` for broad lib runs. Source: `.claude/rules/rust-test-execution.md`.
 - Worktree-safe Rust helper: use `scripts/test-rust-fast.sh {ipc|lib-1|lib-2|pr|main}` from the current checkout/worktree; `*-parallel` modes isolate `CARGO_TARGET_DIR` per lane and the script refuses cross-checkout drift.
 - Rust toolchain source of truth: `rust-toolchain.toml` is authoritative.
+- Rust PATH mismatch: if Cargo still uses Homebrew `rustc`, run through `rustup run` with `RUSTC=$(rustup which --toolchain 1.91.0 rustc)`; details in `.claude/rules/rust-test-execution.md`.
 - Rust std API stability (NON-NEGOTIABLE): do not ship unstable std APIs. Source: `.claude/rules/rust-stable-apis.md`.
 - Worktree safety (NON-NEGOTIABLE): worktree-mode flows must never silently fall back to the main checkout.
 - Verify before commit: review `git diff` against `HEAD` for every touched file.

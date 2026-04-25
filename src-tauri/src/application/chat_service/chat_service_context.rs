@@ -2921,7 +2921,10 @@ mod tests {
     use super::*;
     use crate::application::harness_runtime_registry::standard_chat_harness_cli_resolvers;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-    use crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test;
+    use crate::domain::entities::AgentConversationWorkspaceMode;
+    use crate::infrastructure::agents::claude::{
+        build_spawnable_interactive_command_for_test, mcp_agent_type,
+    };
     use crate::infrastructure::memory::{
         MemoryArtifactRepository, MemoryChatAttachmentRepository, MemoryDelegatedSessionRepository,
         MemoryIdeationSessionRepository, MemoryTaskRepository,
@@ -3005,6 +3008,72 @@ exit 0
             .expect("repo root")
             .join("plugins")
             .join("app")
+    }
+
+    fn spawnable_env_value(spawnable: &SpawnableCommand, key: &str) -> Option<String> {
+        spawnable
+            .get_envs_for_test()
+            .into_iter()
+            .find_map(|(env_key, env_value)| {
+                (env_key == std::ffi::OsStr::new(key))
+                    .then(|| env_value.to_string_lossy().into_owned())
+            })
+    }
+
+    fn launch_spawnable(launch_plan: &ResolvedChatHarnessLaunch) -> &SpawnableCommand {
+        match launch_plan {
+            ResolvedChatHarnessLaunch::Interactive { spawnable, .. }
+            | ResolvedChatHarnessLaunch::Background { spawnable, .. } => spawnable,
+        }
+    }
+
+    async fn build_project_agent_launch_plan(
+        harness: AgentHarnessKind,
+        cli_path: &Path,
+        plugin_dir: &Path,
+        working_directory: &Path,
+        project_id: &ProjectId,
+        agent_name: &str,
+    ) -> ResolvedChatHarnessLaunch {
+        let conversation = ChatConversation::new_project(project_id.clone());
+        let resolved_spawn_settings =
+            crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                agent_name,
+                Some(project_id.as_str()),
+                ChatContextType::Project,
+                None,
+                Some(harness),
+                None,
+                None,
+            )
+            .await;
+
+        build_launch_plan_for_harness(
+            harness,
+            cli_path,
+            plugin_dir,
+            &conversation,
+            "hello from agents view",
+            Some(agent_name),
+            ChatContextType::Project,
+            project_id.as_str(),
+            working_directory,
+            None,
+            Some(project_id.as_str()),
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Arc::new(MemoryIdeationSessionRepository::new()),
+            Arc::new(MemoryDelegatedSessionRepository::new()),
+            Arc::new(MemoryTaskRepository::new()),
+            &[],
+            0,
+            false,
+            None,
+            &resolved_spawn_settings,
+        )
+        .await
+        .expect("project agent launch plan should build")
     }
 
     async fn build_fresh_ideation_launch_prompt(
@@ -3340,6 +3409,105 @@ exit 0
             prompt.contains("<user_message>hello from fresh ideation</user_message>"),
             "fresh Claude ideation launch plans must carry only the new user message in stdin bootstrap"
         );
+    }
+
+    #[tokio::test]
+    async fn agents_view_project_launch_plans_use_mode_specific_agent_for_claude_and_codex() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugin_dir = repo_plugin_dir();
+        let project_id = ProjectId::from_string("agents-view-project".to_string());
+        let mode_agents = [
+            (
+                AgentConversationWorkspaceMode::Chat,
+                agent_names::AGENT_GENERAL_EXPLORER,
+            ),
+            (
+                AgentConversationWorkspaceMode::Edit,
+                agent_names::AGENT_GENERAL_WORKER,
+            ),
+            (
+                AgentConversationWorkspaceMode::Ideation,
+                agent_names::AGENT_CHAT_PROJECT,
+            ),
+        ];
+        let harness_clis = [
+            (
+                AgentHarnessKind::Claude,
+                make_fake_claude_cli(&temp),
+                "Claude",
+            ),
+            (AgentHarnessKind::Codex, make_fake_codex_cli(&temp), "Codex"),
+        ];
+
+        for (harness, cli_path, harness_label) in harness_clis {
+            for (mode, expected_agent_name) in mode_agents {
+                let launch_plan = build_project_agent_launch_plan(
+                    harness,
+                    &cli_path,
+                    &plugin_dir,
+                    temp.path(),
+                    &project_id,
+                    expected_agent_name,
+                )
+                .await;
+                let spawnable = launch_spawnable(&launch_plan);
+
+                assert_eq!(
+                    spawnable_env_value(spawnable, "RALPHX_AGENT_TYPE").as_deref(),
+                    Some(mcp_agent_type(expected_agent_name)),
+                    "{harness_label} launch for {mode} should use the selected Agents view agent"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn agents_view_codex_chat_and_edit_launches_do_not_get_project_external_mcp_tools() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cli_path = make_fake_codex_cli(&temp);
+        let plugin_dir = repo_plugin_dir();
+        let project_id = ProjectId::from_string("agents-view-codex-tools".to_string());
+        let mode_agents = [
+            (
+                AgentConversationWorkspaceMode::Chat,
+                agent_names::AGENT_GENERAL_EXPLORER,
+            ),
+            (
+                AgentConversationWorkspaceMode::Edit,
+                agent_names::AGENT_GENERAL_WORKER,
+            ),
+            (
+                AgentConversationWorkspaceMode::Ideation,
+                agent_names::AGENT_CHAT_PROJECT,
+            ),
+        ];
+
+        for (mode, expected_agent_name) in mode_agents {
+            let launch_plan = build_project_agent_launch_plan(
+                AgentHarnessKind::Codex,
+                &cli_path,
+                &plugin_dir,
+                temp.path(),
+                &project_id,
+                expected_agent_name,
+            )
+            .await;
+            let args = launch_spawnable(&launch_plan)
+                .get_args_for_test()
+                .join("\n");
+
+            if mode == AgentConversationWorkspaceMode::Ideation {
+                assert!(
+                    args.contains("v1_start_ideation"),
+                    "Codex Ideation mode should keep the project-agent external MCP surface"
+                );
+            } else {
+                assert!(
+                    !args.contains("v1_start_ideation") && !args.contains("v1_list_projects"),
+                    "Codex {mode} mode must not inherit the project-agent external MCP surface"
+                );
+            }
+        }
     }
 
     #[test]
