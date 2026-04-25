@@ -2,8 +2,11 @@
 //!
 //! Provides file change and diff data for reviewing task execution results.
 
-use crate::application::{AppState, ConflictDiff, DiffService, FileChange, FileDiff};
-use crate::domain::entities::{PlanBranch, Project, Task, TaskId};
+use crate::application::{
+    agent_conversation_workspace::resolve_valid_agent_conversation_workspace_path, AppState,
+    ConflictDiff, DiffService, FileChange, FileDiff,
+};
+use crate::domain::entities::{ChatConversationId, PlanBranch, Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
 use tauri::State;
@@ -175,6 +178,61 @@ pub async fn get_file_diff_for_state(
     }
 
     diff_service.get_file_diff(&file_path, &working_path_str, base_branch)
+}
+
+async fn get_agent_workspace_context(
+    app_state: &AppState,
+    conversation_id: &ChatConversationId,
+) -> AppResult<(PathBuf, String)> {
+    let workspace = app_state
+        .agent_conversation_workspace_repo
+        .get_by_conversation_id(conversation_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::Validation(format!(
+                "Agent conversation workspace not found for conversation {}",
+                conversation_id
+            ))
+        })?;
+    let project = app_state
+        .project_repo
+        .get_by_id(&workspace.project_id)
+        .await?
+        .ok_or_else(|| AppError::ProjectNotFound(workspace.project_id.as_str().to_string()))?;
+    let worktree_path =
+        resolve_valid_agent_conversation_workspace_path(&project, &workspace).await?;
+    let base_commit = workspace.base_commit.clone().ok_or_else(|| {
+        AppError::Validation(format!(
+            "Agent conversation workspace {} is missing its captured base commit",
+            conversation_id
+        ))
+    })?;
+    Ok((worktree_path, base_commit))
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_file_changes(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+) -> AppResult<Vec<FileChange>> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let (worktree_path, base_ref) =
+        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let worktree_path = worktree_path.to_string_lossy().to_string();
+    DiffService::new().get_worktree_file_changes_from_ref(&worktree_path, &base_ref)
+}
+
+#[tauri::command]
+pub async fn get_agent_conversation_workspace_file_diff(
+    app_state: State<'_, AppState>,
+    conversation_id: String,
+    file_path: String,
+) -> AppResult<FileDiff> {
+    let conversation_id = ChatConversationId::from_string(conversation_id);
+    let (worktree_path, base_ref) =
+        get_agent_workspace_context(app_state.inner(), &conversation_id).await?;
+    let worktree_path = worktree_path.to_string_lossy().to_string();
+    DiffService::new().get_file_diff(&file_path, &worktree_path, &base_ref)
 }
 
 /// Get files changed in a specific commit

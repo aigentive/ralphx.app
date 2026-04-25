@@ -1,12 +1,26 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AgentConversationWorkspace } from "@/api/chat";
 import type { AgentArtifactTab } from "@/stores/agentSessionStore";
 import { createTestQueryClient } from "@/test/store-utils";
 import { AgentsArtifactPane } from "./AgentsArtifactPane";
+
+const { getWorkspaceChangesMock, getWorkspaceDiffMock } = vi.hoisted(() => ({
+  getWorkspaceChangesMock: vi.fn(),
+  getWorkspaceDiffMock: vi.fn(),
+}));
+
+vi.mock("@/api/diff", () => ({
+  diffApi: {
+    getAgentConversationWorkspaceFileChanges: (...args: unknown[]) =>
+      getWorkspaceChangesMock(...args),
+    getAgentConversationWorkspaceFileDiff: (...args: unknown[]) =>
+      getWorkspaceDiffMock(...args),
+  },
+}));
 
 const workspace = (
   overrides: Partial<AgentConversationWorkspace> = {}
@@ -60,6 +74,18 @@ function renderPane(
 }
 
 describe("AgentsArtifactPane", () => {
+  beforeEach(() => {
+    getWorkspaceChangesMock.mockResolvedValue([
+      { path: "frontend/src/App.tsx", status: "modified", additions: 4, deletions: 1 },
+    ]);
+    getWorkspaceDiffMock.mockResolvedValue({
+      filePath: "frontend/src/App.tsx",
+      oldContent: "old",
+      newContent: "new",
+      language: "typescript",
+    });
+  });
+
   it("anchors the active tab border to the bottom edge of the tab bar", () => {
     renderPane();
 
@@ -97,5 +123,12 @@ describe("AgentsArtifactPane", () => {
     fireEvent.click(screen.getByTestId("agents-publish-confirm"));
 
     expect(publish).toHaveBeenCalledWith("conversation-1");
+  });
+
+  it("loads workspace changes for review before publishing", async () => {
+    renderPane("publish", workspace({ mode: "edit" }));
+
+    await waitFor(() => expect(screen.getByTestId("agents-review-changes")).toBeEnabled());
+    expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1");
   });
 });

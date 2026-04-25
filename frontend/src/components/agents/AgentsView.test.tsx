@@ -536,6 +536,28 @@ describe("AgentsChatHeader", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("collapses the publish header label while the publish pane is open", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ id: "conversation-1", agentMode: "edit" })}
+        workspace={conversationWorkspace({ mode: "edit" })}
+        artifactOpen
+        activeArtifactTab="publish"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onPublishWorkspace={vi.fn().mockResolvedValue(undefined)}
+        onOpenPublishPane={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    const publishButton = screen.getByTestId("agents-publish-workspace");
+    expect(publishButton).toBeInTheDocument();
+    expect(publishButton).not.toHaveTextContent("Commit & Publish");
+    expect(screen.queryByTestId("agents-workspace-status")).not.toBeInTheDocument();
+  });
+
   it("hides ideation artifact shortcuts for edit-mode conversations", () => {
     renderWithProviders(
       <AgentsChatHeader

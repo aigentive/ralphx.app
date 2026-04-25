@@ -93,7 +93,7 @@ pub async fn prepare_agent_conversation_workspace(
     ensure_agent_conversation_worktree(&repo_path, &worktree_path, &branch_name, &base_ref).await?;
     run_agent_conversation_workspace_setup(project, conversation_id, &worktree_path, &branch_name)
         .await;
-    let base_commit = GitService::get_head_sha(&worktree_path).await.ok();
+    let base_commit = GitService::get_head_sha(&worktree_path).await?;
 
     Ok(AgentConversationWorkspace {
         conversation_id: conversation_id.clone(),
@@ -102,7 +102,7 @@ pub async fn prepare_agent_conversation_workspace(
         base_ref_kind: kind,
         base_ref,
         base_display_name: Some(display_name),
-        base_commit,
+        base_commit: Some(base_commit),
         branch_name,
         worktree_path: worktree_path.to_string_lossy().to_string(),
         linked_ideation_session_id: None,
@@ -403,6 +403,15 @@ mod tests {
                 .join(".agent_setup_marker")
                 .exists(),
             "agent conversation worktree should run project worktree_setup commands"
+        );
+        let captured_head =
+            GitService::get_head_sha(Path::new(&workspace.worktree_path))
+                .await
+                .expect("workspace HEAD should resolve");
+        assert_eq!(
+            workspace.base_commit.as_deref(),
+            Some(captured_head.as_str()),
+            "agent conversation workspace should always capture the immutable base commit"
         );
     }
 }

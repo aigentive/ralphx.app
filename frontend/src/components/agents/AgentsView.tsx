@@ -1389,6 +1389,7 @@ export function AgentsChatHeader({
   const title = conversation?.title || "Untitled agent";
   const conversationMode = conversation ? resolveConversationAgentMode(conversation, workspace) : null;
   const showIdeationArtifacts = conversationMode === "ideation";
+  const publishPaneOpen = artifactOpen && activeArtifactTab === "publish";
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -1451,7 +1452,7 @@ export function AgentsChatHeader({
             </button>
           )}
         </div>
-        {workspace && <AgentsWorkspaceStatusPill workspace={workspace} />}
+        {workspace && !publishPaneOpen && <AgentsWorkspaceStatusPill workspace={workspace} />}
       </div>
 
       <div className="hidden md:flex items-center gap-1 ml-auto shrink-0">
@@ -1483,7 +1484,7 @@ export function AgentsChatHeader({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 gap-1.5 px-2.5 text-xs"
+                className={cn("h-8 text-xs", publishPaneOpen ? "w-8 p-0" : "gap-1.5 px-2.5")}
                 onClick={onOpenPublishPane}
                 disabled={
                   !onPublishWorkspace ||
@@ -1499,7 +1500,7 @@ export function AgentsChatHeader({
                 ) : (
                   <GitPullRequestArrow className="h-3.5 w-3.5" />
                 )}
-                <span>Commit & Publish</span>
+                {!publishPaneOpen && <span>Commit & Publish</span>}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">

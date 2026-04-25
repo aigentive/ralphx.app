@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Code,
   FileText,
   GitPullRequestArrow,
   GitBranch,
@@ -15,11 +16,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { artifactApi } from "@/api/artifact";
+import { diffApi } from "@/api/diff";
 import { ideationApi, toTaskProposal } from "@/api/ideation";
 import { chatApi, type AgentConversationWorkspace } from "@/api/chat";
+import { DiffViewer, type FileChange as DiffViewerFileChange } from "@/components/diff";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -488,6 +492,17 @@ function AgentPublishPanel({
   onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
   isPublishingWorkspace: boolean;
 }) {
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [commitFiles, setCommitFiles] = useState<DiffViewerFileChange[]>([]);
+  const conversationId = workspace?.conversationId ?? null;
+  const changesQuery = useQuery({
+    queryKey: ["agents", "workspace-diff", conversationId],
+    queryFn: () => diffApi.getAgentConversationWorkspaceFileChanges(conversationId!),
+    enabled: !!conversationId,
+    staleTime: 2_000,
+  });
+  const changes = changesQuery.data ?? [];
+
   if (!workspace) {
     return <EmptyArtifactState title="No workspace selected" />;
   }
@@ -557,26 +572,79 @@ function AgentPublishPanel({
                 Commit & Publish
               </div>
               <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                Commit workspace changes, push the agent branch, and create or update a draft PR.
+                {changesQuery.isLoading
+                  ? "Loading changed files..."
+                  : changes.length > 0
+                    ? `${changes.length} changed file${changes.length === 1 ? "" : "s"} ready for review.`
+                    : "No changed files detected yet."}
               </div>
             </div>
-            <Button
-              type="button"
-              className="h-9 gap-2 px-3 text-xs"
-              onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
-              disabled={publishDisabled}
-              data-testid="agents-publish-confirm"
-            >
-              {isPublishingWorkspace ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <GitPullRequestArrow className="h-3.5 w-3.5" />
-              )}
-              Commit & Publish
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-9 gap-2 px-3 text-xs"
+                onClick={() => setReviewOpen(true)}
+                disabled={changesQuery.isLoading || changes.length === 0}
+                data-testid="agents-review-changes"
+              >
+                <Code className="h-3.5 w-3.5" />
+                Review Changes
+              </Button>
+              <Button
+                type="button"
+                className="h-9 gap-2 px-3 text-xs"
+                onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
+                disabled={publishDisabled}
+                data-testid="agents-publish-confirm"
+              >
+                {isPublishingWorkspace ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <GitPullRequestArrow className="h-3.5 w-3.5" />
+                )}
+                Commit & Publish
+              </Button>
+            </div>
           </div>
         </section>
       </div>
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent
+          className="flex h-[95vh] w-[95vw] max-w-[95vw] flex-col gap-0 overflow-hidden p-0"
+          style={{
+            backgroundColor: "var(--bg-surface)",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          <DiffViewer
+            changes={changes}
+            commits={[]}
+            commitFiles={commitFiles}
+            onFetchDiff={async (filePath) => {
+              if (!conversationId) {
+                return null;
+              }
+              const diff = await diffApi.getAgentConversationWorkspaceFileDiff(
+                conversationId,
+                filePath,
+              );
+              return {
+                filePath: diff.filePath,
+                oldContent: diff.oldContent,
+                newContent: diff.newContent,
+                hunks: [],
+                language: diff.language,
+              };
+            }}
+            onFetchCommitFiles={async () => setCommitFiles([])}
+            isLoadingChanges={changesQuery.isLoading}
+            changesLabel="Workspace Changes"
+            changesEmptyTitle="No workspace changes"
+            changesEmptySubtitle="There are no changed files to review for this agent branch."
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

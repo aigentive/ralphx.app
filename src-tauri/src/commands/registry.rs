@@ -283,6 +283,8 @@ macro_rules! register_tauri_commands {
             // Diff commands
             commands::diff_commands::get_task_file_changes,
             commands::diff_commands::get_file_diff,
+            commands::diff_commands::get_agent_conversation_workspace_file_changes,
+            commands::diff_commands::get_agent_conversation_workspace_file_diff,
             commands::diff_commands::get_commit_file_changes,
             commands::diff_commands::get_commit_file_diff,
             commands::diff_commands::detect_merge_conflicts,

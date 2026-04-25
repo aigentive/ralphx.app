@@ -127,4 +127,23 @@ export const diffApi = {
       FileDiffSchema,
       transformFileDiff
     ),
+
+  getAgentConversationWorkspaceFileChanges: (conversationId: string): Promise<FileChange[]> =>
+    typedInvokeWithTransform(
+      "get_agent_conversation_workspace_file_changes",
+      { conversationId },
+      FileChangesResponseSchema,
+      (changes) => changes.map(transformFileChange)
+    ),
+
+  getAgentConversationWorkspaceFileDiff: (
+    conversationId: string,
+    filePath: string
+  ): Promise<FileDiff> =>
+    typedInvokeWithTransform(
+      "get_agent_conversation_workspace_file_diff",
+      { conversationId, filePath },
+      FileDiffSchema,
+      transformFileDiff
+    ),
 } as const;
