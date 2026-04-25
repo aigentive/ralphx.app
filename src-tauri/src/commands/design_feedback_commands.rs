@@ -95,12 +95,6 @@ pub(crate) struct CreateDesignStyleguideFeedbackOptions {
 }
 
 impl CreateDesignStyleguideFeedbackOptions {
-    pub(crate) const fn append_chat_message() -> Self {
-        Self {
-            append_chat_message: true,
-        }
-    }
-
     pub(crate) const fn record_only() -> Self {
         Self {
             append_chat_message: false,

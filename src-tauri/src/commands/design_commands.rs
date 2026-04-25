@@ -100,7 +100,7 @@ pub struct GenerateDesignSystemStyleguideResponse {
     pub items: Vec<DesignStyleguideItemResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesignRunEventPayload {
     pub design_system_id: String,

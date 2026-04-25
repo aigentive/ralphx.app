@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashSet};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path as FsPath, PathBuf};
 
 use axum::{
     extract::{Path, Query, State},
@@ -1167,7 +1167,7 @@ async fn load_project_for_design_source(
 }
 
 fn canonical_project_root(project: &Project) -> Result<PathBuf, String> {
-    let root = Path::new(&project.working_directory);
+    let root = FsPath::new(&project.working_directory);
     if !root.is_absolute() {
         return Err("Design source project root must be absolute".to_string());
     }
@@ -1181,7 +1181,7 @@ fn canonical_project_root(project: &Project) -> Result<PathBuf, String> {
 }
 
 fn safe_relative_path(raw_path: &str) -> Result<PathBuf, String> {
-    let path = Path::new(raw_path);
+    let path = FsPath::new(raw_path);
     if path.is_absolute() {
         return Err("Design source paths must be relative".to_string());
     }
@@ -1216,7 +1216,7 @@ fn normalize_source_ref_path(raw_path: &str) -> Result<String, String> {
         .join("/"))
 }
 
-fn ensure_under(path: &Path, root: &Path, label: &str) -> Result<(), String> {
+fn ensure_under(path: &FsPath, root: &FsPath, label: &str) -> Result<(), String> {
     if path.starts_with(root) {
         Ok(())
     } else {

@@ -552,7 +552,7 @@ fn unique_limited<I>(values: I, limit: usize) -> Vec<String>
 where
     I: IntoIterator<Item = String>,
 {
-    let mut output = Vec::new();
+    let mut output: Vec<String> = Vec::new();
     for value in values {
         let value = value.trim();
         if value.is_empty() || output.iter().any(|existing| existing.as_str() == value) {

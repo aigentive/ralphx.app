@@ -508,7 +508,7 @@ pub async fn import_design_system_package_core(
         format!("Imported design schema: {imported_name} {version}"),
         ArtifactType::Specification,
         &schema_path,
-        Some(package_artifact_id.clone()),
+        package_artifact_id.clone(),
     )
     .await?;
 
@@ -526,7 +526,7 @@ pub async fn import_design_system_package_core(
         format!("Imported design source audit: {imported_name} {version}"),
         ArtifactType::Findings,
         &manifest_path,
-        Some(package_artifact_id.clone()),
+        package_artifact_id.clone(),
     )
     .await?;
 
@@ -544,7 +544,7 @@ pub async fn import_design_system_package_core(
         format!("Imported design styleguide: {imported_name} {version}"),
         ArtifactType::DesignDoc,
         &styleguide_path,
-        Some(package_artifact_id.clone()),
+        package_artifact_id.clone(),
     )
     .await?;
 
