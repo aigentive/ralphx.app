@@ -550,15 +550,13 @@ harnesses:
         parent_conversation_id: Some("conversation 456".to_string()),
         ..Default::default()
     };
-    let config_path = create_mcp_config_with_runtime_context(
+    let json = build_mcp_config_with_runtime_context(
         &plugin_dir,
         "ralphx-chat-project",
         false,
         Some(&runtime_context),
     )
     .expect("should create external MCP config");
-    let content = std::fs::read_to_string(&config_path).expect("should read config");
-    let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let server = &json["mcpServers"]["ralphx"];
 
     assert_eq!(server["type"].as_str(), Some("http"));
@@ -620,37 +618,37 @@ skills:
 
     assert!(
         generated_prompt.contains("name: ralphx-ideation"),
-        "expected generated frontmatter name, got: {generated_prompt}"
+        "expected generated frontmatter name"
     );
     assert!(
         generated_prompt.contains("description: Facilitates ideation sessions"),
-        "expected generated description, got: {generated_prompt}"
+        "expected generated description"
     );
     assert!(
         generated_prompt.contains("mcp__ralphx__create_task_proposal"),
-        "expected MCP tool grants from runtime config, got: {generated_prompt}"
+        "expected MCP tool grants from runtime config"
     );
     assert!(
         generated_prompt.contains("Task(Plan)")
             && !generated_prompt.contains("Task(Explore)")
             && !generated_prompt.contains("Task(ralphx:ralphx-ideation-specialist-ux)"),
-        "expected only the retained Task(Plan) variant in generated frontmatter, got: {generated_prompt}"
+        "expected only the retained Task(Plan) variant in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("disallowedTools:\n  - Write\n  - Edit\n  - NotebookEdit"),
-        "expected canonical claude disallowed tools, got: {generated_prompt}"
+        "expected canonical claude disallowed tools"
     );
     assert!(
         generated_prompt.contains("skills:\n  - task-decomposition"),
-        "expected canonical claude skills, got: {generated_prompt}"
+        "expected canonical claude skills"
     );
     assert!(
         generated_prompt.contains("model: opus"),
-        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+        "expected runtime-derived model in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Canonical Claude ideation prompt"),
-        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected canonical prompt body to be preserved"
     );
 }
 
@@ -681,15 +679,15 @@ description: Generates concise ideation session titles from user or plan context
 
     assert!(
         generated_prompt.contains("model: sonnet"),
-        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+        "expected runtime-derived model in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("mcp__ralphx__update_session_title"),
-        "expected ralphx-utility-session-namer MCP tool in generated frontmatter, got: {generated_prompt}"
+        "expected ralphx-utility-session-namer MCP tool in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Shared session naming prompt"),
-        "expected shared canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected shared canonical prompt body to be preserved"
     );
 }
 
@@ -758,11 +756,11 @@ max_turns: 80
 
     assert!(
         generated_prompt.contains("maxTurns: 80"),
-        "expected canonical claude maxTurns in generated frontmatter, got: {generated_prompt}"
+        "expected canonical claude maxTurns in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Canonical plan verifier prompt"),
-        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected canonical prompt body to be preserved"
     );
 }
 
@@ -792,7 +790,7 @@ description: Generates concise ideation session titles from user or plan context
         std::fs::read_to_string(&generated_prompt_path).expect("read initial generated prompt");
     assert!(
         first_prompt.contains("Initial generated prompt"),
-        "first materialization should render the initial prompt body, got: {first_prompt}"
+        "first materialization should render the initial prompt body"
     );
 
     std::fs::write(
@@ -812,11 +810,11 @@ description: Generates concise ideation session titles from user or plan context
         std::fs::read_to_string(&generated_prompt_path).expect("read reused generated prompt");
     assert!(
         reused_prompt.contains("Initial generated prompt"),
-        "later materialize calls in the same process must reuse the first generated prompt, got: {reused_prompt}"
+        "later materialize calls in the same process must reuse the first generated prompt"
     );
     assert!(
         !reused_prompt.contains("Updated prompt that should require an app restart"),
-        "later materialize calls must not rewrite generated prompts mid-process, got: {reused_prompt}"
+        "later materialize calls must not rewrite generated prompts mid-process"
     );
 }
 
@@ -839,11 +837,11 @@ fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowe
     assert_eq!(
         disallowed_tools,
         vec!["Write", "Edit", "NotebookEdit"],
-        "expected root canonical Claude disallowedTools in generated frontmatter, got: {generated_prompt}"
+        "expected root canonical Claude disallowedTools in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("maxTurns: 80"),
-        "legacy max_turns should still flow through when root metadata does not override it, got: {generated_prompt}"
+        "legacy max_turns should still flow through when root metadata does not override it"
     );
 }
 

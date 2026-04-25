@@ -136,12 +136,6 @@ pub fn build_codex_mcp_overrides(
     }
 
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
-    if !mcp_server_path.exists() {
-        return Err(format!(
-            "Codex MCP server not found at {}",
-            mcp_server_path.display()
-        ));
-    }
 
     let node_command = node_utils::find_node_binary()
         .to_string_lossy()
@@ -353,13 +347,6 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("CODEX_CLI_PATH") {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
     if let Ok(path) = which::which("codex") {
         return Some(path);
     }

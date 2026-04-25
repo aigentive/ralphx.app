@@ -684,6 +684,21 @@ pub fn create_mcp_config_with_runtime_context(
     is_external_mcp: bool,
     mcp_runtime_context: Option<&McpRuntimeContext>,
 ) -> Result<PathBuf, String> {
+    let mcp_config = build_mcp_config_with_runtime_context(
+        plugin_dir,
+        agent_type,
+        is_external_mcp,
+        mcp_runtime_context,
+    )?;
+    write_mcp_config_temp(&mcp_config)
+}
+
+pub(crate) fn build_mcp_config_with_runtime_context(
+    plugin_dir: &Path,
+    agent_type: &str,
+    is_external_mcp: bool,
+    mcp_runtime_context: Option<&McpRuntimeContext>,
+) -> Result<serde_json::Value, String> {
     // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself.
     // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
@@ -700,7 +715,7 @@ pub fn create_mcp_config_with_runtime_context(
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     let claude_metadata = load_canonical_claude_metadata(&project_root, short_name);
     if claude_metadata.mcp_transport.as_deref() == Some("external") {
-        return create_external_mcp_config(mcp_server_name, mcp_runtime_context);
+        return build_external_mcp_config(mcp_server_name, mcp_runtime_context);
     }
 
     // Start from plugin_dir/.mcp.json when available, then inject agent scoping args.
@@ -846,13 +861,13 @@ pub fn create_mcp_config_with_runtime_context(
     validate_mcp_config_json(&mcp_config, mcp_server_name)
         .map_err(|e| format!("Critical: MCP server config invalid — {e}"))?;
 
-    write_mcp_config_temp(&mcp_config)
+    Ok(mcp_config)
 }
 
-fn create_external_mcp_config(
+fn build_external_mcp_config(
     mcp_server_name: &str,
     runtime_context: Option<&McpRuntimeContext>,
-) -> Result<PathBuf, String> {
+) -> Result<serde_json::Value, String> {
     let cfg = external_mcp_config();
     let token = ensure_tauri_mcp_bypass_token();
     let mut url = format!("http://{}:{}/mcp", cfg.host, cfg.port);
@@ -872,7 +887,7 @@ fn create_external_mcp_config(
     validate_mcp_config_json(&mcp_config, mcp_server_name)
         .map_err(|e| format!("Critical: MCP server config invalid — {e}"))?;
 
-    write_mcp_config_temp(&mcp_config)
+    Ok(mcp_config)
 }
 
 fn write_mcp_config_temp(mcp_config: &serde_json::Value) -> Result<PathBuf, String> {
@@ -1573,13 +1588,6 @@ pub async fn register_mcp_server(cli_path: &Path, plugin_dir: &Path) -> Result<(
 
 /// Find the Claude CLI path (uses same approach as ClaudeCodeClient)
 pub fn find_claude_cli() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("CLAUDE_CLI_PATH") {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
     if let Ok(path) = which::which("claude") {
         return Some(path);
     }

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use std::{fs, os::unix::fs::PermissionsExt};
@@ -55,6 +55,25 @@ impl Drop for EnvVarGuard {
             std::env::remove_var(self.key);
         }
     }
+}
+
+fn prepend_to_path(dir: &Path) -> EnvVarGuard {
+    let existing = std::env::var("PATH").unwrap_or_default();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let value = if existing.is_empty() {
+        dir.display().to_string()
+    } else {
+        format!("{}{separator}{existing}", dir.display())
+    };
+    EnvVarGuard::set("PATH", &value)
+}
+
+fn prepend_fake_codex_to_path(fake_codex_path: &Path) -> EnvVarGuard {
+    prepend_to_path(
+        fake_codex_path
+            .parent()
+            .expect("fake codex script should have parent dir"),
+    )
 }
 
 fn install_fake_codex_cli() -> (TempDir, PathBuf) {
@@ -195,10 +214,7 @@ fn install_runtime_plugin_dir() -> (TempDir, PathBuf) {
 async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_client() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -351,10 +367,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
 async fn test_get_delegated_session_status_exposes_parent_context() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -404,10 +417,7 @@ async fn test_get_delegated_session_status_exposes_parent_context() {
 async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -602,10 +612,7 @@ async fn test_delegate_start_rejects_disallowed_target_for_caller() {
 async fn test_delegate_start_infers_parent_session_from_verification_child_context() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -663,10 +670,7 @@ async fn test_delegate_start_verifier_context_survives_external_generated_plugin
     let target_project_root = TempDir::new().expect("temp target project");
     let generated_plugin_root = TempDir::new().expect("temp generated plugin root");
     let generated_plugin_dir = generated_plugin_root.path().join("generated/claude-plugin");
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let _plugin_dir_guard = EnvVarGuard::set(
         "RALPHX_PLUGIN_DIR",
         runtime_plugin_dir.to_str().expect("runtime plugin dir utf8"),
@@ -735,10 +739,7 @@ async fn test_delegate_start_verifier_context_survives_external_generated_plugin
 async fn test_delegate_start_uses_verifier_subagent_harness_when_harness_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -864,10 +865,7 @@ fn symlink_path(source: impl AsRef<std::path::Path>, target: impl AsRef<std::pat
 async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omitted() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;
@@ -964,10 +962,7 @@ async fn test_delegate_start_uses_ideation_subagent_harness_when_harness_is_omit
 async fn test_delegate_start_links_parent_conversation_to_verification_child_chat() {
     let _env_lock = codex_cli_env_lock().lock().await;
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let app_state = Arc::new(AppState::new_sqlite_test());
     let state = build_state(app_state);
     let parent = create_parent_session(&state).await;

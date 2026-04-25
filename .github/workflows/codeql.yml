@@ -138,20 +138,37 @@ jobs:
       - name: Fail on open medium+ CodeQL alerts for this pull request
         env:
           GH_TOKEN: ${{ github.token }}
+          BASE_REF: refs/heads/${{ github.event.pull_request.base.ref }}
           PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
         shell: bash
         run: |
           set -euo pipefail
 
-          alerts_json="$(gh api \
-            -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=${PR_REF}&per_page=100")"
+          fetch_alerts() {
+            local ref="$1"
+            gh api --paginate \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=${ref}&per_page=100" \
+              | jq -s 'add // []'
+          }
 
-          medium_or_higher_alerts="$(jq '
+          pr_alerts_json="$(fetch_alerts "${PR_REF}")"
+          base_alert_numbers="$(fetch_alerts "${BASE_REF}" | jq '
             [
               .[]
               | select(.tool.name == "CodeQL")
               | select((.rule.security_severity_level // "") as $level | $level == "medium" or $level == "high" or $level == "critical")
+              | .number
+            ]
+            | unique
+          ')"
+
+          medium_or_higher_alerts="$(jq --argjson base_alert_numbers "${base_alert_numbers}" '
+            [
+              .[]
+              | select(.tool.name == "CodeQL")
+              | select((.rule.security_severity_level // "") as $level | $level == "medium" or $level == "high" or $level == "critical")
+              | select((.number as $number | $base_alert_numbers | index($number)) | not)
               | {
                   number,
                   rule: .rule.id,
@@ -159,13 +176,13 @@ jobs:
                   html_url
                 }
             ]
-          ' <<< "${alerts_json}")"
+          ' <<< "${pr_alerts_json}")"
 
           alert_count="$(jq 'length' <<< "${medium_or_higher_alerts}")"
           if [[ "${alert_count}" -gt 0 ]]; then
-            echo "Open medium+ CodeQL alerts found for ${PR_REF}:" >&2
+            echo "New open medium+ CodeQL alerts found for ${PR_REF} compared with ${BASE_REF}:" >&2
             jq -r '.[] | "- #\(.number) [\(.security_severity_level)] \(.rule) \(.html_url)"' <<< "${medium_or_higher_alerts}" >&2
             exit 1
           fi
 
-          echo "No open medium+ CodeQL alerts found for ${PR_REF}."
+          echo "No new open medium+ CodeQL alerts found for ${PR_REF} compared with ${BASE_REF}."

@@ -73,7 +73,7 @@ Two spawn modes:
 let cli_path = which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
 ```
 
-Also supports `CLAUDE_CLI_PATH` env var and hardcoded fallback paths (`/opt/homebrew/bin/claude`, `/usr/local/bin/claude`).
+Also supports PATH lookup plus hardcoded fallback paths (`/opt/homebrew/bin/claude`, `/usr/local/bin/claude`).
 
 #### 2b. AgenticClientSpawner — State Machine Bridge
 
