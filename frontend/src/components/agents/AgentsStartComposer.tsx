@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Sparkles, type LucideIcon } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 import type {
   AgentConversationBaseSelection,
@@ -7,18 +7,10 @@ import type {
 } from "@/api/chat";
 import type { Project } from "@/types/project";
 import { withAlpha } from "@/lib/theme-colors";
-import { cn } from "@/lib/utils";
 import type {
   AgentProvider,
   AgentRuntimeSelection,
 } from "@/stores/agentSessionStore";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
 import {
   fallbackBranchBaseOptions,
@@ -27,6 +19,7 @@ import {
 } from "@/components/shared/branchBaseOptions";
 import {
   AgentComposerProjectCreateButton,
+  AgentComposerProjectLine,
   AgentComposerSurface,
   type AgentComposerSurfaceProps,
 } from "./AgentComposerSurface";
@@ -82,10 +75,14 @@ const STARTER_TYPING_INITIAL_WORD = STARTER_TYPING_WORDS[0];
 
 type StarterTypingPhase = "holding" | "typing" | "deleting";
 
-const AGENT_MODE_OPTIONS: Array<{ id: AgentConversationWorkspaceMode; label: string }> = [
-  { id: "edit", label: "Agent" },
-  { id: "chat", label: "Chat" },
-  { id: "ideation", label: "Ideation" },
+const AGENT_MODE_OPTIONS: Array<{
+  id: AgentConversationWorkspaceMode;
+  label: string;
+  description: string;
+}> = [
+  { id: "edit", label: "Agent", description: "Build, change, and review code in a branch." },
+  { id: "chat", label: "Chat", description: "Ask read-only questions about the project." },
+  { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
 ];
 
 export function AgentsStartComposer({
@@ -335,24 +332,19 @@ export function AgentsStartComposer({
             attachmentsUploading={isSubmitting && attachments.length > 0}
             submitLabel="Start Agent"
             submittingLabel="Starting..."
-            workspaceControls={
-              <StarterSelectPill
-                icon={BrainCircuit}
-                label="Mode"
-                value={mode}
-                onValueChange={(value) => setMode(value as AgentConversationWorkspaceMode)}
-                options={AGENT_MODE_OPTIONS}
-                placeholder="Mode"
-                testId="agents-start-mode"
-                className="max-w-[178px] flex-none"
-              />
-            }
+            mode={{
+              value: mode,
+              onValueChange: (value) => setMode(value as AgentConversationWorkspaceMode),
+              options: AGENT_MODE_OPTIONS,
+              testId: "agents-start-mode",
+            }}
             project={{
               value: projectId,
               onValueChange: setProjectId,
               options: projects.map((project) => ({
                 id: project.id,
                 label: project.name,
+                description: project.workingDirectory,
               })),
               placeholder: projects.length === 0 ? "No projects yet" : "Select project",
               disabled: isLoadingProjects || projects.length === 0,
@@ -381,7 +373,19 @@ export function AgentsStartComposer({
             }}
           />
 
-          <div className="mt-3 flex w-full justify-end px-2">
+          <div className="mt-3 flex w-full flex-wrap items-center justify-between gap-2 px-2">
+            <AgentComposerProjectLine
+              value={projectId}
+              onValueChange={setProjectId}
+              options={projects.map((project) => ({
+                id: project.id,
+                label: project.name,
+                description: project.workingDirectory,
+              }))}
+              placeholder={projects.length === 0 ? "No projects yet" : "Select project"}
+              disabled={isLoadingProjects || projects.length === 0}
+              testId="agents-start-project"
+            />
             <BranchBasePicker
               value={selectedStartFromKey}
               onValueChange={setSelectedStartFromKey}
@@ -410,84 +414,6 @@ export function AgentsStartComposer({
   );
 }
 
-interface StarterSelectPillProps {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: Array<{ key?: string; id?: string; label: string }>;
-  placeholder: string;
-  disabled?: boolean;
-  testId?: string;
-  className?: string;
-}
-
-function StarterSelectPill({
-  icon: Icon,
-  label,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  disabled = false,
-  testId,
-  className,
-}: StarterSelectPillProps) {
-  return (
-    <div
-      className={cn(
-        "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5",
-        className
-      )}
-      style={{
-        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
-      }}
-    >
-      <div
-        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        <Icon className="h-[13px] w-[13px]" />
-      </div>
-      <div className="min-w-0">
-        <div
-          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
-          style={{ color: "var(--text-muted)" }}
-        >
-          {label}
-        </div>
-        <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-          <SelectTrigger
-            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
-            style={{
-              color: value ? "var(--text-primary)" : "var(--text-secondary)",
-              boxShadow: "none",
-              outline: "none",
-              WebkitAppearance: "none",
-              appearance: "none",
-            }}
-            data-testid={testId}
-            data-theme-button-skip="true"
-            aria-label={label}
-          >
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => {
-              const optionValue = option.key ?? option.id ?? option.label;
-              return (
-                <SelectItem key={optionValue} value={optionValue}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
 
 function useAnimatedStarterWord() {
   const [wordIndex, setWordIndex] = useState(0);

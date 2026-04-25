@@ -789,9 +789,11 @@ describe("AgentsView", () => {
     expect(screen.getByTestId("agents-start-heading-word")).toHaveTextContent("agent");
     expect(screen.getByTestId("agents-start-project")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-base")).toBeInTheDocument();
-    expect(screen.getByTestId("agents-start-mode")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-provider")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-model")).toBeInTheDocument();
+    expect(screen.queryByTestId("agents-start-new-project")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("agent-composer-actions-menu"));
+    expect(screen.getByTestId("agents-start-mode-edit")).toBeInTheDocument();
     expect(screen.getByTestId("agents-start-new-project")).toBeInTheDocument();
     expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
   });
@@ -892,8 +894,8 @@ describe("AgentsView", () => {
 
     renderAgentsView();
 
-    fireEvent.click(screen.getByTestId("agents-start-mode"));
-    fireEvent.click(screen.getByText("Chat"));
+    await userEvent.click(screen.getByTestId("agent-composer-actions-menu"));
+    await userEvent.click(screen.getByTestId("agents-start-mode-chat"));
     expect(screen.getByTestId("agents-start-base")).toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId("agents-start-textarea"), {

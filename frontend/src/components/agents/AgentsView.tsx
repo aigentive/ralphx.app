@@ -12,7 +12,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   CheckCircle2,
   ClipboardList,
-  BrainCircuit,
   FileText,
   GitBranch,
   GitPullRequestArrow,
@@ -39,13 +38,6 @@ import { Input } from "@/components/ui/input";
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { BranchBasePicker } from "@/components/shared/BranchBasePicker";
 import type { BranchBaseOption } from "@/components/shared/branchBaseOptions";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -84,7 +76,7 @@ import {
   AGENT_PROVIDER_OPTIONS,
   normalizeRuntimeSelection,
 } from "./agentOptions";
-import { AgentComposerSurface } from "./AgentComposerSurface";
+import { AgentComposerProjectLine, AgentComposerSurface } from "./AgentComposerSurface";
 import { AgentTerminalDrawer } from "./AgentTerminalDrawer";
 import { AgentsStartComposer } from "./AgentsStartComposer";
 import {
@@ -120,10 +112,11 @@ const AGENTS_SIDEBAR_COLLAPSE_STORAGE_KEY = "ralphx-agents-sidebar-collapsed";
 const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   id: AgentConversationWorkspaceMode;
   label: string;
+  description: string;
 }> = [
-  { id: "chat", label: "Chat" },
-  { id: "edit", label: "Agent" },
-  { id: "ideation", label: "Ideation" },
+  { id: "chat", label: "Chat", description: "Ask read-only questions about the project." },
+  { id: "edit", label: "Agent", description: "Build, change, and review code in a branch." },
+  { id: "ideation", label: "Ideation", description: "Plan work before creating tasks." },
 ];
 
 interface AgentsViewProps {
@@ -976,6 +969,7 @@ export function AgentsView({
             .map((project) => ({
               id: project.id,
               label: project.name,
+              description: project.workingDirectory,
             }))
         : [],
     [activeProjectId, projects]
@@ -1212,19 +1206,20 @@ export function AgentsView({
                           ? { questionMode: composerProps.questionMode }
                           : {})}
                         submitLabel="Send"
-                        workspaceControls={
-                          activeConversationMode ? (
-                            <AgentConversationModeSelect
-                              value={activeConversationMode}
-                              onValueChange={handleActiveConversationModeChange}
-                              disabled={
-                                activeConversationModeLocked ||
-                                composerProps.agentStatus !== "idle" ||
-                                switchingConversationModeId === selectedConversationId
-                              }
-                            />
-                          ) : undefined
-                        }
+                        {...(activeConversationMode
+                          ? {
+                              mode: {
+                                value: activeConversationMode,
+                                onValueChange: (value: string) =>
+                                  handleActiveConversationModeChange(value as AgentConversationWorkspaceMode),
+                                options: AGENT_CONVERSATION_MODE_OPTIONS,
+                                disabled:
+                                  activeConversationModeLocked ||
+                                  composerProps.agentStatus !== "idle" ||
+                                  switchingConversationModeId === selectedConversationId,
+                              },
+                            }
+                          : {})}
                         project={{
                           value: activeProjectId,
                           onValueChange: () => undefined,
@@ -1244,9 +1239,18 @@ export function AgentsView({
                           options: AGENT_MODEL_OPTIONS[normalizedActiveRuntime.provider],
                         }}
                       />
-                      <AgentConversationBaseLine
-                        workspace={activeWorkspace}
-                      />
+                      <div className="mt-2 flex w-full flex-wrap items-center justify-between gap-2 px-2">
+                        <AgentComposerProjectLine
+                          value={activeProjectId}
+                          onValueChange={() => undefined}
+                          options={activeProjectOptions}
+                          placeholder="Current project"
+                          disabled
+                        />
+                        <AgentConversationBaseLine
+                          workspace={activeWorkspace}
+                        />
+                      </div>
                     </>
                   )}
                   {...(activeConversation.contextType === "project" && attachedIdeationSessionId
@@ -1569,71 +1573,6 @@ export function AgentsChatHeader({
   );
 }
 
-function AgentConversationModeSelect({
-  value,
-  onValueChange,
-  disabled,
-}: {
-  value: AgentConversationWorkspaceMode;
-  onValueChange: (value: AgentConversationWorkspaceMode) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div
-      className="inline-flex min-h-10 max-w-[178px] flex-none items-center gap-2 rounded-[12px] border px-2.5 py-1.5"
-      style={{
-        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
-      }}
-    >
-      <div
-        className="flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
-        style={{ color: "var(--text-secondary)" }}
-      >
-        <BrainCircuit className="h-[13px] w-[13px]" />
-      </div>
-      <div className="min-w-0">
-        <div
-          className="mb-0.5 text-[8px] font-medium uppercase tracking-[0.16em]"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Mode
-        </div>
-        <Select
-          value={value}
-          onValueChange={(nextValue) =>
-            onValueChange(nextValue as AgentConversationWorkspaceMode)
-          }
-          disabled={disabled}
-        >
-          <SelectTrigger
-            className="h-auto w-auto min-w-0 border-0 bg-transparent px-0 py-0 text-[12px] font-medium shadow-none outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [&>span]:max-w-full"
-            style={{
-              color: "var(--text-primary)",
-              boxShadow: "none",
-              outline: "none",
-              WebkitAppearance: "none",
-              appearance: "none",
-            }}
-            data-testid="agents-conversation-mode"
-            data-theme-button-skip="true"
-            aria-label="Agent mode"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {AGENT_CONVERSATION_MODE_OPTIONS.map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
-
 function AgentsWorkspaceStatusPill({
   workspace,
 }: {
@@ -1714,7 +1653,7 @@ function AgentConversationBaseLine({
 
   return (
     <div
-      className="mt-2 flex w-full justify-end px-2"
+      className="flex min-w-0 justify-end"
       data-testid="agents-conversation-base"
     >
       <BranchBasePicker

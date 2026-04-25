@@ -464,10 +464,6 @@ a:not([class*="no-underline"]):hover {
     display: block;
   }
 
-  .agent-composer-project-pill {
-    display: none;
-  }
-
   .agent-composer-action-button {
     width: 2.5rem;
     min-width: 2.5rem;

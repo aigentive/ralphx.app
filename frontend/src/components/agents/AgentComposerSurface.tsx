@@ -10,17 +10,21 @@ import {
 import {
   ArrowUp,
   Bot,
+  Check,
+  ChevronDown,
   Cpu,
   FolderOpen,
   Loader2,
   Paperclip,
   Plus,
+  Search,
   Square,
 } from "lucide-react";
 
 import type { AgentStatus } from "@/stores/chatStore";
 import type { AgentProvider } from "@/stores/agentSessionStore";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   ChatAttachmentGallery,
   type ChatAttachment as ComposerAttachment,
@@ -33,18 +37,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +70,7 @@ const COMPOSER_ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 interface ComposerOption {
   id: string;
   label: string;
+  description?: string;
 }
 
 interface ProjectFieldConfig {
@@ -105,6 +102,14 @@ interface ModelFieldConfig {
   className?: string;
 }
 
+interface ModeFieldConfig {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: ComposerOption[];
+  disabled?: boolean;
+  testId?: string;
+}
+
 export interface AgentComposerQuestionMode {
   optionCount: number;
   multiSelect: boolean;
@@ -133,7 +138,7 @@ export interface AgentComposerSurfaceProps {
   onFilesSelected?: ((files: File[]) => void | Promise<unknown>) | undefined;
   onRemoveAttachment?: ((id: string) => void | Promise<unknown>) | undefined;
   attachmentsUploading?: boolean;
-  workspaceControls?: ReactNode;
+  mode?: ModeFieldConfig;
   dataTestId?: string;
   textareaTestId?: string;
   actionTestId?: string;
@@ -164,7 +169,7 @@ export function AgentComposerSurface({
   onFilesSelected,
   onRemoveAttachment,
   attachmentsUploading = false,
-  workspaceControls,
+  mode,
   dataTestId,
   textareaTestId,
   actionTestId,
@@ -175,7 +180,6 @@ export function AgentComposerSurface({
   const isControlled = controlledValue !== undefined;
   const [internalValue, setInternalValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const [isCompactComposer, setIsCompactComposer] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -207,26 +211,6 @@ export function AgentComposerSurface({
     const nextHeight = Math.min(textarea.scrollHeight, 220);
     textarea.style.height = `${Math.max(nextHeight, 116)}px`;
   }, [value]);
-
-  useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) {
-      return;
-    }
-
-    const updateCompactState = () => {
-      setIsCompactComposer(surface.getBoundingClientRect().width <= 720);
-    };
-    updateCompactState();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver(updateCompactState);
-    observer.observe(surface);
-    return () => observer.disconnect();
-  }, []);
 
   const matchOptionsFromInput = useCallback(
     (input: string) => {
@@ -471,30 +455,12 @@ export function AgentComposerSurface({
             <ComposerActionMenu
               project={project}
               enableAttachments={enableAttachments}
-              showProjectMenu={isCompactComposer}
               attachmentDisabled={attachmentDisabled}
               onOpenAttachmentPicker={handleOpenAttachmentPicker}
+              {...(mode ? { mode } : {})}
             />
 
             <div className="flex min-w-0 flex-1 items-stretch gap-2">
-              <ComposerSelectPill
-                icon={FolderOpen}
-                label="Project"
-                value={project.value}
-                onValueChange={project.onValueChange}
-                placeholder={project.placeholder}
-                options={project.options}
-                {...(project.disabled !== undefined ? { disabled: project.disabled } : {})}
-                {...(project.testId ? { testId: project.testId } : {})}
-                className={cn(
-                  "agent-composer-project-pill",
-                  project.className ?? "max-w-[260px] flex-none"
-                )}
-                {...(project.endAction ? { endAction: project.endAction } : {})}
-              />
-
-              {workspaceControls}
-
               <ComposerDualSelectPill
                 provider={provider}
                 model={model}
@@ -553,25 +519,28 @@ export function AgentComposerSurface({
 
 function ComposerActionMenu({
   project,
+  mode,
   enableAttachments,
-  showProjectMenu,
   attachmentDisabled,
   onOpenAttachmentPicker,
 }: {
   project: ProjectFieldConfig;
+  mode?: ModeFieldConfig;
   enableAttachments: boolean;
-  showProjectMenu: boolean;
   attachmentDisabled: boolean;
   onOpenAttachmentPicker: () => void;
 }) {
+  const hasPersistentActions = enableAttachments || Boolean(project.endAction) || Boolean(mode);
+  const [open, setOpen] = useState(false);
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
             "agent-composer-plus-trigger flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] transition-colors disabled:opacity-40",
-            !enableAttachments && "agent-composer-compact-only"
+            !hasPersistentActions && "agent-composer-compact-only"
           )}
           style={{
             background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
@@ -584,8 +553,8 @@ function ComposerActionMenu({
         >
           <Plus className="h-4 w-4" />
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
         side="top"
         sideOffset={8}
@@ -597,81 +566,92 @@ function ComposerActionMenu({
         }}
       >
         {enableAttachments && (
-          <DropdownMenuItem
+          <button
+            type="button"
             disabled={attachmentDisabled}
-            className="h-10 rounded-lg text-[13px]"
-            onSelect={(event) => {
-              event.preventDefault();
+            className="flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition-colors disabled:opacity-50"
+            style={{ color: "var(--text-primary)" }}
+            onClick={() => {
               onOpenAttachmentPicker();
+              setOpen(false);
             }}
           >
             <Paperclip className="h-4 w-4" />
             Add files
-          </DropdownMenuItem>
+          </button>
         )}
 
-        {showProjectMenu && (
-          <div>
-            {enableAttachments && <DropdownMenuSeparator />}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger
-                disabled={project.disabled || project.options.length === 0}
-                className="h-10 rounded-lg text-[13px]"
-              >
-                <FolderOpen className="h-4 w-4" />
-                Project
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent
-                className="w-64 rounded-xl p-1.5"
-                style={{
-                  backgroundColor: "var(--bg-elevated)",
-                  borderColor: "var(--border-subtle)",
-                  color: "var(--text-primary)",
-                }}
-              >
-                <DropdownMenuLabel className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  Project
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={project.value}
-                  onValueChange={project.onValueChange}
-                >
-                  {project.options.map((option) => (
-                    <DropdownMenuRadioItem
-                      key={option.id}
-                      value={option.id}
-                      className="h-9 rounded-lg text-[13px]"
-                    >
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-                {project.endAction && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <div className="px-1 py-1">{project.endAction}</div>
-                  </>
-                )}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </div>
+        {project.endAction && (
+          <>
+            {enableAttachments && (
+              <div className="my-1 h-px" style={{ background: "var(--overlay-weak)" }} />
+            )}
+            <div className="px-1 py-1">{project.endAction}</div>
+          </>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+
+        {mode && (
+          <>
+            {(enableAttachments || project.endAction) && (
+              <div className="my-1 h-px" style={{ background: "var(--overlay-weak)" }} />
+            )}
+            <ComposerModeMenuSection mode={mode} onDone={() => setOpen(false)} />
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
-interface ComposerSelectPillProps {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: ComposerOption[];
-  placeholder: string;
-  testId?: string;
-  disabled?: boolean;
-  className?: string;
-  endAction?: ReactNode;
+function ComposerModeMenuSection({
+  mode,
+  onDone,
+}: {
+  mode: ModeFieldConfig;
+  onDone: () => void;
+}) {
+  return (
+    <div className="py-1">
+      <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        Mode
+      </div>
+      <div className="space-y-1">
+        {mode.options.map((option) => {
+          const isSelected = option.id === mode.value;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              disabled={mode.disabled}
+              data-testid={mode.testId ? `${mode.testId}-${option.id}` : undefined}
+              className={cn(
+                "flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors disabled:opacity-50",
+                isSelected ? "bg-[var(--accent-muted)]" : "hover:bg-[var(--bg-hover)]"
+              )}
+              onClick={() => {
+                mode.onValueChange(option.id);
+                onDone();
+              }}
+            >
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                {isSelected && <Check className="h-4 w-4 text-[var(--accent-primary)]" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                  {option.label}
+                </span>
+                {option.description && (
+                  <span className="mt-0.5 block text-[11px] leading-snug text-[var(--text-muted)]">
+                    {option.description}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface ComposerSelectFieldProps {
@@ -758,53 +738,6 @@ function ComposerSelectField({
   );
 }
 
-function ComposerSelectPill({
-  icon: Icon,
-  label,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  testId,
-  disabled = false,
-  className,
-  endAction,
-}: ComposerSelectPillProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div
-      className={cn(
-        "inline-flex min-h-10 max-w-full items-center gap-2 rounded-[12px] border px-2.5 py-1.5 transition-[border-color,box-shadow] focus-within:border-transparent focus-within:shadow-[0_0_0_1px_var(--accent-border)]",
-        isOpen && "border-transparent shadow-[0_0_0_1px_var(--accent-border)]",
-        className
-      )}
-      style={{
-        background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
-        borderColor: "var(--overlay-weak)",
-      }}
-    >
-      <ComposerSelectField
-        icon={Icon}
-        label={label}
-        value={value}
-        onValueChange={onValueChange}
-        options={options}
-        placeholder={placeholder}
-        {...(testId ? { testId } : {})}
-        {...(disabled !== undefined ? { disabled } : {})}
-        onOpenChange={setIsOpen}
-      />
-      {endAction && (
-        <>
-          <div className="h-6 w-px shrink-0" style={{ background: "var(--overlay-weak)" }} />
-          <div className="shrink-0">{endAction}</div>
-        </>
-      )}
-    </div>
-  );
-}
-
 function ComposerDualSelectPill({
   provider,
   model,
@@ -863,9 +796,11 @@ function ComposerDualSelectPill({
 export function AgentComposerProjectCreateButton({
   onClick,
   testId,
+  label = "New project",
 }: {
   onClick: () => void;
   testId?: string;
+  label?: string;
 }) {
   return (
     <Button
@@ -880,7 +815,153 @@ export function AgentComposerProjectCreateButton({
       data-testid={testId}
     >
       <Plus className="h-3.5 w-3.5" />
-      New
+      {label}
     </Button>
+  );
+}
+
+export function AgentComposerProjectLine({
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  disabled = false,
+  testId,
+}: ProjectFieldConfig) {
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const selectedProject = options.find((option) => option.id === value) ?? null;
+  const filteredOptions = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return options;
+    }
+    return options.filter(
+      (option) =>
+        option.label.toLowerCase().includes(query) ||
+        option.description?.toLowerCase().includes(query)
+    );
+  }, [options, searchQuery]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setSearchQuery("");
+    }
+  };
+
+  const trigger = (
+    <button
+      type="button"
+      className={cn(
+        "flex min-w-0 max-w-[min(100%,430px)] items-center gap-2 rounded-full px-2 py-1 text-[12px] transition-colors",
+        !disabled && "hover:bg-[var(--bg-hover)]",
+        "disabled:cursor-not-allowed disabled:opacity-60"
+      )}
+      style={{ color: "var(--text-secondary)" }}
+      disabled={disabled}
+      data-testid={testId}
+      data-theme-button-skip="true"
+      aria-label="Project"
+    >
+      <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em]">
+        Project
+      </span>
+      <span
+        className="min-w-0 truncate font-medium"
+        style={{ color: selectedProject ? "var(--text-primary)" : "var(--text-secondary)" }}
+      >
+        {selectedProject?.label ?? placeholder}
+      </span>
+      {!disabled && <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+    </button>
+  );
+
+  if (disabled) {
+    return trigger;
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(420px,calc(100vw-2rem))] p-0"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+        }}
+      >
+        <div className="border-b border-[var(--border-subtle)] p-2">
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+              style={{ color: "var(--text-muted)" }}
+            />
+            <Input
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="h-8 border-[var(--border-subtle)] bg-[var(--bg-surface)] pl-8 pr-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--accent-primary)]/30"
+              style={{ outline: "none", boxShadow: "none" }}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="max-h-72 overflow-y-auto overscroll-contain">
+          <div className="p-1">
+            {filteredOptions.length === 0 ? (
+              <div
+                className="flex items-center justify-center py-6 text-xs"
+                style={{ color: "var(--text-muted)" }}
+              >
+                No projects found
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {filteredOptions.map((option) => {
+                  const isSelected = option.id === value;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={cn(
+                        "flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                        isSelected
+                          ? "bg-[var(--accent-muted)] text-[var(--accent-primary)]"
+                          : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                      )}
+                      onClick={() => {
+                        onValueChange(option.id);
+                        setOpen(false);
+                        setSearchQuery("");
+                      }}
+                    >
+                      <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                        {isSelected && <Check className="h-3.5 w-3.5" />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block whitespace-normal break-words font-medium leading-snug">
+                          {option.label}
+                        </span>
+                        {option.description && option.description !== option.label && (
+                          <span
+                            className="mt-0.5 block whitespace-normal break-all font-mono text-[10px] leading-snug"
+                            style={{ color: isSelected ? "currentColor" : "var(--text-muted)" }}
+                          >
+                            {option.description}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
