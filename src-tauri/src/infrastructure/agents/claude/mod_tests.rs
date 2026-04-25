@@ -69,38 +69,37 @@ fn seed_runnable_mcp_runtime(plugin_dir: &Path, runtime_marker: &str) {
     .unwrap();
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    std::fs::create_dir_all(dst).expect("create destination dir");
-    for entry in std::fs::read_dir(src).expect("read source dir") {
-        let entry = entry.expect("read dir entry");
-        let file_type = entry.file_type().expect("read file type");
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else if file_type.is_file() {
-            std::fs::copy(&src_path, &dst_path).unwrap_or_else(|err| {
-                panic!(
-                    "copy {} -> {} failed: {err}",
-                    src_path.display(),
-                    dst_path.display()
-                )
-            });
-        }
-    }
-}
-
-fn make_isolated_live_project_plugin_dir(
-) -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+fn make_isolated_live_project_plugin_dir() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    super::RuntimePluginDirsOverrideGuard,
+) {
     let dir = tempfile::TempDir::new().expect("create temp project dir");
     let root = dir.path().to_path_buf();
     let repo_root = repo_project_root();
     let plugin_dir = root.join("plugins/app");
+    let generated_plugin_dir = root.join("generated/claude-plugin");
 
-    copy_dir_recursive(&repo_root.join("plugins/app"), &plugin_dir);
-    copy_dir_recursive(&repo_root.join("agents"), &root.join("agents"));
+    std::fs::create_dir_all(root.join("plugins")).expect("create plugins parent");
+    let plugin_copy_status = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(repo_root.join("plugins/app"))
+        .arg(&plugin_dir)
+        .status()
+        .expect("copy live plugin fixture");
+    assert!(plugin_copy_status.success(), "copy live plugin fixture");
+    let agents_copy_status = std::process::Command::new("cp")
+        .arg("-R")
+        .arg(repo_root.join("agents"))
+        .arg(root.join("agents"))
+        .status()
+        .expect("copy live agents fixture");
+    assert!(agents_copy_status.success(), "copy live agents fixture");
+    let runtime_guard =
+        override_runtime_plugin_dirs_for_tests(plugin_dir.clone(), generated_plugin_dir);
 
-    (dir, root, plugin_dir)
+    (dir, root, plugin_dir, runtime_guard)
 }
 
 #[cfg(unix)]
@@ -115,6 +114,7 @@ fn symlink_dir(source: impl AsRef<Path>, target: impl AsRef<Path>) {
 
 /// Parse the JSON args array from a generated MCP config temp file.
 fn get_json_args(config_path: &Path) -> Vec<String> {
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(config_path).expect("read config file");
     let v: serde_json::Value = serde_json::from_str(&content).expect("parse JSON");
     v.get("mcpServers")
@@ -475,6 +475,7 @@ fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
     // ralphx-ideation has ask_user_question in its mcp_tools
     let config_path =
         create_mcp_config(&plugin_dir, "ralphx-ideation", true).expect("should succeed");
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
@@ -503,6 +504,7 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
     // ralphx-ideation has ask_user_question in its mcp_tools — should be present when not external
     let config_path =
         create_mcp_config(&plugin_dir, "ralphx-ideation", false).expect("should succeed");
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
@@ -550,15 +552,13 @@ harnesses:
         parent_conversation_id: Some("conversation 456".to_string()),
         ..Default::default()
     };
-    let config_path = create_mcp_config_with_runtime_context(
+    let json = build_mcp_config_with_runtime_context(
         &plugin_dir,
         "ralphx-chat-project",
         false,
         Some(&runtime_context),
     )
     .expect("should create external MCP config");
-    let content = std::fs::read_to_string(&config_path).expect("should read config");
-    let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let server = &json["mcpServers"]["ralphx"];
 
     assert_eq!(server["type"].as_str(), Some("http"));
@@ -620,37 +620,37 @@ skills:
 
     assert!(
         generated_prompt.contains("name: ralphx-ideation"),
-        "expected generated frontmatter name, got: {generated_prompt}"
+        "expected generated frontmatter name"
     );
     assert!(
         generated_prompt.contains("description: Facilitates ideation sessions"),
-        "expected generated description, got: {generated_prompt}"
+        "expected generated description"
     );
     assert!(
         generated_prompt.contains("mcp__ralphx__create_task_proposal"),
-        "expected MCP tool grants from runtime config, got: {generated_prompt}"
+        "expected MCP tool grants from runtime config"
     );
     assert!(
         generated_prompt.contains("Task(Plan)")
             && !generated_prompt.contains("Task(Explore)")
             && !generated_prompt.contains("Task(ralphx:ralphx-ideation-specialist-ux)"),
-        "expected only the retained Task(Plan) variant in generated frontmatter, got: {generated_prompt}"
+        "expected only the retained Task(Plan) variant in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("disallowedTools:\n  - Write\n  - Edit\n  - NotebookEdit"),
-        "expected canonical claude disallowed tools, got: {generated_prompt}"
+        "expected canonical claude disallowed tools"
     );
     assert!(
         generated_prompt.contains("skills:\n  - task-decomposition"),
-        "expected canonical claude skills, got: {generated_prompt}"
+        "expected canonical claude skills"
     );
     assert!(
         generated_prompt.contains("model: opus"),
-        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+        "expected runtime-derived model in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Canonical Claude ideation prompt"),
-        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected canonical prompt body to be preserved"
     );
 }
 
@@ -681,15 +681,15 @@ description: Generates concise ideation session titles from user or plan context
 
     assert!(
         generated_prompt.contains("model: sonnet"),
-        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+        "expected runtime-derived model in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("mcp__ralphx__update_session_title"),
-        "expected ralphx-utility-session-namer MCP tool in generated frontmatter, got: {generated_prompt}"
+        "expected ralphx-utility-session-namer MCP tool in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Shared session naming prompt"),
-        "expected shared canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected shared canonical prompt body to be preserved"
     );
 }
 
@@ -758,11 +758,11 @@ max_turns: 80
 
     assert!(
         generated_prompt.contains("maxTurns: 80"),
-        "expected canonical claude maxTurns in generated frontmatter, got: {generated_prompt}"
+        "expected canonical claude maxTurns in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("Canonical plan verifier prompt"),
-        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+        "expected canonical prompt body to be preserved"
     );
 }
 
@@ -792,7 +792,7 @@ description: Generates concise ideation session titles from user or plan context
         std::fs::read_to_string(&generated_prompt_path).expect("read initial generated prompt");
     assert!(
         first_prompt.contains("Initial generated prompt"),
-        "first materialization should render the initial prompt body, got: {first_prompt}"
+        "first materialization should render the initial prompt body"
     );
 
     std::fs::write(
@@ -812,17 +812,17 @@ description: Generates concise ideation session titles from user or plan context
         std::fs::read_to_string(&generated_prompt_path).expect("read reused generated prompt");
     assert!(
         reused_prompt.contains("Initial generated prompt"),
-        "later materialize calls in the same process must reuse the first generated prompt, got: {reused_prompt}"
+        "later materialize calls in the same process must reuse the first generated prompt"
     );
     assert!(
         !reused_prompt.contains("Updated prompt that should require an app restart"),
-        "later materialize calls must not rewrite generated prompts mid-process, got: {reused_prompt}"
+        "later materialize calls must not rewrite generated prompts mid-process"
     );
 }
 
 #[test]
 fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowed_tools() {
-    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, _root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt =
@@ -839,17 +839,17 @@ fn test_materialize_generated_plugin_dir_prefers_root_canonical_claude_disallowe
     assert_eq!(
         disallowed_tools,
         vec!["Write", "Edit", "NotebookEdit"],
-        "expected root canonical Claude disallowedTools in generated frontmatter, got: {generated_prompt}"
+        "expected root canonical Claude disallowedTools in generated frontmatter"
     );
     assert!(
         generated_prompt.contains("maxTurns: 80"),
-        "legacy max_turns should still flow through when root metadata does not override it, got: {generated_prompt}"
+        "legacy max_turns should still flow through when root metadata does not override it"
     );
 }
 
 #[test]
 fn test_materialize_generated_plugin_dir_omits_removed_supervisor_agent() {
-    let (_dir, _root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, _root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt_path = generated_dir.join("agents/ralphx-execution-supervisor.md");
@@ -862,7 +862,7 @@ fn test_materialize_generated_plugin_dir_omits_removed_supervisor_agent() {
 
 #[test]
 fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics_for_live_agents() {
-    let (_dir, root, plugin_dir) = make_isolated_live_project_plugin_dir();
+    let (_dir, root, plugin_dir, _runtime_guard) = make_isolated_live_project_plugin_dir();
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let agent_names =

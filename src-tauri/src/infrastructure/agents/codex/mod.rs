@@ -10,11 +10,11 @@ use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
 use crate::infrastructure::agents::claude::{
     claude_runtime_config, external_mcp_config, filter_interactive_tools,
-    format_allowed_tools_arg_value, get_agent_config, load_agent_system_prompt, mcp_agent_type,
-    node_utils, validate_mcp_tool_name,
+    format_allowed_tools_arg_value, get_agent_config, mcp_agent_type, node_utils,
+    validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    has_canonical_agent_definition, load_canonical_codex_metadata, load_harness_agent_prompt,
+    load_canonical_codex_metadata, load_harness_agent_prompt,
     resolve_project_root_from_plugin_dir, AgentPromptHarness, CanonicalCodexAgentMetadata,
 };
 use crate::infrastructure::agents::mcp_runtime_context::{
@@ -136,12 +136,6 @@ pub fn build_codex_mcp_overrides(
     }
 
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
-    if !mcp_server_path.exists() {
-        return Err(format!(
-            "Codex MCP server not found at {}",
-            mcp_server_path.display()
-        ));
-    }
 
     let node_command = node_utils::find_node_binary()
         .to_string_lossy()
@@ -273,15 +267,7 @@ pub fn compose_codex_prompt(
 
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     let system_prompt =
-        load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex).or_else(
-            || {
-                if has_canonical_agent_definition(&project_root, agent_name) {
-                    None
-                } else {
-                    load_agent_system_prompt(plugin_dir, agent_name)
-                }
-            },
-        );
+        load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex);
     let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
     };
@@ -353,13 +339,6 @@ pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("CODEX_CLI_PATH") {
-        let candidate = PathBuf::from(path);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
     if let Ok(path) = which::which("codex") {
         return Some(path);
     }

@@ -2,6 +2,7 @@
 // Commands should be minimal - delegate to domain/infrastructure
 
 pub mod activity_commands;
+pub mod agent_terminal_commands;
 pub mod branch_helpers;
 pub mod api_key_commands;
 pub mod agent_profile_commands;
@@ -56,6 +57,11 @@ pub use activity_commands::{
 pub use agent_profile_commands::{
     get_agent_profile, get_agent_profiles_by_role, get_builtin_agent_profiles,
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
+};
+pub use agent_terminal_commands::{
+    clear_agent_terminal, close_agent_terminal, open_agent_terminal, resize_agent_terminal,
+    restart_agent_terminal, write_agent_terminal, AgentTerminalCloseInput, AgentTerminalOpenInput,
+    AgentTerminalResizeInput, AgentTerminalWriteInput,
 };
 pub use artifact_commands::{
     add_artifact_relation, archive_artifact, create_artifact, create_bucket, delete_artifact,

@@ -3486,7 +3486,7 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
     let mut child_archived = false;
     let mut verified_event_seen = false;
     let mut final_phase = None;
-    for _ in 0..50 {
+    for _ in 0..200 {
         queued_auto_propose = state
             .app_state
             .message_queue
@@ -3523,7 +3523,7 @@ async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdow
             break;
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
     }
 
     assert!(

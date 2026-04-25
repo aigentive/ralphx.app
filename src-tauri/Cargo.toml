@@ -63,6 +63,7 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "tokio"] }
 hmac = "0.12"
 http-body-util = "0.1"
+portable-pty = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }

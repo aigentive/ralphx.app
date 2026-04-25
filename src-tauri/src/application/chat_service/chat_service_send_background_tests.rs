@@ -5,6 +5,7 @@ use crate::application::interactive_process_registry::{
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId};
+use std::path::Path;
 use std::sync::Arc;
 
 #[test]
@@ -104,7 +105,7 @@ async fn queue_processing_leaves_messages_pending_when_execution_paused() {
     );
 
     let conversation_id = ChatConversationId::new();
-    let cwd = std::env::current_dir().expect("current_dir");
+    let unused_paused_path = Path::new(".");
 
     let processed = super::super::chat_service_queue::process_queued_messages::<tauri::Wry>(
         ChatContextType::Ideation,
@@ -120,9 +121,9 @@ async fn queue_processing_leaves_messages_pending_when_execution_paused() {
         &app_state.activity_event_repo,
         &app_state.task_repo,
         &app_state.ideation_session_repo,
-        &cwd,
-        &cwd,
-        &cwd,
+        unused_paused_path,
+        unused_paused_path,
+        unused_paused_path,
         None,
         Some(Arc::clone(&execution_state)),
         None,

@@ -14,6 +14,7 @@ use crate::application::runtime_factory::{
     build_transition_service_from_deps, ChatRuntimeFactoryDeps, RuntimeFactoryDeps,
 };
 use crate::application::AgentClientBundle;
+use crate::application::AgentTerminalService;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
@@ -168,6 +169,8 @@ pub struct AppState {
     pub design_styleguide_feedback_repo: Arc<dyn DesignStyleguideFeedbackRepository>,
     /// Design generation and feedback run repository
     pub design_run_repo: Arc<dyn DesignRunRepository>,
+    /// In-memory PTY session manager for Agents conversation terminals
+    pub agent_terminal_service: Arc<AgentTerminalService>,
     /// Agent run repository (for tracking Claude agent executions)
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     /// Activity event repository (for activity stream persistence)
@@ -510,6 +513,7 @@ impl AppState {
             design_run_repo: Arc::new(SqliteDesignRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            agent_terminal_service: Arc::new(AgentTerminalService::new()),
             agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -689,6 +693,7 @@ impl AppState {
                 MemoryDesignStyleguideFeedbackRepository::new(),
             ),
             design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
+            agent_terminal_service: Arc::new(AgentTerminalService::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -804,6 +809,7 @@ impl AppState {
                 MemoryDesignStyleguideFeedbackRepository::new(),
             ),
             design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
+            agent_terminal_service: Arc::new(AgentTerminalService::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
@@ -931,6 +937,7 @@ impl AppState {
                 MemoryDesignStyleguideFeedbackRepository::new(),
             ),
             design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
+            agent_terminal_service: Arc::new(AgentTerminalService::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
@@ -1042,6 +1049,7 @@ impl AppState {
                 MemoryDesignStyleguideFeedbackRepository::new(),
             ),
             design_run_repo: Arc::new(MemoryDesignRunRepository::new()),
+            agent_terminal_service: Arc::new(AgentTerminalService::new()),
             agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
             activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
             task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),

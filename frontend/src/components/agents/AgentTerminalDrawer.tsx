@@ -1,0 +1,539 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
+import { listen } from "@tauri-apps/api/event";
+import { FitAddon } from "@xterm/addon-fit";
+import {
+  Terminal as XTermTerminal,
+  type IDisposable,
+  type ITheme,
+} from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+import {
+  PanelBottomClose,
+  RefreshCw,
+  Terminal as TerminalIcon,
+  Trash2,
+} from "lucide-react";
+
+import {
+  AGENT_TERMINAL_EVENT,
+  AgentTerminalEventSchema,
+  closeAgentTerminal,
+  clearAgentTerminal,
+  DEFAULT_AGENT_TERMINAL_ID,
+  openAgentTerminal,
+  resizeAgentTerminal,
+  restartAgentTerminal,
+  writeAgentTerminal,
+  type AgentTerminalEvent,
+  type AgentTerminalSnapshot,
+  type AgentTerminalStatus,
+} from "@/api/terminal";
+import type { AgentConversationWorkspace } from "@/api/chat";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { formatBranchDisplay } from "@/lib/branch-utils";
+import { cn } from "@/lib/utils";
+
+interface AgentTerminalDrawerProps {
+  conversationId: string;
+  workspace: AgentConversationWorkspace;
+  height: number;
+  onHeightChange: (height: number) => void;
+  onClose: () => void;
+}
+
+const TERMINAL_MIN_COLS = 80;
+const TERMINAL_MIN_ROWS = 20;
+
+export function AgentTerminalDrawer({
+  conversationId,
+  workspace,
+  height,
+  onHeightChange,
+  onClose,
+}: AgentTerminalDrawerProps) {
+  const terminalId = DEFAULT_AGENT_TERMINAL_ID;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<XTermTerminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const hydrationCompleteRef = useRef(false);
+  const bufferedEventsRef = useRef<AgentTerminalEvent[]>([]);
+  const lastAppliedEventKeyRef = useRef<string | null>(null);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [status, setStatus] = useState<AgentTerminalStatus>("running");
+  const [cwd, setCwd] = useState(workspace.worktreePath);
+  const [branchName, setBranchName] = useState(workspace.branchName);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  const branchLabel = useMemo(
+    () => formatBranchDisplay(branchName).short,
+    [branchName],
+  );
+
+  const terminalTheme = useMemo(() => readTerminalTheme(), []);
+
+  const fitAndReportSize = useCallback(() => {
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon || !containerRef.current) {
+      return;
+    }
+
+    try {
+      fitAddon.fit();
+      const cols = Math.max(terminal.cols || 0, TERMINAL_MIN_COLS);
+      const rows = Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS);
+      void resizeAgentTerminal({
+        conversationId,
+        terminalId,
+        cols,
+        rows,
+      }).catch(() => undefined);
+    } catch {
+      // xterm can throw when fitting while detached during fast route switches.
+    }
+  }, [conversationId, terminalId]);
+
+  const applySnapshot = useCallback((snapshot: AgentTerminalSnapshot) => {
+    setStatus(snapshot.status);
+    setCwd(snapshot.cwd);
+    setBranchName(snapshot.workspaceBranch);
+  }, []);
+
+  const applyEvent = useCallback((event: AgentTerminalEvent) => {
+    if (event.conversationId !== conversationId || event.terminalId !== terminalId) {
+      return;
+    }
+
+    if (!hydrationCompleteRef.current) {
+      bufferedEventsRef.current.push(event);
+      return;
+    }
+
+    const eventKey = [
+      event.type,
+      event.updatedAt,
+      event.data ?? "",
+      event.message ?? "",
+      event.exitCode ?? "",
+      event.exitSignal ?? "",
+    ].join(":");
+    if (lastAppliedEventKeyRef.current === eventKey) {
+      return;
+    }
+    lastAppliedEventKeyRef.current = eventKey;
+
+    const terminal = terminalRef.current;
+    if (event.cwd) {
+      setCwd(event.cwd);
+    }
+    if (event.workspaceBranch) {
+      setBranchName(event.workspaceBranch);
+    }
+
+    if (event.type === "started" || event.type === "restarted") {
+      setStatus("running");
+      if (event.type === "restarted") {
+        terminal?.reset();
+      }
+      return;
+    }
+
+    if (event.type === "output" && event.data) {
+      terminal?.write(event.data);
+      return;
+    }
+
+    if (event.type === "cleared") {
+      terminal?.clear();
+      return;
+    }
+
+    if (event.type === "exited") {
+      setStatus("exited");
+      terminal?.write("\r\n[terminal exited]\r\n");
+      return;
+    }
+
+    if (event.type === "error") {
+      setStatus("error");
+      if (event.message) {
+        terminal?.write(`\r\n[terminal error] ${event.message}\r\n`);
+      }
+    }
+  }, [conversationId, terminalId]);
+
+  const showControlError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : "Terminal command failed";
+    setStatus("error");
+    terminalRef.current?.write(`\r\n[terminal error] ${message}\r\n`);
+  }, []);
+
+  useEffect(() => {
+    const host = containerRef.current;
+    if (!host) {
+      return;
+    }
+
+    hydrationCompleteRef.current = false;
+    bufferedEventsRef.current = [];
+
+    const terminal = new XTermTerminal({
+      allowProposedApi: false,
+      convertEol: true,
+      cursorBlink: true,
+      cursorStyle: "block",
+      fontFamily:
+        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+      fontSize: 12,
+      lineHeight: 1.18,
+      scrollback: 5_000,
+      theme: terminalTheme,
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(host);
+    terminalRef.current = terminal;
+    fitAddonRef.current = fitAddon;
+
+    let disposed = false;
+    let dataDisposable: IDisposable | null = null;
+    let resizeFrame: number | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let unlisten: (() => void) | null = null;
+    let listenerPromise: Promise<void> | null = null;
+
+    const releaseListener = () => {
+      if (unlisten) {
+        unlisten();
+        unlisten = null;
+      }
+    };
+
+    const scheduleFit = () => {
+      if (resizeFrame !== null) {
+        window.cancelAnimationFrame(resizeFrame);
+      }
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        fitAndReportSize();
+      });
+    };
+
+    const start = async () => {
+      listenerPromise = listen<unknown>(AGENT_TERMINAL_EVENT, (event) => {
+        const parsed = AgentTerminalEventSchema.safeParse(event.payload);
+        if (parsed.success) {
+          applyEvent(parsed.data);
+        }
+      }).then((dispose) => {
+        if (disposed) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
+      });
+      await listenerPromise;
+
+      if (disposed) {
+        return;
+      }
+
+      scheduleFit();
+      const cols = Math.max(terminal.cols || 0, TERMINAL_MIN_COLS);
+      const rows = Math.max(terminal.rows || 0, TERMINAL_MIN_ROWS);
+      const snapshot = await openAgentTerminal({
+        conversationId,
+        terminalId,
+        cols,
+        rows,
+      });
+
+      if (disposed) {
+        return;
+      }
+
+      applySnapshot(snapshot);
+      if (snapshot.history) {
+        terminal.write(snapshot.history);
+      }
+
+      hydrationCompleteRef.current = true;
+      const snapshotTime = Date.parse(snapshot.updatedAt);
+      bufferedEventsRef.current
+        .filter((item) => Number.isNaN(snapshotTime) || Date.parse(item.updatedAt) > snapshotTime)
+        .forEach(applyEvent);
+      bufferedEventsRef.current = [];
+
+      dataDisposable = terminal.onData((data) => {
+        const write = writeQueueRef.current
+          .catch(() => undefined)
+          .then(() =>
+            writeAgentTerminal({
+              conversationId,
+              terminalId,
+              data,
+            }),
+          )
+          .catch(showControlError);
+        writeQueueRef.current = write;
+      });
+
+      resizeObserver = new ResizeObserver(scheduleFit);
+      resizeObserver.observe(host);
+      terminal.focus();
+    };
+
+    void start().catch((error) => {
+      if (disposed) {
+        return;
+      }
+      setStatus("error");
+      const message = error instanceof Error ? error.message : "Failed to open terminal";
+      terminal.write(`\r\n[terminal error] ${message}\r\n`);
+    });
+
+    return () => {
+      disposed = true;
+      hydrationCompleteRef.current = false;
+      if (resizeFrame !== null) {
+        window.cancelAnimationFrame(resizeFrame);
+      }
+      resizeObserver?.disconnect();
+      dataDisposable?.dispose();
+      releaseListener();
+      void listenerPromise?.then(releaseListener);
+      terminal.dispose();
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, [
+    applyEvent,
+    applySnapshot,
+    conversationId,
+    fitAndReportSize,
+    showControlError,
+    terminalId,
+    terminalTheme,
+  ]);
+
+  const handleClear = useCallback(async () => {
+    setIsClearing(true);
+    try {
+      const snapshot = await clearAgentTerminal({
+        conversationId,
+        terminalId,
+        deleteHistory: true,
+      });
+      terminalRef.current?.clear();
+      applySnapshot(snapshot);
+    } catch (error) {
+      showControlError(error);
+    } finally {
+      setIsClearing(false);
+    }
+  }, [applySnapshot, conversationId, showControlError, terminalId]);
+
+  const handleRestart = useCallback(async () => {
+    const terminal = terminalRef.current;
+    setIsRestarting(true);
+    try {
+      terminal?.reset();
+      const cols = Math.max(terminal?.cols || 0, TERMINAL_MIN_COLS);
+      const rows = Math.max(terminal?.rows || 0, TERMINAL_MIN_ROWS);
+      const snapshot = await restartAgentTerminal({
+        conversationId,
+        terminalId,
+        cols,
+        rows,
+      });
+      applySnapshot(snapshot);
+    } catch (error) {
+      showControlError(error);
+    } finally {
+      setIsRestarting(false);
+    }
+  }, [applySnapshot, conversationId, showControlError, terminalId]);
+
+  const handleClose = useCallback(() => {
+    void closeAgentTerminal({ conversationId, terminalId })
+      .catch(showControlError)
+      .finally(onClose);
+  }, [conversationId, onClose, showControlError, terminalId]);
+
+  const handleResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      const startY = event.clientY;
+      const startHeight = height;
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        onHeightChange(startHeight + (startY - moveEvent.clientY));
+      };
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [height, onHeightChange],
+  );
+
+  return (
+    <div
+      className={cn(
+        "relative shrink-0 overflow-hidden border-t",
+        isFocused && "border-t-2",
+      )}
+      style={{
+        height,
+        background: "var(--bg-base)",
+        borderColor: isFocused ? "var(--accent-border)" : "var(--overlay-weak)",
+        boxShadow: "0 -16px 36px var(--shadow-card)",
+      }}
+      data-testid="agent-terminal-drawer"
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={() => setIsFocused(false)}
+    >
+      <button
+        type="button"
+        className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize"
+        aria-label="Resize terminal"
+        onMouseDown={handleResizeStart}
+      />
+
+      <div
+        className="flex h-9 items-center justify-between gap-3 border-b px-3"
+        style={{
+          background: "var(--bg-surface)",
+          borderColor: "var(--overlay-faint)",
+        }}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <TerminalIcon
+            className="h-3.5 w-3.5 shrink-0"
+            style={{ color: "var(--accent-primary)" }}
+          />
+          <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+            Terminal
+          </span>
+          <span className="h-1 w-1 rounded-full" style={{ background: "var(--text-muted)" }} />
+          <span className="shrink-0 capitalize" style={{ color: "var(--text-secondary)" }}>
+            {status}
+          </span>
+          <span className="min-w-0 truncate font-mono" style={{ color: "var(--text-muted)" }}>
+            {branchLabel}
+          </span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <TerminalIconButton
+            label="Clear terminal"
+            onClick={() => void handleClear()}
+            disabled={isClearing}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </TerminalIconButton>
+          <TerminalIconButton
+            label="Restart terminal"
+            onClick={() => void handleRestart()}
+            disabled={isRestarting}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />
+          </TerminalIconButton>
+          <TerminalIconButton label="Close terminal" onClick={handleClose}>
+            <PanelBottomClose className="h-3.5 w-3.5" />
+          </TerminalIconButton>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="h-[calc(100%-2.25rem)] w-full px-3 py-2"
+        aria-label={`Terminal for ${branchLabel}`}
+        title={cwd}
+      />
+    </div>
+  );
+}
+
+function TerminalIconButton({
+  label,
+  onClick,
+  disabled = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function readTerminalTheme(): ITheme {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const style = window.getComputedStyle(document.documentElement);
+  const read = (name: string) => style.getPropertyValue(name).trim();
+  const theme: Record<string, string> = {};
+  const set = (key: keyof ITheme, value: string) => {
+    if (value) {
+      theme[key] = value;
+    }
+  };
+
+  set("background", read("--bg-base"));
+  set("foreground", read("--text-primary"));
+  set("cursor", read("--accent-primary"));
+  set("cursorAccent", read("--bg-base"));
+  set("selectionBackground", read("--overlay-weak"));
+  set("black", read("--text-muted"));
+  set("brightBlack", read("--text-secondary"));
+  set("red", read("--danger"));
+  set("green", read("--success"));
+  set("yellow", read("--warning"));
+  set("blue", read("--accent-primary"));
+  set("magenta", read("--accent-secondary"));
+  set("cyan", read("--info"));
+  set("white", read("--text-primary"));
+
+  return theme as ITheme;
+}

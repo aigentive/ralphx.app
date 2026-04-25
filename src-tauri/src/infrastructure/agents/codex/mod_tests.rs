@@ -48,7 +48,7 @@ fn compose_codex_prompt_prefers_canonical_codex_prompt_when_available() {
 }
 
 #[test]
-fn compose_codex_prompt_falls_back_to_legacy_claude_prompt_when_canonical_prompt_missing() {
+fn compose_codex_prompt_ignores_legacy_claude_prompt_when_canonical_prompt_missing() {
     let temp_dir = tempfile::tempdir().expect("temp dir");
     let root = temp_dir.path();
     let plugin_dir = create_plugin_dir(root);
@@ -65,9 +65,9 @@ fn compose_codex_prompt_falls_back_to_legacy_claude_prompt_when_canonical_prompt
         Some("ralphx-utility-session-namer"),
     );
 
-    assert!(
-        composed.contains("Legacy Claude Prompt"),
-        "expected legacy claude prompt fallback when canonical codex prompt is absent"
+    assert_eq!(
+        composed, "User prompt",
+        "Codex should not inherit deleted legacy Claude plugin prompt files"
     );
 }
 
@@ -107,7 +107,7 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
     );
     assert!(
         !composed.contains("Legacy Claude Prompt"),
-        "expected shared canonical prompt to win over legacy prompt fallback"
+        "expected shared canonical prompt to ignore deleted legacy Claude plugin prompt files"
     );
 }
 

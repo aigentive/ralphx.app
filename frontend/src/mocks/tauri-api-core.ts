@@ -449,6 +449,39 @@ const commandHandlers: Record<
       })),
     };
   },
+  open_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  write_agent_terminal: async () => undefined,
+  resize_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  clear_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return {
+      ...mockAgentTerminalSnapshot(input.conversationId, input.terminalId),
+      history: "",
+    };
+  },
+  restart_agent_terminal: async (args) => {
+    const input = args.input as {
+      conversationId: string;
+      terminalId?: string;
+    };
+    return mockAgentTerminalSnapshot(input.conversationId, input.terminalId);
+  },
+  close_agent_terminal: async () => undefined,
 
   // Ideation commands
   list_ideation_sessions: async (args) => {
@@ -713,6 +746,24 @@ const commandHandlers: Record<
   // Health check
   health_check: async () => ({ status: "ok" }),
 };
+
+function mockAgentTerminalSnapshot(
+  conversationId: string,
+  terminalId = "default"
+) {
+  return {
+    conversationId,
+    terminalId,
+    cwd: "/tmp/ralphx/mock-agent-worktree",
+    workspaceBranch: "ralphx/mock/agent-conversation",
+    status: "running",
+    pid: 42_001,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Mock invoke function

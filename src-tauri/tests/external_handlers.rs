@@ -28,7 +28,7 @@ use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use ralphx_lib::infrastructure::agents::mock::{MockAgenticClient, MockCallType};
-use std::path::PathBuf;
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, os::unix::fs::PermissionsExt};
@@ -86,6 +86,25 @@ impl Drop for EnvVarGuard {
             std::env::remove_var(self.key);
         }
     }
+}
+
+fn prepend_to_path(dir: &FsPath) -> EnvVarGuard {
+    let existing = std::env::var("PATH").unwrap_or_default();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let value = if existing.is_empty() {
+        dir.display().to_string()
+    } else {
+        format!("{}{separator}{existing}", dir.display())
+    };
+    EnvVarGuard::set("PATH", &value)
+}
+
+fn prepend_fake_codex_to_path(fake_codex_path: &FsPath) -> EnvVarGuard {
+    prepend_to_path(
+        fake_codex_path
+            .parent()
+            .expect("fake codex script should have parent dir"),
+    )
 }
 
 fn install_fake_codex_cli() -> (TempDir, PathBuf) {
@@ -880,10 +899,7 @@ async fn test_start_ideation_without_title_assigns_default_title() {
 #[tokio::test]
 async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_client() {
     let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
-    let _codex_cli_guard = EnvVarGuard::set(
-        "CODEX_CLI_PATH",
-        fake_codex_path.to_str().expect("fake codex path utf8"),
-    );
+    let _codex_cli_guard = prepend_fake_codex_to_path(&fake_codex_path);
     let default_mock_impl = Arc::new(MockAgenticClient::new());
     let default_mock: Arc<dyn AgenticClient> = default_mock_impl.clone();
     let codex_mock_impl = Arc::new(MockAgenticClient::new());

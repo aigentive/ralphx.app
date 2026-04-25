@@ -12,6 +12,8 @@ import { afterEach, vi } from "vitest";
 
 // Mock ResizeObserver for Radix UI components (ScrollArea, etc.)
 class ResizeObserverMock implements ResizeObserver {
+  constructor(_callback: ResizeObserverCallback) {}
+
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();

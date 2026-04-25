@@ -7,7 +7,7 @@ import { getAllowedToolNames, getFilteredTools, getToolsByAgent, isToolAllowed, 
 import { loadCanonicalMcpTools } from '../canonical-agent-metadata.js';
 import { setLegacyToolAllowlistEntryForTest } from '../tool-authorization.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
-import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, CHAT_PROJECT, DESIGN_STEWARD, } from '../agentNames.js';
+import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_UX, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, CHAT_PROJECT, } from '../agentNames.js';
 function toolsByAgent() {
     return getToolsByAgent();
 }
@@ -976,31 +976,6 @@ describe('delegation bridge tools', () => {
         expect(toolNames).not.toContain('delegate_start');
         expect(toolNames).not.toContain('delegate_wait');
         expect(toolNames).not.toContain('delegate_cancel');
-    });
-});
-describe('design steward tools', () => {
-    const designTools = [
-        'get_design_system',
-        'get_design_source_manifest',
-        'get_design_styleguide',
-        'update_design_styleguide_item',
-        'record_design_styleguide_feedback',
-        'create_design_artifact',
-        'list_design_artifacts',
-    ];
-    it.each(designTools)('%s should exist in ALL_TOOLS', (toolName) => {
-        expect(getAllTools().find((tool) => tool.name === toolName)).toBeDefined();
-    });
-    it('design steward allowlist stays aligned with canonical metadata', () => {
-        expect(toolsByAgent()[DESIGN_STEWARD]).toEqual(loadCanonicalMcpTools(DESIGN_STEWARD));
-        expect(toolsByAgent()[DESIGN_STEWARD]).toEqual([...designTools]);
-    });
-    it('returns only design tools for the design steward', () => {
-        setAgentType(DESIGN_STEWARD);
-        const toolNames = getFilteredTools().map((tool) => tool.name);
-        expect(toolNames).toEqual([...designTools]);
-        expect(toolNames).not.toContain('suggest_task');
-        expect(toolNames).not.toContain('get_session_plan');
     });
 });
 describe('verification round helper tools', () => {

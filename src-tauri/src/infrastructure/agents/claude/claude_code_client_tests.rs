@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::agents::AgentRole;
+use crate::infrastructure::agents::claude::build_mcp_config_with_runtime_context;
 
 #[test]
 fn test_claude_code_client_new() {
@@ -91,7 +92,9 @@ fn test_build_cli_args_basic() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test prompt");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"-p".to_string()));
     assert!(args.contains(&"Test prompt".to_string()));
@@ -106,7 +109,9 @@ fn test_build_cli_args_with_agent() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("worker");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--agent".to_string()));
     assert!(args.contains(&"worker".to_string()));
@@ -117,7 +122,9 @@ fn test_build_cli_args_with_resume() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("worker");
 
-    let args = client.build_cli_args(&config, Some("session-123"), false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, Some("session-123"), false)
+        .expect("build_cli_args should succeed in test");
 
     // When resuming, both --resume AND --agent should be present
     // to ensure tool restrictions (disallowedTools) are enforced
@@ -135,7 +142,9 @@ fn test_build_cli_args_applies_tools_restriction() {
     let config = AgentConfig::worker("Test")
         .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER);
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     // ralphx-utility-session-namer has allowed_tools = Some("") meaning no CLI tools
     // get_allowed_tools strips the ralphx: prefix for AGENT_CONFIGS lookup
@@ -155,7 +164,9 @@ fn test_build_cli_args_no_tools_for_unknown_agent() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("unknown-agent-xyz");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     // Unknown agent should NOT have --tools restriction
     assert!(
@@ -172,7 +183,9 @@ fn test_build_cli_args_restricted_agent_tools() {
         crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION,
     );
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     let tools_idx = args
         .iter()
@@ -190,7 +203,9 @@ fn test_build_cli_args_with_model() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_model("opus");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--model".to_string()));
     assert!(args.contains(&"opus".to_string()));
@@ -202,7 +217,9 @@ fn test_build_cli_args_uses_agent_model_when_not_overridden() {
     let config = AgentConfig::worker("Test")
         .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_MERGER);
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
     let model_idx = args
         .iter()
         .position(|a| a == "--model")
@@ -215,7 +232,9 @@ fn test_build_cli_args_with_plugin_dir() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_plugin_dir("/custom/plugin");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--plugin-dir".to_string()));
     assert!(args.contains(&"/custom/plugin".to_string()));
@@ -393,7 +412,9 @@ fn test_teammate_spawn_config_builder_chain() {
 fn test_build_teammate_cli_args_interactive_stdin_flags() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     // Interactive mode: -p - and --input-format stream-json are required so that
     // the process stays in print mode (needed for --output-format stream-json) and
@@ -419,7 +440,9 @@ fn test_build_teammate_cli_args_interactive_stdin_flags() {
 fn test_build_teammate_cli_args_has_output_format() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--output-format".to_string()));
     assert!(args.contains(&"stream-json".to_string()));
@@ -430,7 +453,9 @@ fn test_build_teammate_cli_args_has_output_format() {
 fn test_build_teammate_cli_args_has_team_flags() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     // --agent-id <name>@<team-name>
     let agent_id_idx = args
@@ -482,7 +507,9 @@ fn test_build_teammate_cli_args_has_team_flags() {
 fn test_build_teammate_cli_args_has_model() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let model_idx = args
         .iter()
@@ -495,7 +522,9 @@ fn test_build_teammate_cli_args_has_model() {
 fn test_build_teammate_cli_args_has_tools() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let tools_idx = args
         .iter()
@@ -508,7 +537,9 @@ fn test_build_teammate_cli_args_has_tools() {
 fn test_build_teammate_cli_args_no_tools_when_empty() {
     let client = ClaudeCodeClient::new();
     let config = TeammateSpawnConfig::new("r", "t", "p");
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--tools".to_string()),
@@ -520,7 +551,9 @@ fn test_build_teammate_cli_args_no_tools_when_empty() {
 fn test_build_teammate_cli_args_mcp_tools_prefixed() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let allowed_idx = args
         .iter()
@@ -543,7 +576,9 @@ fn test_build_teammate_cli_args_mcp_tools_prefixed() {
 fn test_build_teammate_cli_args_no_allowed_tools_when_empty() {
     let client = ClaudeCodeClient::new();
     let config = TeammateSpawnConfig::new("r", "t", "p");
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--allowedTools".to_string()),
@@ -557,7 +592,9 @@ fn test_build_teammate_cli_args_no_append_system_prompt() {
     // the team inbox system, not a one-shot prompt injection.
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--append-system-prompt".to_string()),
@@ -569,7 +606,9 @@ fn test_build_teammate_cli_args_no_append_system_prompt() {
 fn test_build_teammate_cli_args_has_skip_permissions() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         args.contains(&"--dangerously-skip-permissions".to_string()),
@@ -581,7 +620,9 @@ fn test_build_teammate_cli_args_has_skip_permissions() {
 fn test_build_teammate_cli_args_has_disable_slash_commands() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--disable-slash-commands".to_string()));
 }
@@ -590,7 +631,9 @@ fn test_build_teammate_cli_args_has_disable_slash_commands() {
 fn test_build_teammate_cli_args_has_plugin_dir() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--plugin-dir".to_string()));
     assert!(args.contains(&"/test/ralphx-plugin".to_string()));
@@ -600,7 +643,9 @@ fn test_build_teammate_cli_args_has_plugin_dir() {
 fn test_build_teammate_cli_args_custom_agent_type() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config().with_agent_type("Bash");
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let agent_type_idx = args
         .iter()
@@ -645,8 +690,7 @@ fn test_build_teammate_env_vars_custom_mcp_agent_type() {
 
 #[test]
 fn test_build_teammate_env_vars_includes_custom_env() {
-    let config = test_teammate_config()
-        .with_env("RALPHX_SESSION_ID", "sess-456");
+    let config = test_teammate_config().with_env("RALPHX_SESSION_ID", "sess-456");
     let env = ClaudeCodeClient::build_teammate_env_vars(&config);
 
     assert_eq!(env.get("RALPHX_SESSION_ID"), Some(&"sess-456".to_string()));
@@ -669,10 +713,7 @@ fn test_build_teammate_env_vars_propagates_context() {
         env.get("RALPHX_CONTEXT_TYPE"),
         Some(&"ideation".to_string())
     );
-    assert_eq!(
-        env.get("RALPHX_PROJECT_ID"),
-        Some(&"proj-789".to_string())
-    );
+    assert_eq!(env.get("RALPHX_PROJECT_ID"), Some(&"proj-789".to_string()));
 }
 
 #[test]
@@ -735,7 +776,9 @@ fn test_build_teammate_cli_args_full_integration() {
     .with_color("green")
     .with_working_dir("/Users/test/project");
 
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     // Interactive mode: -p - and --input-format stream-json must be present
     let p_pos = args.iter().position(|a| a == "-p");
@@ -800,7 +843,9 @@ fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
     if !has_settings {
         // No settings profile configured in this environment — skip the positive assertion
         // and verify --settings is correctly absent
-        let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+        let args = client
+            .build_teammate_cli_args(&config)
+            .expect("build_teammate_cli_args should succeed in test");
         assert!(
             !args.contains(&"--settings".to_string()),
             "--settings must not appear when no profile is configured"
@@ -808,7 +853,9 @@ fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
         return;
     }
 
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     // --settings flag must be present
     let settings_idx = args
@@ -831,11 +878,8 @@ fn test_create_mcp_config_resolves_node_command() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    let config_path = create_mcp_config(plugin_dir, "worker", false)
-        .expect("create_mcp_config should succeed");
-
-    let json_str = std::fs::read_to_string(&config_path).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let json = build_mcp_config_with_runtime_context(plugin_dir, "worker", false, None)
+        .expect("build_mcp_config_with_runtime_context should succeed");
 
     let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
     let command = json["mcpServers"][mcp_server_name]["command"]
@@ -861,93 +905,49 @@ fn test_create_mcp_config_resolves_node_command() {
         );
     }
     // If node is completely absent in this environment, bare "node" is acceptable as last resort.
-
-    // Clean up temp config file
-    let _ = std::fs::remove_file(&config_path);
 }
 
-/// Fix A: When .mcp.json has "command": "node", create_mcp_config replaces it.
+/// Fix A: The default stdio MCP config resolves bare `node` before launch.
 #[test]
-fn test_create_mcp_config_replaces_bare_node_from_mcp_json() {
+fn test_create_mcp_config_replaces_bare_node_default() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    // Write a .mcp.json that uses bare "node" command
     let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
-    let mcp_json = serde_json::json!({
-        "mcpServers": {
-            mcp_server_name: {
-                "type": "stdio",
-                "command": "node",
-                "args": ["/some/path/index.js"]
-            }
-        }
-    });
-    std::fs::write(
-        plugin_dir.join(".mcp.json"),
-        serde_json::to_string(&mcp_json).unwrap(),
-    )
-    .unwrap();
-
-    let config_path = create_mcp_config(plugin_dir, "worker", false)
-        .expect("create_mcp_config should succeed");
-
-    let json_str = std::fs::read_to_string(&config_path).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let json = build_mcp_config_with_runtime_context(plugin_dir, "worker", false, None)
+        .expect("build_mcp_config_with_runtime_context should succeed");
     let command = json["mcpServers"][mcp_server_name]["command"]
         .as_str()
         .expect("command field must be a string");
 
     // "node" must have been replaced if any node binary is available
-    let node_available =
-        which::which("node").is_ok()
-            || ["/opt/homebrew/bin/node", "/usr/local/bin/node"]
-                .iter()
-                .any(|p| std::path::Path::new(p).exists());
+    let node_available = which::which("node").is_ok()
+        || ["/opt/homebrew/bin/node", "/usr/local/bin/node"]
+            .iter()
+            .any(|p| std::path::Path::new(p).exists());
 
     if node_available {
         assert_ne!(
             command, "node",
-            "bare 'node' in .mcp.json must be replaced with full path; got: {command}"
+            "bare 'node' must be replaced with full path; got: {command}"
         );
     }
-
-    let _ = std::fs::remove_file(&config_path);
 }
 
-/// Fix A: ${CLAUDE_PLUGIN_ROOT} template in .mcp.json args is expanded to plugin_dir.
+/// Fix A: generated MCP args include the resolved plugin-root server path.
 #[test]
-fn test_create_mcp_config_expands_plugin_root_template() {
+fn test_create_mcp_config_uses_plugin_root_server_path() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
     let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
-    let mcp_json = serde_json::json!({
-        "mcpServers": {
-            mcp_server_name: {
-                "type": "stdio",
-                "command": "node",
-                "args": ["${CLAUDE_PLUGIN_ROOT}/build/index.js"]
-            }
-        }
-    });
-    std::fs::write(
-        plugin_dir.join(".mcp.json"),
-        serde_json::to_string(&mcp_json).unwrap(),
-    )
-    .unwrap();
-
-    let config_path = create_mcp_config(plugin_dir, "worker", false)
-        .expect("create_mcp_config should succeed");
-
-    let json_str = std::fs::read_to_string(&config_path).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let json = build_mcp_config_with_runtime_context(plugin_dir, "worker", false, None)
+        .expect("build_mcp_config_with_runtime_context should succeed");
 
     let args = json["mcpServers"][mcp_server_name]["args"]
         .as_array()
         .expect("args must be an array");
 
-    // The ${CLAUDE_PLUGIN_ROOT} placeholder must be replaced by plugin_dir
     let plugin_dir_str = plugin_dir.to_string_lossy();
     let expanded = args
         .iter()
@@ -956,10 +956,8 @@ fn test_create_mcp_config_expands_plugin_root_template() {
 
     assert!(
         expanded,
-        "args must have ${{CLAUDE_PLUGIN_ROOT}} expanded to plugin_dir ({plugin_dir_str}); got: {args:?}"
+        "args must include the plugin dir ({plugin_dir_str}); got: {args:?}"
     );
-
-    let _ = std::fs::remove_file(&config_path);
 }
 
 // ==================== Interactive Spawn Tests ====================
@@ -969,7 +967,9 @@ fn test_build_cli_args_interactive_omits_p_flag() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("My interactive prompt");
 
-    let args = client.build_cli_args(&config, None, true).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, true)
+        .expect("build_cli_args should succeed in test");
 
     // Interactive mode: -p must NOT be present
     assert!(
@@ -991,7 +991,9 @@ fn test_build_cli_args_non_interactive_has_p_flag() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Non-interactive prompt");
 
-    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
+    let args = client
+        .build_cli_args(&config, None, false)
+        .expect("build_cli_args should succeed in test");
 
     // Non-interactive mode: -p must be present (backward compat)
     assert!(
@@ -1029,11 +1031,8 @@ fn test_create_mcp_config_injects_agent_type() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    let config_path = create_mcp_config(plugin_dir, "ralphx-ideation", false)
-        .expect("create_mcp_config should succeed");
-
-    let json_str = std::fs::read_to_string(&config_path).unwrap();
-    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let json = build_mcp_config_with_runtime_context(plugin_dir, "ralphx-ideation", false, None)
+        .expect("build_mcp_config_with_runtime_context should succeed");
 
     let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
     let args = json["mcpServers"][mcp_server_name]["args"]
@@ -1052,8 +1051,6 @@ fn test_create_mcp_config_injects_agent_type() {
     );
     // short name for "ralphx-ideation" drops the "ralphx:" prefix if present
     assert_eq!(arg_strs[agent_type_idx + 1], "ralphx-ideation");
-
-    let _ = std::fs::remove_file(&config_path);
 }
 
 // ==================== Effort Flag Tests (build_teammate_cli_args) ====================
@@ -1064,14 +1061,17 @@ fn test_build_teammate_cli_args_includes_effort_when_some() {
     let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
         .with_plugin_dir("/test/plugin")
         .with_effort("high");
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let effort_idx = args
         .iter()
         .position(|a| a == "--effort")
         .expect("--effort flag must be present when config.effort is Some");
     assert_eq!(
-        args[effort_idx + 1], "high",
+        args[effort_idx + 1],
+        "high",
         "--effort must be followed by the configured effort level"
     );
 }
@@ -1080,10 +1080,12 @@ fn test_build_teammate_cli_args_includes_effort_when_some() {
 fn test_build_teammate_cli_args_falls_back_to_global_default_effort() {
     use crate::infrastructure::agents::claude::agent_config::claude_runtime_config;
     let client = ClaudeCodeClient::new();
-    let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
-        .with_plugin_dir("/test/plugin");
+    let config =
+        TeammateSpawnConfig::new("dev", "team-1", "Do stuff").with_plugin_dir("/test/plugin");
     // effort is None (default) — should fall back to global default_effort
-    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
+    let args = client
+        .build_teammate_cli_args(&config)
+        .expect("build_teammate_cli_args should succeed in test");
 
     let effort_idx = args
         .iter()
@@ -1091,7 +1093,8 @@ fn test_build_teammate_cli_args_falls_back_to_global_default_effort() {
         .expect("--effort flag must always be present (falls back to global default)");
     let expected_default = &claude_runtime_config().default_effort;
     assert_eq!(
-        &args[effort_idx + 1], expected_default,
+        &args[effort_idx + 1],
+        expected_default,
         "--effort must fall back to global default_effort when config.effort is None"
     );
 }

@@ -1,14 +1,14 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::Manager;
 
-use crate::AppState;
 use crate::commands;
 use crate::domain::services::RunningAgentRegistry;
-use crate::infrastructure::ExternalMcpHandle;
 use crate::infrastructure::sqlite::DbConnection;
+use crate::infrastructure::ExternalMcpHandle;
+use crate::AppState;
 
 pub fn handle_run_event<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
@@ -26,11 +26,19 @@ pub fn handle_run_event<R: tauri::Runtime>(
 
     let registry = Arc::clone(&app_state.running_agent_registry);
     let interactive = Arc::clone(&app_state.interactive_process_registry);
+    let terminal_service = Arc::clone(&app_state.agent_terminal_service);
     let db = app_state.db.clone();
 
+    shutdown_agent_terminals(terminal_service);
     shutdown_agents(registry, interactive);
     shutdown_external_mcp(app_handle);
     checkpoint_wal(db);
+}
+
+fn shutdown_agent_terminals(terminal_service: Arc<crate::application::AgentTerminalService>) {
+    tauri::async_runtime::block_on(async {
+        terminal_service.close_all().await;
+    });
 }
 
 fn shutdown_agents(
