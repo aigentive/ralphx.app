@@ -122,8 +122,8 @@ const AGENT_CONVERSATION_MODE_OPTIONS: Array<{
   label: string;
 }> = [
   { id: "chat", label: "Chat" },
-  { id: "edit", label: "Edit Agent" },
-  { id: "ideation", label: "Ideation Mode" },
+  { id: "edit", label: "Agent" },
+  { id: "ideation", label: "Ideation" },
 ];
 
 interface AgentsViewProps {

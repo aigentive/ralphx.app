@@ -312,7 +312,7 @@ export function AgentComposerSurface({
   return (
     <div
       data-testid={dataTestId}
-      className={cn("mx-auto w-full max-w-full", className)}
+      className={cn("agent-composer-surface mx-auto w-full max-w-full", className)}
     >
       <div
         className="overflow-hidden rounded-[22px] border transition-colors"
@@ -401,9 +401,11 @@ export function AgentComposerSurface({
 
             <Button
               type="button"
-              className="h-10 shrink-0 rounded-[12px] px-4 text-[12px] font-semibold tracking-[-0.01em]"
+              className={cn(
+                "agent-composer-action-button h-10 shrink-0 rounded-[12px] px-4 text-[12px] font-semibold tracking-[-0.01em]",
+                shouldShowStop ? "min-w-[100px]" : "min-w-[118px]"
+              )}
               style={{
-                minWidth: shouldShowStop ? "100px" : "118px",
                 background:
                   shouldShowStop || canSubmit
                     ? "var(--accent-primary)"
@@ -425,17 +427,17 @@ export function AgentComposerSurface({
               {shouldShowStop ? (
                 <>
                   <Square className="h-3.5 w-3.5 fill-current" />
-                  Stop
+                  <span className="agent-composer-action-label">Stop</span>
                 </>
               ) : isSubmitting && !canQueue ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {submittingLabel}
+                  <span className="agent-composer-action-label">{submittingLabel}</span>
                 </>
               ) : (
                 <>
                   <ArrowUp className="h-4 w-4" />
-                  {submitLabel}
+                  <span className="agent-composer-action-label">{submitLabel}</span>
                 </>
               )}
             </Button>

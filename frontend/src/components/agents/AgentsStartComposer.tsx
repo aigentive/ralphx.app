@@ -83,9 +83,9 @@ const STARTER_TYPING_INITIAL_WORD = STARTER_TYPING_WORDS[0];
 type StarterTypingPhase = "holding" | "typing" | "deleting";
 
 const AGENT_MODE_OPTIONS: Array<{ id: AgentConversationWorkspaceMode; label: string }> = [
-  { id: "edit", label: "Edit Agent" },
+  { id: "edit", label: "Agent" },
   { id: "chat", label: "Chat" },
-  { id: "ideation", label: "Ideation Mode" },
+  { id: "ideation", label: "Ideation" },
 ];
 
 export function AgentsStartComposer({

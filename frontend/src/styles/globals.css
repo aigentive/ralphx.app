@@ -451,6 +451,22 @@ a:not([class*="no-underline"]):hover {
 .status-indicator-running { animation: status-pulse 2s ease-in-out infinite; }
 .task-name-enter { animation: slide-in-right 200ms ease-out; }
 
+.agent-composer-surface {
+  container-type: inline-size;
+}
+
+@container (max-width: 720px) {
+  .agent-composer-action-button {
+    width: 2.5rem;
+    min-width: 2.5rem;
+    padding-inline: 0;
+  }
+
+  .agent-composer-action-label {
+    display: none;
+  }
+}
+
 /* Task card state highlights — consume semantic status tokens */
 .task-card-executing {
   border-color: var(--accent-primary);
