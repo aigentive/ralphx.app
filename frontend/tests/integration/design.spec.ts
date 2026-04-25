@@ -53,6 +53,13 @@ test.describe("Design workspace", () => {
     const buttonRow = page.getByTestId("design-styleguide-row-components.buttons");
     await buttonRow.click();
     await expect(page.getByTestId("design-component-preview")).toBeVisible();
+    await page.getByTestId("design-open-full-preview-components.buttons").click();
+    await expect(page.getByTestId("design-focused-item-drawer")).toContainText("Buttons");
+    await page.getByTestId("design-close-focused-preview").click();
+    await page.getByTestId("design-generate-artifact-components.buttons").click();
+    await expect(page.getByTestId("design-generated-artifact-result")).toContainText(
+      "Generated component artifact",
+    );
 
     await page.getByTestId("design-needs-work-components.buttons").click();
     await page.getByPlaceholder("Feedback").fill("Use the app's compact 8px control radius.");

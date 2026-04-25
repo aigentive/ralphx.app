@@ -11,11 +11,11 @@ use crate::commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
     AgentRunRepository, ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, DelegatedSessionRepository, ExecutionPlanRepository,
-    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
-    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
-    TaskStepRepository,
+    ChatMessageRepository, DelegatedSessionRepository, DesignSystemRepository,
+    ExecutionPlanRepository, ExecutionSettingsRepository, IdeationEffortSettingsRepository,
+    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
+    PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
+    TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{GithubServiceTrait, MessageQueue, RunningAgentRegistry};
 use crate::infrastructure::memory::MemoryDelegatedSessionRepository;
@@ -89,10 +89,7 @@ impl RuntimeFactoryDeps {
         }
     }
 
-    pub(crate) fn with_agent_clients(
-        mut self,
-        agent_clients: Option<AgentClientBundle>,
-    ) -> Self {
+    pub(crate) fn with_agent_clients(mut self, agent_clients: Option<AgentClientBundle>) -> Self {
         self.agent_clients = agent_clients;
         self
     }
@@ -178,6 +175,7 @@ pub(crate) struct ChatRuntimeFactoryDeps {
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     pub delegated_session_repo: Option<Arc<dyn DelegatedSessionRepository>>,
+    pub design_system_repo: Option<Arc<dyn DesignSystemRepository>>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
@@ -223,6 +221,7 @@ impl ChatRuntimeFactoryDeps {
             task_dependency_repo,
             ideation_session_repo,
             delegated_session_repo: None,
+            design_system_repo: None,
             activity_event_repo,
             message_queue,
             running_agent_registry,
@@ -322,6 +321,11 @@ impl ChatRuntimeFactoryDeps {
         self
     }
 
+    pub(crate) fn with_design_system_repo(mut self, repo: Arc<dyn DesignSystemRepository>) -> Self {
+        self.design_system_repo = Some(repo);
+        self
+    }
+
     pub(crate) fn with_runtime_support(
         mut self,
         execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
@@ -397,6 +401,7 @@ impl ChatRuntimeFactoryDeps {
             Arc::clone(&state.memory_event_repo),
         )
         .with_delegated_session_repo(Arc::clone(&state.delegated_session_repo))
+        .with_design_system_repo(Arc::clone(&state.design_system_repo))
         .with_runtime_support(
             Some(Arc::clone(&state.execution_settings_repo)),
             Some(Arc::clone(&state.agent_lane_settings_repo)),
@@ -461,6 +466,9 @@ pub(crate) fn build_chat_service_from_deps<R: Runtime>(
     }
     if let Some(repo) = deps.ideation_model_settings_repo.as_ref() {
         service = service.with_ideation_model_settings_repo(Arc::clone(repo));
+    }
+    if let Some(repo) = deps.design_system_repo.as_ref() {
+        service = service.with_design_system_repo(Arc::clone(repo));
     }
     if let Some(repo) = deps.agent_conversation_workspace_repo.as_ref() {
         service = service.with_agent_conversation_workspace_repo(Arc::clone(repo));

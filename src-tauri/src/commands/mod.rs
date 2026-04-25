@@ -78,9 +78,10 @@ pub use conversation_stats_commands::{
 };
 pub use chat_responses::ChatMessageResponse;
 pub use design_artifact_commands::{
-    export_design_system_package, get_design_styleguide_preview, get_design_styleguide_view_model,
-    import_design_system_package, DesignArtifactJsonResponse, ExportDesignSystemPackageInput,
-    ExportDesignSystemPackageResponse, GetDesignStyleguidePreviewInput,
+    export_design_system_package, generate_design_artifact, get_design_styleguide_preview,
+    get_design_styleguide_view_model, import_design_system_package, DesignArtifactJsonResponse,
+    ExportDesignSystemPackageInput, ExportDesignSystemPackageResponse,
+    GenerateDesignArtifactInput, GenerateDesignArtifactResponse, GetDesignStyleguidePreviewInput,
     GetDesignStyleguideViewModelInput, ImportDesignSystemPackageInput,
     ImportDesignSystemPackageResponse,
 };

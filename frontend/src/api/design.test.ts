@@ -8,6 +8,7 @@ import {
   DesignStyleguideViewModelResponseSchema,
   DesignSystemResponseSchema,
   ExportDesignSystemPackageResponseSchema,
+  GenerateDesignArtifactResponseSchema,
   GenerateDesignSystemStyleguideResponseSchema,
   ImportDesignSystemPackageResponseSchema,
   designApi,
@@ -225,6 +226,30 @@ describe("design API schemas", () => {
     });
 
     expect(parsed.redacted).toBe(true);
+  });
+
+  it("parses a generated design artifact response", () => {
+    const parsed = GenerateDesignArtifactResponseSchema.parse({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      artifactId: "artifact-1",
+      previewArtifactId: "preview-1",
+      artifactKind: "component",
+      name: "Pricing cards component",
+      createdAt: "2026-04-24T08:00:00Z",
+      content: {
+        design_system_id: "design-system-1",
+        kind: "component",
+        artifact: {
+          storage: "ralphx_owned",
+          project_write_status: "not_written",
+        },
+      },
+    });
+
+    expect(parsed.artifactKind).toBe("component");
+    expect(parsed.content.artifact).toBeDefined();
   });
 
   it("parses an imported design package response", () => {
@@ -468,6 +493,38 @@ describe("designApi", () => {
         packageArtifactId: "export-1",
         attachProjectId: "project-1",
         name: "Imported UI",
+      },
+    });
+  });
+
+  it("generates a screen or component artifact through the backend command", async () => {
+    mockInvoke.mockResolvedValueOnce({
+      designSystemId: "design-system-1",
+      schemaVersionId: "schema-1",
+      runId: "run-1",
+      artifactId: "artifact-1",
+      previewArtifactId: "preview-1",
+      artifactKind: "screen",
+      name: "Settings screen",
+      createdAt: "2026-04-24T08:00:00Z",
+      content: {
+        kind: "screen",
+      },
+    });
+
+    await designApi.generateArtifact({
+      designSystemId: "design-system-1",
+      artifactKind: "screen",
+      name: "Settings screen",
+      sourceItemId: "ui_kit.workspace_surfaces",
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("generate_design_artifact", {
+      input: {
+        designSystemId: "design-system-1",
+        artifactKind: "screen",
+        name: "Settings screen",
+        sourceItemId: "ui_kit.workspace_surfaces",
       },
     });
   });

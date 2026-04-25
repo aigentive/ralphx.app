@@ -11,6 +11,8 @@ import type {
   DesignSystemResponse,
   DesignSystemSourceResponse,
   ExportDesignSystemPackageResponse,
+  GenerateDesignArtifactInput,
+  GenerateDesignArtifactResponse,
   GenerateDesignSystemStyleguideResponse,
   ImportDesignSystemPackageInput,
   ImportDesignSystemPackageResponse,
@@ -326,6 +328,42 @@ export const mockDesignApi = {
         previewArtifactId: null,
         sourceRefs: [],
       })),
+    };
+  },
+
+  generateArtifact: async (
+    input: GenerateDesignArtifactInput,
+  ): Promise<GenerateDesignArtifactResponse> => {
+    const designSystem =
+      allSystems().find((system) => system.id === input.designSystemId) ??
+      mockDesignSystem("project-mock");
+    const sourceItem = mockStyleguideItemForAction(
+      input.designSystemId,
+      input.sourceItemId ?? (input.artifactKind === "screen" ? "ui_kit.workspace_surfaces" : "components.buttons"),
+    );
+    return {
+      designSystemId: input.designSystemId,
+      schemaVersionId: designSystem.currentSchemaVersionId ?? `schema-${designSystem.id}`,
+      runId: `run-generated-${input.artifactKind}-${designSystem.id}`,
+      artifactId: `generated-${input.artifactKind}-${designSystem.id}`,
+      previewArtifactId: `generated-preview-${input.artifactKind}-${designSystem.id}`,
+      artifactKind: input.artifactKind,
+      name: input.name,
+      createdAt: nowIso(),
+      content: {
+        design_system_id: input.designSystemId,
+        kind: input.artifactKind,
+        name: input.name,
+        source_item: {
+          item_id: sourceItem.itemId,
+          label: sourceItem.label,
+        },
+        source_refs: sourceItem.sourceRefs,
+        artifact: {
+          storage: "ralphx_owned",
+          project_write_status: "not_written",
+        },
+      },
     };
   },
 

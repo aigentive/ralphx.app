@@ -43,6 +43,7 @@ describe("useDesignSystemEvents", () => {
     });
 
     expect(subscribeMock).toHaveBeenCalledWith("design:schema_published", expect.any(Function));
+    expect(subscribeMock).toHaveBeenCalledWith("design:artifact_created", expect.any(Function));
     expect(subscribeMock).toHaveBeenCalledWith(
       "design:styleguide_item_approved",
       expect.any(Function),

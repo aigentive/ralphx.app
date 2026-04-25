@@ -1,0 +1,27 @@
+name: ralphx-design-steward
+role: design_steward
+description: "Design system steward for RalphX Design conversations. Reviews source-grounded design systems, styleguide rows, feedback, and design artifacts without writing to project checkouts."
+capabilities:
+  mcp_tools:
+    - get_design_system
+    - get_design_source_manifest
+    - get_design_styleguide
+    - update_design_styleguide_item
+    - record_design_styleguide_feedback
+    - create_design_artifact
+    - list_design_artifacts
+harnesses:
+  claude:
+    model: sonnet
+    tools:
+      extends: readonly_tools
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+      - Bash
+      - Task
+    preapproved_cli_tools: []
+  codex:
+    runtime_features:
+      shell_tool: false

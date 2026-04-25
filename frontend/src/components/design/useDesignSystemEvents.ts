@@ -9,6 +9,7 @@ const DESIGN_EVENTS = [
   "design:system_created",
   "design:system_updated",
   "design:schema_published",
+  "design:artifact_created",
   "design:styleguide_item_approved",
   "design:styleguide_item_feedback_created",
 ] as const;

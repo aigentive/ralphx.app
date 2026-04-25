@@ -7,6 +7,7 @@ import {
   MessageSquare,
   Package,
   Sparkles,
+  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -15,6 +16,7 @@ import type { DesignReviewState, DesignStyleguideItem, DesignSystem } from "./de
 import {
   useApproveDesignStyleguideItem,
   useCreateDesignStyleguideFeedback,
+  useGenerateDesignArtifact,
   useDesignStyleguidePreview,
 } from "./useProjectDesignSystems";
 
@@ -46,10 +48,17 @@ export function DesignStyleguidePane({
   const [activeFilter, setActiveFilter] = useState<"all" | DesignReviewState>("all");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [feedbackItemId, setFeedbackItemId] = useState<string | null>(null);
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
   const [approvalOverrides, setApprovalOverrides] = useState<Record<string, DesignReviewState>>({});
   const [feedbackDraft, setFeedbackDraft] = useState("");
+  const [generatedArtifact, setGeneratedArtifact] = useState<{
+    artifactId: string;
+    kind: "screen" | "component";
+    name: string;
+  } | null>(null);
   const approveMutation = useApproveDesignStyleguideItem();
   const feedbackMutation = useCreateDesignStyleguideFeedback();
+  const generateArtifactMutation = useGenerateDesignArtifact();
   const hasPersistedItems =
     designSystem?.groups.some((group) => group.items.some((item) => item.isPersisted)) ?? false;
   const canGenerateStyleguide =
@@ -73,6 +82,15 @@ export function DesignStyleguidePane({
     }
     return counts;
   }, [approvalOverrides, designSystem]);
+
+  const focusedItem = useMemo(() => {
+    if (!designSystem || !focusedItemId) {
+      return null;
+    }
+    return designSystem.groups
+      .flatMap((group) => group.items)
+      .find((item) => item.id === focusedItemId) ?? null;
+  }, [designSystem, focusedItemId]);
 
   if (!designSystem) {
     return (
@@ -132,6 +150,28 @@ export function DesignStyleguidePane({
     setFeedbackDraft("");
     setFeedbackItemId(null);
     setExpandedItemId(item.id);
+  };
+
+  const generateArtifactFromItem = (item: DesignStyleguideItem) => {
+    const kind = item.group === "ui_kit" ? "screen" : "component";
+    generateArtifactMutation.mutate(
+      {
+        designSystemId: designSystem.id,
+        artifactKind: kind,
+        name: `${item.label} ${kind}`,
+        brief: item.summary,
+        sourceItemId: item.itemId,
+      },
+      {
+        onSuccess: (response) => {
+          setGeneratedArtifact({
+            artifactId: response.artifactId,
+            kind: response.artifactKind,
+            name: response.name,
+          });
+        },
+      },
+    );
   };
 
   return (
@@ -215,6 +255,19 @@ export function DesignStyleguidePane({
               Export package artifact {exportPackageArtifactId.slice(0, 8)} is ready.
             </div>
           )}
+          {generatedArtifact && (
+            <div
+              className="rounded-lg border px-3 py-2 text-[12px]"
+              style={{
+                borderColor: "var(--overlay-weak)",
+                background: "var(--bg-surface)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="design-generated-artifact-result"
+            >
+              Generated {generatedArtifact.kind} artifact {generatedArtifact.artifactId.slice(0, 8)} from {generatedArtifact.name}.
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5" data-testid="design-review-filters">
             {FILTERS.map((filter) => (
               <button
@@ -295,6 +348,9 @@ export function DesignStyleguidePane({
                       setFeedbackItemId(null);
                       setFeedbackDraft("");
                     }}
+                    onGenerateArtifact={() => generateArtifactFromItem(item)}
+                    isGeneratingArtifact={generateArtifactMutation.isPending}
+                    onOpenFocused={() => setFocusedItemId(item.id)}
                   />
                 ))}
               </div>
@@ -302,6 +358,22 @@ export function DesignStyleguidePane({
           );
         })}
       </div>
+      {focusedItem && (
+        <FocusedItemDrawer
+          designSystemId={designSystem.id}
+          item={focusedItem}
+          reviewState={approvalOverrides[focusedItem.id] ?? focusedItem.reviewState}
+          isGeneratingArtifact={generateArtifactMutation.isPending}
+          onClose={() => setFocusedItemId(null)}
+          onApprove={() => approveItem(focusedItem)}
+          onOpenFeedback={() => {
+            setExpandedItemId(focusedItem.id);
+            setFeedbackItemId(focusedItem.id);
+            setFocusedItemId(null);
+          }}
+          onGenerateArtifact={() => generateArtifactFromItem(focusedItem)}
+        />
+      )}
     </aside>
   );
 }
@@ -319,6 +391,9 @@ function StyleguideRow({
   onFeedbackDraftChange,
   onSubmitFeedback,
   onCancelFeedback,
+  onGenerateArtifact,
+  isGeneratingArtifact,
+  onOpenFocused,
 }: {
   designSystemId: string;
   item: DesignStyleguideItem;
@@ -332,7 +407,11 @@ function StyleguideRow({
   onFeedbackDraftChange: (value: string) => void;
   onSubmitFeedback: () => void;
   onCancelFeedback: () => void;
+  onGenerateArtifact: () => void;
+  isGeneratingArtifact: boolean;
+  onOpenFocused: () => void;
 }) {
+  const artifactKind = item.group === "ui_kit" ? "screen" : "component";
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--overlay-weak)" }}>
       <button
@@ -380,6 +459,32 @@ function StyleguideRow({
               <MessageSquare className="w-4 h-4" />
               Needs work
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2"
+              disabled={isGeneratingArtifact || !item.isPersisted}
+              onClick={onGenerateArtifact}
+              data-testid={`design-generate-artifact-${item.itemId}`}
+            >
+              {isGeneratingArtifact ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              {artifactKind === "screen" ? "Generate screen" : "Generate component"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={onOpenFocused}
+              data-testid={`design-open-full-preview-${item.itemId}`}
+            >
+              Open full preview
+            </Button>
           </div>
           {isFeedbackOpen && (
             <div className="space-y-2" data-testid="design-feedback-composer">
@@ -402,6 +507,111 @@ function StyleguideRow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function FocusedItemDrawer({
+  designSystemId,
+  item,
+  reviewState,
+  isGeneratingArtifact,
+  onClose,
+  onApprove,
+  onOpenFeedback,
+  onGenerateArtifact,
+}: {
+  designSystemId: string;
+  item: DesignStyleguideItem;
+  reviewState: DesignReviewState;
+  isGeneratingArtifact: boolean;
+  onClose: () => void;
+  onApprove: () => void;
+  onOpenFeedback: () => void;
+  onGenerateArtifact: () => void;
+}) {
+  const artifactKind = item.group === "ui_kit" ? "screen" : "component";
+
+  return (
+    <div
+      className="fixed inset-y-0 right-0 z-50 w-[min(520px,100vw)] border-l shadow-xl flex flex-col"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-base)" }}
+      data-testid="design-focused-item-drawer"
+    >
+      <header className="h-14 px-4 border-b flex items-center gap-3 shrink-0" style={{ borderColor: "var(--overlay-faint)" }}>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+            {item.label}
+          </div>
+          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {reviewState.replace("_", " ")} / {item.sourceRefs.length} sources
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          aria-label="Close preview"
+          onClick={onClose}
+          data-testid="design-close-focused-preview"
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <PreviewBlock designSystemId={designSystemId} item={item} />
+
+        <section className="space-y-2">
+          <h3 className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+            Sources
+          </h3>
+          <div className="space-y-1">
+            {item.sourceRefs.length ? (
+              item.sourceRefs.map((sourceRef) => (
+                <div
+                  key={`${sourceRef.projectId}:${sourceRef.path}:${sourceRef.line ?? ""}`}
+                  className="rounded-md border px-2.5 py-2 text-[12px]"
+                  style={{ borderColor: "var(--overlay-faint)", color: "var(--text-secondary)" }}
+                >
+                  <div className="truncate" style={{ color: "var(--text-primary)" }}>
+                    {sourceRef.path}
+                  </div>
+                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    {sourceRef.projectId}{sourceRef.line ? `:${sourceRef.line}` : ""}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                No source references stored for this row.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+            Activity
+          </h3>
+          <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+            Latest row update is stored in the current styleguide version. Feedback and generated artifacts stay attached to this design conversation.
+          </div>
+        </section>
+      </div>
+
+      <footer className="border-t p-3 flex flex-wrap justify-end gap-2 shrink-0" style={{ borderColor: "var(--overlay-faint)" }}>
+        <Button type="button" variant="outline" size="sm" onClick={onOpenFeedback}>
+          Needs work
+        </Button>
+        <Button type="button" variant="outline" size="sm" disabled={isGeneratingArtifact || !item.isPersisted} onClick={onGenerateArtifact}>
+          {artifactKind === "screen" ? "Generate screen" : "Generate component"}
+        </Button>
+        <Button type="button" size="sm" onClick={onApprove}>
+          Looks good
+        </Button>
+      </footer>
     </div>
   );
 }

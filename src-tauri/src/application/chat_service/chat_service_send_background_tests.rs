@@ -68,8 +68,13 @@ fn run_completed_emitted_when_queue_had_items_but_none_processed() {
         "Queued message 2".to_string(),
     );
 
-    let initial_queue_count = queue.get_queued(ChatContextType::TaskExecution, "task-1").len();
-    assert_eq!(initial_queue_count, 2, "initial_queue_count must reflect queued messages");
+    let initial_queue_count = queue
+        .get_queued(ChatContextType::TaskExecution, "task-1")
+        .len();
+    assert_eq!(
+        initial_queue_count, 2,
+        "initial_queue_count must reflect queued messages"
+    );
 
     // Simulate spawn failure: total_processed stays 0
     let total_processed: usize = 0;
@@ -130,7 +135,10 @@ async fn queue_processing_leaves_messages_pending_when_execution_paused() {
     )
     .await;
 
-    assert_eq!(processed, 0, "paused queue processing must not launch messages");
+    assert_eq!(
+        processed, 0,
+        "paused queue processing must not launch messages"
+    );
     assert_eq!(
         app_state
             .message_queue

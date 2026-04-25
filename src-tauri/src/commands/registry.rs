@@ -64,6 +64,7 @@ macro_rules! register_tauri_commands {
             commands::design_artifact_commands::export_design_system_package,
             commands::design_artifact_commands::get_design_styleguide_preview,
             commands::design_artifact_commands::get_design_styleguide_view_model,
+            commands::design_artifact_commands::generate_design_artifact,
             commands::design_artifact_commands::import_design_system_package,
             commands::design_feedback_commands::approve_design_styleguide_item,
             commands::design_feedback_commands::create_design_styleguide_feedback,

@@ -10,6 +10,7 @@ import { FILESYSTEM_TOOLS } from "./filesystem-tools.js";
 import { IDEATION_TOOLS } from "./ideation-tools.js";
 import { WORKFLOW_TOOLS } from "./workflow-tools.js";
 import { SUPPORT_TOOLS } from "./support-tools.js";
+import { DESIGN_TOOLS } from "./design-tools.js";
 import { formatToolErrorMessageFromRegistry, getToolRecoveryHintFromRegistry, } from "./tool-recovery.js";
 import { logToolsByAgent } from "./tool-debug.js";
 import { getAllowedToolNames as resolveAllowedToolNames, getToolsByAgent as resolveToolsByAgent, parseAllowedToolsFromArgs as parseAllowedToolsFromKnownRegistry, } from "./tool-authorization.js";
@@ -39,6 +40,7 @@ export const ALL_TOOLS = [
     // ========================================================================
     ...ISSUE_TOOLS,
     ...SUPPORT_TOOLS,
+    ...DESIGN_TOOLS,
 ];
 const ALL_TOOL_NAMES = ALL_TOOLS.map((tool) => tool.name);
 export function parseAllowedToolsFromArgs() {

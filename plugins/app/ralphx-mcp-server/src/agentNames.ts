@@ -8,6 +8,7 @@ export const ORCHESTRATOR_IDEATION = "ralphx-ideation";
 export const ORCHESTRATOR_IDEATION_READONLY = "ralphx-ideation-readonly";
 export const CHAT_TASK = "ralphx-chat-task";
 export const CHAT_PROJECT = "ralphx-chat-project";
+export const DESIGN_STEWARD = "ralphx-design-steward";
 export const REVIEWER = "ralphx-execution-reviewer";
 export const REVIEW_CHAT = "ralphx-review-chat";
 export const REVIEW_HISTORY = "ralphx-review-history";

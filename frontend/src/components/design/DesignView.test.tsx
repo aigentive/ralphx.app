@@ -362,6 +362,25 @@ describe("DesignView", () => {
         ],
       };
     });
+    vi.spyOn(api.design, "generateArtifact").mockImplementation(async (input) => ({
+      designSystemId: input.designSystemId,
+      schemaVersionId: "schema-version-1",
+      runId: "run-generated-artifact",
+      artifactId: "generated-component-artifact-1",
+      previewArtifactId: "generated-component-preview-1",
+      artifactKind: input.artifactKind,
+      name: input.name,
+      createdAt: "2026-04-24T08:00:00Z",
+      content: {
+        design_system_id: input.designSystemId,
+        kind: input.artifactKind,
+        name: input.name,
+        artifact: {
+          storage: "ralphx_owned",
+          project_write_status: "not_written",
+        },
+      },
+    }));
   });
 
   it("renders a project-grouped design sidebar and styleguide pane", async () => {
@@ -613,5 +632,49 @@ describe("DesignView", () => {
         conversationId: "conversation-design-system-project-1",
       });
     });
+  });
+
+  it("generates a schema-aligned artifact from a persisted styleguide row", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1"),
+    ]);
+    const generateArtifactSpy = vi.spyOn(api.design, "generateArtifact");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+
+    await screen.findByText("Button patterns from persisted styleguide rows");
+    const row = await screen.findByTestId("design-styleguide-row-components.buttons");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("design-generate-artifact-components.buttons"));
+
+    await waitFor(() => {
+      expect(generateArtifactSpy).toHaveBeenCalledWith({
+        designSystemId: "design-system-project-1",
+        artifactKind: "component",
+        name: "Buttons component",
+        brief: "Button patterns from persisted styleguide rows",
+        sourceItemId: "components.buttons",
+      });
+    });
+    expect(await screen.findByTestId("design-generated-artifact-result")).toHaveTextContent(
+      "Generated component artifact",
+    );
+  });
+
+  it("opens a focused preview drawer for a styleguide row", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1"),
+    ]);
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+
+    await screen.findByText("Button patterns from persisted styleguide rows");
+    fireEvent.click(await screen.findByTestId("design-styleguide-row-components.buttons"));
+    fireEvent.click(screen.getByTestId("design-open-full-preview-components.buttons"));
+
+    expect(await screen.findByTestId("design-focused-item-drawer")).toHaveTextContent("Buttons");
+    expect(screen.getByTestId("design-focused-item-drawer")).toHaveTextContent(
+      "frontend/src/Button.tsx",
+    );
+    fireEvent.click(screen.getByTestId("design-close-focused-preview"));
+    expect(screen.queryByTestId("design-focused-item-drawer")).not.toBeInTheDocument();
   });
 });

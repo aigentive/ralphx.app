@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::application::AppState;
 use crate::commands::design_commands::{DesignSystemResponse, DesignSystemSourceResponse};
@@ -51,6 +51,16 @@ pub struct ImportDesignSystemPackageInput {
     pub name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateDesignArtifactInput {
+    pub design_system_id: String,
+    pub artifact_kind: String,
+    pub name: String,
+    pub brief: Option<String>,
+    pub source_item_id: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesignArtifactJsonResponse {
@@ -82,6 +92,20 @@ pub struct ImportDesignSystemPackageResponse {
     pub run_id: String,
     pub package_artifact_id: String,
     pub items: Vec<DesignStyleguideItemResponse>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateDesignArtifactResponse {
+    pub design_system_id: String,
+    pub schema_version_id: String,
+    pub run_id: String,
+    pub artifact_id: String,
+    pub preview_artifact_id: String,
+    pub artifact_kind: String,
+    pub name: String,
+    pub created_at: String,
+    pub content: JsonValue,
 }
 
 #[tauri::command]
@@ -118,6 +142,18 @@ pub async fn import_design_system_package(
 ) -> Result<ImportDesignSystemPackageResponse, String> {
     let storage_paths = design_storage_paths_from_state(&state)?;
     import_design_system_package_core(&state, &storage_paths, input).await
+}
+
+#[tauri::command]
+pub async fn generate_design_artifact(
+    input: GenerateDesignArtifactInput,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<GenerateDesignArtifactResponse, String> {
+    let storage_paths = design_storage_paths_from_state(&state)?;
+    let response = generate_design_artifact_core(&state, &storage_paths, input).await?;
+    let _ = app.emit("design:artifact_created", &response);
+    Ok(response)
 }
 
 #[doc(hidden)]
@@ -532,6 +568,349 @@ pub async fn import_design_system_package_core(
             .map(DesignStyleguideItemResponse::from)
             .collect(),
     })
+}
+
+#[doc(hidden)]
+pub async fn generate_design_artifact_core(
+    state: &AppState,
+    storage_paths: &DesignStoragePaths,
+    input: GenerateDesignArtifactInput,
+) -> Result<GenerateDesignArtifactResponse, String> {
+    let design_system_id = parse_design_system_id(&input.design_system_id)?;
+    let artifact_kind = GeneratedDesignArtifactKind::parse(&input.artifact_kind)?;
+    let name = parse_required_string(&input.name, "name")?;
+    let brief = input
+        .brief
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let source_item_id = input
+        .source_item_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let system = load_design_system(state, &design_system_id).await?;
+    if system.archived_at.is_some() || system.status == DesignSystemStatus::Archived {
+        return Err("Archived design systems cannot generate design artifacts".to_string());
+    }
+    let schema_version = resolve_schema_version(state, &system, None)
+        .await?
+        .ok_or_else(|| "Design system has no published schema to generate from".to_string())?;
+    let schema = read_design_file_artifact_json(
+        state,
+        storage_paths,
+        &system,
+        &schema_version.schema_artifact_id,
+        ArtifactType::Specification,
+    )
+    .await?;
+    let styleguide_items = state
+        .design_styleguide_repo
+        .list_items(&design_system_id, Some(&schema_version.id))
+        .await
+        .map_err(|error| error.to_string())?;
+    let source_item =
+        select_source_styleguide_item(&styleguide_items, artifact_kind, source_item_id.as_deref())?;
+
+    let now = Utc::now();
+    let mut run = DesignRun::queued(
+        design_system_id.clone(),
+        artifact_kind.run_kind(),
+        format!(
+            "Generate {} artifact: {}",
+            artifact_kind.as_str(),
+            name.as_str()
+        ),
+    );
+    run.status = DesignRunStatus::Running;
+    run.started_at = Some(now);
+    let mut run = state
+        .design_run_repo
+        .create(run)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let artifact_content = build_generated_artifact_json(
+        &system,
+        &schema_version,
+        &schema,
+        source_item,
+        artifact_kind,
+        &name,
+        brief.as_deref(),
+        now,
+    );
+    let storage_root = storage_paths
+        .ensure_design_system_root(&system.storage_root_ref)
+        .map_err(|error| error.to_string())?;
+    let version_component = storage_paths.schema_version_component(&schema_version.id);
+    let generated_component = storage_paths.styleguide_item_component(&format!(
+        "{}:{}:{}",
+        artifact_kind.as_str(),
+        run.id.as_str(),
+        name.as_str()
+    ));
+    let artifact_path = storage_paths
+        .write_json_file(
+            &storage_root,
+            PathBuf::from("generated")
+                .join(&version_component)
+                .join(artifact_kind.as_str())
+                .join(format!("{generated_component}.json")),
+            &artifact_content,
+        )
+        .map_err(|error| error.to_string())?;
+    let artifact_id = create_design_file_artifact(
+        state,
+        format!("Design {}: {}", artifact_kind.as_str(), name.as_str()),
+        ArtifactType::DesignDoc,
+        &artifact_path,
+        Some(ArtifactId::from_string(
+            schema_version.schema_artifact_id.clone(),
+        )),
+    )
+    .await?;
+
+    let preview_content = build_generated_artifact_preview_json(
+        &system,
+        &schema_version,
+        artifact_kind,
+        &name,
+        &artifact_id,
+        source_item,
+        now,
+    );
+    let preview_path = storage_paths
+        .write_json_file(
+            &storage_root,
+            PathBuf::from("previews")
+                .join("generated")
+                .join(&version_component)
+                .join(format!("{generated_component}.json")),
+            &preview_content,
+        )
+        .map_err(|error| error.to_string())?;
+    let preview_artifact_id = create_design_file_artifact(
+        state,
+        format!(
+            "Design {} preview: {}",
+            artifact_kind.as_str(),
+            name.as_str()
+        ),
+        ArtifactType::DesignDoc,
+        &preview_path,
+        Some(ArtifactId::from_string(artifact_id.clone())),
+    )
+    .await?;
+
+    run.status = DesignRunStatus::Completed;
+    run.completed_at = Some(now);
+    run.output_artifact_ids = vec![artifact_id.clone(), preview_artifact_id.clone()];
+    state
+        .design_run_repo
+        .update(&run)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(GenerateDesignArtifactResponse {
+        design_system_id: design_system_id.as_str().to_string(),
+        schema_version_id: schema_version.id.as_str().to_string(),
+        run_id: run.id.as_str().to_string(),
+        artifact_id,
+        preview_artifact_id,
+        artifact_kind: artifact_kind.as_str().to_string(),
+        name,
+        created_at: now.to_rfc3339(),
+        content: artifact_content,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeneratedDesignArtifactKind {
+    Screen,
+    Component,
+}
+
+impl GeneratedDesignArtifactKind {
+    fn parse(value: &str) -> Result<Self, String> {
+        match value.trim() {
+            "screen" | "generate_screen" => Ok(Self::Screen),
+            "component" | "generate_component" => Ok(Self::Component),
+            other => Err(format!(
+                "Invalid design artifact kind: {other}. Expected screen or component"
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Screen => "screen",
+            Self::Component => "component",
+        }
+    }
+
+    fn run_kind(self) -> DesignRunKind {
+        match self {
+            Self::Screen => DesignRunKind::GenerateScreen,
+            Self::Component => DesignRunKind::GenerateComponent,
+        }
+    }
+
+    fn preferred_group(self) -> DesignStyleguideGroup {
+        match self {
+            Self::Screen => DesignStyleguideGroup::UiKit,
+            Self::Component => DesignStyleguideGroup::Components,
+        }
+    }
+
+    fn preview_kind(self) -> &'static str {
+        match self {
+            Self::Screen => "screen_artifact_preview",
+            Self::Component => "component_artifact_preview",
+        }
+    }
+}
+
+fn select_source_styleguide_item<'a>(
+    items: &'a [DesignStyleguideItem],
+    kind: GeneratedDesignArtifactKind,
+    source_item_id: Option<&str>,
+) -> Result<&'a DesignStyleguideItem, String> {
+    if let Some(source_item_id) = source_item_id {
+        return items
+            .iter()
+            .find(|item| item.item_id == source_item_id)
+            .ok_or_else(|| {
+                format!(
+                    "Design styleguide item not found for artifact generation: {source_item_id}"
+                )
+            });
+    }
+
+    items
+        .iter()
+        .find(|item| item.group == kind.preferred_group())
+        .or_else(|| items.first())
+        .ok_or_else(|| "Design system has no styleguide items to generate from".to_string())
+}
+
+fn build_generated_artifact_json(
+    system: &DesignSystem,
+    schema_version: &DesignSchemaVersion,
+    schema: &JsonValue,
+    source_item: &DesignStyleguideItem,
+    kind: GeneratedDesignArtifactKind,
+    name: &str,
+    brief: Option<&str>,
+    generated_at: chrono::DateTime<Utc>,
+) -> JsonValue {
+    json!({
+        "design_system_id": system.id.as_str(),
+        "schema_version_id": schema_version.id.as_str(),
+        "schema_artifact_id": schema_version.schema_artifact_id.as_str(),
+        "styleguide_artifact_id": schema_version.styleguide_artifact_id.as_str(),
+        "kind": kind.as_str(),
+        "name": name,
+        "brief": brief,
+        "generated_at": generated_at.to_rfc3339(),
+        "source_item": {
+            "item_id": source_item.item_id.as_str(),
+            "group": enum_text(&source_item.group),
+            "label": source_item.label.as_str(),
+            "summary": source_item.summary.as_str(),
+            "preview_artifact_id": source_item.preview_artifact_id.as_deref(),
+            "confidence": enum_text(&source_item.confidence),
+        },
+        "source_refs": &source_item.source_refs,
+        "schema_refs": {
+            "component_count": schema.get("components").and_then(JsonValue::as_array).map(Vec::len).unwrap_or(0),
+            "screen_pattern_count": schema.get("screen_patterns").and_then(JsonValue::as_array).map(Vec::len).unwrap_or(0),
+            "token_groups": {
+                "colors": schema.pointer("/tokens/colors").and_then(JsonValue::as_array).map(Vec::len).unwrap_or(0),
+                "typography": schema.pointer("/tokens/typography").and_then(JsonValue::as_array).map(Vec::len).unwrap_or(0),
+                "spacing": schema.pointer("/tokens/spacing").and_then(JsonValue::as_array).map(Vec::len).unwrap_or(0),
+            }
+        },
+        "artifact": {
+            "storage": "ralphx_owned",
+            "project_write_status": "not_written",
+            "review_status": "needs_review",
+            "handoff_status": "not_started",
+        },
+        "spec": generated_artifact_spec(kind, name, brief, source_item),
+    })
+}
+
+fn build_generated_artifact_preview_json(
+    system: &DesignSystem,
+    schema_version: &DesignSchemaVersion,
+    kind: GeneratedDesignArtifactKind,
+    name: &str,
+    artifact_id: &str,
+    source_item: &DesignStyleguideItem,
+    generated_at: chrono::DateTime<Utc>,
+) -> JsonValue {
+    json!({
+        "design_system_id": system.id.as_str(),
+        "schema_version_id": schema_version.id.as_str(),
+        "artifact_id": artifact_id,
+        "item_id": source_item.item_id.as_str(),
+        "group": enum_text(&source_item.group),
+        "label": name,
+        "summary": format!("{} artifact generated from {}", kind.as_str(), source_item.label),
+        "preview_kind": kind.preview_kind(),
+        "confidence": enum_text(&source_item.confidence),
+        "source_refs": &source_item.source_refs,
+        "generated_at": generated_at.to_rfc3339(),
+    })
+}
+
+fn generated_artifact_spec(
+    kind: GeneratedDesignArtifactKind,
+    name: &str,
+    brief: Option<&str>,
+    source_item: &DesignStyleguideItem,
+) -> JsonValue {
+    match kind {
+        GeneratedDesignArtifactKind::Screen => json!({
+            "screen_name": name,
+            "intent": brief.unwrap_or("Generate a screen aligned to the current design schema."),
+            "layout_pattern": source_item.item_id.as_str(),
+            "regions": [
+                "primary content",
+                "supporting controls",
+                "reviewable state"
+            ],
+            "states": ["empty", "loading", "ready", "error"],
+            "accessibility": [
+                "Preserve keyboard navigation.",
+                "Use semantic regions and visible focus states.",
+                "Keep generated copy concise and source-aligned."
+            ],
+        }),
+        GeneratedDesignArtifactKind::Component => json!({
+            "component_name": name,
+            "intent": brief.unwrap_or("Generate a component aligned to the current design schema."),
+            "component_pattern": source_item.item_id.as_str(),
+            "variants": ["primary", "secondary", "disabled"],
+            "states": ["default", "hover", "focus", "loading"],
+            "accessibility": [
+                "Expose accessible names for interactive controls.",
+                "Keep visible focus treatment aligned with the styleguide.",
+                "Do not rely on color alone for state."
+            ],
+        }),
+    }
+}
+
+fn enum_text<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 fn design_storage_paths_from_state(state: &AppState) -> Result<DesignStoragePaths, String> {
@@ -1252,6 +1631,105 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(path).expect("package json"))
                 .expect("parse package json");
         assert_eq!(package_json["redacted"].as_bool(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn generate_design_artifact_writes_schema_aligned_files_inside_storage() {
+        let state = AppState::new_test();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
+        let (design_system_id, _) = create_generated_design_system(&state, &storage_paths).await;
+
+        let response = generate_design_artifact_core(
+            &state,
+            &storage_paths,
+            GenerateDesignArtifactInput {
+                design_system_id: design_system_id.as_str().to_string(),
+                artifact_kind: "component".to_string(),
+                name: "Pricing cards".to_string(),
+                brief: Some("Show plan comparison with clear CTAs".to_string()),
+                source_item_id: Some("components.core_controls".to_string()),
+            },
+        )
+        .await
+        .expect("generate component artifact");
+
+        assert_eq!(response.design_system_id, design_system_id.as_str());
+        assert_eq!(response.artifact_kind, "component");
+        assert_eq!(response.name, "Pricing cards");
+        assert_eq!(
+            response.content["artifact"]["storage"].as_str(),
+            Some("ralphx_owned")
+        );
+        assert_eq!(
+            response.content["artifact"]["project_write_status"].as_str(),
+            Some("not_written")
+        );
+        assert_eq!(
+            response.content["source_item"]["item_id"].as_str(),
+            Some("components.core_controls")
+        );
+        assert!(response.content["source_refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|source_ref| {
+                source_ref
+                    .get("path")
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(|path| !Path::new(path).is_absolute())
+            }));
+
+        let generated_artifact = state
+            .artifact_repo
+            .get_by_id(&ArtifactId::from_string(response.artifact_id.clone()))
+            .await
+            .unwrap()
+            .expect("generated artifact");
+        assert_eq!(generated_artifact.artifact_type, ArtifactType::DesignDoc);
+        let generated_path = match generated_artifact.content {
+            ArtifactContent::File { path } => PathBuf::from(path),
+            ArtifactContent::Inline { .. } => panic!("expected generated file artifact"),
+        };
+        assert!(generated_path.starts_with(temp.path().canonicalize().unwrap()));
+        let generated_json: JsonValue =
+            serde_json::from_str(&std::fs::read_to_string(generated_path).expect("generated json"))
+                .expect("parse generated json");
+        assert_eq!(generated_json["kind"].as_str(), Some("component"));
+
+        let preview_artifact = state
+            .artifact_repo
+            .get_by_id(&ArtifactId::from_string(
+                response.preview_artifact_id.clone(),
+            ))
+            .await
+            .unwrap()
+            .expect("preview artifact");
+        assert_eq!(
+            preview_artifact.derived_from,
+            vec![ArtifactId::from_string(response.artifact_id.clone())]
+        );
+        let preview_path = match preview_artifact.content {
+            ArtifactContent::File { path } => PathBuf::from(path),
+            ArtifactContent::Inline { .. } => panic!("expected preview file artifact"),
+        };
+        assert!(preview_path.starts_with(temp.path().canonicalize().unwrap()));
+
+        let runs = state
+            .design_run_repo
+            .list_by_design_system(&design_system_id)
+            .await
+            .unwrap();
+        let generation_run = runs
+            .iter()
+            .find(|run| run.id.as_str() == response.run_id)
+            .expect("generation run");
+        assert_eq!(generation_run.kind, DesignRunKind::GenerateComponent);
+        assert_eq!(generation_run.status, DesignRunStatus::Completed);
+        assert_eq!(
+            generation_run.output_artifact_ids,
+            vec![response.artifact_id, response.preview_artifact_id]
+        );
     }
 
     #[tokio::test]

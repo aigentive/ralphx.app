@@ -10,6 +10,8 @@ import type {
   DesignSystemDetailResponse,
   DesignSystemResponse,
   ExportDesignSystemPackageResponse,
+  GenerateDesignArtifactInput,
+  GenerateDesignArtifactResponse,
   GenerateDesignSystemStyleguideResponse,
   ImportDesignSystemPackageInput,
   ImportDesignSystemPackageResponse,
@@ -244,6 +246,23 @@ export function useImportDesignSystemPackage() {
       });
       queryClient.invalidateQueries({
         queryKey: designSystemKeys.project(projectId),
+      });
+    },
+  });
+}
+
+export function useGenerateDesignArtifact() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    GenerateDesignArtifactResponse,
+    Error,
+    GenerateDesignArtifactInput
+  >({
+    mutationFn: (input) => api.design.generateArtifact(input),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({
+        queryKey: designSystemKeys.detail(response.designSystemId),
       });
     },
   });

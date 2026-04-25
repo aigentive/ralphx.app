@@ -48,6 +48,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentConversationWorkspaceRepository, AgentLaneSettingsRepository,
     AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, DelegatedSessionRepository,
+    DesignSystemRepository,
     ExecutionSettingsRepository,
     IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
@@ -61,6 +62,7 @@ use crate::domain::services::{
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_GENERAL_EXPLORER, AGENT_GENERAL_WORKER,
 };
+use crate::infrastructure::memory::MemoryDesignSystemRepository;
 use async_trait::async_trait;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -551,6 +553,7 @@ pub struct AppChatService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
+    design_system_repo: Arc<dyn DesignSystemRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
@@ -622,6 +625,7 @@ impl<R: Runtime> AppChatService<R> {
             task_repo,
             task_dependency_repo,
             delegated_session_repo,
+            design_system_repo: Arc::new(MemoryDesignSystemRepository::new()),
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
             ideation_effort_settings_repo: None,
@@ -682,6 +686,11 @@ impl<R: Runtime> AppChatService<R> {
         repo: Arc<dyn IdeationModelSettingsRepository>,
     ) -> Self {
         self.ideation_model_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_design_system_repo(mut self, repo: Arc<dyn DesignSystemRepository>) -> Self {
+        self.design_system_repo = repo;
         self
     }
 
@@ -1201,6 +1210,7 @@ impl<R: Runtime> AppChatService<R> {
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
             Arc::clone(&self.delegated_session_repo),
+            Arc::clone(&self.design_system_repo),
             &self.default_working_directory,
         )
         .await
@@ -2362,6 +2372,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
             Arc::clone(&self.delegated_session_repo),
+            Arc::clone(&self.design_system_repo),
         )
         .await;
 
@@ -2665,6 +2676,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
                 delegated_session_repo: Arc::clone(&self.delegated_session_repo),
+                design_system_repo: Arc::clone(&self.design_system_repo),
                 execution_settings_repo: self.execution_settings_repo.clone(),
                 agent_lane_settings_repo: self.agent_lane_settings_repo.clone(),
                 ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),
