@@ -3,15 +3,18 @@ import { useQueries } from "@tanstack/react-query";
 
 import { chatApi } from "@/api/chat";
 
+export const archivedConversationCountKey = (projectId: string) =>
+  [
+    "agents",
+    "project-conversations",
+    projectId,
+    "archived-count",
+  ] as const;
+
 export function useArchivedConversationCounts(projectIds: string[]) {
   const archivedCountQueries = useQueries({
     queries: projectIds.map((projectId) => ({
-      queryKey: [
-        "agents",
-        "project-conversations",
-        projectId,
-        "archived-count",
-      ] as const,
+      queryKey: archivedConversationCountKey(projectId),
       queryFn: () =>
         chatApi.listConversationsPage(
           "project",

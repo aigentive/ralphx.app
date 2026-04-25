@@ -151,7 +151,7 @@ export const IDEATION_TOOLS: Tool[] = [
   {
     name: "update_session_title",
     description:
-      "Update the title of an ideation session or an agent conversation. Used by ralphx-utility-session-namer to persist auto-generated titles.",
+      "Update the title of an ideation session or an agent conversation. Used by ralphx-utility-session-namer to persist auto-generated titles. Provide exactly one of session_id or conversation_id.",
     inputSchema: {
       type: "object",
       properties: {
@@ -169,7 +169,6 @@ export const IDEATION_TOOLS: Tool[] = [
         },
       },
       required: ["title"],
-      oneOf: [{ required: ["session_id"] }, { required: ["conversation_id"] }],
     },
   },
   {

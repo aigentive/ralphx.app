@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -249,11 +250,14 @@ function renderWithProviders(ui: ReactNode) {
     },
   });
 
-  return render(
+  return {
+    ...render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>{ui}</TooltipProvider>
     </QueryClientProvider>
-  );
+    ),
+    queryClient,
+  };
 }
 
 function mockSidebarBreakpoint({ isLarge, isMedium }: { isLarge: boolean; isMedium: boolean }) {
@@ -704,9 +708,10 @@ describe("AgentsView", () => {
   });
 
   it("starts a new conversation directly from the starter composer and triggers the session namer", async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
     mockAgentViewData();
 
-    renderAgentsView();
+    const { queryClient } = renderAgentsView();
 
     fireEvent.change(screen.getByTestId("agents-start-textarea"), {
       target: { value: "fix agent landing flow" },
@@ -734,6 +739,131 @@ describe("AgentsView", () => {
         "fix agent landing flow"
       )
     );
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("agents-start-composer")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent(
+      "agent-conversation-2"
+    );
+    expect(useAgentSessionStore.getState().selectedConversationId).toBe("conversation-2");
+    expect(queryClient.getQueryData(["chat", "conversations", "conversation-2"])).toEqual({
+      conversation: expect.objectContaining({ id: "conversation-2" }),
+      messages: [],
+    });
+    expect(
+      queryClient.getQueryData(["agents", "conversation-workspace", "conversation-2"])
+    ).toEqual(expect.objectContaining({ conversationId: "conversation-2" }));
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ["agents", "project-conversations", "project-1"],
+      })
+    );
+    invalidateSpy.mockRestore();
+  });
+
+  it("starts a chat-mode conversation from the selected base and shows its workspace", async () => {
+    mockAgentViewData();
+    startAgentConversationMock.mockResolvedValue({
+      conversation: conversation({
+        id: "conversation-chat",
+        contextId: "project-1",
+        title: "Branch question",
+        agentMode: "chat",
+      }),
+      workspace: {
+        conversationId: "conversation-chat",
+        projectId: "project-1",
+        mode: "chat",
+        baseRefKind: "project_default",
+        baseRef: "main",
+        baseDisplayName: "Project default (main)",
+        baseCommit: null,
+        branchName: "ralphx/demo/agent-conversation-chat",
+        worktreePath: "/tmp/ralphx/conversation-chat",
+        linkedIdeationSessionId: null,
+        linkedPlanBranchId: null,
+        publicationPrNumber: null,
+        publicationPrUrl: null,
+        publicationPrStatus: null,
+        publicationPushStatus: null,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      sendResult: {
+        conversationId: "conversation-chat",
+        agentRunId: "run-chat",
+        isNewConversation: true,
+        wasQueued: false,
+        queuedAsPending: false,
+        queuedMessageId: null,
+      },
+    });
+
+    renderAgentsView();
+
+    fireEvent.click(screen.getByTestId("agents-start-mode"));
+    fireEvent.click(screen.getByText("Chat"));
+    expect(screen.getByTestId("agents-start-base")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("agents-start-textarea"), {
+      target: { value: "what branch am I on?" },
+    });
+    fireEvent.click(screen.getByTestId("agents-start-submit"));
+
+    await waitFor(() =>
+      expect(startAgentConversationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          content: "what branch am I on?",
+          mode: "chat",
+          base: expect.objectContaining({
+            kind: "project_default",
+            ref: "main",
+          }),
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent(
+      "agent-conversation-chat"
+    );
+  });
+
+  it("archives the selected conversation, clears the active view, and refreshes archived counts", async () => {
+    const user = userEvent.setup();
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    mockAgentViewData();
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("integrated-chat-panel")).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole("button", { name: "Session actions" }));
+    await user.click(await screen.findByText("Archive session"));
+    await user.click(screen.getByRole("button", { name: "Archive session" }));
+
+    await waitFor(() =>
+      expect(archiveConversationMock).toHaveBeenCalledWith("conversation-1")
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-start-composer")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("integrated-chat-panel")).not.toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ["agents", "project-conversations", "project-1", "archived-count"],
+        refetchType: "active",
+      })
+    );
+
+    invalidateSpy.mockRestore();
   });
 
   it("uploads starter attachments against a seeded conversation before sending the first message", async () => {

@@ -458,8 +458,7 @@ export async function mockStartAgentConversation(
     queuedAsPending: false,
   };
 
-  const workspace =
-    mode === "chat" ? null : createMockWorkspace(modeConversation, input.projectId, mode, input.base);
+  const workspace = createMockWorkspace(modeConversation, input.projectId, mode, input.base);
   if (workspace) {
     mockWorkspaces.set(conversation.id, workspace);
   }
@@ -489,17 +488,15 @@ export async function mockSwitchAgentConversationMode(
   mockConversations.set(input.conversationId, updatedConversation);
 
   let workspace = mockWorkspaces.get(input.conversationId) ?? null;
-  if (input.mode !== "chat") {
-    workspace = workspace
-      ? { ...workspace, mode: input.mode, updatedAt: updatedConversation.updatedAt }
-      : createMockWorkspace(
-          updatedConversation,
-          updatedConversation.contextId,
-          input.mode,
-          input.base
-        );
-    mockWorkspaces.set(input.conversationId, workspace);
-  }
+  workspace = workspace
+    ? { ...workspace, mode: input.mode, updatedAt: updatedConversation.updatedAt }
+    : createMockWorkspace(
+        updatedConversation,
+        updatedConversation.contextId,
+        input.mode,
+        input.base
+      );
+  mockWorkspaces.set(input.conversationId, workspace);
 
   return {
     conversation: updatedConversation,
@@ -510,7 +507,7 @@ export async function mockSwitchAgentConversationMode(
 function createMockWorkspace(
   conversation: ChatConversation,
   projectId: string,
-  mode: Exclude<StartAgentConversationInput["mode"], "chat" | undefined>,
+  mode: Exclude<StartAgentConversationInput["mode"], undefined>,
   base: StartAgentConversationInput["base"]
 ): AgentConversationWorkspace {
   return {

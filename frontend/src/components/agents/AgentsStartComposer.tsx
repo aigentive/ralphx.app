@@ -241,7 +241,7 @@ export function AgentsStartComposer({
         content: message.trim(),
         runtime: { provider, modelId },
         mode,
-        base: mode === "chat" ? null : (selectedStartFrom?.selection ?? fallbackStartFrom),
+        base: selectedStartFrom?.selection ?? fallbackStartFrom,
         files: attachments.map((attachment) => attachment.file),
       });
       setContent("");
@@ -381,18 +381,16 @@ export function AgentsStartComposer({
             }}
           />
 
-          {mode !== "chat" && (
-            <div className="mt-3 flex w-full justify-end px-2">
-              <BranchBasePicker
-                value={selectedStartFromKey}
-                onValueChange={setSelectedStartFromKey}
-                options={startFromOptions}
-                placeholder={isLoadingStartFrom ? "Loading branch..." : "Base branch"}
-                disabled={isLoadingStartFrom || startFromOptions.length === 0}
-                testId="agents-start-base"
-              />
-            </div>
-          )}
+          <div className="mt-3 flex w-full justify-end px-2">
+            <BranchBasePicker
+              value={selectedStartFromKey}
+              onValueChange={setSelectedStartFromKey}
+              options={startFromOptions}
+              placeholder={isLoadingStartFrom ? "Loading branch..." : "Base branch"}
+              disabled={isLoadingStartFrom || startFromOptions.length === 0}
+              testId="agents-start-base"
+            />
+          </div>
 
           {error && (
             <div

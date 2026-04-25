@@ -315,9 +315,12 @@ mod v20260424150000_agent_conversation_workspaces;
 mod v20260424193000_chat_conversation_agent_mode;
 #[cfg(test)]
 mod v20260424193000_chat_conversation_agent_mode_tests;
+mod v20260425154500_agent_workspace_chat_mode;
+#[cfg(test)]
+mod v20260425154500_agent_workspace_chat_mode_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260424193000;
+pub const SCHEMA_VERSION: i64 = 20260425154500;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -901,6 +904,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260424193000,
         name: "chat_conversation_agent_mode",
         migrate: v20260424193000_chat_conversation_agent_mode::migrate,
+    },
+    Migration {
+        version: 20260425154500,
+        name: "agent_workspace_chat_mode",
+        migrate: v20260425154500_agent_workspace_chat_mode::migrate,
     },
 ];
 

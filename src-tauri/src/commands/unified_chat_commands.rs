@@ -103,7 +103,7 @@ pub struct StartAgentConversationInput {
     pub provider_harness: Option<String>,
     /// Optional explicit model override for the spawned agent.
     pub model_override: Option<String>,
-    /// Agent mode: "chat" routes to read-only explorer; "edit" creates a workspace for ralphx-general-worker; "ideation" creates a workspace for ralphx-chat-project.
+    /// Agent mode: "chat" routes to read-only explorer; all modes create a selected-base workspace for the runtime CWD.
     pub mode: Option<String>,
     /// Optional base ref kind using ideation naming: project_default, current_branch, local_branch.
     pub base_ref_kind: Option<String>,
@@ -778,7 +778,30 @@ fn agent_name_for_workspace_mode(mode: AgentConversationWorkspaceMode) -> &'stat
 }
 
 fn agent_mode_requires_workspace(mode: AgentConversationWorkspaceMode) -> bool {
-    !matches!(mode, AgentConversationWorkspaceMode::Chat)
+    matches!(
+        mode,
+        AgentConversationWorkspaceMode::Chat
+            | AgentConversationWorkspaceMode::Edit
+            | AgentConversationWorkspaceMode::Ideation
+    )
+}
+
+#[cfg(test)]
+mod agent_mode_workspace_tests {
+    use super::*;
+
+    #[test]
+    fn all_agent_conversation_modes_require_workspace() {
+        assert!(agent_mode_requires_workspace(
+            AgentConversationWorkspaceMode::Chat
+        ));
+        assert!(agent_mode_requires_workspace(
+            AgentConversationWorkspaceMode::Edit
+        ));
+        assert!(agent_mode_requires_workspace(
+            AgentConversationWorkspaceMode::Ideation
+        ));
+    }
 }
 
 fn build_agent_workspace_commit_message(conversation: &ChatConversation) -> String {

@@ -95,6 +95,7 @@ import {
   agentConversationKeys,
   useProjectAgentConversations,
 } from "./useProjectAgentConversations";
+import { archivedConversationCountKey } from "./useArchivedConversationCounts";
 import { resolveAttachedIdeationSessionId } from "./attachedIdeationSession";
 import { useAgentConversationTitleEvents } from "./useAgentConversationTitleEvents";
 import { useProjectAgentBridgeEvents } from "./useProjectAgentBridgeEvents";
@@ -139,6 +140,13 @@ export function AgentsView({
   const [publishingConversationId, setPublishingConversationId] = useState<string | null>(null);
   const [switchingConversationModeId, setSwitchingConversationModeId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [optimisticConversationsById, setOptimisticConversationsById] = useState<
+    Record<string, AgentConversation>
+  >({});
+  const [optimisticWorkspacesByConversationId, setOptimisticWorkspacesByConversationId] =
+    useState<Record<string, AgentConversationWorkspace>>({});
+  const [optimisticSelectedConversationId, setOptimisticSelectedConversationId] =
+    useState<string | null>(null);
   const [artifactPanelWidth, setArtifactPanelWidth] = useState<number | null>(() => {
     const saved = window.localStorage.getItem(AGENTS_ARTIFACT_WIDTH_STORAGE_KEY);
     if (!saved) {
@@ -173,7 +181,8 @@ export function AgentsView({
 
   const focusedProjectId = useAgentSessionStore((s) => s.focusedProjectId);
   const selectedProjectId = useAgentSessionStore((s) => s.selectedProjectId);
-  const selectedConversationId = useAgentSessionStore((s) => s.selectedConversationId);
+  const storedSelectedConversationId = useAgentSessionStore((s) => s.selectedConversationId);
+  const selectedConversationId = storedSelectedConversationId ?? optimisticSelectedConversationId;
   const runtimeByConversationId = useAgentSessionStore((s) => s.runtimeByConversationId);
   const lastRuntimeByProjectId = useAgentSessionStore((s) => s.lastRuntimeByProjectId);
   const setFocusedProject = useAgentSessionStore((s) => s.setFocusedProject);
@@ -183,6 +192,10 @@ export function AgentsView({
   const setArtifactOpen = useAgentSessionStore((s) => s.setArtifactOpen);
   const setArtifactTab = useAgentSessionStore((s) => s.setArtifactTab);
   const setTaskArtifactMode = useAgentSessionStore((s) => s.setTaskArtifactMode);
+  const clearAgentConversationSelection = useCallback(() => {
+    setOptimisticSelectedConversationId(null);
+    clearSelection();
+  }, [clearSelection]);
   const terminalOpenByConversationId = useAgentTerminalStore((s) => s.openByConversationId);
   const terminalHeightByConversationId = useAgentTerminalStore((s) => s.heightByConversationId);
   const setTerminalOpen = useAgentTerminalStore((s) => s.setOpen);
@@ -206,19 +219,37 @@ export function AgentsView({
   const selectedConversationFallback = useMemo(() => {
     const conversation = selectedConversationData?.conversation;
     const isArchivedConversation = Boolean(conversation?.archivedAt);
+    if (conversation) {
+      if (
+        conversation.id !== selectedConversationId ||
+        conversation.contextType !== "project" ||
+        conversation.contextId !== activeProjectId ||
+        (showArchived ? !isArchivedConversation : isArchivedConversation)
+      ) {
+        return null;
+      }
+
+      return toProjectAgentConversation(conversation);
+    }
+
+    const optimisticConversation = selectedConversationId
+      ? optimisticConversationsById[selectedConversationId]
+      : null;
     if (
-      !conversation ||
-      conversation.id !== selectedConversationId ||
-      conversation.contextType !== "project" ||
-      conversation.contextId !== activeProjectId ||
-      (showArchived ? !isArchivedConversation : isArchivedConversation)
+      !optimisticConversation ||
+      optimisticConversation.contextType !== "project" ||
+      optimisticConversation.contextId !== activeProjectId ||
+      (showArchived
+        ? !optimisticConversation.archivedAt
+        : Boolean(optimisticConversation.archivedAt))
     ) {
       return null;
     }
 
-    return toProjectAgentConversation(conversation);
+    return optimisticConversation;
   }, [
     activeProjectId,
+    optimisticConversationsById,
     selectedConversationData,
     selectedConversationId,
     showArchived,
@@ -387,7 +418,11 @@ export function AgentsView({
       null
     : null;
   const normalizedActiveRuntime = normalizeRuntimeSelection(activeRuntime);
-  const activeWorkspace = conversationWorkspaceQuery.data ?? null;
+  const activeWorkspace =
+    conversationWorkspaceQuery.data ??
+    (selectedConversationId
+      ? optimisticWorkspacesByConversationId[selectedConversationId] ?? null
+      : null);
   const activeConversationMode =
     activeConversation?.contextType === "project"
       ? resolveConversationAgentMode(activeConversation, activeWorkspace)
@@ -413,8 +448,8 @@ export function AgentsView({
     }
     syncedProjectIdRef.current = projectId;
     setFocusedProject(projectId);
-    clearSelection();
-  }, [clearSelection, projectId, setFocusedProject]);
+    clearAgentConversationSelection();
+  }, [clearAgentConversationSelection, projectId, setFocusedProject]);
 
   useEffect(() => {
     if (
@@ -429,11 +464,11 @@ export function AgentsView({
       (conversation) => conversation.id === selectedConversationId
     );
     if (selectedStillExists === false && !selectedConversationFallback) {
-      clearSelection();
+      clearAgentConversationSelection();
     }
   }, [
     activeProjectId,
-    clearSelection,
+    clearAgentConversationSelection,
     focusedConversations.data,
     focusedConversations.isLoading,
     selectedConversationFallback,
@@ -488,10 +523,11 @@ export function AgentsView({
         selectedProjectId === conversationProjectId &&
         selectedConversationId === conversation.id
       ) {
-        clearSelection();
+        clearAgentConversationSelection();
         return;
       }
 
+      setOptimisticSelectedConversationId(conversation.id);
       selectConversation(conversationProjectId, conversation.id);
       setActiveConversation(
         getAgentConversationStoreKey(conversation),
@@ -499,7 +535,7 @@ export function AgentsView({
       );
     },
     [
-      clearSelection,
+      clearAgentConversationSelection,
       selectConversation,
       selectedConversationId,
       selectedProjectId,
@@ -528,9 +564,16 @@ export function AgentsView({
       if (nextProjectId) {
         setFocusedProject(nextProjectId);
       }
-      clearSelection();
+      clearAgentConversationSelection();
     },
-    [clearSelection, focusedProjectId, projectId, projects, selectedProjectId, setFocusedProject]
+    [
+      clearAgentConversationSelection,
+      focusedProjectId,
+      projectId,
+      projects,
+      selectedProjectId,
+      setFocusedProject,
+    ]
   );
 
   const invalidateProjectConversations = useCallback(
@@ -541,6 +584,10 @@ export function AgentsView({
         }),
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversationList("project", targetProjectId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: archivedConversationCountKey(targetProjectId),
+          refetchType: "active",
         }),
         queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() }),
       ]);
@@ -649,7 +696,28 @@ export function AgentsView({
         ...(base ? { base } : {}),
       });
       const resolvedConversationId = result.conversation.id;
+      const optimisticConversation = toProjectAgentConversation(result.conversation);
 
+      setOptimisticConversationsById((current) => ({
+        ...current,
+        [resolvedConversationId]: optimisticConversation,
+      }));
+      const optimisticWorkspace = result.workspace;
+      if (optimisticWorkspace) {
+        setOptimisticWorkspacesByConversationId((current) => ({
+          ...current,
+          [resolvedConversationId]: optimisticWorkspace,
+        }));
+      }
+      queryClient.setQueryData(chatKeys.conversation(resolvedConversationId), {
+        conversation: result.conversation,
+        messages: [],
+      });
+      queryClient.setQueryData(
+        ["agents", "conversation-workspace", resolvedConversationId],
+        optimisticWorkspace ?? null,
+      );
+      setOptimisticSelectedConversationId(resolvedConversationId);
       setFocusedProject(targetProjectId);
       setRuntimeForConversation(resolvedConversationId, targetProjectId, normalizedRuntime);
       selectConversation(targetProjectId, resolvedConversationId);
@@ -772,7 +840,7 @@ export function AgentsView({
           setFocusedProject(null);
         }
         if (selectedProjectId === targetProjectId) {
-          clearSelection();
+          clearAgentConversationSelection();
         }
         await queryClient.invalidateQueries({ queryKey: projectKeys.list() });
       } catch (err) {
@@ -780,7 +848,7 @@ export function AgentsView({
       }
     },
     [
-      clearSelection,
+      clearAgentConversationSelection,
       focusedProjectId,
       queryClient,
       selectedProjectId,
@@ -796,14 +864,14 @@ export function AgentsView({
         }
         await chatApi.archiveConversation(conversation.id);
         if (selectedConversationId === conversation.id) {
-          clearSelection();
+          clearAgentConversationSelection();
         }
         await invalidateProjectConversations(conversation.projectId);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to archive session");
       }
     },
-    [clearSelection, invalidateProjectConversations, selectedConversationId]
+    [clearAgentConversationSelection, invalidateProjectConversations, selectedConversationId]
   );
 
   const handleRestoreConversation = useCallback(

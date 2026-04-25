@@ -639,7 +639,7 @@ describe("chat api", () => {
     });
   });
 
-  it("starts chat-mode agent conversations without a workspace", async () => {
+  it("starts chat-mode agent conversations with a selected workspace base", async () => {
     mockInvoke.mockResolvedValue({
       conversation: {
         id: "conversation-chat",
@@ -656,7 +656,26 @@ describe("chat api", () => {
         updated_at: "2026-01-24T10:00:00Z",
         archived_at: null,
       },
-      workspace: null,
+      workspace: {
+        conversation_id: "conversation-chat",
+        project_id: "project-1",
+        mode: "chat",
+        base_ref_kind: "current_branch",
+        base_ref: "feature/agent-screen",
+        base_display_name: "Current branch (feature/agent-screen)",
+        base_commit: null,
+        branch_name: "ralphx/demo/agent-conversation-chat",
+        worktree_path: "/tmp/ralphx/conversation-chat",
+        linked_ideation_session_id: null,
+        linked_plan_branch_id: null,
+        publication_pr_number: null,
+        publication_pr_url: null,
+        publication_pr_status: null,
+        publication_push_status: null,
+        status: "active",
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
       send_result: {
         conversation_id: "conversation-chat",
         agent_run_id: "run-chat",
@@ -668,6 +687,11 @@ describe("chat api", () => {
       projectId: "project-1",
       content: "What changed?",
       mode: "chat",
+      base: {
+        kind: "current_branch",
+        ref: "feature/agent-screen",
+        displayName: "Current branch (feature/agent-screen)",
+      },
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("start_agent_conversation", {
@@ -675,10 +699,17 @@ describe("chat api", () => {
         projectId: "project-1",
         content: "What changed?",
         mode: "chat",
+        baseRefKind: "current_branch",
+        baseRef: "feature/agent-screen",
+        baseDisplayName: "Current branch (feature/agent-screen)",
       },
     });
     expect(result.conversation.agentMode).toBe("chat");
-    expect(result.workspace).toBeNull();
+    expect(result.workspace).toMatchObject({
+      mode: "chat",
+      baseRefKind: "current_branch",
+      baseRef: "feature/agent-screen",
+    });
   });
 
   it("switches an existing agent conversation mode", async () => {

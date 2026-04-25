@@ -238,6 +238,16 @@ describe('formatToolErrorMessage', () => {
   });
 });
 
+describe('tool input schemas', () => {
+  it('do not expose top-level JSON schema combinators rejected by Claude tools', () => {
+    for (const tool of getAllTools()) {
+      expect(tool.inputSchema, `${tool.name} inputSchema`).not.toHaveProperty('oneOf');
+      expect(tool.inputSchema, `${tool.name} inputSchema`).not.toHaveProperty('allOf');
+      expect(tool.inputSchema, `${tool.name} inputSchema`).not.toHaveProperty('anyOf');
+    }
+  });
+});
+
 describe('getFilteredTools', () => {
   beforeEach(() => {
     delete process.env.RALPHX_ALLOWED_MCP_TOOLS;
