@@ -6,8 +6,9 @@ use sha2::{Digest, Sha256};
 use crate::application::git_service::GitService;
 use crate::domain::entities::{
     AgentConversationWorkspace, AgentConversationWorkspaceMode, ChatConversationId,
-    IdeationAnalysisBaseRefKind, Project,
+    IdeationAnalysisBaseRefKind, Project, Task,
 };
+use crate::domain::state_machine::transition_handler::run_pre_execution_setup;
 use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Default)]
@@ -90,6 +91,8 @@ pub async fn prepare_agent_conversation_workspace(
     let worktree_path = resolve_agent_conversation_workspace_path(project, conversation_id)?;
 
     ensure_agent_conversation_worktree(&repo_path, &worktree_path, &branch_name, &base_ref).await?;
+    run_agent_conversation_workspace_setup(project, conversation_id, &worktree_path, &branch_name)
+        .await;
     let base_commit = GitService::get_head_sha(&worktree_path).await.ok();
 
     Ok(AgentConversationWorkspace {
@@ -112,6 +115,51 @@ pub async fn prepare_agent_conversation_workspace(
         created_at: Utc::now(),
         updated_at: Utc::now(),
     })
+}
+
+async fn run_agent_conversation_workspace_setup(
+    project: &Project,
+    conversation_id: &ChatConversationId,
+    worktree_path: &Path,
+    branch_name: &str,
+) {
+    let conversation_id_str = conversation_id.as_str();
+    let mut setup_task = Task::new(
+        project.id.clone(),
+        format!("Agent conversation {conversation_id_str}"),
+    );
+    setup_task.task_branch = Some(branch_name.to_string());
+    setup_task.worktree_path = Some(worktree_path.to_string_lossy().to_string());
+
+    let Some(result) = run_pre_execution_setup(
+        project,
+        &setup_task,
+        worktree_path,
+        &conversation_id_str,
+        None,
+        "agent_conversation_setup",
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    else {
+        return;
+    };
+
+    if result.success {
+        tracing::info!(
+            conversation_id = %conversation_id,
+            worktree_path = %worktree_path.display(),
+            command_count = result.log.len(),
+            "Agent conversation worktree setup completed"
+        );
+    } else {
+        tracing::warn!(
+            conversation_id = %conversation_id,
+            worktree_path = %worktree_path.display(),
+            command_count = result.log.len(),
+            "Agent conversation worktree setup had failures; continuing with workspace launch"
+        );
+    }
 }
 
 pub fn agent_conversation_branch_name(
@@ -282,5 +330,79 @@ fn slug_branch_component(value: &str) -> String {
         "project".to_string()
     } else {
         slug
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::{
+        AgentConversationWorkspaceMode, ChatConversationId, IdeationAnalysisBaseRefKind, Project,
+    };
+    use std::process::Command;
+
+    fn git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .expect("git command should spawn");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}{}",
+            args,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn setup_repo(root: &Path) {
+        std::fs::create_dir_all(root).expect("repo root should be created");
+        git(root, &["init", "-b", "main"]);
+        git(root, &["config", "user.email", "test@example.com"]);
+        git(root, &["config", "user.name", "Test User"]);
+        std::fs::write(root.join("README.md"), "hello\n").expect("fixture file should be written");
+        git(root, &["add", "README.md"]);
+        git(root, &["commit", "-m", "initial"]);
+    }
+
+    #[tokio::test]
+    async fn prepare_agent_conversation_workspace_runs_project_worktree_setup() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let repo_path = temp.path().join("repo");
+        let worktree_parent = temp.path().join("worktrees");
+        setup_repo(&repo_path);
+
+        let mut project = Project::new(
+            "Agent Setup".to_string(),
+            repo_path.to_string_lossy().to_string(),
+        );
+        project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
+        project.custom_analysis = Some(
+            r#"[{"path": ".", "label": "Agent setup", "worktree_setup": ["touch .agent_setup_marker"]}]"#
+                .to_string(),
+        );
+
+        let conversation_id =
+            ChatConversationId::from_string("conversation-setup-test".to_string());
+        let workspace = prepare_agent_conversation_workspace(
+            &project,
+            &conversation_id,
+            AgentConversationWorkspaceMode::Edit,
+            AgentConversationWorkspaceBaseSelection {
+                kind: Some(IdeationAnalysisBaseRefKind::ProjectDefault),
+                base_ref: Some("main".to_string()),
+                display_name: None,
+            },
+        )
+        .await
+        .expect("workspace should be prepared");
+
+        assert!(
+            Path::new(&workspace.worktree_path)
+                .join(".agent_setup_marker")
+                .exists(),
+            "agent conversation worktree should run project worktree_setup commands"
+        );
     }
 }
