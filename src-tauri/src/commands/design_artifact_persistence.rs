@@ -342,7 +342,12 @@ fn caveats_json(items: &[DesignStyleguideItem]) -> Vec<JsonValue> {
             json!({
                 "item_id": item.item_id.as_str(),
                 "severity": "medium",
+                "title": format!("Source review needed: {}", item.label),
                 "summary": "Only fallback source references matched this row; review before treating it as canonical.",
+                "body": format!(
+                    "{} used fallback source references because no direct source match was found in the selected paths. Review its sources before approving it.",
+                    item.label
+                ),
             })
         })
         .collect()

@@ -23,15 +23,27 @@ export function DesignComposerSurface({
     );
   }
 
+  const sourceLabel = selectedDesignSystem.sourceCount === 1 ? "source" : "sources";
+  const statusLabel = selectedDesignSystem.status.replace("_", " ");
+
   return (
-    <section className="h-full min-w-0" data-testid="design-composer-surface">
+    <section
+      className="h-full min-w-0"
+      data-testid="design-composer-surface"
+      data-design-system-id={selectedDesignSystem.id}
+      data-conversation-id={selectedDesignSystem.conversationId ?? ""}
+    >
       <IntegratedChatPanel
+        key={selectedDesignSystem.id}
         projectId={selectedDesignSystem.primaryProjectId}
         designSystemId={selectedDesignSystem.id}
         conversationIdOverride={selectedDesignSystem.conversationId ?? undefined}
         selectedTaskIdOverride={null}
         storeContextKeyOverride={buildStoreKey("design", selectedDesignSystem.id)}
         agentProcessContextIdOverride={selectedDesignSystem.id}
+        {...(selectedDesignSystem.conversationId
+          ? { sendOptions: { conversationId: selectedDesignSystem.conversationId } }
+          : {})}
         hideHeaderSessionControls
         hideSessionToolbar
         autoFocusInput={false}
@@ -41,24 +53,15 @@ export function DesignComposerSurface({
             <div className="text-[13px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
               {selectedDesignSystem.name}
             </div>
-            <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-              {selectedDesignSystem.status.replace("_", " ")} / {selectedDesignSystem.sourceCount} sources
+            <div
+              className="truncate text-[11px]"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="design-chat-context"
+            >
+              Design steward · {statusLabel} · {selectedDesignSystem.sourceCount} {sourceLabel}
             </div>
           </div>
         }
-        renderComposer={() => (
-          <div
-            className="rounded-lg border px-3 py-2 text-[12px]"
-            style={{
-              borderColor: "var(--overlay-weak)",
-              color: "var(--text-muted)",
-              background: "var(--bg-surface)",
-            }}
-            data-testid="design-chat-runtime-pending"
-          >
-            Review notes appear here while this draft is being prepared.
-          </div>
-        )}
       />
     </section>
   );

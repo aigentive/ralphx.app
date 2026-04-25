@@ -144,10 +144,11 @@ Click **Create Project**. RalphX validates the repository, creates its internal 
 
 ## Navigating the Interface
 
-RalphX has six main views, accessible from the left sidebar.
+RalphX has several main views, accessible from the left sidebar.
 
 | View | Path | Purpose |
 |------|------|---------|
+| **Design** | `/design` | Create, review, export, and reuse source-grounded design systems |
 | **Kanban** | `/kanban` | Primary task board — columns track execution state |
 | **Graph** | `/graph` | Dependency graph — see how tasks relate and block each other |
 | **Ideation** | `/ideation` | Create features — describe what to build, get a structured plan |
@@ -292,6 +293,7 @@ The task moves to **Merged**. The merge commit SHA is shown in the task detail v
 
 | Guide | What it covers |
 |-------|---------------|
+| [Design Systems](design-systems.md) | Generate, review, export, import, and reuse source-grounded design systems |
 | [Ideation Studio](ideation-studio.md) | Session modes, team configuration, plan artifacts, task creation |
 | [Kanban Board](kanban.md) | Board layout, task cards, drag-and-drop transitions, filtering |
 | [Graph View](graph-view.md) | Dependency graph, critical path, timeline panel, battle mode |

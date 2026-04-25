@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::application::AppState;
 use crate::commands::design_artifact_persistence::persist_design_generation_artifacts;
@@ -259,8 +259,42 @@ pub async fn generate_design_system_styleguide(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<GenerateDesignSystemStyleguideResponse, String> {
-    let storage_paths = design_storage_paths_from_state(&state)?;
-    let response = generate_design_system_styleguide_core(&state, &storage_paths, input).await?;
+    let design_system_id = input.design_system_id.clone();
+    let storage_paths = match design_storage_paths_from_state(&state) {
+        Ok(paths) => paths,
+        Err(error) => {
+            warn!(
+                %error,
+                design_system_id = %design_system_id,
+                "Failed to prepare design styleguide storage"
+            );
+            return Err(error);
+        }
+    };
+    let response = match generate_design_system_styleguide_core(&state, &storage_paths, input).await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            warn!(
+                %error,
+                design_system_id = %design_system_id,
+                "Failed to generate design styleguide"
+            );
+            return Err(error);
+        }
+    };
+    info!(
+        design_system_id = %design_system_id,
+        schema_version_id = %response.schema_version_id,
+        run_id = %response.run_id,
+        item_count = response.items.len(),
+        caveat_count = response
+            .items
+            .iter()
+            .filter(|item| item.confidence == "low")
+            .count(),
+        "Generated design styleguide"
+    );
     let _ = app.emit("design:schema_published", &response);
     Ok(response)
 }
@@ -1047,6 +1081,80 @@ mod tests {
             .output_artifact_ids
             .contains(&current_schema.styleguide_artifact_id));
         assert!(!project_root.path().join("design-systems").exists());
+    }
+
+    #[tokio::test]
+    async fn generate_design_system_styleguide_core_names_low_confidence_caveats() {
+        let state = AppState::new_test();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
+        let project_root = tempfile::tempdir().expect("project tempdir");
+        write_project_file(
+            project_root.path(),
+            "frontend/src/components/ui/button.tsx",
+            "export function Button() {}\n",
+        );
+        let project = Project::new(
+            "RalphX".to_string(),
+            project_root.path().to_string_lossy().to_string(),
+        );
+        state.project_repo.create(project.clone()).await.unwrap();
+
+        let draft = create_design_system_core(
+            &state,
+            &storage_paths,
+            CreateDesignSystemInput {
+                primary_project_id: project.id.as_str().to_string(),
+                name: "Product UI".to_string(),
+                description: None,
+                selected_paths: vec!["frontend/src/components".to_string()],
+                sources: Vec::new(),
+            },
+        )
+        .await
+        .expect("create design system");
+        let design_system_id = DesignSystemId::from_string(draft.design_system.id.clone());
+
+        let response = generate_design_system_styleguide_core(
+            &state,
+            &storage_paths,
+            GenerateDesignSystemStyleguideInput {
+                design_system_id: design_system_id.as_str().to_string(),
+            },
+        )
+        .await
+        .expect("generate styleguide");
+        assert!(response
+            .items
+            .iter()
+            .any(|item| item.item_id == "brand.visual_identity" && item.confidence == "low"));
+
+        let current_schema = state
+            .design_schema_repo
+            .get_current_for_design_system(&design_system_id)
+            .await
+            .unwrap()
+            .expect("current schema");
+        let styleguide_path = artifact_file_path(
+            &state,
+            &current_schema.styleguide_artifact_id,
+            ArtifactType::DesignDoc,
+        )
+        .await;
+        let styleguide_json: JsonValue = serde_json::from_str(
+            &std::fs::read_to_string(&styleguide_path).expect("styleguide json"),
+        )
+        .expect("parse styleguide json");
+        let caveat = &styleguide_json["caveats"][0];
+        assert_eq!(caveat["item_id"].as_str(), Some("brand.visual_identity"));
+        assert_eq!(
+            caveat["title"].as_str(),
+            Some("Source review needed: Visual identity assets")
+        );
+        assert!(caveat["body"]
+            .as_str()
+            .unwrap()
+            .contains("Visual identity assets used fallback source references"));
     }
 
     #[tokio::test]

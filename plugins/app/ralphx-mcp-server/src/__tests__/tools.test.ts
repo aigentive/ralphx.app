@@ -1249,6 +1249,17 @@ describe('design steward tools', () => {
     expect(toolNames).not.toContain('suggest_task');
     expect(toolNames).not.toContain('get_session_plan');
   });
+
+  it('describes create_design_artifact as a reviewable preview tool', () => {
+    const tool = getAllTools().find((entry) => entry.name === 'create_design_artifact');
+    const properties = tool?.inputSchema.properties as
+      | Record<string, { description?: string }>
+      | undefined;
+
+    expect(tool?.description).toContain('reviewable screen or component design artifact');
+    expect(properties?.brief?.description).toContain('expected preview states');
+    expect(properties?.source_item_id?.description).toContain('preview pattern');
+  });
 });
 
 describe('verification round helper tools', () => {

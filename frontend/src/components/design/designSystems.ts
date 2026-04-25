@@ -110,7 +110,7 @@ export function buildDesignSystemFromResponse(
     conversationId: options.conversationId ?? null,
     readySummary: persistedViewModel?.ready_summary ?? styleguide.readySummary,
     caveats: persistedViewModel?.caveats.length
-      ? caveatsFromViewModel(persistedViewModel.caveats)
+      ? caveatsFromViewModel(persistedViewModel.caveats, groups)
       : styleguide.caveats,
     groups,
   };
@@ -302,15 +302,53 @@ function sourceRefFromResponse(sourceRef: {
   };
 }
 
+const FALLBACK_SOURCE_CAVEAT_SUMMARY =
+  "Only fallback source references matched this row; review before treating it as canonical.";
+
 function caveatsFromViewModel(
   caveats: DesignStyleguideViewModelResponse["content"]["caveats"],
+  groups: DesignStyleguideGroup[],
 ): DesignCaveat[] {
   return caveats.map((caveat, index) => ({
     id: caveat.id ?? caveat.item_id ?? `caveat-${index}`,
     severity: caveatSeverity(caveat.severity),
-    title: caveat.title ?? "Review caveat",
-    body: caveat.body ?? caveat.summary ?? "",
+    title: caveat.title ?? caveatTitle(caveat.item_id, groups),
+    body: caveat.body ?? caveatBody(caveat.summary, caveat.item_id, groups),
   }));
+}
+
+function caveatTitle(
+  itemId: string | undefined,
+  groups: DesignStyleguideGroup[],
+): string {
+  const item = findStyleguideItem(itemId, groups);
+  return item ? `Source review needed: ${item.label}` : "Review caveat";
+}
+
+function caveatBody(
+  summary: string | undefined,
+  itemId: string | undefined,
+  groups: DesignStyleguideGroup[],
+): string {
+  if (summary !== FALLBACK_SOURCE_CAVEAT_SUMMARY) {
+    return summary ?? "";
+  }
+
+  const item = findStyleguideItem(itemId, groups);
+  const label = item?.label ?? "This row";
+  return `${label} used fallback source references because no direct source match was found in the selected paths. Review its sources before approving it.`;
+}
+
+function findStyleguideItem(
+  itemId: string | undefined,
+  groups: DesignStyleguideGroup[],
+): DesignStyleguideItem | null {
+  if (!itemId) {
+    return null;
+  }
+  return groups
+    .flatMap((group) => group.items)
+    .find((item) => item.itemId === itemId || item.id === itemId) ?? null;
 }
 
 function caveatSeverity(value: string | undefined): DesignCaveat["severity"] {

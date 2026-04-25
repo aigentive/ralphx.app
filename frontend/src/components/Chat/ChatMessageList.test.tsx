@@ -149,6 +149,38 @@ describe("ChatMessageList - Scroll Behavior", () => {
 
       expect(emptyFooterSpacer).toBeUndefined();
     });
+
+    it("renders design styleguide feedback as a compact chat card", () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={[
+            {
+              id: "design-feedback-1",
+              role: "user",
+              content:
+                "Design styleguide feedback\nItem: Components / Buttons\nPreview: preview-buttons\nSource refs: frontend/src/Button.tsx\n\nPrimary buttons need a sharper radius.",
+              createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+              toolCalls: null,
+              contentBlocks: null,
+              metadata: JSON.stringify({
+                kind: "design_styleguide_feedback",
+                itemId: "components.buttons",
+                previewArtifactId: "preview-buttons",
+                sourceRefs: [{ path: "frontend/src/Button.tsx" }],
+              }),
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.getByTestId("design-feedback-chat-card")).toBeInTheDocument();
+      expect(screen.getByText("Design feedback")).toBeInTheDocument();
+      expect(screen.getByText("Components Buttons")).toBeInTheDocument();
+      expect(screen.getByText("Primary buttons need a sharper radius.")).toBeInTheDocument();
+      expect(screen.getByText("1 source ref")).toBeInTheDocument();
+      expect(screen.queryByText("Design styleguide feedback")).not.toBeInTheDocument();
+    });
   });
 
   describe("streaming auto-scroll", () => {

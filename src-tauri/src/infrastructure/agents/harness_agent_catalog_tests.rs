@@ -652,6 +652,28 @@ fn project_chat_claude_surface_uses_external_ideation_tools() {
 }
 
 #[test]
+fn design_steward_prompt_defines_styleguide_rendering_contract() {
+    let root = project_root();
+    let prompt =
+        load_harness_agent_prompt(&root, "ralphx-design-steward", AgentPromptHarness::Claude)
+            .expect("missing prompt for ralphx-design-steward");
+
+    for required in [
+        "Styleguide And Rendering Contract",
+        "Primary palette",
+        "typography_sample",
+        "component artifacts",
+        "workspace preview patterns",
+        "preview artifact id",
+    ] {
+        assert!(
+            prompt.contains(required),
+            "design steward prompt must include styleguide rendering contract phrase: {required}"
+        );
+    }
+}
+
+#[test]
 fn codex_runtime_features_prefer_root_agent_metadata_over_legacy_harness_file() {
     let temp = tempfile::tempdir().expect("tempdir should exist");
     let agent_dir = temp.path().join("agents/test-agent");

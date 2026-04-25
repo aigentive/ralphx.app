@@ -153,6 +153,7 @@ For example: reviewers run read-only, workers cannot approve their own output, a
 | Guide | What It Covers |
 |-------|----------------|
 | [Getting Started](docs/user-guides/getting-started.md) | Installation, first project, first workflow |
+| [Design Systems](docs/user-guides/design-systems.md) | Generate, review, export, import, and reuse source-grounded design systems |
 | [Ideation Studio](docs/user-guides/ideation-studio.md) | Session modes, team configuration, plan artifacts |
 | [Kanban Board](docs/user-guides/kanban.md) | Board layout, task cards, drag-and-drop, filtering |
 | [Graph View](docs/user-guides/graph-view.md) | Dependency graph, critical path, timeline, Battle Mode |

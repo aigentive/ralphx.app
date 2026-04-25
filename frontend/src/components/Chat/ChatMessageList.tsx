@@ -130,6 +130,97 @@ function parseMessageMetadata(metadata: string | null | undefined): Record<strin
   }
 }
 
+function metadataString(metadata: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function metadataArrayLength(metadata: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) {
+      return value.length;
+    }
+  }
+  return 0;
+}
+
+function isDesignFeedbackMetadata(metadata: Record<string, unknown>) {
+  return (
+    metadata.kind === "design_styleguide_feedback" ||
+    metadata.source === "design_styleguide_feedback" ||
+    metadata.event_type === "design:styleguide_item_feedback_created"
+  );
+}
+
+function humanizeDesignItemId(itemId: string | null) {
+  if (!itemId) return "Styleguide item";
+  return itemId
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function designFeedbackSummary(content: string) {
+  const [, feedbackBody] = content.split(/\n\n(.+)/s);
+  const value = (feedbackBody ?? content).replace(/\s+/g, " ").trim();
+  if (value.length <= 220) return value;
+  return `${value.slice(0, 217)}...`;
+}
+
+function DesignFeedbackChatCard({
+  metadata,
+  content,
+}: {
+  metadata: Record<string, unknown>;
+  content: string;
+}) {
+  const itemId = metadataString(metadata, "itemId", "item_id");
+  const previewArtifactId = metadataString(metadata, "previewArtifactId", "preview_artifact_id");
+  const sourceRefCount = metadataArrayLength(metadata, "sourceRefs", "source_refs");
+  const sourceRefLabel = sourceRefCount === 1 ? "source ref" : "source refs";
+  const summary = designFeedbackSummary(content);
+
+  return (
+    <div
+      className="rounded-md border px-3 py-2.5 text-[12px]"
+      style={{
+        borderColor: "var(--border-primary)",
+        background: "var(--bg-secondary)",
+        color: "var(--text-primary)",
+      }}
+      data-testid="design-feedback-chat-card"
+    >
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium">Design feedback</div>
+          <div className="truncate text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {humanizeDesignItemId(itemId)}
+          </div>
+        </div>
+        <div className="shrink-0 rounded border px-2 py-0.5 text-[10px]" style={{ borderColor: "var(--border-primary)", color: "var(--text-muted)" }}>
+          needs work
+        </div>
+      </div>
+      {summary ? (
+        <div className="mt-2 leading-5" style={{ color: "var(--text-secondary)" }}>
+          {summary}
+        </div>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+        {previewArtifactId ? <span>Preview {previewArtifactId}</span> : null}
+        {sourceRefCount > 0 ? <span>{sourceRefCount} {sourceRefLabel}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function renderSystemCard(
   metadata: Record<string, unknown> | null,
   content: string,
@@ -169,6 +260,10 @@ function renderSystemCard(
         actionableForParent={metadata.actionable_for_parent === true}
       />
     );
+  }
+
+  if (isDesignFeedbackMetadata(metadata)) {
+    return <DesignFeedbackChatCard metadata={metadata} content={content} />;
   }
 
   return null;

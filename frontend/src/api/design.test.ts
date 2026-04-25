@@ -143,6 +143,42 @@ describe("design API schemas", () => {
     expect(parsed.feedback.sourceRefs[0]?.project_id).toBe("project-1");
   });
 
+  it("parses tool-recorded feedback without an appended chat message", () => {
+    const parsed = CreateDesignStyleguideFeedbackResponseSchema.parse({
+      feedback: {
+        id: "feedback-1",
+        designSystemId: "design-system-1",
+        schemaVersionId: "schema-1",
+        itemId: "components.buttons",
+        conversationId: "conversation-1",
+        messageId: null,
+        previewArtifactId: "preview-1",
+        sourceRefs: [],
+        feedback: "Needs source review",
+        status: "open",
+        createdAt: "2026-04-24T08:00:00Z",
+        resolvedAt: null,
+      },
+      item: {
+        id: "item-1",
+        designSystemId: "design-system-1",
+        schemaVersionId: "schema-1",
+        itemId: "components.buttons",
+        group: "components",
+        label: "Buttons",
+        summary: "Button patterns",
+        previewArtifactId: "preview-1",
+        sourceRefs: [],
+        confidence: "medium",
+        approvalStatus: "needs_work",
+        feedbackStatus: "open",
+        updatedAt: "2026-04-24T08:00:00Z",
+      },
+    });
+
+    expect(parsed.message).toBeUndefined();
+  });
+
   it("parses generated styleguide response with source-backed items", () => {
     const parsed = GenerateDesignSystemStyleguideResponseSchema.parse({
       designSystem: designSystemResponse({

@@ -12,6 +12,10 @@ import {
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import type {
+  DesignStyleguidePreviewResponse,
+  ExportDesignSystemPackageResponse,
+} from "@/api/design";
 import type { DesignReviewState, DesignStyleguideItem, DesignSystem } from "./designSystems";
 import {
   useApproveDesignStyleguideItem,
@@ -19,6 +23,8 @@ import {
   useGenerateDesignArtifact,
   useDesignStyleguidePreview,
 } from "./useProjectDesignSystems";
+
+type DesignPreviewContent = DesignStyleguidePreviewResponse["content"];
 
 const FILTERS: Array<{ id: "all" | DesignReviewState; label: string }> = [
   { id: "all", label: "All" },
@@ -32,18 +38,28 @@ interface DesignStyleguidePaneProps {
   designSystem: DesignSystem | null;
   isGeneratingStyleguide?: boolean;
   isExportingPackage?: boolean;
-  exportPackageArtifactId?: string | null;
+  exportPackage?: ExportDesignSystemPackageResponse | null;
+  isDownloadingExportPackage?: boolean;
+  generationResult?: {
+    itemCount: number;
+    caveatCount: number;
+    schemaVersionId: string;
+  } | null;
   onGenerateStyleguide?: () => void;
   onExportPackage?: () => void;
+  onDownloadExportPackage?: () => void;
 }
 
 export function DesignStyleguidePane({
   designSystem,
   isGeneratingStyleguide = false,
   isExportingPackage = false,
-  exportPackageArtifactId = null,
+  exportPackage = null,
+  isDownloadingExportPackage = false,
+  generationResult = null,
   onGenerateStyleguide,
   onExportPackage,
+  onDownloadExportPackage,
 }: DesignStyleguidePaneProps) {
   const [activeFilter, setActiveFilter] = useState<"all" | DesignReviewState>("all");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -62,8 +78,10 @@ export function DesignStyleguidePane({
   const hasPersistedItems =
     designSystem?.groups.some((group) => group.items.some((item) => item.isPersisted)) ?? false;
   const canGenerateStyleguide =
-    !!designSystem &&
-    (designSystem.status === "draft" || designSystem.status === "failed" || !hasPersistedItems);
+    !!designSystem && designSystem.status !== "archived" && designSystem.sourceCount > 0;
+  const generateLabel = hasPersistedItems || designSystem?.status === "ready" ? "Regenerate" : "Generate";
+  const generationRowLabel = generationResult?.itemCount === 1 ? "row" : "rows";
+  const generationCaveatLabel = generationResult?.caveatCount === 1 ? "caveat" : "caveats";
 
   const reviewCounts = useMemo(() => {
     const counts: Record<DesignReviewState, number> = {
@@ -203,7 +221,7 @@ export function DesignStyleguidePane({
             ) : (
               <Sparkles className="w-4 h-4" />
             )}
-            {isGeneratingStyleguide ? "Generating" : "Generate"}
+            {isGeneratingStyleguide ? "Generating" : generateLabel}
           </Button>
         )}
         <Button
@@ -231,7 +249,7 @@ export function DesignStyleguidePane({
           </div>
           {isGeneratingStyleguide && (
             <div
-              className="rounded-lg border px-3 py-2 text-[12px]"
+              className="rounded-lg border px-3 py-2 text-[12px] space-y-2"
               style={{
                 borderColor: "var(--accent-border)",
                 background: "var(--accent-muted)",
@@ -239,12 +257,40 @@ export function DesignStyleguidePane({
               }}
               data-testid="design-generating-state"
             >
-              Analyzing selected sources and publishing the initial styleguide.
+              <div>Analyzing selected sources and publishing the styleguide.</div>
+              <div
+                className="h-1.5 overflow-hidden rounded-full"
+                style={{ background: "var(--overlay-faint)" }}
+              >
+                <div
+                  className="h-full w-1/3 rounded-full"
+                  style={{ background: "var(--accent-primary)" }}
+                />
+              </div>
+              <div style={{ color: "var(--text-muted)" }}>
+                Chat remains available while the styleguide is generated.
+              </div>
             </div>
           )}
-          {exportPackageArtifactId && (
+          {generationResult && !isGeneratingStyleguide && (
             <div
               className="rounded-lg border px-3 py-2 text-[12px]"
+              style={{
+                borderColor: generationResult.caveatCount > 0 ? "var(--status-warning-border)" : "var(--accent-border)",
+                background: generationResult.caveatCount > 0 ? "var(--status-warning-muted)" : "var(--accent-muted)",
+                color: "var(--text-secondary)",
+              }}
+              data-testid="design-generation-result"
+            >
+              Styleguide generated with {generationResult.itemCount} review {generationRowLabel}
+              {generationResult.caveatCount > 0
+                ? ` and ${generationResult.caveatCount} ${generationCaveatLabel}`
+                : ""}.
+            </div>
+          )}
+          {exportPackage && (
+            <div
+              className="rounded-lg border p-3 text-[12px]"
               style={{
                 borderColor: "var(--overlay-weak)",
                 background: "var(--bg-surface)",
@@ -252,7 +298,41 @@ export function DesignStyleguidePane({
               }}
               data-testid="design-export-result"
             >
-              Export package artifact {exportPackageArtifactId.slice(0, 8)} is ready.
+              <div className="flex items-start gap-3">
+                <Package className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "var(--accent-primary)" }} />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                    Export ready
+                  </div>
+                  <div className="leading-5">
+                    Package artifact{" "}
+                    <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--overlay-faint)" }}>
+                      {exportPackage.artifactId}
+                    </code>{" "}
+                    is ready to save.
+                  </div>
+                  <div style={{ color: "var(--text-muted)" }}>
+                    Schema {exportPackage.schemaVersionId.slice(0, 8)} /{" "}
+                    {exportPackage.redacted ? "absolute paths redacted" : "full provenance included"}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 gap-2"
+                  disabled={!onDownloadExportPackage || isDownloadingExportPackage}
+                  onClick={onDownloadExportPackage}
+                  data-testid="design-download-export-package"
+                >
+                  {isDownloadingExportPackage ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {isDownloadingExportPackage ? "Saving" : "Download JSON"}
+                </Button>
+              </div>
             </div>
           )}
           {generatedArtifact && (
@@ -412,6 +492,20 @@ function StyleguideRow({
   onOpenFocused: () => void;
 }) {
   const artifactKind = item.group === "ui_kit" ? "screen" : "component";
+  const statusLabel =
+    item.confidence === "low"
+      ? "source review"
+      : reviewState === "approved"
+        ? "approved"
+        : reviewState.replace("_", " ");
+  const feedbackLabel =
+    reviewState === "approved"
+      ? "Reopen feedback"
+      : reviewState === "needs_work"
+        ? "Add feedback"
+        : "Needs work";
+  const sourceLabel = item.sourceRefs.length === 1 ? "source" : "sources";
+  const previewLabel = item.previewArtifactId ?? "preview pending";
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--overlay-weak)" }}>
       <button
@@ -429,8 +523,15 @@ function StyleguideRow({
             {item.summary}
           </div>
         </div>
-        <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-          {reviewState.replace("_", " ")}
+        <span
+          className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+          style={{
+            borderColor: item.confidence === "low" ? "var(--status-warning-border)" : "var(--overlay-faint)",
+            background: item.confidence === "low" ? "var(--status-warning-muted)" : "transparent",
+            color: item.confidence === "low" ? "var(--status-warning)" : "var(--text-muted)",
+          }}
+        >
+          {statusLabel}
         </span>
       </button>
 
@@ -446,7 +547,7 @@ function StyleguideRow({
               data-testid={`design-approve-${item.itemId}`}
             >
               <Check className="w-4 h-4" />
-              Looks good
+              {reviewState === "approved" ? "Approved" : "Looks good"}
             </Button>
             <Button
               type="button"
@@ -457,7 +558,7 @@ function StyleguideRow({
               data-testid={`design-needs-work-${item.itemId}`}
             >
               <MessageSquare className="w-4 h-4" />
-              Needs work
+              {feedbackLabel}
             </Button>
             <Button
               type="button"
@@ -488,6 +589,22 @@ function StyleguideRow({
           </div>
           {isFeedbackOpen && (
             <div className="space-y-2" data-testid="design-feedback-composer">
+              <div
+                className="rounded-lg border px-3 py-2 text-[11px] leading-5"
+                style={{
+                  borderColor: "var(--overlay-faint)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-muted)",
+                }}
+                data-testid="design-feedback-context"
+              >
+                <div>Item: {item.group.replace("_", " ")} / {item.label}</div>
+                <div>Preview: {previewLabel}</div>
+                <div>
+                  Source refs: {item.sourceRefs.length} {sourceLabel}
+                  {item.sourceRefs[0] ? ` - ${item.sourceRefs[0].path}` : ""}
+                </div>
+              </div>
               <textarea
                 value={feedbackDraft}
                 onChange={(event) => onFeedbackDraftChange(event.target.value)}
@@ -624,9 +741,17 @@ function PreviewBlock({ designSystemId, item }: { designSystemId: string; item: 
   );
   const preview = previewQuery.data?.content;
   const sourceCount = preview?.source_refs.length ?? item.sourceRefs.length;
+  const previewKind = preview?.preview_kind ?? previewKindForItem(item);
 
   if (!item.isPersisted) {
-    return <LocalPreviewBlock item={item} />;
+    return (
+      <PreviewSample
+        item={item}
+        preview={undefined}
+        previewKind={previewKind}
+        sourceCount={sourceCount}
+      />
+    );
   }
 
   if (!item.previewArtifactId) {
@@ -659,79 +784,389 @@ function PreviewBlock({ designSystemId, item }: { designSystemId: string; item: 
     );
   }
 
-  if (item.group === "colors") {
-    return (
-      <div className="grid grid-cols-2 gap-2" data-testid="design-color-preview">
-        {[
-          preview?.label ?? item.label,
-          `${preview?.preview_kind.replace("_", " ") ?? "color swatch"} / ${sourceCount} sources`,
-        ].map((label, index) => (
+  return (
+    <PreviewSample
+      item={item}
+      preview={preview}
+      previewKind={previewKind}
+      sourceCount={sourceCount}
+    />
+  );
+}
+
+function PreviewSample({
+  item,
+  preview,
+  previewKind,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  previewKind: string;
+  sourceCount: number;
+}) {
+  if (previewKind === "color_swatch") {
+    return <ColorPreview item={item} preview={preview} sourceCount={sourceCount} />;
+  }
+  if (previewKind === "typography_sample") {
+    return <TypographyPreview item={item} preview={preview} sourceCount={sourceCount} />;
+  }
+  if (previewKind === "spacing_sample") {
+    return <SpacingPreview item={item} preview={preview} sourceCount={sourceCount} />;
+  }
+  if (previewKind === "layout_sample" || previewKind === "screen_artifact_preview") {
+    return <LayoutPreview item={item} preview={preview} sourceCount={sourceCount} />;
+  }
+  if (previewKind === "asset_sample") {
+    return <AssetPreview item={item} preview={preview} sourceCount={sourceCount} />;
+  }
+  return <ComponentPreview item={item} preview={preview} previewKind={previewKind} sourceCount={sourceCount} />;
+}
+
+function ColorPreview({
+  item,
+  preview,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  sourceCount: number;
+}) {
+  const swatches = [
+    { label: "Primary", value: "var(--accent-primary)", text: "var(--bg-base)" },
+    { label: "Hover", value: "var(--accent-primary)", text: "var(--bg-base)" },
+    { label: "Soft", value: "var(--accent-muted)", text: "var(--accent-primary)" },
+    { label: "Ring", value: "var(--bg-base)", text: "var(--accent-primary)", border: "var(--accent-primary)" },
+  ];
+  return (
+    <div className="space-y-2" data-testid="design-color-preview">
+      <div className="grid grid-cols-2 gap-2">
+        {swatches.map((swatch) => (
           <div
-            key={label}
+            key={swatch.label}
             className="min-h-20 rounded-lg border p-2"
             style={{
-              borderColor: "var(--overlay-weak)",
-              background: index === 0 ? "var(--accent-primary)" : "var(--accent-muted)",
-              color: index === 0 ? "var(--bg-base)" : "var(--accent-primary)",
+              borderColor: swatch.border ?? "var(--overlay-weak)",
+              background: swatch.value,
+              color: swatch.text,
             }}
           >
-            <div className="text-[10px] font-semibold uppercase">{label}</div>
+            <div className="text-[10px] font-semibold uppercase">{swatch.label}</div>
+            <div className="mt-5 text-[11px]">{preview?.label ?? item.label}</div>
           </div>
         ))}
       </div>
-    );
-  }
+      <PreviewMeta previewKind={preview?.preview_kind ?? "color_swatch"} sourceCount={sourceCount} />
+    </div>
+  );
+}
 
+function TypographyPreview({
+  item,
+  preview,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  sourceCount: number;
+}) {
   return (
     <div
-      className="min-h-24 rounded-lg border flex items-center justify-center gap-2 px-3"
+      className="rounded-lg border p-3 space-y-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-typography-preview"
+    >
+      <div className="space-y-1">
+        <div className="text-[28px] leading-9 font-semibold" style={{ color: "var(--text-primary)" }}>
+          Review generated artifacts
+        </div>
+        <div className="text-[13px] leading-5" style={{ color: "var(--text-secondary)" }}>
+          {preview?.summary ?? item.summary}
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {[
+          { label: "Display", sample: "Design workspace", className: "text-[20px] leading-7 font-semibold" },
+          { label: "Body", sample: "Source-grounded decisions stay readable in dense panes.", className: "text-[13px] leading-5" },
+          { label: "Label", sample: "NEEDS REVIEW", className: "text-[11px] leading-4 font-semibold uppercase" },
+          { label: "Code", sample: "tokens.typography.body", className: "font-mono text-[12px] leading-5" },
+        ].map((row) => (
+          <div
+            key={row.label}
+            className="rounded-md border px-2.5 py-2"
+            style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}
+          >
+            <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
+              {row.label}
+            </div>
+            <div className={row.className} style={{ color: "var(--text-primary)" }}>
+              {row.sample}
+            </div>
+          </div>
+        ))}
+      </div>
+      <PreviewMeta previewKind={preview?.preview_kind ?? "typography_sample"} sourceCount={sourceCount} />
+    </div>
+  );
+}
+
+function ComponentPreview({
+  item,
+  preview,
+  previewKind,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  previewKind: string;
+  sourceCount: number;
+}) {
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-3"
       style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
       data-testid="design-component-preview"
     >
-      <Package className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
-      <div className="min-w-0 text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
-        <div className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
-          {preview?.label ?? item.label}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="h-8 rounded-md px-3 text-[12px] font-semibold"
+          style={{ background: "var(--accent-primary)", color: "var(--bg-base)" }}
+        >
+          Primary
+        </button>
+        <button
+          type="button"
+          className="h-8 rounded-md border px-3 text-[12px] font-medium"
+          style={{ borderColor: "var(--overlay-weak)", color: "var(--text-primary)", background: "var(--bg-base)" }}
+        >
+          Secondary
+        </button>
+        <button
+          type="button"
+          className="h-8 rounded-md px-3 text-[12px] font-medium"
+          style={{ color: "var(--text-secondary)", background: "transparent" }}
+        >
+          Ghost
+        </button>
+        <button
+          type="button"
+          className="h-8 rounded-md border px-3 text-[12px] font-medium opacity-55"
+          style={{ borderColor: "var(--overlay-faint)", color: "var(--text-muted)", background: "var(--bg-base)" }}
+          disabled
+        >
+          Loading...
+        </button>
+      </div>
+      <div
+        className="rounded-md border p-2"
+        style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}
+      >
+        <div className="flex items-center gap-2">
+          <div
+            className="h-8 flex-1 rounded-md border px-2 text-[12px] leading-8"
+            style={{ borderColor: "var(--overlay-weak)", color: "var(--text-muted)", background: "var(--bg-surface)" }}
+          >
+            Ask Design to refine this component...
+          </div>
+          <button
+            type="button"
+            className="h-8 rounded-md px-2.5 text-[12px] font-semibold"
+            style={{ background: "var(--accent-primary)", color: "var(--bg-base)" }}
+          >
+            Send
+          </button>
         </div>
-        <div className="truncate" data-testid="design-preview-kind">
-          {preview?.preview_kind.replace("_", " ") ?? "persisted preview"} / {sourceCount} sources
+      </div>
+      <div className="flex items-center justify-between gap-3 text-[12px]">
+        <div className="min-w-0">
+          <div className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
+            {preview?.label ?? item.label}
+          </div>
+          <div className="truncate" style={{ color: "var(--text-secondary)" }}>
+            {preview?.summary ?? item.summary}
+          </div>
         </div>
+        <span
+          className="shrink-0 rounded-full border px-2 py-1 text-[11px]"
+          style={{ borderColor: "var(--overlay-faint)", color: "var(--text-secondary)" }}
+        >
+          {item.confidence} confidence
+        </span>
+      </div>
+      <PreviewMeta previewKind={previewKind} sourceCount={sourceCount} />
+    </div>
+  );
+}
+
+function SpacingPreview({
+  item,
+  preview,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  sourceCount: number;
+}) {
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-spacing-preview"
+    >
+      <div className="grid grid-cols-4 gap-2">
+        {[4, 8, 12, 16].map((size) => (
+          <div
+            key={size}
+            className="rounded-md border p-2"
+            style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}
+          >
+            <div
+              className="rounded-sm"
+              style={{
+                height: `${Math.max(size, 8)}px`,
+                background: "var(--accent-muted)",
+              }}
+            />
+            <div className="mt-2 text-[11px]" style={{ color: "var(--text-secondary)" }}>
+              {size}px
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="h-14 rounded-lg border" style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-base)" }} />
+        <div className="h-14 rounded-lg border shadow-lg" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }} />
+      </div>
+      <PreviewMeta previewKind={preview?.preview_kind ?? "spacing_sample"} sourceCount={sourceCount} />
+      <div className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+        {preview?.summary ?? item.summary}
       </div>
     </div>
   );
 }
 
-function LocalPreviewBlock({ item }: { item: DesignStyleguideItem }) {
-  if (item.group === "colors") {
-    return (
-      <div className="grid grid-cols-2 gap-2" data-testid="design-color-preview">
-        {["Primary", "Primary soft"].map((label, index) => (
-          <div
-            key={label}
-            className="min-h-20 rounded-lg border p-2"
-            style={{
-              borderColor: "var(--overlay-weak)",
-              background: index === 0 ? "var(--accent-primary)" : "var(--accent-muted)",
-              color: index === 0 ? "var(--bg-base)" : "var(--accent-primary)",
-            }}
-          >
-            <div className="text-[10px] font-semibold uppercase">{label}</div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
+function LayoutPreview({
+  item,
+  preview,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  sourceCount: number;
+}) {
   return (
     <div
-      className="min-h-24 rounded-lg border flex items-center justify-center gap-2 px-3"
+      className="rounded-lg border p-3 space-y-3"
       style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
-      data-testid="design-component-preview"
+      data-testid="design-layout-preview"
     >
-      <Package className="w-4 h-4" style={{ color: "var(--accent-primary)" }} />
-      <span className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
-        {item.previewArtifactId}
-      </span>
+      <div
+        className="grid h-36 overflow-hidden rounded-md border"
+        style={{
+          borderColor: "var(--overlay-faint)",
+          gridTemplateColumns: "0.8fr 1.4fr 1fr",
+        }}
+        data-testid="design-workspace-surface-preview"
+      >
+        <div className="border-r p-2 space-y-2" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}>
+          <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
+            Sidebar
+          </div>
+          <div className="h-3 w-16 rounded-sm" style={{ background: "var(--overlay-weak)" }} />
+          <div className="h-6 rounded-md" style={{ background: "var(--accent-muted)" }} />
+          <div className="h-6 rounded-md" style={{ background: "var(--overlay-faint)" }} />
+        </div>
+        <div className="border-r p-3 flex flex-col justify-end gap-2" style={{ borderColor: "var(--overlay-faint)" }}>
+          <div className="mb-auto text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
+            Chat
+          </div>
+          <div className="h-7 w-3/4 rounded-md" style={{ background: "var(--overlay-faint)" }} />
+          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-base)" }} />
+        </div>
+        <div className="p-2 space-y-2" style={{ background: "var(--bg-base)" }}>
+          <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
+            Styleguide
+          </div>
+          <div className="h-4 w-20 rounded-sm" style={{ background: "var(--overlay-weak)" }} />
+          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
+          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
+          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
+        </div>
+      </div>
+      <div className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
+        {preview?.label ?? item.label}
+      </div>
+      <PreviewMeta previewKind={preview?.preview_kind ?? "layout_sample"} sourceCount={sourceCount} />
+      <div className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
+        {preview?.summary ?? item.summary}
+      </div>
     </div>
   );
+}
+
+function AssetPreview({
+  item,
+  preview,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  sourceCount: number;
+}) {
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-asset-preview"
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-12 w-12 items-center justify-center rounded-lg border"
+          style={{ borderColor: "var(--accent-primary)", background: "var(--accent-muted)", color: "var(--accent-primary)" }}
+        >
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[14px] font-semibold" style={{ color: "var(--text-primary)" }}>
+            {preview?.label ?? item.label}
+          </div>
+          <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+            {preview?.summary ?? item.summary}
+          </div>
+        </div>
+      </div>
+      <PreviewMeta previewKind={preview?.preview_kind ?? "asset_sample"} sourceCount={sourceCount} />
+    </div>
+  );
+}
+
+function PreviewMeta({ previewKind, sourceCount }: { previewKind: string; sourceCount: number }) {
+  return (
+    <div className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid="design-preview-kind">
+      {formatPreviewKind(previewKind)} / {sourceCount} {sourceCount === 1 ? "source" : "sources"}
+    </div>
+  );
+}
+
+function previewKindForItem(item: DesignStyleguideItem): string {
+  switch (item.group) {
+    case "colors":
+      return "color_swatch";
+    case "type":
+      return "typography_sample";
+    case "spacing":
+      return "spacing_sample";
+    case "ui_kit":
+      return "layout_sample";
+    case "brand":
+      return "asset_sample";
+    case "components":
+    default:
+      return "component_sample";
+  }
+}
+
+function formatPreviewKind(previewKind: string): string {
+  return previewKind.replace(/_/g, " ");
 }

@@ -275,7 +275,7 @@ export const DesignStyleguideFeedbackResponseSchema = z.object({
 export const CreateDesignStyleguideFeedbackResponseSchema = z.object({
   feedback: DesignStyleguideFeedbackResponseSchema,
   item: DesignStyleguideItemResponseSchema,
-  message: AgentMessageResponseSchema,
+  message: AgentMessageResponseSchema.nullable().optional(),
 });
 
 export const CreateDesignSystemSourceInputSchema = z.object({

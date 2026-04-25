@@ -17,9 +17,10 @@ use crate::commands::design_commands::{
     DesignSystemDetailResponse, DesignSystemResponse, DesignSystemSourceResponse,
 };
 use crate::commands::design_feedback_commands::{
-    create_design_styleguide_feedback_core, list_design_styleguide_items_core,
-    CreateDesignStyleguideFeedbackInput, CreateDesignStyleguideFeedbackResponse,
-    DesignStyleguideItemResponse, ListDesignStyleguideItemsInput,
+    create_design_styleguide_feedback_core_with_options, list_design_styleguide_items_core,
+    CreateDesignStyleguideFeedbackInput, CreateDesignStyleguideFeedbackOptions,
+    CreateDesignStyleguideFeedbackResponse, DesignStyleguideItemResponse,
+    ListDesignStyleguideItemsInput,
 };
 use crate::domain::entities::{
     ArtifactContent, ArtifactId, ChatContextType, DesignApprovalStatus, DesignFeedbackStatus,
@@ -169,19 +170,21 @@ pub async fn record_design_styleguide_feedback_for_tool(
             "design:styleguide_item_feedback_created",
             &response.feedback,
         );
-        let _ = handle.emit(
-            "agent:message_created",
-            crate::application::AgentMessageCreatedPayload {
-                message_id: response.message.id.clone(),
-                conversation_id: response.feedback.conversation_id.clone(),
-                context_type: ChatContextType::Design.to_string(),
-                context_id: response.feedback.design_system_id.clone(),
-                role: response.message.role.clone(),
-                content: response.message.content.clone(),
-                created_at: Some(response.message.created_at.clone()),
-                metadata: response.message.metadata.clone(),
-            },
-        );
+        if let Some(message) = response.message.as_ref() {
+            let _ = handle.emit(
+                "agent:message_created",
+                crate::application::AgentMessageCreatedPayload {
+                    message_id: message.id.clone(),
+                    conversation_id: response.feedback.conversation_id.clone(),
+                    context_type: ChatContextType::Design.to_string(),
+                    context_id: response.feedback.design_system_id.clone(),
+                    role: message.role.clone(),
+                    content: message.content.clone(),
+                    created_at: Some(message.created_at.clone()),
+                    metadata: message.metadata.clone(),
+                },
+            );
+        }
     }
 
     Ok(Json(response))
@@ -348,7 +351,7 @@ async fn record_design_styleguide_feedback_for_tool_core(
     raw_design_system_id: &str,
     req: RecordDesignStyleguideFeedbackRequest,
 ) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
-    create_design_styleguide_feedback_core(
+    create_design_styleguide_feedback_core_with_options(
         state,
         CreateDesignStyleguideFeedbackInput {
             design_system_id: parse_design_system_id(raw_design_system_id)?
@@ -358,6 +361,7 @@ async fn record_design_styleguide_feedback_for_tool_core(
             feedback: req.feedback,
             conversation_id: req.conversation_id,
         },
+        CreateDesignStyleguideFeedbackOptions::record_only(),
     )
     .await
 }
@@ -543,10 +547,10 @@ mod tests {
     use super::*;
     use crate::application::AppState;
     use crate::domain::entities::{
-        Artifact, ArtifactType, DesignConfidence, DesignRun, DesignRunKind, DesignRunStatus,
-        DesignSchemaVersionStatus, DesignSourceKind, DesignSourceRole, DesignStorageRootRef,
-        DesignStyleguideGroup, DesignStyleguideItemId, DesignSystem, DesignSystemSource,
-        DesignSystemSourceId, Project, ProjectId,
+        Artifact, ArtifactType, ChatConversation, DesignConfidence, DesignRun, DesignRunKind,
+        DesignRunStatus, DesignSchemaVersionStatus, DesignSourceKind, DesignSourceRole,
+        DesignStorageRootRef, DesignStyleguideGroup, DesignStyleguideItemId, DesignSystem,
+        DesignSystemSource, DesignSystemSourceId, Project, ProjectId,
     };
 
     fn design_system(project_id: ProjectId) -> DesignSystem {
@@ -614,6 +618,60 @@ mod tests {
 
         assert_eq!(response.approval_status, "needs_work");
         assert_eq!(response.feedback_status, "open");
+    }
+
+    #[tokio::test]
+    async fn design_tool_records_feedback_without_appending_chat_message() {
+        let state = AppState::new_test();
+        let project = state
+            .project_repo
+            .create(Project::new("App".to_string(), "/tmp/app".to_string()))
+            .await
+            .expect("create project");
+        let mut system = design_system(project.id.clone());
+        let schema_version_id = DesignSchemaVersionId::new();
+        system.current_schema_version_id = Some(schema_version_id.clone());
+        let system = state
+            .design_system_repo
+            .create(system)
+            .await
+            .expect("create design system");
+        let item = styleguide_item(system.id.clone(), schema_version_id);
+        let item_schema_version_id = item.schema_version_id.clone();
+        state
+            .design_styleguide_repo
+            .replace_items_for_schema_version(&item_schema_version_id, vec![item])
+            .await
+            .expect("store item");
+        let conversation = state
+            .chat_conversation_repo
+            .create(ChatConversation::new_design(system.id.clone()))
+            .await
+            .expect("create design conversation");
+
+        let response = record_design_styleguide_feedback_for_tool_core(
+            &state,
+            system.id.as_str(),
+            RecordDesignStyleguideFeedbackRequest {
+                item_id: "components-button".to_string(),
+                feedback: "The steward found source caveats to track.".to_string(),
+                conversation_id: Some(conversation.id.as_str()),
+            },
+        )
+        .await
+        .expect("record feedback");
+
+        assert_eq!(response.feedback.status, "open");
+        assert!(response.feedback.message_id.is_none());
+        assert!(response.message.is_none());
+        assert_eq!(response.item.approval_status, "needs_work");
+        assert_eq!(response.item.feedback_status, "open");
+        let messages = state
+            .chat_message_repo
+            .get_by_conversation(&conversation.id)
+            .await
+            .expect("list chat messages");
+        assert!(messages.is_empty());
     }
 
     #[tokio::test]

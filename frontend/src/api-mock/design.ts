@@ -17,10 +17,13 @@ import type {
   ImportDesignSystemPackageInput,
   ImportDesignSystemPackageResponse,
 } from "@/api/design";
+import type { ChatConversation } from "@/types/chat-conversation";
 import { getStore } from "./store";
+import { seedMockConversation } from "./chat";
 
 const mockSystemsByProject = new Map<string, DesignSystemResponse[]>();
 const mockSourcesByDesignSystem = new Map<string, DesignSystemSourceResponse[]>();
+const mockConversationsByDesignSystem = new Map<string, ChatConversation>();
 
 function nowIso() {
   return new Date("2026-04-24T08:00:00.000Z").toISOString();
@@ -65,6 +68,34 @@ function allSystems(): DesignSystemResponse[] {
   return Array.from(mockSystemsByProject.values()).flat();
 }
 
+function conversationForDesignSystem(designSystem: DesignSystemResponse): ChatConversation {
+  const existing = mockConversationsByDesignSystem.get(designSystem.id);
+  if (existing) {
+    return existing;
+  }
+
+  const conversation: ChatConversation = {
+    id: `conversation-${designSystem.id}`,
+    contextType: "design",
+    contextId: designSystem.id,
+    claudeSessionId: null,
+    providerSessionId: null,
+    providerHarness: null,
+    upstreamProvider: null,
+    providerProfile: null,
+    agentMode: "chat",
+    title: `Design: ${designSystem.name}`,
+    messageCount: 0,
+    lastMessageAt: null,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    archivedAt: null,
+  };
+  mockConversationsByDesignSystem.set(designSystem.id, conversation);
+  seedMockConversation(conversation, []);
+  return conversation;
+}
+
 function mockStyleguideItems(designSystem: DesignSystemResponse): DesignStyleguideItemResponse[] {
   const projectId = designSystem.primaryProjectId;
   return [
@@ -98,6 +129,25 @@ function mockStyleguideItems(designSystem: DesignSystemResponse): DesignStylegui
       feedbackStatus: "open",
       updatedAt: nowIso(),
     },
+    {
+      id: `item-${designSystem.id}-type`,
+      designSystemId: designSystem.id,
+      schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-version-mock",
+      itemId: "type.typography_scale",
+      group: "type",
+      label: "Typography scale",
+      summary: "Text hierarchy, label density, and code-font usage.",
+      previewArtifactId: `design-preview-${designSystem.id}-type`,
+      sourceRefs: [
+        { project_id: projectId, path: "frontend/src/components/Chat/TextBubble.tsx" },
+        { project_id: projectId, path: "frontend/src/components/Chat/TeamContextBar.tsx" },
+        { project_id: projectId, path: "frontend/src/styles/index.css" },
+      ],
+      confidence: "high",
+      approvalStatus: "needs_review",
+      feedbackStatus: "none",
+      updatedAt: nowIso(),
+    },
   ];
 }
 
@@ -116,7 +166,7 @@ export const mockDesignApi = {
     return {
       designSystem,
       sources: mockSourcesByDesignSystem.get(designSystem.id) ?? [],
-      conversation: null,
+      conversation: conversationForDesignSystem(designSystem),
     };
   },
 
@@ -205,6 +255,13 @@ export const mockDesignApi = {
               .filter((item) => item.group === "components")
               .map((item) => styleguideItemContent(item)),
           },
+          {
+            id: "type",
+            label: "Type",
+            items: items
+              .filter((item) => item.group === "type")
+              .map((item) => styleguideItemContent(item)),
+          },
         ],
       },
     };
@@ -234,7 +291,7 @@ export const mockDesignApi = {
         group: fallback.group,
         label: fallback.label,
         summary: fallback.summary,
-        preview_kind: fallback.group === "colors" ? "color_swatch" : "component_sample",
+        preview_kind: previewKindForGroup(fallback.group),
         confidence: fallback.confidence,
         source_refs: fallback.sourceRefs,
         generated_at: nowIso(),
@@ -306,20 +363,12 @@ export const mockDesignApi = {
     ]);
     mockSourcesByDesignSystem.set(designSystem.id, sources);
 
+    const conversation = conversationForDesignSystem(designSystem);
+
     return {
       designSystem,
       sources,
-      conversation: {
-        id: `conversation-${designSystem.id}`,
-        contextType: "design",
-        contextId: designSystem.id,
-        title: `Design: ${designSystem.name}`,
-        messageCount: 0,
-        lastMessageAt: null,
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-        archivedAt: null,
-      },
+      conversation,
       schemaVersionId: designSystem.currentSchemaVersionId ?? "schema-imported",
       runId: `run-import-${designSystem.id}`,
       packageArtifactId: input.packageArtifactId,
@@ -403,8 +452,22 @@ export const mockDesignApi = {
     message: {
       id: "message-mock",
       role: "user",
-      content: input.feedback,
-      metadata: null,
+      content: [
+        "Design styleguide feedback",
+        `Item: ${input.itemId}`,
+        "Preview: preview pending",
+        "Source refs: none",
+        "",
+        input.feedback,
+      ].join("\n"),
+      metadata: JSON.stringify({
+        kind: "design_styleguide_feedback",
+        designSystemId: input.designSystemId,
+        schemaVersionId: "schema-version-mock",
+        itemId: input.itemId,
+        previewArtifactId: null,
+        sourceRefs: [],
+      }),
       createdAt: nowIso(),
     },
   }),
@@ -449,6 +512,24 @@ function mockStyleguideItemForAction(
     feedbackStatus: "none",
     updatedAt: nowIso(),
   };
+}
+
+function previewKindForGroup(group: DesignStyleguideItemResponse["group"]) {
+  switch (group) {
+    case "colors":
+      return "color_swatch";
+    case "type":
+      return "typography_sample";
+    case "spacing":
+      return "spacing_sample";
+    case "ui_kit":
+      return "layout_sample";
+    case "brand":
+      return "asset_sample";
+    case "components":
+    default:
+      return "component_sample";
+  }
 }
 
 function styleguideItemContent(item: DesignStyleguideItemResponse) {
@@ -508,19 +589,11 @@ function createMockDesignSystem(input: CreateDesignSystemInput): CreateDesignSys
   ]);
   mockSourcesByDesignSystem.set(designSystem.id, sources);
 
+  const conversation = conversationForDesignSystem(designSystemWithSourceCount);
+
   return {
     designSystem: designSystemWithSourceCount,
     sources,
-    conversation: {
-      id: `conversation-${designSystem.id}`,
-      contextType: "design",
-      contextId: designSystem.id,
-      title: `Design: ${input.name}`,
-      messageCount: 0,
-      lastMessageAt: null,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      archivedAt: null,
-    },
+    conversation,
   };
 }

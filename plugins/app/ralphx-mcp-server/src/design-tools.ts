@@ -77,7 +77,7 @@ export const DESIGN_TOOLS: Tool[] = [
   {
     name: "record_design_styleguide_feedback",
     description:
-      "Record user-facing feedback for one styleguide item and append it to the design chat conversation.",
+      "Record explicit user feedback for one styleguide item in Design state without adding another chat message.",
     inputSchema: {
       type: "object",
       properties: {
@@ -105,7 +105,7 @@ export const DESIGN_TOOLS: Tool[] = [
   {
     name: "create_design_artifact",
     description:
-      "Generate a RalphX-owned screen or component design artifact from the current design schema without writing to source projects.",
+      "Generate a RalphX-owned, reviewable screen or component design artifact from the current design schema without writing to source projects.",
     inputSchema: {
       type: "object",
       properties: {
@@ -116,7 +116,8 @@ export const DESIGN_TOOLS: Tool[] = [
         artifact_kind: {
           type: "string",
           enum: ["screen", "component"],
-          description: "Design artifact kind to generate.",
+          description:
+            "Design artifact kind to generate. Screen artifacts should use compact workspace preview patterns; component artifacts should use realistic state previews.",
         },
         name: {
           type: "string",
@@ -124,12 +125,13 @@ export const DESIGN_TOOLS: Tool[] = [
         },
         brief: {
           type: "string",
-          description: "Optional concise intent or constraints for the generated artifact.",
+          description:
+            "Optional concise intent or constraints. Include the row pattern, expected preview states, and any source-backed caveats the renderer should preserve.",
         },
         source_item_id: {
           type: "string",
           description:
-            "Optional styleguide item id to ground the artifact. Defaults to a matching screen or component row.",
+            "Optional styleguide item id to ground the artifact and preview pattern. Defaults to a matching screen or component row.",
         },
       },
       required: ["artifact_kind", "name"],

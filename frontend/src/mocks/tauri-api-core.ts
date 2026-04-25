@@ -16,13 +16,22 @@ import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
 import {
   mockCreateConversation,
+  mockDeleteQueuedAgentMessage,
   mockGetAgentConversationWorkspace,
+  mockGetAgentRunStatus,
   mockGetConversation,
+  mockGetConversationMessagesPage,
   mockGetConversationStats,
+  mockGetQueuedAgentMessages,
+  mockIsAgentRunning,
+  mockIsChatServiceAvailable,
+  mockListAgentConversationWorkspacesByProject,
   mockListConversations,
   mockListConversationsPage,
   mockPublishAgentConversationWorkspace,
+  mockSendAgentMessage,
   mockStartAgentConversation,
+  mockStopAgent,
   mockSwitchAgentConversationMode,
 } from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
@@ -30,7 +39,8 @@ import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
 import { mockPlanBranchApi, toSnakeCasePlanBranch } from "@/api-mock/plan-branch";
 import { mockPlanApi } from "@/api-mock/plan";
-import type { ContextType } from "@/types/chat-conversation";
+import type { ChatConversation, ContextType, AgentRun } from "@/types/chat-conversation";
+import type { ChatMessageResponse, SendAgentMessageResult } from "@/api/chat";
 
 /**
  * Command handlers map - routes Tauri commands to mock implementations
@@ -193,6 +203,28 @@ const commandHandlers: Record<
   },
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  get_agent_conversation: async (args) => {
+    const response = await mockGetConversation(args.conversationId as string);
+    return {
+      conversation: toSnakeConversation(response.conversation),
+      messages: response.messages.map(toSnakeMessage),
+    };
+  },
+  get_agent_conversation_messages_page: async (args) => {
+    const response = await mockGetConversationMessagesPage(
+      args.conversationId as string,
+      (args.limit as number | undefined) ?? 40,
+      (args.offset as number | undefined) ?? 0,
+    );
+    return {
+      conversation: toSnakeConversation(response.conversation),
+      messages: response.messages.map(toSnakeMessage),
+      limit: response.limit,
+      offset: response.offset,
+      total_message_count: response.totalMessageCount,
+      has_older: response.hasOlder,
+    };
+  },
   get_agent_conversation_workspace: async (args) => {
     const workspace = await mockGetAgentConversationWorkspace(args.conversationId as string);
     if (!workspace) {
@@ -218,6 +250,29 @@ const commandHandlers: Record<
       created_at: workspace.createdAt,
       updated_at: workspace.updatedAt,
     };
+  },
+  list_agent_conversation_workspaces_by_project: async (args) => {
+    const workspaces = await mockListAgentConversationWorkspacesByProject(args.projectId as string);
+    return workspaces.map((workspace) => ({
+      conversation_id: workspace.conversationId,
+      project_id: workspace.projectId,
+      mode: workspace.mode,
+      base_ref_kind: workspace.baseRefKind,
+      base_ref: workspace.baseRef,
+      base_display_name: workspace.baseDisplayName,
+      base_commit: workspace.baseCommit,
+      branch_name: workspace.branchName,
+      worktree_path: workspace.worktreePath,
+      linked_ideation_session_id: workspace.linkedIdeationSessionId,
+      linked_plan_branch_id: workspace.linkedPlanBranchId,
+      publication_pr_number: workspace.publicationPrNumber,
+      publication_pr_url: workspace.publicationPrUrl,
+      publication_pr_status: workspace.publicationPrStatus,
+      publication_push_status: workspace.publicationPushStatus,
+      status: workspace.status,
+      created_at: workspace.createdAt,
+      updated_at: workspace.updatedAt,
+    }));
   },
   publish_agent_conversation_workspace: async (args) => {
     const result = await mockPublishAgentConversationWorkspace(args.conversationId as string);
@@ -449,6 +504,78 @@ const commandHandlers: Record<
       })),
     };
   },
+  get_agent_run_status_unified: async (args) => {
+    const run = await mockGetAgentRunStatus(args.conversationId as string);
+    return run ? toSnakeAgentRun(run) : null;
+  },
+  get_queued_agent_messages: async (args) => {
+    const messages = await mockGetQueuedAgentMessages(
+      args.contextType as ContextType,
+      args.contextId as string,
+    );
+    return messages.map((message) => ({
+      id: message.id,
+      content: message.content,
+      created_at: message.createdAt,
+      is_editing: message.isEditing,
+    }));
+  },
+  delete_queued_agent_message: async (args) =>
+    mockDeleteQueuedAgentMessage(
+      args.contextType as ContextType,
+      args.contextId as string,
+      args.messageId as string,
+    ),
+  is_chat_service_available: async () => mockIsChatServiceAvailable(),
+  stop_agent: async (args) =>
+    mockStopAgent(args.contextType as ContextType, args.contextId as string),
+  is_agent_running: async (args) =>
+    mockIsAgentRunning(args.contextType as ContextType, args.contextId as string),
+  send_agent_message: async (args) => {
+    const input = args.input as {
+      contextType: ContextType;
+      contextId: string;
+      content: string;
+      conversationId?: string | null;
+    };
+    const result = await mockSendAgentMessage(
+      input.contextType,
+      input.contextId,
+      input.content,
+      input.conversationId,
+    );
+    emitMockAgentEvent("agent:run_started", {
+      run_id: result.agentRunId,
+      context_type: input.contextType,
+      context_id: input.contextId,
+      conversation_id: result.conversationId,
+      provider_harness: null,
+      provider_session_id: null,
+    });
+    const conversation = await mockGetConversation(result.conversationId);
+    const lastMessage = conversation.messages[conversation.messages.length - 1];
+    if (lastMessage) {
+      emitMockAgentEvent("agent:message_created", {
+        context_type: input.contextType,
+        context_id: input.contextId,
+        conversation_id: result.conversationId,
+        message_id: lastMessage.id,
+        role: lastMessage.role,
+        content: lastMessage.content,
+        metadata: lastMessage.metadata,
+        created_at: lastMessage.createdAt,
+      });
+    }
+    emitMockAgentEvent("agent:run_completed", {
+      run_id: result.agentRunId,
+      context_type: input.contextType,
+      context_id: input.contextId,
+      conversation_id: result.conversationId,
+      status: "completed",
+    });
+    return toSnakeSendAgentMessageResult(result);
+  },
+  list_message_attachments: async () => [],
   open_agent_terminal: async (args) => {
     const input = args.input as {
       conversationId: string;
@@ -746,6 +873,87 @@ const commandHandlers: Record<
   // Health check
   health_check: async () => ({ status: "ok" }),
 };
+
+function toSnakeConversation(conversation: ChatConversation) {
+  return {
+    id: conversation.id,
+    context_type: conversation.contextType,
+    context_id: conversation.contextId,
+    claude_session_id: conversation.claudeSessionId,
+    provider_session_id: conversation.providerSessionId,
+    provider_harness: conversation.providerHarness,
+    upstream_provider: conversation.upstreamProvider,
+    provider_profile: conversation.providerProfile,
+    agent_mode: conversation.agentMode,
+    title: conversation.title,
+    message_count: conversation.messageCount,
+    last_message_at: conversation.lastMessageAt,
+    created_at: conversation.createdAt,
+    updated_at: conversation.updatedAt,
+    archived_at: conversation.archivedAt,
+  };
+}
+
+function toSnakeMessage(message: ChatMessageResponse) {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    metadata: message.metadata,
+    tool_calls: message.toolCalls,
+    content_blocks: message.contentBlocks,
+    sender: message.sender,
+    attribution_source: message.attributionSource,
+    provider_harness: message.providerHarness,
+    provider_session_id: message.providerSessionId,
+    upstream_provider: message.upstreamProvider,
+    provider_profile: message.providerProfile,
+    logical_model: message.logicalModel,
+    effective_model_id: message.effectiveModelId,
+    logical_effort: message.logicalEffort,
+    effective_effort: message.effectiveEffort,
+    input_tokens: message.inputTokens,
+    output_tokens: message.outputTokens,
+    cache_creation_tokens: message.cacheCreationTokens,
+    cache_read_tokens: message.cacheReadTokens,
+    estimated_usd: message.estimatedUsd,
+    created_at: message.createdAt,
+  };
+}
+
+function toSnakeAgentRun(run: AgentRun) {
+  return {
+    id: run.id,
+    conversation_id: run.conversationId,
+    status: run.status,
+    started_at: run.startedAt,
+    completed_at: run.completedAt,
+    error_message: run.errorMessage,
+    model_id: run.modelId,
+    model_label: run.modelLabel,
+  };
+}
+
+function toSnakeSendAgentMessageResult(result: SendAgentMessageResult) {
+  return {
+    conversation_id: result.conversationId,
+    agent_run_id: result.agentRunId,
+    is_new_conversation: result.isNewConversation,
+    was_queued: result.wasQueued,
+    queued_as_pending: result.queuedAsPending,
+    queued_message_id: result.queuedMessageId,
+  };
+}
+
+function emitMockAgentEvent(event: string, payload: unknown) {
+  const eventBus =
+    typeof window === "undefined"
+      ? undefined
+      : (window as Window & {
+          __eventBus?: { emit: (event: string, payload: unknown) => void };
+        }).__eventBus;
+  eventBus?.emit(event, payload);
+}
 
 function mockAgentTerminalSnapshot(
   conversationId: string,

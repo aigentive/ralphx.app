@@ -13,14 +13,25 @@ import {
 } from "@/lib/tauri";
 import { DesignView } from "./DesignView";
 
-const { useProjectsMock } = vi.hoisted(() => ({
+const { saveDialogMock, useProjectsMock, writeTextFileMock } = vi.hoisted(() => ({
+  saveDialogMock: vi.fn(),
   useProjectsMock: vi.fn(),
+  writeTextFileMock: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
+    success: vi.fn(),
   },
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  save: saveDialogMock,
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  writeTextFile: writeTextFileMock,
 }));
 
 vi.mock("@/hooks/useProjects", () => ({
@@ -32,11 +43,13 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
     ({
       designSystemId,
       conversationIdOverride,
+      sendOptions,
       headerContent,
       renderComposer,
     }: {
       designSystemId?: string;
       conversationIdOverride?: string;
+      sendOptions?: { conversationId?: string | null };
       headerContent?: ReactNode;
       renderComposer?: () => ReactNode;
     }) => (
@@ -44,6 +57,7 @@ vi.mock("@/components/Chat/IntegratedChatPanel", () => ({
         data-testid="integrated-design-chat-panel"
         data-design-system-id={designSystemId ?? ""}
         data-conversation-id={conversationIdOverride ?? ""}
+        data-send-conversation-id={sendOptions?.conversationId ?? ""}
       >
         {headerContent}
         {renderComposer?.()}
@@ -128,6 +142,7 @@ function designSystemSource(
 function styleguideItemResponse(
   designSystemId: string,
   itemId = "components.buttons",
+  overrides: Partial<DesignStyleguideItemResponse> = {},
 ): DesignStyleguideItemResponse {
   return {
     id: `item-${itemId}`,
@@ -143,6 +158,7 @@ function styleguideItemResponse(
     approvalStatus: "needs_review",
     feedbackStatus: "none",
     updatedAt: "2026-04-24T08:00:00Z",
+    ...overrides,
   };
 }
 
@@ -163,6 +179,10 @@ function renderWithProviders(ui: ReactNode) {
 describe("DesignView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    saveDialogMock.mockReset();
+    writeTextFileMock.mockReset();
+    saveDialogMock.mockResolvedValue("/tmp/ralphx-design-system-export.json");
+    writeTextFileMock.mockResolvedValue(undefined);
     useProjectsMock.mockReturnValue({ data: projects, isLoading: false });
     const systemsByProject = new Map(
       projects.map((project) => [
@@ -267,7 +287,13 @@ describe("DesignView", () => {
         ]);
         return {
           designSystem,
-          sources: [],
+          sources: [
+            designSystemSource(
+              designSystem.id,
+              designSystem.primaryProjectId,
+              `source-${designSystem.id}-primary`,
+            ),
+          ],
           conversation: {
             id: `conversation-${input.primaryProjectId}`,
             contextType: "design",
@@ -397,7 +423,9 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-system-design-system-project-1")).toHaveTextContent(
       "RalphX Design System",
     );
-    expect(await screen.findByText("ready / 2 sources")).toBeInTheDocument();
+    expect(await screen.findByTestId("design-chat-context")).toHaveTextContent(
+      "Design steward · ready · 2 sources",
+    );
     expect(screen.getByTestId("design-styleguide-group-colors")).toHaveTextContent(
       "Primary palette",
     );
@@ -419,7 +447,7 @@ describe("DesignView", () => {
           {
             item_id: "components.buttons",
             severity: "medium",
-            summary: "Check source confidence before approval.",
+            summary: "Only fallback source references matched this row; review before treating it as canonical.",
           },
         ],
         groups: [
@@ -449,8 +477,9 @@ describe("DesignView", () => {
 
     expect(await screen.findByText("Persisted artifact summary is ready for review.")).toBeInTheDocument();
     expect(await screen.findByText("Buttons from the persisted styleguide artifact")).toBeInTheDocument();
+    expect(screen.getByTestId("design-caveat")).toHaveTextContent("Source review needed: Buttons");
     expect(screen.getByTestId("design-caveat")).toHaveTextContent(
-      "Check source confidence before approval.",
+      "Buttons used fallback source references",
     );
   });
 
@@ -474,9 +503,8 @@ describe("DesignView", () => {
     await screen.findByTestId("design-styleguide-row-components.buttons");
 
     fireEvent.click(screen.getByTestId("design-styleguide-row-components.buttons"));
-    expect(screen.getByTestId("design-component-preview")).toHaveTextContent(
-      "design-preview-buttons",
-    );
+    expect(screen.getByTestId("design-component-preview")).toHaveTextContent("Primary");
+    expect(screen.getByTestId("design-component-preview")).toHaveTextContent("Secondary");
 
     fireEvent.click(screen.getByTestId("design-needs-work-components.buttons"));
     expect(screen.getByTestId("design-feedback-composer")).toBeInTheDocument();
@@ -501,9 +529,9 @@ describe("DesignView", () => {
     await waitFor(() => {
       expect(panel).toHaveAttribute("data-conversation-id", "conversation-design-system-project-1");
     });
-    expect(screen.getByTestId("design-chat-runtime-pending")).toHaveTextContent(
-      "Review notes appear here",
-    );
+    expect(panel).toHaveAttribute("data-send-conversation-id", "conversation-design-system-project-1");
+    expect(screen.getByTestId("design-chat-context")).toHaveTextContent("Design steward · ready · 2 sources");
+    expect(screen.queryByTestId("design-chat-runtime-pending")).not.toBeInTheDocument();
   });
 
   it("creates a draft design system from selected source projects and paths", async () => {
@@ -566,6 +594,7 @@ describe("DesignView", () => {
   });
 
   it("generates a draft styleguide through the backend publish command", async () => {
+    const { toast } = await import("sonner");
     const generateSpy = vi.spyOn(api.design, "generateStyleguide");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
     await screen.findByTestId("design-system-design-system-project-1");
@@ -580,9 +609,30 @@ describe("DesignView", () => {
       expect(generateSpy).toHaveBeenCalledWith("created-design-system-project-1");
     });
     expect(await screen.findByText("Button patterns from persisted styleguide rows")).toBeInTheDocument();
+    expect(await screen.findByTestId("design-generation-result")).toHaveTextContent(
+      "Styleguide generated with 1 review row",
+    );
+    expect(toast.success).toHaveBeenCalledWith("Styleguide generated", {
+      description: "1 review row",
+    });
+  });
+
+  it("keeps styleguide generation available for ready systems", async () => {
+    const generateSpy = vi.spyOn(api.design, "generateStyleguide");
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-styleguide-pane");
+    await screen.findByText("Design steward · ready · 2 sources");
+
+    expect(screen.getByTestId("design-generate-styleguide")).toHaveTextContent("Regenerate");
+    fireEvent.click(screen.getByTestId("design-generate-styleguide"));
+
+    await waitFor(() => {
+      expect(generateSpy).toHaveBeenCalledWith("design-system-project-1");
+    });
   });
 
   it("exports the selected design system package", async () => {
+    const { toast } = await import("sonner");
     const exportSpy = vi.spyOn(api.design, "exportPackage");
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
     await screen.findByTestId("design-styleguide-pane");
@@ -593,7 +643,29 @@ describe("DesignView", () => {
       expect(exportSpy).toHaveBeenCalledWith("design-system-project-1");
     });
     expect(await screen.findByTestId("design-export-result")).toHaveTextContent(
-      "export-p",
+      "Export ready",
+    );
+    expect(screen.getByTestId("design-export-result")).toHaveTextContent(
+      "export-package-1",
+    );
+    expect(screen.getByTestId("design-download-export-package")).toHaveTextContent(
+      "Download JSON",
+    );
+    expect(toast.success).toHaveBeenCalledWith("Design package exported", {
+      description: "Artifact export-p is ready to download.",
+    });
+
+    fireEvent.click(screen.getByTestId("design-download-export-package"));
+
+    await waitFor(() => {
+      expect(saveDialogMock).toHaveBeenCalledWith({
+        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+        defaultPath: "ralphx-design-system-ralphx-design-system-export-p.json",
+      });
+    });
+    expect(writeTextFileMock).toHaveBeenCalledWith(
+      "/tmp/ralphx-design-system-export.json",
+      JSON.stringify({ package_version: "1.0", redacted: true }, null, 2),
     );
   });
 
@@ -623,7 +695,7 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-system-imported-design-system-project-2")).toHaveTextContent(
       "Imported Product UI",
     );
-    expect(await screen.findByText("ready / 1 sources")).toBeInTheDocument();
+    expect(await screen.findByText("Design steward · ready · 1 source")).toBeInTheDocument();
   });
 
   it("uses backend styleguide commands for persisted rows", async () => {
@@ -639,7 +711,7 @@ describe("DesignView", () => {
     const row = await screen.findByTestId("design-styleguide-row-components.buttons");
     fireEvent.click(row);
     expect(await screen.findByTestId("design-preview-kind")).toHaveTextContent(
-      "component sample / 1 sources",
+      "component sample / 1 source",
     );
     expect(previewSpy).toHaveBeenCalledWith("design-system-project-1", "preview-buttons");
     fireEvent.click(screen.getByTestId("design-approve-components.buttons"));
@@ -662,6 +734,132 @@ describe("DesignView", () => {
         conversationId: "conversation-design-system-project-1",
       });
     });
+  });
+
+  it("renders every persisted styleguide preview kind as a visual sample", async () => {
+    const previewCases = [
+      {
+        itemId: "colors.primary_palette",
+        group: "colors" as const,
+        label: "Primary palette",
+        summary: "Primary, hover, soft, and ring roles.",
+        previewArtifactId: "preview-colors",
+        previewKind: "color_swatch",
+        testId: "design-color-preview",
+        expectedText: "Primary palette",
+      },
+      {
+        itemId: "type.typography_scale",
+        group: "type" as const,
+        label: "Typography scale",
+        summary: "Text hierarchy, label density, and code-font usage.",
+        previewArtifactId: "preview-type",
+        previewKind: "typography_sample",
+        testId: "design-typography-preview",
+        expectedText: "Review generated artifacts",
+      },
+      {
+        itemId: "components.buttons",
+        group: "components" as const,
+        label: "Buttons",
+        summary: "Button patterns from persisted preview",
+        previewArtifactId: "preview-components",
+        previewKind: "component_sample",
+        testId: "design-component-preview",
+        expectedText: "Ask Design to refine this component",
+      },
+      {
+        itemId: "spacing.radii_elevation",
+        group: "spacing" as const,
+        label: "Spacing, radii, and elevation",
+        summary: "Panel spacing, control radius, borders, focus rings, and elevation rules.",
+        previewArtifactId: "preview-spacing",
+        previewKind: "spacing_sample",
+        testId: "design-spacing-preview",
+        expectedText: "spacing sample",
+      },
+      {
+        itemId: "ui_kit.workspace_surfaces",
+        group: "ui_kit" as const,
+        label: "Workspace surfaces",
+        summary: "Reviewable layout and pane patterns inferred from source-backed UI.",
+        previewArtifactId: "preview-layout",
+        previewKind: "layout_sample",
+        testId: "design-layout-preview",
+        expectedText: "layout sample",
+      },
+      {
+        itemId: "brand.visual_identity",
+        group: "brand" as const,
+        label: "Visual identity assets",
+        summary: "Logo, icon, asset, and brand-adjacent source references.",
+        previewArtifactId: "preview-brand",
+        previewKind: "asset_sample",
+        testId: "design-asset-preview",
+        expectedText: "Visual identity assets",
+      },
+    ];
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      ...previewCases.map((previewCase) =>
+        styleguideItemResponse("design-system-project-1", previewCase.itemId, {
+          id: `item-${previewCase.itemId}`,
+          group: previewCase.group,
+          label: previewCase.label,
+          summary: previewCase.summary,
+          previewArtifactId: previewCase.previewArtifactId,
+          sourceRefs: [
+            { project_id: "project-1", path: "frontend/src/components/Chat/TextBubble.tsx" },
+            { project_id: "project-1", path: "frontend/src/components/Chat/TeamContextBar.tsx" },
+            { project_id: "project-1", path: "frontend/src/styles/index.css" },
+          ],
+          confidence: "high",
+        }),
+      ),
+    ]);
+    vi.mocked(api.design.getStyleguidePreview).mockImplementation(
+      async (designSystemId: string, previewArtifactId: string) => {
+        const previewCase =
+          previewCases.find((candidate) => candidate.previewArtifactId === previewArtifactId) ??
+          previewCases[0]!;
+        return {
+          designSystemId,
+          schemaVersionId: "schema-version-1",
+          artifactId: previewArtifactId,
+          artifactType: "design_doc",
+          content: {
+            design_system_id: designSystemId,
+            schema_version_id: "schema-version-1",
+            item_id: previewCase.itemId,
+            group: previewCase.group,
+            label: previewCase.label,
+            summary: previewCase.summary,
+            preview_kind: previewCase.previewKind,
+            confidence: "high",
+            source_refs: [
+              { project_id: "project-1", path: "frontend/src/components/Chat/TextBubble.tsx" },
+              { project_id: "project-1", path: "frontend/src/components/Chat/TeamContextBar.tsx" },
+              { project_id: "project-1", path: "frontend/src/styles/index.css" },
+            ],
+            generated_at: "2026-04-24T08:00:00Z",
+          },
+        };
+      },
+    );
+    renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
+    await screen.findByTestId("design-styleguide-row-ui_kit.workspace_surfaces");
+
+    for (const previewCase of previewCases) {
+      fireEvent.click(await screen.findByTestId(`design-styleguide-row-${previewCase.itemId}`));
+      expect(await screen.findByTestId(previewCase.testId)).toHaveTextContent(
+        previewCase.expectedText,
+      );
+      expect(
+        await screen.findByText(`${previewCase.previewKind.replace(/_/g, " ")} / 3 sources`),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId(previewCase.testId)).toContainElement(
+        screen.getByText(`${previewCase.previewKind.replace(/_/g, " ")} / 3 sources`),
+      );
+    }
   });
 
   it("generates a schema-aligned artifact from a persisted styleguide row", async () => {

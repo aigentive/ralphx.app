@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { chatKeys, invalidateConversationDataQueries } from "@/hooks/useChat";
 import type {
   CreateDesignStyleguideFeedbackInput,
   CreateDesignStyleguideFeedbackResponse,
@@ -299,6 +300,10 @@ export function useCreateDesignStyleguideFeedback() {
       queryClient.invalidateQueries({
         queryKey: designSystemKeys.styleguideItems(response.item.designSystemId),
       });
+      queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList("design", response.item.designSystemId),
+      });
+      invalidateConversationDataQueries(queryClient, response.feedback.conversationId);
     },
   });
 }

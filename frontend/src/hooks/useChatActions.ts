@@ -131,6 +131,14 @@ export function useChatActions({
           if (result.wasQueued && result.queuedMessageId != null) {
             queueMessage(storeContextKey, content, result.queuedMessageId);
           }
+          if (result.conversationId) {
+            invalidateConversationDataQueries(queryClient, result.conversationId);
+            const activeConversationId =
+              useChatStore.getState().activeConversationIds[storeContextKey] ?? null;
+            if (!activeConversationId || result.isNewConversation) {
+              setActiveConversation(storeContextKey, result.conversationId);
+            }
+          }
           if (
             contextType === "ideation" &&
             ideationSessionId &&

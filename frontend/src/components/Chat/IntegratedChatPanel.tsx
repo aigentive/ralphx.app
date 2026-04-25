@@ -927,7 +927,10 @@ export function IntegratedChatPanel({
 
   // Empty state: only show when we KNOW there are no messages (not while loading)
   // Also don't show empty if conversations are loading - we might auto-select one
-  const hasNoConversations = !isConversationsLoading && (conversations.data?.length ?? 0) === 0;
+  const hasNoConversations =
+    !isConversationsLoading &&
+    !activeConversationId &&
+    (conversations.data?.length ?? 0) === 0;
   const hasEmptyConversation = !isLoading && activeConversationId && sortedMessages.length === 0;
   const isEmpty = hasNoConversations || hasEmptyConversation;
 

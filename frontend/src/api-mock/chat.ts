@@ -12,6 +12,7 @@ import { normalizeConversationProviderMetadata } from "@/types/chat-conversation
 import type {
   ChatMessageResponse,
   ChildSessionStatusResponse,
+  ConversationMessagesPageResponse,
   ConversationListPageResponse,
   ConversationStatsResponse,
   AgentConversationWorkspace,
@@ -278,6 +279,31 @@ export async function mockGetConversation(
   };
 }
 
+export async function mockGetConversationMessagesPage(
+  conversationId: string,
+  limit: number,
+  offset = 0
+): Promise<ConversationMessagesPageResponse> {
+  const { conversation, messages } = await mockGetConversation(conversationId);
+  const normalizedLimit = Math.max(0, limit);
+  const normalizedOffset = Math.max(0, offset);
+  const newestFirst = messages.slice().reverse();
+  const pageNewestFirst = newestFirst.slice(
+    normalizedOffset,
+    normalizedOffset + normalizedLimit
+  );
+  const pageMessages = pageNewestFirst.reverse();
+
+  return {
+    conversation,
+    messages: pageMessages,
+    limit: normalizedLimit,
+    offset: normalizedOffset,
+    totalMessageCount: messages.length,
+    hasOlder: normalizedOffset + pageMessages.length < messages.length,
+  };
+}
+
 export async function mockGetConversationStats(
   conversationId: string
 ): Promise<ConversationStatsResponse | null> {
@@ -415,10 +441,15 @@ export async function mockGetAgentRunStatus(
 export async function mockSendAgentMessage(
   contextType: ContextType,
   contextId: string,
-  _content: string
+  content: string,
+  conversationId?: string | null
 ): Promise<SendAgentMessageResult> {
   // Find or create conversation
-  let conversation = Array.from(mockConversations.values()).find(
+  let conversation = conversationId
+    ? mockConversations.get(conversationId)
+    : undefined;
+
+  conversation ??= Array.from(mockConversations.values()).find(
     (c) => c.contextType === contextType && c.contextId === contextId
   );
 
@@ -426,6 +457,42 @@ export async function mockSendAgentMessage(
   if (!conversation) {
     conversation = await mockCreateConversation(contextType, contextId);
   }
+
+  const createdAt = new Date().toISOString();
+  const message: ChatMessageResponse = {
+    id: generateTestUuid(),
+    sessionId: null,
+    projectId: null,
+    taskId: null,
+    role: "user",
+    content,
+    metadata: null,
+    parentMessageId: null,
+    conversationId: conversation.id,
+    toolCalls: null,
+    contentBlocks: null,
+    sender: null,
+    attributionSource: null,
+    providerHarness: conversation.providerHarness,
+    providerSessionId: conversation.providerSessionId,
+    upstreamProvider: conversation.upstreamProvider ?? null,
+    providerProfile: conversation.providerProfile ?? null,
+    logicalModel: null,
+    effectiveModelId: null,
+    logicalEffort: null,
+    effectiveEffort: null,
+    inputTokens: null,
+    outputTokens: null,
+    cacheCreationTokens: null,
+    cacheReadTokens: null,
+    estimatedUsd: null,
+    createdAt,
+  };
+  mockMessages.set(conversation.id, [
+    ...(mockMessages.get(conversation.id) ?? []),
+    message,
+  ]);
+  refreshConversationMessageStats(conversation.id);
 
   return {
     conversationId: conversation.id,
@@ -629,6 +696,7 @@ export const mockChatApi = {
   listConversations: mockListConversations,
   listConversationsPage: mockListConversationsPage,
   getConversation: mockGetConversation,
+  getConversationMessagesPage: mockGetConversationMessagesPage,
   createConversation: mockCreateConversation,
   updateConversationTitle: mockUpdateConversationTitle,
   archiveConversation: mockArchiveConversation,

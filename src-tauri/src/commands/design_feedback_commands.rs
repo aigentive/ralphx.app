@@ -81,7 +81,27 @@ pub struct DesignStyleguideFeedbackResponse {
 pub struct CreateDesignStyleguideFeedbackResponse {
     pub feedback: DesignStyleguideFeedbackResponse,
     pub item: DesignStyleguideItemResponse,
-    pub message: AgentMessageResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<AgentMessageResponse>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CreateDesignStyleguideFeedbackOptions {
+    pub append_chat_message: bool,
+}
+
+impl CreateDesignStyleguideFeedbackOptions {
+    pub(crate) const fn append_chat_message() -> Self {
+        Self {
+            append_chat_message: true,
+        }
+    }
+
+    pub(crate) const fn record_only() -> Self {
+        Self {
+            append_chat_message: false,
+        }
+    }
 }
 
 impl From<DesignStyleguideItem> for DesignStyleguideItemResponse {
@@ -145,19 +165,21 @@ pub async fn create_design_styleguide_feedback(
         "design:styleguide_item_feedback_created",
         &response.feedback,
     );
-    let _ = app.emit(
-        "agent:message_created",
-        AgentMessageCreatedPayload {
-            message_id: response.message.id.clone(),
-            conversation_id: response.feedback.conversation_id.clone(),
-            context_type: ChatContextType::Design.to_string(),
-            context_id: response.feedback.design_system_id.clone(),
-            role: response.message.role.clone(),
-            content: response.message.content.clone(),
-            created_at: Some(response.message.created_at.clone()),
-            metadata: response.message.metadata.clone(),
-        },
-    );
+    if let Some(message) = response.message.as_ref() {
+        let _ = app.emit(
+            "agent:message_created",
+            AgentMessageCreatedPayload {
+                message_id: message.id.clone(),
+                conversation_id: response.feedback.conversation_id.clone(),
+                context_type: ChatContextType::Design.to_string(),
+                context_id: response.feedback.design_system_id.clone(),
+                role: message.role.clone(),
+                content: message.content.clone(),
+                created_at: Some(message.created_at.clone()),
+                metadata: message.metadata.clone(),
+            },
+        );
+    }
     Ok(response)
 }
 
@@ -249,12 +271,27 @@ pub async fn create_design_styleguide_feedback_core(
     state: &AppState,
     input: CreateDesignStyleguideFeedbackInput,
 ) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
+    create_design_styleguide_feedback_core_with_options(
+        state,
+        input,
+        CreateDesignStyleguideFeedbackOptions::append_chat_message(),
+    )
+    .await
+}
+
+#[doc(hidden)]
+pub(crate) async fn create_design_styleguide_feedback_core_with_options(
+    state: &AppState,
+    input: CreateDesignStyleguideFeedbackInput,
+    options: CreateDesignStyleguideFeedbackOptions,
+) -> Result<CreateDesignStyleguideFeedbackResponse, String> {
     let design_system_id = parse_design_system_id(&input.design_system_id)?;
     let item_id = normalize_item_id(&input.item_id)?;
     let feedback_text = normalize_feedback(&input.feedback)?;
     let conversation =
         resolve_design_conversation(state, &design_system_id, input.conversation_id.as_deref())
             .await?;
+    let conversation_id = conversation.id.clone();
     let mut item = load_styleguide_item(state, &design_system_id, &item_id).await?;
 
     let feedback = DesignStyleguideFeedback {
@@ -262,7 +299,7 @@ pub async fn create_design_styleguide_feedback_core(
         design_system_id: design_system_id.clone(),
         schema_version_id: item.schema_version_id.clone(),
         item_id: item.item_id.clone(),
-        conversation_id: conversation.id,
+        conversation_id: conversation_id.clone(),
         message_id: None,
         preview_artifact_id: item.preview_artifact_id.clone(),
         source_refs: item.source_refs.clone(),
@@ -286,34 +323,38 @@ pub async fn create_design_styleguide_feedback_core(
         .await
         .map_err(|error| error.to_string())?;
 
-    let metadata = feedback_message_metadata(&feedback, &item);
-    let message_content = format!("Feedback on {}: {}", item.label, feedback_text);
-    let message = create_user_message(
-        ChatContextType::Design,
-        design_system_id.as_str(),
-        &message_content,
-        conversation.id,
-        Some(metadata.to_string()),
-        None,
-    );
-    let message = state
-        .chat_message_repo
-        .create(message)
-        .await
-        .map_err(|error| error.to_string())?;
+    let mut message_response = None;
+    if options.append_chat_message {
+        let metadata = feedback_message_metadata(&feedback, &item);
+        let message_content = feedback_message_content(&feedback, &item, &feedback_text);
+        let message = create_user_message(
+            ChatContextType::Design,
+            design_system_id.as_str(),
+            &message_content,
+            conversation_id.clone(),
+            Some(metadata.to_string()),
+            None,
+        );
+        let message = state
+            .chat_message_repo
+            .create(message)
+            .await
+            .map_err(|error| error.to_string())?;
 
-    feedback.message_id = Some(message.id.clone());
-    state
-        .design_styleguide_feedback_repo
-        .update(&feedback)
-        .await
-        .map_err(|error| error.to_string())?;
-    update_conversation_stats(state, &conversation.id, message.created_at).await?;
+        feedback.message_id = Some(message.id.clone());
+        state
+            .design_styleguide_feedback_repo
+            .update(&feedback)
+            .await
+            .map_err(|error| error.to_string())?;
+        update_conversation_stats(state, &conversation_id, message.created_at).await?;
+        message_response = Some(agent_message_response(message));
+    }
 
     Ok(CreateDesignStyleguideFeedbackResponse {
         feedback: DesignStyleguideFeedbackResponse::from(feedback),
         item: DesignStyleguideItemResponse::from(item),
-        message: agent_message_response(message),
+        message: message_response,
     })
 }
 
@@ -435,17 +476,93 @@ fn feedback_message_metadata(
     feedback: &DesignStyleguideFeedback,
     item: &DesignStyleguideItem,
 ) -> JsonValue {
+    let source_refs = feedback_source_refs_json(&feedback.source_refs);
     json!({
+        "kind": "design_styleguide_feedback",
+        "designSystemId": feedback.design_system_id.as_str(),
+        "schemaVersionId": feedback.schema_version_id.as_str(),
+        "itemId": feedback.item_id.as_str(),
+        "previewArtifactId": feedback.preview_artifact_id.as_deref(),
+        "sourceRefs": source_refs,
         "source": "design_styleguide_feedback",
         "event_type": "design:styleguide_item_feedback_created",
         "feedback_id": feedback.id.as_str(),
         "design_system_id": feedback.design_system_id.as_str(),
         "schema_version_id": feedback.schema_version_id.as_str(),
-        "item_id": feedback.item_id,
+        "item_id": feedback.item_id.as_str(),
         "styleguide_item_id": item.id.as_str(),
-        "preview_artifact_id": feedback.preview_artifact_id,
-        "source_refs": feedback.source_refs,
+        "preview_artifact_id": feedback.preview_artifact_id.as_deref(),
+        "source_refs": &feedback.source_refs,
     })
+}
+
+fn feedback_message_content(
+    feedback: &DesignStyleguideFeedback,
+    item: &DesignStyleguideItem,
+    feedback_text: &str,
+) -> String {
+    let preview = feedback
+        .preview_artifact_id
+        .as_deref()
+        .unwrap_or("preview pending");
+    let source_refs = if feedback.source_refs.is_empty() {
+        "none".to_string()
+    } else {
+        feedback_source_refs_for_message(&feedback.source_refs)
+    };
+    format!(
+        "Design styleguide feedback\nItem: {} / {}\nPreview: {}\nSource refs: {}\n\n{}",
+        group_label(&item.group),
+        item.label,
+        preview,
+        source_refs,
+        feedback_text,
+    )
+}
+
+fn feedback_source_refs_for_message(source_refs: &[DesignSourceRef]) -> String {
+    let mut formatted = source_refs
+        .iter()
+        .take(3)
+        .map(format_source_ref)
+        .collect::<Vec<_>>();
+    if source_refs.len() > 3 {
+        formatted.push(format!("+{} more", source_refs.len() - 3));
+    }
+    formatted.join(", ")
+}
+
+fn group_label(group: &crate::domain::entities::DesignStyleguideGroup) -> &'static str {
+    match group {
+        crate::domain::entities::DesignStyleguideGroup::UiKit => "UI Kit",
+        crate::domain::entities::DesignStyleguideGroup::Type => "Type",
+        crate::domain::entities::DesignStyleguideGroup::Colors => "Colors",
+        crate::domain::entities::DesignStyleguideGroup::Spacing => "Spacing",
+        crate::domain::entities::DesignStyleguideGroup::Components => "Components",
+        crate::domain::entities::DesignStyleguideGroup::Brand => "Brand",
+    }
+}
+
+fn format_source_ref(source_ref: &DesignSourceRef) -> String {
+    source_ref
+        .line
+        .map(|line| format!("{}:{}", source_ref.path, line))
+        .unwrap_or_else(|| source_ref.path.clone())
+}
+
+fn feedback_source_refs_json(source_refs: &[DesignSourceRef]) -> JsonValue {
+    JsonValue::Array(
+        source_refs
+            .iter()
+            .map(|source_ref| {
+                json!({
+                    "projectId": source_ref.project_id.as_str(),
+                    "path": source_ref.path.as_str(),
+                    "line": source_ref.line,
+                })
+            })
+            .collect(),
+    )
 }
 
 fn agent_message_response(message: ChatMessage) -> AgentMessageResponse {
@@ -653,7 +770,10 @@ mod tests {
 
         assert_eq!(response.len(), 1);
         assert_eq!(response[0].item_id, "button.primary");
-        assert_eq!(response[0].schema_version_id, current_schema_version_id.as_str());
+        assert_eq!(
+            response[0].schema_version_id,
+            current_schema_version_id.as_str()
+        );
     }
 
     #[tokio::test]
@@ -682,17 +802,22 @@ mod tests {
         .expect("feedback bridge");
 
         assert_eq!(response.feedback.status, "open");
+        let message = response
+            .message
+            .as_ref()
+            .expect("UI feedback bridge should append a chat message");
         assert_eq!(
             response.feedback.message_id.as_deref(),
-            Some(response.message.id.as_str())
+            Some(message.id.as_str())
         );
         assert_eq!(response.item.approval_status, "needs_work");
         assert_eq!(response.item.feedback_status, "open");
-        assert_eq!(response.message.role, "user");
-        assert!(response
-            .message
+        assert_eq!(message.role, "user");
+        assert!(message.content.contains("Design styleguide feedback"));
+        assert!(message
             .content
-            .contains("Increase focus ring contrast"));
+            .contains("Item: Components / Primary button"));
+        assert!(message.content.contains("Increase focus ring contrast"));
 
         let messages = state
             .chat_message_repo
@@ -706,7 +831,10 @@ mod tests {
             serde_json::from_str::<JsonValue>(messages[0].metadata.as_deref().expect("metadata"))
                 .expect("metadata json");
         assert_eq!(metadata["source"], "design_styleguide_feedback");
+        assert_eq!(metadata["kind"], "design_styleguide_feedback");
         assert_eq!(metadata["item_id"], "button.primary");
+        assert_eq!(metadata["itemId"], "button.primary");
+        assert_eq!(metadata["sourceRefs"][0]["path"], "frontend/src/Button.tsx");
     }
 
     #[tokio::test]
