@@ -82,6 +82,8 @@ export function DesignStyleguidePane({
   const generateLabel = hasPersistedItems || designSystem?.status === "ready" ? "Regenerate" : "Generate";
   const generationRowLabel = generationResult?.itemCount === 1 ? "row" : "rows";
   const generationCaveatLabel = generationResult?.caveatCount === 1 ? "caveat" : "caveats";
+  const hasStyleguideRows =
+    designSystem?.groups.some((group) => group.items.length > 0) ?? false;
 
   const reviewCounts = useMemo(() => {
     const counts: Record<DesignReviewState, number> = {
@@ -391,6 +393,25 @@ export function DesignStyleguidePane({
             )}
           </section>
         ))}
+
+        {!hasStyleguideRows && !isGeneratingStyleguide && (
+          <section
+            className="rounded-lg border p-4 text-[12px]"
+            style={{
+              borderColor: "var(--overlay-weak)",
+              background: "var(--bg-surface)",
+              color: "var(--text-secondary)",
+            }}
+            data-testid="design-styleguide-empty"
+          >
+            <div className="font-semibold" style={{ color: "var(--text-primary)" }}>
+              No styleguide rows yet
+            </div>
+            <div className="mt-1 leading-5">
+              Generate a styleguide to analyze the selected source project and publish source-backed review rows.
+            </div>
+          </section>
+        )}
 
         {designSystem.groups.map((group) => {
           const visibleItems = group.items.filter((item) => {
@@ -823,6 +844,96 @@ function PreviewSample({
   return <ComponentPreview item={item} preview={preview} previewKind={previewKind} sourceCount={sourceCount} />;
 }
 
+type PreviewRecord = Record<string, unknown>;
+
+function previewRecords(preview: DesignPreviewContent | undefined, key: string): PreviewRecord[] {
+  const value = (preview as PreviewRecord | undefined)?.[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is PreviewRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+}
+
+function previewStringArray(preview: DesignPreviewContent | undefined, key: string): string[] {
+  const value = (preview as PreviewRecord | undefined)?.[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+}
+
+function recordString(record: PreviewRecord, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function sourceLabelsForPreview(
+  item: DesignStyleguideItem,
+  preview: DesignPreviewContent | undefined,
+  fallbackCount = 4,
+): string[] {
+  const labels = previewStringArray(preview, "source_labels");
+  if (labels.length > 0) {
+    return labels.slice(0, fallbackCount);
+  }
+  const paths = previewStringArray(preview, "source_paths");
+  const pathLabels = paths.map(labelFromSourcePath).filter(Boolean);
+  if (pathLabels.length > 0) {
+    return pathLabels.slice(0, fallbackCount);
+  }
+  const itemLabels = item.sourceRefs.map((sourceRef) => labelFromSourcePath(sourceRef.path));
+  return itemLabels.length > 0 ? itemLabels.slice(0, fallbackCount) : [item.label];
+}
+
+function labelFromSourcePath(path: string): string {
+  const filename = path.split("/").pop() ?? path;
+  const stem = filename.replace(/\.[^.]+$/, "");
+  return stem
+    .replace(/[-_.]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+    .trim();
+}
+
+function SourceBackedPreview({
+  item,
+  preview,
+  previewKind,
+  sourceCount,
+}: {
+  item: DesignStyleguideItem;
+  preview: DesignPreviewContent | undefined;
+  previewKind: string;
+  sourceCount: number;
+}) {
+  const labels = sourceLabelsForPreview(item, preview, 6);
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-3"
+      style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
+      data-testid="design-source-backed-preview"
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {labels.map((label) => (
+          <div
+            key={label}
+            className="rounded-md border px-2.5 py-2"
+            style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}
+          >
+            <div className="text-[11px] font-medium" style={{ color: "var(--text-primary)" }}>
+              {label}
+            </div>
+          </div>
+        ))}
+      </div>
+      <PreviewMeta previewKind={previewKind} sourceCount={sourceCount} />
+      <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+        {preview?.summary ?? item.summary}
+      </div>
+    </div>
+  );
+}
+
 function ColorPreview({
   item,
   preview,
@@ -832,12 +943,24 @@ function ColorPreview({
   preview: DesignPreviewContent | undefined;
   sourceCount: number;
 }) {
-  const swatches = [
-    { label: "Primary", value: "var(--accent-primary)", text: "var(--bg-base)" },
-    { label: "Hover", value: "var(--accent-primary)", text: "var(--bg-base)" },
-    { label: "Soft", value: "var(--accent-muted)", text: "var(--accent-primary)" },
-    { label: "Ring", value: "var(--bg-base)", text: "var(--accent-primary)", border: "var(--accent-primary)" },
-  ];
+  const swatches = previewRecords(preview, "swatches")
+    .map((swatch, index) => ({
+      label: recordString(swatch, "label") ?? `Source ${index + 1}`,
+      value: recordString(swatch, "value"),
+    }))
+    .filter((swatch): swatch is { label: string; value: string } => Boolean(swatch.value));
+
+  if (swatches.length === 0) {
+    return (
+      <SourceBackedPreview
+        item={item}
+        preview={preview}
+        previewKind={preview?.preview_kind ?? "color_swatch"}
+        sourceCount={sourceCount}
+      />
+    );
+  }
+
   return (
     <div className="space-y-2" data-testid="design-color-preview">
       <div className="grid grid-cols-2 gap-2">
@@ -846,19 +969,35 @@ function ColorPreview({
             key={swatch.label}
             className="min-h-20 rounded-lg border p-2"
             style={{
-              borderColor: swatch.border ?? "var(--overlay-weak)",
+              borderColor: "var(--overlay-weak)",
               background: swatch.value,
-              color: swatch.text,
+              color: readableTextColor(swatch.value),
             }}
           >
             <div className="text-[10px] font-semibold uppercase">{swatch.label}</div>
-            <div className="mt-5 text-[11px]">{preview?.label ?? item.label}</div>
+            <div className="mt-5 text-[11px]">{swatch.value}</div>
           </div>
         ))}
       </div>
       <PreviewMeta previewKind={preview?.preview_kind ?? "color_swatch"} sourceCount={sourceCount} />
     </div>
   );
+}
+
+function readableTextColor(color: string): string {
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    const normalized = hex.length === 3
+      ? hex.split("").map((value) => `${value}${value}`).join("")
+      : hex.slice(0, 6);
+    const red = Number.parseInt(normalized.slice(0, 2), 16);
+    const green = Number.parseInt(normalized.slice(2, 4), 16);
+    const blue = Number.parseInt(normalized.slice(4, 6), 16);
+    if ([red, green, blue].every(Number.isFinite)) {
+      return red * 0.299 + green * 0.587 + blue * 0.114 > 150 ? "#111111" : "#ffffff";
+    }
+  }
+  return "var(--text-primary)";
 }
 
 function TypographyPreview({
@@ -870,6 +1009,24 @@ function TypographyPreview({
   preview: DesignPreviewContent | undefined;
   sourceCount: number;
 }) {
+  const samples = previewRecords(preview, "typography_samples");
+  const rows = samples.length
+    ? samples.map((sample, index) => ({
+        label: recordString(sample, "label") ?? ["Display", "Body", "Label", "Code"][index] ?? "Type",
+        sample: recordString(sample, "sample") ?? item.label,
+        className: [
+          "text-[20px] leading-7 font-semibold",
+          "text-[13px] leading-5",
+          "text-[11px] leading-4 font-semibold uppercase",
+          "font-mono text-[12px] leading-5",
+        ][index] ?? "text-[13px] leading-5",
+      }))
+    : [
+        { label: "Display", sample: preview?.label ?? item.label, className: "text-[20px] leading-7 font-semibold" },
+        { label: "Body", sample: preview?.summary ?? item.summary, className: "text-[13px] leading-5" },
+        { label: "Label", sample: item.confidence.toUpperCase(), className: "text-[11px] leading-4 font-semibold uppercase" },
+        { label: "Code", sample: item.sourceRefs[0]?.path ?? item.itemId, className: "font-mono text-[12px] leading-5" },
+      ];
   return (
     <div
       className="rounded-lg border p-3 space-y-3"
@@ -878,19 +1035,14 @@ function TypographyPreview({
     >
       <div className="space-y-1">
         <div className="text-[28px] leading-9 font-semibold" style={{ color: "var(--text-primary)" }}>
-          Review generated artifacts
+          {preview?.label ?? item.label}
         </div>
         <div className="text-[13px] leading-5" style={{ color: "var(--text-secondary)" }}>
           {preview?.summary ?? item.summary}
         </div>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {[
-          { label: "Display", sample: "Design workspace", className: "text-[20px] leading-7 font-semibold" },
-          { label: "Body", sample: "Source-grounded decisions stay readable in dense panes.", className: "text-[13px] leading-5" },
-          { label: "Label", sample: "NEEDS REVIEW", className: "text-[11px] leading-4 font-semibold uppercase" },
-          { label: "Code", sample: "tokens.typography.body", className: "font-mono text-[12px] leading-5" },
-        ].map((row) => (
+        {rows.map((row) => (
           <div
             key={row.label}
             className="rounded-md border px-2.5 py-2"
@@ -921,6 +1073,14 @@ function ComponentPreview({
   previewKind: string;
   sourceCount: number;
 }) {
+  const componentSamples = previewRecords(preview, "component_samples")
+    .map((sample) => recordString(sample, "label"))
+    .filter((label): label is string => Boolean(label));
+  const labels = componentSamples.length > 0
+    ? componentSamples
+    : sourceLabelsForPreview(item, preview, 4);
+  const stateLabels = ["default", "hover", "focus", "loading"];
+
   return (
     <div
       className="rounded-lg border p-3 space-y-3"
@@ -928,54 +1088,35 @@ function ComponentPreview({
       data-testid="design-component-preview"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="h-8 rounded-md px-3 text-[12px] font-semibold"
-          style={{ background: "var(--accent-primary)", color: "var(--bg-base)" }}
-        >
-          Primary
-        </button>
-        <button
-          type="button"
-          className="h-8 rounded-md border px-3 text-[12px] font-medium"
-          style={{ borderColor: "var(--overlay-weak)", color: "var(--text-primary)", background: "var(--bg-base)" }}
-        >
-          Secondary
-        </button>
-        <button
-          type="button"
-          className="h-8 rounded-md px-3 text-[12px] font-medium"
-          style={{ color: "var(--text-secondary)", background: "transparent" }}
-        >
-          Ghost
-        </button>
-        <button
-          type="button"
-          className="h-8 rounded-md border px-3 text-[12px] font-medium opacity-55"
-          style={{ borderColor: "var(--overlay-faint)", color: "var(--text-muted)", background: "var(--bg-base)" }}
-          disabled
-        >
-          Loading...
-        </button>
+        {labels.map((label, index) => (
+          <button
+            key={`${label}-${index}`}
+            type="button"
+            className="h-8 rounded-md border px-3 text-[12px] font-medium"
+            style={{
+              borderColor: index === 0 ? "var(--accent-border)" : "var(--overlay-weak)",
+              color: index === 0 ? "var(--accent-primary)" : "var(--text-primary)",
+              background: index === 0 ? "var(--accent-muted)" : "var(--bg-base)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <div
         className="rounded-md border p-2"
         style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}
       >
-        <div className="flex items-center gap-2">
-          <div
-            className="h-8 flex-1 rounded-md border px-2 text-[12px] leading-8"
-            style={{ borderColor: "var(--overlay-weak)", color: "var(--text-muted)", background: "var(--bg-surface)" }}
-          >
-            Ask Design to refine this component...
-          </div>
-          <button
-            type="button"
-            className="h-8 rounded-md px-2.5 text-[12px] font-semibold"
-            style={{ background: "var(--accent-primary)", color: "var(--bg-base)" }}
-          >
-            Send
-          </button>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {stateLabels.map((stateLabel) => (
+            <div
+              key={stateLabel}
+              className="rounded-md border px-2 py-1.5 text-[11px]"
+              style={{ borderColor: "var(--overlay-weak)", color: "var(--text-secondary)", background: "var(--bg-surface)" }}
+            >
+              {stateLabel}
+            </div>
+          ))}
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 text-[12px]">
@@ -1008,6 +1149,11 @@ function SpacingPreview({
   preview: DesignPreviewContent | undefined;
   sourceCount: number;
 }) {
+  const regions = previewRecords(preview, "layout_regions")
+    .map((region) => recordString(region, "label"))
+    .filter((label): label is string => Boolean(label));
+  const labels = regions.length > 0 ? regions.slice(0, 3) : sourceLabelsForPreview(item, preview, 3);
+
   return (
     <div
       className="rounded-lg border p-3 space-y-3"
@@ -1038,6 +1184,21 @@ function SpacingPreview({
         <div className="h-14 rounded-lg border" style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-base)" }} />
         <div className="h-14 rounded-lg border shadow-lg" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }} />
       </div>
+      <div className="flex flex-wrap gap-2">
+        {labels.map((label) => (
+          <span
+            key={label}
+            className="rounded-md border px-2 py-1 text-[11px]"
+            style={{
+              borderColor: "var(--overlay-faint)",
+              background: "var(--bg-base)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
       <PreviewMeta previewKind={preview?.preview_kind ?? "spacing_sample"} sourceCount={sourceCount} />
       <div className="text-[12px]" style={{ color: "var(--text-secondary)" }}>
         {preview?.summary ?? item.summary}
@@ -1055,6 +1216,11 @@ function LayoutPreview({
   preview: DesignPreviewContent | undefined;
   sourceCount: number;
 }) {
+  const regions = previewRecords(preview, "layout_regions")
+    .map((region) => recordString(region, "label"))
+    .filter((label): label is string => Boolean(label));
+  const labels = regions.length > 0 ? regions.slice(0, 3) : sourceLabelsForPreview(item, preview, 3);
+
   return (
     <div
       className="rounded-lg border p-3 space-y-3"
@@ -1065,34 +1231,24 @@ function LayoutPreview({
         className="grid h-36 overflow-hidden rounded-md border"
         style={{
           borderColor: "var(--overlay-faint)",
-          gridTemplateColumns: "0.8fr 1.4fr 1fr",
+          gridTemplateColumns: labels.length >= 3 ? "0.8fr 1.4fr 1fr" : "1fr 1fr",
         }}
         data-testid="design-workspace-surface-preview"
       >
-        <div className="border-r p-2 space-y-2" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}>
-          <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
-            Sidebar
+        {labels.map((label, index) => (
+          <div
+            key={`${label}-${index}`}
+            className={index < labels.length - 1 ? "border-r p-2 space-y-2" : "p-2 space-y-2"}
+            style={{ borderColor: "var(--overlay-faint)", background: index % 2 === 0 ? "var(--bg-base)" : "transparent" }}
+          >
+            <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
+              {label}
+            </div>
+            <div className="h-3 w-16 rounded-sm" style={{ background: "var(--overlay-weak)" }} />
+            <div className="h-6 rounded-md" style={{ background: index === 0 ? "var(--accent-muted)" : "var(--overlay-faint)" }} />
+            <div className="h-6 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
           </div>
-          <div className="h-3 w-16 rounded-sm" style={{ background: "var(--overlay-weak)" }} />
-          <div className="h-6 rounded-md" style={{ background: "var(--accent-muted)" }} />
-          <div className="h-6 rounded-md" style={{ background: "var(--overlay-faint)" }} />
-        </div>
-        <div className="border-r p-3 flex flex-col justify-end gap-2" style={{ borderColor: "var(--overlay-faint)" }}>
-          <div className="mb-auto text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
-            Chat
-          </div>
-          <div className="h-7 w-3/4 rounded-md" style={{ background: "var(--overlay-faint)" }} />
-          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-base)" }} />
-        </div>
-        <div className="p-2 space-y-2" style={{ background: "var(--bg-base)" }}>
-          <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--text-muted)" }}>
-            Styleguide
-          </div>
-          <div className="h-4 w-20 rounded-sm" style={{ background: "var(--overlay-weak)" }} />
-          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
-          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
-          <div className="h-8 rounded-md border" style={{ borderColor: "var(--overlay-faint)" }} />
-        </div>
+        ))}
       </div>
       <div className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
         {preview?.label ?? item.label}
@@ -1114,27 +1270,46 @@ function AssetPreview({
   preview: DesignPreviewContent | undefined;
   sourceCount: number;
 }) {
+  const assets = previewRecords(preview, "asset_samples")
+    .map((asset) => ({
+      label: recordString(asset, "label"),
+      path: recordString(asset, "path"),
+    }))
+    .filter((asset): asset is { label: string; path: string | null } => Boolean(asset.label));
+  const labels = assets.length > 0
+    ? assets
+    : sourceLabelsForPreview(item, preview, 4).map((label) => ({ label, path: null }));
+
   return (
     <div
       className="rounded-lg border p-3 space-y-3"
       style={{ borderColor: "var(--overlay-weak)", background: "var(--bg-surface)" }}
       data-testid="design-asset-preview"
     >
-      <div className="flex items-center gap-3">
-        <div
-          className="flex h-12 w-12 items-center justify-center rounded-lg border"
-          style={{ borderColor: "var(--accent-primary)", background: "var(--accent-muted)", color: "var(--accent-primary)" }}
-        >
-          <Sparkles className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-[14px] font-semibold" style={{ color: "var(--text-primary)" }}>
-            {preview?.label ?? item.label}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {labels.map((asset) => (
+          <div key={asset.label} className="flex items-center gap-3 rounded-md border p-2" style={{ borderColor: "var(--overlay-faint)", background: "var(--bg-base)" }}>
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-lg border"
+              style={{ borderColor: "var(--accent-border)", background: "var(--accent-muted)", color: "var(--accent-primary)" }}
+            >
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                {asset.label}
+              </div>
+              {asset.path ? (
+                <div className="truncate text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {asset.path}
+                </div>
+              ) : null}
+            </div>
           </div>
-          <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
-            {preview?.summary ?? item.summary}
-          </div>
-        </div>
+        ))}
+      </div>
+      <div className="text-[12px] leading-5" style={{ color: "var(--text-secondary)" }}>
+        {preview?.summary ?? item.summary}
       </div>
       <PreviewMeta previewKind={preview?.preview_kind ?? "asset_sample"} sourceCount={sourceCount} />
     </div>

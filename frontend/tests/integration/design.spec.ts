@@ -33,9 +33,7 @@ test.describe("Design workspace", () => {
     await expect(page.getByTestId("design-sidebar")).toBeVisible();
     await expect(page.getByTestId("design-styleguide-pane")).toBeVisible();
     await expect(page.getByTestId("integrated-chat-panel")).toBeVisible();
-    await expect(page.getByTestId("design-styleguide-group-colors")).toContainText(
-      "Primary palette",
-    );
+    await expect(page.getByTestId("design-styleguide-empty")).toContainText("No styleguide rows yet");
     await saveShot(page, "design-desktop-initial");
 
     await page.getByTestId("design-new-system").click();
@@ -93,10 +91,8 @@ test.describe("Design workspace", () => {
     const buttonRow = page.getByTestId("design-styleguide-row-components.buttons");
     await buttonRow.click();
     await expect(page.getByTestId("design-component-preview")).toBeVisible();
-    await expect(page.getByTestId("design-component-preview")).toContainText("Primary");
-    await expect(page.getByTestId("design-component-preview")).toContainText(
-      "Ask Design to refine this component",
-    );
+    await expect(page.getByTestId("design-component-preview")).toContainText("Button");
+    await expect(page.getByTestId("design-component-preview")).toContainText("default");
 
     const typeRow = page.getByTestId("design-styleguide-row-type.typography_scale");
     await typeRow.click();

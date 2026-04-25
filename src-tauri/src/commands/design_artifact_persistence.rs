@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -6,8 +6,8 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    Artifact, ArtifactType, DesignConfidence, DesignSchemaVersionId, DesignStyleguideGroup,
-    DesignStyleguideItem, DesignSystem, DesignSystemSource,
+    Artifact, ArtifactType, DesignConfidence, DesignSchemaVersionId, DesignSourceRef,
+    DesignStyleguideGroup, DesignStyleguideItem, DesignSystem, DesignSystemSource,
 };
 use crate::utils::design_storage_paths::DesignStoragePaths;
 
@@ -35,7 +35,8 @@ pub(crate) async fn persist_design_generation_artifacts(
     let mut output_artifact_ids = Vec::new();
 
     for item in items.iter_mut() {
-        let preview_value = build_preview_json(system, schema_version_id, item, generated_at);
+        let preview_value =
+            build_preview_json(state, system, schema_version_id, item, generated_at).await;
         let item_component = storage_paths.styleguide_item_component(&item.item_id);
         let preview_path = storage_paths
             .write_json_file(
@@ -262,12 +263,14 @@ fn build_styleguide_view_model_json(
     })
 }
 
-fn build_preview_json(
+async fn build_preview_json(
+    state: &AppState,
     system: &DesignSystem,
     schema_version_id: &DesignSchemaVersionId,
     item: &DesignStyleguideItem,
     generated_at: DateTime<Utc>,
 ) -> JsonValue {
+    let source_hints = build_preview_source_hints(state, item).await;
     json!({
         "design_system_id": system.id.as_str(),
         "schema_version_id": schema_version_id.as_str(),
@@ -285,8 +288,311 @@ fn build_preview_json(
         },
         "confidence": enum_text(&item.confidence),
         "source_refs": &item.source_refs,
+        "source_paths": source_hints.paths,
+        "source_labels": source_hints.labels,
+        "swatches": source_hints.swatches,
+        "typography_samples": source_hints.typography_samples,
+        "component_samples": source_hints.component_samples,
+        "layout_regions": source_hints.layout_regions,
+        "asset_samples": source_hints.asset_samples,
         "generated_at": generated_at.to_rfc3339(),
     })
+}
+
+#[derive(Default)]
+struct PreviewSourceHints {
+    paths: Vec<String>,
+    labels: Vec<String>,
+    swatches: Vec<JsonValue>,
+    typography_samples: Vec<JsonValue>,
+    component_samples: Vec<JsonValue>,
+    layout_regions: Vec<JsonValue>,
+    asset_samples: Vec<JsonValue>,
+}
+
+struct SourceSnapshot {
+    path: String,
+    label: String,
+    content: String,
+}
+
+async fn build_preview_source_hints(
+    state: &AppState,
+    item: &DesignStyleguideItem,
+) -> PreviewSourceHints {
+    let snapshots = collect_source_snapshots(state, &item.source_refs).await;
+    let paths = item
+        .source_refs
+        .iter()
+        .map(|source_ref| source_ref.path.clone())
+        .collect::<Vec<_>>();
+    let labels = unique_limited(
+        snapshots
+            .iter()
+            .map(|snapshot| snapshot.label.clone())
+            .chain(paths.iter().map(|path| source_label(path))),
+        6,
+    );
+    let swatches = extract_source_colors(&snapshots)
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            json!({
+                "label": format!("Source {}", index + 1),
+                "value": value,
+            })
+        })
+        .collect();
+    let font_samples = extract_source_fonts(&snapshots);
+    let typography_samples = if font_samples.is_empty() {
+        Vec::new()
+    } else {
+        font_samples
+            .into_iter()
+            .take(4)
+            .enumerate()
+            .map(|(index, font)| {
+                json!({
+                    "label": match index {
+                        0 => "Display",
+                        1 => "Body",
+                        2 => "Label",
+                        _ => "Code",
+                    },
+                    "sample": font,
+                })
+            })
+            .collect()
+    };
+    let component_samples = labels
+        .iter()
+        .take(5)
+        .map(|label| {
+            json!({
+                "label": label,
+            })
+        })
+        .collect();
+    let layout_regions = labels
+        .iter()
+        .take(3)
+        .map(|label| {
+            json!({
+                "label": label,
+            })
+        })
+        .collect();
+    let asset_samples = snapshots
+        .iter()
+        .filter(|snapshot| is_asset_path(&snapshot.path))
+        .take(6)
+        .map(|snapshot| {
+            json!({
+                "label": snapshot.label,
+                "path": snapshot.path,
+            })
+        })
+        .collect();
+
+    PreviewSourceHints {
+        paths,
+        labels,
+        swatches,
+        typography_samples,
+        component_samples,
+        layout_regions,
+        asset_samples,
+    }
+}
+
+async fn collect_source_snapshots(
+    state: &AppState,
+    source_refs: &[DesignSourceRef],
+) -> Vec<SourceSnapshot> {
+    let mut snapshots = Vec::new();
+    for source_ref in source_refs.iter().take(8) {
+        let Some(snapshot) = read_source_snapshot(state, source_ref).await else {
+            snapshots.push(SourceSnapshot {
+                path: source_ref.path.clone(),
+                label: source_label(&source_ref.path),
+                content: String::new(),
+            });
+            continue;
+        };
+        snapshots.push(snapshot);
+    }
+    snapshots
+}
+
+async fn read_source_snapshot(
+    state: &AppState,
+    source_ref: &DesignSourceRef,
+) -> Option<SourceSnapshot> {
+    let project = state
+        .project_repo
+        .get_by_id(&source_ref.project_id)
+        .await
+        .ok()
+        .flatten()?;
+    let root = Path::new(&project.working_directory).canonicalize().ok()?;
+    let relative_path = safe_relative_path(&source_ref.path)?;
+    let file_path = root.join(relative_path).canonicalize().ok()?;
+    if !file_path.starts_with(&root) {
+        return None;
+    }
+    let metadata = std::fs::metadata(&file_path).ok()?;
+    if !metadata.is_file() || metadata.len() > 512 * 1024 {
+        return None;
+    }
+    let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+    Some(SourceSnapshot {
+        path: source_ref.path.clone(),
+        label: source_label(&source_ref.path),
+        content,
+    })
+}
+
+fn safe_relative_path(raw_path: &str) -> Option<PathBuf> {
+    let path = Path::new(raw_path);
+    if path.is_absolute() {
+        return None;
+    }
+
+    let mut safe = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(value) => safe.push(value),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    (!safe.as_os_str().is_empty()).then_some(safe)
+}
+
+fn extract_source_colors(snapshots: &[SourceSnapshot]) -> Vec<String> {
+    unique_limited(
+        snapshots.iter().flat_map(|snapshot| {
+            extract_hex_colors(&snapshot.content)
+                .into_iter()
+                .chain(extract_function_colors(&snapshot.content))
+        }),
+        6,
+    )
+}
+
+fn extract_hex_colors(content: &str) -> Vec<String> {
+    let chars = content.chars().collect::<Vec<_>>();
+    let mut colors = Vec::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] != '#' {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        while index < chars.len() && chars[index].is_ascii_hexdigit() {
+            index += 1;
+        }
+        let len = index.saturating_sub(start + 1);
+        if matches!(len, 3 | 4 | 6 | 8) {
+            colors.push(chars[start..index].iter().collect());
+        }
+    }
+    colors
+}
+
+fn extract_function_colors(content: &str) -> Vec<String> {
+    let mut colors = Vec::new();
+    for needle in ["rgb(", "rgba(", "hsl(", "hsla("] {
+        let mut remainder = content;
+        while let Some(start) = remainder.find(needle) {
+            let after_start = &remainder[start..];
+            let Some(end) = after_start.find(')') else {
+                break;
+            };
+            colors.push(after_start[..=end].to_string());
+            remainder = &after_start[end + 1..];
+        }
+    }
+    colors
+}
+
+fn extract_source_fonts(snapshots: &[SourceSnapshot]) -> Vec<String> {
+    unique_limited(
+        snapshots
+            .iter()
+            .flat_map(|snapshot| snapshot.content.lines())
+            .filter_map(font_value_from_line),
+        4,
+    )
+}
+
+fn font_value_from_line(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let start = lower.find("font-family")?;
+    let after_key = &line[start..];
+    let delimiter = after_key.find(|ch| ch == ':' || ch == '=')?;
+    let value = after_key[delimiter + 1..]
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches(',');
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn unique_limited<I>(values: I, limit: usize) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut output = Vec::new();
+    for value in values {
+        let value = value.trim();
+        if value.is_empty() || output.iter().any(|existing| existing.as_str() == value) {
+            continue;
+        }
+        output.push(value.to_string());
+        if output.len() >= limit {
+            break;
+        }
+    }
+    output
+}
+
+fn source_label(path: &str) -> String {
+    let file_stem = Path::new(path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(path);
+    let mut label = String::new();
+    let mut previous_was_separator = true;
+    for ch in file_stem.chars() {
+        if matches!(ch, '-' | '_' | '.') {
+            label.push(' ');
+            previous_was_separator = true;
+            continue;
+        }
+        if ch.is_uppercase() && !previous_was_separator && !label.ends_with(' ') {
+            label.push(' ');
+        }
+        if previous_was_separator {
+            label.extend(ch.to_uppercase());
+        } else {
+            label.push(ch);
+        }
+        previous_was_separator = false;
+    }
+    label.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_asset_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    [".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"]
+        .iter()
+        .any(|extension| lower.ends_with(extension))
 }
 
 fn sources_json(sources: &[DesignSystemSource]) -> Vec<JsonValue> {

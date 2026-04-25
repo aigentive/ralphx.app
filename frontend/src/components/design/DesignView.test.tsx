@@ -426,9 +426,22 @@ describe("DesignView", () => {
     expect(await screen.findByTestId("design-chat-context")).toHaveTextContent(
       "Design steward · ready · 2 sources",
     );
-    expect(screen.getByTestId("design-styleguide-group-colors")).toHaveTextContent(
-      "Primary palette",
+    expect(await screen.findByTestId("design-styleguide-empty")).toHaveTextContent(
+      "No styleguide rows yet",
     );
+    expect(screen.queryByTestId("design-styleguide-group-colors")).not.toBeInTheDocument();
+  });
+
+  it("keeps backend-backed non-RalphX systems empty until generation publishes source rows", async () => {
+    renderWithProviders(<DesignView projectId="project-2" onCreateProject={vi.fn()} />);
+
+    expect(await screen.findByTestId("design-system-design-system-project-2")).toHaveTextContent(
+      "Docs Design System",
+    );
+    expect(await screen.findByText("Docs Design System has no loaded styleguide rows yet.")).toBeInTheDocument();
+    expect(await screen.findByTestId("design-styleguide-empty")).toBeInTheDocument();
+    expect(screen.queryByText("RalphX orange primary, hover, soft, and ring roles.")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("design-styleguide-group-colors")).not.toBeInTheDocument();
   });
 
   it("hydrates the styleguide pane from the persisted styleguide artifact", async () => {
@@ -499,25 +512,37 @@ describe("DesignView", () => {
   });
 
   it("expands preview rows and opens the feedback composer", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1"),
+    ]);
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
     await screen.findByTestId("design-styleguide-row-components.buttons");
 
     fireEvent.click(screen.getByTestId("design-styleguide-row-components.buttons"));
-    expect(screen.getByTestId("design-component-preview")).toHaveTextContent("Primary");
-    expect(screen.getByTestId("design-component-preview")).toHaveTextContent("Secondary");
+    expect(await screen.findByTestId("design-component-preview")).toHaveTextContent("Button");
+    expect(screen.getByTestId("design-component-preview")).toHaveTextContent("default");
 
     fireEvent.click(screen.getByTestId("design-needs-work-components.buttons"));
     expect(screen.getByTestId("design-feedback-composer")).toBeInTheDocument();
   });
 
   it("records a local approval state for a styleguide row", async () => {
+    vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
+      styleguideItemResponse("design-system-project-1", "colors.primary_palette", {
+        group: "colors",
+        label: "Primary palette",
+        summary: "Primary palette from persisted styleguide rows",
+      }),
+    ]);
     renderWithProviders(<DesignView projectId="project-1" onCreateProject={vi.fn()} />);
 
     const row = await screen.findByTestId("design-styleguide-row-colors.primary_palette");
     fireEvent.click(row);
     fireEvent.click(screen.getByTestId("design-approve-colors.primary_palette"));
 
-    expect(within(row).getByText("approved")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(row).getByText("approved")).toBeInTheDocument();
+    });
   });
 
   it("passes the selected design conversation to the integrated chat panel", async () => {
@@ -746,7 +771,10 @@ describe("DesignView", () => {
         previewArtifactId: "preview-colors",
         previewKind: "color_swatch",
         testId: "design-color-preview",
-        expectedText: "Primary palette",
+        expectedText: "#123456",
+        previewContent: {
+          swatches: [{ label: "Brand primary", value: "#123456" }],
+        },
       },
       {
         itemId: "type.typography_scale",
@@ -756,7 +784,10 @@ describe("DesignView", () => {
         previewArtifactId: "preview-type",
         previewKind: "typography_sample",
         testId: "design-typography-preview",
-        expectedText: "Review generated artifacts",
+        expectedText: "Aigentive Sans",
+        previewContent: {
+          typography_samples: [{ label: "Display", sample: "Aigentive Sans" }],
+        },
       },
       {
         itemId: "components.buttons",
@@ -766,7 +797,10 @@ describe("DesignView", () => {
         previewArtifactId: "preview-components",
         previewKind: "component_sample",
         testId: "design-component-preview",
-        expectedText: "Ask Design to refine this component",
+        expectedText: "Hero CTA",
+        previewContent: {
+          component_samples: [{ label: "Hero CTA" }],
+        },
       },
       {
         itemId: "spacing.radii_elevation",
@@ -776,7 +810,10 @@ describe("DesignView", () => {
         previewArtifactId: "preview-spacing",
         previewKind: "spacing_sample",
         testId: "design-spacing-preview",
-        expectedText: "spacing sample",
+        expectedText: "Card grid",
+        previewContent: {
+          layout_regions: [{ label: "Card grid" }],
+        },
       },
       {
         itemId: "ui_kit.workspace_surfaces",
@@ -786,7 +823,14 @@ describe("DesignView", () => {
         previewArtifactId: "preview-layout",
         previewKind: "layout_sample",
         testId: "design-layout-preview",
-        expectedText: "layout sample",
+        expectedText: "Marketing hero",
+        previewContent: {
+          layout_regions: [
+            { label: "Marketing hero" },
+            { label: "Pricing grid" },
+            { label: "Contact panel" },
+          ],
+        },
       },
       {
         itemId: "brand.visual_identity",
@@ -796,7 +840,10 @@ describe("DesignView", () => {
         previewArtifactId: "preview-brand",
         previewKind: "asset_sample",
         testId: "design-asset-preview",
-        expectedText: "Visual identity assets",
+        expectedText: "Brand mark",
+        previewContent: {
+          asset_samples: [{ label: "Brand mark", path: "public/brand-mark.svg" }],
+        },
       },
     ];
     vi.mocked(api.design.listStyleguideItems).mockResolvedValue([
@@ -840,6 +887,7 @@ describe("DesignView", () => {
               { project_id: "project-1", path: "frontend/src/components/Chat/TeamContextBar.tsx" },
               { project_id: "project-1", path: "frontend/src/styles/index.css" },
             ],
+            ...previewCase.previewContent,
             generated_at: "2026-04-24T08:00:00Z",
           },
         };

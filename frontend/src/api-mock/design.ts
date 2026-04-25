@@ -217,7 +217,7 @@ export const mockDesignApi = {
 
   listStyleguideItems: async (designSystemId: string): Promise<DesignStyleguideItemResponse[]> => {
     const designSystem = allSystems().find((system) => system.id === designSystemId);
-    return designSystem ? mockStyleguideItems(designSystem) : [];
+    return designSystem?.currentSchemaVersionId ? mockStyleguideItems(designSystem) : [];
   },
 
   getStyleguideViewModel: async (
@@ -294,6 +294,9 @@ export const mockDesignApi = {
         preview_kind: previewKindForGroup(fallback.group),
         confidence: fallback.confidence,
         source_refs: fallback.sourceRefs,
+        source_paths: fallback.sourceRefs.map((sourceRef) => sourceRef.path),
+        source_labels: sourceLabelsFromRefs(fallback.sourceRefs),
+        ...previewPayloadForItem(fallback),
         generated_at: nowIso(),
       },
     };
@@ -530,6 +533,57 @@ function previewKindForGroup(group: DesignStyleguideItemResponse["group"]) {
     default:
       return "component_sample";
   }
+}
+
+function previewPayloadForItem(item: DesignStyleguideItemResponse): Record<string, unknown> {
+  const sourceLabels = sourceLabelsFromRefs(item.sourceRefs);
+  switch (item.group) {
+    case "colors":
+      return {
+        swatches: [
+          { label: "Mock primary", value: "#ff6b35" },
+          { label: "Mock soft", value: "rgba(255, 107, 53, 0.12)" },
+        ],
+      };
+    case "type":
+      return {
+        typography_samples: [
+          { label: "Display", sample: sourceLabels[0] ?? item.label },
+          { label: "Body", sample: sourceLabels[1] ?? item.summary },
+        ],
+      };
+    case "spacing":
+    case "ui_kit":
+      return {
+        layout_regions: sourceLabels.map((label) => ({ label })),
+      };
+    case "brand":
+      return {
+        asset_samples: sourceLabels.map((label, index) => ({
+          label,
+          path: item.sourceRefs[index]?.path ?? null,
+        })),
+      };
+    case "components":
+    default:
+      return {
+        component_samples: sourceLabels.map((label) => ({ label })),
+      };
+  }
+}
+
+function sourceLabelsFromRefs(sourceRefs: DesignStyleguideItemResponse["sourceRefs"]): string[] {
+  return sourceRefs.map((sourceRef) => labelFromPath(sourceRef.path));
+}
+
+function labelFromPath(path: string): string {
+  const filename = path.split("/").pop() ?? path;
+  return filename
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_.]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+    .trim();
 }
 
 function styleguideItemContent(item: DesignStyleguideItemResponse) {

@@ -81,7 +81,7 @@ export function buildMockDesignSystems(projects: Project[]): DesignSystem[] {
 }
 
 export function buildDesignSystemFromResponse(
-  project: Project,
+  _project: Project,
   response: DesignSystemResponse,
   options: {
     sources?: DesignSystemSourceResponse[];
@@ -90,16 +90,16 @@ export function buildDesignSystemFromResponse(
     styleguideViewModel?: DesignStyleguideViewModelResponse | null;
   } = {},
 ): DesignSystem {
-  const styleguide = mockStyleguideModel(project.id);
   const persistedViewModel = options.styleguideViewModel?.content;
   const groups = options.styleguideItems?.length
     ? buildStyleguideGroupsFromResponses(options.styleguideItems)
     : persistedViewModel?.groups.length
       ? buildStyleguideGroupsFromViewModel(persistedViewModel.groups)
-    : styleguide.groups;
+    : [];
+  const emptyStyleguide = emptyStyleguideModel(response);
 
   return {
-    ...styleguide,
+    ...emptyStyleguide,
     id: response.id,
     primaryProjectId: response.primaryProjectId,
     name: response.name,
@@ -108,10 +108,10 @@ export function buildDesignSystemFromResponse(
     sourceCount: response.sourceCount ?? options.sources?.length ?? 0,
     updatedAt: response.updatedAt,
     conversationId: options.conversationId ?? null,
-    readySummary: persistedViewModel?.ready_summary ?? styleguide.readySummary,
+    readySummary: persistedViewModel?.ready_summary ?? emptyStyleguide.readySummary,
     caveats: persistedViewModel?.caveats.length
       ? caveatsFromViewModel(persistedViewModel.caveats, groups)
-      : styleguide.caveats,
+      : emptyStyleguide.caveats,
     groups,
   };
 }
@@ -200,6 +200,19 @@ function mockStyleguideModel(projectId: string): Pick<DesignSystem, "readySummar
         ],
       },
     ],
+  };
+}
+
+function emptyStyleguideModel(
+  response: DesignSystemResponse,
+): Pick<DesignSystem, "readySummary" | "caveats" | "groups"> {
+  const hasPublishedSchema = Boolean(response.currentSchemaVersionId);
+  return {
+    readySummary: hasPublishedSchema
+      ? `${response.name} has no loaded styleguide rows yet.`
+      : `${response.name} has no generated styleguide rows yet.`,
+    caveats: [],
+    groups: [],
   };
 }
 
