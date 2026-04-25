@@ -59,7 +59,7 @@ function buildExportFileName(designSystem: DesignSystem): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
   const safeSlug = slug || "design-system";
-  return `ralphx-design-system-${safeSlug}.json`;
+  return `ralphx-design-system-${safeSlug}.zip`;
 }
 
 export function DesignView({ projectId }: DesignViewProps) {
@@ -288,7 +288,7 @@ export function DesignView({ projectId }: DesignViewProps) {
     setIsSavingExportPackage(true);
     try {
       const savePath = await save({
-        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+        filters: [{ name: "RalphX Design Package", extensions: ["zip"] }],
         defaultPath: buildExportFileName(selectedDesignSystem),
       });
 
@@ -304,7 +304,7 @@ export function DesignView({ projectId }: DesignViewProps) {
           setExportPackageResult(response);
           toast.success("Design package exported", {
             description: response.filePath
-              ? "Saved the exported styleguide and schema package JSON."
+              ? "Saved the exported styleguide and schema package."
               : `Artifact ${response.artifactId.slice(0, 8)} is ready.`,
           });
         },

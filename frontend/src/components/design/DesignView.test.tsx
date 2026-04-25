@@ -178,8 +178,8 @@ describe("DesignView", () => {
     vi.restoreAllMocks();
     openDialogMock.mockReset();
     saveDialogMock.mockReset();
-    openDialogMock.mockResolvedValue("/tmp/ralphx-design-system-import.json");
-    saveDialogMock.mockResolvedValue("/tmp/ralphx-design-system-export.json");
+    openDialogMock.mockResolvedValue("/tmp/ralphx-design-system-import.zip");
+    saveDialogMock.mockResolvedValue("/tmp/ralphx-design-system-export.zip");
     useProjectsMock.mockReturnValue({ data: projects, isLoading: false });
     const systemsByProject = new Map(
       projects.map((project) => [
@@ -666,12 +666,12 @@ describe("DesignView", () => {
 
     await waitFor(() => {
       expect(saveDialogMock).toHaveBeenCalledWith({
-        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
-        defaultPath: "ralphx-design-system-ralphx-design-system.json",
+        filters: [{ name: "RalphX Design Package", extensions: ["zip"] }],
+        defaultPath: "ralphx-design-system-ralphx-design-system.zip",
       });
       expect(exportSpy).toHaveBeenCalledWith({
         designSystemId: "design-system-project-1",
-        destinationPath: "/tmp/ralphx-design-system-export.json",
+        destinationPath: "/tmp/ralphx-design-system-export.zip",
       });
     });
     expect(await screen.findByTestId("design-export-result")).toHaveTextContent(
@@ -681,10 +681,10 @@ describe("DesignView", () => {
       "export-package-1",
     );
     expect(screen.getByTestId("design-export-result")).toHaveTextContent(
-      "/tmp/ralphx-design-system-export.json",
+      "/tmp/ralphx-design-system-export.zip",
     );
     expect(toast.success).toHaveBeenCalledWith("Design package exported", {
-      description: "Saved the exported styleguide and schema package JSON.",
+      description: "Saved the exported styleguide and schema package.",
     });
   });
 
@@ -699,10 +699,10 @@ describe("DesignView", () => {
     await waitFor(() => {
       expect(openDialogMock).toHaveBeenCalledWith({
         multiple: false,
-        filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+        filters: [{ name: "RalphX Design Package", extensions: ["zip", "json"] }],
       });
     });
-    expect(await screen.findByDisplayValue("/tmp/ralphx-design-system-import.json")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("/tmp/ralphx-design-system-import.zip")).toBeInTheDocument();
     fireEvent.change(screen.getByTestId("design-import-name"), {
       target: { value: "Imported Product UI" },
     });
@@ -711,7 +711,7 @@ describe("DesignView", () => {
 
     await waitFor(() => {
       expect(importSpy).toHaveBeenCalledWith({
-        packagePath: "/tmp/ralphx-design-system-import.json",
+        packagePath: "/tmp/ralphx-design-system-import.zip",
         attachProjectId: "project-2",
         name: "Imported Product UI",
       });

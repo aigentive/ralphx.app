@@ -55,7 +55,7 @@ export function DesignPackageImportDialog({
   const choosePackage = async () => {
     const selected = await open({
       multiple: false,
-      filters: [{ name: "RalphX Design Package", extensions: ["json"] }],
+      filters: [{ name: "RalphX Design Package", extensions: ["zip", "json"] }],
     });
     if (typeof selected === "string") {
       setPackagePath(selected);

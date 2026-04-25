@@ -155,6 +155,48 @@ impl DesignStoragePaths {
         Ok(canonical_target)
     }
 
+    pub fn write_file(
+        &self,
+        storage_root: &Path,
+        relative_path: impl AsRef<Path>,
+        bytes: &[u8],
+    ) -> AppResult<PathBuf> {
+        let target = self.child_path(storage_root, relative_path)?;
+        let canonical_root = storage_root.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design storage root: {error}"
+            ))
+        })?;
+        ensure_under(&canonical_root, &self.app_data_dir, "design storage root")?;
+
+        let parent = target.parent().ok_or_else(|| {
+            AppError::Validation("Design storage file path has no parent".to_string())
+        })?;
+        ensure_under(parent, &canonical_root, "design storage file parent")?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            AppError::Infrastructure(format!("Failed to create design file parent: {error}"))
+        })?;
+        let canonical_parent = parent.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design file parent: {error}"
+            ))
+        })?;
+        ensure_under(
+            &canonical_parent,
+            &canonical_root,
+            "design storage file parent",
+        )?;
+
+        std::fs::write(&target, bytes).map_err(|error| {
+            AppError::Infrastructure(format!("Failed to write design file: {error}"))
+        })?;
+        let canonical_target = target.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!("Failed to canonicalize design file: {error}"))
+        })?;
+        ensure_under(&canonical_target, &canonical_root, "design storage file")?;
+        Ok(canonical_target)
+    }
+
     pub fn read_json_file<T: DeserializeOwned>(
         &self,
         storage_root: &Path,
@@ -232,6 +274,45 @@ impl DesignStoragePaths {
         })?;
         serde_json::from_slice(&bytes).map_err(|error| {
             AppError::Infrastructure(format!("Failed to parse design JSON file: {error}"))
+        })
+    }
+
+    pub fn read_file_under_design_storage_root(
+        &self,
+        file_path: impl AsRef<Path>,
+    ) -> AppResult<Vec<u8>> {
+        let file_path = file_path.as_ref();
+        if !file_path.is_absolute() {
+            return Err(AppError::Validation(
+                "Design artifact file path must be absolute".to_string(),
+            ));
+        }
+
+        let design_root = self.app_data_dir.join(DESIGN_ROOT_DIR);
+        let canonical_design_root = design_root.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design storage root: {error}"
+            ))
+        })?;
+        ensure_under(
+            &canonical_design_root,
+            &self.app_data_dir,
+            "design storage root",
+        )?;
+
+        let canonical_file = file_path.canonicalize().map_err(|error| {
+            AppError::Infrastructure(format!(
+                "Failed to canonicalize design artifact file: {error}"
+            ))
+        })?;
+        ensure_under(
+            &canonical_file,
+            &canonical_design_root,
+            "design artifact file",
+        )?;
+
+        std::fs::read(&canonical_file).map_err(|error| {
+            AppError::Infrastructure(format!("Failed to read design file: {error}"))
         })
     }
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;
@@ -21,6 +21,7 @@ use crate::domain::entities::{
 use crate::utils::design_storage_paths::DesignStoragePaths;
 
 const DESIGN_ARTIFACT_CREATOR: &str = "ralphx-design";
+const DESIGN_PACKAGE_VERSION: &str = "1.0";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -318,7 +319,7 @@ pub async fn export_design_system_package_core(
     }
 
     let package = json!({
-        "package_version": "1.0",
+        "package_version": DESIGN_PACKAGE_VERSION,
         "exported_at": exported_at.to_rfc3339(),
         "redacted": redacted,
         "design_system": {
@@ -336,13 +337,14 @@ pub async fn export_design_system_package_core(
         .ensure_design_system_root(&system.storage_root_ref)
         .map_err(|error| error.to_string())?;
     let version_component = storage_paths.schema_version_component(&schema_version.id);
+    let package_bytes = serialize_design_package_zip(&package)?;
     let package_path = storage_paths
-        .write_json_file(
+        .write_file(
             &storage_root,
             PathBuf::from("exports")
                 .join(version_component)
-                .join("design-system-package.json"),
-            &package,
+                .join("design-system-export.zip"),
+            &package_bytes,
         )
         .map_err(|error| error.to_string())?;
     let exported_file_path = input
@@ -1143,12 +1145,13 @@ async fn read_design_package_artifact_json(
     let path = match artifact.content {
         ArtifactContent::File { path } => PathBuf::from(path),
         ArtifactContent::Inline { .. } => {
-            return Err("Design package artifact must be backed by a JSON file".to_string());
+            return Err("Design package artifact must be backed by a file".to_string());
         }
     };
-    storage_paths
-        .read_json_file_under_design_storage_root::<JsonValue>(&path)
-        .map_err(|error| error.to_string())
+    let bytes = storage_paths
+        .read_file_under_design_storage_root(&path)
+        .map_err(|error| error.to_string())?;
+    parse_design_package_bytes(&bytes, path.extension().and_then(|value| value.to_str()))
 }
 
 fn validate_user_selected_design_package_path(
@@ -1166,8 +1169,18 @@ fn validate_user_selected_design_package_path(
     {
         return Err("Design package paths cannot contain parent directory components".to_string());
     }
-    if path.extension().and_then(|value| value.to_str()) != Some("json") {
-        return Err("Design package path must use a .json extension".to_string());
+    let extension = path.extension().and_then(|value| value.to_str());
+    let extension_is_supported = if require_existing_file {
+        matches!(extension, Some("zip" | "json"))
+    } else {
+        extension == Some("zip")
+    };
+    if !extension_is_supported {
+        return Err(if require_existing_file {
+            "Design package path must use a .zip or legacy .json extension".to_string()
+        } else {
+            "Design package export path must use a .zip extension".to_string()
+        });
     }
 
     if require_existing_file {
@@ -1205,8 +1218,7 @@ fn write_user_selected_design_package(
     package: &JsonValue,
 ) -> Result<String, String> {
     let path = validate_user_selected_design_package_path(raw_path, false)?;
-    let bytes = serde_json::to_vec_pretty(package)
-        .map_err(|error| format!("Failed to serialize design package: {error}"))?;
+    let bytes = serialize_design_package_zip(package)?;
     // codeql[rust/path-injection]
     std::fs::write(&path, bytes)
         .map_err(|error| format!("Failed to write design package export: {error}"))?;
@@ -1215,10 +1227,418 @@ fn write_user_selected_design_package(
 
 fn read_user_selected_design_package(path: &Path) -> Result<JsonValue, String> {
     // codeql[rust/path-injection]
-    let content = std::fs::read_to_string(path)
+    let bytes = std::fs::read(path)
         .map_err(|error| format!("Failed to read design package import: {error}"))?;
-    serde_json::from_str(&content)
-        .map_err(|error| format!("Failed to parse design package: {error}"))
+    parse_design_package_bytes(&bytes, path.extension().and_then(|value| value.to_str()))
+}
+
+fn serialize_design_package_zip(package: &JsonValue) -> Result<Vec<u8>, String> {
+    let schema = package
+        .get("schema")
+        .ok_or_else(|| "Design package is missing schema".to_string())?;
+    let source_audit = package
+        .get("source_audit")
+        .ok_or_else(|| "Design package is missing source_audit".to_string())?;
+    let styleguide = package
+        .get("styleguide")
+        .ok_or_else(|| "Design package is missing styleguide".to_string())?;
+    let components = schema
+        .get("components")
+        .cloned()
+        .unwrap_or_else(|| JsonValue::Array(Vec::new()));
+    let screen_patterns = schema
+        .get("screen_patterns")
+        .cloned()
+        .unwrap_or_else(|| JsonValue::Array(Vec::new()));
+
+    write_store_zip(vec![
+        (
+            "manifest.json",
+            design_package_json_bytes(&design_package_manifest(package), "manifest")?,
+        ),
+        (
+            "schema/design-system.schema.json",
+            design_package_json_bytes(schema, "schema")?,
+        ),
+        (
+            "schema/component-patterns.json",
+            design_package_json_bytes(&components, "component patterns")?,
+        ),
+        (
+            "schema/screen-patterns.json",
+            design_package_json_bytes(&screen_patterns, "screen patterns")?,
+        ),
+        (
+            "styleguide/styleguide-view-model.json",
+            design_package_json_bytes(styleguide, "styleguide")?,
+        ),
+        (
+            "reports/source-audit.json",
+            design_package_json_bytes(source_audit, "source audit")?,
+        ),
+    ])
+}
+
+fn design_package_manifest(package: &JsonValue) -> JsonValue {
+    json!({
+        "package_version": package
+            .get("package_version")
+            .and_then(JsonValue::as_str)
+            .unwrap_or(DESIGN_PACKAGE_VERSION),
+        "exported_at": package.get("exported_at").cloned().unwrap_or(JsonValue::Null),
+        "redacted": package.get("redacted").and_then(JsonValue::as_bool).unwrap_or(true),
+        "design_system": package.get("design_system").cloned().unwrap_or_else(|| json!({})),
+        "contents": {
+            "schema": "schema/design-system.schema.json",
+            "component_patterns": "schema/component-patterns.json",
+            "screen_patterns": "schema/screen-patterns.json",
+            "styleguide": "styleguide/styleguide-view-model.json",
+            "source_audit": "reports/source-audit.json",
+        },
+        "privacy": {
+            "absolute_paths_redacted": package.get("redacted").and_then(JsonValue::as_bool).unwrap_or(true),
+            "raw_source_snippets_included": false,
+        },
+    })
+}
+
+fn design_package_json_bytes(value: &JsonValue, label: &str) -> Result<Vec<u8>, String> {
+    serde_json::to_vec_pretty(value)
+        .map_err(|error| format!("Failed to serialize design package {label}: {error}"))
+}
+
+fn parse_design_package_bytes(bytes: &[u8], extension: Option<&str>) -> Result<JsonValue, String> {
+    let trimmed = bytes
+        .iter()
+        .copied()
+        .skip_while(|byte| byte.is_ascii_whitespace())
+        .next();
+    if extension == Some("json") || trimmed == Some(b'{') {
+        return serde_json::from_slice(bytes)
+            .map_err(|error| format!("Failed to parse design package: {error}"));
+    }
+    parse_design_package_zip(bytes)
+}
+
+fn parse_design_package_zip(bytes: &[u8]) -> Result<JsonValue, String> {
+    let entries = read_store_zip_entries(bytes)?;
+    let manifest = parse_design_package_zip_json(&entries, "manifest.json")?;
+    let schema = parse_design_package_zip_json(&entries, "schema/design-system.schema.json")?;
+    let source_audit = parse_design_package_zip_json(&entries, "reports/source-audit.json")?;
+    let styleguide =
+        parse_design_package_zip_json(&entries, "styleguide/styleguide-view-model.json")?;
+
+    Ok(json!({
+        "package_version": manifest
+            .get("package_version")
+            .and_then(JsonValue::as_str)
+            .unwrap_or(DESIGN_PACKAGE_VERSION),
+        "exported_at": manifest.get("exported_at").cloned().unwrap_or(JsonValue::Null),
+        "redacted": manifest.get("redacted").and_then(JsonValue::as_bool).unwrap_or(true),
+        "design_system": manifest.get("design_system").cloned().unwrap_or_else(|| json!({})),
+        "schema": schema,
+        "source_audit": source_audit,
+        "styleguide": styleguide,
+    }))
+}
+
+fn parse_design_package_zip_json(
+    entries: &HashMap<String, Vec<u8>>,
+    name: &str,
+) -> Result<JsonValue, String> {
+    let bytes = entries
+        .get(name)
+        .ok_or_else(|| format!("Design package zip is missing {name}"))?;
+    serde_json::from_slice(bytes)
+        .map_err(|error| format!("Failed to parse design package entry {name}: {error}"))
+}
+
+struct ZipCentralRecord {
+    name: String,
+    crc32: u32,
+    compressed_size: u32,
+    uncompressed_size: u32,
+    local_header_offset: u32,
+}
+
+fn write_store_zip(entries: Vec<(&'static str, Vec<u8>)>) -> Result<Vec<u8>, String> {
+    let mut output = Vec::new();
+    let mut central_records = Vec::new();
+
+    for (name, bytes) in entries {
+        validate_zip_entry_name(name)?;
+        let local_header_offset = checked_zip_u32(output.len(), "zip local header offset")?;
+        let size = checked_zip_u32(bytes.len(), "zip entry size")?;
+        let name_bytes = name.as_bytes();
+        let name_len = checked_zip_u16(name_bytes.len(), "zip entry name")?;
+        let crc = crc32(&bytes);
+
+        push_u32(&mut output, 0x0403_4b50);
+        push_u16(&mut output, 20);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u32(&mut output, crc);
+        push_u32(&mut output, size);
+        push_u32(&mut output, size);
+        push_u16(&mut output, name_len);
+        push_u16(&mut output, 0);
+        output.extend_from_slice(name_bytes);
+        output.extend_from_slice(&bytes);
+
+        central_records.push(ZipCentralRecord {
+            name: name.to_string(),
+            crc32: crc,
+            compressed_size: size,
+            uncompressed_size: size,
+            local_header_offset,
+        });
+    }
+
+    let central_directory_offset = checked_zip_u32(output.len(), "zip central directory offset")?;
+    for record in &central_records {
+        let name_bytes = record.name.as_bytes();
+        let name_len = checked_zip_u16(name_bytes.len(), "zip central entry name")?;
+
+        push_u32(&mut output, 0x0201_4b50);
+        push_u16(&mut output, 20);
+        push_u16(&mut output, 20);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u32(&mut output, record.crc32);
+        push_u32(&mut output, record.compressed_size);
+        push_u32(&mut output, record.uncompressed_size);
+        push_u16(&mut output, name_len);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u16(&mut output, 0);
+        push_u32(&mut output, 0);
+        push_u32(&mut output, record.local_header_offset);
+        output.extend_from_slice(name_bytes);
+    }
+    let central_directory_size = checked_zip_u32(
+        output.len() - central_directory_offset as usize,
+        "zip central directory size",
+    )?;
+    let entry_count = checked_zip_u16(central_records.len(), "zip entry count")?;
+
+    push_u32(&mut output, 0x0605_4b50);
+    push_u16(&mut output, 0);
+    push_u16(&mut output, 0);
+    push_u16(&mut output, entry_count);
+    push_u16(&mut output, entry_count);
+    push_u32(&mut output, central_directory_size);
+    push_u32(&mut output, central_directory_offset);
+    push_u16(&mut output, 0);
+
+    Ok(output)
+}
+
+fn read_store_zip_entries(bytes: &[u8]) -> Result<HashMap<String, Vec<u8>>, String> {
+    let eocd_offset = find_zip_eocd(bytes)?;
+    let entry_count = read_u16(bytes, eocd_offset + 10)? as usize;
+    let central_directory_size = read_u32(bytes, eocd_offset + 12)? as usize;
+    let central_directory_offset = read_u32(bytes, eocd_offset + 16)? as usize;
+    ensure_zip_range(
+        bytes,
+        central_directory_offset,
+        central_directory_size,
+        "zip central directory",
+    )?;
+
+    let mut entries = HashMap::new();
+    let mut offset = central_directory_offset;
+    for _ in 0..entry_count {
+        ensure_zip_signature(bytes, offset, 0x0201_4b50, "zip central directory entry")?;
+        let compression_method = read_u16(bytes, offset + 10)?;
+        let crc = read_u32(bytes, offset + 16)?;
+        let compressed_size = read_u32(bytes, offset + 20)? as usize;
+        let uncompressed_size = read_u32(bytes, offset + 24)? as usize;
+        let name_len = read_u16(bytes, offset + 28)? as usize;
+        let extra_len = read_u16(bytes, offset + 30)? as usize;
+        let comment_len = read_u16(bytes, offset + 32)? as usize;
+        let local_header_offset = read_u32(bytes, offset + 42)? as usize;
+        let name_start = offset + 46;
+        let name_end = name_start + name_len;
+        ensure_zip_range(bytes, name_start, name_len, "zip entry name")?;
+        let name = std::str::from_utf8(&bytes[name_start..name_end])
+            .map_err(|error| format!("Design package zip has invalid entry name: {error}"))?
+            .to_string();
+        let is_directory = name.ends_with('/');
+        let name_for_validation = if is_directory {
+            name.trim_end_matches('/')
+        } else {
+            name.as_str()
+        };
+        validate_zip_entry_name(name_for_validation)?;
+        let record_end = name_end
+            .checked_add(extra_len)
+            .and_then(|value| value.checked_add(comment_len))
+            .ok_or_else(|| "Design package zip central directory entry overflowed".to_string())?;
+        ensure_zip_range(
+            bytes,
+            offset,
+            record_end - offset,
+            "zip central directory entry",
+        )?;
+        offset = record_end;
+
+        if is_directory {
+            continue;
+        }
+        if compression_method != 0 {
+            return Err(format!(
+                "Design package zip entry {name} uses unsupported compression method {compression_method}"
+            ));
+        }
+        let entry = read_store_zip_entry(
+            bytes,
+            &name,
+            local_header_offset,
+            compressed_size,
+            uncompressed_size,
+            crc,
+        )?;
+        entries.insert(name, entry);
+    }
+
+    Ok(entries)
+}
+
+fn read_store_zip_entry(
+    bytes: &[u8],
+    name: &str,
+    local_header_offset: usize,
+    compressed_size: usize,
+    uncompressed_size: usize,
+    expected_crc: u32,
+) -> Result<Vec<u8>, String> {
+    ensure_zip_signature(
+        bytes,
+        local_header_offset,
+        0x0403_4b50,
+        "zip local file header",
+    )?;
+    let name_len = read_u16(bytes, local_header_offset + 26)? as usize;
+    let extra_len = read_u16(bytes, local_header_offset + 28)? as usize;
+    let data_start = local_header_offset
+        .checked_add(30)
+        .and_then(|value| value.checked_add(name_len))
+        .and_then(|value| value.checked_add(extra_len))
+        .ok_or_else(|| "Design package zip local file header overflowed".to_string())?;
+    ensure_zip_range(bytes, data_start, compressed_size, "zip entry data")?;
+    if compressed_size != uncompressed_size {
+        return Err(format!(
+            "Design package zip entry {name} has mismatched stored sizes"
+        ));
+    }
+    let data = bytes[data_start..data_start + compressed_size].to_vec();
+    let actual_crc = crc32(&data);
+    if actual_crc != expected_crc {
+        return Err(format!(
+            "Design package zip entry {name} failed checksum validation"
+        ));
+    }
+    Ok(data)
+}
+
+fn find_zip_eocd(bytes: &[u8]) -> Result<usize, String> {
+    let min_eocd_len = 22;
+    if bytes.len() < min_eocd_len {
+        return Err("Design package zip is too small".to_string());
+    }
+    let search_start = bytes.len().saturating_sub(65_557);
+    for offset in (search_start..=bytes.len() - min_eocd_len).rev() {
+        if bytes[offset..].starts_with(&0x0605_4b50u32.to_le_bytes()) {
+            return Ok(offset);
+        }
+    }
+    Err("Design package zip is missing its central directory".to_string())
+}
+
+fn validate_zip_entry_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.starts_with('/')
+        || name.starts_with('\\')
+        || name.contains('\\')
+        || name
+            .split('/')
+            .any(|component| component.is_empty() || component == "." || component == "..")
+    {
+        return Err(format!("Design package zip has unsafe entry name: {name}"));
+    }
+    Ok(())
+}
+
+fn ensure_zip_signature(
+    bytes: &[u8],
+    offset: usize,
+    expected: u32,
+    label: &str,
+) -> Result<(), String> {
+    if read_u32(bytes, offset)? == expected {
+        Ok(())
+    } else {
+        Err(format!("Design package {label} has an invalid signature"))
+    }
+}
+
+fn ensure_zip_range(bytes: &[u8], offset: usize, len: usize, label: &str) -> Result<(), String> {
+    let end = offset
+        .checked_add(len)
+        .ok_or_else(|| format!("Design package {label} range overflowed"))?;
+    if end <= bytes.len() {
+        Ok(())
+    } else {
+        Err(format!("Design package {label} is truncated"))
+    }
+}
+
+fn checked_zip_u16(value: usize, label: &str) -> Result<u16, String> {
+    u16::try_from(value).map_err(|_| format!("Design package {label} is too large"))
+}
+
+fn checked_zip_u32(value: usize, label: &str) -> Result<u32, String> {
+    u32::try_from(value).map_err(|_| format!("Design package {label} is too large"))
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, String> {
+    ensure_zip_range(bytes, offset, 2, "field")?;
+    Ok(u16::from_le_bytes([bytes[offset], bytes[offset + 1]]))
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    ensure_zip_range(bytes, offset, 4, "field")?;
+    Ok(u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ]))
+}
+
+fn push_u16(output: &mut Vec<u8>, value: u16) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_u32(output: &mut Vec<u8>, value: u32) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let mask = 0u32.wrapping_sub(crc & 1);
+            crc = (crc >> 1) ^ (0xedb8_8320 & mask);
+        }
+    }
+    !crc
 }
 
 fn package_import_source_label(
@@ -1815,7 +2235,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn export_package_writes_redacted_design_artifact_inside_storage() {
+    async fn export_package_writes_redacted_zip_artifact_inside_storage() {
         let state = AppState::new_test();
         let temp = tempfile::tempdir().expect("tempdir");
         let storage_paths = DesignStoragePaths::new(temp.path()).expect("storage paths");
@@ -1853,9 +2273,14 @@ mod tests {
             ArtifactContent::Inline { .. } => panic!("expected file artifact"),
         };
         assert!(path.starts_with(temp.path().canonicalize().unwrap()));
-        let package_json: JsonValue =
-            serde_json::from_str(&std::fs::read_to_string(path).expect("package json"))
-                .expect("parse package json");
+        assert_eq!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("zip")
+        );
+        let package_bytes = std::fs::read(&path).expect("package zip");
+        assert!(package_bytes.starts_with(b"PK"));
+        let package_json =
+            parse_design_package_bytes(&package_bytes, Some("zip")).expect("parse package zip");
         assert_eq!(package_json["redacted"].as_bool(), Some(true));
     }
 
@@ -1975,7 +2400,7 @@ mod tests {
             .await
             .expect("attach project");
         let export_dir = tempfile::tempdir().expect("export destination tempdir");
-        let export_path = export_dir.path().join("design-system-package.json");
+        let export_path = export_dir.path().join("design-system-package.zip");
         let export = export_design_system_package_core(
             &state,
             &storage_paths,
@@ -1992,6 +2417,9 @@ mod tests {
             Some(export_path.to_str().unwrap())
         );
         assert!(export_path.exists());
+        assert!(std::fs::read(&export_path)
+            .expect("export zip")
+            .starts_with(b"PK"));
 
         let imported = import_design_system_package_core(
             &state,

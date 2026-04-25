@@ -330,11 +330,11 @@ describe("design API schemas", () => {
       schemaVersionId: "schema-1",
       runId: "run-1",
       packageArtifactId: null,
-      packagePath: "/tmp/design-system-package.json",
+      packagePath: "/tmp/design-system-package.zip",
       items: [],
     });
 
-    expect(parsed.packagePath).toBe("/tmp/design-system-package.json");
+    expect(parsed.packagePath).toBe("/tmp/design-system-package.zip");
   });
 });
 
@@ -477,19 +477,19 @@ describe("designApi", () => {
         package_version: "1.0",
         redacted: true,
       },
-      filePath: "/tmp/design-system-package.json",
+      filePath: "/tmp/design-system-package.zip",
     });
 
     await designApi.exportPackage({
       designSystemId: "design-system-1",
-      destinationPath: "/tmp/design-system-package.json",
+      destinationPath: "/tmp/design-system-package.zip",
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("export_design_system_package", {
       input: {
         designSystemId: "design-system-1",
         includeFullProvenance: false,
-        destinationPath: "/tmp/design-system-package.json",
+        destinationPath: "/tmp/design-system-package.zip",
       },
     });
   });
@@ -523,19 +523,19 @@ describe("designApi", () => {
       schemaVersionId: "schema-1",
       runId: "run-1",
       packageArtifactId: null,
-      packagePath: "/tmp/design-system-package.json",
+      packagePath: "/tmp/design-system-package.zip",
       items: [],
     });
 
     await designApi.importPackage({
-      packagePath: "/tmp/design-system-package.json",
+      packagePath: "/tmp/design-system-package.zip",
       attachProjectId: "project-1",
       name: "Imported UI",
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("import_design_system_package", {
       input: {
-        packagePath: "/tmp/design-system-package.json",
+        packagePath: "/tmp/design-system-package.zip",
         attachProjectId: "project-1",
         name: "Imported UI",
       },
