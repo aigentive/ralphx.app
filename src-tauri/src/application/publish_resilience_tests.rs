@@ -27,6 +27,16 @@ fn classifies_branch_conflicts_as_agent_fixable() {
 }
 
 #[test]
+fn classifies_non_fast_forward_push_rejections_as_agent_fixable() {
+    let error = "failed to push some refs: updates were rejected because the tip of your current branch is behind its remote counterpart (non-fast-forward)";
+
+    assert_eq!(
+        classify_publish_failure(error),
+        PublishFailureClass::AgentFixable
+    );
+}
+
+#[test]
 fn classifies_github_availability_as_operational() {
     let error = "GitHub integration is not available";
 

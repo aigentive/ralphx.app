@@ -188,6 +188,10 @@ fn is_agent_fixable_failure(normalized: &str) -> bool {
         "lint",
         "test failed",
         "tests failed",
+        "non-fast-forward",
+        "failed to push some refs",
+        "updates were rejected",
+        "fetch first",
     ];
 
     PATTERNS.iter().any(|pattern| normalized.contains(pattern))
