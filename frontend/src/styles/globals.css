@@ -455,7 +455,19 @@ a:not([class*="no-underline"]):hover {
   container-type: inline-size;
 }
 
+.agent-composer-compact-only {
+  display: none;
+}
+
 @container (max-width: 720px) {
+  .agent-composer-compact-only {
+    display: block;
+  }
+
+  .agent-composer-project-pill {
+    display: none;
+  }
+
   .agent-composer-action-button {
     width: 2.5rem;
     min-width: 2.5rem;

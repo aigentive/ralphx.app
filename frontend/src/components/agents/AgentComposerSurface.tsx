@@ -13,6 +13,7 @@ import {
   Cpu,
   FolderOpen,
   Loader2,
+  Paperclip,
   Plus,
   Square,
 } from "lucide-react";
@@ -20,7 +21,6 @@ import {
 import type { AgentStatus } from "@/stores/chatStore";
 import type { AgentProvider } from "@/stores/agentSessionStore";
 import { Button } from "@/components/ui/button";
-import { ChatAttachmentPicker } from "@/components/Chat/ChatAttachmentPicker";
 import {
   ChatAttachmentGallery,
   type ChatAttachment as ComposerAttachment,
@@ -32,8 +32,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { withAlpha } from "@/lib/theme-colors";
 import { cn } from "@/lib/utils";
+
+const COMPOSER_ATTACHMENT_ACCEPTED_TYPES = [
+  "text/*",
+  "image/*",
+  "application/pdf",
+  "application/json",
+  ".md",
+  ".txt",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".jsx",
+  ".py",
+  ".rs",
+  ".go",
+  ".java",
+  ".cpp",
+  ".c",
+  ".h",
+].join(",");
+
+const COMPOSER_ATTACHMENT_MAX_FILES = 5;
+const COMPOSER_ATTACHMENT_MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 interface ComposerOption {
   id: string;
@@ -139,12 +175,16 @@ export function AgentComposerSurface({
   const isControlled = controlledValue !== undefined;
   const [internalValue, setInternalValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [isCompactComposer, setIsCompactComposer] = useState(false);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const value = isControlled ? controlledValue : internalValue;
   const isAgentAlive = agentStatus !== "idle";
   const canQueue = !isReadOnly && isAgentAlive;
   const shouldShowStop = Boolean(onStop) && isAgentAlive && value.trim().length === 0;
   const canSubmit = value.trim().length > 0 && !isReadOnly && (!isSubmitting || canQueue);
+  const attachmentDisabled = isReadOnly || (isSubmitting && !canQueue);
   const effectivePlaceholder = isReadOnly
     ? "Viewing historical state (read-only)"
     : questionMode
@@ -167,6 +207,26 @@ export function AgentComposerSurface({
     const nextHeight = Math.min(textarea.scrollHeight, 220);
     textarea.style.height = `${Math.max(nextHeight, 116)}px`;
   }, [value]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) {
+      return;
+    }
+
+    const updateCompactState = () => {
+      setIsCompactComposer(surface.getBoundingClientRect().width <= 720);
+    };
+    updateCompactState();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(updateCompactState);
+    observer.observe(surface);
+    return () => observer.disconnect();
+  }, []);
 
   const matchOptionsFromInput = useCallback(
     (input: string) => {
@@ -231,6 +291,32 @@ export function AgentComposerSurface({
     }
     questionMode?.onMatchedOptions([]);
   }, [isControlled, onChangeProp, questionMode]);
+
+  const handleAttachmentSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const fileList = event.target.files;
+      if (!fileList || fileList.length === 0) {
+        return;
+      }
+
+      const validFiles = Array.from(fileList)
+        .filter((file) => file.size <= COMPOSER_ATTACHMENT_MAX_FILE_SIZE)
+        .slice(0, COMPOSER_ATTACHMENT_MAX_FILES);
+
+      if (validFiles.length > 0) {
+        void onFilesSelected?.(validFiles);
+      }
+
+      event.target.value = "";
+    },
+    [onFilesSelected]
+  );
+
+  const handleOpenAttachmentPicker = useCallback(() => {
+    if (!attachmentDisabled) {
+      fileInputRef.current?.click();
+    }
+  }, [attachmentDisabled]);
 
   const handleSend = useCallback(async () => {
     const trimmedValue = value.trim();
@@ -311,6 +397,7 @@ export function AgentComposerSurface({
 
   return (
     <div
+      ref={surfaceRef}
       data-testid={dataTestId}
       className={cn("agent-composer-surface mx-auto w-full max-w-full", className)}
     >
@@ -368,13 +455,26 @@ export function AgentComposerSurface({
         >
           <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
             {enableAttachments && (
-              <div className="shrink-0">
-                <ChatAttachmentPicker
-                  {...(onFilesSelected ? { onFilesSelected } : {})}
-                  disabled={isReadOnly || (isSubmitting && !canQueue)}
-                />
-              </div>
+              <input
+                ref={fileInputRef}
+                data-testid="attachment-file-input"
+                type="file"
+                multiple
+                accept={COMPOSER_ATTACHMENT_ACCEPTED_TYPES}
+                onChange={handleAttachmentSelect}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
             )}
+
+            <ComposerActionMenu
+              project={project}
+              enableAttachments={enableAttachments}
+              showProjectMenu={isCompactComposer}
+              attachmentDisabled={attachmentDisabled}
+              onOpenAttachmentPicker={handleOpenAttachmentPicker}
+            />
 
             <div className="flex min-w-0 flex-1 items-stretch gap-2">
               <ComposerSelectPill
@@ -386,7 +486,10 @@ export function AgentComposerSurface({
                 options={project.options}
                 {...(project.disabled !== undefined ? { disabled: project.disabled } : {})}
                 {...(project.testId ? { testId: project.testId } : {})}
-                className={project.className ?? "max-w-[260px] flex-none"}
+                className={cn(
+                  "agent-composer-project-pill",
+                  project.className ?? "max-w-[260px] flex-none"
+                )}
                 {...(project.endAction ? { endAction: project.endAction } : {})}
               />
 
@@ -445,6 +548,116 @@ export function AgentComposerSurface({
         </div>
       </div>
     </div>
+  );
+}
+
+function ComposerActionMenu({
+  project,
+  enableAttachments,
+  showProjectMenu,
+  attachmentDisabled,
+  onOpenAttachmentPicker,
+}: {
+  project: ProjectFieldConfig;
+  enableAttachments: boolean;
+  showProjectMenu: boolean;
+  attachmentDisabled: boolean;
+  onOpenAttachmentPicker: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "agent-composer-plus-trigger flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] transition-colors disabled:opacity-40",
+            !enableAttachments && "agent-composer-compact-only"
+          )}
+          style={{
+            background: "color-mix(in srgb, var(--bg-base) 24%, var(--bg-surface) 76%)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--overlay-weak)",
+            boxShadow: "none",
+          }}
+          aria-label="Open composer actions"
+          data-testid="agent-composer-actions-menu"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="top"
+        sideOffset={8}
+        className="w-64 rounded-xl p-1.5"
+        style={{
+          backgroundColor: "var(--bg-elevated)",
+          borderColor: "var(--border-subtle)",
+          color: "var(--text-primary)",
+        }}
+      >
+        {enableAttachments && (
+          <DropdownMenuItem
+            disabled={attachmentDisabled}
+            className="h-10 rounded-lg text-[13px]"
+            onSelect={(event) => {
+              event.preventDefault();
+              onOpenAttachmentPicker();
+            }}
+          >
+            <Paperclip className="h-4 w-4" />
+            Add files
+          </DropdownMenuItem>
+        )}
+
+        {showProjectMenu && (
+          <div>
+            {enableAttachments && <DropdownMenuSeparator />}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                disabled={project.disabled || project.options.length === 0}
+                className="h-10 rounded-lg text-[13px]"
+              >
+                <FolderOpen className="h-4 w-4" />
+                Project
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                className="w-64 rounded-xl p-1.5"
+                style={{
+                  backgroundColor: "var(--bg-elevated)",
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-primary)",
+                }}
+              >
+                <DropdownMenuLabel className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                  Project
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={project.value}
+                  onValueChange={project.onValueChange}
+                >
+                  {project.options.map((option) => (
+                    <DropdownMenuRadioItem
+                      key={option.id}
+                      value={option.id}
+                      className="h-9 rounded-lg text-[13px]"
+                    >
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+                {project.endAction && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="px-1 py-1">{project.endAction}</div>
+                  </>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
