@@ -255,6 +255,64 @@ describe("useChatEvents", () => {
       expect(result[0]!.result).toBe("file content here");
     });
 
+    it("should update an existing no-id tool call by stable name and arguments", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-04-25T13:00:00Z"));
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "ralphx::fs_read_file",
+          arguments: { path: "frontend/src/App.tsx" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const startedTools = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, []);
+      expect(startedTools).toHaveLength(1);
+
+      vi.setSystemTime(new Date("2026-04-25T13:00:05Z"));
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "ralphx::fs_read_file",
+          arguments: { path: "frontend/src/App.tsx" },
+          result: [{ type: "text", text: "file contents" }],
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      const completedTools = executeUpdater<ToolCall[]>(
+        props.setStreamingToolCalls,
+        startedTools,
+        1,
+      );
+      expect(completedTools).toHaveLength(1);
+      expect(completedTools[0]!.id).toBe(startedTools[0]!.id);
+      expect(completedTools[0]!.result).toEqual([{ type: "text", text: "file contents" }]);
+
+      const startedBlocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      const completedBlocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        startedBlocks,
+        1,
+      );
+      expect(completedBlocks).toHaveLength(1);
+      expect(completedBlocks[0]).toMatchObject({
+        type: "tool_use",
+        toolCall: {
+          id: startedTools[0]!.id,
+          result: [{ type: "text", text: "file contents" }],
+        },
+      });
+    });
+
     it("clears active tool timing when a direct tool call completes on the same id", () => {
       const props = makeProps({ storeKey: "task_execution:ctx-123" });
       renderAndClear(props);
@@ -857,10 +915,10 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 5. Run completed clears streaming state
+  // 5. Run completed preserves visible streaming until message_created swaps in DB data
   // --------------------------------------------------------------------------
   describe("agent:run_completed", () => {
-    it("should clear all streaming state on run completion", () => {
+    it("should not clear streaming state on run completion before message_created", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -871,16 +929,9 @@ describe("useChatEvents", () => {
         });
       });
 
-      // All three use functional updaters
-      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
-      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
-      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
-
-      // Verify updaters clear non-empty state
-      const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
-        { id: "tc1", name: "Read", arguments: {} },
-      ]);
-      expect(toolCallResult).toEqual([]);
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["chat", "conversation-stats", CONV_ID],
       });
@@ -888,10 +939,10 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 5b. Turn completed clears streaming state
+  // 5b. Turn completed preserves visible streaming until message_created swaps in DB data
   // --------------------------------------------------------------------------
   describe("agent:turn_completed", () => {
-    it("should clear all streaming state on turn completion", () => {
+    it("should not clear streaming state on turn completion before message_created", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -902,16 +953,9 @@ describe("useChatEvents", () => {
         });
       });
 
-      // All three use functional updaters
-      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
-      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
-      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
-
-      // Verify updaters clear non-empty state
-      const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
-        { id: "tc1", name: "Read", arguments: {} },
-      ]);
-      expect(toolCallResult).toEqual([]);
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ["chat", "conversation-stats", CONV_ID],
       });
