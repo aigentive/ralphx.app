@@ -1238,7 +1238,11 @@ describe("AgentsView", () => {
 
   it("sends fixable publish failures back into the workspace agent conversation", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
-    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+    getAgentConversationWorkspaceMock
+      .mockResolvedValueOnce(conversationWorkspace({ mode: "edit" }))
+      .mockResolvedValueOnce(
+        conversationWorkspace({ mode: "edit", publicationPushStatus: "needs_agent" })
+      );
     publishAgentConversationWorkspaceMock.mockRejectedValue(
       "Failed to commit: typecheck failed"
     );
@@ -1271,6 +1275,33 @@ describe("AgentsView", () => {
     expect(toastErrorMock).toHaveBeenCalledWith(
       "Publish failed. Sent the error to the agent to fix."
     );
+  });
+
+  it("does not send operational publish failures to the workspace agent", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock
+      .mockResolvedValueOnce(conversationWorkspace({ mode: "edit" }))
+      .mockResolvedValueOnce(
+        conversationWorkspace({ mode: "edit", publicationPushStatus: "failed" })
+      );
+    publishAgentConversationWorkspaceMock.mockRejectedValue(
+      "GitHub integration is not available"
+    );
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await screen.findByTestId("agents-publish-workspace");
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    await screen.findByTestId("agents-publish-confirm");
+    fireEvent.click(screen.getByTestId("agents-publish-confirm"));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "GitHub integration is not available"
+      )
+    );
+    expect(sendAgentMessageMock).not.toHaveBeenCalled();
   });
 
   it("keeps the artifact pane closed by default when the conversation has nothing to show", async () => {

@@ -982,12 +982,34 @@ export function AgentsView({
         ]);
       } catch (err) {
         const errorMessage = getErrorMessage(err, "Failed to publish branch");
-        if (conversation?.contextType === "project" && workspace?.mode === "edit") {
+        let refreshedWorkspace: AgentConversationWorkspace | null = null;
+        try {
+          refreshedWorkspace = await chatApi.getAgentConversationWorkspace(conversationId);
+          if (refreshedWorkspace) {
+            queryClient.setQueryData(
+              ["agents", "conversation-workspace", conversationId],
+              refreshedWorkspace
+            );
+          }
+        } catch {
+          refreshedWorkspace = null;
+        }
+        const publishFailureNeedsAgent =
+          (refreshedWorkspace ?? workspace)?.publicationPushStatus === "needs_agent";
+
+        if (
+          conversation?.contextType === "project" &&
+          workspace?.mode === "edit" &&
+          publishFailureNeedsAgent
+        ) {
           try {
             await chatApi.sendAgentMessage(
               "project",
               conversation.contextId,
-              buildWorkspacePublishRepairMessage({ errorMessage, workspace }),
+              buildWorkspacePublishRepairMessage({
+                errorMessage,
+                workspace: refreshedWorkspace ?? workspace,
+              }),
               undefined,
               undefined,
               {

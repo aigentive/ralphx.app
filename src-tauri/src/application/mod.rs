@@ -32,6 +32,7 @@ pub mod plan_ranking;
 pub mod priority_service;
 pub mod pr_startup_recovery;
 pub mod prune_engine;
+pub mod publish_resilience;
 pub mod qa_service;
 pub mod question_state;
 pub mod ready_task_scheduler;
@@ -151,6 +152,8 @@ mod recovery_queue_tests;
 mod webhook_service_tests;
 #[cfg(test)]
 mod prune_engine_tests;
+#[cfg(test)]
+mod publish_resilience_tests;
 #[cfg(test)]
 mod session_export_service_tests;
 #[cfg(test)]

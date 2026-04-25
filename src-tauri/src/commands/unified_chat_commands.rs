@@ -26,6 +26,9 @@ use crate::application::chat_service::{
     create_assistant_message, AgentConversationCreatedPayload, SendMessageOptions,
 };
 use crate::application::git_service::GitService;
+use crate::application::publish_resilience::{
+    publish_push_status_for_failure, review_base_for_publish,
+};
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
 };
@@ -1681,30 +1684,61 @@ pub async fn publish_agent_conversation_workspace(
             }
         };
 
-    let github = state
-        .github_service
-        .as_ref()
-        .ok_or_else(|| "GitHub integration is not available".to_string())?;
+    let github = match state.github_service.as_ref() {
+        Some(github) => github,
+        None => {
+            let error = "GitHub integration is not available".to_string();
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            return Err(error);
+        }
+    };
 
-    let commit_sha = if GitService::has_uncommitted_changes(&worktree_path)
-        .await
-        .map_err(|e| e.to_string())?
-    {
+    let has_uncommitted_changes = match GitService::has_uncommitted_changes(&worktree_path).await {
+        Ok(has_changes) => has_changes,
+        Err(error) => {
+            let error = error.to_string();
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            return Err(error);
+        }
+    };
+
+    let commit_sha = if has_uncommitted_changes {
         let message = build_agent_workspace_commit_message(&conversation);
-        GitService::commit_all_including_deletions(&worktree_path, &message)
-            .await
-            .map_err(|e| e.to_string())?
+        match GitService::commit_all_including_deletions(&worktree_path, &message).await {
+            Ok(commit_sha) => commit_sha,
+            Err(error) => {
+                let error = error.to_string();
+                mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+                return Err(error);
+            }
+        }
     } else {
         None
     };
 
-    let reviewable_commit_count = GitService::count_commits_not_on_branch(
+    let review_base =
+        match review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref) {
+            Ok(review_base) => review_base,
+            Err(error) => {
+                mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+                return Err(error);
+            }
+        };
+
+    let reviewable_commit_count = match GitService::count_commits_not_on_branch(
         &worktree_path,
         &workspace.branch_name,
-        &workspace.base_ref,
+        review_base,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    {
+        Ok(count) => count,
+        Err(error) => {
+            let error = error.to_string();
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+            return Err(error);
+        }
+    };
     if reviewable_commit_count == 0 {
         let _ = state
             .agent_conversation_workspace_repo
@@ -1735,17 +1769,9 @@ pub async fn publish_agent_conversation_workspace(
         .push_branch(&worktree_path, &workspace.branch_name)
         .await
     {
-        let _ = state
-            .agent_conversation_workspace_repo
-            .update_publication(
-                &workspace.conversation_id,
-                workspace.publication_pr_number,
-                workspace.publication_pr_url.as_deref(),
-                workspace.publication_pr_status.as_deref(),
-                Some("failed"),
-            )
-            .await;
-        return Err(error.to_string());
+        let error = error.to_string();
+        mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+        return Err(error);
     }
 
     state
@@ -1767,17 +1793,9 @@ pub async fn publish_agent_conversation_workspace(
     let outcome = match pr_result {
         Ok(result) => result,
         Err(error) => {
-            let _ = state
-                .agent_conversation_workspace_repo
-                .update_publication(
-                    &workspace.conversation_id,
-                    workspace.publication_pr_number,
-                    workspace.publication_pr_url.as_deref(),
-                    Some("failed"),
-                    Some("pushed"),
-                )
-                .await;
-            return Err(error.to_string());
+            let error = error.to_string();
+            mark_agent_workspace_publish_failure(&state, &workspace, &error, Some("failed")).await;
+            return Err(error);
         }
     };
 
@@ -1808,6 +1826,25 @@ pub async fn publish_agent_conversation_workspace(
         pr_number: Some(outcome.pr_number),
         pr_url: Some(outcome.pr_url),
     })
+}
+
+async fn mark_agent_workspace_publish_failure(
+    state: &AppState,
+    workspace: &AgentConversationWorkspace,
+    error: &str,
+    pr_status_override: Option<&str>,
+) {
+    let push_status = publish_push_status_for_failure(error);
+    let _ = state
+        .agent_conversation_workspace_repo
+        .update_publication(
+            &workspace.conversation_id,
+            workspace.publication_pr_number,
+            workspace.publication_pr_url.as_deref(),
+            pr_status_override.or(workspace.publication_pr_status.as_deref()),
+            Some(push_status),
+        )
+        .await;
 }
 
 /// Persist a child workflow milestone into a parent project-agent conversation.
