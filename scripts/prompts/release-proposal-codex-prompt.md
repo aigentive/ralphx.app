@@ -1,5 +1,5 @@
 <release_proposal_task>
-Recommend the next RalphX release version from the provided deterministic release evidence packet.
+Recommend the next RalphX.app release version from the provided deterministic release evidence packet.
 
 Use only the provided evidence and versioning policy.
 </release_proposal_task>
@@ -13,7 +13,7 @@ Use only the provided evidence and versioning policy.
 </style_goals>
 
 <output_format>
-# RalphX Release Proposal
+# RalphX.app Release Proposal
 
 One short summary sentence.
 

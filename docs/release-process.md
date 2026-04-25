@@ -1,6 +1,6 @@
-# RalphX Release Process
+# RalphX.app Release Process
 
-This document covers the RalphX release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
+This document covers the RalphX.app release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
 
 ---
 
@@ -43,9 +43,9 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 
 ## Release Versioning Policy
 
-RalphX is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
+RalphX.app is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
 
-Current policy while RalphX remains on `0.x`:
+Current policy while RalphX.app remains on `0.x`:
 
 | Bump | Use It When | Do Not Use It Just Because |
 |---|---|---|
@@ -63,6 +63,37 @@ Practical rules:
 ---
 
 ## Creating a Release
+
+### Daily Scheduled Releases
+
+`Daily Release` runs every day from `main` and releases committed changes when there are commits after the latest reachable `vX.Y.Z` tag.
+
+Required repository secret:
+
+- `CODEX_API_KEY` for Codex CLI release proposal and release-note generation. `OPENAI_API_KEY` is accepted as a fallback, but `CODEX_API_KEY` is preferred for `codex exec` automation.
+- Optional: `RELEASE_AUTOMATION_TOKEN` with `contents:write` and `actions:write` when branch protection prevents the default `GITHUB_TOKEN` from pushing the release-prep commit/tag or dispatching `Release Build`.
+
+What the scheduled workflow does:
+
+1. Checks out `main` with tags.
+2. Finds the latest reachable semver release tag.
+3. Skips the run when there are no commits after that tag.
+4. Installs Codex CLI with `npm i -g @openai/codex`.
+5. Runs `./scripts/propose-release.sh --accept` for the version recommendation.
+6. Runs `./scripts/bump-version.sh` and `./scripts/generate-release-notes.sh`.
+7. Commits the version bump and `release-notes/vX.Y.Z.md` to `main`.
+8. Tags that release-prep commit.
+9. Dispatches `Release Build`, which still feeds the existing `Release Publish` workflow.
+
+Manual testing:
+
+1. Go to `aigentive/ralphx.app` -> Actions -> `Daily Release`.
+2. Click **Run workflow** from `main`.
+3. Use `dry_run=true` to verify Codex proposal, version bump, and note generation without committing, tagging, pushing, or dispatching the build.
+
+Scheduled runs use `draft=false`, `prerelease=false`, and the self-hosted ARM release runner by default. Manual dispatch can override those values.
+
+---
 
 ### Preferred Flow: Guided Wrapper
 
@@ -103,7 +134,7 @@ Use this when you want finer control than the wrapper gives you.
 Then:
 
 1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version.
-2. Accept the proposal at the prompt if you want RalphX to store that version in `.artifacts/release-notes/.version`.
+2. Accept the proposal at the prompt if you want RalphX.app to store that version in `.artifacts/release-notes/.version`.
 3. If you do not want the prompt, use:
    - `./scripts/propose-release.sh --accept`
 4. If you reject the proposal, rerun with a different range or override the version manually in the next step.
@@ -239,7 +270,7 @@ Current release contract:
 - published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
 - `latest.json` points the app at those public updater bundles
 - the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
-- the Homebrew cask declares `auto_updates true`, so RalphX can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
+- the Homebrew cask declares `auto_updates true`, so RalphX.app can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
 
 ---
 

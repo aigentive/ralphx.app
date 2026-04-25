@@ -31,12 +31,13 @@ echo "Bumping version to $VERSION..."
 npm --prefix frontend version $VERSION --no-git-tag-version
 
 # Update Cargo.toml
-sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+VERSION="${VERSION}" perl -0pi -e 's/^version = ".*"/version = "$ENV{VERSION}"/m' src-tauri/Cargo.toml
 
 # Update tauri.conf.json
 cd src-tauri
-cat tauri.conf.json | jq ".version = \"$VERSION\"" > tauri.conf.json.tmp
-mv tauri.conf.json.tmp tauri.conf.json
+tmp_conf="$(mktemp)"
+jq ".version = \"$VERSION\"" tauri.conf.json > "${tmp_conf}"
+mv "${tmp_conf}" tauri.conf.json
 cd ..
 
 echo "Version updated to $VERSION"
