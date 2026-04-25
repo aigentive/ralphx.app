@@ -131,4 +131,15 @@ describe("AgentsArtifactPane", () => {
     await waitFor(() => expect(screen.getByTestId("agents-review-changes")).toBeEnabled());
     expect(getWorkspaceChangesMock).toHaveBeenCalledWith("conversation-1");
   });
+
+  it("shows workspace publish pipeline status in the publish pane", () => {
+    renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "failed" }));
+
+    expect(screen.getByTestId("agents-publish-pipeline")).toBeInTheDocument();
+    expect(screen.getByTestId("agents-publish-step-checking")).toHaveTextContent(
+      "Check workspace"
+    );
+    expect(screen.getByText(/Fixable errors are sent back to the workspace agent/i))
+      .toBeInTheDocument();
+  });
 });

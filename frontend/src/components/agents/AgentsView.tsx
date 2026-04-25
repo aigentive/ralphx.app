@@ -129,6 +129,25 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function buildWorkspacePublishRepairMessage({
+  errorMessage,
+  workspace,
+}: {
+  errorMessage: string;
+  workspace: AgentConversationWorkspace;
+}): string {
+  const base = workspace.baseDisplayName ?? workspace.baseRef;
+  return [
+    "Commit & Publish failed for this edit workspace.",
+    "",
+    "Please fix the workspace so publishing can be retried.",
+    "",
+    `Error: ${errorMessage}`,
+    `Workspace branch: ${workspace.branchName}`,
+    `Base: ${base}`,
+  ].join("\n");
+}
+
 interface AgentsViewProps {
   projectId: string;
   onCreateProject: () => void;
@@ -944,6 +963,10 @@ export function AgentsView({
   const handlePublishWorkspace = useCallback(
     async (conversationId: string) => {
       const conversation = findConversationById(conversationId);
+      const workspace =
+        selectedConversationId === conversationId
+          ? activeWorkspace
+          : optimisticWorkspacesByConversationId[conversationId] ?? null;
       setPublishingConversationId(conversationId);
       try {
         const result = await chatApi.publishAgentConversationWorkspace(conversationId);
@@ -958,12 +981,44 @@ export function AgentsView({
             : Promise.resolve(),
         ]);
       } catch (err) {
-        toast.error(getErrorMessage(err, "Failed to publish branch"));
+        const errorMessage = getErrorMessage(err, "Failed to publish branch");
+        if (conversation?.contextType === "project" && workspace?.mode === "edit") {
+          try {
+            await chatApi.sendAgentMessage(
+              "project",
+              conversation.contextId,
+              buildWorkspacePublishRepairMessage({ errorMessage, workspace }),
+              undefined,
+              undefined,
+              {
+                conversationId,
+                providerHarness: normalizedActiveRuntime.provider,
+                modelId: normalizedActiveRuntime.modelId,
+              }
+            );
+            toast.error("Publish failed. Sent the error to the agent to fix.");
+            invalidateConversationDataQueries(queryClient, conversationId);
+            await invalidateProjectConversations(conversation.projectId);
+          } catch {
+            toast.error(errorMessage);
+          }
+        } else {
+          toast.error(errorMessage);
+        }
       } finally {
         setPublishingConversationId(null);
       }
     },
-    [findConversationById, invalidateProjectConversations, queryClient]
+    [
+      activeWorkspace,
+      findConversationById,
+      invalidateProjectConversations,
+      normalizedActiveRuntime.modelId,
+      normalizedActiveRuntime.provider,
+      optimisticWorkspacesByConversationId,
+      queryClient,
+      selectedConversationId,
+    ]
   );
 
   const defaultRuntime =

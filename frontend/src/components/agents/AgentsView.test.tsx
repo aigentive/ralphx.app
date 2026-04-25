@@ -1236,7 +1236,7 @@ describe("AgentsView", () => {
     expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
   });
 
-  it("shows string publish failures returned by Tauri", async () => {
+  it("sends fixable publish failures back into the workspace agent conversation", async () => {
     mockAgentViewData(conversation({ agentMode: "edit" }));
     getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
     publishAgentConversationWorkspaceMock.mockRejectedValue(
@@ -1252,7 +1252,24 @@ describe("AgentsView", () => {
     fireEvent.click(screen.getByTestId("agents-publish-confirm"));
 
     await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith("Failed to commit: typecheck failed")
+      expect(sendAgentMessageMock).toHaveBeenCalledWith(
+        "project",
+        "project-1",
+        expect.stringContaining("Failed to commit: typecheck failed"),
+        undefined,
+        undefined,
+        expect.objectContaining({
+          conversationId: "conversation-1",
+          providerHarness: "codex",
+          modelId: "gpt-5.4",
+        })
+      )
+    );
+    expect(sendAgentMessageMock.mock.calls[0][2]).toContain(
+      "Please fix the workspace so publishing can be retried."
+    );
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Publish failed. Sent the error to the agent to fix."
     );
   });
 
