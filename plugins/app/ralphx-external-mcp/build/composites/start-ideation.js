@@ -55,6 +55,10 @@ export async function startIdeation(input, context) {
         ...(b.similarity_score !== undefined ? { similarityScore: b.similarity_score } : {}),
         ...(b.next_action !== undefined ? { nextAction: b.next_action } : {}),
         ...(b.hint !== undefined ? { hint: b.hint } : {}),
+        ...(b.parent_conversation_id !== undefined
+            ? { parentConversationId: b.parent_conversation_id }
+            : {}),
+        ...(b.workspace_branch !== undefined ? { workspaceBranch: b.workspace_branch } : {}),
     };
     return result;
 }

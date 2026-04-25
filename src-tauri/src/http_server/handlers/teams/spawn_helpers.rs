@@ -191,22 +191,40 @@ pub async fn find_active_team(state: &HttpServerState) -> Result<(String, String
 /// with a `leadSessionId` field. This is the most reliable source when the
 /// `RALPHX_LEAD_SESSION_ID` env var wasn't set (first spawn, session_id not yet known).
 pub(super) fn resolve_lead_session_from_config(team_name: &str) -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let config_path = PathBuf::from(home)
-        .join(".claude/teams")
-        .join(team_name)
-        .join("config.json");
+    let (session_id, config_path) = read_lead_session_config(team_name)?;
+    tracing::info!(
+        team = %team_name,
+        config_path = %config_path.display(),
+        "[TEAM_SPAWN] Resolved leadSessionId from Claude Code team config"
+    );
+    Some(session_id)
+}
+
+fn trusted_claude_team_name(team_name: &str) -> Option<&str> {
+    let is_safe = !team_name.is_empty()
+        && !team_name.contains("..")
+        && !team_name.contains('/')
+        && !team_name.contains('\\')
+        && team_name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+    is_safe.then_some(team_name)
+}
+
+fn read_lead_session_config(team_name: &str) -> Option<(String, PathBuf)> {
+    let team_name = trusted_claude_team_name(team_name)?;
+    let teams_dir = dirs::home_dir()?.join(".claude").join("teams");
+    let canonical_teams_dir = teams_dir.canonicalize().ok()?;
+    let canonical_team_dir = canonical_teams_dir.join(team_name).canonicalize().ok()?;
+    if !canonical_team_dir.starts_with(&canonical_teams_dir) {
+        return None;
+    }
+    let config_path = canonical_team_dir.join("config.json");
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(&config_path).ok()?;
     let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let session_id = config.get("leadSessionId")?.as_str().map(|s| s.to_string());
-    if session_id.is_some() {
-        tracing::info!(
-            team = %team_name,
-            config_path = %config_path.display(),
-            "[TEAM_SPAWN] Resolved leadSessionId from Claude Code team config"
-        );
-    }
-    session_id
+    let session_id = config.get("leadSessionId")?.as_str()?.to_string();
+    Some((session_id, config_path))
 }
 
 /// Generate a unique teammate name, appending a suffix if needed.

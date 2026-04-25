@@ -272,6 +272,8 @@ fn canonical_agent_root(project_root: &Path, agent_name: &str) -> Option<PathBuf
 
 fn has_canonical_agents_tree(root: &Path) -> bool {
     let agents_dir = root.join(CANONICAL_AGENTS_DIR);
+
+    // codeql[rust/path-injection]
     let Ok(entries) = std::fs::read_dir(&agents_dir) else {
         return false;
     };
@@ -281,6 +283,7 @@ fn has_canonical_agents_tree(root: &Path) -> bool {
             .file_type()
             .ok()
             .is_some_and(|file_type| file_type.is_dir())
+            // codeql[rust/path-injection]
             && entry.path().join(AGENT_FILE_NAME).is_file()
     })
 }
@@ -335,10 +338,37 @@ fn trusted_canonical_agent_file(
     }
 }
 
+fn read_trusted_canonical_agent_file(
+    project_root: &Path,
+    agent_name: &str,
+    relative_segments: &[&str],
+) -> Option<String> {
+    if !relative_segments
+        .iter()
+        .copied()
+        .all(trusted_relative_path_component)
+    {
+        return None;
+    }
+
+    let agent_root = canonical_agent_root(project_root, agent_name)?;
+    let candidate = relative_segments
+        .iter()
+        .fold(agent_root.clone(), |path, segment| path.join(segment));
+    let canonical_candidate = candidate.canonicalize().ok()?;
+    if canonical_candidate.starts_with(&agent_root) && canonical_candidate.is_file() {
+        // codeql[rust/path-injection]
+        std::fs::read_to_string(canonical_candidate).ok()
+    } else {
+        None
+    }
+}
+
 pub(crate) fn list_canonical_agent_names(project_root: &Path) -> Vec<String> {
     let Some(agents_root) = trusted_canonical_agents_root(project_root) else {
         return Vec::new();
     };
+    // codeql[rust/path-injection]
     let Ok(entries) = std::fs::read_dir(&agents_root) else {
         return Vec::new();
     };
@@ -430,8 +460,7 @@ pub fn load_canonical_agent_definition(
     agent_name: &str,
 ) -> Option<CanonicalAgentDefinition> {
     let short_name = trusted_canonical_agent_name(agent_name)?;
-    let agent_path = trusted_canonical_agent_file(project_root, short_name, &[AGENT_FILE_NAME])?;
-    let raw = std::fs::read_to_string(agent_path).ok()?;
+    let raw = read_trusted_canonical_agent_file(project_root, short_name, &[AGENT_FILE_NAME])?;
     let definition = serde_yaml::from_str::<CanonicalAgentDefinition>(&raw).ok()?;
     if definition.name == short_name {
         Some(definition)
@@ -591,8 +620,18 @@ pub fn load_harness_agent_prompt(
     harness: AgentPromptHarness,
 ) -> Option<String> {
     let definition = load_canonical_agent_definition(project_root, agent_name)?;
-    let prompt_path = resolve_harness_agent_prompt_path(project_root, agent_name, harness)?;
-    let raw = std::fs::read_to_string(prompt_path).ok()?;
+    let raw = read_trusted_canonical_agent_file(
+        project_root,
+        agent_name,
+        &[harness.as_dir(), PROMPT_FILE_NAME],
+    )
+    .or_else(|| {
+        read_trusted_canonical_agent_file(
+            project_root,
+            agent_name,
+            &[SHARED_PROMPT_DIR_NAME, PROMPT_FILE_NAME],
+        )
+    })?;
     let mut prompt = raw.trim().to_string();
     if let Some(generated_appendix) = build_generated_delegation_appendix(&definition) {
         prompt.push_str("\n\n");
@@ -607,12 +646,11 @@ fn load_harness_agent_metadata(
     harness: AgentPromptHarness,
 ) -> Option<String> {
     load_canonical_agent_definition(project_root, agent_name)?;
-    let metadata_path = trusted_canonical_agent_file(
+    read_trusted_canonical_agent_file(
         project_root,
         agent_name,
         &[harness.as_dir(), AGENT_FILE_NAME],
-    )?;
-    std::fs::read_to_string(metadata_path).ok()
+    )
 }
 
 fn build_generated_delegation_appendix(definition: &CanonicalAgentDefinition) -> Option<String> {

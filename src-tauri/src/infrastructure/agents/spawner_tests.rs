@@ -33,6 +33,18 @@ fn make_local_plugin_task_workdir(task_name: &str) -> (tempfile::TempDir, PathBu
     (dir, task_workdir)
 }
 
+fn make_runtime_plugin_layout() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::tempdir().expect("create runtime plugin tempdir");
+    let plugin_dir = dir.path().join("plugins/app");
+    let generated_dir = dir.path().join("generated/claude-plugin");
+
+    fs::create_dir_all(plugin_dir.join("agents")).expect("create agents dir");
+    fs::write(plugin_dir.join("agents/session-namer.md"), "# Session Namer\n")
+        .expect("write agent prompt");
+
+    (dir, plugin_dir, generated_dir)
+}
+
 /// Minimal mock TaskRepository that returns a configurable task
 struct MockTaskRepoForSpawner {
     task: Option<Task>,
@@ -874,6 +886,12 @@ fn test_build_agent_config_for_mock_client_omits_claude_plugin_wiring() {
 
 #[test]
 fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
+    let (_runtime_dir, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+    let _runtime_plugin_dir_guard =
+        crate::infrastructure::agents::claude::override_runtime_plugin_dirs_for_tests(
+            plugin_dir,
+            generated_dir.clone(),
+        );
     let client = Arc::new(crate::infrastructure::ClaudeCodeClient::new());
     let spawner = AgenticClientSpawner::new(client);
 
@@ -897,11 +915,17 @@ fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
         config.agent.as_deref(),
         Some("ralphx:ralphx-qa-executor")
     );
-    assert!(config.plugin_dir.is_some());
+    assert_eq!(config.plugin_dir, Some(generated_dir));
 }
 
 #[test]
 fn test_build_agent_config_for_codex_client_uses_process_mapping() {
+    let (_runtime_dir, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+    let _runtime_plugin_dir_guard =
+        crate::infrastructure::agents::claude::override_runtime_plugin_dirs_for_tests(
+            plugin_dir,
+            generated_dir.clone(),
+        );
     let default_client = Arc::new(MockAgenticClient::new());
     let spawner = AgenticClientSpawner::new(default_client);
     let (_dir, task_workdir) = make_local_plugin_task_workdir("task-789");
@@ -922,15 +946,7 @@ fn test_build_agent_config_for_codex_client_uses_process_mapping() {
 
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
     assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-qa-executor"));
-    assert_eq!(
-        config.plugin_dir,
-        Some(
-            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
-                AgentHarnessKind::Codex,
-                &task_workdir,
-            )
-        )
-    );
+    assert_eq!(config.plugin_dir, Some(generated_dir));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
         config.logical_effort,
@@ -1062,6 +1078,12 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
 
 #[tokio::test]
 async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
+    let (_runtime_dir, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+    let _runtime_plugin_dir_guard =
+        crate::infrastructure::agents::claude::override_runtime_plugin_dirs_for_tests(
+            plugin_dir,
+            generated_dir.clone(),
+        );
     let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
     let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
@@ -1115,19 +1137,17 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
     assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-reviewer"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(
-        config.plugin_dir,
-        Some(
-            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
-                AgentHarnessKind::Codex,
-                &task_workdir,
-            )
-        )
-    );
+    assert_eq!(config.plugin_dir, Some(generated_dir));
 }
 
 #[tokio::test]
 async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
+    let (_runtime_dir, plugin_dir, generated_dir) = make_runtime_plugin_layout();
+    let _runtime_plugin_dir_guard =
+        crate::infrastructure::agents::claude::override_runtime_plugin_dirs_for_tests(
+            plugin_dir,
+            generated_dir.clone(),
+        );
     let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
     let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
@@ -1181,15 +1201,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
     assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-merger"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(
-        config.plugin_dir,
-        Some(
-            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
-                AgentHarnessKind::Codex,
-                &task_workdir,
-            )
-        )
-    );
+    assert_eq!(config.plugin_dir, Some(generated_dir));
 }
 
 #[tokio::test]

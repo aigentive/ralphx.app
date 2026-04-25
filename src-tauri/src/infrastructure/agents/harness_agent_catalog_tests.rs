@@ -619,8 +619,9 @@ fn project_chat_codex_surface_can_advance_ideation_send_message_actions() {
 fn project_chat_claude_surface_uses_external_ideation_tools() {
     let root = project_root();
     let metadata = load_canonical_claude_metadata(&root, "ralphx-chat-project");
-    let prompt = load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Claude)
-        .expect("missing claude prompt for ralphx-chat-project");
+    let prompt =
+        load_harness_agent_prompt(&root, "ralphx-chat-project", AgentPromptHarness::Claude)
+            .expect("missing claude prompt for ralphx-chat-project");
 
     assert_eq!(metadata.mcp_transport.as_deref(), Some("external"));
     assert!(

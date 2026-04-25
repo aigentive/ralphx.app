@@ -442,14 +442,12 @@ Before every spawn:
 **File:** `src-tauri/src/infrastructure/agents/claude/mod.rs:746-818`
 
 Priority order:
-1. `<working_dir>/plugins/app` (in-repo development)
-2. `<working_dir>/ralphx-plugin` (legacy in-repo fallback)
-3. `<working_dir>/../plugins/app` (worktree sibling)
-4. `<working_dir>/../ralphx-plugin` (legacy worktree fallback)
-5. `RALPHX_PLUGIN_DIR` env var
-6. Relative to `current_dir()`
-7. Relative to executable path (up to 3 levels)
-8. `~/Library/Application Support/com.ralphx.app/plugins/app` (production macOS)
+1. Process-configured bundled/runtime plugin dir (`configure_runtime_plugin_dirs`)
+2. RalphX source checkout `plugins/app` (development)
+3. RalphX source checkout `ralphx-plugin` (legacy fallback)
+4. Relative to executable path (up to 3 levels)
+
+The active target project `working_dir` and `RALPHX_*` env vars are not used for RalphX-owned plugin/runtime root discovery.
 
 ## Alternative Spawn Modes
 

@@ -70,7 +70,9 @@ fn seed_runnable_mcp_runtime(plugin_dir: &Path, runtime_marker: &str) {
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
+    // codeql[rust/path-injection]
     std::fs::create_dir_all(dst).expect("create destination dir");
+    // codeql[rust/path-injection]
     for entry in std::fs::read_dir(src).expect("read source dir") {
         let entry = entry.expect("read dir entry");
         let file_type = entry.file_type().expect("read file type");
@@ -79,6 +81,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
         if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path);
         } else if file_type.is_file() {
+            // codeql[rust/path-injection]
             std::fs::copy(&src_path, &dst_path).unwrap_or_else(|err| {
                 panic!(
                     "copy {} -> {} failed: {err}",
@@ -115,6 +118,7 @@ fn symlink_dir(source: impl AsRef<Path>, target: impl AsRef<Path>) {
 
 /// Parse the JSON args array from a generated MCP config temp file.
 fn get_json_args(config_path: &Path) -> Vec<String> {
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(config_path).expect("read config file");
     let v: serde_json::Value = serde_json::from_str(&content).expect("parse JSON");
     v.get("mcpServers")
@@ -475,6 +479,7 @@ fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
     // ralphx-ideation has ask_user_question in its mcp_tools
     let config_path =
         create_mcp_config(&plugin_dir, "ralphx-ideation", true).expect("should succeed");
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
@@ -503,6 +508,7 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
     // ralphx-ideation has ask_user_question in its mcp_tools — should be present when not external
     let config_path =
         create_mcp_config(&plugin_dir, "ralphx-ideation", false).expect("should succeed");
+    // codeql[rust/path-injection]
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
