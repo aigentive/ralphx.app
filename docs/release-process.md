@@ -1,6 +1,6 @@
-# RalphX Release Process
+# RalphX.app Release Process
 
-This document covers the RalphX release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
+This document covers the RalphX.app release workflow, from local build testing through public GitHub Releases, Homebrew publication, and in-app updater publication.
 
 ---
 
@@ -43,9 +43,9 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 
 ## Release Versioning Policy
 
-RalphX is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
+RalphX.app is just starting formal public release management after an internal-only phase. The repo has very high development velocity and high code churn, so release versions follow the shipped product surface, not raw repository activity.
 
-Current policy while RalphX remains on `0.x`:
+Current policy while RalphX.app remains on `0.x`:
 
 | Bump | Use It When | Do Not Use It Just Because |
 |---|---|---|
@@ -63,6 +63,37 @@ Practical rules:
 ---
 
 ## Creating a Release
+
+### Daily Scheduled Releases
+
+`Daily Release` runs every day from `main` and releases committed changes when there are commits after the latest reachable `vX.Y.Z` tag.
+
+Required repository secret:
+
+- `CODEX_API_KEY` for Codex CLI release proposal and release-note generation. `OPENAI_API_KEY` is accepted as a fallback, but `CODEX_API_KEY` is preferred for `codex exec` automation.
+- Optional: `RELEASE_AUTOMATION_TOKEN` with `contents:write` and `actions:write` when branch protection prevents the default `GITHUB_TOKEN` from pushing the release-prep commit/tag or dispatching `Release Build`.
+
+What the scheduled workflow does:
+
+1. Checks out `main` with tags.
+2. Finds the latest reachable semver release tag.
+3. Skips the run when there are no commits after that tag.
+4. Installs Codex CLI with `npm i -g @openai/codex`.
+5. Runs `./scripts/propose-release.sh --accept` for the version recommendation.
+6. Runs `./scripts/bump-version.sh` and `./scripts/generate-release-notes.sh`.
+7. Commits the version bump and `release-notes/vX.Y.Z.md` to `main`.
+8. Tags that release-prep commit.
+9. Dispatches `Release Build`, which still feeds the existing `Release Publish` workflow.
+
+Manual testing:
+
+1. Go to `aigentive/ralphx.app` -> Actions -> `Daily Release`.
+2. Click **Run workflow** from `main`.
+3. Use `dry_run=true` to verify Codex proposal, version bump, and note generation without committing, tagging, pushing, or dispatching the build.
+
+Scheduled runs use `draft=false`, `prerelease=false`, and the self-hosted ARM release runner by default. Manual dispatch can override those values.
+
+---
 
 ### Preferred Flow: Guided Wrapper
 
@@ -103,7 +134,7 @@ Use this when you want finer control than the wrapper gives you.
 Then:
 
 1. Review the proposed bump (`patch` / `minor` / `major`) and the recommended version.
-2. Accept the proposal at the prompt if you want RalphX to store that version in `.artifacts/release-notes/.version`.
+2. Accept the proposal at the prompt if you want RalphX.app to store that version in `.artifacts/release-notes/.version`.
 3. If you do not want the prompt, use:
    - `./scripts/propose-release.sh --accept`
 4. If you reject the proposal, rerun with a different range or override the version manually in the next step.
@@ -177,7 +208,7 @@ git push origin main --tags
 
 After the tag is on `origin`, trigger `Release Build` manually from `main`:
 
-1. Go to `aigentive/ralphx` → Actions → `Release Build`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Build`
 2. Click **Run workflow**
 3. Use:
    - `ref`: `v0.2.0`
@@ -199,9 +230,9 @@ What `Release Build` does:
 
 `Release Publish` reuses the successful build artifacts instead of rebuilding.
 
-1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Publish`
 2. Confirm the auto-triggered run finished successfully
-3. Then go to `aigentive/ralphx-releases` → Releases
+3. Then go to `aigentive/ralphx.app` → Releases
 4. Find the release created or updated by the workflow
 5. Review the artifacts:
    - `RalphX_x.x.x_aarch64.dmg` - Apple Silicon
@@ -219,7 +250,7 @@ What `Release Build` does:
 
 For recovery publishing after a successful build run, use `Release Publish` manually instead of rebuilding:
 
-1. Go to `aigentive/ralphx` → Actions → `Release Publish`
+1. Go to `aigentive/ralphx.app` → Actions → `Release Publish`
 2. Click **Run workflow**
 3. Provide:
    - `source_run_id`: the successful `Release Build` run ID
@@ -232,14 +263,14 @@ For recovery publishing after a successful build run, use `Release Publish` manu
 
 ## In-App Updates
 
-The release workflow now publishes Tauri updater artifacts to the public binaries repo.
+The release workflow publishes Tauri updater artifacts to the public source repo release.
 
 Current release contract:
-- updater endpoint: `https://github.com/aigentive/ralphx-releases/releases/latest/download/latest.json`
+- updater endpoint: `https://github.com/aigentive/ralphx.app/releases/latest/download/latest.json`
 - published releases include per-architecture `.app.tar.gz` updater bundles and `.sig` files
 - `latest.json` points the app at those public updater bundles
 - the updater follows GitHub's `latest` endpoint, so only the latest published non-draft release is visible automatically
-- the Homebrew cask declares `auto_updates true`, so RalphX can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
+- the Homebrew cask declares `auto_updates true`, so RalphX.app can self-update after install while still allowing an explicit `brew upgrade --cask ralphx`
 
 ---
 
@@ -248,7 +279,7 @@ Current release contract:
 The release workflow also maintains the public tap repo `aigentive/homebrew-ralphx`.
 
 Current tap contract:
-- release artifacts stay in `aigentive/ralphx-releases`
+- release artifacts stay in `aigentive/ralphx.app`
 - `Casks/ralphx.rb` is rendered from the release workflow using the per-arch DMG sha256 values
 - only non-draft, non-prerelease releases update the tap automatically
 - testers install with `brew tap aigentive/ralphx` and `brew install --cask ralphx`
@@ -286,7 +317,6 @@ cargo tauri build
 **"Secret not found"**
 - Verify all secrets are configured in repository settings
 - Secret names are case-sensitive
-- The public release job also requires `RELEASES_REPO_TOKEN`
 - Homebrew tap publishing also requires `HOMEBREW_TAP_TOKEN`
 
 **"Certificate import failed"**
@@ -299,8 +329,8 @@ cargo tauri build
 - Check the Actions tab for `Release Build` and `Release Publish`
 
 **Public release upload failed**
-- Verify `RELEASES_REPO_TOKEN` has `Contents: Read and write` on `aigentive/ralphx-releases`
-- Confirm the target repo exists and the token owner has write access to it
+- Verify the workflow has `contents: write` permission for `aigentive/ralphx.app`
+- Confirm the tag exists and the GitHub Actions token can create or update releases
 
 **Homebrew tap update failed**
 - Verify `HOMEBREW_TAP_TOKEN` has `Contents: Read and write` on `aigentive/homebrew-ralphx`

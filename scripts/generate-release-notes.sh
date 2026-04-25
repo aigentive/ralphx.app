@@ -11,7 +11,7 @@ DEFAULT_REASONING_EFFORT="${RELEASE_NOTES_REASONING_EFFORT:-xhigh}"
 
 usage() {
   cat <<'EOF'
-Generate draft RalphX release notes with Codex CLI.
+Generate draft RalphX.app release notes with Codex CLI.
 
 Usage:
   ./scripts/generate-release-notes.sh [<version>] [--from <ref>] [--to <ref>] [--model <model>] [--reasoning-effort <low|medium|high|xhigh>] [--output <file>] [--context-only]
@@ -128,7 +128,7 @@ trap 'rm -f "${tmp_context}" "${tmp_final_input}"' EXIT
 
 {
   printf 'Release metadata:\n'
-  printf -- '- Product: RalphX\n'
+  printf -- '- Product: RalphX.app\n'
   printf -- '- Version: %s\n' "${raw_version}"
   printf -- '- Tag: %s\n' "${tag}"
   printf '\nRelease evidence:\n'

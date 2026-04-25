@@ -30,15 +30,15 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 concurrency:
   group: release-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_run_id || github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 env:
-  PUBLIC_RELEASES_REPO: aigentive/ralphx-releases
-  PUBLIC_RELEASES_BASE_URL: https://github.com/aigentive/ralphx-releases/releases/download
+  PUBLIC_RELEASES_REPO: ${{ github.repository }}
+  PUBLIC_RELEASES_BASE_URL: https://github.com/${{ github.repository }}/releases/download
   HOMEBREW_TAP_REPO: aigentive/homebrew-ralphx
 
 jobs:
@@ -154,14 +154,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Validate publishing environment
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "Missing required secret: RELEASES_REPO_TOKEN" >&2
+            echo "Missing GitHub token for release publishing" >&2
             exit 1
           fi
 
@@ -369,10 +369,10 @@ jobs:
             printf '  version "%s"\n' "${version}"
             printf '  sha256 arm:   "%s",\n' "${arm_sha}"
             printf '         intel: "%s"\n\n' "${intel_sha}"
-            printf '  url "https://github.com/aigentive/ralphx-releases/releases/download/v#{version}/RalphX_#{version}_#{arch}.dmg"\n'
+            printf '  url "https://github.com/%s/releases/download/v#{version}/RalphX_#{version}_#{arch}.dmg"\n' "${PUBLIC_RELEASES_REPO}"
             printf '  name "RalphX"\n'
             printf '  desc "Native Mac GUI for autonomous AI development"\n'
-            printf '  homepage "https://github.com/aigentive/ralphx-releases"\n'
+            printf '  homepage "https://github.com/%s"\n' "${PUBLIC_RELEASES_REPO}"
             printf '  auto_updates true\n\n'
             printf '  depends_on formula: "node"\n'
             printf '  depends_on macos: ">= :ventura"\n\n'
