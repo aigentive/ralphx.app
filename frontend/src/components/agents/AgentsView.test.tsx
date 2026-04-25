@@ -399,8 +399,8 @@ describe("AgentsChatHeader", () => {
   it("hides artifact shortcut buttons while the artifact pane is open", () => {
     renderWithProviders(
       <AgentsChatHeader
-        conversation={conversation()}
-        workspace={null}
+        conversation={conversation({ agentMode: "ideation" })}
+        workspace={conversationWorkspace({ mode: "ideation" })}
         artifactOpen
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
@@ -410,7 +410,7 @@ describe("AgentsChatHeader", () => {
     );
 
     expect(screen.queryByLabelText("Plan")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Close artifacts")).toBeInTheDocument();
+    expect(screen.getByLabelText("Close panel")).toBeInTheDocument();
   });
 
   it("does not render redundant runtime metadata in the title area", () => {
@@ -470,8 +470,9 @@ describe("AgentsChatHeader", () => {
     expect(screen.getByTestId("agents-workspace-status")).toHaveTextContent("active");
   });
 
-  it("publishes edit-mode workspaces from the header", () => {
+  it("shows a commit and publish shortcut for editable workspaces", () => {
     const publish = vi.fn().mockResolvedValue(undefined);
+    const openPublishPane = vi.fn();
     renderWithProviders(
       <AgentsChatHeader
         conversation={conversation({ id: "conversation-1" })}
@@ -499,6 +500,7 @@ describe("AgentsChatHeader", () => {
         activeArtifactTab="plan"
         onRenameConversation={vi.fn().mockResolvedValue(undefined)}
         onPublishWorkspace={publish}
+        onOpenPublishPane={openPublishPane}
         onToggleArtifacts={vi.fn()}
         onSelectArtifact={vi.fn()}
       />
@@ -506,7 +508,72 @@ describe("AgentsChatHeader", () => {
 
     fireEvent.click(screen.getByTestId("agents-publish-workspace"));
 
-    expect(publish).toHaveBeenCalledWith("conversation-1");
+    expect(openPublishPane).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("uses the publish action as a pane shortcut instead of immediately publishing", () => {
+    const openPublishPane = vi.fn();
+    const publish = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ id: "conversation-1" })}
+        workspace={conversationWorkspace()}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onPublishWorkspace={publish}
+        onOpenPublishPane={openPublishPane}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    expect(openPublishPane).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("hides ideation artifact shortcuts for edit-mode conversations", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ agentMode: "edit" })}
+        workspace={conversationWorkspace({ mode: "edit" })}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByLabelText("Plan")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Verification")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Proposals")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tasks")).not.toBeInTheDocument();
+  });
+
+  it("shows ideation artifact shortcuts for ideation-mode conversations", () => {
+    renderWithProviders(
+      <AgentsChatHeader
+        conversation={conversation({ agentMode: "ideation" })}
+        workspace={conversationWorkspace({ mode: "ideation" })}
+        artifactOpen={false}
+        activeArtifactTab="plan"
+        onRenameConversation={vi.fn().mockResolvedValue(undefined)}
+        onToggleTerminal={vi.fn()}
+        onToggleArtifacts={vi.fn()}
+        onSelectArtifact={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Plan")).toBeInTheDocument();
+    expect(screen.getByLabelText("Verification")).toBeInTheDocument();
+    expect(screen.getByLabelText("Proposals")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tasks")).toBeInTheDocument();
   });
 
   it("toggles the terminal from the header when a workspace is available", () => {
@@ -1078,6 +1145,24 @@ describe("AgentsView", () => {
     expect(within(baseLine).getByRole("button", { name: "Start from" })).toBeDisabled();
   });
 
+  it("opens the right-side publish pane from the Commit & Publish header shortcut", async () => {
+    mockAgentViewData(conversation({ agentMode: "edit" }));
+    getAgentConversationWorkspaceMock.mockResolvedValue(conversationWorkspace({ mode: "edit" }));
+
+    renderAgentsView();
+    selectSidebarConversationRow();
+
+    await screen.findByTestId("agents-publish-workspace");
+    expect(screen.queryByTestId("agents-artifact-pane")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("agents-publish-workspace"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("agents-artifact-pane")).toBeInTheDocument()
+    );
+    expect(publishAgentConversationWorkspaceMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the artifact pane closed by default when the conversation has nothing to show", async () => {
     mockAgentViewData(
       conversation({
@@ -1102,7 +1187,15 @@ describe("AgentsView", () => {
   });
 
   it("does not auto-restore a persisted artifact pane when the conversation still has nothing to show", async () => {
-    mockAgentViewData();
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+        agentMode: "ideation",
+      })
+    );
+    mockSessionWithData();
     resetAgentSessionState({
       artifactByConversationId: {
         "conversation-1": {
@@ -1124,7 +1217,15 @@ describe("AgentsView", () => {
   });
 
   it("still allows manually opening the artifact pane when the conversation has nothing to show", async () => {
-    mockAgentViewData();
+    mockAgentViewData(
+      conversation({
+        contextType: "ideation",
+        contextId: "session-1",
+        ideationSessionId: "session-1",
+        agentMode: "ideation",
+      })
+    );
+    mockSessionWithData();
 
     renderAgentsView();
     selectSidebarConversationRow();

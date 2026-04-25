@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 export type AgentProvider = "claude" | "codex";
-export type AgentArtifactTab = "plan" | "verification" | "proposal" | "tasks";
+export type AgentArtifactTab = "plan" | "verification" | "proposal" | "tasks" | "publish";
 export type AgentTaskArtifactMode = "graph" | "kanban";
 export type AgentProjectSort = "latest" | "az" | "za";
 

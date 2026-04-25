@@ -796,6 +796,13 @@ export function AgentsView({
     ]
   );
 
+  const handleOpenPublishPane = useCallback(() => {
+    if (!selectedConversationId) {
+      return;
+    }
+    openArtifactTab(selectedConversationId, "publish");
+  }, [openArtifactTab, selectedConversationId]);
+
   useEffect(() => {
     if (
       activeConversation?.contextType !== "project" ||
@@ -1255,6 +1262,7 @@ export function AgentsView({
                       terminalUnavailableReason={terminalUnavailableReason}
                       onRenameConversation={handleRenameConversation}
                       onPublishWorkspace={handlePublishWorkspace}
+                      onOpenPublishPane={handleOpenPublishPane}
                       isPublishingWorkspace={publishingConversationId === selectedConversationId}
                       onToggleTerminal={() => toggleTerminalOpen(selectedConversationId)}
                       onToggleArtifacts={() =>
@@ -1328,10 +1336,13 @@ export function AgentsView({
               >
                 <AgentsArtifactPane
                   conversation={activeConversation}
+                  workspace={activeWorkspace}
                   activeTab={artifactState.activeTab}
                   taskMode={artifactState.taskMode}
                   onTabChange={handleSelectArtifact}
                   onTaskModeChange={(mode) => setTaskArtifactMode(selectedConversationId, mode)}
+                  onPublishWorkspace={handlePublishWorkspace}
+                  isPublishingWorkspace={publishingConversationId === selectedConversationId}
                   onClose={() => setArtifactPaneVisibility(selectedConversationId, false)}
                 />
               </div>
@@ -1353,6 +1364,7 @@ interface AgentsChatHeaderProps {
   terminalUnavailableReason?: string | null;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onPublishWorkspace?: (conversationId: string) => Promise<void>;
+  onOpenPublishPane?: () => void;
   isPublishingWorkspace?: boolean;
   onToggleTerminal?: () => void;
   onToggleArtifacts: () => void;
@@ -1368,12 +1380,15 @@ export function AgentsChatHeader({
   terminalUnavailableReason = null,
   onRenameConversation,
   onPublishWorkspace,
+  onOpenPublishPane,
   isPublishingWorkspace = false,
   onToggleTerminal,
   onToggleArtifacts,
   onSelectArtifact,
 }: AgentsChatHeaderProps) {
   const title = conversation?.title || "Untitled agent";
+  const conversationMode = conversation ? resolveConversationAgentMode(conversation, workspace) : null;
+  const showIdeationArtifacts = conversationMode === "ideation";
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
@@ -1469,8 +1484,13 @@ export function AgentsChatHeader({
                 variant="ghost"
                 size="sm"
                 className="h-8 gap-1.5 px-2.5 text-xs"
-                onClick={() => onPublishWorkspace?.(conversation.id)}
-                disabled={!onPublishWorkspace || isPublishingWorkspace || workspace.status === "missing"}
+                onClick={onOpenPublishPane}
+                disabled={
+                  !onPublishWorkspace ||
+                  !onOpenPublishPane ||
+                  isPublishingWorkspace ||
+                  workspace.status === "missing"
+                }
                 aria-label="Commit and publish branch"
                 data-testid="agents-publish-workspace"
               >
@@ -1488,7 +1508,7 @@ export function AgentsChatHeader({
           </Tooltip>
         )}
 
-        {!artifactOpen &&
+        {showIdeationArtifacts && !artifactOpen &&
           HEADER_ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
             const isActive = activeArtifactTab === id && artifactOpen;
             return (
@@ -1520,27 +1540,29 @@ export function AgentsChatHeader({
             );
           })}
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={onToggleArtifacts}
-              aria-label={artifactOpen ? "Close artifacts" : "Open artifacts"}
-            >
-              {artifactOpen ? (
-                <PanelRightClose className="w-4 h-4" />
-              ) : (
-                <PanelRightOpen className="w-4 h-4" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">
-            {artifactOpen ? "Close artifacts" : "Open artifacts"}
-          </TooltipContent>
-        </Tooltip>
+        {showIdeationArtifacts || artifactOpen ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={onToggleArtifacts}
+                aria-label={artifactOpen ? "Close panel" : "Open artifacts"}
+              >
+                {artifactOpen ? (
+                  <PanelRightClose className="w-4 h-4" />
+                ) : (
+                  <PanelRightOpen className="w-4 h-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {artifactOpen ? "Close panel" : "Open artifacts"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   );

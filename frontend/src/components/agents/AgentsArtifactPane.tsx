@@ -2,9 +2,11 @@ import {
   CheckCircle2,
   FileText,
   GitPullRequestArrow,
+  GitBranch,
   LayoutGrid,
   Network,
   ClipboardList,
+  Loader2,
   X,
 } from "lucide-react";
 import type { ElementType } from "react";
@@ -14,7 +16,7 @@ import { toast } from "sonner";
 
 import { artifactApi } from "@/api/artifact";
 import { ideationApi, toTaskProposal } from "@/api/ideation";
-import { chatApi } from "@/api/chat";
+import { chatApi, type AgentConversationWorkspace } from "@/api/chat";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { Button } from "@/components/ui/button";
@@ -61,21 +63,33 @@ const ARTIFACT_TABS: Array<{
   { id: "tasks", label: "Tasks", icon: ClipboardList },
 ];
 
+const PUBLISH_TAB = {
+  id: "publish" as const,
+  label: "Commit & Publish",
+  icon: GitPullRequestArrow,
+};
+
 interface AgentsArtifactPaneProps {
   conversation: AgentConversation | null;
+  workspace?: AgentConversationWorkspace | null;
   activeTab: AgentArtifactTab;
   taskMode: AgentTaskArtifactMode;
   onTabChange: (tab: AgentArtifactTab) => void;
   onTaskModeChange: (mode: AgentTaskArtifactMode) => void;
+  onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
+  isPublishingWorkspace?: boolean;
   onClose: () => void;
 }
 
 export function AgentsArtifactPane({
   conversation,
+  workspace = null,
   activeTab,
   taskMode,
   onTabChange,
   onTaskModeChange,
+  onPublishWorkspace,
+  isPublishingWorkspace = false,
   onClose,
 }: AgentsArtifactPaneProps) {
   const queryClient = useQueryClient();
@@ -135,6 +149,22 @@ export function AgentsArtifactPane({
     verificationData?.status ?? sessionData?.session.verificationStatus ?? "unverified";
   const verificationInProgress =
     verificationData?.inProgress ?? sessionData?.session.verificationInProgress ?? false;
+  const showIdeationTabs = workspace?.mode === "ideation";
+  const showPublishTab =
+    workspace?.mode === "edit" && !workspace.linkedIdeationSessionId && !workspace.linkedPlanBranchId;
+  const visibleTabs = useMemo(
+    () => [
+      ...(showIdeationTabs ? ARTIFACT_TABS : []),
+      ...(showPublishTab ? [PUBLISH_TAB] : []),
+    ],
+    [showIdeationTabs, showPublishTab],
+  );
+  const effectiveActiveTab =
+    visibleTabs.some((tab) => tab.id === activeTab)
+      ? activeTab
+      : showPublishTab
+        ? "publish"
+        : "plan";
   const handlePlanUpdated = useCallback(
     (updatedPlan: Artifact) => {
       queryClient.setQueryData(["agents", "artifact", updatedPlan.id], updatedPlan);
@@ -162,8 +192,8 @@ export function AgentsArtifactPane({
         }}
       >
         <div className="flex h-full items-stretch gap-0 min-w-0 self-stretch">
-          {ARTIFACT_TABS.map(({ id, label, icon: Icon }) => {
-            const isActive = activeTab === id;
+          {visibleTabs.map(({ id, label, icon: Icon }) => {
+            const isActive = effectiveActiveTab === id;
             const count = id === "proposal" ? proposalCount : 0;
             const showVerificationDot =
               id === "verification" &&
@@ -231,7 +261,7 @@ export function AgentsArtifactPane({
         </div>
 
         <div className="ml-auto flex items-center gap-1">
-          {activeTab === "tasks" && (
+          {effectiveActiveTab === "tasks" && (
             <div
               className="h-8 p-0.5 flex items-center rounded-md border"
               style={{
@@ -308,10 +338,11 @@ export function AgentsArtifactPane({
 
       <div
         className="flex-1 min-h-0 overflow-y-auto"
-        data-testid={`agents-artifact-content-${activeTab}`}
+        data-testid={`agents-artifact-content-${effectiveActiveTab}`}
       >
         <ArtifactContent
-          activeTab={activeTab}
+          activeTab={effectiveActiveTab}
+          workspace={workspace}
           isLoading={conversationQuery.isLoading || sessionQuery.isLoading}
           attachedSessionId={attachedSessionId}
           projectId={conversation?.projectId ?? null}
@@ -323,6 +354,8 @@ export function AgentsArtifactPane({
           onPlanUpdated={handlePlanUpdated}
           dependencyGraph={dependencyGraph}
           proposals={proposals}
+          onPublishWorkspace={onPublishWorkspace}
+          isPublishingWorkspace={isPublishingWorkspace}
         />
       </div>
     </aside>
@@ -331,6 +364,7 @@ export function AgentsArtifactPane({
 
 type ArtifactContentProps = {
   activeTab: AgentArtifactTab;
+  workspace: AgentConversationWorkspace | null;
   isLoading: boolean;
   attachedSessionId: string | null;
   projectId: string | null;
@@ -342,10 +376,13 @@ type ArtifactContentProps = {
   onPlanUpdated: (updatedPlan: Artifact) => void;
   dependencyGraph: DependencyGraphResponse | null;
   proposals: TaskProposal[];
+  onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
+  isPublishingWorkspace: boolean;
 };
 
 function ArtifactContent({
   activeTab,
+  workspace,
   isLoading,
   attachedSessionId,
   projectId,
@@ -357,7 +394,19 @@ function ArtifactContent({
   onPlanUpdated,
   dependencyGraph,
   proposals,
+  onPublishWorkspace,
+  isPublishingWorkspace,
 }: ArtifactContentProps) {
+  if (activeTab === "publish") {
+    return (
+      <AgentPublishPanel
+        workspace={workspace}
+        onPublishWorkspace={onPublishWorkspace}
+        isPublishingWorkspace={isPublishingWorkspace}
+      />
+    );
+  }
+
   if (isLoading) {
     return <EmptyArtifactState title="Loading attached run..." />;
   }
@@ -427,6 +476,138 @@ function ArtifactContent({
       sessionId={attachedSessionId}
       mode={taskMode}
     />
+  );
+}
+
+function AgentPublishPanel({
+  workspace,
+  onPublishWorkspace,
+  isPublishingWorkspace,
+}: {
+  workspace: AgentConversationWorkspace | null;
+  onPublishWorkspace: ((conversationId: string) => Promise<void>) | undefined;
+  isPublishingWorkspace: boolean;
+}) {
+  if (!workspace) {
+    return <EmptyArtifactState title="No workspace selected" />;
+  }
+
+  const branch = workspace.branchName;
+  const base = workspace.baseDisplayName ?? workspace.baseRef;
+  const prLabel = workspace.publicationPrNumber
+    ? `PR #${workspace.publicationPrNumber}`
+    : workspace.publicationPrUrl
+      ? "Published PR"
+      : "No PR yet";
+  const publishDisabled =
+    !onPublishWorkspace || isPublishingWorkspace || workspace.status === "missing";
+
+  return (
+    <div className="min-h-full p-4" data-testid="agents-publish-pane">
+      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <section
+          className="rounded-lg border p-4"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                Review Changes
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-muted)]">
+                {base} → {branch}
+              </div>
+            </div>
+            <span
+              className="rounded-full border px-2.5 py-1 text-xs capitalize"
+              style={{
+                borderColor: "var(--overlay-weak)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              {workspace.publicationPushStatus ?? workspace.status}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <PublishFact icon={GitBranch} label="Branch" value={branch} />
+            <PublishFact icon={FileText} label="Base" value={base} />
+            <PublishFact icon={GitPullRequestArrow} label="Pull Request" value={prLabel} />
+            <PublishFact
+              icon={CheckCircle2}
+              label="Mode"
+              value={workspace.mode === "edit" ? "Edit agent" : workspace.mode}
+            />
+          </div>
+        </section>
+
+        <section
+          className="rounded-lg border p-4"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: "var(--border-subtle)",
+          }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                Commit & Publish
+              </div>
+              <div className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
+                Commit workspace changes, push the agent branch, and create or update a draft PR.
+              </div>
+            </div>
+            <Button
+              type="button"
+              className="h-9 gap-2 px-3 text-xs"
+              onClick={() => void onPublishWorkspace?.(workspace.conversationId)}
+              disabled={publishDisabled}
+              data-testid="agents-publish-confirm"
+            >
+              {isPublishingWorkspace ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitPullRequestArrow className="h-3.5 w-3.5" />
+              )}
+              Commit & Publish
+            </Button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function PublishFact({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      className="flex min-w-0 items-start gap-2 rounded-md border px-3 py-2"
+      style={{
+        background: "var(--bg-base)",
+        borderColor: "var(--overlay-weak)",
+      }}
+    >
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+      <div className="min-w-0">
+        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+          {label}
+        </div>
+        <div className="mt-1 truncate text-xs font-medium text-[var(--text-primary)]">
+          {value}
+        </div>
+      </div>
+    </div>
   );
 }
 
