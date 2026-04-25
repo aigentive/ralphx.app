@@ -9,6 +9,7 @@
 
 import React, { useState, useCallback } from "react";
 import { Copy, Check } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -85,23 +86,65 @@ export function CodeBlock({ children, language }: CodeBlockProps) {
 // Markdown Components
 // ============================================================================
 
-export const markdownComponents = {
-  a: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+function stripLineSuffix(path: string): string {
+  return path.replace(/:\d+(?::\d+)?$/, "");
+}
+
+function parseLocalFileHref(href: string | undefined): string | null {
+  if (!href) return null;
+
+  if (href.startsWith("file://")) {
+    try {
+      return stripLineSuffix(decodeURI(new URL(href).pathname));
+    } catch {
+      return stripLineSuffix(href.slice("file://".length));
+    }
+  }
+
+  if (href.startsWith("/") && !href.startsWith("//")) {
+    return stripLineSuffix(href);
+  }
+
+  return null;
+}
+
+function fileHref(path: string): string {
+  return `file://${path}`;
+}
+
+export function MarkdownLink({
+  href,
+  children,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const localFilePath = parseLocalFileHref(href);
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (!localFilePath) return;
+      event.preventDefault();
+      void openPath(localFilePath);
+    },
+    [localFilePath],
+  );
+
+  return (
     <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+      {...props}
+      href={localFilePath ? fileHref(localFilePath) : href}
+      target={localFilePath ? undefined : "_blank"}
+      rel={localFilePath ? undefined : "noopener noreferrer"}
       className="underline hover:no-underline"
       style={{ color: "var(--accent-primary)" }} /* macOS Tahoe accent */
-      {...props}
+      onClick={handleClick}
     >
       {children}
     </a>
-  ),
+  );
+}
+
+export const markdownComponents = {
+  a: MarkdownLink,
   code: ({
     className,
     children,

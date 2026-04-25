@@ -17,6 +17,7 @@ import { AGENT_ORCHESTRATOR } from "@/constants/agents";
 import { withAlpha } from "@/lib/theme-colors";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 import { shouldHideCompletedProjectOrchestrationToolCall } from "./tool-widgets/ProjectOrchestrationWidget.utils";
+import { MarkdownLink } from "./MessageItem.markdown";
 
 // ============================================================================
 // Types
@@ -91,18 +92,7 @@ function formatTimestamp(dateString: string, full: boolean): string {
 
 const markdownComponents = {
   // Style links
-  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline hover:no-underline"
-      style={{ color: "var(--accent-primary)" }}
-      {...props}
-    >
-      {children}
-    </a>
-  ),
+  a: MarkdownLink,
   // Style inline code
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) => {
     const isBlock = className?.includes("language-");

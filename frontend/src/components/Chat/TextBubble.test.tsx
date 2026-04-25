@@ -8,8 +8,14 @@
  */
 
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi } from "vitest";
 import { TextBubble } from "./TextBubble";
+import { openPath } from "@tauri-apps/plugin-opener";
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe("TextBubble", () => {
 
@@ -91,6 +97,28 @@ describe("TextBubble", () => {
     it("renders bold text in assistant messages", () => {
       render(<TextBubble text="This is **bold** text" isUser={false} />);
       expect(screen.getByText("bold")).toBeInTheDocument();
+    });
+
+    it("opens absolute local file links with the system opener instead of navigating the webview", async () => {
+      const user = userEvent.setup();
+      render(
+        <TextBubble
+          text="[agent-models.ts](/tmp/ralphx-worktree/frontend/src/lib/agent-models.ts:1)"
+          isUser={false}
+        />
+      );
+
+      const link = screen.getByRole("link", { name: "agent-models.ts" });
+      expect(link).toHaveAttribute(
+        "href",
+        "file:///tmp/ralphx-worktree/frontend/src/lib/agent-models.ts",
+      );
+
+      await user.click(link);
+
+      expect(openPath).toHaveBeenCalledWith(
+        "/tmp/ralphx-worktree/frontend/src/lib/agent-models.ts",
+      );
     });
   });
 
