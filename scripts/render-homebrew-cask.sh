@@ -27,10 +27,10 @@ cask "ralphx" do
   sha256 arm:   "${arm_sha}",
          intel: "${intel_sha}"
 
-  url "https://github.com/aigentive/ralphx-releases/releases/download/v#{version}/RalphX_#{version}_#{arch}.dmg"
+  url "https://github.com/aigentive/ralphx.app/releases/download/v#{version}/RalphX_#{version}_#{arch}.dmg"
   name "RalphX"
   desc "Native Mac GUI for autonomous AI development"
-  homepage "https://github.com/aigentive/ralphx-releases"
+  homepage "https://github.com/aigentive/ralphx.app"
   auto_updates true
 
   depends_on formula: "node"

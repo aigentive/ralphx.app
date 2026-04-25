@@ -6,7 +6,7 @@ Updated: 2026-04-07
 
 - Repo: `/Users/example/ralphx-worktrees/codex`
 - Branch: `codex-cli-discovery`
-- Discovery PR: `https://github.com/aigentive/ralphx/pull/17`
+- Discovery PR: `https://github.com/aigentive/ralphx.app/pull/17`
 
 ## Files already created in this pass
 

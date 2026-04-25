@@ -1,0 +1,221 @@
+name: Daily Release
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Generate proposal, version bump, and notes without committing, tagging, or dispatching Release Build"
+        required: true
+        type: boolean
+        default: false
+      draft:
+        description: "Create the public release as a draft"
+        required: true
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the public release as a prerelease"
+        required: true
+        type: boolean
+        default: false
+      arm_runner:
+        description: "Runner to use for the macOS ARM release build"
+        required: true
+        type: choice
+        default: self-hosted
+        options:
+          - self-hosted
+          - github-hosted
+      codex_model:
+        description: "Codex model for version proposal and release notes"
+        required: true
+        default: gpt-5.4
+      codex_reasoning_effort:
+        description: "Codex reasoning effort for version proposal and release notes"
+        required: true
+        type: choice
+        default: xhigh
+        options:
+          - low
+          - medium
+          - high
+          - xhigh
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: daily-release-main
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-dispatch:
+    name: Prepare daily release
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY || secrets.OPENAI_API_KEY }}
+      RELEASE_PROPOSAL_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.codex_model || 'gpt-5.4' }}
+      RELEASE_NOTES_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.codex_model || 'gpt-5.4' }}
+      RELEASE_PROPOSAL_REASONING_EFFORT: ${{ github.event_name == 'workflow_dispatch' && inputs.codex_reasoning_effort || 'xhigh' }}
+      RELEASE_NOTES_REASONING_EFFORT: ${{ github.event_name == 'workflow_dispatch' && inputs.codex_reasoning_effort || 'xhigh' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+      DRAFT_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+      PRERELEASE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+      ARM_RUNNER: ${{ github.event_name == 'workflow_dispatch' && inputs.arm_runner || 'self-hosted' }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Install Codex CLI
+        run: npm i -g @openai/codex
+
+      - name: Resolve release range
+        id: range
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          latest_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)"
+          if [[ -z "${latest_tag}" ]]; then
+            echo "No reachable vX.Y.Z release tag found on main." >&2
+            exit 1
+          fi
+
+          commit_count="$(git rev-list --count "${latest_tag}..HEAD")"
+          {
+            echo "latest_tag=${latest_tag}"
+            echo "commit_count=${commit_count}"
+          } >> "${GITHUB_OUTPUT}"
+
+          if [[ "${commit_count}" -eq 0 ]]; then
+            echo "should_release=false" >> "${GITHUB_OUTPUT}"
+            echo "No commits found after ${latest_tag}; skipping daily release." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          echo "should_release=true" >> "${GITHUB_OUTPUT}"
+          echo "Preparing release from ${latest_tag}..HEAD (${commit_count} commits)." >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Generate Codex release prep
+        id: release_prep
+        if: ${{ steps.range.outputs.should_release == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CODEX_API_KEY:-}" ]]; then
+            echo "Missing CODEX_API_KEY. Add repository secret CODEX_API_KEY, or OPENAI_API_KEY as a fallback." >&2
+            exit 1
+          fi
+
+          latest_tag="${{ steps.range.outputs.latest_tag }}"
+          proposal_path=".artifacts/release-notes/proposal-from-${latest_tag}.md"
+
+          ./scripts/propose-release.sh \
+            --from "${latest_tag}" \
+            --to HEAD \
+            --accept \
+            --output "${proposal_path}"
+
+          version="$(head -n 1 .artifacts/release-notes/.version | tr -d '[:space:]')"
+          if [[ -z "${version}" ]]; then
+            echo "Codex release proposal did not persist a version." >&2
+            exit 1
+          fi
+
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Proposed release tag already exists: ${tag}" >&2
+            exit 1
+          fi
+
+          ./scripts/bump-version.sh "${version}"
+          ./scripts/generate-release-notes.sh "${version}" --from "${latest_tag}" --to HEAD
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "Prepared ${tag} from ${latest_tag}." >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Commit and tag release prep
+        if: ${{ steps.range.outputs.should_release == 'true' && env.DRY_RUN != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release_prep.outputs.version }}"
+          tag="${{ steps.release_prep.outputs.tag }}"
+
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "origin/main moved after release notes were generated. Re-run the workflow so the release includes the latest commits." >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            frontend/package.json \
+            frontend/package-lock.json \
+            src-tauri/Cargo.toml \
+            src-tauri/tauri.conf.json \
+            "release-notes/${tag}.md"
+
+          if git diff --cached --quiet; then
+            echo "No release-prep changes were produced." >&2
+            exit 1
+          fi
+
+          git commit -m "chore: prepare ${tag} daily release"
+          git tag -a "${tag}" -m "RalphX.app ${tag}"
+          git push origin HEAD:main "refs/tags/${tag}"
+
+          echo "Pushed ${tag} and release-prep commit to main." >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Dispatch release build
+        if: ${{ steps.range.outputs.should_release == 'true' && env.DRY_RUN != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release_prep.outputs.version }}"
+          tag="${{ steps.release_prep.outputs.tag }}"
+
+          gh workflow run release.yml \
+            --ref main \
+            -f "ref=${tag}" \
+            -f "version=${version}" \
+            -f "draft=${DRAFT_RELEASE}" \
+            -f "prerelease=${PRERELEASE_RELEASE}" \
+            -f "arm_runner=${ARM_RUNNER}"
+
+          echo "Dispatched Release Build for ${tag}." >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize dry run
+        if: ${{ steps.range.outputs.should_release == 'true' && env.DRY_RUN == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git status --short
+          echo "Dry run complete for ${{ steps.release_prep.outputs.tag }}. No commit, tag, push, or Release Build dispatch was performed." >> "${GITHUB_STEP_SUMMARY}"

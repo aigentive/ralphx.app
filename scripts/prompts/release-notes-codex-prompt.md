@@ -1,5 +1,5 @@
 <release_notes_task>
-Draft polished Markdown release notes for RalphX, a native macOS desktop app for AI-driven software development.
+Draft polished Markdown release notes for RalphX.app, a native macOS desktop app for AI-driven software development.
 
 Use only the provided deterministic release evidence packet and supporting facts.
 </release_notes_task>
@@ -16,7 +16,7 @@ Use only the provided deterministic release evidence packet and supporting facts
 </style_goals>
 
 <output_format>
-# RalphX v<version>
+# RalphX.app v<version>
 
 One short summary sentence.
 
@@ -60,7 +60,7 @@ One short summary sentence.
 - For broad first-release or squash-merge ranges, prefer 4-5 strong Highlights bullets when the evidence supports them.
 - If the range looks like a first release or a broad release cut, frame that professionally and confidently in the summary without sounding defensive, apologetic, or self-undermining.
 - Do not use phrases like `unusually broad`, `mixed bag`, `catch-all`, `messy`, `still evolving`, or similar wording that makes the release sound accidental or poorly shaped.
-- Prefer opener patterns like `This first 0.1.0 release...`, `This initial 0.1.0 release...`, or `RalphX 0.1.0 focuses on...` when they fit the evidence.
+- Prefer opener patterns like `This first 0.1.0 release...`, `This initial 0.1.0 release...`, or `RalphX.app 0.1.0 focuses on...` when they fit the evidence.
 - The opening summary sentence must name 2-3 concrete release themes and must not fall back to generic phrases like `consolidates the current baseline`, `brings various improvements`, or `tightens several workflows`.
 - Keep Highlights and Fixes And Polish focused on runtime, UI, workflow, install, and release outcomes.
 - Lead each bullet with the visible surface or workflow that changed, not the underlying implementation mechanism.

@@ -11,7 +11,7 @@ use crate::error::{AppError, AppResult};
 const GITHUB_PR_BODY_SOFT_LIMIT_CHARS: usize = 60_000;
 const PR_BODY_TRUNCATION_NOTICE: &str =
     "\n\n_Excerpt truncated by RalphX because GitHub PR descriptions have a body size limit._";
-const RALPHX_REPOSITORY_URL: &str = "https://github.com/aigentive/ralphx";
+const RALPHX_REPOSITORY_URL: &str = "https://github.com/aigentive/ralphx.app";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrReviewState {

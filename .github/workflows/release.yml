@@ -67,7 +67,7 @@ jobs:
           fi
 
           tag="v${version}"
-          release_name="RalphX ${tag}"
+          release_name="RalphX.app ${tag}"
           normalized_ref="${raw_ref#refs/tags/}"
 
           if [[ "${normalized_ref}" != "${tag}" ]]; then

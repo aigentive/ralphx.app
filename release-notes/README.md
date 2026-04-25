@@ -9,10 +9,17 @@ Naming convention:
 
 Typical flow:
 
-1. Prefer the guided wrapper:
+1. For local release prep, prefer the guided wrapper:
    - `./scripts/release.sh`
 2. Review the proposal when prompted, accept it to continue, then review and edit the generated `release-notes/vX.Y.Z.md`
 3. Commit it before tagging if you want the workflow-created draft release to use it automatically
+
+Daily scheduled releases:
+
+- `Daily Release` runs from `main`, skips when there are no commits after the latest reachable `vX.Y.Z` tag, and commits the generated `release-notes/vX.Y.Z.md` before tagging.
+- The scheduled workflow uses Codex CLI for both the version proposal and release-note generation, so the repository needs a `CODEX_API_KEY` secret.
+- Protected-main setups may also need `RELEASE_AUTOMATION_TOKEN` with `contents:write` and `actions:write` so the workflow can push the release-prep commit/tag and dispatch `Release Build`.
+- Manual `Daily Release` dispatch supports `dry_run=true` to verify generation without committing, tagging, pushing, or dispatching `Release Build`.
 
 Notes:
 

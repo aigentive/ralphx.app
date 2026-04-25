@@ -11,7 +11,7 @@ DEFAULT_REASONING_EFFORT="${RELEASE_PROPOSAL_REASONING_EFFORT:-${RELEASE_NOTES_R
 
 usage() {
   cat <<'EOF'
-Recommend the next RalphX release version from committed changes.
+Recommend the next RalphX.app release version from committed changes.
 
 Usage:
   ./scripts/propose-release.sh [--current-version <version>] [--from <ref>] [--to <ref>] [--model <model>] [--reasoning-effort <low|medium|high|xhigh>] [--output <file>] [--accept] [--no-prompt] [--context-only]
@@ -140,7 +140,7 @@ trap 'rm -f "${tmp_context}" "${tmp_final_input}"' EXIT
 
 {
   printf 'Release proposal metadata:\n'
-  printf -- '- Product: RalphX\n'
+  printf -- '- Product: RalphX.app\n'
   printf -- '- Current released version: %s\n' "${RELEASE_ANALYSIS_CURRENT_VERSION}"
   printf -- '- Candidate patch version: %s\n' "${RELEASE_ANALYSIS_NEXT_PATCH}"
   printf -- '- Candidate minor version: %s\n' "${RELEASE_ANALYSIS_NEXT_MINOR}"
@@ -148,13 +148,13 @@ trap 'rm -f "${tmp_context}" "${tmp_final_input}"' EXIT
   printf '\nRelease evidence:\n'
   release_analysis_write_evidence_sections "${reader_guidance}"
   printf '\nVersioning policy:\n'
-  printf -- '- RalphX uses SemVer-style numbering: MAJOR.MINOR.PATCH.\n'
-  printf -- '- RalphX is only now starting formal public release management after an internal-only phase, and it is still in a high-volatility 0.x phase.\n'
+  printf -- '- RalphX.app uses SemVer-style numbering: MAJOR.MINOR.PATCH.\n'
+  printf -- '- RalphX.app is only now starting formal public release management after an internal-only phase, and it is still in a high-volatility 0.x phase.\n'
   printf -- '- Release decisions follow the shipped surface, not raw code churn.\n'
   printf -- '- Raw commit count, file count, diff size, dependency bump volume, CI churn, and release-workflow churn do not justify a larger bump by themselves.\n'
-  printf -- '- While RalphX is on 0.x, patch is for fixes, polish, dependency churn, release/build/CI work, and internal changes that do not materially expand the shipped product surface.\n'
-  printf -- '- While RalphX is on 0.x, minor is the normal feature release for net-new user-visible capabilities or meaningful workflow expansions, even if the product is still evolving quickly.\n'
-  printf -- '- While RalphX is on 0.x, major is reserved for an explicit 1.0-level milestone or a deliberate compatibility reset. High volatility alone is not a reason to recommend 1.0.0.\n'
+  printf -- '- While RalphX.app is on 0.x, patch is for fixes, polish, dependency churn, release/build/CI work, and internal changes that do not materially expand the shipped product surface.\n'
+  printf -- '- While RalphX.app is on 0.x, minor is the normal feature release for net-new user-visible capabilities or meaningful workflow expansions, even if the product is still evolving quickly.\n'
+  printf -- '- While RalphX.app is on 0.x, major is reserved for an explicit 1.0-level milestone or a deliberate compatibility reset. High volatility alone is not a reason to recommend 1.0.0.\n'
   printf -- '- Choose exactly one of the provided candidate versions; do not invent a different version number.\n'
   printf '\nWriter instructions for this packet:\n'
   printf -- '- Recommend the smallest bump fully justified by the release evidence.\n'
