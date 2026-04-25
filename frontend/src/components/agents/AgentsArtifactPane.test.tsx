@@ -142,4 +142,11 @@ describe("AgentsArtifactPane", () => {
     expect(screen.getByText(/Fixable errors are sent back to the workspace agent/i))
       .toBeInTheDocument();
   });
+
+  it("shows agent repair state in the publish pipeline", () => {
+    renderPane("publish", workspace({ mode: "edit", publicationPushStatus: "needs_agent" }));
+
+    expect(screen.getByTestId("agents-publish-pipeline")).toBeInTheDocument();
+    expect(screen.getByText(/sent it back to the workspace agent/i)).toBeInTheDocument();
+  });
 });

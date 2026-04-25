@@ -27,7 +27,8 @@ use crate::application::chat_service::{
 };
 use crate::application::git_service::GitService;
 use crate::application::publish_resilience::{
-    publish_push_status_for_failure, review_base_for_publish,
+    ensure_publish_branch_fresh, publish_push_status_for_failure, review_base_for_publish,
+    PublishBranchFreshnessOutcome,
 };
 use crate::application::{
     AgentMessageCreatedPayload, AppChatService, AppState, ChatService, SendResult,
@@ -1618,7 +1619,7 @@ pub async fn publish_agent_conversation_workspace(
     state: State<'_, AppState>,
 ) -> Result<PublishAgentConversationWorkspaceResponse, String> {
     let conversation_id = ChatConversationId::from_string(conversation_id);
-    let workspace = state
+    let mut workspace = state
         .agent_conversation_workspace_repo
         .get_by_conversation_id(&conversation_id)
         .await
@@ -1715,6 +1716,46 @@ pub async fn publish_agent_conversation_workspace(
     } else {
         None
     };
+
+    if let Err(error) =
+        review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref)
+    {
+        mark_agent_workspace_publish_failure(&state, &workspace, &error, None).await;
+        return Err(error);
+    }
+
+    let repo_path = std::path::Path::new(&project.working_directory);
+    let freshness_conversation_id = workspace.conversation_id.as_str();
+    let freshness_outcome = ensure_publish_branch_fresh(
+        repo_path,
+        &project,
+        &workspace.branch_name,
+        &workspace.base_ref,
+        &freshness_conversation_id,
+        None,
+    )
+    .await;
+    let refreshed_base_commit = match freshness_outcome {
+        PublishBranchFreshnessOutcome::AlreadyFresh { base_commit, .. }
+        | PublishBranchFreshnessOutcome::Updated { base_commit, .. } => base_commit,
+        PublishBranchFreshnessOutcome::NeedsAgent { message, .. } => {
+            mark_agent_workspace_publish_failure(&state, &workspace, &message, None).await;
+            return Err(message);
+        }
+        PublishBranchFreshnessOutcome::OperationalError { message } => {
+            mark_agent_workspace_publish_failure(&state, &workspace, &message, None).await;
+            return Err(message);
+        }
+    };
+
+    if workspace.base_commit.as_deref() != Some(refreshed_base_commit.as_str()) {
+        workspace.base_commit = Some(refreshed_base_commit);
+        workspace = state
+            .agent_conversation_workspace_repo
+            .create_or_update(workspace)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
 
     let review_base =
         match review_base_for_publish(workspace.base_commit.as_deref(), &workspace.base_ref) {

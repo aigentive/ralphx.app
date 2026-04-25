@@ -673,9 +673,9 @@ function PublishPipelineSteps({
       ? PUBLISH_STEPS.length
       : normalizedStatus === "pushing"
         ? 2
-        : isPublishing
-          ? 0
-          : 0;
+        : 0;
+  const isRepairStatus = normalizedStatus === "needs_agent";
+  const isTerminalFailure = normalizedStatus === "failed" || isRepairStatus;
 
   return (
     <div
@@ -693,7 +693,7 @@ function PublishPipelineSteps({
         {PUBLISH_STEPS.map((step, index) => {
           const isDone = activeIndex > index;
           const isActive = isPublishing && activeIndex === index;
-          const isFailed = normalizedStatus === "failed" && index === 0;
+          const isFailed = isTerminalFailure && index === 0;
           return (
             <div
               key={step.id}
@@ -740,10 +740,11 @@ function PublishPipelineSteps({
           );
         })}
       </div>
-      {normalizedStatus === "failed" && (
+      {isTerminalFailure && (
         <div className="mt-3 text-xs text-[var(--text-muted)]">
-          The latest publish attempt failed. Fixable errors are sent back to the
-          workspace agent.
+          {isRepairStatus
+            ? "The latest publish attempt found a fixable issue and sent it back to the workspace agent."
+            : "The latest publish attempt failed. Fixable errors are sent back to the workspace agent."}
         </div>
       )}
     </div>
